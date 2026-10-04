@@ -416,7 +416,8 @@ fn draft(name: &str, date: i64) -> Draft {
             );
             draft.html = Some(format!(
                 "<p>Hello,</p><p>'The Lighthouse Keeper's Atlas' is ready for pickup at the main \
-                 desk until Friday.</p><p><img src=\"{REMOTE_ORIGIN}/library/cover.png\" \
+                 desk until Friday. <a id=\"renew\" href=\"{REMOTE_ORIGIN}/library/renew\">Renew \
+                 online</a>.</p><p><img src=\"{REMOTE_ORIGIN}/library/cover.png\" \
                  width=\"160\" height=\"220\" alt=\"Book cover\"></p><p>Aker Library</p>"
             ));
             draft
