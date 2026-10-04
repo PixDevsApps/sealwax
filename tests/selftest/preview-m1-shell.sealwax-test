@@ -1,26 +1,39 @@
-# Preview screenshots of the M1 shell (ML-020, ML-021): the window at the design mock's three
-# widths with the fictional sample accounts, list and message, in libadwaita's own dark and light
-# colours (the Omarchy theme follower, ML-018, lands separately). Not part of tools/ci.sh; it
-# writes into tools/progress/public/. Run from the repository root:
+# Preview screenshots of the M1 shell in the live theme (ML-021 visual pass): the window at the
+# design mock's three widths with the fictional sample accounts, list and message, and "No
+# accounts yet", in matte-black (dark, square corners as on stock Omarchy) and catppuccin-latte
+# (light, corners rounded 8 as on this desktop). The palettes are the stock themes in
+# tests/theme/, swapped into the run's scratch Omarchy state; the desktop's own theme is never
+# read or changed. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the
+# repository root:
 #   tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/preview-m1-shell.sealwax-test
 
 desktop tiling
-color-scheme dark
+theme matte-black
+corners 0
 resize 1440 900
-screenshot $DIR/../../tools/progress/public/m1-shell-no-account-1440-dark-2026-10-04.png
+screenshot $DIR/../../tools/progress/public/m1-shell-no-account-matte-black-square-2026-10-04.png
 sidebar sample
 list sample
 reader sample
-screenshot $DIR/../../tools/progress/public/m1-shell-1440-dark-2026-10-04.png
+assert-layout wide
+assert-contrast compose 4.5
+screenshot $DIR/../../tools/progress/public/m1-shell-wide-matte-black-square-2026-10-04.png
 resize 1100 900
 assert-layout rail
-screenshot $DIR/../../tools/progress/public/m1-shell-1100-dark-2026-10-04.png
+screenshot $DIR/../../tools/progress/public/m1-shell-rail-matte-black-square-2026-10-04.png
 resize 800 900
 assert-layout narrow
-screenshot $DIR/../../tools/progress/public/m1-shell-800-list-dark-2026-10-04.png
-action nav.pane::reader
-screenshot $DIR/../../tools/progress/public/m1-shell-800-reader-dark-2026-10-04.png
-color-scheme light
+screenshot $DIR/../../tools/progress/public/m1-shell-narrow-matte-black-square-2026-10-04.png
+
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m1-shell-narrow-catppuccin-latte-rounded-2026-10-04.png
+resize 1100 900
+assert-layout rail
+screenshot $DIR/../../tools/progress/public/m1-shell-rail-catppuccin-latte-rounded-2026-10-04.png
 resize 1440 900
 assert-layout wide
-screenshot $DIR/../../tools/progress/public/m1-shell-1440-light-2026-10-04.png
+assert-contrast compose 4.5
+screenshot $DIR/../../tools/progress/public/m1-shell-wide-catppuccin-latte-rounded-2026-10-04.png
+sidebar none
+screenshot $DIR/../../tools/progress/public/m1-shell-no-account-catppuccin-latte-rounded-2026-10-04.png
