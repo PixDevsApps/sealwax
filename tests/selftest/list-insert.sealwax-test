@@ -34,6 +34,7 @@ assert-list-row 0 subject "Og en til"
 assert-list-row 1 subject "Enda en"
 assert-list-top true
 assert-list-count 403
+assert-list-exact
 
 # Scrolled down: the list keeps its rows in view; the new one goes to the top, out of view.
 list-scroll 3000
@@ -54,4 +55,5 @@ mail-remove 0
 assert-list-row 0 subject "Og en til"
 assert-list-count 403
 assert-list-matches-folder total
+assert-list-exact
 list-clock real

@@ -33,6 +33,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("mail-add", 3, usize::MAX),
     ("mail-flag", 2, 2),
     ("mail-remove", 1, 1),
+    ("mail-churn", 2, 2),
     // The list.
     ("folder", 1, 2),
     ("chip", 1, 1),
@@ -44,6 +45,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("list-scroll", 1, 1),
     ("list-scroll-end", 0, 0),
     ("list-wait", 0, 0),
+    ("list-remember", 0, 0),
     // Assertions.
     ("assert-list-count", 1, 1),
     ("assert-list-row", 3, 3),
@@ -51,6 +53,8 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-list-sections", 1, 1),
     ("assert-list-headers", 1, 1),
     ("assert-list-selected", 1, 1),
+    ("assert-list-remembered", 0, 0),
+    ("assert-list-scrolled", 1, 1),
     ("assert-list-position", 1, 1),
     ("assert-list-growth", 1, 1),
     ("assert-list-top", 1, 1),
@@ -62,12 +66,13 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-sidebar-count", 2, 2),
     ("assert-selection-reported", 1, 1),
     ("assert-action-enabled", 2, 2),
+    ("assert-list-exact", 0, 0),
     // Measurements (tests/selftest/perf-list.sealwax-test).
     ("perf-fullscreen", 0, 0),
     ("perf-phase", 1, 1),
     ("perf-scroll", 2, 2),
     ("perf-sweep", 3, 3),
-    ("perf-jump", 1, 1),
+    ("perf-jump", 1, 2),
     ("perf-open", 1, 2),
     ("perf-insert", 1, 1),
     ("perf-memory", 1, 1),
@@ -80,6 +85,8 @@ thread_local! {
     static PROBE: RefCell<Option<Rc<Probe>>> = const { RefCell::new(None) };
     /// Messages the self-test added, numbered for their Message-IDs.
     static ADDED: Cell<u32> = const { Cell::new(0) };
+    /// The message `list-remember` noted.
+    static REMEMBERED: Cell<Option<MessageId>> = const { Cell::new(None) };
     /// Every selection the list reported, for `assert-selection-reported`.
     static REPORTED: RefCell<Option<Rc<RefCell<Vec<MessageId>>>>> = const { RefCell::new(None) };
 }
@@ -177,6 +184,10 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
         "mail-add" => add_message(harness, args).await,
         "mail-flag" => flag(harness, arg(0), arg(1)).await,
         "mail-remove" => remove(harness, arg(0)).await,
+        "mail-churn" => match (number(arg(0)), arg(1).parse::<u64>()) {
+            (Ok(count), Ok(seed)) => churn(harness, count, seed).await,
+            _ => Err("mail-churn takes a count and a seed".to_owned()),
+        },
         "folder" => select_folder(harness, arg(0), args.get(1).map(String::as_str)).await,
         "chip" => match FILTERS
             .iter()
@@ -235,12 +246,18 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
             Err(error) => Err(error),
         },
         "list-wait" => settled(harness).await,
+        "list-remember" => match list(harness) {
+            Ok(list) => match list.selected() {
+                Some(id) => {
+                    REMEMBERED.with(|remembered| remembered.set(Some(id)));
+                    Ok(())
+                }
+                None => Err("nothing is selected".to_owned()),
+            },
+            Err(error) => Err(error),
+        },
         "perf-fullscreen" => match harness.window() {
-            Ok(window) => {
-                window.window().fullscreen();
-                glib::timeout_future(Duration::from_millis(500)).await;
-                harness.wait_frames(2).await
-            }
+            Ok(window) => fullscreen(harness, window.window()).await,
             Err(error) => Err(error),
         },
         "perf-phase" => probe(harness).map(|probe| probe.set_phase(arg(0))),
@@ -258,7 +275,7 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
             }
             _ => Err("perf-sweep takes two fractions and milliseconds".to_owned()),
         },
-        "perf-jump" => jump(harness, arg(0)).await,
+        "perf-jump" => jump(harness, arg(0), args.get(1).map(String::as_str)).await,
         "perf-open" => open_measured(harness, arg(0), args.get(1).map(String::as_str)).await,
         "perf-insert" => match number(arg(0)) {
             Ok(count) => insert_measured(harness, count).await,
@@ -477,6 +494,8 @@ struct Fiction {
     from: String,
     text: String,
     attachment: bool,
+    /// The self-test message this one answers, by its number.
+    reply_to: Option<u32>,
 }
 
 fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> {
@@ -488,12 +507,18 @@ fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> {
         .to_ascii_lowercase();
     let mut text = format!(
         "From: {} <{local}@example.test>\r\nTo: Selftest <selftest@example.test>\r\n\
-         Subject: {}\r\nDate: {}\r\nMessage-ID: <selftest-{serial}-{date}@example.test>\r\n\
+         Subject: {}\r\nDate: {}\r\nMessage-ID: <selftest-{serial}@example.test>\r\n\
          MIME-Version: 1.0\r\n",
         fiction.from,
         fiction.subject,
         mail_date(date)
     );
+    if let Some(parent) = fiction.reply_to {
+        text.push_str(&format!(
+            "In-Reply-To: <selftest-{parent}@example.test>\r\n\
+             References: <selftest-{parent}@example.test>\r\n"
+        ));
+    }
     if fiction.attachment {
         text.push_str(&format!(
             "Content-Type: multipart/mixed; boundary=\"b{serial}\"\r\n\r\n--b{serial}\r\n\
@@ -560,6 +585,7 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
         from: "Ingrid Solberg".to_owned(),
         text: "Hei! Dette er en melding fra selvtesten.".to_owned(),
         attachment: false,
+        reply_to: None,
     };
     let mut flags = Flags::NONE;
     for option in &args[3..] {
@@ -628,6 +654,149 @@ async fn remove(harness: &Harness, position: &str) -> StepResult {
     let list = list(harness)?;
     let id = row_id(&list, position)?;
     remove_ids(harness, vec![id]).await?;
+    settled(harness).await
+}
+
+/// SplitMix64, for repeatable churn.
+struct Rng(u64);
+
+impl Rng {
+    fn next(&mut self) -> u64 {
+        self.0 = self.0.wrapping_add(0x9e37_79b9_7f4a_7c15);
+        let mut z = self.0;
+        z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
+        z ^ (z >> 31)
+    }
+
+    fn below(&mut self, n: u64) -> u64 {
+        self.next() % n.max(1)
+    }
+}
+
+/// Stores fictional messages in one ingest: one commit, one change event.
+async fn ingest_batch(
+    harness: &Harness,
+    messages: Vec<RawMessage>,
+) -> Result<Vec<MessageId>, String> {
+    let mailbox = harness.state.mailbox();
+    let blobs = mailbox.blobs().ok_or("the blob store is not open")?;
+    let prepared = blocking(move || ingest::prepare(&blobs, messages, 4))
+        .await?
+        .map_err(|error| error.to_string())?;
+    let reply = mailbox
+        .store()
+        .ok_or("the store is not open")?
+        .ingest(prepared.messages);
+    let ingested = reply.recv().await.map_err(|error| error.to_string())?;
+    Ok(ingested.ids.into_iter().flatten().collect())
+}
+
+/// A random fictional message for `mail-churn`, dated within 60 days before `now`; a third
+/// answer one of the earlier ones.
+fn churn_message(rng: &mut Rng, answered: &mut Vec<u32>, folder: FolderId, now: i64) -> RawMessage {
+    let serial = ADDED.with(|added| {
+        added.set(added.get() + 1);
+        added.get()
+    });
+    let date = now - rng.below(60 * 86_400) as i64;
+    let reply_to = (!answered.is_empty() && rng.below(3) == 0)
+        .then(|| answered[rng.below(answered.len() as u64) as usize]);
+    answered.push(serial);
+    let mut flags = Flags::NONE;
+    if rng.below(2) == 0 {
+        flags = flags | Flags::SEEN;
+    }
+    if rng.below(8) == 0 {
+        flags = flags | Flags::FLAGGED;
+    }
+    let story = Fiction {
+        subject: format!("Churn {serial}"),
+        from: ["Ingrid Solberg", "Marius Dahl", "Leah Kim"][rng.below(3) as usize].to_owned(),
+        text: "En melding fra selvtestens tilfeldige endringer.".to_owned(),
+        attachment: rng.below(5) == 0,
+        reply_to,
+    };
+    RawMessage {
+        folder,
+        flags,
+        internal_date: Some(date),
+        raw: raw_message(&story, date, serial),
+        ..RawMessage::default()
+    }
+}
+
+/// `mail-churn COUNT SEED`: COUNT random changes through the app's store while the list is
+/// open, without waiting for the list in between: single messages at random dates (some deep in
+/// the folder, some answering earlier ones), batches of 2 to 8 and, now and then, of 70 (the
+/// store then tells open views to reload), flag changes and removals of loaded rows.
+async fn churn(harness: &Harness, count: usize, seed: u64) -> StepResult {
+    let list = list(harness)?;
+    let folder = match list.scope() {
+        Some(ViewScope::Folder(folder)) => folder,
+        _ => find_folder(harness, "inbox")?.id,
+    };
+    let now = list.now_unix();
+    let mut rng = Rng(seed);
+    let mut answered: Vec<u32> = Vec::new();
+    let (mut inserted, mut batches, mut reloads, mut flagged, mut removed) = (0, 0, 0, 0, 0);
+    for _ in 0..count {
+        let loaded: Vec<MessageId> = (0..list.model().total())
+            .filter_map(|position| list.model().row_at(position).map(|row| row.id))
+            .collect();
+        let pick = rng.below(100);
+        if (40..85).contains(&pick) && !loaded.is_empty() {
+            let id = loaded[rng.below(loaded.len() as u64) as usize];
+            if pick < 70 {
+                let row = list
+                    .model()
+                    .position_of(id)
+                    .and_then(|position| list.model().row_at(position));
+                let flag = if rng.below(2) == 0 {
+                    Flags::SEEN
+                } else {
+                    Flags::FLAGGED
+                };
+                let (add, remove) = if row.is_some_and(|row| !row.flags.contains(flag)) {
+                    (flag, Flags::NONE)
+                } else {
+                    (Flags::NONE, flag)
+                };
+                let reply = harness
+                    .state
+                    .mailbox()
+                    .store()
+                    .ok_or("the store is not open")?
+                    .set_flags(vec![id], add, remove);
+                reply.recv().await.map_err(|error| error.to_string())?;
+                flagged += 1;
+            } else {
+                remove_ids(harness, vec![id]).await?;
+                removed += 1;
+            }
+            continue;
+        }
+        let size = match pick {
+            85..=96 => {
+                batches += 1;
+                2 + rng.below(7) as usize
+            }
+            97..=99 => {
+                reloads += 1;
+                70
+            }
+            _ => 1,
+        };
+        let messages = (0..size)
+            .map(|_| churn_message(&mut rng, &mut answered, folder, now))
+            .collect();
+        inserted += ingest_batch(harness, messages).await?.len();
+    }
+    println!(
+        "  # {inserted} messages stored ({batches} batches of 2-8, {reloads} of 70), {flagged} \
+         flag changes, {removed} removals; the list has reopened its view {} times",
+        list.model().stats().reopens
+    );
     settled(harness).await
 }
 
@@ -780,6 +949,22 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
                 .map_or("none".to_owned(), |position| position.to_string());
             equal("selected row", selected.as_str(), arg(0))
         }
+        "assert-list-remembered" => {
+            let remembered = REMEMBERED.with(Cell::get).ok_or("nothing was remembered")?;
+            equal("selected message", list.selected(), Some(remembered))
+        }
+        "assert-list-scrolled" => {
+            let value = list.scroller().vadjustment().value();
+            let least = arg(0)
+                .parse::<f64>()
+                .map_err(|_| format!("expected pixels, got {}", arg(0)))?;
+            println!("  # the list is at {value} px");
+            if value >= least {
+                Ok(())
+            } else {
+                Err(format!("the list is at {value} px, above {least}"))
+            }
+        }
         "assert-list-position" => {
             let id = list.selected().ok_or("nothing is selected")?;
             let (n, total) = list
@@ -791,6 +976,7 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             let frames = list.growth_frames();
             let first_most = number(arg(0))? as u32;
             println!("  # rows bound after each frame: {frames:?}");
+            println!("  # row widgets created so far: {}", list.rows_created());
             let first = *frames
                 .first()
                 .ok_or("no frame was painted after the reset")?;
@@ -877,6 +1063,7 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
                 .ok_or("the sidebar lacks the folder")?;
             equal("sidebar count", count, number(arg(1))? as u32)
         }
+        "assert-list-exact" => exact(harness, &list).await,
         "assert-action-enabled" => {
             let name = arg(0);
             let window = harness.window()?;
@@ -895,6 +1082,62 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             equal("selections reported", reported, number(arg(0))?)
         }
         other => Err(format!("unknown command {other}")),
+    }
+}
+
+/// `assert-list-exact`: the whole view read fresh from the store at the version the list has
+/// applied equals every row the list has loaded, and the list's section counts equal the fresh
+/// rows' (the check the store's `change_events_keep_list_models_exact` makes for a plain model).
+async fn exact(harness: &Harness, list: &MessageList) -> StepResult {
+    let model = list.model();
+    let crate::list::Content::View(spec) = model.content() else {
+        return Err("the list shows no store view".to_owned());
+    };
+    let started = Instant::now();
+    loop {
+        let version = model.version().ok_or("the view is still opening")?;
+        let total = model.total();
+        let reply = harness
+            .state
+            .mailbox()
+            .store()
+            .ok_or("the store is not open")?
+            .page(spec, 0, total.max(1));
+        let page = reply.recv().await.map_err(|error| error.to_string())?;
+        if page.version != version || model.version() != Some(version) {
+            if started.elapsed() > WAIT_TIMEOUT {
+                return Err(format!(
+                    "the list stayed at version {} while the store is at {}",
+                    version.0, page.version.0
+                ));
+            }
+            glib::timeout_future(Duration::from_millis(20)).await;
+            continue;
+        }
+        equal("rows", page.rows.len(), total as usize)?;
+        let mut loaded = 0;
+        for (position, fresh) in page.rows.iter().enumerate() {
+            if let Some(row) = model.row_at(position as u32) {
+                loaded += 1;
+                if row != *fresh {
+                    return Err(format!(
+                        "row {position} differs from the store's: {:?} vs {:?}",
+                        (row.id, row.flags, row.thread_count),
+                        (fresh.id, fresh.flags, fresh.thread_count)
+                    ));
+                }
+            }
+        }
+        let sections = crate::list::sections::Bounds::from_dates(
+            page.rows.iter().map(|row| row.date),
+            &model.thresholds(),
+        );
+        equal("section counts", model.section_counts(), sections.counts())?;
+        println!(
+            "  # {loaded} loaded rows of {total} equal the store's at version {}",
+            version.0
+        );
+        return Ok(());
     }
 }
 
@@ -1194,6 +1437,22 @@ impl Probe {
                 selected.iter().map(|f| f.bound).max().unwrap_or(0)
             );
         }
+        // S3's row cost: frames that bound at least 50 rows, per bound row.
+        let heavy: Vec<&Frame> = frames.iter().filter(|frame| frame.binds >= 50).collect();
+        if !heavy.is_empty() {
+            let binds = Summary::of(&heavy.iter().map(|f| f.binds as f64).collect::<Vec<_>>());
+            let work = Summary::of(&heavy.iter().map(|f| f.work_ms).collect::<Vec<_>>());
+            let layout = Summary::of(&heavy.iter().map(|f| f.layout_ms).collect::<Vec<_>>());
+            println!(
+                "  # frames that bound ≥ 50 rows: n={}, binds p50 {:.0}, work p50 {:.2} ms, \
+                 layout p50 {:.2} ms, layout per bound row {:.3} ms",
+                heavy.len(),
+                binds.p50,
+                work.p50,
+                layout.p50,
+                layout.p50 / binds.p50.max(1.0)
+            );
+        }
         let results = self.results.borrow();
         let mut names: Vec<&str> = Vec::new();
         for (name, _) in results.iter() {
@@ -1327,9 +1586,38 @@ async fn scroll(harness: &Harness, phase: &str, motion: Motion, ms_total: usize)
     settled(harness).await
 }
 
-/// `perf-jump end|start`: forgets the loaded rows, jumps, and times `scroll_to` → the first
-/// painted frame with the target row bound and no placeholder.
-async fn jump(harness: &Harness, to: &str) -> StepResult {
+/// `perf-fullscreen`: the window fills its monitor, as S3's runs did (3440×1440 live). Broadway
+/// ignores fullscreen requests, so there the window takes the monitor's size instead.
+async fn fullscreen(harness: &Harness, window: &libadwaita::ApplicationWindow) -> StepResult {
+    window.fullscreen();
+    glib::timeout_future(Duration::from_millis(500)).await;
+    if !window.is_fullscreen()
+        && let Some(monitor) = gdk::Display::default()
+            .and_then(|display| display.monitors().item(0))
+            .and_downcast::<gdk::Monitor>()
+    {
+        let geometry = monitor.geometry();
+        window.set_default_size(geometry.width(), geometry.height());
+        glib::timeout_future(Duration::from_millis(500)).await;
+    }
+    println!(
+        "  # window {}×{}, fullscreen: {}",
+        window.width(),
+        window.height(),
+        window.is_fullscreen()
+    );
+    harness.wait_frames(2).await
+}
+
+/// `perf-jump end|start [warm]`: forgets the loaded rows (unless `warm`, S3's row bench, where
+/// both ends stay loaded), jumps, and times `scroll_to` → the first painted frame with the target
+/// row bound and no placeholder.
+async fn jump(harness: &Harness, to: &str, mode: Option<&str>) -> StepResult {
+    let warm = match mode {
+        None => false,
+        Some("warm") => true,
+        Some(other) => return Err(format!("use warm or nothing, not {other}")),
+    };
     let probe = probe(harness)?;
     settled(harness).await?;
     let model = probe.list.model();
@@ -1341,10 +1629,20 @@ async fn jump(harness: &Harness, to: &str) -> StepResult {
     let target = match to {
         "end" => total - 1,
         "start" => 0,
-        other => return Err(format!("use end or start, not {other}")),
+        fraction => match fraction.parse::<f64>() {
+            Ok(fraction) if (0.0..=1.0).contains(&fraction) => {
+                ((total - 1) as f64 * fraction) as u32
+            }
+            _ => return Err(format!("use end, start or a fraction, not {fraction}")),
+        },
     };
-    model.drop_cache();
-    probe.set_phase(&format!("jump to {to}"));
+    let name = if warm {
+        format!("warm jump to {to}")
+    } else {
+        model.drop_cache();
+        format!("jump to {to}")
+    };
+    probe.set_phase(&name);
     let shown = probe.until(Duration::from_secs(5), move |list| {
         let rows = list.bound_rows();
         rows.iter().any(|row| row.position == Some(target))
@@ -1357,8 +1655,13 @@ async fn jump(harness: &Harness, to: &str) -> StepResult {
         .scroll_to(target, gtk::ListScrollFlags::NONE, None);
     let frame = shown.await;
     probe.set_phase("idle");
+    let what = if warm {
+        "rows loaded"
+    } else {
+        "loaded rows forgotten"
+    };
     probe.record(
-        &format!("jump to {to} (cache dropped) → frame with the row, no placeholders"),
+        &format!("{name} ({what}) → frame with the row, no placeholders"),
         frame.map(|at| ms(at - started)),
     );
     settled(harness).await
@@ -1416,6 +1719,7 @@ async fn insert_measured(harness: &Harness, count: usize) -> StepResult {
             from: "Marius Dahl".to_owned(),
             text: "A new message for the insert measurement.".to_owned(),
             attachment: false,
+            reply_to: None,
         };
         let raw = RawMessage {
             folder,
@@ -1490,6 +1794,7 @@ mod tests {
             from: "Ingrid Solberg".to_owned(),
             text: "Blåbærsyltetøy til frokost.".to_owned(),
             attachment: true,
+            reply_to: Some(3),
         };
         let raw = raw_message(&fiction, 1_791_072_000, 7);
         let parsed = sealwax_domain::message::parse(&raw);
@@ -1497,6 +1802,7 @@ mod tests {
         assert_eq!(parsed.headers.from[0].email, "ingridsolberg@example.test");
         assert_eq!(parsed.headers.date, Some(1_791_072_000));
         assert!(parsed.has_attachments());
+        assert_eq!(parsed.headers.in_reply_to, ["selftest-3@example.test"]);
         assert!(parsed.body_text.contains("Blåbærsyltetøy"));
     }
 

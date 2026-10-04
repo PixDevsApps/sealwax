@@ -73,5 +73,6 @@ assert-list-top true
 # Sections follow removals too.
 mail-remove 0
 assert-list-sections "Yesterday:2,This week:2,This month:1,Older:1"
+assert-list-exact
 list-clock real
 assert-labelled

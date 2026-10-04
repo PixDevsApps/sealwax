@@ -28,6 +28,7 @@ list-scroll-end
 assert-list-placeholders 0
 assert-list-top false
 assert-list-row 1199 section Older
+assert-list-exact
 
 # Exact counts in an account of its own.
 mail-account Personal
@@ -77,6 +78,7 @@ assert-list-row 3 starred true
 chip starred
 assert-list-count 3
 assert-list-all starred true
+assert-list-exact
 
 # Another folder empties the chip's view in its own words.
 folder sent Personal
