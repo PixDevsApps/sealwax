@@ -1,0 +1,1495 @@
+//! Self-test commands for the message store and the message list (ML-026), and the list's
+//! measurements (`perf-*`, ported from S3's probes). Fixture data comes from the built
+//! `sealwax-fixtures` binary, run into the scratch store before the app opens it, so the app
+//! never depends on `devtools`. Every message these commands make up is fictional, at
+//! `example.test`. The commands are listed in docs/m1/list.md.
+
+use super::script::Step;
+use super::{Harness, StepResult, WAIT_TIMEOUT, blocking, equal, number};
+use crate::list::{FILTERS, MessageList};
+use crate::mailbox::folder_key;
+use crate::window::ALL_INBOXES;
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use gtk4::{gdk, glib};
+use sealwax_domain::model::{Flags, Folder, FolderId, FolderRole, MessageId};
+use sealwax_infrastructure::ingest::{self, RawMessage};
+use sealwax_infrastructure::store::{FolderSpec, NewAccount, ViewScope};
+use sealwax_infrastructure::xdg::SealwaxDirs;
+use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
+use std::path::PathBuf;
+use std::process::Command;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
+
+/// The commands this module adds to the script format, with their argument counts.
+pub const COMMANDS: &[(&str, usize, usize)] = &[
+    // Before the app starts; only before every other step but `desktop`.
+    ("store-dir", 1, 1),
+    ("fixtures", 1, usize::MAX),
+    // The store, through the app's own store.
+    ("mail-account", 1, 1),
+    ("mail-add", 3, usize::MAX),
+    ("mail-flag", 2, 2),
+    ("mail-remove", 1, 1),
+    // The list.
+    ("folder", 1, 2),
+    ("chip", 1, 1),
+    ("search", 1, 1),
+    ("search-escape", 0, 0),
+    ("list-clock", 1, 1),
+    ("list-select", 1, 1),
+    ("list-key", 1, 1),
+    ("list-scroll", 1, 1),
+    ("list-scroll-end", 0, 0),
+    ("list-wait", 0, 0),
+    // Assertions.
+    ("assert-list-count", 1, 1),
+    ("assert-list-row", 3, 3),
+    ("assert-list-all", 2, 2),
+    ("assert-list-sections", 1, 1),
+    ("assert-list-headers", 1, 1),
+    ("assert-list-selected", 1, 1),
+    ("assert-list-position", 1, 1),
+    ("assert-list-growth", 1, 1),
+    ("assert-list-top", 0, 0),
+    ("assert-list-placeholders", 1, 1),
+    ("assert-list-empty", 1, 1),
+    ("assert-list-search", 2, 2),
+    ("assert-list-matches-folder", 1, 1),
+    ("assert-sidebar-count", 2, 2),
+    ("assert-selection-reported", 1, 1),
+    // Measurements (tests/selftest/perf-list.sealwax-test).
+    ("perf-fullscreen", 0, 0),
+    ("perf-phase", 1, 1),
+    ("perf-scroll", 2, 2),
+    ("perf-sweep", 3, 3),
+    ("perf-jump", 1, 1),
+    ("perf-open", 1, 2),
+    ("perf-insert", 1, 1),
+    ("perf-memory", 1, 1),
+    ("perf-report", 0, 0),
+];
+
+thread_local! {
+    /// What each leading `fixtures` step printed, for its line in the report.
+    static IMPORTS: RefCell<VecDeque<Vec<String>>> = const { RefCell::new(VecDeque::new()) };
+    static PROBE: RefCell<Option<Rc<Probe>>> = const { RefCell::new(None) };
+    /// Messages the self-test added, numbered for their Message-IDs.
+    static ADDED: Cell<u32> = const { Cell::new(0) };
+    /// Every selection the list reported, for `assert-selection-reported`.
+    static REPORTED: RefCell<Option<Rc<RefCell<Vec<MessageId>>>>> = const { RefCell::new(None) };
+}
+
+/// Runs the leading `store-dir` and `fixtures` steps before the app opens its store:
+/// `store-dir PATH` makes PATH the data folder (store and blobs) instead of the scratch one;
+/// `fixtures ARGS…` runs `sealwax-fixtures import --store … --blobs … ARGS…` into it (skipped when
+/// `store-dir` names a folder that already holds a store).
+pub fn before_start(steps: &[Step], dirs: &mut SealwaxDirs) -> Result<(), String> {
+    let mut leading = true;
+    let mut chosen = false;
+    for step in steps {
+        match step.command.as_str() {
+            "desktop" => {}
+            "store-dir" | "fixtures" if !leading => {
+                return Err(format!(
+                    "line {}: {} must come before the window's steps",
+                    step.line, step.command
+                ));
+            }
+            "store-dir" => {
+                dirs.data = PathBuf::from(&step.args[0]);
+                chosen = true;
+            }
+            "fixtures" => {
+                let report = if chosen && dirs.store_file().exists() {
+                    vec![format!(
+                        "fixtures skipped: {} holds a store",
+                        dirs.data.display()
+                    )]
+                } else {
+                    import(&step.args, dirs)
+                        .map_err(|error| format!("line {}: {error}", step.line))?
+                };
+                IMPORTS.with(|imports| imports.borrow_mut().push_back(report));
+            }
+            _ => leading = false,
+        }
+    }
+    Ok(())
+}
+
+fn import(args: &[String], dirs: &SealwaxDirs) -> Result<Vec<String>, String> {
+    let exe = std::env::current_exe()
+        .map_err(|error| error.to_string())?
+        .with_file_name("sealwax-fixtures");
+    if !exe.exists() {
+        return Err(format!(
+            "{} is missing; build it with cargo build -p sealwax-fixtures",
+            exe.display()
+        ));
+    }
+    let started = Instant::now();
+    let output = Command::new(&exe)
+        .arg("import")
+        .arg("--store")
+        .arg(dirs.store_file())
+        .arg("--blobs")
+        .arg(dirs.blobs_dir())
+        .args(args)
+        .output()
+        .map_err(|error| format!("{}: {error}", exe.display()))?;
+    if !output.status.success() {
+        return Err(format!(
+            "sealwax-fixtures failed ({}): {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    let mut report: Vec<String> = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_owned)
+        .collect();
+    report.push(format!(
+        "import took {:.0} ms",
+        started.elapsed().as_secs_f64() * 1000.0
+    ));
+    Ok(report)
+}
+
+/// Runs `command` when it is one of this module's; `None` otherwise.
+pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Option<StepResult> {
+    let arg = |index: usize| args[index].as_str();
+    let result = match command {
+        "store-dir" => Ok(()),
+        "fixtures" => {
+            let report = IMPORTS.with(|imports| imports.borrow_mut().pop_front());
+            for line in report.unwrap_or_default() {
+                println!("  # {line}");
+            }
+            Ok(())
+        }
+        "mail-account" => add_account(harness, arg(0)).await,
+        "mail-add" => add_message(harness, args).await,
+        "mail-flag" => flag(harness, arg(0), arg(1)).await,
+        "mail-remove" => remove(harness, arg(0)).await,
+        "folder" => select_folder(harness, arg(0), args.get(1).map(String::as_str)).await,
+        "chip" => match FILTERS
+            .iter()
+            .find(|(_, name)| name.eq_ignore_ascii_case(arg(0)))
+        {
+            Some((filter, _)) => match list(harness) {
+                Ok(list) => {
+                    list.set_filter(*filter);
+                    settled(harness).await
+                }
+                Err(error) => Err(error),
+            },
+            None => Err(format!("no chip {}", arg(0))),
+        },
+        "search" => match list(harness) {
+            Ok(list) => {
+                list.set_query(arg(0).to_owned());
+                settled(harness).await
+            }
+            Err(error) => Err(error),
+        },
+        "search-escape" => match list(harness) {
+            Ok(list) => {
+                list.search_entry().emit_by_name::<()>("stop-search", &[]);
+                settled(harness).await
+            }
+            Err(error) => Err(error),
+        },
+        "list-clock" => set_clock(harness, arg(0)).await,
+        "list-select" => match (list(harness), number(arg(0))) {
+            (Ok(list), Ok(position)) => {
+                list.select_position(position as u32);
+                settled(harness).await
+            }
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        },
+        "list-key" => press(harness, arg(0)).await,
+        "list-scroll" => match (list(harness), arg(0).parse::<f64>()) {
+            (Ok(list), Ok(value)) => {
+                list.scroller().vadjustment().set_value(value);
+                settled(harness).await
+            }
+            (Err(error), _) => Err(error),
+            (_, Err(_)) => Err(format!("expected pixels, got {}", arg(0))),
+        },
+        "list-scroll-end" => match list(harness) {
+            Ok(list) => {
+                let total = list.model().total();
+                if total > 0 {
+                    list.model().complete_growth();
+                    list.list_view()
+                        .scroll_to(total - 1, gtk::ListScrollFlags::NONE, None);
+                }
+                settled(harness).await
+            }
+            Err(error) => Err(error),
+        },
+        "list-wait" => settled(harness).await,
+        "perf-fullscreen" => match harness.window() {
+            Ok(window) => {
+                window.window().fullscreen();
+                glib::timeout_future(Duration::from_millis(500)).await;
+                harness.wait_frames(2).await
+            }
+            Err(error) => Err(error),
+        },
+        "perf-phase" => probe(harness).map(|probe| probe.set_phase(arg(0))),
+        "perf-scroll" => match (arg(0).parse::<f64>(), number(arg(1))) {
+            (Ok(speed), Ok(ms)) => {
+                let phase = format!("scroll {speed:.0} px/s");
+                scroll(harness, &phase, Motion::Speed(speed), ms).await
+            }
+            _ => Err("perf-scroll takes px/s and milliseconds".to_owned()),
+        },
+        "perf-sweep" => match (arg(0).parse::<f64>(), arg(1).parse::<f64>(), number(arg(2))) {
+            (Ok(from), Ok(to), Ok(ms)) => {
+                let phase = format!("sweep {from}–{to} in {ms} ms");
+                scroll(harness, &phase, Motion::Sweep { from, to, ms }, ms).await
+            }
+            _ => Err("perf-sweep takes two fractions and milliseconds".to_owned()),
+        },
+        "perf-jump" => jump(harness, arg(0)).await,
+        "perf-open" => open_measured(harness, arg(0), args.get(1).map(String::as_str)).await,
+        "perf-insert" => match number(arg(0)) {
+            Ok(count) => insert_measured(harness, count).await,
+            Err(error) => Err(error),
+        },
+        "perf-memory" => probe(harness).map(|probe| {
+            probe
+                .memory
+                .borrow_mut()
+                .push((arg(0).to_owned(), memory()));
+        }),
+        "perf-report" => probe(harness).map(|probe| probe.report()),
+        command
+            if command.starts_with("assert-list-")
+                || command == "assert-sidebar-count"
+                || command == "assert-selection-reported" =>
+        {
+            check(harness, command, args).await
+        }
+        _ => return None,
+    };
+    Some(result)
+}
+
+fn list(harness: &Harness) -> Result<MessageList, String> {
+    let list = harness
+        .state
+        .list()
+        .ok_or_else(|| "there is no message list".to_owned())?;
+    REPORTED.with(|reported| {
+        if reported.borrow().is_none() {
+            let selections = Rc::new(RefCell::new(Vec::new()));
+            let sink = selections.clone();
+            list.connect_message_selected(move |id| sink.borrow_mut().push(id));
+            reported.replace(Some(selections));
+        }
+    });
+    Ok(list)
+}
+
+/// Whether the list shows what it should, without anything left to load or grow.
+fn is_idle(list: &MessageList) -> bool {
+    let model = list.model();
+    !model.is_pending()
+        && !model.is_searching()
+        && !model.is_growing()
+        && !list.is_growing()
+        && list.bound_rows().iter().all(|row| !row.placeholder)
+}
+
+/// Waits until the list is idle, painting frames.
+async fn settled(harness: &Harness) -> StepResult {
+    let list = list(harness)?;
+    let started = Instant::now();
+    loop {
+        if harness
+            .window()
+            .is_ok_and(|window| window.window().is_mapped())
+        {
+            harness.wait_frames(1).await?;
+        } else {
+            glib::timeout_future(Duration::from_millis(10)).await;
+        }
+        if is_idle(&list) {
+            harness.wait_until_settled().await;
+            if is_idle(&list) {
+                return Ok(());
+            }
+        }
+        if started.elapsed() > WAIT_TIMEOUT {
+            return Err(format!(
+                "the list didn't settle: pending {}, searching {}, growing {}, {} rows bound, {} placeholders",
+                list.model().is_pending(),
+                list.model().is_searching(),
+                list.is_growing(),
+                list.bound_rows().len(),
+                list.bound_rows()
+                    .iter()
+                    .filter(|row| row.placeholder)
+                    .count()
+            ));
+        }
+    }
+}
+
+fn account_address(name: &str) -> String {
+    let local: String = name
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    format!("{local}@example.test")
+}
+
+/// `mail-account NAME`: an account with the six role folders, in the app's store.
+async fn add_account(harness: &Harness, name: &str) -> StepResult {
+    let mailbox = harness.state.mailbox();
+    let reply = mailbox
+        .store()
+        .ok_or("the store is not open")?
+        .add_account(NewAccount {
+            name: name.to_owned(),
+            address: account_address(name),
+        });
+    let account = reply.recv().await.map_err(|error| error.to_string())?.value;
+    for (role, folder) in [
+        (FolderRole::Inbox, "INBOX"),
+        (FolderRole::Drafts, "Drafts"),
+        (FolderRole::Sent, "Sent"),
+        (FolderRole::Archive, "Archive"),
+        (FolderRole::Junk, "Junk"),
+        (FolderRole::Trash, "Trash"),
+    ] {
+        let reply = mailbox
+            .store()
+            .ok_or("the store is not open")?
+            .upsert_folder(FolderSpec::local(account, folder, role));
+        reply.recv().await.map_err(|error| error.to_string())?;
+    }
+    let started = Instant::now();
+    while !mailbox.folders().iter().any(|f| f.account == account) {
+        if started.elapsed() > WAIT_TIMEOUT {
+            return Err("the sidebar never got the new account's folders".to_owned());
+        }
+        glib::timeout_future(Duration::from_millis(10)).await;
+    }
+    settled(harness).await
+}
+
+/// `[ACCOUNT:]ROLE`: a folder by its role, in the first account or the named one.
+fn find_folder(harness: &Harness, spec: &str) -> Result<Folder, String> {
+    let mailbox = harness.state.mailbox();
+    let (account, role) = match spec.split_once(':') {
+        Some((account, role)) => (Some(account), role),
+        None => (None, spec),
+    };
+    let accounts = mailbox.accounts();
+    let account = match account {
+        Some(name) => accounts.iter().find(|a| a.name == name),
+        None => accounts.first(),
+    }
+    .ok_or_else(|| format!("no account for {spec}"))?;
+    let role = FolderRole::parse(&role.to_ascii_lowercase());
+    mailbox
+        .folders()
+        .into_iter()
+        .find(|folder| folder.account == account.id && folder.role == role)
+        .ok_or_else(|| format!("no folder {spec}"))
+}
+
+/// A date inside the named section (by the list's clock), or minutes, hours or days ago.
+fn date_for(list: &MessageList, when: &str) -> Result<i64, String> {
+    let thresholds = list.thresholds_now();
+    let now = list.now_unix();
+    let starts = thresholds.starts;
+    let middle = |from: i64, to: i64, name: &str| {
+        if from < to {
+            Ok(from + (to - from) / 2)
+        } else {
+            Err(format!(
+                "{name} is empty on this day; fix the day with list-clock"
+            ))
+        }
+    };
+    match when {
+        "now" => Ok(now),
+        "today" => Ok(starts[0] + (now - starts[0]).max(0) / 2),
+        "yesterday" => middle(starts[1], starts[0], "Yesterday"),
+        "this-week" => middle(starts[2], starts[1], "This week"),
+        "this-month" => middle(starts[3], starts[2], "This month"),
+        "older" => Ok(starts[3] - 10 * 86_400),
+        relative => {
+            let (amount, unit) = relative.split_at(relative.len().saturating_sub(1));
+            let amount: i64 = amount
+                .parse()
+                .map_err(|_| format!("unknown date {relative}"))?;
+            let seconds = match unit {
+                "m" => 60,
+                "h" => 3_600,
+                "d" => 86_400,
+                _ => return Err(format!("unknown date {relative}")),
+            };
+            Ok(now - amount * seconds)
+        }
+    }
+}
+
+const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MONTHS: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/// An RFC 5322 date in UTC, with English names whatever the locale.
+fn mail_date(unix: i64) -> String {
+    match glib::DateTime::from_unix_utc(unix) {
+        Ok(date) => format!(
+            "{}, {:02} {} {} {:02}:{:02}:{:02} +0000",
+            DAYS[(date.day_of_week() - 1).clamp(0, 6) as usize],
+            date.day_of_month(),
+            MONTHS[(date.month() - 1).clamp(0, 11) as usize],
+            date.year(),
+            date.hour(),
+            date.minute(),
+            date.second()
+        ),
+        Err(_) => "Thu, 01 Jan 1970 00:00:00 +0000".to_owned(),
+    }
+}
+
+/// What a fictional message holds.
+struct Fiction {
+    subject: String,
+    from: String,
+    text: String,
+    attachment: bool,
+}
+
+fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> {
+    let local: String = fiction
+        .from
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let mut text = format!(
+        "From: {} <{local}@example.test>\r\nTo: Selftest <selftest@example.test>\r\n\
+         Subject: {}\r\nDate: {}\r\nMessage-ID: <selftest-{serial}-{date}@example.test>\r\n\
+         MIME-Version: 1.0\r\n",
+        fiction.from,
+        fiction.subject,
+        mail_date(date)
+    );
+    if fiction.attachment {
+        text.push_str(&format!(
+            "Content-Type: multipart/mixed; boundary=\"b{serial}\"\r\n\r\n--b{serial}\r\n\
+             Content-Type: text/plain; charset=utf-8\r\n\r\n{}\r\n--b{serial}\r\n\
+             Content-Type: text/csv; name=\"report.csv\"\r\n\
+             Content-Disposition: attachment; filename=\"report.csv\"\r\n\r\n\
+             month,total\r\nseptember,42\r\n--b{serial}--\r\n",
+            fiction.text
+        ));
+    } else {
+        text.push_str(&format!(
+            "Content-Type: text/plain; charset=utf-8\r\n\r\n{}\r\n",
+            fiction.text
+        ));
+    }
+    text.into_bytes()
+}
+
+/// Stores a fictional message through the real ingest path (blob store and parser off the GTK
+/// thread, then the app's store writer), and returns its id.
+async fn ingest_fiction(
+    harness: &Harness,
+    folder: FolderId,
+    fiction: &Fiction,
+    date: i64,
+    flags: Flags,
+) -> Result<MessageId, String> {
+    let mailbox = harness.state.mailbox();
+    let blobs = mailbox.blobs().ok_or("the blob store is not open")?;
+    let serial = ADDED.with(|added| {
+        added.set(added.get() + 1);
+        added.get()
+    });
+    let raw = RawMessage {
+        folder,
+        flags,
+        internal_date: Some(date),
+        raw: raw_message(fiction, date, serial),
+        ..RawMessage::default()
+    };
+    let prepared = blocking(move || ingest::prepare(&blobs, vec![raw], 1))
+        .await?
+        .map_err(|error| error.to_string())?;
+    let reply = mailbox
+        .store()
+        .ok_or("the store is not open")?
+        .ingest(prepared.messages);
+    let ingested = reply.recv().await.map_err(|error| error.to_string())?;
+    ingested
+        .ids
+        .first()
+        .copied()
+        .flatten()
+        .ok_or_else(|| "the store already held that message".to_owned())
+}
+
+/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [from=NAME] [text=WORDS]`.
+async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
+    let list = list(harness)?;
+    let folder = find_folder(harness, &args[0])?;
+    let date = date_for(&list, &args[1])?;
+    let mut fiction = Fiction {
+        subject: args[2].clone(),
+        from: "Ingrid Solberg".to_owned(),
+        text: "Hei! Dette er en melding fra selvtesten.".to_owned(),
+        attachment: false,
+    };
+    let mut flags = Flags::NONE;
+    for option in &args[3..] {
+        match option.as_str() {
+            "read" => flags = flags | Flags::SEEN,
+            "starred" => flags = flags | Flags::FLAGGED,
+            "attachment" => fiction.attachment = true,
+            other => match other.split_once('=') {
+                Some(("from", name)) => fiction.from = name.to_owned(),
+                Some(("text", text)) => fiction.text = text.to_owned(),
+                _ => return Err(format!("unknown option {other}")),
+            },
+        }
+    }
+    ingest_fiction(harness, folder.id, &fiction, date, flags).await?;
+    settled(harness).await
+}
+
+fn row_id(list: &MessageList, position: &str) -> Result<MessageId, String> {
+    let position = number(position)? as u32;
+    list.model()
+        .row_at(position)
+        .map(|row| row.id)
+        .ok_or_else(|| format!("row {position} isn't loaded"))
+}
+
+/// `mail-flag POSITION +read|-read|+starred|-starred`.
+async fn flag(harness: &Harness, position: &str, change: &str) -> StepResult {
+    let list = list(harness)?;
+    let id = row_id(&list, position)?;
+    let (add, remove) = match change {
+        "+read" => (Flags::SEEN, Flags::NONE),
+        "-read" => (Flags::NONE, Flags::SEEN),
+        "+starred" => (Flags::FLAGGED, Flags::NONE),
+        "-starred" => (Flags::NONE, Flags::FLAGGED),
+        other => return Err(format!("unknown flag change {other}")),
+    };
+    let reply = harness
+        .state
+        .mailbox()
+        .store()
+        .ok_or("the store is not open")?
+        .set_flags(vec![id], add, remove);
+    reply.recv().await.map_err(|error| error.to_string())?;
+    settled(harness).await
+}
+
+async fn remove_ids(harness: &Harness, ids: Vec<MessageId>) -> StepResult {
+    let mailbox = harness.state.mailbox();
+    let reply = mailbox.store().ok_or("the store is not open")?.remove(ids);
+    let removed = reply.recv().await.map_err(|error| error.to_string())?;
+    if let Some(blobs) = mailbox.blobs() {
+        let orphans = removed.orphaned_blobs;
+        blocking(move || {
+            for key in orphans {
+                let _ = blobs.remove(&key);
+            }
+        })
+        .await?;
+    }
+    Ok(())
+}
+
+/// `mail-remove POSITION`.
+async fn remove(harness: &Harness, position: &str) -> StepResult {
+    let list = list(harness)?;
+    let id = row_id(&list, position)?;
+    remove_ids(harness, vec![id]).await?;
+    settled(harness).await
+}
+
+fn folder_key_for(harness: &Harness, spec: &str) -> Result<String, String> {
+    if spec == ALL_INBOXES {
+        Ok(ALL_INBOXES.to_owned())
+    } else {
+        find_folder(harness, spec).map(|folder| folder_key(folder.id))
+    }
+}
+
+/// `folder all-inboxes` or `folder [ACCOUNT:]ROLE`, as picking it in the sidebar.
+async fn select_folder(harness: &Harness, spec: &str, account: Option<&str>) -> StepResult {
+    let spec = match account {
+        Some(account) => format!("{account}:{spec}"),
+        None => spec.to_owned(),
+    };
+    let key = folder_key_for(harness, &spec)?;
+    harness.window()?.select_folder(&key);
+    settled(harness).await
+}
+
+/// `list-clock 2026-10-07T12:00:00` (local time) or `list-clock real`.
+async fn set_clock(harness: &Harness, when: &str) -> StepResult {
+    let list = list(harness)?;
+    let unix = match when {
+        "real" => None,
+        text => Some(
+            glib::DateTime::from_iso8601(text, Some(&glib::TimeZone::local()))
+                .map_err(|_| format!("not an ISO 8601 time: {text}"))?
+                .to_unix(),
+        ),
+    };
+    list.set_clock(unix);
+    settled(harness).await
+}
+
+/// `list-key KEY`: runs the List scope's shortcut for KEY on the list view, as the key would.
+async fn press(harness: &Harness, key: &str) -> StepResult {
+    let list = list(harness)?;
+    let wanted = gtk::ShortcutTrigger::parse_string(key)
+        .ok_or_else(|| format!("GTK can't parse the key {key}"))?
+        .to_str();
+    let shortcut = {
+        let keys = list.keys().ok_or("the list has no keys")?;
+        let model = keys.model();
+        (0..model.n_items())
+            .filter_map(|index| model.item(index).and_downcast::<gtk::Shortcut>())
+            .find(|shortcut| {
+                shortcut
+                    .trigger()
+                    .is_some_and(|trigger| trigger.to_str() == wanted)
+            })
+            .ok_or_else(|| format!("{key} is none of the list's keys"))?
+    };
+    let action = shortcut.action().ok_or("the shortcut has no action")?;
+    action.activate(
+        gtk::ShortcutActionFlags::empty(),
+        list.list_view(),
+        None::<&glib::Variant>,
+    );
+    settled(harness).await
+}
+
+/// The folder counts the list should match.
+fn folder_counts(harness: &Harness, scope: ViewScope) -> (u32, u32) {
+    let folders = harness.state.mailbox().folders();
+    folders
+        .iter()
+        .filter(|folder| match scope {
+            ViewScope::Folder(id) => folder.id == id,
+            ViewScope::UnifiedInbox => folder.role == FolderRole::Inbox,
+        })
+        .fold((0, 0), |(total, unread), folder| {
+            (total + folder.total, unread + folder.unread)
+        })
+}
+
+async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {
+    let arg = |index: usize| args[index].as_str();
+    let list = list(harness)?;
+    let model = list.model();
+    match assertion {
+        "assert-list-count" => equal("rows", model.total(), number(arg(0))? as u32),
+        "assert-list-row" => {
+            let position = number(arg(0))? as u32;
+            let row = model
+                .row_at(position)
+                .ok_or_else(|| format!("row {position} isn't loaded"))?;
+            let shown = || {
+                list.row_widget(position)
+                    .map(|row| row.texts())
+                    .ok_or_else(|| format!("row {position} isn't bound"))
+            };
+            let value = match arg(1) {
+                "sender" => shown()?[0].clone(),
+                "subject" => shown()?[1].clone(),
+                "snippet" => shown()?[2].clone(),
+                "time" => shown()?[3].clone(),
+                "section" => model.section_label(position).to_owned(),
+                "unread" => (!row.flags.is_seen()).to_string(),
+                "starred" => row.flags.is_flagged().to_string(),
+                "attachment" => row.has_attachments.to_string(),
+                "threads" => row.thread_count.to_string(),
+                other => return Err(format!("no field {other}")),
+            };
+            equal(
+                &format!("row {position} {}", arg(1)),
+                value.as_str(),
+                arg(2),
+            )
+        }
+        "assert-list-all" => {
+            let wanted = super::script::boolean(arg(1))?;
+            let rows: Vec<_> = (0..model.total())
+                .filter_map(|position| model.row_at(position))
+                .collect();
+            if rows.is_empty() {
+                return Err("no row is loaded".to_owned());
+            }
+            let field = |row: &sealwax_domain::model::MessageSummary| match arg(0) {
+                "unread" => Ok(!row.flags.is_seen()),
+                "starred" => Ok(row.flags.is_flagged()),
+                "attachment" => Ok(row.has_attachments),
+                other => Err(format!("no field {other}")),
+            };
+            for row in &rows {
+                if field(row)? != wanted {
+                    return Err(format!("a loaded row's {} isn't {wanted}", arg(0)));
+                }
+            }
+            println!("  # {} loaded rows checked", rows.len());
+            Ok(())
+        }
+        "assert-list-sections" => {
+            let labels = crate::list::sections::LABELS;
+            let actual: Vec<String> = model
+                .section_counts()
+                .iter()
+                .zip(labels)
+                .filter(|(count, _)| **count > 0)
+                .map(|(count, label)| format!("{label}:{count}"))
+                .collect();
+            equal("sections", actual.join(",").as_str(), arg(0))
+        }
+        "assert-list-headers" => equal("headers", list.headers().join(",").as_str(), arg(0)),
+        "assert-list-selected" => {
+            let selected = list
+                .selected_position()
+                .map_or("none".to_owned(), |position| position.to_string());
+            equal("selected row", selected.as_str(), arg(0))
+        }
+        "assert-list-position" => {
+            let id = list.selected().ok_or("nothing is selected")?;
+            let (n, total) = list
+                .position(id)
+                .ok_or("the selected message has no position")?;
+            equal("position", format!("{n} of {total}").as_str(), arg(0))
+        }
+        "assert-list-growth" => {
+            let frames = list.growth_frames();
+            let first_most = number(arg(0))? as u32;
+            println!("  # rows bound after each frame: {frames:?}");
+            let first = *frames
+                .first()
+                .ok_or("no frame was painted after the reset")?;
+            if first == 0 || first > first_most {
+                return Err(format!(
+                    "the first frame bound {first} rows, wanted 1 to {first_most}"
+                ));
+            }
+            let steps_ok = frames
+                .windows(2)
+                .all(|pair| pair[1] >= pair[0] && pair[1] - pair[0] <= crate::list::GROW_STEP + 8);
+            if !steps_ok {
+                return Err("the list grew by more than one step in a frame".to_owned());
+            }
+            Ok(())
+        }
+        "assert-list-top" => {
+            let value = list.scroller().vadjustment().value();
+            let first = list
+                .bound_rows()
+                .iter()
+                .any(|row| row.position == Some(0) && !row.placeholder);
+            if value != 0.0 || !first {
+                return Err(format!("the list is at {value} px, row 0 bound: {first}"));
+            }
+            let top = list.row_widget(0).ok_or("row 0 isn't bound")?;
+            let bounds = top
+                .compute_bounds(list.scroller())
+                .ok_or("row 0 has no bounds")?;
+            if bounds.y() < 0.0 || bounds.y() > list.scroller().height() as f32 {
+                return Err(format!("row 0 is at {} px, not in view", bounds.y()));
+            }
+            Ok(())
+        }
+        "assert-list-placeholders" => equal(
+            "placeholder rows",
+            list.bound_rows()
+                .iter()
+                .filter(|row| row.placeholder)
+                .count(),
+            number(arg(0))?,
+        ),
+        "assert-list-empty" => {
+            let title = list.empty_state().map(|(title, _)| title);
+            equal("empty state", title.as_deref().unwrap_or("none"), arg(0))
+        }
+        "assert-list-search" => {
+            equal("results", model.total(), number(arg(0))? as u32)?;
+            equal(
+                "more results",
+                model.has_more_results(),
+                super::script::boolean(arg(1))?,
+            )
+        }
+        "assert-list-matches-folder" => {
+            let scope = list.scope().ok_or("the list shows no folder")?;
+            let (total, unread) = folder_counts(harness, scope);
+            let wanted = match arg(0) {
+                "total" => total,
+                "unread" => unread,
+                other => return Err(format!("use total or unread, not {other}")),
+            };
+            println!("  # folder: {total} messages, {unread} unread");
+            equal("rows", model.total(), wanted)
+        }
+        "assert-sidebar-count" => {
+            let folder = find_folder(harness, arg(0))?;
+            let model = harness.state.mailbox().sidebar_model();
+            let key = folder_key(folder.id);
+            let count = model
+                .find(&key)
+                .map(|(_, folder)| folder.count)
+                .ok_or("the sidebar lacks the folder")?;
+            equal("sidebar count", count, number(arg(1))? as u32)
+        }
+        "assert-selection-reported" => {
+            let reported = REPORTED.with(|reported| reported.borrow().clone());
+            let reported = reported.map_or(0, |list| list.borrow().len());
+            equal("selections reported", reported, number(arg(0))?)
+        }
+        other => Err(format!("unknown command {other}")),
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Measurements, ported from S3's `s3-list` probe.
+
+#[derive(Clone, Debug)]
+struct Frame {
+    phase: String,
+    counter: i64,
+    work_ms: f64,
+    layout_ms: f64,
+    bound: u32,
+    placeholders: u32,
+    binds: u64,
+    frame_time: Option<i64>,
+    presentation_time: Option<i64>,
+    refresh: Option<i64>,
+}
+
+type Condition = Box<dyn Fn(&MessageList) -> bool>;
+
+struct Waiter {
+    condition: Condition,
+    done: async_channel::Sender<Instant>,
+}
+
+struct Probe {
+    list: MessageList,
+    phase: RefCell<String>,
+    frames: RefCell<Vec<Frame>>,
+    pending: RefCell<VecDeque<usize>>,
+    frame_start: Cell<Option<Instant>>,
+    layout_end: Cell<Option<Instant>>,
+    binds: Cell<u64>,
+    waiters: RefCell<Vec<Waiter>>,
+    /// Inserted message ids as their change events arrived, with when.
+    inserted: RefCell<Vec<(MessageId, Instant)>>,
+    results: RefCell<Vec<(String, f64)>>,
+    memory: RefCell<Vec<(String, [f64; 7])>>,
+    window: (i32, i32),
+}
+
+fn probe(harness: &Harness) -> Result<Rc<Probe>, String> {
+    if let Some(probe) = PROBE.with(|probe| probe.borrow().clone()) {
+        return Ok(probe);
+    }
+    let list = list(harness)?;
+    let window = harness.window()?;
+    let clock = window
+        .window()
+        .frame_clock()
+        .ok_or("the window has no frame clock")?;
+    let probe = Rc::new(Probe {
+        binds: Cell::new(list.binds()),
+        list,
+        phase: RefCell::new("idle".to_owned()),
+        frames: RefCell::new(Vec::new()),
+        pending: RefCell::new(VecDeque::new()),
+        frame_start: Cell::new(None),
+        layout_end: Cell::new(None),
+        waiters: RefCell::new(Vec::new()),
+        inserted: RefCell::new(Vec::new()),
+        results: RefCell::new(Vec::new()),
+        memory: RefCell::new(Vec::new()),
+        window: (window.window().width(), window.window().height()),
+    });
+    let weak = Rc::downgrade(&probe);
+    clock.connect_before_paint(move |_| {
+        if let Some(probe) = weak.upgrade() {
+            probe.frame_start.set(Some(Instant::now()));
+        }
+    });
+    let weak = Rc::downgrade(&probe);
+    clock.connect_layout(move |_| {
+        if let Some(probe) = weak.upgrade() {
+            probe.layout_end.set(Some(Instant::now()));
+        }
+    });
+    let weak = Rc::downgrade(&probe);
+    clock.connect_after_paint(move |clock| {
+        if let Some(probe) = weak.upgrade() {
+            probe.after_paint(clock);
+        }
+    });
+    let weak = Rc::downgrade(&probe);
+    harness.state.mailbox().connect_event(move |event| {
+        if let Some(probe) = weak.upgrade() {
+            let now = Instant::now();
+            probe
+                .inserted
+                .borrow_mut()
+                .extend(event.inserted.iter().map(|id| (*id, now)));
+        }
+    });
+    PROBE.with(|slot| slot.replace(Some(probe.clone())));
+    Ok(probe)
+}
+
+fn ms(duration: Duration) -> f64 {
+    duration.as_secs_f64() * 1000.0
+}
+
+impl Probe {
+    fn set_phase(&self, phase: &str) {
+        self.phase.replace(phase.to_owned());
+    }
+
+    fn after_paint(&self, clock: &gdk::FrameClock) {
+        let end = Instant::now();
+        let start = self.frame_start.take();
+        let layout = self.layout_end.take();
+        let work_ms = start.map_or(0.0, |start| ms(end - start));
+        let layout_ms = match (start, layout) {
+            (Some(start), Some(layout)) if layout >= start => ms(layout - start),
+            _ => 0.0,
+        };
+        let rows = self.list.bound_rows();
+        let binds = self.list.binds();
+        let new_binds = binds - self.binds.replace(binds);
+        {
+            let mut frames = self.frames.borrow_mut();
+            frames.push(Frame {
+                phase: self.phase.borrow().clone(),
+                counter: clock.frame_counter(),
+                work_ms,
+                layout_ms,
+                bound: rows.len() as u32,
+                placeholders: rows.iter().filter(|row| row.placeholder).count() as u32,
+                binds: new_binds,
+                frame_time: None,
+                presentation_time: None,
+                refresh: None,
+            });
+            let index = frames.len() - 1;
+            let mut pending = self.pending.borrow_mut();
+            pending.push_back(index);
+            let history = clock.history_start();
+            pending.retain(|index| {
+                let frame = &mut frames[*index];
+                if frame.counter < history {
+                    return false;
+                }
+                match clock.timings(frame.counter) {
+                    Some(timings) if timings.is_complete() => {
+                        frame.frame_time = Some(timings.frame_time());
+                        let presented = timings.presentation_time();
+                        frame.presentation_time = (presented != 0).then_some(presented);
+                        let refresh = timings.refresh_interval();
+                        frame.refresh = (refresh != 0).then_some(refresh);
+                        false
+                    }
+                    _ => true,
+                }
+            });
+        }
+        let ready: Vec<Waiter> = {
+            let mut waiters = self.waiters.borrow_mut();
+            let (ready, waiting) = waiters
+                .drain(..)
+                .partition(|waiter| (waiter.condition)(&self.list));
+            *waiters = waiting;
+            ready
+        };
+        for waiter in ready {
+            let _ = waiter.done.try_send(end);
+        }
+    }
+
+    /// Resolves at the end of the first painted frame in which `condition` holds.
+    fn until<F: Fn(&MessageList) -> bool + 'static>(
+        &self,
+        timeout: Duration,
+        condition: F,
+    ) -> impl std::future::Future<Output = Option<Instant>> + use<F> {
+        let (done, wait) = async_channel::bounded(1);
+        self.waiters.borrow_mut().push(Waiter {
+            condition: Box::new(condition),
+            done,
+        });
+        async move {
+            crate::mailbox::with_timeout(wait.recv(), timeout)
+                .await
+                .and_then(Result::ok)
+        }
+    }
+
+    fn record(&self, name: &str, value: Option<f64>) {
+        let value = value.unwrap_or(f64::NAN);
+        if value.is_nan() {
+            println!("  # {name}: timed out");
+        } else {
+            println!("  # {name}: {value:.1} ms");
+        }
+        self.results.borrow_mut().push((name.to_owned(), value));
+    }
+
+    fn report(&self) {
+        let frames = self.frames.borrow();
+        println!(
+            "  # GTK {}.{}.{}, libadwaita {}.{}.{}; backend {}; renderer {}; {} build",
+            gtk::major_version(),
+            gtk::minor_version(),
+            gtk::micro_version(),
+            libadwaita::major_version(),
+            libadwaita::minor_version(),
+            libadwaita::micro_version(),
+            gdk::Display::default().map_or("none".to_owned(), |display| display
+                .type_()
+                .name()
+                .to_owned()),
+            self.list
+                .list_view()
+                .native()
+                .and_then(|native| native.renderer())
+                .map_or("unknown".to_owned(), |renderer| renderer
+                    .type_()
+                    .name()
+                    .to_owned()),
+            if cfg!(debug_assertions) {
+                "debug"
+            } else {
+                "release"
+            }
+        );
+        let view = self.list.list_view();
+        println!(
+            "  # window {}×{} at the first probe; list view {}×{}; {} rows bound; {} rows in the list",
+            self.window.0,
+            self.window.1,
+            view.width(),
+            view.height(),
+            self.list.bound_rows().len(),
+            self.list.model().total()
+        );
+        println!(
+            "  # interval = difference of consecutive presentation times (frame times where none \
+             arrived); work = before-paint → after-paint on the GTK thread"
+        );
+        println!(
+            "  # | phase | frames | refresh ms | interval p50 | p95 | p99 | max | > 16.7 ms | work p50 | p95 | p99 | max | layout p95 | frames with placeholders | binds/frame | rows bound (max) |"
+        );
+        println!(
+            "  # | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+        );
+        let mut phases: Vec<&str> = Vec::new();
+        for frame in frames.iter() {
+            if !phases.contains(&frame.phase.as_str()) {
+                phases.push(&frame.phase);
+            }
+        }
+        for phase in phases {
+            let selected: Vec<&Frame> = frames.iter().filter(|f| f.phase == phase).collect();
+            let pairs = |pick: fn(&Frame) -> Option<i64>| -> Vec<f64> {
+                selected
+                    .windows(2)
+                    .filter(|pair| pair[1].counter == pair[0].counter + 1)
+                    .filter_map(|pair| Some((pick(pair[1])? - pick(pair[0])?) as f64 / 1000.0))
+                    .collect()
+            };
+            let presented = pairs(|frame| frame.presentation_time);
+            let intervals = if presented.is_empty() {
+                pairs(|frame| frame.frame_time)
+            } else {
+                presented
+            };
+            let refresh = {
+                let mut values: Vec<f64> = selected
+                    .iter()
+                    .filter_map(|frame| frame.refresh)
+                    .map(|value| value as f64 / 1000.0)
+                    .collect();
+                values.sort_by(f64::total_cmp);
+                values.get(values.len() / 2).copied().unwrap_or(0.0)
+            };
+            let interval = Summary::of(&intervals);
+            let work = Summary::of(&selected.iter().map(|f| f.work_ms).collect::<Vec<_>>());
+            let layout = Summary::of(&selected.iter().map(|f| f.layout_ms).collect::<Vec<_>>());
+            println!(
+                "  # | {phase} | {} | {refresh:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {} | {:.2} | {:.2} | {:.2} | {:.2} | {:.2} | {} | {:.1} | {} |",
+                selected.len(),
+                interval.p50,
+                interval.p95,
+                interval.p99,
+                interval.max,
+                intervals
+                    .iter()
+                    .filter(|value| **value > 1000.0 / 60.0)
+                    .count(),
+                work.p50,
+                work.p95,
+                work.p99,
+                work.max,
+                layout.p95,
+                selected.iter().filter(|f| f.placeholders > 0).count(),
+                selected.iter().map(|f| f.binds as f64).sum::<f64>() / selected.len() as f64,
+                selected.iter().map(|f| f.bound).max().unwrap_or(0)
+            );
+        }
+        let results = self.results.borrow();
+        let mut names: Vec<&str> = Vec::new();
+        for (name, _) in results.iter() {
+            if !names.contains(&name.as_str()) {
+                names.push(name);
+            }
+        }
+        println!("  # | measurement | n | timeouts | p50 ms | p95 ms | max ms |");
+        println!("  # | --- | --- | --- | --- | --- | --- |");
+        for name in names {
+            let values: Vec<f64> = results
+                .iter()
+                .filter(|(candidate, _)| candidate == name)
+                .map(|(_, value)| *value)
+                .collect();
+            let timeouts = values.iter().filter(|value| value.is_nan()).count();
+            let done: Vec<f64> = values.into_iter().filter(|value| !value.is_nan()).collect();
+            let summary = Summary::of(&done);
+            println!(
+                "  # | {name} | {} | {timeouts} | {:.1} | {:.1} | {:.1} |",
+                done.len(),
+                summary.p50,
+                summary.p95,
+                summary.max
+            );
+        }
+        let stats = self.list.model().stats();
+        println!("  # model: {stats:?}");
+        println!(
+            "  # | memory (MiB) | VmRSS | VmHWM | RssAnon | RssFile | Pss | Pss_Anon | Pss_File |"
+        );
+        println!("  # | --- | --- | --- | --- | --- | --- | --- | --- |");
+        for (label, values) in self.memory.borrow().iter() {
+            println!(
+                "  # | {label} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} |",
+                values[0], values[1], values[2], values[3], values[4], values[5], values[6]
+            );
+        }
+    }
+}
+
+#[derive(Default)]
+struct Summary {
+    p50: f64,
+    p95: f64,
+    p99: f64,
+    max: f64,
+}
+
+impl Summary {
+    /// Nearest-rank percentiles.
+    fn of(values: &[f64]) -> Self {
+        if values.is_empty() {
+            return Self::default();
+        }
+        let mut sorted = values.to_vec();
+        sorted.sort_by(f64::total_cmp);
+        let rank = |p: f64| {
+            let index = ((p / 100.0) * sorted.len() as f64).ceil() as usize;
+            sorted[index.clamp(1, sorted.len()) - 1]
+        };
+        Self {
+            p50: rank(50.0),
+            p95: rank(95.0),
+            p99: rank(99.0),
+            max: sorted[sorted.len() - 1],
+        }
+    }
+}
+
+/// MiB from `/proc/self/status` (VmRSS, VmHWM, RssAnon, RssFile) and `/proc/self/smaps_rollup`
+/// (Pss, Pss_Anon, Pss_File).
+fn memory() -> [f64; 7] {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap_or_default();
+    let rollup = std::fs::read_to_string("/proc/self/smaps_rollup").unwrap_or_default();
+    let field = |text: &str, key: &str| {
+        text.lines()
+            .find_map(|line| line.strip_prefix(key)?.strip_prefix(':'))
+            .and_then(|rest| rest.split_whitespace().next()?.parse::<f64>().ok())
+            .unwrap_or(0.0)
+            / 1024.0
+    };
+    [
+        field(&status, "VmRSS"),
+        field(&status, "VmHWM"),
+        field(&status, "RssAnon"),
+        field(&status, "RssFile"),
+        field(&rollup, "Pss"),
+        field(&rollup, "Pss_Anon"),
+        field(&rollup, "Pss_File"),
+    ]
+}
+
+#[derive(Clone, Copy)]
+enum Motion {
+    /// Pixels a second.
+    Speed(f64),
+    /// From one fraction of the list to another, as a scrollbar drag.
+    Sweep { from: f64, to: f64, ms: usize },
+}
+
+async fn scroll(harness: &Harness, phase: &str, motion: Motion, ms_total: usize) -> StepResult {
+    let probe = probe(harness)?;
+    probe.list.model().complete_growth();
+    probe.set_phase(phase);
+    let adjustment = probe.list.scroller().vadjustment();
+    let start: Cell<Option<i64>> = Cell::new(None);
+    let last: Cell<Option<i64>> = Cell::new(None);
+    let tick = probe.list.list_view().add_tick_callback(move |_, clock| {
+        let now = clock.frame_time();
+        let dt = last
+            .replace(Some(now))
+            .map_or(0.0, |before| (now - before) as f64 / 1e6);
+        let top = (adjustment.upper() - adjustment.page_size()).max(0.0);
+        match motion {
+            Motion::Speed(speed) => {
+                adjustment.set_value((adjustment.value() + speed * dt).min(top))
+            }
+            Motion::Sweep { from, to, ms } => {
+                let began = *start.get().get_or_insert(now);
+                start.set(Some(began));
+                let progress = ((now - began) as f64 / 1e3 / ms as f64).min(1.0);
+                adjustment.set_value((from + (to - from) * progress) * top);
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+    glib::timeout_future(Duration::from_millis(ms_total as u64)).await;
+    tick.remove();
+    probe.set_phase("idle");
+    settled(harness).await
+}
+
+/// `perf-jump end|start`: forgets the loaded rows, jumps, and times `scroll_to` → the first
+/// painted frame with the target row bound and no placeholder.
+async fn jump(harness: &Harness, to: &str) -> StepResult {
+    let probe = probe(harness)?;
+    settled(harness).await?;
+    let model = probe.list.model();
+    model.complete_growth();
+    let total = model.total();
+    if total == 0 {
+        return Err("the list is empty".to_owned());
+    }
+    let target = match to {
+        "end" => total - 1,
+        "start" => 0,
+        other => return Err(format!("use end or start, not {other}")),
+    };
+    model.drop_cache();
+    probe.set_phase(&format!("jump to {to}"));
+    let shown = probe.until(Duration::from_secs(5), move |list| {
+        let rows = list.bound_rows();
+        rows.iter().any(|row| row.position == Some(target))
+            && rows.iter().all(|row| !row.placeholder)
+    });
+    let started = Instant::now();
+    probe
+        .list
+        .list_view()
+        .scroll_to(target, gtk::ListScrollFlags::NONE, None);
+    let frame = shown.await;
+    probe.set_phase("idle");
+    probe.record(
+        &format!("jump to {to} (cache dropped) → frame with the row, no placeholders"),
+        frame.map(|at| ms(at - started)),
+    );
+    settled(harness).await
+}
+
+/// `perf-open FOLDER [ACCOUNT]`: picks the folder and times it → the first painted frame with
+/// its rows and no placeholder.
+async fn open_measured(harness: &Harness, spec: &str, account: Option<&str>) -> StepResult {
+    let probe = probe(harness)?;
+    settled(harness).await?;
+    let spec = match account {
+        Some(account) => format!("{account}:{spec}"),
+        None => spec.to_owned(),
+    };
+    let key = folder_key_for(harness, &spec)?;
+    probe.set_phase("folder open");
+    let shown = probe.until(Duration::from_secs(5), |list| {
+        let rows = list.bound_rows();
+        !list.model().is_pending() && !rows.is_empty() && rows.iter().all(|row| !row.placeholder)
+    });
+    let started = Instant::now();
+    harness.window()?.select_folder(&key);
+    let frame = shown.await;
+    probe.set_phase("idle");
+    probe.record(
+        "folder open → first frame with rows, no placeholders",
+        frame.map(|at| ms(at - started)),
+    );
+    settled(harness).await
+}
+
+/// `perf-insert N`: N new messages at the top of the shown folder, 250 ms apart, each timed from
+/// the hand-over to the store's writer to its change event on the GTK thread and to the first
+/// painted frame showing its row; then they are removed again.
+async fn insert_measured(harness: &Harness, count: usize) -> StepResult {
+    let probe = probe(harness)?;
+    settled(harness).await?;
+    let list = probe.list.clone();
+    let folder = match list.scope() {
+        Some(ViewScope::Folder(folder)) => folder,
+        _ => find_folder(harness, "inbox")?.id,
+    };
+    let mailbox = harness.state.mailbox();
+    let blobs = mailbox.blobs().ok_or("the blob store is not open")?;
+    let mut ids = Vec::new();
+    probe.set_phase("insert");
+    for index in 0..count {
+        let date = list.now_unix() + 60 + index as i64;
+        let serial = ADDED.with(|added| {
+            added.set(added.get() + 1);
+            added.get()
+        });
+        let fiction = Fiction {
+            subject: format!("Perf insert {index}"),
+            from: "Marius Dahl".to_owned(),
+            text: "A new message for the insert measurement.".to_owned(),
+            attachment: false,
+        };
+        let raw = RawMessage {
+            folder,
+            internal_date: Some(date),
+            raw: raw_message(&fiction, date, serial),
+            ..RawMessage::default()
+        };
+        let worker_blobs = blobs.clone();
+        let prepare_started = Instant::now();
+        let prepared = blocking(move || ingest::prepare(&worker_blobs, vec![raw], 1))
+            .await?
+            .map_err(|error| error.to_string())?;
+        let prepare_ms = ms(prepare_started.elapsed());
+        probe.inserted.borrow_mut().clear();
+        let inserted = Rc::new(Cell::new(None::<MessageId>));
+        let watched = inserted.clone();
+        let event_probe = probe.clone();
+        let shown = probe.until(Duration::from_secs(5), move |list| {
+            if watched.get().is_none() {
+                watched.set(event_probe.inserted.borrow().first().map(|(id, _)| *id));
+            }
+            let Some(id) = watched.get() else {
+                return false;
+            };
+            list.bound_rows()
+                .iter()
+                .any(|row| row.id == Some(id) && !row.placeholder)
+        });
+        let started = Instant::now();
+        let reply = mailbox
+            .store()
+            .ok_or("the store is not open")?
+            .ingest(prepared.messages);
+        let frame = shown.await;
+        let ingested = reply.recv().await.map_err(|error| error.to_string())?;
+        let event = probe
+            .inserted
+            .borrow()
+            .first()
+            .map(|(_, at)| ms(*at - started));
+        probe.record(
+            "insert: blob store + parse (worker thread)",
+            Some(prepare_ms),
+        );
+        probe.record("insert: hand-over → change event on the GTK thread", event);
+        probe.record(
+            "insert: hand-over → first frame showing the row",
+            frame.map(|at| ms(at - started)),
+        );
+        ids.extend(ingested.ids.into_iter().flatten());
+        glib::timeout_future(Duration::from_millis(250)).await;
+    }
+    probe.set_phase("idle");
+    remove_ids(harness, ids).await?;
+    settled(harness).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mail_dates_are_rfc_5322_in_english() {
+        assert_eq!(mail_date(0), "Thu, 01 Jan 1970 00:00:00 +0000");
+        assert_eq!(mail_date(1_791_072_000), "Sun, 04 Oct 2026 00:00:00 +0000");
+    }
+
+    #[test]
+    fn fictional_messages_parse() {
+        let fiction = Fiction {
+            subject: "Hytteturen".to_owned(),
+            from: "Ingrid Solberg".to_owned(),
+            text: "Blåbærsyltetøy til frokost.".to_owned(),
+            attachment: true,
+        };
+        let raw = raw_message(&fiction, 1_791_072_000, 7);
+        let parsed = sealwax_domain::message::parse(&raw);
+        assert_eq!(parsed.headers.subject, "Hytteturen");
+        assert_eq!(parsed.headers.from[0].email, "ingridsolberg@example.test");
+        assert_eq!(parsed.headers.date, Some(1_791_072_000));
+        assert!(parsed.has_attachments());
+        assert!(parsed.body_text.contains("Blåbærsyltetøy"));
+    }
+
+    #[test]
+    fn percentiles_are_nearest_rank() {
+        let summary = Summary::of(&[5.0, 1.0, 3.0, 2.0, 4.0]);
+        assert_eq!((summary.p50, summary.p95, summary.max), (3.0, 5.0, 5.0));
+        assert_eq!(Summary::of(&[]).max, 0.0);
+    }
+
+    #[test]
+    fn every_command_is_named_once() {
+        let mut names: Vec<&str> = COMMANDS.iter().map(|(name, _, _)| *name).collect();
+        names.extend(
+            super::super::script::COMMANDS
+                .iter()
+                .map(|(name, _, _)| *name),
+        );
+        let count = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), count);
+    }
+}

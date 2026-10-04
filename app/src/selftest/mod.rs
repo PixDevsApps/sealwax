@@ -5,6 +5,7 @@
 //! commands are in docs/m1/shell.md (and TESTING.md once merged).
 
 mod broadway;
+mod mail;
 mod processes;
 mod sample;
 mod screenshot;
@@ -100,9 +101,14 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
         .ok()
         .filter(|id| gio::Application::id_is_valid(id))
         .unwrap_or_else(|| format!("{APP_ID}.SelfTest"));
+    let mut dirs = SealwaxDirs::under(&root.path);
+    if let Err(error) = mail::before_start(&steps, &mut dirs) {
+        eprintln!("sealwax: {}: {error}", script_path.display());
+        return glib::ExitCode::from(2);
+    }
     let config = AppConfig {
         app_id: app_id.clone(),
-        dirs: SealwaxDirs::under(&root.path),
+        dirs,
         exit_after: None,
         tiling,
     };
@@ -476,6 +482,9 @@ impl Harness {
     }
 
     async fn check(&self, assertion: &str, args: &[String]) -> StepResult {
+        if let Some(result) = mail::run(self, assertion, args).await {
+            return result;
+        }
         if assertion == "assert-bus-owner" {
             return self.check_bus_owner(boolean(&args[0])?).await;
         }
