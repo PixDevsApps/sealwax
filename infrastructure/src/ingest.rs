@@ -43,10 +43,10 @@ pub struct Prepared {
     pub elapsed: Duration,
 }
 
-/// The workers `prepare` uses by default: the available cores, at most 8.
-pub fn default_workers() -> usize {
-    std::thread::available_parallelism().map_or(1, |n| n.get().min(8))
-}
+/// The workers `prepare` uses by default. Storing a blob mostly waits for fsync, and on the
+/// development machine's btrfs throughput grew with concurrent writers (10k messages: 1.6k/s
+/// with 8, 2.6k/s with 16, 3.6k/s with 32), so this isn't tied to the core count.
+pub const DEFAULT_WORKERS: usize = 16;
 
 /// Stores and parses `messages` on up to `workers` threads, keeping their order.
 pub fn prepare(
@@ -148,7 +148,7 @@ pub fn ingest_raw(
     let workers = if messages.len() < 16 {
         1
     } else {
-        default_workers()
+        DEFAULT_WORKERS
     };
     let prepared = prepare(blobs, messages, workers)?;
     Ok(submit(store, prepared).recv_blocking()?)

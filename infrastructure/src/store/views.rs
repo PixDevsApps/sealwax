@@ -3,7 +3,7 @@
 //! computes positions in it for change events.
 
 use super::api::{ViewFilter, ViewId, ViewScope, ViewSpec};
-use rusqlite::{Connection, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, params};
 use sealwax_domain::model::{FolderId, MessageId, MessageSummary, ThreadId};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -164,31 +164,61 @@ pub(crate) fn count_since(
     Ok(total as u32)
 }
 
-/// The position of the row `(date, id)` in the view: the number of rows before it.
+/// The position of the row `(date, id)`, which is in folder `home` and in the view: the number of
+/// rows before it. Each folder is counted from the end the row is nearer to, judged from the
+/// folder's date range (undated messages, at 0, left out of it), so a message deep in a large
+/// folder costs little more than a new one.
 pub(crate) fn position(
     conn: &Connection,
     folders: &[FolderId],
     filter: ViewFilter,
     date: i64,
     id: MessageId,
+    home: FolderId,
 ) -> rusqlite::Result<u32> {
     let (index, condition) = filter_sql(filter);
-    let newer = format!(
-        "SELECT count(*) FROM messages INDEXED BY {index} \
-         WHERE folder_id = ?1{condition} AND date > ?2"
-    );
-    let same = format!(
-        "SELECT count(*) FROM messages INDEXED BY {index} \
-         WHERE folder_id = ?1{condition} AND date = ?2 AND id > ?3"
-    );
-    let mut newer = conn.prepare_cached(&newer)?;
-    let mut same = conn.prepare_cached(&same)?;
-    let mut total = 0i64;
+    let count = |comparison: &str, tie: &str, folder: FolderId| -> rusqlite::Result<i64> {
+        let newer = format!(
+            "SELECT count(*) FROM messages INDEXED BY {index} \
+             WHERE folder_id = ?1{condition} AND date {comparison} ?2"
+        );
+        let same = format!(
+            "SELECT count(*) FROM messages INDEXED BY {index} \
+             WHERE folder_id = ?1{condition} AND date = ?2 AND id {tie} ?3"
+        );
+        Ok(conn
+            .prepare_cached(&newer)?
+            .query_row(params![folder.0, date], |row| row.get::<_, i64>(0))?
+            + conn
+                .prepare_cached(&same)?
+                .query_row(params![folder.0, date, id.0], |row| row.get::<_, i64>(0))?)
+    };
+    let edge = |order: &str, folder: FolderId| -> rusqlite::Result<Option<i64>> {
+        conn.prepare_cached(&format!(
+            "SELECT date FROM messages INDEXED BY {index} \
+             WHERE folder_id = ?1{condition} AND date > 0 ORDER BY date {order} LIMIT 1"
+        ))?
+        .query_row([folder.0], |row| row.get(0))
+        .optional()
+    };
+    let mut position = 0i64;
     for folder in folders {
-        total += newer.query_row(params![folder.0, date], |row| row.get::<_, i64>(0))?;
-        total += same.query_row(params![folder.0, date, id.0], |row| row.get::<_, i64>(0))?;
+        let (Some(oldest), Some(newest)) = (edge("ASC", *folder)?, edge("DESC", *folder)?) else {
+            continue;
+        };
+        let deep = newest > oldest && (newest - date) * 2 > newest - oldest;
+        position += if deep {
+            let total = i64::from(count_in(conn, *folder, filter)?);
+            total - count("<", "<", *folder)? - i64::from(*folder == home)
+        } else {
+            count(">", ">", *folder)?
+        };
     }
-    Ok(total as u32)
+    Ok(position as u32)
+}
+
+fn count_in(conn: &Connection, folder: FolderId, filter: ViewFilter) -> rusqlite::Result<u32> {
+    count(conn, &[folder], filter)
 }
 
 pub(crate) const SUMMARY_COLUMNS: &str = "m.id, m.folder_id, m.thread_id, m.from_name, \
@@ -219,7 +249,9 @@ pub(crate) fn summary(conn: &Connection, id: MessageId) -> rusqlite::Result<Mess
 }
 
 /// Rows `offset..offset + limit` of a view with `total` rows. Pages past the middle walk the
-/// index from the oldest end, so no page reads more than half the view.
+/// index from the oldest end, so no page reads more than half the view. Several folders without
+/// a filter walk the global date index (which covers `id` and `folder_id`); with a filter, each
+/// folder's partial index is read up to the page and the results merged.
 pub(crate) fn page(
     conn: &Connection,
     folders: &[FolderId],
@@ -244,6 +276,13 @@ pub(crate) fn page(
             "SELECT id FROM messages INDEXED BY {index} WHERE folder_id = {}{condition} \
              ORDER BY date {order}, id {order} LIMIT ?1 OFFSET ?2",
             folder.0
+        )
+    } else if filter == ViewFilter::All {
+        let list: Vec<String> = folders.iter().map(|folder| folder.0.to_string()).collect();
+        format!(
+            "SELECT id FROM messages INDEXED BY messages_date WHERE folder_id IN ({}) \
+             ORDER BY date {order}, id {order} LIMIT ?1 OFFSET ?2",
+            list.join(", ")
         )
     } else {
         let reach = skip + limit;

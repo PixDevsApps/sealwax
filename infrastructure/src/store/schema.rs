@@ -86,10 +86,11 @@ CREATE TABLE messages(
     UNIQUE(folder_id, uid)
 );
 CREATE INDEX messages_folder_date ON messages(folder_id, date);
-CREATE INDEX messages_unread ON messages(folder_id, date) WHERE flags & 1 = 0;
-CREATE INDEX messages_flagged ON messages(folder_id, date) WHERE flags & 4 <> 0;
-CREATE INDEX messages_attachments ON messages(folder_id, date) WHERE has_attachments <> 0;
-CREATE INDEX messages_date ON messages(date);
+CREATE INDEX messages_unread ON messages(folder_id, date, id, flags) WHERE flags & 1 = 0;
+CREATE INDEX messages_flagged ON messages(folder_id, date, id, flags) WHERE flags & 4 <> 0;
+CREATE INDEX messages_attachments ON messages(folder_id, date, id, has_attachments)
+    WHERE has_attachments <> 0;
+CREATE INDEX messages_date ON messages(date, id, folder_id);
 CREATE INDEX messages_thread ON messages(thread_id, date);
 CREATE INDEX messages_message_id ON messages(message_id);
 CREATE INDEX messages_blob ON messages(blob_key) WHERE blob_key IS NOT NULL;

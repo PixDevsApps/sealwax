@@ -1061,7 +1061,7 @@ fn removed_positions(
         }
         let mut positions = leaving
             .iter()
-            .map(|row| views::position(tx, &folders, spec.filter, row.date, row.id))
+            .map(|row| views::position(tx, &folders, spec.filter, row.date, row.id, row.folder))
             .collect::<rusqlite::Result<Vec<_>>>()?;
         positions.sort_unstable_by(|a, b| b.cmp(a));
         removed.insert(*view, positions);
@@ -1104,7 +1104,14 @@ fn view_changes(
                     .iter()
                     .map(|row| {
                         Ok(Positioned {
-                            position: views::position(tx, &folders, spec.filter, row.date, row.id)?,
+                            position: views::position(
+                                tx,
+                                &folders,
+                                spec.filter,
+                                row.date,
+                                row.id,
+                                row.folder,
+                            )?,
                             row: views::summary(tx, row.id)?,
                         })
                     })
