@@ -171,7 +171,6 @@ fn sender_block(header: &Header<'_>) -> gtk::Box {
     row.append(&toggle);
     let block = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(8)
         .build();
     block.append(&row);
     block.append(&details);
@@ -183,6 +182,7 @@ fn details_grid(detail: &MessageDetail, date: i64, zone: &glib::TimeZone) -> gtk
         .column_spacing(12)
         .row_spacing(4)
         .margin_start(50)
+        .margin_top(8)
         .css_classes(["sealwax-reader-details"])
         .build();
     grid.set_widget_name("reader-details");

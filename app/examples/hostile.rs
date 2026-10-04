@@ -267,7 +267,7 @@ impl Pass {
 
 async fn run(context: &Context, cases: &[Case], filled: &samples::Filled) -> bool {
     let reports = support::shown_reports(&context.reader);
-    if let Err(error) = support::frames(context.window.window(), 2).await {
+    if let Err(error) = support::resize(context.window.window(), 1280, 900).await {
         println!("ERROR {error}");
         return false;
     }

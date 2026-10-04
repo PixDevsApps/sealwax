@@ -162,6 +162,38 @@ pub async fn frames(widget: &impl IsA<gtk::Widget>, count: usize) -> Result<(), 
     result
 }
 
+/// Resizes a mapped window and waits until it has the size (Broadway ignores a size asked
+/// for before the window maps, as the self-test harness found).
+pub async fn resize(window: &impl IsA<gtk::Window>, width: i32, height: i32) -> Result<(), String> {
+    let window = window.as_ref();
+    window.set_default_size(width, height);
+    let fitted = wait_until(Duration::from_secs(10), || {
+        (window.width(), window.height()) == (width, height)
+    })
+    .await;
+    if !fitted {
+        return Err(format!(
+            "the window is {}×{}, not {width}×{height}",
+            window.width(),
+            window.height()
+        ));
+    }
+    frames(window, 2).await
+}
+
+/// [`pixel`], retried over a few frames while the widget hasn't drawn yet.
+pub async fn painted_pixel(widget: &impl IsA<gtk::Widget>, x: i32, y: i32) -> Result<Rgb, String> {
+    let mut last = Err("never tried".to_owned());
+    for _ in 0..20 {
+        last = pixel(widget, x, y);
+        if last.is_ok() {
+            break;
+        }
+        frames(widget, 1).await?;
+    }
+    last
+}
+
 /// Where `x, y` of `widget` is in its window's surface, for Broadway input.
 pub fn surface_point(widget: &impl IsA<gtk::Widget>, x: f64, y: f64) -> Option<(f64, f64)> {
     let widget = widget.as_ref();

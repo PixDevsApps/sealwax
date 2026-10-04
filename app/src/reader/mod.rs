@@ -374,6 +374,20 @@ fn rgba(color: Rgb) -> gdk::RGBA {
     )
 }
 
+/// The body's user stylesheet: the theme's, with the themed root painted in the theme's
+/// background. With `color-scheme: dark` and a transparent root, WebKit paints its own dark
+/// canvas (#1e1e1e) rather than the view's background colour.
+fn stylesheet(theme: &Theme, style: BodyStyle) -> String {
+    let mut css = theme.webview_css(style);
+    if style == BodyStyle::Themed {
+        css.push_str(&format!(
+            "html{{background-color:{}}}\n",
+            theme.webview_background(style)
+        ));
+    }
+    css
+}
+
 fn now() -> i64 {
     glib::real_time() / 1_000_000
 }
@@ -563,7 +577,7 @@ impl Inner {
         self.staged.replace(Some((view.clone(), style)));
         view.load(
             &html,
-            &theme.webview_css(style),
+            &stylesheet(&theme, style),
             &rgba(theme.webview_background(style)),
             (!remote_allowed).then_some(&filter),
         );
@@ -796,7 +810,7 @@ impl Inner {
             .set_parts(html.view.page_id(), html.parts.clone());
         html.view.load(
             &html.html,
-            &theme.webview_css(html.style),
+            &stylesheet(&theme, html.style),
             &rgba(theme.webview_background(html.style)),
             None,
         );
@@ -826,7 +840,7 @@ impl Inner {
         for (view, style) in [shown, staged].into_iter().flatten() {
             view.set_fonts(&fonts);
             view.set_style(
-                &theme.webview_css(style),
+                &stylesheet(theme, style),
                 &rgba(theme.webview_background(style)),
             );
         }

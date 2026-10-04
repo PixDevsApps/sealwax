@@ -177,7 +177,7 @@ async fn scenario(
     filled: &samples::Filled,
 ) -> Result<bool, String> {
     let reports = support::shown_reports(reader);
-    support::frames(window.window(), 2).await?;
+    support::resize(window.window(), 1280, 700).await?;
     let mut ok = true;
     let mut expect = |what: &str, held: bool, detail: String| {
         println!(
