@@ -1,0 +1,33 @@
+# Outside Hyprland (DESIGN.md "Layout"): no title bar either, but the pane bars carry the window
+# controls where the panes meet the window's edges, and drag the window. On Hyprland there are
+# none (window.sealwax-test). Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/window-controls.sealwax-test
+
+desktop other
+resize 1440 900
+assert-window-controls 2
+sidebar sample
+list sample
+reader sample
+assert-layout wide
+assert-window-controls 2
+assert-labelled
+screenshot $DIR/../../.local/selftest/controls-1440.png
+
+# The rail has no room for the start controls; the reader keeps the end ones.
+resize 1100 900
+assert-layout rail
+assert-window-controls 1
+screenshot $DIR/../../.local/selftest/controls-1100.png
+
+# One pane at a time: every page carries both.
+resize 800 900
+assert-layout narrow
+assert-window-controls 2
+screenshot $DIR/../../.local/selftest/controls-800-list.png
+action nav.pane::folders
+assert-window-controls 2
+action nav.pane::reader
+assert-window-controls 2
+assert-labelled
+screenshot $DIR/../../.local/selftest/controls-800-reader.png

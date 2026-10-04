@@ -1,0 +1,52 @@
+# Maintainer: Sealwax contributors
+# Generated from packaging/PKGBUILD.in by tools/package-source.py, which fills in the version,
+# the source checksum and SOURCE_DATE_EPOCH (the time of the packaged commit).
+pkgname=sealwax
+pkgver=@PKGVER@
+pkgrel=1
+pkgdesc='Fast, minimal email client for Omarchy'
+arch=('x86_64')
+license=('MIT')
+depends=('gtk4' 'libadwaita' 'webkitgtk-6.0' 'sqlite' 'glib2' 'gcc-libs' 'glibc')
+optdepends=(
+  'gnome-keyring: a Secret Service that keeps passwords and sign-in tokens'
+  'hunspell-en_us: spell checking in the composer (other hunspell dictionaries work too)'
+)
+makedepends=('rust' 'cargo' 'pkgconf')
+# The release profile carries no debug info, so a -debug package would be empty.
+options=('!debug')
+source=("sealwax-${pkgver}.tar.gz")
+sha256sums=('@SHA256@')
+export SOURCE_DATE_EPOCH=@SOURCE_DATE_EPOCH@
+
+prepare() {
+  cd "$srcdir/sealwax-$pkgver"
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
+}
+
+build() {
+  cd "$srcdir/sealwax-$pkgver"
+  cargo build --release --locked --offline -p sealwax
+}
+
+check() {
+  cd "$srcdir/sealwax-$pkgver"
+  # Only the crates without GTK: a clean build has no display for the app's self-tests.
+  cargo test --locked --offline -p sealwax-domain -p sealwax-infrastructure -p sealwax-engine
+}
+
+package() {
+  cd "$srcdir/sealwax-$pkgver"
+  install -Dm755 target/release/sealwax "$pkgdir/usr/bin/sealwax"
+  install -Dm644 packaging/io.github.pixdevsapps.Sealwax.desktop \
+    "$pkgdir/usr/share/applications/io.github.pixdevsapps.Sealwax.desktop"
+  # D-Bus activation: launchers activate Sealwax over D-Bus (DBusActivatable=true), and a
+  # command line with no Sealwax running asks the bus to start it.
+  install -Dm644 packaging/io.github.pixdevsapps.Sealwax.service \
+    "$pkgdir/usr/share/dbus-1/services/io.github.pixdevsapps.Sealwax.service"
+  install -Dm644 packaging/io.github.pixdevsapps.Sealwax.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.pixdevsapps.Sealwax.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/sealwax/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/sealwax/README.md"
+  install -Dm644 docs/INTEGRATIONS.md "$pkgdir/usr/share/doc/sealwax/INTEGRATIONS.md"
+}

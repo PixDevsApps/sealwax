@@ -3,5 +3,6 @@
 pub mod actions;
 pub mod config;
 pub mod keymap;
+pub mod mailto;
 pub mod palette;
 pub mod theme;

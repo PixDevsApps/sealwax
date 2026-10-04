@@ -1,0 +1,26 @@
+# Preview screenshots of the M1 shell (ML-020, ML-021): the window at the design mock's three
+# widths with the fictional sample accounts, list and message, in libadwaita's own dark and light
+# colours (the Omarchy theme follower, ML-018, lands separately). Not part of tools/ci.sh; it
+# writes into tools/progress/public/. Run from the repository root:
+#   tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/preview-m1-shell.sealwax-test
+
+desktop tiling
+color-scheme dark
+resize 1440 900
+screenshot $DIR/../../tools/progress/public/m1-shell-no-account-1440-dark-2026-10-04.png
+sidebar sample
+list sample
+reader sample
+screenshot $DIR/../../tools/progress/public/m1-shell-1440-dark-2026-10-04.png
+resize 1100 900
+assert-layout rail
+screenshot $DIR/../../tools/progress/public/m1-shell-1100-dark-2026-10-04.png
+resize 800 900
+assert-layout narrow
+screenshot $DIR/../../tools/progress/public/m1-shell-800-list-dark-2026-10-04.png
+action nav.pane::reader
+screenshot $DIR/../../tools/progress/public/m1-shell-800-reader-dark-2026-10-04.png
+color-scheme light
+resize 1440 900
+assert-layout wide
+screenshot $DIR/../../tools/progress/public/m1-shell-1440-light-2026-10-04.png

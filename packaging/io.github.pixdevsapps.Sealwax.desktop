@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Sealwax
+GenericName=Email Client
+Comment=A fast, minimal email client
+Exec=sealwax %u
+Icon=io.github.pixdevsapps.Sealwax
+Terminal=false
+StartupNotify=true
+StartupWMClass=io.github.pixdevsapps.Sealwax
+DBusActivatable=true
+Categories=Network;Email;
+Keywords=mail;email;inbox;imap;smtp;
+MimeType=x-scheme-handler/mailto;

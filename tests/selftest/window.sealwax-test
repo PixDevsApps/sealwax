@@ -1,0 +1,128 @@
+# The adaptive three-pane window (ML-021, DESIGN.md "Layout") at the design mock's widths, with
+# the fictional sample accounts, list and message. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/window.sealwax-test
+
+# As on Hyprland: no title bar and no window controls (window-controls.sealwax-test has the rest).
+desktop tiling
+
+# No account yet: "No accounts yet" fills the list and reader, "Add an account" waits for M2.
+resize 1440 900
+assert-layout wide
+assert-window-controls 0
+assert-shown welcome true
+assert-shown add-account true
+assert-sensitive add-account false
+assert-shown reader false
+assert-label sidebar-summary "No accounts"
+assert-labelled
+screenshot $DIR/../../.local/selftest/window-1440-no-account.png
+
+# Two accounts: the first account's Inbox; nothing picked in the list yet.
+sidebar sample
+assert-shown welcome false
+assert-folder personal/inbox
+assert-label list-title Inbox
+assert-label list-subtitle "12 unread · Personal"
+assert-label sidebar-summary "2 accounts · syncing…"
+assert-shown reader-empty true
+list sample
+screenshot $DIR/../../.local/selftest/window-1440-no-message.png
+
+# ≥ 1280 px: sidebar (220) · list (380) · reader, its text column centred and at most 760 px.
+reader sample
+assert-width sidebar 220
+assert-width list 380
+assert-width reader 840
+assert-shown rail false
+assert-shown folder-list true
+assert-shown reader-column true
+assert-max-width reader-column 760
+assert-width reader-column 760
+assert-centred reader-column
+assert-labelled
+screenshot $DIR/../../.local/selftest/window-1440.png
+
+# Folders: "More" opens and closes; picking a folder retitles the list.
+assert-folder-shown personal/travel false
+action nav.more::personal
+assert-more personal true
+assert-folder-shown personal/travel true
+action nav.folder::personal/travel
+assert-folder personal/travel
+assert-label list-title Travel
+assert-label list-subtitle "3 unread · Personal"
+action nav.more::personal
+assert-folder-shown personal/travel false
+action nav.folder::work/inbox
+assert-label list-subtitle "4 unread · Work"
+action nav.folder::all-inboxes
+assert-label list-title "All Inboxes"
+assert-label list-subtitle "16 unread · 2 accounts"
+action nav.folder::personal/inbox
+
+# 900–1280 px: the rail (56) of icons and counts · list · reader.
+resize 1100 900
+assert-layout rail
+assert-width sidebar 56
+assert-shown rail true
+assert-shown folder-list false
+assert-width list 380
+assert-width reader 664
+assert-centred reader-column
+assert-labelled
+screenshot $DIR/../../.local/selftest/window-1100.png
+
+# The edges: 1280 is wide, 1279 the rail, 900 the rail, 899 one pane.
+resize 1280 800
+assert-layout wide
+resize 1279 800
+assert-layout rail
+resize 900 800
+assert-layout rail
+resize 899 800
+assert-layout narrow
+
+# < 900 px: one pane at a time, the list first, with back navigation.
+resize 800 900
+assert-layout narrow
+assert-pane list
+assert-shown list true
+assert-shown sidebar false
+assert-shown reader false
+assert-shown list-back true
+assert-shown list-compose true
+assert-width list 800
+assert-labelled
+screenshot $DIR/../../.local/selftest/window-800-list.png
+action nav.pane::folders
+assert-pane folders
+assert-shown sidebar true
+assert-shown list false
+assert-width sidebar 800
+screenshot $DIR/../../.local/selftest/window-800-folders.png
+action nav.folder::work/inbox
+assert-pane list
+assert-shown list true
+assert-label list-title Inbox
+assert-label list-subtitle "4 unread · Work"
+action nav.pane::reader
+assert-shown reader true
+assert-shown list false
+assert-shown reader-back true
+assert-centred reader-column
+screenshot $DIR/../../.local/selftest/window-800-reader.png
+action nav.pane::list
+assert-pane list
+assert-shown list true
+
+# Back to wide: every pane shows again; the narrow-only buttons hide.
+resize 1440 900
+assert-layout wide
+assert-shown sidebar true
+assert-shown list true
+assert-shown reader true
+assert-shown list-back false
+assert-shown list-compose false
+assert-shown reader-back false
+reader none
+assert-shown reader-empty true

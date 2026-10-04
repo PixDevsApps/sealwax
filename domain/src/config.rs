@@ -485,9 +485,7 @@ mod tests {
         );
         assert_eq!(
             errors("[oauth.yahoo]\n"),
-            [
-                "line 1, column 8: unknown provider oauth.yahoo; Sealwax signs in with microsoft"
-            ]
+            ["line 1, column 8: unknown provider oauth.yahoo; Sealwax signs in with microsoft"]
         );
         assert_eq!(
             errors("[oauth.microsoft]\nclient_secret = \"x\"\n"),

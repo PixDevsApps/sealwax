@@ -21,5 +21,7 @@ sealwax-engine.workspace = true
 gtk4.workspace = true
 libadwaita.workspace = true
 gio.workspace = true
+glib-unix.workspace = true
 async-channel.workspace = true
+clap.workspace = true
 tracing.workspace = true
