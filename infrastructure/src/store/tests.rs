@@ -194,6 +194,27 @@ fn store_files_are_private() {
 }
 
 #[test]
+fn close_leaves_an_empty_wal() {
+    let dir = scratch();
+    let path = dir.path().join("store.sqlite");
+    let store = Store::open(&path, StoreOptions::default()).unwrap();
+    let account = add_account(&store, "Test");
+    let inbox = add_folder(&store, account, "INBOX", FolderRole::Inbox);
+    ingest(
+        &store,
+        (0..300)
+            .map(|n| message(inbox, &format!("w{n}"), n))
+            .collect(),
+    );
+    whole(&store, ViewSpec::folder(inbox));
+    store.close().unwrap();
+    let mut wal = path.as_os_str().to_owned();
+    wal.push("-wal");
+    let size = fs::metadata(Path::new(&wal)).map_or(0, |meta| meta.len());
+    assert_eq!(size, 0);
+}
+
+#[test]
 fn pages_counts_sections_and_filters() {
     let f = fixture();
     let mut messages = Vec::new();

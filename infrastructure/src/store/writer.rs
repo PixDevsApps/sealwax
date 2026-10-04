@@ -200,8 +200,11 @@ impl Writer {
                 index.push_back(next);
             }
         }
-        if let Err(error) = self.conn.execute_batch("PRAGMA optimize;") {
-            tracing::warn!(%error, "store optimize at close failed");
+        if let Err(error) = self
+            .conn
+            .execute_batch("PRAGMA optimize; PRAGMA wal_checkpoint(TRUNCATE);")
+        {
+            tracing::warn!(%error, "store maintenance at close failed");
         }
     }
 

@@ -132,7 +132,8 @@ pub struct Store {
     reads: async_channel::Sender<ReadJob>,
     writes: async_channel::Sender<WriteJob>,
     shared: Arc<Shared>,
-    threads: Vec<JoinHandle<()>>,
+    readers: Vec<JoinHandle<()>>,
+    writers: Vec<JoinHandle<()>>,
     path: PathBuf,
 }
 
@@ -160,19 +161,20 @@ impl Store {
             subscribers: Mutex::new(Vec::new()),
             blobs: options.blobs,
         });
-        let mut threads = Vec::new();
+        let mut reader_threads = Vec::new();
         let (reads, read_queue) = async_channel::unbounded();
         for (index, conn) in readers.into_iter().enumerate() {
             let reader = Reader::new(conn, shared.clone());
             let queue = read_queue.clone();
-            threads.push(
+            reader_threads.push(
                 std::thread::Builder::new()
                     .name(format!("sealwax-store-reader-{index}"))
                     .spawn(move || reader.run(queue))?,
             );
         }
+        let mut writers = Vec::new();
         let (checkpoints, checkpoint_queue) = async_channel::bounded(8);
-        threads.push(
+        writers.push(
             std::thread::Builder::new()
                 .name("sealwax-store-maintenance".into())
                 .spawn(move || maintenance::run(maintenance, checkpoint_queue))?,
@@ -184,7 +186,7 @@ impl Store {
             options.checkpoint_frames,
         )?;
         let (writes, write_queue) = async_channel::unbounded();
-        threads.push(
+        writers.push(
             std::thread::Builder::new()
                 .name("sealwax-store-writer".into())
                 .spawn(move || writer.run(write_queue))?,
@@ -194,7 +196,8 @@ impl Store {
             reads,
             writes,
             shared,
-            threads,
+            readers: reader_threads,
+            writers,
             path: path.to_owned(),
         })
     }
@@ -330,11 +333,16 @@ impl Store {
         self.write(|reply| WriteJob::Remove { ids, reply })
     }
 
-    /// Stops accepting requests, lets queued writes finish and waits for the threads.
+    /// Stops accepting requests, lets queued requests finish and waits for the threads. The
+    /// readers stop first, so the writer and the maintenance thread close last and leave an
+    /// empty WAL behind.
     pub fn close(mut self) -> Result<(), StoreError> {
         self.reads.close();
+        for thread in self.readers.drain(..) {
+            thread.join().map_err(|_| StoreError::Closed)?;
+        }
         self.writes.close();
-        for thread in self.threads.drain(..) {
+        for thread in self.writers.drain(..) {
             thread.join().map_err(|_| StoreError::Closed)?;
         }
         Ok(())
