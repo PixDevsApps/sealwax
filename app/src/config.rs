@@ -9,6 +9,12 @@ pub const APP_ID: &str = if cfg!(debug_assertions) {
 
 pub const EXIT_AFTER_ENV: &str = "SEALWAX_EXIT_AFTER_MS";
 
+/// Test hooks for the startup measurement: the launcher's `CLOCK_MONOTONIC` time in ns, taken
+/// just before it starts Sealwax, so `first-frame-from-exec` counts from the process start as
+/// S6 did; and a fullscreen first window, so live runs don't re-tile the desktop.
+pub const EXEC_NS_ENV: &str = "SEALWAX_EXEC_NS";
+pub const START_FULLSCREEN_ENV: &str = "SEALWAX_START_FULLSCREEN";
+
 /// `SEALWAX_EXIT_AFTER_MS`, for headless smoke runs.
 pub fn exit_after_from_env() -> Result<Option<Duration>, String> {
     match std::env::var(EXIT_AFTER_ENV) {

@@ -1,0 +1,44 @@
+# M1's exit criterion: a dark↔light theme switch recolours everything, WebViews included. The
+# themes are scratch copies of the stock palettes in tests/theme/, never the desktop's, and the
+# messages are the reader's synthetic samples. Not part of tools/ci.sh (live-*): it's meant for
+# the live session (M1's live-window authorization; short and self-closing):
+#   SEALWAX_SELFTEST_ALLOW_LIVE=1 target/release/sealwax --self-test tests/selftest/live-theme.sealwax-test
+# A headless run (tools/headless.sh <display> …) is a dry run.
+
+desktop tiling
+perf-fullscreen
+theme matte-black
+sidebar sample
+reader-open
+
+# A simple HTML body takes the dark theme.
+reader-show simple
+assert-reader body html-themed
+assert-reader follows-theme true
+assert-color reader-pane background window
+screenshot $DIR/../../.local/live/theme-1-matte-black-simple.png
+
+# The switch to a light theme restyles the open body in place, and the chrome with it.
+theme catppuccin-latte
+assert-reader follows-theme true
+assert-color reader-pane background window
+assert-color sidebar background sidebar
+screenshot $DIR/../../.local/live/theme-2-catppuccin-latte-simple.png
+
+# A styled newsletter keeps its paper card in the light theme…
+reader-show newsletter
+assert-reader body html-paper
+assert-reader follows-theme true
+screenshot $DIR/../../.local/live/theme-3-catppuccin-latte-newsletter.png
+
+# …and in the dark one, while the chrome turns dark again.
+theme matte-black
+assert-reader follows-theme true
+assert-color reader-pane background window
+assert-color sidebar background sidebar
+screenshot $DIR/../../.local/live/theme-4-matte-black-newsletter.png
+
+# Back to the simple body, now dark.
+reader-show simple
+assert-reader follows-theme true
+screenshot $DIR/../../.local/live/theme-5-matte-black-simple.png

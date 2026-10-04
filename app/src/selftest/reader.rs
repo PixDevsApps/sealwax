@@ -16,7 +16,7 @@ use super::{Harness, StepResult, blocking, equal};
 use crate::reader::{Reader, ReaderState, Shown, ShownBody, ViewEvent, samples};
 use gtk4::glib;
 use sealwax_domain::model::MessageId;
-use sealwax_domain::theme::BodyStyle;
+use sealwax_domain::theme::{BodyStyle, Rgb};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{Store, StoreOptions};
 use std::cell::RefCell;
@@ -229,7 +229,7 @@ fn js_string(text: &str) -> String {
 }
 
 /// `assert-reader FIELD VALUE`.
-pub async fn check(_harness: &Harness, args: &[String]) -> StepResult {
+pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
     let opened = opened()?;
     let state: ReaderState = opened.reader.state();
     let (field, value) = (args[0].as_str(), args[1].as_str());
@@ -313,6 +313,43 @@ pub async fn check(_harness: &Harness, args: &[String]) -> StepResult {
             );
             equal("height exact", exact, boolean(value)?)
         }
+        "follows-theme" => {
+            let style = match state.body {
+                Some(ShownBody::Html { style, .. }) => style,
+                _ => return Err("no HTML body is shown".to_owned()),
+            };
+            let theme = harness
+                .state
+                .theme()
+                .ok_or("the theme hasn't started")?
+                .theme();
+            let probe = opened
+                .reader
+                .eval(
+                    "const root = getComputedStyle(document.documentElement); \
+                     const body = getComputedStyle(document.body || document.documentElement); \
+                     return [root.backgroundColor, body.color];",
+                )
+                .await?;
+            let at = |index: u32| {
+                probe
+                    .object_get_property_at_index(index)
+                    .map(|value| value.to_str().to_string())
+                    .unwrap_or_default()
+            };
+            let (background, text) = (at(0), at(1));
+            let mut follows = css_rgb_near(&background, theme.webview_background(style));
+            if style == BodyStyle::Themed {
+                follows &= css_rgb_near(&text, theme.palette.foreground);
+            }
+            println!(
+                "  # {} body: background {background}, text {text}; theme {} ({})",
+                body_name(state.body.as_ref()),
+                theme.name(),
+                theme.mode().as_str()
+            );
+            equal("follows the theme", follows, boolean(value)?)
+        }
         "text-contains" => {
             let text = match state.body {
                 Some(ShownBody::Html { .. }) => opened
@@ -365,4 +402,22 @@ fn plain_text(reader: &Reader) -> String {
                 .to_string()
         })
         .unwrap_or_default()
+}
+
+/// Whether a computed CSS colour (`rgb(r, g, b)` or `rgba(…)`) is `expected`, within 2 per
+/// channel.
+fn css_rgb_near(css: &str, expected: Rgb) -> bool {
+    let inner = css
+        .trim()
+        .trim_start_matches("rgba(")
+        .trim_start_matches("rgb(")
+        .trim_end_matches(')');
+    let channels: Vec<u8> = inner
+        .split(',')
+        .take(3)
+        .filter_map(|part| part.trim().parse::<f64>().ok())
+        .map(|value| value.round().clamp(0.0, 255.0) as u8)
+        .collect();
+    matches!(channels.as_slice(), [r, g, b]
+        if r.abs_diff(expected.r) <= 2 && g.abs_diff(expected.g) <= 2 && b.abs_diff(expected.b) <= 2)
 }

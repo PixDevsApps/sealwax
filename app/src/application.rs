@@ -767,7 +767,13 @@ impl AppState {
 
     fn show(&self, window: &Window) {
         if let Some(started) = self.started.take() {
-            log_first_frame(window.window(), started, self.first_frame.clone());
+            let exec_ns = std::env::var(config::EXEC_NS_ENV)
+                .ok()
+                .and_then(|value| value.parse::<i64>().ok());
+            if std::env::var_os(config::START_FULLSCREEN_ENV).is_some_and(|value| value == "1") {
+                window.window().fullscreen();
+            }
+            log_first_frame(window.window(), started, exec_ns, self.first_frame.clone());
         }
         window.present();
         if let Some(hook) = self.on_first_window.take() {
@@ -798,6 +804,7 @@ async fn both(first: impl Future<Output = ()>, second: impl Future<Output = ()>)
 fn log_first_frame(
     window: &adw::ApplicationWindow,
     started: Instant,
+    exec_ns: Option<i64>,
     painted: Rc<Cell<Option<Instant>>>,
 ) {
     let on_map = Rc::new(RefCell::new(None));
@@ -824,6 +831,10 @@ fn log_first_frame(
                     painted.set(Some(Instant::now()));
                     let ms = started.elapsed().as_secs_f64() * 1000.0;
                     tracing::info!("first-frame {ms:.1}");
+                    if let Some(exec_ns) = exec_ns {
+                        let since = (glib::monotonic_time() * 1000 - exec_ns) as f64 / 1e6;
+                        tracing::info!("first-frame-from-exec {since:.1}");
+                    }
                 }
             ));
             on_paint.replace(Some(handler));
