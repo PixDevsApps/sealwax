@@ -1,0 +1,18 @@
+---
+source: domain/tests/theme.rs
+expression: roles(&theme)
+---
+mode light
+secondary_text #64625e
+star #205ea6
+unread #205ea6
+selected_chip #205ea6 on #e0e6e6
+accent_text #fffcf0
+error #d14d41 warning #d0a215 success #879a39
+avatar 0 #1b1b1f on #b7cae1
+avatar 1 #1b1b1f on #c7b7e1
+avatar 2 #1b1b1f on #e1b7d7
+avatar 3 #1b1b1f on #e1bab7
+avatar 4 #1b1b1f on #e1dfb7
+avatar 5 #1b1b1f on #c0e1b7
+avatar 6 #1b1b1f on #b7e1d2
