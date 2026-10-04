@@ -199,6 +199,18 @@ impl Store {
         })
     }
 
+    /// `open` on a thread of its own, for callers that must not run SQL themselves (the GTK
+    /// thread): await the reply.
+    pub fn open_in_background(path: PathBuf, options: StoreOptions) -> Reply<Store> {
+        let (sender, reply) = Reply::pair();
+        let _ = std::thread::Builder::new()
+            .name("sealwax-store-open".into())
+            .spawn(move || {
+                let _ = sender.try_send(Store::open(&path, options));
+            });
+        reply
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }

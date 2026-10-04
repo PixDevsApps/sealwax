@@ -180,7 +180,9 @@ fn migrates_once_and_refuses_a_newer_schema() {
 fn store_files_are_private() {
     let dir = scratch();
     let path = dir.path().join("data/sealwax/store.sqlite");
-    let store = Store::open(&path, StoreOptions::default()).unwrap();
+    let store = Store::open_in_background(path.clone(), StoreOptions::default())
+        .recv_blocking()
+        .unwrap();
     add_account(&store, "Test");
     for suffix in ["", "-wal", "-shm"] {
         let mut file = path.as_os_str().to_owned();
