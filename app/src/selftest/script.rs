@@ -103,6 +103,8 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
 fn arity(command: &str) -> Option<(usize, usize)> {
     COMMANDS
         .iter()
+        .chain(super::mail::COMMANDS)
+        .chain(super::perf::COMMANDS)
         .find(|(name, _, _)| *name == command)
         .map(|&(_, min, max)| (min, max))
 }

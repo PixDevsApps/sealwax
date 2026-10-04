@@ -6,6 +6,8 @@ pub mod activation;
 pub mod application;
 pub mod cli;
 pub mod config;
+pub mod list;
+pub mod mailbox;
 pub mod menu;
 pub mod monitor;
 pub mod palette;

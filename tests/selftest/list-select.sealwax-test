@@ -1,0 +1,76 @@
+# Selection in the message list (ML-026): one message at a time; the List scope's keys move it
+# (j, k; GtkListView's own Down and Up) and open it (Enter, o), through the registry's
+# win.next-message, win.previous-message and win.open-message; the reader's "n of N" comes from
+# the list's position. Every message is fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-select.sealwax-test
+
+desktop tiling
+fixtures --count 300 --seed 5 --folders single
+resize 1440 900
+list-wait
+assert-list-focus list
+assert-list-selected none
+assert-pane list
+assert-action-enabled win.next-message true
+assert-action-enabled win.open-message false
+
+# j selects the first message when none is, then the next; k the previous; both stop at the ends.
+list-key j
+assert-list-selected 0
+assert-list-position "1 of 300"
+list-key j
+assert-list-selected 1
+assert-list-position "2 of 300"
+list-key k
+assert-list-selected 0
+list-key k
+assert-list-selected 0
+assert-selection-reported 3
+assert-action-enabled win.open-message true
+
+# The other message commands wait for M4, a selection or not.
+assert-action-enabled win.archive false
+assert-action-enabled win.star false
+assert-action-enabled win.select false
+
+# The registry's commands do the same (the reader's j and k use them).
+action win.next-message
+assert-list-selected 1
+action win.previous-message
+assert-list-selected 0
+
+# Far down the folder: past the rows the first frame showed, and the last row.
+list-select 250
+assert-list-position "251 of 300"
+list-select 299
+assert-list-position "300 of 300"
+list-key j
+assert-list-selected 299
+assert-selection-reported 7
+
+# Enter and o open the selected message: the reader's pane, in a narrow window too.
+list-key Return
+assert-pane reader
+action nav.pane::list
+resize 800 900
+assert-layout narrow
+assert-pane list
+list-key o
+assert-pane reader
+action nav.pane::list
+action win.open-message
+assert-pane reader
+action nav.pane::list
+resize 1440 900
+
+# The selected message stays selected while new mail arrives above it.
+list-select 3
+mail-add inbox now "Ny post over utvalget"
+assert-list-selected 4
+assert-list-position "5 of 301"
+assert-selection-reported 8
+
+# Another folder clears the selection; Open has nothing to open then.
+folder all-inboxes
+assert-list-selected none
+assert-action-enabled win.open-message false

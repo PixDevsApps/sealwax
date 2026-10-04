@@ -7,6 +7,8 @@
 //! until a script installs a theme from `tests/theme/` (`theme`).
 
 mod broadway;
+mod mail;
+mod perf;
 mod probe;
 mod processes;
 mod sample;
@@ -117,9 +119,14 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
         .ok()
         .filter(|id| gio::Application::id_is_valid(id))
         .unwrap_or_else(|| format!("{APP_ID}.SelfTest"));
+    let mut dirs = SealwaxDirs::under(&root.path);
+    if let Err(error) = mail::before_start(&steps, &mut dirs) {
+        eprintln!("sealwax: {}: {error}", script_path.display());
+        return glib::ExitCode::from(2);
+    }
     let config = AppConfig {
         app_id: app_id.clone(),
-        dirs: SealwaxDirs::under(&root.path),
+        dirs,
         exit_after: None,
         tiling,
     };
@@ -290,7 +297,8 @@ impl Harness {
                     "sample" => sample::list(),
                     "empty" => {
                         window::empty::folder("No messages", "Messages in this folder appear here.")
-                            .upcast()
+                            .widget()
+                            .clone()
                     }
                     other => return Err(format!("use sample or empty, not {other}")),
                 };
@@ -496,6 +504,9 @@ impl Harness {
     }
 
     async fn check(&self, assertion: &str, args: &[String]) -> StepResult {
+        if let Some(result) = mail::run(self, assertion, args).await {
+            return result;
+        }
         if assertion == "assert-bus-owner" {
             return self.check_bus_owner(boolean(&args[0])?).await;
         }

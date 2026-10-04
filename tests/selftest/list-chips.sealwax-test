@@ -1,0 +1,88 @@
+# The message list's filter chips (ML-026): All, Unread, Starred and Attachments, each the
+# store's view of the folder with that filter; change events move rows in and out of a filtered
+# view. A fixture corpus gives a folder of 1,200 messages to page through; a few fictional
+# messages make the exact counts. Every message is fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-chips.sealwax-test
+
+desktop tiling
+fixtures --count 1200 --seed 11 --folders single
+resize 1440 900
+list-wait
+
+# All: every message of the folder; Unread: as many as the folder's unread count, each unread.
+assert-list-matches-folder total
+assert-list-count 1200
+chip unread
+assert-list-matches-folder unread
+assert-list-all unread true
+assert-list-top true
+chip starred
+assert-list-all starred true
+chip attachments
+assert-list-all attachment true
+chip all
+assert-list-count 1200
+
+# Paging: the end of the folder loads as the list gets there.
+list-scroll-end
+assert-list-placeholders 0
+assert-list-top false
+assert-list-row 1199 section Older
+assert-list-exact
+
+# Exact counts in an account of its own.
+mail-account Personal
+folder inbox Personal
+list-clock 2026-10-07T12:00:00
+mail-add Personal:inbox today "Invoice #2041" attachment
+mail-add Personal:inbox today "Saturday ride: route and coffee stop" read starred
+mail-add Personal:inbox yesterday "Re: Quarterly report draft" read
+mail-add Personal:inbox yesterday "Your reservation is ready" starred attachment
+mail-add Personal:inbox this-week "This week in design systems" read
+assert-list-count 5
+chip unread
+assert-list-count 2
+assert-list-sections "Today:1,Yesterday:1"
+assert-list-row 0 subject "Invoice #2041"
+chip starred
+assert-list-count 2
+assert-list-row 0 subject "Saturday ride: route and coffee stop"
+chip attachments
+assert-list-count 2
+assert-list-row 1 subject "Your reservation is ready"
+screenshot $DIR/../../.local/selftest/list-chips-attachments-1440.png
+
+# Change events move rows in and out of a filtered view: reading the first unread message
+# takes it out of Unread, and starring a message brings it into Starred.
+chip unread
+mail-flag 0 +read
+assert-list-count 1
+assert-list-row 0 subject "Your reservation is ready"
+assert-sidebar-count Personal:inbox 1
+mail-flag 0 +read
+assert-list-count 0
+assert-list-empty "No unread messages"
+assert-sidebar-count Personal:inbox 0
+chip all
+assert-list-count 5
+assert-list-all unread false
+mail-flag 4 -read
+assert-list-row 4 unread true
+assert-sidebar-count Personal:inbox 1
+chip starred
+assert-list-count 2
+chip all
+assert-list-row 3 starred false
+mail-flag 3 +starred
+assert-list-row 3 starred true
+chip starred
+assert-list-count 3
+assert-list-all starred true
+assert-list-exact
+
+# Another folder empties the chip's view in its own words.
+folder sent Personal
+assert-list-empty "No starred messages"
+chip all
+assert-list-empty "No messages"
+list-clock real

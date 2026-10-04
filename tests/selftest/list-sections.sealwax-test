@@ -1,0 +1,78 @@
+# The message list's date sections (ML-026, DESIGN.md "Message list"): Today, Yesterday, This
+# week (from Monday), This month and Older, from local midnights, under GTK's section headers;
+# they regroup when the day changes. The list's clock is fixed to a Wednesday, so every section
+# exists whatever day the test runs. Every message is fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-sections.sealwax-test
+
+desktop tiling
+resize 1440 1000
+
+# An empty store: "No accounts yet", and nothing to list.
+assert-shown welcome true
+mail-account Personal
+assert-shown welcome false
+assert-folder-shown inbox false
+assert-list-empty "No messages"
+
+# One message in every section, on Wednesday 2026-10-07 at noon.
+list-clock 2026-10-07T12:00:00
+mail-add inbox older "Hyttebooking i fjor"
+mail-add inbox this-month "Kvittering for september" read
+mail-add inbox this-week "Planlegging for uka" attachment
+mail-add inbox yesterday "Middag på fredag" starred
+mail-add inbox today "Cabin weekend — final plan"
+mail-add inbox today "Saturday ride" read from=Fjord-Cycling-Club
+assert-list-empty none
+assert-list-count 6
+assert-list-sections "Today:2,Yesterday:1,This week:1,This month:1,Older:1"
+assert-list-headers "TODAY,YESTERDAY,THIS WEEK,THIS MONTH,OLDER"
+assert-list-top true
+
+# Rows: newest first (the same date: the newer message first), today's at their time of day.
+assert-list-row 0 subject "Saturday ride"
+assert-list-row 0 sender Fjord-Cycling-Club
+assert-list-row 0 unread false
+assert-list-row 0 time 06:00
+assert-list-row 1 subject "Cabin weekend — final plan"
+assert-list-row 1 unread true
+assert-list-row 2 section Yesterday
+assert-list-row 2 starred true
+assert-list-row 2 time 12:00
+assert-list-row 3 section "This week"
+assert-list-row 3 attachment true
+assert-list-row 4 section "This month"
+assert-list-row 5 section Older
+
+# The account came before its folders, so the window started on All Inboxes; the Inbox lists
+# the same messages.
+assert-folder all-inboxes
+assert-label list-title "All Inboxes"
+assert-label list-subtitle "4 unread · 1 account"
+folder inbox
+assert-label list-title Inbox
+assert-label list-subtitle "4 unread · Personal"
+assert-list-sections "Today:2,Yesterday:1,This week:1,This month:1,Older:1"
+assert-list-headers "TODAY,YESTERDAY,THIS WEEK,THIS MONTH,OLDER"
+screenshot $DIR/../../.local/selftest/list-sections-1440.png
+
+# Midnight: on Thursday the same rows regroup without being read again.
+list-clock 2026-10-08T09:00:00
+assert-list-count 6
+assert-list-sections "Yesterday:2,This week:2,This month:1,Older:1"
+assert-list-headers "YESTERDAY,THIS WEEK,THIS MONTH,OLDER"
+assert-list-row 0 section Yesterday
+assert-list-row 2 section "This week"
+
+# A message from now gets a Today section of its own at the top.
+mail-add inbox now "Ny melding i dag"
+assert-list-sections "Today:1,Yesterday:2,This week:2,This month:1,Older:1"
+assert-list-headers "TODAY,YESTERDAY,THIS WEEK,THIS MONTH,OLDER"
+assert-list-row 0 subject "Ny melding i dag"
+assert-list-top true
+
+# Sections follow removals too.
+mail-remove 0
+assert-list-sections "Yesterday:2,This week:2,This month:1,Older:1"
+assert-list-exact
+list-clock real
+assert-labelled

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Usage: tools/ci.sh [--ui]. --ui adds a headless smoke run of the app and the self-test scripts
-# in tests/selftest/ (except preview*), on Broadway display $SEALWAX_CI_DISPLAY (default 19).
+# in tests/selftest/ (except preview* and perf-*), on Broadway display $SEALWAX_CI_DISPLAY
+# (default 19).
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
@@ -36,9 +37,9 @@ if $ui; then
     fi
     for script in tests/selftest/*.sealwax-test; do
         name=$(basename -- "$script" .sealwax-test)
-        # The preview scripts write screenshots into tools/progress/ for a milestone's gate;
-        # run them by hand.
-        [[ $name == preview* ]] && continue
+        # The preview scripts write screenshots into tools/progress/ for a milestone's gate, and
+        # the perf-* scripts need a release build and large fixture stores; run them by hand.
+        [[ $name == preview* || $name == perf-* ]] && continue
         log=.local/selftest-$name.log
         if ! tools/headless.sh "$display" target/debug/sealwax --self-test "$script" >"$log" 2>&1; then
             grep -v '^ok ' "$log" >&2 || true

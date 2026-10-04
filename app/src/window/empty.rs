@@ -4,6 +4,7 @@
 
 use super::panes::{classed, icon};
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::{Binding, Keymap};
@@ -74,17 +75,60 @@ pub fn no_message() -> gtk::Widget {
     ))
 }
 
-/// A folder without messages, such as "Nothing archived yet".
-pub fn folder(title: &str, description: &str) -> gtk::Widget {
-    centred(&empty_state(
-        &["folder-symbolic"],
+/// A folder without messages, such as "Nothing archived yet"; the list changes its text for
+/// filters and searches.
+pub fn folder(title: &str, description: &str) -> EmptyState {
+    let (state, title, description) =
+        empty_state_parts(&["folder-symbolic"], title, description, "sw-empty-folder");
+    EmptyState {
+        widget: centred(&state),
         title,
         description,
-        "sw-empty-folder",
-    ))
+    }
+}
+
+/// An empty state whose text can change.
+#[derive(Clone)]
+pub struct EmptyState {
+    widget: gtk::Widget,
+    title: gtk::Label,
+    description: gtk::Label,
+}
+
+impl EmptyState {
+    pub fn widget(&self) -> &gtk::Widget {
+        &self.widget
+    }
+
+    pub fn title(&self) -> glib::GString {
+        self.title.label()
+    }
+
+    pub fn description(&self) -> Option<glib::GString> {
+        let text = self.description.label();
+        (!text.is_empty()).then_some(text)
+    }
+
+    pub fn set_title(&self, title: &str) {
+        self.title.set_label(title);
+    }
+
+    pub fn set_description(&self, description: Option<&str>) {
+        self.description.set_label(description.unwrap_or_default());
+        self.description.set_visible(description.is_some());
+    }
 }
 
 fn empty_state(icons: &[&str], title: &str, description: &str, class: &str) -> gtk::Box {
+    empty_state_parts(icons, title, description, class).0
+}
+
+fn empty_state_parts(
+    icons: &[&str],
+    title: &str,
+    description: &str,
+    class: &str,
+) -> (gtk::Box, gtk::Label, gtk::Label) {
     let state = classed(
         gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -94,18 +138,21 @@ fn empty_state(icons: &[&str], title: &str, description: &str, class: &str) -> g
         &["sw-empty-state", class],
     );
     state.append(&classed(icon(icons), &["sw-empty-icon"]));
-    for (text, class) in [(title, "sw-empty-title"), (description, "sw-empty-body")] {
-        state.append(&classed(
-            gtk::Label::builder()
-                .label(text)
-                .wrap(true)
-                .max_width_chars(48)
-                .justify(gtk::Justification::Center)
-                .build(),
-            &[class],
-        ));
-    }
-    state
+    let [title, description] =
+        [(title, "sw-empty-title"), (description, "sw-empty-body")].map(|(text, class)| {
+            classed(
+                gtk::Label::builder()
+                    .label(text)
+                    .wrap(true)
+                    .max_width_chars(48)
+                    .justify(gtk::Justification::Center)
+                    .build(),
+                &[class],
+            )
+        });
+    state.append(&title);
+    state.append(&description);
+    (state, title, description)
 }
 
 fn centred(state: &gtk::Box) -> gtk::Widget {

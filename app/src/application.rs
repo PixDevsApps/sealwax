@@ -8,17 +8,20 @@
 use crate::actions::{self, ActionSet};
 use crate::cli;
 use crate::config;
+use crate::list::MessageList;
+use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::shortcuts;
 use crate::theme::{self, ThemeController};
-use crate::window::{self, Window};
+use crate::window::{self, Pane, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use libadwaita::subclass::prelude::*;
 use sealwax_domain::actions::ActionId;
+use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
@@ -41,6 +44,10 @@ const QUIT_SIGNALS: [(i32, &str); 3] = [(15, "SIGTERM"), (1, "SIGHUP"), (2, "SIG
 /// How long the first window waits for `config.toml` and `keys.toml`, so its first frame already
 /// has the user's corners, fonts and keys. The first read takes a few milliseconds.
 const SETTINGS_WAIT: Duration = Duration::from_millis(150);
+
+/// How long the first window waits for the store's first rows (S6: at most 300 ms), so its
+/// first frame never shows an empty list. The store opens in about 2 ms.
+const FIRST_ROWS_WAIT: Duration = Duration::from_millis(300);
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -94,6 +101,11 @@ mod imp {
             }
             self.parent_startup();
             state.startup(&self.obj());
+        }
+
+        fn shutdown(&self) {
+            self.state().mailbox.close();
+            self.parent_shutdown();
         }
 
         fn command_line(&self, command_line: &gio::ApplicationCommandLine) -> glib::ExitCode {
@@ -154,7 +166,14 @@ impl SealwaxApplication {
             prefs: OnceCell::new(),
             app_actions: OnceCell::new(),
             win_actions: RefCell::new(None),
+            mailbox: Mailbox::new(),
+            first_rows: Latch::new(),
+            list: RefCell::new(None),
+            store_warned: Cell::new(false),
         });
+        let mailbox = state.mailbox.clone();
+        let dirs = state.config.dirs.clone();
+        state.connect_early_startup(move || mailbox.open(&dirs));
         if app.imp().state.set(state).is_err() {
             unreachable!("a new application has no state yet");
         }
@@ -194,6 +213,11 @@ pub struct AppState {
     prefs: OnceCell<Rc<Preferences>>,
     app_actions: OnceCell<ActionSet>,
     win_actions: RefCell<Option<ActionSet>>,
+    mailbox: Rc<Mailbox>,
+    /// Opens when the list has the first rows of its first folder, or there is nothing to show.
+    first_rows: Rc<Latch>,
+    list: RefCell<Option<MessageList>>,
+    store_warned: Cell<bool>,
 }
 
 impl AppState {
@@ -218,10 +242,24 @@ impl AppState {
     }
 
     /// Keeps the first window hidden until `gate` resolves, such as the theme's first read
-    /// (ADR-004: at most 500 ms) or the store's first page (S6: at most 300 ms). The window is
-    /// still built synchronously.
+    /// (ADR-004: at most 500 ms) or the store's first page (S6: at most 300 ms); with several
+    /// gates, until all of them have. The window is still built synchronously.
     pub fn hold_first_window(&self, gate: impl Future<Output = ()> + 'static) {
-        self.present_gate.replace(Some(Box::pin(gate)));
+        let gate: PresentGate = match self.present_gate.take() {
+            Some(earlier) => Box::pin(both(earlier, gate)),
+            None => Box::pin(gate),
+        };
+        self.present_gate.replace(Some(gate));
+    }
+
+    /// The message store (ADR-005), opening from `startup` on.
+    pub fn mailbox(&self) -> Rc<Mailbox> {
+        self.mailbox.clone()
+    }
+
+    /// The window's message list, once there is a window.
+    pub fn list(&self) -> Option<MessageList> {
+        self.list.borrow().clone()
     }
 
     /// When the first window's first frame was painted.
@@ -292,6 +330,25 @@ impl AppState {
     fn startup(self: &Rc<Self>, app: &SealwaxApplication) {
         gtk4::Window::set_default_icon_name(ICON_NAME);
         self.start_settings(app);
+        let weak = Rc::downgrade(self);
+        self.mailbox.connect_folders_changed(move || {
+            if let Some(state) = weak.upgrade()
+                && let (Some(window), Some(list)) = (state.window(), state.list())
+            {
+                state.fill_sidebar(&window, &list);
+            }
+        });
+        let ready = self.mailbox.wait_ready();
+        let first_rows = self.first_rows.wait();
+        self.hold_first_window(async move {
+            let rows = async move {
+                ready.await;
+                first_rows.await;
+            };
+            if mailbox::with_timeout(rows, FIRST_ROWS_WAIT).await.is_none() {
+                tracing::debug!("the first window stopped waiting for the list's first rows");
+            }
+        });
         // A closed window leaves the application here; GTK emits `destroy` only once nothing
         // holds the window, and this state does.
         app.connect_window_removed(glib::clone!(
@@ -304,6 +361,7 @@ impl AppState {
                     });
                 if ours {
                     state.window.replace(None);
+                    state.list.replace(None);
                 }
             }
         ));
@@ -461,6 +519,9 @@ impl AppState {
                 window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
                 window.set_keymap(&keymap);
             }
+            if let Some(list) = self.list() {
+                list.update_keys(&keymap);
+            }
         }
         for problem in &update.problems {
             tracing::warn!("{problem}");
@@ -486,7 +547,85 @@ impl AppState {
         window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
         window.set_keymap(&keymap);
         actions::apply_accels(app, &keymap);
+        self.install_list(window, &win_actions, &keymap);
         self.win_actions.replace(Some(win_actions));
+    }
+
+    /// The message list (ML-026) in the window's list slot. It shows the folder picked in the
+    /// sidebar, which the store fills and keeps current; its keys move and open the selection.
+    fn install_list(self: &Rc<Self>, window: &Window, win_actions: &ActionSet, keymap: &Keymap) {
+        let list = MessageList::new(self.mailbox.clone());
+        list.set_first_rows(self.first_rows.clone());
+        list.install_keys(keymap);
+        window.set_list(list.widget());
+        GtkWindowExt::set_focus(window.window(), Some(list.list_view()));
+
+        let target = list.clone();
+        win_actions.connect(ActionId::NextMessage, move || target.select_next());
+        let target = list.clone();
+        win_actions.connect(ActionId::PreviousMessage, move || target.select_previous());
+        let target = list.clone();
+        win_actions.connect(ActionId::OpenMessage, move || target.open_selected());
+        let target = list.clone();
+        win_actions.connect(ActionId::Search, move || target.focus_search());
+        let pane = window.clone();
+        list.connect_message_opened(move |_| pane.show_pane(Pane::Reader));
+        let weak = Rc::downgrade(self);
+        list.connect_message_selected(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.set_has_selection(true);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        list.connect_selection_cleared(move || {
+            if let Some(state) = weak.upgrade() {
+                state.set_has_selection(false);
+            }
+        });
+        let heading = window.clone();
+        list.connect_search_changed(move |search| match search {
+            Some(search) => heading.set_list_heading("Search", &search.subtitle()),
+            None => {
+                let (title, subtitle) = heading
+                    .sidebar()
+                    .heading(&heading.selected_folder())
+                    .unwrap_or_default();
+                heading.set_list_heading(&title, &subtitle);
+            }
+        });
+
+        let mailbox = self.mailbox.clone();
+        let shown = list.clone();
+        window.connect_folder_selected(move |_, key| shown.show(mailbox.scope_for_key(key)));
+        if self.mailbox.is_ready() {
+            self.fill_sidebar(window, &list);
+        }
+        self.list.replace(Some(list));
+    }
+
+    /// The store's accounts and folders in the window's sidebar; with no account, the first
+    /// window waits no longer for rows.
+    fn fill_sidebar(&self, window: &Window, list: &MessageList) {
+        if let Some(error) = self.mailbox.error()
+            && !self.store_warned.replace(true)
+        {
+            window.add_toast(adw::Toast::new(&format!(
+                "The mail store could not be opened: {error}"
+            )));
+        }
+        let model = self.mailbox.sidebar_model();
+        if model.accounts.is_empty() {
+            self.first_rows.open();
+        }
+        window.set_sidebar(model);
+        list.refresh_heading();
+    }
+
+    /// Whether a message is selected, for the commands that act on one.
+    fn set_has_selection(&self, has_selection: bool) {
+        if let Some(actions) = self.win_actions.borrow().as_ref() {
+            actions.set_has_selection(has_selection);
+        }
     }
 
     /// Preferences and Customize Shortcuts: the file, created with its defaults when missing,
@@ -552,6 +691,23 @@ impl AppState {
             hook(window.clone());
         }
     }
+}
+
+/// Resolves once both futures have, polling them together.
+async fn both(first: impl Future<Output = ()>, second: impl Future<Output = ()>) {
+    let mut first = Box::pin(first);
+    let mut second = Box::pin(second);
+    let (mut first_done, mut second_done) = (false, false);
+    std::future::poll_fn(|context| {
+        first_done = first_done || first.as_mut().poll(context).is_ready();
+        second_done = second_done || second.as_mut().poll(context).is_ready();
+        if first_done && second_done {
+            std::task::Poll::Ready(())
+        } else {
+            std::task::Poll::Pending
+        }
+    })
+    .await;
 }
 
 /// Logs `first-frame <ms since process start>` after the first paint that follows `window`

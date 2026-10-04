@@ -1,0 +1,48 @@
+# Change events keep the message list exact (ML-026, docs/m1/store.md's rule): random changes
+# through the app's own store while the list is open — single messages at random dates, some
+# answering earlier ones, batches, batches big enough that the store asks the view to reload,
+# flag changes and removals — and afterwards every loaded row and every section count equals the
+# store's own view at the version the list has applied. In a folder, with a chip, from the
+# unified inbox, and scrolled into the middle. Every message is fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-churn.sealwax-test
+
+desktop tiling
+fixtures --count 600 --seed 21 --folders single
+resize 1440 900
+list-wait
+assert-list-count 600
+
+mail-churn 60 1
+assert-list-exact
+assert-list-matches-folder total
+
+chip unread
+mail-churn 60 2
+assert-list-exact
+assert-list-matches-folder unread
+assert-list-all unread true
+
+chip starred
+mail-churn 40 3
+assert-list-exact
+assert-list-all starred true
+
+chip all
+folder all-inboxes
+mail-churn 60 4
+assert-list-exact
+assert-list-matches-folder total
+
+# Scrolled into the middle with a message selected and the keyboard focus in the list: the
+# batches of 70 make the store ask for a reload, which keeps the list's place, its selection
+# and the focus.
+list-scroll 20000
+list-select 230
+list-remember
+assert-list-focus list
+mail-churn 60 5
+assert-list-exact
+assert-list-scrolled 15000
+assert-list-remembered
+assert-list-focus list
+assert-list-placeholders 0

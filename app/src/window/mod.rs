@@ -171,10 +171,9 @@ impl Window {
         let list_slot = named(
             adw::Bin::builder()
                 .vexpand(true)
-                .child(&empty::folder(
-                    "No messages",
-                    "Messages in this folder appear here.",
-                ))
+                .child(
+                    empty::folder("No messages", "Messages in this folder appear here.").widget(),
+                )
                 .build(),
             "list-slot",
         );
