@@ -41,7 +41,7 @@ Measured with release builds unless noted; each entry names its spike or milesto
 | Open message | Plain text ≤ 50 ms; cached HTML ≤ 150 ms p95 | S2, M5 |
 | Search | First 50 results ≤ 100 ms p95 over 100k messages | S3, M7 |
 | Ingest | ≥ 2,000 headers/s; FTS ≥ 1,000 messages/s | S3 |
-| Memory | UI ≤ 150 MB (metric open since S3: an empty GTK4 window is 120 MiB RSS here; proposed PSS); ≤ 300 MB with a 10-message conversation (web processes included); < 20 MB growth after opening 200 messages | S2, S3, M9 |
+| Memory (redefined 2026-10-04 by the user: PSS plus a GPU budget, live views capped) | UI process PSS ≤ 150 MB. Reader: PSS of the whole process tree (app + WebKit web and network processes) ≤ 300 MB with a typical 10-message conversation open and live message views capped (proposed cap: 4 expanded HTML bodies; set when M5 measures it). GPU memory has its own budget, sized from the M5 measurement (reader and composer views render without acceleration, ADR-011 and ADR-014). < 20 MB PSS growth after opening 200 messages. RSS is recorded but not judged: an empty GTK4 window is already 120 MiB RSS on this NVIDIA machine | S2, S3, M5, M9 |
 | Sync | 10k-header first sync ≤ 20 s (testbed); no-change re-sync ≤ 200 ms (CONDSTORE) / ≤ 2 s (UID diff) | S1 |
 | Push | New mail visible ≤ 3 s (S1, testbed), ≤ 5 s (product) | S1, M3 |
 | Composer | Keystroke to paint < 16 ms, including fcitx5 | S7 |
@@ -83,7 +83,7 @@ Release builds; 13 short self-closing live runs on Hyprland (3440×1440 at 144 H
 | Scroll ≤ 16.7 ms p95 | p95 6.95 ms at 144 Hz (2 of 1,146 frames over 16.7 ms), GPU and CPU rendering | Pass |
 | Height ±1 px, 50/50 | 63/63 (GPU, CPU and headless) | Pass with the sizing fixes |
 | Open ≤ 150 ms p95 | load → first WebKit frame p95 17.4 ms; first GTK paint at final height p95 32.6 ms (CPU rendering 56.9 ms) | Pass |
-| ≤ 300 MB with 10 views | 10 tall newsletters: 804 MiB RSS GPU / 628 MiB RSS CPU (PSS 512 / 377); 10 short messages, GPU: 711 MiB; without process sharing 3,413 MiB | **Fail** — metric and design to decide |
+| ≤ 300 MB with 10 views | 10 tall newsletters: 804 MiB RSS GPU / 628 MiB RSS CPU (PSS 512 / 377); 10 short messages, GPU: 711 MiB; without process sharing 3,413 MiB | **Fail** as measured; the bar is now process-tree PSS plus a GPU budget, with live views capped (user decision 2026-10-04) — re-measured in M5 |
 | Renders under `tools/headless.sh` | yes, in software; timing not meaningful there | Pass |
 
 `cargo test -p email-spike-s2`: 19 tests pass; fmt and clippy clean (re-run by the lead).
@@ -101,7 +101,7 @@ Release builds; Ryzen 9 5900X, RTX 3070 Ti, 3440×1440 at 144 Hz, system SQLite 
 | Jump to end ≤ 100 ms | cache dropped, until the last row is painted: p50 44–51 ms, p95 ≤ 56 ms (the row exactly as mocked: p50 93 ms) | Pass with the row changes |
 | One-insert diff ≤ 20 ms | store p50 0.38 ms, p99 3.4 ms (38 ms under SQLite's default autocheckpoint); live request → row on screen p50 3 ms | Pass with the checkpoint handoff |
 | First 50 FTS results ≤ 100 ms p95 | date-first plan: ≤ 10.3 ms warm, ≤ 34 ms cold (FTS-first: 116 ms cold) | Pass |
-| UI ≤ 150 MB | RSS 158 MiB at first paint, 202 MiB after the 40 s script; PSS 91–100 → 133 MiB; an empty GTK4 + libadwaita window is already 120 MiB RSS (Vulkan; 216 MiB with GL) | **Missed as RSS** — metric to be decided |
+| UI ≤ 150 MB | RSS 158 MiB at first paint, 202 MiB after the 40 s script; PSS 91–100 → 133 MiB; an empty GTK4 + libadwaita window is already 120 MiB RSS (Vulkan; 216 MiB with GL) | Missed as RSS; **passes as PSS** (bar redefined by the user on 2026-10-04) |
 | System SQLite FTS5 | present, with `contentless_delete` and trigram | Pass |
 
 `cargo test -p email-spike-s3`: 14 tests pass (migrations; threading merges; aggregates after inserts, flag changes and expunges; insert-diff positions; FTS for æøå, CJK bigrams and prefixes); fmt and clippy clean (re-run by the lead). Nine self-closing live runs, programmatic scrolling only; the headless smoke run on display 22 passes. Live run 1 (a script bug) and the steady-scroll phase of live run 4 (the compositor sent no frames for 7.3 s) are discarded.
@@ -139,6 +139,8 @@ Release builds, 12:01–12:25 UTC, residential network in Norway; report [spikes
 | ≤ 2 login attempts | 0 (the probe can only send CAPABILITY, STARTTLS and EHLO) | Pass |
 
 `cargo test -p email-spike-s4`: 40 tests pass; fmt and clippy clean (re-run by the lead).
+
+At the M0 gate (2026-10-04) the user declined the Norwegian-preset fix; S4b (ML-098) looks for general rules that pass the bar.
 
 ### SecretStore (ML-006) — 2026-10-04
 

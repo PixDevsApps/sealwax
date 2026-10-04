@@ -2,7 +2,11 @@
 
 Synced: 2026-10-04
 
-The repository docs are the canonical project memory ([ADR-012](DECISIONS.md#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). This page is a **proposal until the M1 gate**: the interactive DESIGN mock (ML-008) is approved by the user before any UI work, and anything the user changes there is recorded here as a dated entry above the affected section.
+The repository docs are the canonical project memory ([ADR-012](DECISIONS.md#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Anything the user changes after approval is recorded here as a dated entry above the affected section.
+
+## DESIGN gate approved — 2026-10-04
+
+The user approved the [design mock](https://claude.ai/artifact/TU2jwqgJu1YxTXFLLdpuLS) on 2026-10-04 with **corners that follow Hyprland's rounding** ([ADR-019](DECISIONS.md#adr-019-accepted--corners-follow-hyprland-2026-10-04)): square on stock Omarchy, soft cards on this desktop (rounding 8). The layouts, components and roles below are the M1 target. The app is named **Sealwax** ([ADR-010](DECISIONS.md#adr-010-accepted--sealwax-2026-10-04)); its wordmark, seal and icon come from the user's brand canvas, while the chrome keeps following the Omarchy theme.
 
 ## Principles
 

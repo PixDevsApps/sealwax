@@ -19,8 +19,8 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
 | 008 | OAuth2 and secrets | OAuth for Google and Microsoft accepted (user decision); mechanism proposed; S5 is go/no-go |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed |
-| 010 | Name and app-id | Open; the user decides in M0 |
-| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory bar open |
+| 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax` |
+| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision) |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
@@ -28,7 +28,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Proposed |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs) |
-| 019 | Corner radius follows Hyprland | Proposed; decided at the DESIGN gate |
+| 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate) |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -213,6 +213,32 @@ Interop in Gmail web, Outlook web and Thunderbird is still pending test accounts
 
 **Rules:** `io.github.pixdevsapps.<Name>`; never `org.omarchy.*`, `TUI.*` or an `oma*` prefix; check for collisions with existing mail software and Arch packages.
 
+### ADR-010 accepted — Sealwax (2026-10-04)
+
+**Status:** Accepted — user decision, 2026-10-04.
+
+**Decision:** the app is **Sealwax**. The user's brand canvas ("Sealwax Logo", a private design artifact) sets the identity:
+
+- **Wordmark:** lowercase "sealwax" in IBM Plex Mono SemiBold, with the tagline "Email for Omarchy".
+- **Seal mark:** a wax seal with an @ emblem.
+- **App icon:** an envelope tile (paper or ink) with the seal; a simplified seal at 64 px and below.
+- **Brand palette:** wax #B3302A, deep wax (wax mixed 38 % toward black), ink #15151C, paper #F2EADB.
+
+The brand colours belong to the icon and wordmark only; the app's chrome keeps following the Omarchy theme (ADR-004).
+
+| | Value |
+| --- | --- |
+| App-id | `io.github.pixdevsapps.Sealwax` (`io.github.pixdevsapps.Sealwax.Devel` for debug builds) |
+| Binary | `sealwax` |
+| Crates | `sealwax` (app), `sealwax-domain`, `sealwax-infrastructure`, `sealwax-engine`; the M0 spike crates keep their `email-spike-*` names as history |
+| Environment prefix | `SEALWAX_` |
+| Config, data and state folders | `$XDG_*_HOME/sealwax` |
+| Keyring attribute `application` | the app-id |
+
+**Collision check (2026-10-04):** no `sealwax` in the Arch repositories, the AUR or crates.io, and no command of that name; the nearest names are "Seal", an iPad mail app, and "Sealit", an email-encryption add-in — neither is the same name.
+
+**Consequence:** the working names are replaced in one change once the S6 spike (running at the time of the decision) has finished, so its build isn't broken mid-run; the Notion hub and board are renamed at once; card IDs stay `ML-nnn`.
+
 ## ADR-011 — Reading pane: approach A with hardened WebKit (2026-10-04)
 
 **Status:** Proposed. S2 decides; approach B is the fallback.
@@ -254,6 +280,14 @@ The layers and the sizing change as follows (SECURITY.md carries the security ru
 10. Scripts-off markup stays the script defence of record (alone it stopped every script in 47 cases); the content filter stays because scripts-off makes `<noscript>` content live.
 
 **Open:** memory. Ten tall newsletter bodies in one shared web process measured 804 MiB RSS with GPU rendering and 628 MiB on the CPU (PSS 512 / 377 MiB), against the bar of 300 MB. The bar's metric and size are the user's decision at the M0 gate; the design answer is to cap live views per conversation (only expanded bodies have views, typically one to three) and release views far off screen.
+
+### ADR-011 amendment — memory bar decided (2026-10-04)
+
+**Status:** Accepted — user decision at the M0 gate, 2026-10-04 ("PSS + design cap").
+
+**Decision:** memory is judged as PSS of the whole process tree (app plus WebKit's web and network processes), so memory shared with the GPU driver and between processes is counted once, plus a separate GPU-memory budget. The reader target is sized for a typical conversation, and the number of live message views is capped: only expanded HTML bodies hold a view, views far off screen are released and re-rendered on return. The cap and the GPU budget are set from the M5 measurement (proposed starting cap: 4 expanded bodies). RSS is still recorded. The targets are in [TESTING.md](TESTING.md#performance-targets).
+
+**Consequence:** S3's list passes its bar (133 MiB PSS against 150 MB). S2's reader bar is re-measured in M5 under the new definition and is part of M5's exit criteria.
 
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
@@ -368,3 +402,7 @@ S1 found that async-imap's trace logging prints the LOGIN password. The engine t
 **Reason:** stock Omarchy is square (Stet chose square chrome), while the inspiration designs and this desktop are rounded. Following the compositor matches both.
 
 **Alternative:** always square, as Stet. The DESIGN mock shows both.
+
+### ADR-019 accepted — corners follow Hyprland (2026-10-04)
+
+**Status:** Accepted — user decision at the DESIGN gate, 2026-10-04, approving the mock's layout with corners that follow Hyprland's rounding (`corner_radius = "auto"` by default, a px value in `config.toml` to override).
