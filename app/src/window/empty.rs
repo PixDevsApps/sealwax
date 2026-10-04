@@ -32,8 +32,8 @@ pub fn no_account() -> (adw::StatusPage, gtk::Button) {
     let page = status_page(
         "mail-unread-symbolic",
         "No accounts yet",
-        "Add your first account. An address and a password, or Google or Microsoft sign-in, \
-         is all it takes.",
+        "Add your first account. An address and a password, or Microsoft sign-in, is all it \
+         takes.",
         "sealwax-no-account",
     );
     page.set_child(Some(&actions));
