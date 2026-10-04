@@ -92,12 +92,11 @@ pub fn read(paths: &OmarchyPaths, request: Request) -> Readout {
         let sans = request
             .fonts
             .then(|| scope.spawn(|| font::family_with("fc-match".as_ref(), font::SANS_SERIF)));
-        let fonts = monospace.zip(sans).and_then(|(monospace, sans)| {
-            Some(FontFamilies {
-                monospace: monospace.join().ok()?,
-                sans: sans.join().ok()?,
-            })
-        });
+        let monospace = monospace.and_then(|handle| handle.join().ok());
+        let sans = sans.and_then(|handle| handle.join().ok());
+        let fonts = monospace
+            .zip(sans)
+            .map(|(monospace, sans)| FontFamilies { monospace, sans });
         Readout {
             palette: palette.and_then(|handle| handle.join().ok()),
             shell: shell.and_then(|handle| handle.join().ok()),
