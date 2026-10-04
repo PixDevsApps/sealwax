@@ -31,6 +31,10 @@ const KEY_E: u32 = 0x65;
 const KEY_U: u32 = 0x75;
 const KEY_X: u32 = 0x78;
 const KEY_PAGE_DOWN: u32 = 0xff56;
+const KEY_ESCAPE: u32 = 0xff1b;
+const KEY_DELETE: u32 = 0xffff;
+const KEY_G: u32 = 0x67;
+const KEY_I: u32 = 0x69;
 
 type Counts = Rc<RefCell<HashMap<ActionId, u32>>>;
 
@@ -91,6 +95,8 @@ fn main() -> glib::ExitCode {
                 ActionId::PreviousMessage,
                 ActionId::BackToList,
                 ActionId::Archive,
+                ActionId::Delete,
+                ActionId::GoToInbox,
             ] {
                 let counts = counts.clone();
                 win_actions.connect(id, move || {
@@ -228,6 +234,36 @@ async fn scenario(
         after == (before.0 + 1, before.1 + 1, before.2 + 1),
         format!(
             "focus in web view: {}; next {}→{}, archive {}→{}, back {}→{}",
+            view.has_focus(),
+            before.0,
+            after.0,
+            before.1,
+            after.1,
+            before.2,
+            after.2
+        ),
+    );
+
+    // Escape and Delete, which WebKit might keep, and the two-key sequence g then i.
+    let before = (
+        count(counts, ActionId::BackToList),
+        count(counts, ActionId::Delete),
+        count(counts, ActionId::GoToInbox),
+    );
+    press(input, KEY_ESCAPE).await?;
+    press(input, KEY_DELETE).await?;
+    press(input, KEY_G).await?;
+    press(input, KEY_I).await?;
+    let after = (
+        count(counts, ActionId::BackToList),
+        count(counts, ActionId::Delete),
+        count(counts, ActionId::GoToInbox),
+    );
+    expect(
+        "Escape, Delete and g then i with the focus in the WebView reach the Reader scope",
+        after == (before.0 + 1, before.1 + 1, before.2 + 1),
+        format!(
+            "focus in web view: {}; back {}→{}, delete {}→{}, go to inbox {}→{}",
             view.has_focus(),
             before.0,
             after.0,
