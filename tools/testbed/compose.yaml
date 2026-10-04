@@ -1,0 +1,60 @@
+# Mail testbed (ML-005). Test data only; every port is bound to 127.0.0.1.
+# Start with tools/testbed/up.sh, seed with seed.sh, stop and remove with down.sh.
+name: mail-testbed
+
+services:
+  dovecot:
+    image: dovecot/dovecot:2.4.5
+    ports:
+      - "127.0.0.1:14143:31143"
+      - "127.0.0.1:14993:31993"
+    volumes:
+      - ./dovecot/full.conf:/etc/dovecot/dovecot.conf:ro
+      - ./certs/server.pem:/etc/dovecot/ssl/tls.crt:ro
+      - ./certs/server.key:/etc/dovecot/ssl/tls.key:ro
+      - dovecot-mail:/srv/vmail
+
+  dovecot-rev1:
+    image: dovecot/dovecot:2.4.5
+    ports:
+      - "127.0.0.1:15143:31143"
+      - "127.0.0.1:15993:31993"
+    volumes:
+      - ./dovecot/rev1.conf:/etc/dovecot/dovecot.conf:ro
+      - ./certs/server.pem:/etc/dovecot/ssl/tls.crt:ro
+      - ./certs/server.key:/etc/dovecot/ssl/tls.key:ro
+      - dovecot-rev1-mail:/srv/vmail
+
+  stalwart:
+    image: stalwartlabs/stalwart:v0.16.24
+    environment:
+      STALWART_RECOVERY_ADMIN: "admin:testbed-admin"
+    ports:
+      - "127.0.0.1:16143:143"
+      - "127.0.0.1:16993:993"
+      - "127.0.0.1:16025:25"
+      - "127.0.0.1:16587:587"
+      - "127.0.0.1:16465:465"
+      - "127.0.0.1:16080:8080"
+    volumes:
+      - ./stalwart/config.json:/etc/stalwart/config.json:ro
+      - stalwart-data:/var/lib/stalwart
+
+  mailpit:
+    image: axllent/mailpit:v1.31.4
+    command:
+      - --smtp-tls-cert=/certs/server.pem
+      - --smtp-tls-key=/certs/server.key
+      - --smtp-require-starttls
+      - --smtp-auth-accept-any
+    ports:
+      - "127.0.0.1:17025:1025"
+      - "127.0.0.1:17080:8025"
+    volumes:
+      - ./certs/server.pem:/certs/server.pem:ro
+      - ./certs/server.key:/certs/server.key:ro
+
+volumes:
+  dovecot-mail:
+  dovecot-rev1-mail:
+  stalwart-data:

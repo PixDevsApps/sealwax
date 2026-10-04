@@ -14,8 +14,8 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
 | 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3 |
 | 004 | Follow the live Omarchy theme | Accepted (user request) |
-| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); blob store in M1 |
-| 006 | IMAP library and state-driven sync | Proposed; S1 decides the library |
+| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; blob store in M1 |
+| 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
 | 008 | OAuth2 and secrets | OAuth for Google and Microsoft accepted (user decision); mechanism proposed; S5 is go/no-go |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed |
@@ -24,10 +24,10 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
-| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed |
-| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3 |
+| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules) |
+| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Proposed |
-| 018 | Logging and privacy | Accepted (plan approval) |
+| 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs) |
 | 019 | Corner radius follows Hyprland | Proposed; decided at the DESIGN gate |
 
 ## ADR-001 — Standalone native application (2026-10-04)
@@ -118,6 +118,16 @@ Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. 
 - Newest-first search walks the date index against the match set ("date first"); a date-ordered FTS rowid is faster but costs 51 % more index and half the indexing speed — decided in M7.
 - Open (M7): diacritic folding. unicode61 folds å→a and ø→o but not æ, so "gar" finds "går".
 
+### ADR-005 amendment — schema checked against the testbed in S1 (2026-10-04)
+
+S1 synced S3's schema from Dovecot and Stalwart ([report](spikes/S1-imap.md)); schema v1 adds:
+
+- mailboxes: the raw wire name (modified UTF-7), the hierarchy delimiter, the LIST attributes and resumable sync state (where an interrupted first sync continues);
+- messages: a keywords column (a fixed flags bitmask loses custom keywords) and the stored References and In-Reply-To;
+- ENVELOPE strings arrive RFC 2047-encoded and are decoded before display.
+
+Real providers are still to check when test accounts exist.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -132,6 +142,18 @@ Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. 
 **Alternatives:** imap-client 0.3 (moved to pimalaya/io-imap), imap-next (depends on imap-codec 2.0.0-alpha), io-imap 0.7 (blocking + sans-I/O, broad extension support, but 7 breaking releases in 4 months).
 
 **Consequence:** COMPRESS (feature `compress`) and Gmail labels wait for 1.x.
+
+### ADR-006 amendment — S1 results: GO (2026-10-04)
+
+**Status:** Accepted on S1's evidence ([report](spikes/S1-imap.md)): on the testbed (Dovecot 2.4.5 full, Dovecot IMAP4rev1-only, Stalwart 0.16.24), 10k headers sync in 0.31–0.46 s (1.77–1.94 s at 50 ms RTT); a no-change re-sync takes p50 7.2 ms (CONDSTORE) and 29.9 ms (UID diff); IDLE delivers in p50 493 ms (Dovecot's own delay) and 1.0 ms (Stalwart); 30 of 30 randomized runs end with zero divergence; connections cut mid-FETCH, mid-IDLE, mid-APPEND and mid-MOVE lose and duplicate nothing — all **with the changes below**.
+
+- **Library:** async-imap 0.12.0, pinned, with a **mandatory** raw-command layer that every command goes through. Its typed `fetch`, `store`, `search`, `list`, `expunge`, `noop`, `capabilities` and `id` calls don't check for NO or BAD: on all three servers a refused UID FETCH came back as `Ok(0)` and a refused UID SEARCH as `Ok(empty)`, which an op queue would record as done. The raw layer checks every completion, sees every untagged response and keeps APPENDUID/COPYUID. Other confirmed defects: the unsolicited-response buffer delivered 100 of 150 notices; an unparseable response (ESEARCH) kills the connection, with raw protocol bytes in the error text; trace logging prints the LOGIN password (ADR-018 amendment). io-imap 0.7.1 was as fast and more complete but isn't ready (six breaking releases in four months, an alpha codec, a blocking client); revisit at 1.x.
+- **New UIDs** come from APPENDUID/COPYUID, falling back to the Message-IDs of UIDs at or above the target's UIDNEXT recorded before the write. `UID SEARCH HEADER Message-ID` is dropped: Stalwart never matches it, and recovering a lost APPEND reply with it duplicated the message.
+- **Before every IDLE,** send NOOP and re-sync if it reports a change (Stalwart doesn't notify changes made between the last command and IDLE).
+- **The account pass includes INBOX in its STATUS check** as a backstop (without it Stalwart diverged in 2 of 10 seeds), and **never trusts STATUS for the connection's own selected mailbox** (Dovecot returns a stale view).
+- **Every read has a timeout**, IDLE start and DONE included.
+
+Not yet verified: real providers (Gmail labels, XOAUTH2), the LOGIN fallback (every server offered PLAIN), COMPRESS, lossy links, long IDLE across suspend and resume, mailboxes far beyond 10k.
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
@@ -294,6 +316,15 @@ Still open: the user's fcitx5 and Norwegian dead-key check (`bash spikes/s7-comp
 
 **Consequence:** a crash-during-queue replay test and undo-window tests gate M4.
 
+### ADR-015 amendment — S1 results (2026-10-04)
+
+From the fault-injection runs ([S1 report](spikes/S1-imap.md)):
+
+- Ops that create messages (APPEND, COPY) record the target's UIDNEXT before the first attempt; a retry first looks for the message among UIDs at or above it.
+- Replaying a MOVE of a UID that no longer exists is harmless. A COPY-based move (servers without MOVE) is **not** idempotent — a blind replay made two copies — so it goes through the same UIDNEXT check.
+- Without UIDPLUS, EXPUNGE removes every `\Deleted` message in the mailbox, not just the op's. The queue expunges only with `UID EXPUNGE` (UIDPLUS); otherwise it leaves the message flagged `\Deleted` and hidden locally.
+- STORE runs in a read-write SELECT: Dovecot answers "OK Store ignored" in an EXAMINEd mailbox.
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.
@@ -305,6 +336,8 @@ Still open: the user's fcitx5 and Norwegian dead-key check (`bash spikes/s7-comp
 ### ADR-016 amendment — S3 results (2026-10-04)
 
 The Message-ID alias table and thread merges work at 100k messages (40,548 conversations): a parent arriving late joins its thread, threads merge, duplicates collapse, and the counts the writer maintains match a full recount (kept as a test). The first 100 of 24,844 conversations in a folder load in ≤ 3 ms cold. Not yet exercised: Outlook `Thread-Index`, the Gmail thread-ID hint, and collapsing threads over 100 messages.
+
+S1 (2026-10-04) confirmed the inputs on the testbed: Message-ID, In-Reply-To and References all come from the header sync, and duplicate Message-IDs do occur. Gmail's and Outlook's own thread headers are still unverified.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 
@@ -321,6 +354,10 @@ The Message-ID alias table and thread merges work at 100k messages (40,548 conve
 **Decision:** logs never contain message bodies, subjects, addresses, folder names, tokens or protocol traces; AUTH lines are always redacted. Development and spikes never put the user's email address or personal data in network requests.
 
 **Consequence:** log statements use account ids and counts. A test greps captured logs from the testbed suites for addresses and secrets.
+
+### ADR-018 amendment — third-party trace logs (2026-10-04)
+
+S1 found that async-imap's trace logging prints the LOGIN password. The engine therefore caps the log level of third-party protocol crates (`async_imap`, `imap_proto`, `lettre`, `rustls`, `hickory`, `reqwest`, `zbus`) at `warn` whatever `RUST_LOG` asks for, and the log-grep test runs the testbed suites at trace level to prove no credential, token, address or folder name appears.
 
 ## ADR-019 — Corner radius follows Hyprland (2026-10-04)
 

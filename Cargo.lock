@@ -618,13 +618,17 @@ name = "email-spike-s1"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "async-channel 2.5.0",
  "async-imap",
+ "chrono",
  "futures-util",
  "io-imap",
  "rusqlite",
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
+ "tempfile",
+ "thiserror 2.0.21",
  "tokio",
  "tokio-rustls",
 ]

@@ -46,7 +46,23 @@ Release profile: thin LTO, one codegen unit. Names are working names until ADR-0
 
 ## Mail testbed
 
-`tools/testbed/` (ML-005, after Docker authorization) will hold a compose file for Dovecot 2.4, Stalwart, an IMAP4rev1-only server and a mail catcher, bound to localhost only, with seeded test mailboxes and scripts to start, seed and stop them.
+`tools/testbed/` (ML-005) is the Docker Compose project `mail-testbed`. Every port is bound to 127.0.0.1 and all data is synthetic ([S1 report](spikes/S1-imap.md#testbed-ml-005)). Docker use is authorized for the testbed only (PLAN.md authorization log).
+
+| Service | Image | Ports |
+| --- | --- | --- |
+| Dovecot, full extensions | `dovecot/dovecot:2.4.5` | 14993 IMAPS, 14143 IMAP+STARTTLS |
+| Dovecot, IMAP4rev1 only | `dovecot/dovecot:2.4.5` | 15993, 15143 |
+| Stalwart | `stalwartlabs/stalwart:v0.16.24` | 16993, 16143, SMTP 16025, submission 16587, submissions 16465, HTTP/JMAP 16080 |
+| Mailpit | `axllent/mailpit:v1.31.4` | SMTP 17025 (STARTTLS), API 17080 |
+
+```bash
+tools/testbed/up.sh                 # start (generates the testbed CA on first use)
+tools/testbed/seed.sh               # users, folders and 10k messages; about 3 min the first time
+python3 tools/testbed/check.py      # health check
+tools/testbed/down.sh               # stop and remove; --keep-volumes keeps the mail
+```
+
+The users are alice, bob, perf, rand, fault, idle and spike, password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (override the path with `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
 
 ## Packaging
 

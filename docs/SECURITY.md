@@ -76,6 +76,8 @@ The composer view uses the same layers as the reader, without `https:` for image
 
 Logs never contain message bodies, subjects, addresses, folder names, tokens or protocol traces; AUTH lines are always redacted. Logs use account ids and counts.
 
+Third-party protocol crates are capped at `warn` whatever `RUST_LOG` says: S1 found that async-imap's trace logging prints the LOGIN password ([ADR-018 amendment](DECISIONS.md#adr-018-amendment--third-party-trace-logs-2026-10-04)). A test runs the testbed suites at trace level and greps the captured logs for credentials, tokens, addresses and folder names.
+
 ### Local data
 
 - Private folders are created 0700 and files 0600 (database, blobs, drafts, temporary attachment copies).

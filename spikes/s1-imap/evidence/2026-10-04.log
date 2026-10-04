@@ -1,0 +1,771 @@
+# S1 evidence run 2026-10-04T14:54:02+02:00 on 7.2.5-3-omarchy, 24 CPUs, rustc 1.98.1 (48a229cea 2026-09-01)
+
+$ bash tools/testbed/down.sh
+# 2026-10-04T14:54:02+02:00
+ Container mail-testbed-dovecot-1 Stopping 
+ Container mail-testbed-stalwart-1 Stopping 
+ Container mail-testbed-mailpit-1 Stopping 
+ Container mail-testbed-dovecot-rev1-1 Stopping 
+ Container mail-testbed-dovecot-1 Stopped 
+ Container mail-testbed-dovecot-1 Removing 
+ Container mail-testbed-dovecot-1 Removed 
+ Container mail-testbed-dovecot-rev1-1 Stopped 
+ Container mail-testbed-dovecot-rev1-1 Removing 
+ Container mail-testbed-dovecot-rev1-1 Removed 
+ Container mail-testbed-mailpit-1 Stopped 
+ Container mail-testbed-mailpit-1 Removing 
+ Container mail-testbed-mailpit-1 Removed 
+ Container mail-testbed-stalwart-1 Stopped 
+ Container mail-testbed-stalwart-1 Removing 
+ Container mail-testbed-stalwart-1 Removed 
+ Volume mail-testbed_stalwart-data Removing 
+ Volume mail-testbed_dovecot-mail Removing 
+ Volume mail-testbed_dovecot-rev1-mail Removing 
+ Network mail-testbed_default Removing 
+ Volume mail-testbed_stalwart-data Removed 
+ Network mail-testbed_default Removed 
+ Volume mail-testbed_dovecot-mail Removed 
+ Volume mail-testbed_dovecot-rev1-mail Removed 
+# exit 0
+
+$ bash tools/testbed/up.sh
+# 2026-10-04T14:54:04+02:00
+ Volume mail-testbed_stalwart-data Creating 
+ Volume mail-testbed_stalwart-data Creating 
+ Network mail-testbed_default Creating 
+ Network mail-testbed_default Creating 
+ Volume mail-testbed_dovecot-rev1-mail Creating 
+ Volume mail-testbed_dovecot-rev1-mail Creating 
+ Volume mail-testbed_dovecot-mail Creating 
+ Volume mail-testbed_dovecot-mail Creating 
+ Volume mail-testbed_stalwart-data Created 
+ Volume mail-testbed_stalwart-data Created 
+ Volume mail-testbed_dovecot-rev1-mail Created 
+ Volume mail-testbed_dovecot-rev1-mail Created 
+ Volume mail-testbed_dovecot-mail Created 
+ Volume mail-testbed_dovecot-mail Created 
+ Network mail-testbed_default Created 
+ Network mail-testbed_default Created 
+ Container mail-testbed-stalwart-1 Creating 
+ Container mail-testbed-mailpit-1 Creating 
+ Container mail-testbed-dovecot-rev1-1 Creating 
+ Container mail-testbed-dovecot-1 Creating 
+ Container mail-testbed-mailpit-1 Created 
+ Container mail-testbed-stalwart-1 Created 
+ Container mail-testbed-dovecot-1 Created 
+ Container mail-testbed-dovecot-rev1-1 Created 
+ Container mail-testbed-stalwart-1 Starting 
+ Container mail-testbed-dovecot-1 Starting 
+ Container mail-testbed-mailpit-1 Starting 
+ Container mail-testbed-dovecot-rev1-1 Starting 
+ Container mail-testbed-stalwart-1 Started 
+ Container mail-testbed-dovecot-1 Started 
+ Container mail-testbed-mailpit-1 Started 
+ Container mail-testbed-dovecot-rev1-1 Started 
+ Container mail-testbed-dovecot-rev1-1 Waiting 
+ Container mail-testbed-stalwart-1 Waiting 
+ Container mail-testbed-mailpit-1 Waiting 
+ Container mail-testbed-dovecot-1 Waiting 
+ Container mail-testbed-dovecot-rev1-1 Healthy 
+ Container mail-testbed-dovecot-1 Healthy 
+ Container mail-testbed-mailpit-1 Healthy 
+ Container mail-testbed-stalwart-1 Healthy 
+ Container mail-testbed-stalwart-1 Restarting 
+ Container mail-testbed-stalwart-1 Started 
+stalwart_setup: ok (7 users created, 2 listeners added)
+testbed: up
+  dovecot       imaps 127.0.0.1:14993  imap+STARTTLS 127.0.0.1:14143
+  dovecot-rev1  imaps 127.0.0.1:15993  imap+STARTTLS 127.0.0.1:15143  (IMAP4rev1 only)
+  stalwart      imaps 127.0.0.1:16993  imap+STARTTLS 127.0.0.1:16143  smtp 16025  submission 16587  submissions 16465  http/jmap 16080
+  mailpit       smtp+STARTTLS 127.0.0.1:17025  http/api 127.0.0.1:17080
+  users alice bob perf rand fault idle spike, password testbed-password; CA certs/ca.pem
+# exit 0
+
+$ bash tools/testbed/seed.sh
+# 2026-10-04T14:54:12+02:00
+seed: dovecot done in 79.5 s (perf INBOX 10000)
+seed: dovecot-rev1 done in 82.4 s (perf INBOX 10000)
+seed: stalwart done in 28.3 s (perf INBOX 10000)
+# exit 0
+
+$ python3 tools/testbed/check.py
+# 2026-10-04T14:57:22+02:00
+mailpit: SMTP+STARTTLS accepted the message; the API found it
+stalwart: submission (587, STARTTLS, AUTH PLAIN) delivered to alice's INBOX
+stalwart: JMAP session resource answers for alice
+# exit 0
+
+$ target/s1/release/s1 probe dovecot
+# 2026-10-04T14:57:23+02:00
+s1 probe on dovecot (release build)
+implicit TLS: authentication: Plain
+capabilities after login: BINARY CATENATE CHILDREN COMPRESS=DEFLATE CONDSTORE CONTEXT=SEARCH ENABLE ESEARCH ESORT I18NLEVEL=1 ID IDLE IMAP4REV1 IMAP4REV2 INPROGRESS LIST-EXTENDED LIST-STATUS LITERAL+ LOGIN-REFERRALS MOVE MULTIAPPEND NAMESPACE NOTIFY PREVIEW PREVIEW=FUZZY QRESYNC REPLACE SASL-IR SAVEDATE SEARCHRES SNIPPET=FUZZY SORT SORT=DISPLAY SPECIAL-USE STATUS=SIZE THREAD=ORDEREDSUBJECT THREAD=REFERENCES THREAD=REFS UIDPLUS UNSELECT URL-PARTIAL UTF8=ACCEPT WITHIN
+QRESYNC enabled: true
+STARTTLS: authentication: Plain
+platform verifier rejects the testbed certificate: yes (i/o: invalid peer certificate: UnknownIssuer)
+LIST "Utkast": "Utkast" role=Some("drafts") attrs=["\\HasNoChildren", "\\Drafts"]
+LIST "Sendt": "Sendt" role=Some("sent") attrs=["\\HasNoChildren", "\\Sent"]
+LIST "S&APg-ppelpost": "Søppelpost" role=Some("junk") attrs=["\\HasNoChildren", "\\Junk"]
+LIST "Papirkurv": "Papirkurv" role=Some("trash") attrs=["\\HasNoChildren", "\\Trash"]
+LIST "Arkiv": "Arkiv" role=Some("archive") attrs=["\\HasNoChildren", "\\Archive"]
+LIST "INBOX": "INBOX" role=Some("inbox") attrs=["\\HasNoChildren"]
+async-imap uid_fetch with BAD items: Ok(0)
+raw layer, same command: Err(Bad("Error in IMAP command UID FETCH: Unknown parameter: BOGUS (0.001 + 0.000 secs)."))
+async-imap uid_search with BAD criteria: Ok(0)
+async-imap uid_store on an EXAMINEd mailbox: Ok(0)
+raw layer, same command: Ok("OK")
+async-imap unsolicited channel after 150 flag changes by another client: 100 responses delivered (capacity 100; the rest dropped silently)
+raw APPEND: APPENDUID: Some(151)
+async-imap append (returns ()), UID by HEADER Message-ID search: Some(152)
+HEADER Message-ID search right after APPEND: misses out of 20: 0
+raw UID MOVE: COPYUID: Some(CopyUid { uidvalidity: 1791118644, source: [1..=1], destination: [1..=1] })
+UID MOVE of a UID that no longer exists: Ok(false)
+ESEARCH response through async-imap's parser: Err(Io(Custom { kind: Other, error: "Error(Error { input: [42, 32, 69, 83, 69, 65, 82, 67, 72, 32, 40, 84, 65, 71, 32, 34, 65, 48, 50, 49, 51, 34, 41, 32, 85, 73, 68, 32, 67, 79, 85, 78, 84, 32, 49, 55, 49, 13, 10, 65, 48, 50, 49, 51, 32, 79, 75, 32, 83, 101, 97, 114, 99, 104, 32, 99, 111, 109, 112, 108, 101, 116, 101, 100, 32, 40, 48, 46, 48, 48, 49, 32, 43, 32, 48, 46, 48, 48, 48, 32, 115, 101, 99, 115, 41, 46, 13, 10], code: TakeWhile1 }) during parsing of \"* ESEARCH (TAG \\\"A0213\\\") UID COUNT 171\\r\\nA0213 OK Search completed (0.001 + 0.000 secs).\\r\\n\"" }))
+connection usable after that: Err("connection lost")
+# exit 0
+
+$ target/s1/release/s1 probe dovecot-rev1
+# 2026-10-04T14:57:23+02:00
+s1 probe on dovecot-rev1 (release build)
+implicit TLS: authentication: Plain
+capabilities after login: IMAP4REV1
+QRESYNC enabled: false
+STARTTLS: authentication: Plain
+platform verifier rejects the testbed certificate: yes (i/o: invalid peer certificate: UnknownIssuer)
+LIST "Arkiv": "Arkiv" role=Some("archive") attrs=["\\HasNoChildren"]
+LIST "Papirkurv": "Papirkurv" role=Some("trash") attrs=["\\HasNoChildren"]
+LIST "S&APg-ppelpost": "Søppelpost" role=Some("junk") attrs=["\\HasNoChildren"]
+LIST "Sendt": "Sendt" role=Some("sent") attrs=["\\HasNoChildren"]
+LIST "Utkast": "Utkast" role=Some("drafts") attrs=["\\HasNoChildren"]
+LIST "INBOX": "INBOX" role=Some("inbox") attrs=["\\HasNoChildren"]
+async-imap uid_fetch with BAD items: Ok(0)
+raw layer, same command: Err(Bad("Error in IMAP command UID FETCH: Unknown parameter: BOGUS (0.001 + 0.000 secs)."))
+async-imap uid_search with BAD criteria: Ok(0)
+async-imap uid_store on an EXAMINEd mailbox: Ok(0)
+raw layer, same command: Ok("OK")
+async-imap unsolicited channel after 150 flag changes by another client: 100 responses delivered (capacity 100; the rest dropped silently)
+raw APPEND: APPENDUID: Some(151)
+async-imap append (returns ()), UID by HEADER Message-ID search: Some(152)
+HEADER Message-ID search right after APPEND: misses out of 20: 0
+# exit 0
+
+$ target/s1/release/s1 probe stalwart
+# 2026-10-04T14:57:24+02:00
+s1 probe on stalwart (release build)
+implicit TLS: authentication: Plain
+capabilities after login: ACL BINARY CHILDREN CONDSTORE CREATE-SPECIAL-USE ENABLE ESEARCH ESORT ID IDLE IMAP4REV1 IMAP4REV2 JMAPACCESS LIST-EXTENDED LIST-STATUS LITERAL+ MESSAGELIMIT=1000000 MOVE MULTIAPPEND NAMESPACE OBJECTID+ PREVIEW QRESYNC QUOTA QUOTA=RES-STORAGE RIGHTS=TEXK SASL-IR SAVELIMIT=1000000 SEARCHRES SORT SORT=DISPLAY SPECIAL-USE STATUS=SIZE THREAD=REFERENCES UIDBATCHES UIDONLY UIDPLUS UNAUTHENTICATE UNSELECT UTF8=ACCEPT WITHIN
+QRESYNC enabled: true
+STARTTLS: authentication: Plain
+platform verifier rejects the testbed certificate: yes (i/o: invalid peer certificate: UnknownIssuer)
+LIST "Arkiv": "Arkiv" role=Some("archive") attrs=[]
+LIST "Deleted Items": "Deleted Items" role=Some("trash") attrs=["\\Trash"]
+LIST "Drafts": "Drafts" role=Some("drafts") attrs=["\\Drafts"]
+LIST "INBOX": "INBOX" role=Some("inbox") attrs=[]
+LIST "Junk Mail": "Junk Mail" role=Some("junk") attrs=["\\Junk"]
+LIST "Papirkurv": "Papirkurv" role=None attrs=[]
+LIST "Sendt": "Sendt" role=None attrs=[]
+LIST "Sent Items": "Sent Items" role=Some("sent") attrs=["\\Sent"]
+LIST "S&APg-ppelpost": "Søppelpost" role=None attrs=[]
+LIST "Utkast": "Utkast" role=None attrs=[]
+async-imap uid_fetch with BAD items: Ok(0)
+raw layer, same command: Err(Bad("Invalid attribute \"BOGUS\""))
+async-imap uid_search with BAD criteria: Ok(0)
+async-imap uid_store on an EXAMINEd mailbox: Ok(0)
+raw layer, same command: Err(No("Not permitted in EXAMINE state."))
+async-imap unsolicited channel after 150 flag changes by another client: 100 responses delivered (capacity 100; the rest dropped silently)
+raw APPEND: APPENDUID: Some(151)
+async-imap append (returns ()), UID by HEADER Message-ID search: None
+HEADER Message-ID search right after APPEND: misses out of 20: 20
+raw UID MOVE: COPYUID: Some(CopyUid { uidvalidity: 383603890, source: [1..=1], destination: [1..=1] })
+UID MOVE of a UID that no longer exists: Ok(false)
+ESEARCH response through async-imap's parser: Err(Io(Custom { kind: Other, error: "Error(Error { input: [42, 32, 69, 83, 69, 65, 82, 67, 72, 32, 40, 84, 65, 71, 32, 34, 65, 48, 50, 49, 51, 34, 41, 32, 85, 73, 68, 32, 67, 79, 85, 78, 84, 32, 49, 55, 49, 13, 10, 65, 48, 50, 49, 51, 32, 79, 75, 32, 85, 73, 68, 32, 83, 69, 65, 82, 67, 72, 32, 99, 111, 109, 112, 108, 101, 116, 101, 100, 13, 10], code: TakeWhile1 }) during parsing of \"* ESEARCH (TAG \\\"A0213\\\") UID COUNT 171\\r\\nA0213 OK UID SEARCH completed\\r\\n\"" }))
+connection usable after that: Err("connection lost")
+# exit 0
+
+$ target/s1/release/s1 first-sync dovecot --runs 4 --batch 500
+# 2026-10-04T14:57:25+02:00
+s1 first-sync on dovecot (release build)
+added round-trip time: 0 ms
+run 1: batch 500: 10000 messages in 20 batches; connect 13.7 ms, LIST 0.7 ms, INBOX 583.6 ms, total 597.9 ms; store 2891776 bytes; IMAP bytes received None
+run 2: batch 500: 10000 messages in 20 batches; connect 12.7 ms, LIST 0.6 ms, INBOX 300.4 ms, total 313.7 ms; store 2891776 bytes; IMAP bytes received None
+run 3: batch 500: 10000 messages in 20 batches; connect 12.6 ms, LIST 0.5 ms, INBOX 299.8 ms, total 313.0 ms; store 2891776 bytes; IMAP bytes received None
+run 4: batch 500: 10000 messages in 20 batches; connect 12.3 ms, LIST 0.6 ms, INBOX 295.8 ms, total 308.7 ms; store 2891776 bytes; IMAP bytes received None
+# exit 0
+
+$ target/s1/release/s1 first-sync stalwart --runs 4 --batch 500
+# 2026-10-04T14:57:26+02:00
+s1 first-sync on stalwart (release build)
+added round-trip time: 0 ms
+run 1: batch 500: 10000 messages in 20 batches; connect 14.5 ms, LIST 0.3 ms, INBOX 447.2 ms, total 462.1 ms; store 2887680 bytes; IMAP bytes received None
+run 2: batch 500: 10000 messages in 20 batches; connect 13.6 ms, LIST 0.2 ms, INBOX 439.0 ms, total 452.8 ms; store 2887680 bytes; IMAP bytes received None
+run 3: batch 500: 10000 messages in 20 batches; connect 13.8 ms, LIST 0.3 ms, INBOX 439.3 ms, total 453.4 ms; store 2887680 bytes; IMAP bytes received None
+run 4: batch 500: 10000 messages in 20 batches; connect 14.5 ms, LIST 0.2 ms, INBOX 449.5 ms, total 464.3 ms; store 2887680 bytes; IMAP bytes received None
+# exit 0
+
+$ target/s1/release/s1 first-sync dovecot-rev1 --runs 4 --batch 500
+# 2026-10-04T14:57:28+02:00
+s1 first-sync on dovecot-rev1 (release build)
+added round-trip time: 0 ms
+run 1: batch 500: 10000 messages in 20 batches; connect 12.6 ms, LIST 1.0 ms, INBOX 591.1 ms, total 604.6 ms; store 2859008 bytes; IMAP bytes received None
+run 2: batch 500: 10000 messages in 20 batches; connect 12.7 ms, LIST 0.8 ms, INBOX 330.8 ms, total 344.2 ms; store 2859008 bytes; IMAP bytes received None
+run 3: batch 500: 10000 messages in 20 batches; connect 12.2 ms, LIST 0.7 ms, INBOX 317.4 ms, total 330.3 ms; store 2859008 bytes; IMAP bytes received None
+run 4: batch 500: 10000 messages in 20 batches; connect 12.3 ms, LIST 0.6 ms, INBOX 315.6 ms, total 328.5 ms; store 2859008 bytes; IMAP bytes received None
+# exit 0
+
+$ target/s1/release/s1 first-sync dovecot --runs 2 --batch 500 --rtt-ms 50
+# 2026-10-04T14:57:30+02:00
+s1 first-sync on dovecot (release build)
+added round-trip time: 50 ms
+run 1: batch 500: 10000 messages in 20 batches; connect 300.8 ms, LIST 53.0 ms, INBOX 1442.3 ms, total 1796.2 ms; store 2891776 bytes; IMAP bytes received Some(7108148)
+run 2: batch 500: 10000 messages in 20 batches; connect 300.3 ms, LIST 53.0 ms, INBOX 1452.6 ms, total 1805.9 ms; store 2891776 bytes; IMAP bytes received Some(7108132)
+# exit 0
+
+$ target/s1/release/s1 first-sync stalwart --runs 2 --batch 500 --rtt-ms 50
+# 2026-10-04T14:57:33+02:00
+s1 first-sync on stalwart (release build)
+added round-trip time: 50 ms
+run 1: batch 500: 10000 messages in 20 batches; connect 300.6 ms, LIST 52.7 ms, INBOX 1572.8 ms, total 1926.1 ms; store 2887680 bytes; IMAP bytes received Some(7459611)
+run 2: batch 500: 10000 messages in 20 batches; connect 301.2 ms, LIST 52.7 ms, INBOX 1584.0 ms, total 1937.9 ms; store 2887680 bytes; IMAP bytes received Some(7459611)
+# exit 0
+
+$ target/s1/release/s1 first-sync dovecot-rev1 --runs 2 --batch 500 --rtt-ms 50
+# 2026-10-04T14:57:37+02:00
+s1 first-sync on dovecot-rev1 (release build)
+added round-trip time: 50 ms
+run 1: batch 500: 10000 messages in 20 batches; connect 195.2 ms, LIST 53.2 ms, INBOX 1516.6 ms, total 1765.0 ms; store 2859008 bytes; IMAP bytes received Some(7413030)
+run 2: batch 500: 10000 messages in 20 batches; connect 196.8 ms, LIST 53.4 ms, INBOX 1524.5 ms, total 1774.7 ms; store 2859008 bytes; IMAP bytes received Some(7413030)
+# exit 0
+
+$ target/s1/release/s1 fetch-only dovecot --runs 3
+# 2026-10-04T14:57:41+02:00
+s1 fetch-only on dovecot (release build)
+run 1: header fetch of 10000 messages in batches of 500, decoded (no store): 261.9 ms
+run 2: header fetch of 10000 messages in batches of 500, decoded (no store): 264.5 ms
+run 3: header fetch of 10000 messages in batches of 500, decoded (no store): 264.4 ms
+# exit 0
+
+$ target/s1/release/s1 fetch-only stalwart --runs 3
+# 2026-10-04T14:57:42+02:00
+s1 fetch-only on stalwart (release build)
+run 1: header fetch of 10000 messages in batches of 500, decoded (no store): 425.6 ms
+run 2: header fetch of 10000 messages in batches of 500, decoded (no store): 429.0 ms
+run 3: header fetch of 10000 messages in batches of 500, decoded (no store): 425.4 ms
+# exit 0
+
+$ target/s1/release/s1 fetch-only dovecot-rev1 --runs 3
+# 2026-10-04T14:57:43+02:00
+s1 fetch-only on dovecot-rev1 (release build)
+run 1: header fetch of 10000 messages in batches of 500, decoded (no store): 266.7 ms
+run 2: header fetch of 10000 messages in batches of 500, decoded (no store): 264.2 ms
+run 3: header fetch of 10000 messages in batches of 500, decoded (no store): 265.5 ms
+# exit 0
+
+$ target/s1/release/s1-ioimap dovecot
+# 2026-10-04T14:57:44+02:00
+s1-ioimap on dovecot (release build)
+connect + greeting + AUTHENTICATE PLAIN: 12.8 ms
+EXAMINE INBOX: exists Some(10000), HIGHESTMODSEQ present true
+run 1: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 283.7 ms
+run 2: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 279.2 ms
+run 3: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 272.9 ms
+ENABLE QRESYNC: Some([Other(CapabilityEnableOther(Atom("QRESYNC")))])
+STORE +FLAGS on UIDs 1:20 by a second client: 11 FETCH echoes
+UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE m VANISHED): 11 changed (VANISHED lines are not returned by fetch)
+SELECT of a missing mailbox: Err("IMAP SELECT failed: NO Mailbox doesn't exist: Finnes ikke (0.001 + 0.000 secs).")
+raw BAD command: returned a string of 50 bytes, BAD seen: true
+APPEND: APPENDUID Some((1791118643, 173))
+UID MOVE: COPYUID Some((1791118644, [173], [2]))
+SELECT (QRESYNC): VANISHED (EARLIER) 34 UIDs, 7 changed messages
+IDLE watch: APPEND OK -> EnvelopeAdded event: n=10 min=495.8 p50=496.8 p95=497.0 max=497.0 ms
+# exit 0
+
+$ target/s1/release/s1-ioimap stalwart
+# 2026-10-04T14:57:50+02:00
+s1-ioimap on stalwart (release build)
+connect + greeting + AUTHENTICATE PLAIN: 13.4 ms
+EXAMINE INBOX: exists Some(10000), HIGHESTMODSEQ present true
+run 1: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 425.8 ms
+run 2: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 427.7 ms
+run 3: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 423.6 ms
+ENABLE QRESYNC: Some([Other(CapabilityEnableOther(Atom("QRESYNC")))])
+STORE +FLAGS on UIDs 1:20 by a second client: 11 FETCH echoes
+UID FETCH 1:* (UID FLAGS) (CHANGEDSINCE m VANISHED): 11 changed (VANISHED lines are not returned by fetch)
+SELECT of a missing mailbox: Err("IMAP SELECT failed: NO Mailbox does not exist.")
+raw BAD command: returned a string of 34 bytes, BAD seen: true
+APPEND: APPENDUID Some((3938250611, 173))
+UID MOVE: COPYUID Some((383603890, [173], [2]))
+SELECT (QRESYNC): VANISHED (EARLIER) 34 UIDs, 7 changed messages
+IDLE watch: APPEND OK -> EnvelopeAdded event: n=10 min=0.4 p50=0.5 p95=1.3 max=1.3 ms
+# exit 0
+
+$ target/s1/release/s1-ioimap dovecot-rev1
+# 2026-10-04T14:57:52+02:00
+s1-ioimap on dovecot-rev1 (release build)
+connect + greeting + AUTHENTICATE PLAIN: 12.5 ms
+EXAMINE INBOX: exists Some(10000), HIGHESTMODSEQ present false
+run 1: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 264.0 ms
+run 2: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 258.5 ms
+run 3: header fetch of 10000 messages in batches of 500, decoded into imap-types (no store): 259.5 ms
+STORE +FLAGS on UIDs 1:20 by a second client: 11 FETCH echoes
+SELECT of a missing mailbox: Err("IMAP SELECT failed: NO Mailbox doesn't exist: Finnes ikke (0.001 + 0.000 secs).")
+raw BAD command: returned a string of 50 bytes, BAD seen: true
+APPEND: APPENDUID Some((1791118533, 173))
+# exit 0
+
+$ target/s1/release/s1 resync dovecot --runs 20
+# 2026-10-04T14:57:53+02:00
+s1 resync on dovecot (release build)
+added round-trip time: 0 ms
+10000 messages in 10 mailboxes
+INBOX pass, open connection: n=20 min=5.4 p50=5.5 p95=5.8 max=7.4 ms
+account pass (LIST + all mailboxes), open connection: n=20 min=6.9 p50=7.2 p95=7.7 max=17.2 ms
+connect + login + account pass: n=20 min=18.6 p50=19.3 p95=21.0 max=29.6 ms
+fast-path passes 20, mailboxes skipped by STATUS 400, full flag scans 0
+# exit 0
+
+$ target/s1/release/s1 resync stalwart --runs 20
+# 2026-10-04T14:57:54+02:00
+s1 resync on stalwart (release build)
+added round-trip time: 0 ms
+10000 messages in 14 mailboxes
+INBOX pass, open connection: n=20 min=0.6 p50=0.6 p95=0.8 max=0.8 ms
+account pass (LIST + all mailboxes), open connection: n=20 min=0.5 p50=0.5 p95=0.5 max=0.5 ms
+connect + login + account pass: n=20 min=12.8 p50=13.1 p95=13.9 max=14.3 ms
+fast-path passes 20, mailboxes skipped by STATUS 560, full flag scans 0
+# exit 0
+
+$ target/s1/release/s1 resync dovecot-rev1 --runs 20
+# 2026-10-04T14:57:55+02:00
+s1 resync on dovecot-rev1 (release build)
+added round-trip time: 0 ms
+10000 messages in 10 mailboxes
+INBOX pass, open connection: n=20 min=25.4 p50=25.7 p95=26.8 max=26.8 ms
+account pass (LIST + all mailboxes), open connection: n=20 min=28.8 p50=29.9 p95=32.6 max=37.9 ms
+connect + login + account pass: n=20 min=41.0 p50=43.0 p95=52.7 max=53.8 ms
+fast-path passes 0, mailboxes skipped by STATUS 0, full flag scans 60
+# exit 0
+
+$ target/s1/release/s1 resync dovecot --runs 10 --rtt-ms 50
+# 2026-10-04T14:57:57+02:00
+s1 resync on dovecot (release build)
+added round-trip time: 50 ms
+10000 messages in 10 mailboxes
+INBOX pass, open connection: n=10 min=57.5 p50=57.8 p95=58.5 max=58.5 ms
+account pass (LIST + all mailboxes), open connection: n=10 min=58.5 p50=58.9 p95=59.8 max=59.8 ms
+connect + login + account pass: n=10 min=358.9 p50=359.6 p95=360.2 max=360.2 ms
+fast-path passes 10, mailboxes skipped by STATUS 200, full flag scans 0
+# exit 0
+
+$ target/s1/release/s1 resync stalwart --runs 10 --rtt-ms 50
+# 2026-10-04T14:58:05+02:00
+s1 resync on stalwart (release build)
+added round-trip time: 50 ms
+10000 messages in 14 mailboxes
+INBOX pass, open connection: n=10 min=53.1 p50=53.2 p95=53.5 max=53.5 ms
+account pass (LIST + all mailboxes), open connection: n=10 min=52.9 p50=53.1 p95=53.3 max=53.3 ms
+connect + login + account pass: n=10 min=352.8 p50=354.7 p95=356.2 max=356.2 ms
+fast-path passes 10, mailboxes skipped by STATUS 280, full flag scans 0
+# exit 0
+
+$ target/s1/release/s1 resync dovecot-rev1 --runs 10 --rtt-ms 50
+# 2026-10-04T14:58:13+02:00
+s1 resync on dovecot-rev1 (release build)
+added round-trip time: 50 ms
+10000 messages in 10 mailboxes
+INBOX pass, open connection: n=10 min=129.0 p50=130.7 p95=131.9 max=131.9 ms
+account pass (LIST + all mailboxes), open connection: n=10 min=657.9 p50=659.0 p95=660.2 max=660.2 ms
+connect + login + account pass: n=10 min=854.4 p50=855.8 p95=863.8 max=863.8 ms
+fast-path passes 0, mailboxes skipped by STATUS 0, full flag scans 30
+# exit 0
+
+$ target/s1/release/s1 idle-latency dovecot --samples 20
+# 2026-10-04T14:58:33+02:00
+s1 idle-latency on dovecot (release build)
+APPEND OK -> IDLE notice: n=20 min=487.0 p50=491.9 p95=495.8 max=496.2 ms
+APPEND OK -> in the cache: n=20 min=488.4 p50=493.2 p95=497.0 max=497.4 ms
+# exit 0
+
+$ target/s1/release/s1 idle-latency stalwart --samples 20
+# 2026-10-04T14:58:47+02:00
+s1 idle-latency on stalwart (release build)
+APPEND OK -> IDLE notice: n=20 min=0.1 p50=0.2 p95=0.3 max=0.3 ms
+APPEND OK -> in the cache: n=20 min=0.8 p50=1.0 p95=1.2 max=1.2 ms
+# exit 0
+
+$ target/s1/release/s1 random dovecot --seeds 1-10 --ops 1000
+# 2026-10-04T14:58:51+02:00
+s1 random on dovecot (release build)
+seed 1: 0 divergences; server 169 / cache 169 messages; ops {"append": 211, "copy": 87, "expunge": 153, "flag-storm": 60, "flags": 365, "move": 124, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118736, 1791118739)); mutation 2.9 s, quiescence 0.3 s; IDLE notices 6, disconnects 0
+  idle task: Stats { passes: 7, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 164, new_message_fetches: 5, changedsince_fetches: 5, vanished_uids: 59, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 443, deletes: 59, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 74, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 344, new_message_fetches: 65, changedsince_fetches: 66, vanished_uids: 282, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 982, deletes: 282, mailboxes_removed: 0, skipped_missing: 0, status_skips: 30, noop_changes: 0 }
+seed 2: 0 divergences; server 204 / cache 204 messages; ops {"append": 218, "copy": 83, "expunge": 132, "flag-storm": 63, "flags": 355, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118739, 1791118740)); mutation 3.1 s, quiescence 0.2 s; IDLE notices 6, disconnects 0
+  idle task: Stats { passes: 7, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 173, new_message_fetches: 6, changedsince_fetches: 6, vanished_uids: 50, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 598, deletes: 50, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 79, fast_path: 7, resets: 1, initial_batches: 6, headers_fetched: 380, new_message_fetches: 68, changedsince_fetches: 71, vanished_uids: 296, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 1033, deletes: 296, mailboxes_removed: 0, skipped_missing: 0, status_skips: 25, noop_changes: 0 }
+seed 3: 0 divergences; server 147 / cache 147 messages; ops {"append": 228, "copy": 68, "expunge": 167, "flag-storm": 65, "flags": 331, "move": 141, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118740, 1791118741)); mutation 3.0 s, quiescence 0.3 s; IDLE notices 6, disconnects 0
+  idle task: Stats { passes: 9, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 167, new_message_fetches: 7, changedsince_fetches: 7, vanished_uids: 61, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 436, deletes: 61, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 2 }
+  poller: Stats { passes: 74, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 357, new_message_fetches: 65, changedsince_fetches: 66, vanished_uids: 314, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 805, deletes: 314, mailboxes_removed: 0, skipped_missing: 0, status_skips: 30, noop_changes: 0 }
+seed 4: 0 divergences; server 140 / cache 140 messages; ops {"append": 225, "copy": 72, "expunge": 152, "flag-storm": 72, "flags": 332, "move": 147, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118741, 1791118742)); mutation 3.3 s, quiescence 0.4 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 9, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 159, new_message_fetches: 6, changedsince_fetches: 7, vanished_uids: 50, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 514, deletes: 50, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 82, fast_path: 7, resets: 1, initial_batches: 6, headers_fetched: 350, new_message_fetches: 70, changedsince_fetches: 74, vanished_uids: 293, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 1113, deletes: 293, mailboxes_removed: 0, skipped_missing: 0, status_skips: 30, noop_changes: 0 }
+seed 5: 0 divergences; server 133 / cache 133 messages; ops {"append": 203, "copy": 85, "expunge": 155, "flag-storm": 66, "flags": 338, "move": 153, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118742, 1791118743)); mutation 3.2 s, quiescence 0.4 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 11, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 162, new_message_fetches: 9, changedsince_fetches: 9, vanished_uids: 66, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 0, flag_updates: 466, deletes: 66, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 3 }
+  poller: Stats { passes: 79, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 376, new_message_fetches: 71, changedsince_fetches: 71, vanished_uids: 324, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 1055, deletes: 324, mailboxes_removed: 0, skipped_missing: 0, status_skips: 33, noop_changes: 0 }
+seed 6: 0 divergences; server 176 / cache 176 messages; ops {"append": 205, "copy": 79, "expunge": 151, "flag-storm": 73, "flags": 342, "move": 150, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118743, 1791118744)); mutation 3.4 s, quiescence 0.3 s; IDLE notices 8, disconnects 0
+  idle task: Stats { passes: 10, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 168, new_message_fetches: 8, changedsince_fetches: 8, vanished_uids: 67, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 507, deletes: 67, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 85, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 358, new_message_fetches: 73, changedsince_fetches: 77, vanished_uids: 282, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 1207, deletes: 282, mailboxes_removed: 0, skipped_missing: 0, status_skips: 27, noop_changes: 0 }
+seed 7: 0 divergences; server 117 / cache 117 messages; ops {"append": 224, "copy": 73, "expunge": 168, "flag-storm": 62, "flags": 337, "move": 136, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118744, 1791118745)); mutation 3.4 s, quiescence 0.3 s; IDLE notices 8, disconnects 0
+  idle task: Stats { passes: 10, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 155, new_message_fetches: 8, changedsince_fetches: 8, vanished_uids: 65, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 433, deletes: 65, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 86, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 370, new_message_fetches: 78, changedsince_fetches: 78, vanished_uids: 325, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 0, flag_updates: 864, deletes: 325, mailboxes_removed: 0, skipped_missing: 0, status_skips: 26, noop_changes: 0 }
+seed 8: 0 divergences; server 167 / cache 167 messages; ops {"append": 213, "copy": 74, "expunge": 140, "flag-storm": 62, "flags": 389, "move": 122, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118745, 1791118746)); mutation 2.9 s, quiescence 0.2 s; IDLE notices 6, disconnects 0
+  idle task: Stats { passes: 7, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 162, new_message_fetches: 5, changedsince_fetches: 5, vanished_uids: 63, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 293, deletes: 63, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 74, fast_path: 7, resets: 1, initial_batches: 6, headers_fetched: 353, new_message_fetches: 65, changedsince_fetches: 66, vanished_uids: 265, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 980, deletes: 265, mailboxes_removed: 0, skipped_missing: 0, status_skips: 22, noop_changes: 0 }
+seed 9: 0 divergences; server 149 / cache 149 messages; ops {"append": 208, "copy": 76, "expunge": 157, "flag-storm": 63, "flags": 342, "move": 154, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118746, 1791118747)); mutation 3.1 s, quiescence 0.5 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 8, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 156, new_message_fetches: 7, changedsince_fetches: 6, vanished_uids: 66, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 0, flag_updates: 439, deletes: 66, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 80, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 369, new_message_fetches: 69, changedsince_fetches: 72, vanished_uids: 296, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 799, deletes: 296, mailboxes_removed: 0, skipped_missing: 0, status_skips: 32, noop_changes: 0 }
+seed 10: 0 divergences; server 153 / cache 153 messages; ops {"append": 213, "copy": 70, "expunge": 152, "flag-storm": 56, "flags": 361, "move": 148, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118747, 1791118748)); mutation 3.2 s, quiescence 0.4 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 8, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 175, new_message_fetches: 6, changedsince_fetches: 6, vanished_uids: 68, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 559, deletes: 68, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 80, fast_path: 9, resets: 1, initial_batches: 6, headers_fetched: 335, new_message_fetches: 69, changedsince_fetches: 71, vanished_uids: 279, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 778, deletes: 279, mailboxes_removed: 0, skipped_missing: 0, status_skips: 32, noop_changes: 0 }
+# exit 0
+
+$ target/s1/release/s1 random dovecot-rev1 --seeds 1-10 --ops 1000
+# 2026-10-04T14:59:31+02:00
+s1 random on dovecot-rev1 (release build)
+seed 1: 0 divergences; server 82 / cache 82 messages; ops {"append": 230, "copy": 87, "expunge": 142, "flag-storm": 65, "flags": 353, "move": 123, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118539, 1791118540)); mutation 3.0 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 13, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 209, new_message_fetches: 13, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 13, count_mismatches: 2, uid_diffs: 1, flag_updates: 268, deletes: 156, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 91, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 213, new_message_fetches: 58, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 65, count_mismatches: 0, uid_diffs: 0, flag_updates: 59, deletes: 178, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 2: 0 divergences; server 84 / cache 84 messages; ops {"append": 236, "copy": 83, "expunge": 137, "flag-storm": 70, "flags": 349, "move": 125, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118540, 1791118541)); mutation 3.1 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 14, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 210, new_message_fetches: 13, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 14, count_mismatches: 0, uid_diffs: 0, flag_updates: 406, deletes: 158, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 91, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 238, new_message_fetches: 57, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 65, count_mismatches: 0, uid_diffs: 0, flag_updates: 73, deletes: 204, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 3: 0 divergences; server 49 / cache 49 messages; ops {"append": 222, "copy": 74, "expunge": 155, "flag-storm": 71, "flags": 339, "move": 137, "storm-skipped": 2, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118541, 1791118542)); mutation 3.2 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 14, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 179, new_message_fetches: 13, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 14, count_mismatches: 1, uid_diffs: 1, flag_updates: 165, deletes: 176, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 98, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 241, new_message_fetches: 60, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 70, count_mismatches: 0, uid_diffs: 0, flag_updates: 91, deletes: 192, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 4: 0 divergences; server 36 / cache 36 messages; ops {"append": 221, "copy": 79, "expunge": 148, "flag-storm": 73, "flags": 328, "move": 151, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118542, 1791118543)); mutation 3.7 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 16, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 203, new_message_fetches: 15, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 16, count_mismatches: 0, uid_diffs: 0, flag_updates: 321, deletes: 201, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 105, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 229, new_message_fetches: 68, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 75, count_mismatches: 0, uid_diffs: 0, flag_updates: 39, deletes: 185, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 5: 0 divergences; server 30 / cache 30 messages; ops {"append": 231, "copy": 67, "expunge": 162, "flag-storm": 56, "flags": 338, "move": 146, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118543, 1791118544)); mutation 3.8 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 16, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 227, new_message_fetches: 16, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 16, count_mismatches: 1, uid_diffs: 0, flag_updates: 460, deletes: 225, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 112, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 220, new_message_fetches: 71, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 80, count_mismatches: 0, uid_diffs: 0, flag_updates: 77, deletes: 189, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 6: 0 divergences; server 34 / cache 34 messages; ops {"append": 221, "copy": 80, "expunge": 157, "flag-storm": 66, "flags": 325, "move": 151, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118544, 1791118545)); mutation 3.8 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 16, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 189, new_message_fetches: 15, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 16, count_mismatches: 0, uid_diffs: 0, flag_updates: 242, deletes: 182, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 112, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 212, new_message_fetches: 67, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 80, count_mismatches: 0, uid_diffs: 0, flag_updates: 36, deletes: 182, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 7: 0 divergences; server 34 / cache 34 messages; ops {"append": 229, "copy": 83, "expunge": 156, "flag-storm": 67, "flags": 319, "move": 145, "storm-skipped": 1, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118545, 1791118546)); mutation 3.9 s, quiescence 0.3 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 17, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 218, new_message_fetches: 16, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 17, count_mismatches: 0, uid_diffs: 0, flag_updates: 305, deletes: 215, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 112, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 259, new_message_fetches: 73, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 80, count_mismatches: 0, uid_diffs: 0, flag_updates: 76, deletes: 218, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 8: 0 divergences; server 52 / cache 52 messages; ops {"append": 226, "copy": 80, "expunge": 137, "flag-storm": 66, "flags": 360, "move": 128, "storm-skipped": 3, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118546, 1791118547)); mutation 3.3 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 14, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 175, new_message_fetches: 13, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 14, count_mismatches: 0, uid_diffs: 0, flag_updates: 134, deletes: 165, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 98, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 268, new_message_fetches: 64, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 70, count_mismatches: 0, uid_diffs: 0, flag_updates: 82, deletes: 211, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 9: 0 divergences; server 38 / cache 38 messages; ops {"append": 217, "copy": 68, "expunge": 143, "flag-storm": 81, "flags": 345, "move": 145, "storm-skipped": 1, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118547, 1791118548)); mutation 3.5 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 15, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 209, new_message_fetches: 15, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 15, count_mismatches: 1, uid_diffs: 0, flag_updates: 234, deletes: 208, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 105, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 239, new_message_fetches: 64, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 75, count_mismatches: 2, uid_diffs: 2, flag_updates: 67, deletes: 185, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 10: 0 divergences; server 53 / cache 53 messages; ops {"append": 223, "copy": 68, "expunge": 138, "flag-storm": 64, "flags": 348, "move": 159, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118548, 1791118549)); mutation 3.8 s, quiescence 0.2 s; IDLE notices 0, disconnects 0
+  idle task: Stats { passes: 16, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 225, new_message_fetches: 15, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 16, count_mismatches: 0, uid_diffs: 0, flag_updates: 162, deletes: 220, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 112, fast_path: 0, resets: 1, initial_batches: 6, headers_fetched: 223, new_message_fetches: 72, changedsince_fetches: 0, vanished_uids: 0, full_flag_scans: 80, count_mismatches: 1, uid_diffs: 0, flag_updates: 70, deletes: 171, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+# exit 0
+
+$ target/s1/release/s1 random stalwart --seeds 1-10 --ops 1000
+# 2026-10-04T15:00:14+02:00
+s1 random on stalwart (release build)
+seed 1: 0 divergences; server 133 / cache 133 messages; ops {"append": 205, "copy": 86, "expunge": 156, "flag-storm": 64, "flags": 365, "move": 124, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1111032465, 1169814280)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 366, disconnects 0
+  idle task: Stats { passes: 501, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 235, new_message_fetches: 132, changedsince_fetches: 500, vanished_uids: 172, full_flag_scans: 0, count_mismatches: 14, uid_diffs: 14, flag_updates: 3789, deletes: 172, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 134 }
+  poller: Stats { passes: 90, fast_path: 15, resets: 1, initial_batches: 6, headers_fetched: 207, new_message_fetches: 28, changedsince_fetches: 33, vanished_uids: 249, full_flag_scans: 0, count_mismatches: 3, uid_diffs: 3, flag_updates: 156, deletes: 249, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 2: 0 divergences; server 192 / cache 192 messages; ops {"append": 218, "copy": 83, "expunge": 132, "flag-storm": 63, "flags": 355, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1169814280, 646000387)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 349, disconnects 0
+  idle task: Stats { passes: 490, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 263, new_message_fetches: 149, changedsince_fetches: 488, vanished_uids: 178, full_flag_scans: 0, count_mismatches: 22, uid_diffs: 22, flag_updates: 4458, deletes: 178, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 140 }
+  poller: Stats { passes: 90, fast_path: 15, resets: 1, initial_batches: 6, headers_fetched: 216, new_message_fetches: 29, changedsince_fetches: 33, vanished_uids: 227, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 1, flag_updates: 108, deletes: 227, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 3: 0 divergences; server 138 / cache 138 messages; ops {"append": 228, "copy": 68, "expunge": 167, "flag-storm": 65, "flags": 331, "move": 141, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((646000387, 325944970)); mutation 1.3 s, quiescence 0.0 s; IDLE notices 384, disconnects 0
+  idle task: Stats { passes: 521, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 256, new_message_fetches: 150, changedsince_fetches: 519, vanished_uids: 225, full_flag_scans: 0, count_mismatches: 25, uid_diffs: 25, flag_updates: 2573, deletes: 225, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 136 }
+  poller: Stats { passes: 77, fast_path: 14, resets: 1, initial_batches: 6, headers_fetched: 219, new_message_fetches: 25, changedsince_fetches: 28, vanished_uids: 239, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 1, flag_updates: 78, deletes: 239, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 4: 0 divergences; server 137 / cache 137 messages; ops {"append": 212, "copy": 68, "expunge": 147, "flag-storm": 68, "flags": 339, "move": 166, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((325944970, 140289205)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 370, disconnects 0
+  idle task: Stats { passes: 513, fast_path: 3, resets: 0, initial_batches: 1, headers_fetched: 255, new_message_fetches: 151, changedsince_fetches: 510, vanished_uids: 208, full_flag_scans: 0, count_mismatches: 31, uid_diffs: 31, flag_updates: 3758, deletes: 209, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 142 }
+  poller: Stats { passes: 90, fast_path: 12, resets: 1, initial_batches: 6, headers_fetched: 216, new_message_fetches: 30, changedsince_fetches: 35, vanished_uids: 259, full_flag_scans: 0, count_mismatches: 2, uid_diffs: 2, flag_updates: 55, deletes: 259, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 5: 0 divergences; server 123 / cache 123 messages; ops {"append": 203, "copy": 85, "expunge": 155, "flag-storm": 66, "flags": 338, "move": 153, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((140289205, 2276463828)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 384, disconnects 0
+  idle task: Stats { passes: 539, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 262, new_message_fetches: 146, changedsince_fetches: 537, vanished_uids: 235, full_flag_scans: 0, count_mismatches: 19, uid_diffs: 19, flag_updates: 3738, deletes: 237, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 154 }
+  poller: Stats { passes: 90, fast_path: 15, resets: 1, initial_batches: 6, headers_fetched: 232, new_message_fetches: 29, changedsince_fetches: 33, vanished_uids: 227, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 81, deletes: 227, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 6: 0 divergences; server 170 / cache 170 messages; ops {"append": 205, "copy": 79, "expunge": 151, "flag-storm": 73, "flags": 342, "move": 150, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((2276463828, 2653643206)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 367, disconnects 0
+  idle task: Stats { passes: 493, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 244, new_message_fetches: 146, changedsince_fetches: 492, vanished_uids: 196, full_flag_scans: 0, count_mismatches: 29, uid_diffs: 29, flag_updates: 4485, deletes: 197, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 125 }
+  poller: Stats { passes: 90, fast_path: 15, resets: 1, initial_batches: 6, headers_fetched: 248, new_message_fetches: 30, changedsince_fetches: 33, vanished_uids: 231, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 127, deletes: 231, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 7: 0 divergences; server 115 / cache 115 messages; ops {"append": 224, "copy": 73, "expunge": 168, "flag-storm": 62, "flags": 337, "move": 136, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((2653643206, 3942679511)); mutation 1.5 s, quiescence 0.2 s; IDLE notices 379, disconnects 0
+  idle task: Stats { passes: 524, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 263, new_message_fetches: 152, changedsince_fetches: 522, vanished_uids: 230, full_flag_scans: 0, count_mismatches: 23, uid_diffs: 23, flag_updates: 2978, deletes: 230, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 144 }
+  poller: Stats { passes: 90, fast_path: 14, resets: 1, initial_batches: 6, headers_fetched: 213, new_message_fetches: 31, changedsince_fetches: 34, vanished_uids: 238, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 1, flag_updates: 378, deletes: 238, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 8: 0 divergences; server 153 / cache 153 messages; ops {"append": 213, "copy": 74, "expunge": 140, "flag-storm": 62, "flags": 389, "move": 122, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((3942679511, 332555515)); mutation 1.4 s, quiescence 0.3 s; IDLE notices 369, disconnects 0
+  idle task: Stats { passes: 510, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 232, new_message_fetches: 117, changedsince_fetches: 508, vanished_uids: 174, full_flag_scans: 0, count_mismatches: 19, uid_diffs: 19, flag_updates: 3786, deletes: 174, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 140 }
+  poller: Stats { passes: 83, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 232, new_message_fetches: 29, changedsince_fetches: 32, vanished_uids: 220, full_flag_scans: 0, count_mismatches: 5, uid_diffs: 5, flag_updates: 178, deletes: 220, mailboxes_removed: 0, skipped_missing: 0, status_skips: 8, noop_changes: 0 }
+seed 9: 0 divergences; server 132 / cache 132 messages; ops {"append": 208, "copy": 76, "expunge": 157, "flag-storm": 63, "flags": 342, "move": 154, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((332555515, 933835104)); mutation 1.3 s, quiescence 0.0 s; IDLE notices 364, disconnects 0
+  idle task: Stats { passes: 524, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 236, new_message_fetches: 131, changedsince_fetches: 522, vanished_uids: 203, full_flag_scans: 0, count_mismatches: 21, uid_diffs: 20, flag_updates: 3300, deletes: 204, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 159 }
+  poller: Stats { passes: 77, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 213, new_message_fetches: 25, changedsince_fetches: 28, vanished_uids: 233, full_flag_scans: 0, count_mismatches: 2, uid_diffs: 2, flag_updates: 88, deletes: 233, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+seed 10: 0 divergences; server 144 / cache 144 messages; ops {"append": 208, "copy": 67, "expunge": 148, "flag-storm": 60, "flags": 368, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((933835104, 2920462183)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 367, disconnects 0
+  idle task: Stats { passes: 527, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 263, new_message_fetches: 146, changedsince_fetches: 525, vanished_uids: 212, full_flag_scans: 0, count_mismatches: 22, uid_diffs: 22, flag_updates: 3153, deletes: 214, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 159 }
+  poller: Stats { passes: 90, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 202, new_message_fetches: 29, changedsince_fetches: 35, vanished_uids: 223, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 101, deletes: 223, mailboxes_removed: 0, skipped_missing: 0, status_skips: 1, noop_changes: 0 }
+# exit 0
+
+$ target/s1/release/s1 random dovecot --seeds 1-10 --ops 1000 --inbox-backstop no
+# 2026-10-04T15:00:31+02:00
+s1 random on dovecot (release build)
+seed 1: 0 divergences; server 169 / cache 169 messages; ops {"append": 211, "copy": 87, "expunge": 153, "flag-storm": 60, "flags": 365, "move": 124, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118748, 1791118749)); mutation 3.2 s, quiescence 0.4 s; IDLE notices 8, disconnects 0
+  idle task: Stats { passes: 10, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 239, new_message_fetches: 8, changedsince_fetches: 9, vanished_uids: 127, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 686, deletes: 127, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 68, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 267, new_message_fetches: 59, changedsince_fetches: 60, vanished_uids: 202, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 113, deletes: 202, mailboxes_removed: 0, skipped_missing: 0, status_skips: 30, noop_changes: 0 }
+seed 2: 0 divergences; server 204 / cache 204 messages; ops {"append": 218, "copy": 83, "expunge": 132, "flag-storm": 63, "flags": 355, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118749, 1791118750)); mutation 3.4 s, quiescence 0.2 s; IDLE notices 8, disconnects 0
+  idle task: Stats { passes: 9, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 266, new_message_fetches: 8, changedsince_fetches: 8, vanished_uids: 151, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 603, deletes: 151, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 72, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 280, new_message_fetches: 63, changedsince_fetches: 64, vanished_uids: 187, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 135, deletes: 187, mailboxes_removed: 0, skipped_missing: 0, status_skips: 26, noop_changes: 0 }
+seed 3: 0 divergences; server 147 / cache 147 messages; ops {"append": 228, "copy": 68, "expunge": 167, "flag-storm": 65, "flags": 331, "move": 141, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118750, 1791118751)); mutation 3.2 s, quiescence 0.4 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 9, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 237, new_message_fetches: 8, changedsince_fetches: 8, vanished_uids: 183, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 0, flag_updates: 403, deletes: 183, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 71, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 275, new_message_fetches: 62, changedsince_fetches: 63, vanished_uids: 183, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 146, deletes: 183, mailboxes_removed: 0, skipped_missing: 0, status_skips: 27, noop_changes: 0 }
+seed 4: 0 divergences; server 140 / cache 140 messages; ops {"append": 225, "copy": 72, "expunge": 152, "flag-storm": 72, "flags": 332, "move": 147, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118751, 1791118752)); mutation 3.6 s, quiescence 0.1 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 8, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 256, new_message_fetches: 7, changedsince_fetches: 7, vanished_uids: 158, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 579, deletes: 158, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 77, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 254, new_message_fetches: 66, changedsince_fetches: 69, vanished_uids: 182, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 87, deletes: 182, mailboxes_removed: 0, skipped_missing: 0, status_skips: 28, noop_changes: 0 }
+seed 5: 0 divergences; server 133 / cache 133 messages; ops {"append": 203, "copy": 85, "expunge": 155, "flag-storm": 66, "flags": 338, "move": 153, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118752, 1791118753)); mutation 3.2 s, quiescence 0.5 s; IDLE notices 8, disconnects 0
+  idle task: Stats { passes: 11, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 249, new_message_fetches: 10, changedsince_fetches: 10, vanished_uids: 189, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 0, flag_updates: 502, deletes: 189, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 2 }
+  poller: Stats { passes: 69, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 274, new_message_fetches: 60, changedsince_fetches: 61, vanished_uids: 181, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 121, deletes: 181, mailboxes_removed: 0, skipped_missing: 0, status_skips: 29, noop_changes: 0 }
+seed 6: 0 divergences; server 176 / cache 176 messages; ops {"append": 205, "copy": 79, "expunge": 151, "flag-storm": 73, "flags": 342, "move": 150, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118753, 1791118754)); mutation 3.3 s, quiescence 0.4 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 8, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 242, new_message_fetches: 7, changedsince_fetches: 7, vanished_uids: 158, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 521, deletes: 158, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 71, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 288, new_message_fetches: 59, changedsince_fetches: 63, vanished_uids: 195, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 142, deletes: 195, mailboxes_removed: 0, skipped_missing: 0, status_skips: 27, noop_changes: 0 }
+seed 7: 0 divergences; server 117 / cache 117 messages; ops {"append": 224, "copy": 73, "expunge": 168, "flag-storm": 62, "flags": 337, "move": 136, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118754, 1791118755)); mutation 3.3 s, quiescence 0.3 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 8, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 251, new_message_fetches: 7, changedsince_fetches: 7, vanished_uids: 182, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 491, deletes: 182, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 72, fast_path: 8, resets: 1, initial_batches: 5, headers_fetched: 259, new_message_fetches: 62, changedsince_fetches: 64, vanished_uids: 190, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 104, deletes: 190, mailboxes_removed: 0, skipped_missing: 0, status_skips: 26, noop_changes: 0 }
+seed 8: 0 divergences; server 167 / cache 167 messages; ops {"append": 213, "copy": 74, "expunge": 140, "flag-storm": 62, "flags": 389, "move": 122, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118755, 1791118756)); mutation 3.3 s, quiescence 0.4 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 9, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 220, new_message_fetches: 8, changedsince_fetches: 8, vanished_uids: 137, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 556, deletes: 137, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 70, fast_path: 8, resets: 1, initial_batches: 5, headers_fetched: 286, new_message_fetches: 61, changedsince_fetches: 62, vanished_uids: 175, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 165, deletes: 175, mailboxes_removed: 0, skipped_missing: 0, status_skips: 28, noop_changes: 0 }
+seed 9: 0 divergences; server 149 / cache 149 messages; ops {"append": 208, "copy": 76, "expunge": 157, "flag-storm": 63, "flags": 342, "move": 154, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118756, 1791118757)); mutation 3.6 s, quiescence 0.5 s; IDLE notices 8, disconnects 0
+  idle task: Stats { passes: 9, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 229, new_message_fetches: 8, changedsince_fetches: 8, vanished_uids: 166, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 513, deletes: 166, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 77, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 284, new_message_fetches: 68, changedsince_fetches: 69, vanished_uids: 187, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 133, deletes: 187, mailboxes_removed: 0, skipped_missing: 0, status_skips: 35, noop_changes: 0 }
+seed 10: 0 divergences; server 153 / cache 153 messages; ops {"append": 213, "copy": 70, "expunge": 152, "flag-storm": 56, "flags": 361, "move": 148, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118757, 1791118758)); mutation 3.5 s, quiescence 0.2 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 9, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 262, new_message_fetches: 8, changedsince_fetches: 8, vanished_uids: 182, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 575, deletes: 182, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 75, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 251, new_message_fetches: 65, changedsince_fetches: 67, vanished_uids: 173, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 95, deletes: 173, mailboxes_removed: 0, skipped_missing: 0, status_skips: 30, noop_changes: 0 }
+# exit 0
+
+$ target/s1/release/s1 random stalwart --seeds 1-10 --ops 1000 --inbox-backstop no
+# 2026-10-04T15:01:14+02:00
+s1 random on stalwart (release build)
+seed 1: 0 divergences; server 133 / cache 133 messages; ops {"append": 205, "copy": 86, "expunge": 156, "flag-storm": 64, "flags": 365, "move": 124, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((2920462183, 1942004743)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 357, disconnects 0
+  idle task: Stats { passes: 502, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 238, new_message_fetches: 137, changedsince_fetches: 501, vanished_uids: 179, full_flag_scans: 0, count_mismatches: 21, uid_diffs: 21, flag_updates: 3983, deletes: 179, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 144 }
+  poller: Stats { passes: 84, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 203, new_message_fetches: 26, changedsince_fetches: 29, vanished_uids: 248, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 1, flag_updates: 69, deletes: 248, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 2: 1 divergences; server 192 / cache 191 messages; ops {"append": 218, "copy": 83, "expunge": 132, "flag-storm": 63, "flags": 355, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1942004743, 1359876328)); mutation 1.4 s, quiescence 5.0 s; IDLE notices 355, disconnects 0
+  idle task: Stats { passes: 494, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 262, new_message_fetches: 146, changedsince_fetches: 493, vanished_uids: 174, full_flag_scans: 0, count_mismatches: 21, uid_diffs: 21, flag_updates: 4462, deletes: 175, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 138 }
+  poller: Stats { passes: 84, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 221, new_message_fetches: 30, changedsince_fetches: 29, vanished_uids: 225, full_flag_scans: 0, count_mismatches: 2, uid_diffs: 2, flag_updates: 108, deletes: 225, mailboxes_removed: 0, skipped_missing: 0, status_skips: 228, noop_changes: 0 }
+  DIVERGENCE INBOX: uid 3058 missing locally
+seed 3: 0 divergences; server 138 / cache 138 messages; ops {"append": 228, "copy": 68, "expunge": 167, "flag-storm": 65, "flags": 331, "move": 141, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1359876328, 2141052066)); mutation 1.3 s, quiescence 0.0 s; IDLE notices 383, disconnects 0
+  idle task: Stats { passes: 534, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 255, new_message_fetches: 151, changedsince_fetches: 533, vanished_uids: 232, full_flag_scans: 0, count_mismatches: 31, uid_diffs: 31, flag_updates: 2720, deletes: 233, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 150 }
+  poller: Stats { passes: 72, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 217, new_message_fetches: 25, changedsince_fetches: 24, vanished_uids: 239, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 1, flag_updates: 77, deletes: 239, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 4: 0 divergences; server 137 / cache 137 messages; ops {"append": 212, "copy": 68, "expunge": 147, "flag-storm": 68, "flags": 339, "move": 166, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((2141052066, 4026884305)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 378, disconnects 0
+  idle task: Stats { passes: 524, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 256, new_message_fetches: 150, changedsince_fetches: 523, vanished_uids: 212, full_flag_scans: 0, count_mismatches: 30, uid_diffs: 30, flag_updates: 3879, deletes: 212, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 145 }
+  poller: Stats { passes: 84, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 214, new_message_fetches: 28, changedsince_fetches: 29, vanished_uids: 256, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 49, deletes: 256, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 5: 0 divergences; server 123 / cache 123 messages; ops {"append": 203, "copy": 85, "expunge": 155, "flag-storm": 66, "flags": 338, "move": 153, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((4026884305, 3571879169)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 387, disconnects 0
+  idle task: Stats { passes: 546, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 262, new_message_fetches: 151, changedsince_fetches: 545, vanished_uids: 235, full_flag_scans: 0, count_mismatches: 23, uid_diffs: 22, flag_updates: 3739, deletes: 237, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 158 }
+  poller: Stats { passes: 84, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 233, new_message_fetches: 29, changedsince_fetches: 29, vanished_uids: 226, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 80, deletes: 226, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 6: 0 divergences; server 170 / cache 170 messages; ops {"append": 205, "copy": 79, "expunge": 151, "flag-storm": 73, "flags": 342, "move": 150, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((3571879169, 3888009186)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 347, disconnects 0
+  idle task: Stats { passes: 489, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 246, new_message_fetches: 143, changedsince_fetches: 488, vanished_uids: 200, full_flag_scans: 0, count_mismatches: 32, uid_diffs: 29, flag_updates: 4676, deletes: 200, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 141 }
+  poller: Stats { passes: 84, fast_path: 12, resets: 1, initial_batches: 6, headers_fetched: 249, new_message_fetches: 32, changedsince_fetches: 29, vanished_uids: 235, full_flag_scans: 0, count_mismatches: 3, uid_diffs: 3, flag_updates: 130, deletes: 236, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 7: 0 divergences; server 115 / cache 115 messages; ops {"append": 224, "copy": 73, "expunge": 168, "flag-storm": 62, "flags": 337, "move": 136, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((3888009186, 2629156860)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 376, disconnects 0
+  idle task: Stats { passes: 525, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 264, new_message_fetches: 151, changedsince_fetches: 524, vanished_uids: 229, full_flag_scans: 0, count_mismatches: 28, uid_diffs: 28, flag_updates: 3440, deletes: 230, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 148 }
+  poller: Stats { passes: 84, fast_path: 13, resets: 1, initial_batches: 5, headers_fetched: 210, new_message_fetches: 29, changedsince_fetches: 29, vanished_uids: 234, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 74, deletes: 234, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 8: 1 divergences; server 153 / cache 152 messages; ops {"append": 213, "copy": 74, "expunge": 140, "flag-storm": 62, "flags": 389, "move": 122, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((2629156860, 1648108956)); mutation 1.4 s, quiescence 5.0 s; IDLE notices 384, disconnects 0
+  idle task: Stats { passes: 527, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 232, new_message_fetches: 120, changedsince_fetches: 526, vanished_uids: 176, full_flag_scans: 0, count_mismatches: 21, uid_diffs: 21, flag_updates: 3600, deletes: 179, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 142 }
+  poller: Stats { passes: 84, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 247, new_message_fetches: 30, changedsince_fetches: 29, vanished_uids: 212, full_flag_scans: 0, count_mismatches: 1, uid_diffs: 1, flag_updates: 116, deletes: 212, mailboxes_removed: 0, skipped_missing: 0, status_skips: 228, noop_changes: 0 }
+  DIVERGENCE INBOX: uid 4585 missing locally
+seed 9: 0 divergences; server 132 / cache 132 messages; ops {"append": 208, "copy": 76, "expunge": 157, "flag-storm": 63, "flags": 342, "move": 154, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1648108956, 4260545962)); mutation 1.4 s, quiescence 0.2 s; IDLE notices 380, disconnects 0
+  idle task: Stats { passes: 544, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 236, new_message_fetches: 127, changedsince_fetches: 543, vanished_uids: 210, full_flag_scans: 0, count_mismatches: 22, uid_diffs: 21, flag_updates: 3513, deletes: 210, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 163 }
+  poller: Stats { passes: 83, fast_path: 13, resets: 0, initial_batches: 6, headers_fetched: 224, new_message_fetches: 27, changedsince_fetches: 28, vanished_uids: 230, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 96, deletes: 230, mailboxes_removed: 1, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+seed 10: 0 divergences; server 144 / cache 144 messages; ops {"append": 208, "copy": 67, "expunge": 148, "flag-storm": 60, "flags": 368, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((4260545962, 1467304314)); mutation 1.5 s, quiescence 0.1 s; IDLE notices 389, disconnects 0
+  idle task: Stats { passes: 533, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 263, new_message_fetches: 158, changedsince_fetches: 532, vanished_uids: 226, full_flag_scans: 0, count_mismatches: 28, uid_diffs: 28, flag_updates: 3070, deletes: 226, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 143 }
+  poller: Stats { passes: 84, fast_path: 13, resets: 1, initial_batches: 6, headers_fetched: 183, new_message_fetches: 29, changedsince_fetches: 29, vanished_uids: 223, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 71, deletes: 223, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+Error: 2 seed(s) diverged
+# exit 1
+
+$ target/s1/release/s1 random dovecot --seeds 1-2 --ops 1000 --sabotage ignore-vanished
+# 2026-10-04T15:01:41+02:00
+s1 random on dovecot (release build)
+seed 1: 0 divergences; server 169 / cache 169 messages; ops {"append": 211, "copy": 87, "expunge": 153, "flag-storm": 60, "flags": 365, "move": 124, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118758, 1791118759)); mutation 3.5 s, quiescence 0.2 s; IDLE notices 8, disconnects 0
+  idle task: Stats { passes: 12, fast_path: 2, resets: 0, initial_batches: 1, headers_fetched: 165, new_message_fetches: 8, changedsince_fetches: 10, vanished_uids: 52, full_flag_scans: 0, count_mismatches: 9, uid_diffs: 9, flag_updates: 555, deletes: 51, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 3 }
+  poller: Stats { passes: 85, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 348, new_message_fetches: 76, changedsince_fetches: 77, vanished_uids: 286, full_flag_scans: 0, count_mismatches: 66, uid_diffs: 66, flag_updates: 914, deletes: 286, mailboxes_removed: 0, skipped_missing: 0, status_skips: 27, noop_changes: 0 }
+seed 2: 0 divergences; server 204 / cache 204 messages; ops {"append": 218, "copy": 83, "expunge": 132, "flag-storm": 63, "flags": 355, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118759, 1791118760)); mutation 3.4 s, quiescence 0.2 s; IDLE notices 9, disconnects 0
+  idle task: Stats { passes: 11, fast_path: 1, resets: 0, initial_batches: 1, headers_fetched: 161, new_message_fetches: 7, changedsince_fetches: 9, vanished_uids: 63, full_flag_scans: 0, count_mismatches: 9, uid_diffs: 9, flag_updates: 313, deletes: 63, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 1 }
+  poller: Stats { passes: 86, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 384, new_message_fetches: 75, changedsince_fetches: 78, vanished_uids: 276, full_flag_scans: 0, count_mismatches: 68, uid_diffs: 68, flag_updates: 1440, deletes: 272, mailboxes_removed: 0, skipped_missing: 0, status_skips: 26, noop_changes: 0 }
+# exit 0
+
+$ target/s1/release/s1 random dovecot --seeds 1-2 --ops 1000 --sabotage ignore-vanished-no-count-check
+# 2026-10-04T15:01:49+02:00
+s1 random on dovecot (release build)
+seed 1: 327 divergences; server 169 / cache 496 messages; ops {"append": 211, "copy": 87, "expunge": 153, "flag-storm": 60, "flags": 365, "move": 124, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118760, 1791118761)); mutation 3.3 s, quiescence 0.3 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 8, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 147, new_message_fetches: 6, changedsince_fetches: 6, vanished_uids: 47, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 467, deletes: 0, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 86, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 370, new_message_fetches: 73, changedsince_fetches: 77, vanished_uids: 296, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 1348, deletes: 0, mailboxes_removed: 0, skipped_missing: 0, status_skips: 26, noop_changes: 0 }
+  DIVERGENCE Arkiv: uid 1477 only local
+  DIVERGENCE Arkiv: uid 1478 only local
+  DIVERGENCE Arkiv: uid 1479 only local
+  DIVERGENCE Arkiv: uid 1480 only local
+  DIVERGENCE Arkiv: uid 1481 only local
+  DIVERGENCE Arkiv: uid 1482 only local
+  DIVERGENCE Arkiv: uid 1483 only local
+  DIVERGENCE Arkiv: uid 1484 only local
+  DIVERGENCE Arkiv: uid 1485 only local
+  DIVERGENCE Arkiv: uid 1486 only local
+seed 2: 339 divergences; server 204 / cache 543 messages; ops {"append": 218, "copy": 83, "expunge": 132, "flag-storm": 63, "flags": 355, "move": 149, "uidvalidity-reset": 1}; UIDVALIDITY reset Some((1791118761, 1791118762)); mutation 3.5 s, quiescence 0.1 s; IDLE notices 7, disconnects 0
+  idle task: Stats { passes: 8, fast_path: 0, resets: 0, initial_batches: 1, headers_fetched: 159, new_message_fetches: 6, changedsince_fetches: 6, vanished_uids: 55, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 398, deletes: 0, mailboxes_removed: 0, skipped_missing: 0, status_skips: 0, noop_changes: 0 }
+  poller: Stats { passes: 86, fast_path: 8, resets: 1, initial_batches: 6, headers_fetched: 392, new_message_fetches: 77, changedsince_fetches: 78, vanished_uids: 287, full_flag_scans: 0, count_mismatches: 0, uid_diffs: 0, flag_updates: 1256, deletes: 0, mailboxes_removed: 0, skipped_missing: 0, status_skips: 26, noop_changes: 0 }
+  DIVERGENCE Arkiv: uid 1545 only local
+  DIVERGENCE Arkiv: uid 1548 only local
+  DIVERGENCE Arkiv: uid 1550 only local
+  DIVERGENCE Arkiv: uid 1551 only local
+  DIVERGENCE Arkiv: uid 1552 only local
+  DIVERGENCE Arkiv: uid 1553 only local
+  DIVERGENCE Arkiv: uid 1554 only local
+  DIVERGENCE Arkiv: uid 1555 only local
+  DIVERGENCE Arkiv: uid 1557 only local
+  DIVERGENCE Arkiv: uid 1558 only local
+Error: 2 seed(s) diverged
+# exit 1
+
+$ target/s1/release/s1 faults dovecot
+# 2026-10-04T15:01:57+02:00
+s1 faults on dovecot (release build)
+mid-FETCH (first sync): PASS
+  first attempt failed with a connection error: true (Some("i/o: peer closed connection without sending TLS close_notify: https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof"))
+  messages committed before the cut: 500
+  headers fetched by the retry: 700 (resumed, not refetched)
+  divergences after retry: 0
+mid-FETCH (incremental): PASS
+  cut mid-FETCH: true; store untouched by the partial response: true
+  divergences after retry: 0
+mid-IDLE: PASS
+  connections cut while idling: 1
+  disconnects seen by the IDLE task: 1
+  INBOX converged after the cut in: Some(65.807568ms)
+mid-APPEND, literal half sent (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-APPEND, stored but reply lost (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: false; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-MOVE, done but reply lost (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; after the cut INBOX 0, Arkiv 1
+  replay result: Ok(true)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+mid-APPEND, literal half sent (retry: UIDNEXT window): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-APPEND, stored but reply lost (retry: UIDNEXT window): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: false; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-MOVE, done but reply lost (retry: UIDNEXT window): PASS
+  first attempt cut: true; after the cut INBOX 0, Arkiv 1
+  replay result: Ok(true)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+control: mid-APPEND, literal half sent (blind retry): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+control: mid-APPEND, stored but reply lost (blind retry; expect a duplicate): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 2; in the cache: 2; divergences: 0
+control: mid-MOVE, done but reply lost (blind replay; duplicates without MOVE): PASS
+  first attempt cut: true; after the cut INBOX 0, Arkiv 1
+  replay result: Ok(true)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+# exit 0
+
+$ target/s1/release/s1 faults dovecot-rev1
+# 2026-10-04T15:02:08+02:00
+s1 faults on dovecot-rev1 (release build)
+mid-FETCH (first sync): PASS
+  first attempt failed with a connection error: true (Some("i/o: peer closed connection without sending TLS close_notify: https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof"))
+  messages committed before the cut: 500
+  headers fetched by the retry: 700 (resumed, not refetched)
+  divergences after retry: 0
+mid-FETCH (incremental): PASS
+  cut mid-FETCH: true; store untouched by the partial response: true
+  divergences after retry: 0
+mid-APPEND, literal half sent (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-APPEND, stored but reply lost (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: false; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-MOVE, done but reply lost (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; after the cut INBOX 1, Arkiv 1
+  replay result: Ok(true)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+mid-APPEND, literal half sent (retry: UIDNEXT window): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-APPEND, stored but reply lost (retry: UIDNEXT window): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: false; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-MOVE, done but reply lost (retry: UIDNEXT window): PASS
+  first attempt cut: true; after the cut INBOX 1, Arkiv 1
+  replay result: Ok(true)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+control: mid-APPEND, literal half sent (blind retry): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+control: mid-APPEND, stored but reply lost (blind retry; expect a duplicate): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 2; in the cache: 2; divergences: 0
+control: mid-MOVE, done but reply lost (blind replay; duplicates without MOVE): PASS
+  first attempt cut: true; after the cut INBOX 1, Arkiv 1
+  replay result: Ok(true)
+  copies: INBOX 0, Arkiv 2; cache 2; divergences 0
+# exit 0
+
+$ target/s1/release/s1 faults stalwart
+# 2026-10-04T15:02:17+02:00
+s1 faults on stalwart (release build)
+mid-FETCH (first sync): PASS
+  first attempt failed with a connection error: true (Some("i/o: peer closed connection without sending TLS close_notify: https://docs.rs/rustls/latest/rustls/manual/_03_howto/index.html#unexpected-eof"))
+  messages committed before the cut: 500
+  headers fetched by the retry: 700 (resumed, not refetched)
+  divergences after retry: 0
+mid-FETCH (incremental): PASS
+  cut mid-FETCH: true; store untouched by the partial response: true
+  divergences after retry: 0
+mid-IDLE: PASS
+  connections cut while idling: 1
+  disconnects seen by the IDLE task: 1
+  INBOX converged after the cut in: Some(44.783834ms)
+mid-APPEND, literal half sent (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: false
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-APPEND, stored but reply lost (retry: SEARCH HEADER Message-ID): FAIL
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: true; new UID known: false
+  copies on the server: 2; in the cache: 2; divergences: 0
+mid-MOVE, done but reply lost (retry: SEARCH HEADER Message-ID): PASS
+  first attempt cut: true; after the cut INBOX 0, Arkiv 1
+  replay result: Ok(false)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+mid-APPEND, literal half sent (retry: UIDNEXT window): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-APPEND, stored but reply lost (retry: UIDNEXT window): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: false; new UID known: true
+  copies on the server: 1; in the cache: 1; divergences: 0
+mid-MOVE, done but reply lost (retry: UIDNEXT window): PASS
+  first attempt cut: true; after the cut INBOX 0, Arkiv 1
+  replay result: Ok(true)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+control: mid-APPEND, literal half sent (blind retry): PASS
+  first attempt cut: true; copies on the server after the cut: 0
+  retry sent an APPEND: true; new UID known: false
+  copies on the server: 1; in the cache: 1; divergences: 0
+control: mid-APPEND, stored but reply lost (blind retry; expect a duplicate): PASS
+  first attempt cut: true; copies on the server after the cut: 1
+  retry sent an APPEND: true; new UID known: false
+  copies on the server: 2; in the cache: 2; divergences: 0
+control: mid-MOVE, done but reply lost (blind replay; duplicates without MOVE): PASS
+  first attempt cut: true; after the cut INBOX 0, Arkiv 1
+  replay result: Ok(false)
+  copies: INBOX 0, Arkiv 1; cache 1; divergences 0
+Error: 1 fault scenario(s) failed
+# exit 1
+# done 2026-10-04T15:02:21+02:00

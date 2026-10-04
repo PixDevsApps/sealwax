@@ -7,3 +7,25 @@ license.workspace = true
 publish = false
 
 [dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+async-imap = { version = "=0.12.0", default-features = false, features = ["runtime-tokio"] }
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+futures-util = "0.3.34"
+io-imap = "=0.7.1"
+rusqlite = "0.40.2"
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12", "logging"] }
+rustls-pki-types = { version = "1.15", features = ["std"] }
+rustls-platform-verifier = "0.7.1"
+tempfile.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "rt-multi-thread", "macros"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12", "logging"] }
+
+[[bin]]
+name = "s1"
+path = "src/bin/s1.rs"
+
+[[bin]]
+name = "s1-ioimap"
+path = "src/bin/s1-ioimap.rs"

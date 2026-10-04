@@ -11,7 +11,7 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 | Unit | Pure logic: threading, query parser, autoconfig XML, reply/forward building, format=flowed, mailto, palette and CSS | `domain/` (`cargo test`), insta snapshots, proptest | Yes |
 | Store | Migrations, writer/reader split, overlays, crash consistency (`kill -9` during writes) | `infrastructure/` with `tempfile` | Yes |
 | Protocol (scripted) | IMAP, SMTP and POP3 against scripted mock servers: capabilities, auth, fallbacks, faults | `engine/` tests | Yes |
-| Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; randomized two-client and fault-injection suites | `tools/testbed/` + `engine/` integration tests | Yes, once the testbed is authorized |
+| Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; randomized two-client and fault-injection suites | `tools/testbed/` + `spikes/s1-imap/tests/testbed.rs` (`engine/` from M3) | Not yet: `tools/testbed/up.sh && tools/testbed/seed.sh`, then `CARGO_TARGET_DIR=target/s1 cargo test -p email-spike-s1 --release -- --ignored --test-threads=1` |
 | UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; self-test scripts that drive `ActionId`s (from M1) | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes |
 | Security | Hostile-HTML suite against a local HTTP canary; secret grep over config, database and logs; outgoing-mail checks (no Bcc, no hostname) | `app/` and `engine/` tests | Yes |
 | Live | Real Wayland session (NVIDIA rendering, notifications, activation, fcitx5) and real test accounts | Manual or agent with authorization | No |
@@ -53,6 +53,23 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### S1 IMAP library and sync model (ML-009) and the testbed (ML-005) — 2026-10-04
+
+Release build, localhost testbed (Dovecot 2.4.5 full, Dovecot IMAP4rev1-only, Stalwart 0.16.24), Ryzen 9 5900X; final run 14:54–15:03 on a freshly recreated and reseeded testbed. Evidence: `spikes/s1-imap/evidence/2026-10-04.log` (produced by `evidence/run.sh`); report [spikes/S1-imap.md](spikes/S1-imap.md).
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| Library comparison | written; async-imap recommended with a mandatory raw layer | Done |
+| 10k-header first sync ≤ 20 s | 0.31 s Dovecot, 0.45–0.46 s Stalwart, 0.33–0.34 s IMAP4rev1-only; 1.77–1.94 s at 50 ms simulated RTT (7.1–7.5 MB on the wire) | Pass |
+| No-change re-sync ≤ 200 ms (CONDSTORE) | p50 7.2 ms Dovecot, 0.5 ms Stalwart (20 runs, max 17.2 ms); 53–59 ms at 50 ms RTT | Pass |
+| No-change re-sync ≤ 2 s (UID diff) | p50 29.9 ms, max 37.9 ms; 659 ms at 50 ms RTT | Pass |
+| IDLE new mail ≤ 3 s | p50 493 ms Dovecot (the server's own ~0.49 s delay), 1.0 ms Stalwart (20 samples) | Pass |
+| Randomized two-client test | 0 divergences in 30 of 30 runs (10 seeds × 3 servers, 1,000 ops and one UIDVALIDITY reset each); two deliberately broken builds gave 327 and 339 divergences | Pass with the INBOX STATUS backstop (without it Stalwart diverged in 2 of 10) |
+| Connection cut mid-FETCH / IDLE / APPEND (and a lost MOVE reply) | nothing lost or duplicated with UIDNEXT-window recovery | Pass with that recovery; the Message-ID search duplicated on Stalwart |
+| Schema checked against real servers | testbed: both Dovecots and Stalwart | Partly — real providers pending test accounts |
+
+`cargo test -p email-spike-s1`: 27 unit tests pass; the 8 testbed tests (`--ignored`) passed when run; fmt and clippy clean (re-run by the lead). The testbed was left down; the agent removed only the anonymous volumes its own early probe containers created.
 
 ### S2 WebKit reader (ML-010) — 2026-10-04
 
