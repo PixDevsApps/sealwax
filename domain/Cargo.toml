@@ -7,3 +7,5 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+html2text.workspace = true
+mail-parser.workspace = true

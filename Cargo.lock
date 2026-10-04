@@ -2939,6 +2939,10 @@ dependencies = [
 [[package]]
 name = "sealwax-domain"
 version = "0.0.1"
+dependencies = [
+ "html2text",
+ "mail-parser",
+]
 
 [[package]]
 name = "sealwax-engine"
