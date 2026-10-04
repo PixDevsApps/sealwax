@@ -1017,6 +1017,16 @@ fn crash_child() {
             .remove(stored[12..15].to_vec())
             .recv_blocking()
             .unwrap();
+        let body = "Teksten er lang nok til at indeksen får noe å gjøre. ".repeat(40);
+        let bulk: Vec<NewMessage> = (0..300)
+            .map(|k| {
+                let mut m = message(inbox, &format!("bulk-{n}-{k}"), 1_000 + k);
+                m.search_text = body.clone();
+                m.snippet = "Kort tekst".into();
+                m
+            })
+            .collect();
+        store.ingest(bulk).recv_blocking().unwrap();
     }
 }
 
@@ -1138,8 +1148,11 @@ fn kill_during_ingest_leaves_a_consistent_store() {
             survived,
             "round {round}: message {last} was reported committed"
         );
+        let rows: i64 = conn
+            .query_row("SELECT count(*) FROM messages", [], |row| row.get(0))
+            .unwrap();
         let keys: Vec<Vec<u8>> = conn
-            .prepare("SELECT blob_key FROM messages")
+            .prepare("SELECT blob_key FROM messages WHERE blob_key IS NOT NULL")
             .unwrap()
             .query_map([], |row| row.get(0))
             .unwrap()
@@ -1178,14 +1191,14 @@ fn kill_during_ingest_leaves_a_consistent_store() {
             .iter()
             .map(|folder| folder.total)
             .sum();
-        assert_eq!(total as usize, keys.len());
+        assert_eq!(i64::from(total), rows);
         store.ingest(Vec::new()).recv_blocking().unwrap();
         let conn = Connection::open(&path).unwrap();
         assert_eq!(unindexed(&conn), 0, "round {round}");
         let with_word: i64 = conn
             .query_row(
-                "SELECT count(*) FROM messages \
-                 WHERE CAST(substr(message_id, 7) AS INTEGER) % 50 <> 0",
+                "SELECT count(*) FROM messages WHERE message_id LIKE 'crash-%' \
+                 AND CAST(substr(message_id, 7) AS INTEGER) % 50 <> 0",
                 [],
                 |row| row.get(0),
             )
