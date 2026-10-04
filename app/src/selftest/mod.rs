@@ -6,6 +6,7 @@
 
 mod broadway;
 mod mail;
+mod perf;
 mod processes;
 mod sample;
 mod screenshot;
