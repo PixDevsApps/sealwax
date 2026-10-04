@@ -47,9 +47,11 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 ## Components
 
 **Sidebar**
-- Compose button at the top (accent fill, `c`).
+- Compose button at the top (accent fill, accent text colour, full radius, `c`). While a command doesn't exist yet its button stays readable: an insensitive compose or "Add an account" takes the selected chip's tint and text (M1).
 - "All Inboxes", then each account with its role folders (Inbox, Drafts, Sent, Archive, Junk, Trash) and unread counts; other folders under a collapsible "More".
-- Account status as a small dot: synced, syncing, offline, needs sign-in.
+- Account status as a small round dot: accent synced, plain syncing, warning offline, error needs sign-in; account headings are upper-cased, letter-spaced captions.
+- A footer with the accounts' summary and `config.toml`. The main menu sits at the end of the list's bar (the welcome page's while there is no account): in the footer it cut off the summary (M1, a change from the mock).
+- **Rail** (900–1279 px): compose, All Inboxes (an addition to the mock), the shown account's role folders with an accent badge at the top-right of those with unread mail, the other accounts as initial and unread count (a dot only when offline or signed out), `config.toml` at the bottom.
 
 **Message list**
 - Search field and filter chips on top, then sections (Today, Yesterday, This week, This month, Older).
@@ -107,7 +109,7 @@ All colours come from the resolved palette (`omarchy-theme-color --all`), mapped
 | Light or dark | AdwStyleManager FORCE_DARK / FORCE_LIGHT | `mode` |
 | Corners of rows, chips, cards, buttons | `--window-radius` and CSS | `corner_radius` ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)); chips, folder rows, icon buttons and controls take three quarters of it; avatars are round while corners are rounded |
 
-The generated CSS variables and the `sw-` classes are listed in [m1/theme.md](m1/theme.md#css-classes-appsrcstylecss).
+The generated CSS variables and the `sw-` classes are listed in [m1/theme.md](m1/theme.md#css-classes-appsrcstylecss) and, for the shell, [m1/polish.md](m1/polish.md); dots and badges stay round at any radius.
 
 Roles map to palette positions, never hue names: matte-black's `green` is amber and its `blue` is orange. Contrast is checked with `readable_on`, and Stet's `distinct` rotates hues when a theme can't tell its colours apart.
 
@@ -169,7 +171,7 @@ As built in M1 ([ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keymap-a
 
 ## Accessibility
 
-- Every control has an accessible label; icon-only buttons have tooltips with their shortcut.
+- Every control has an accessible label; icon-only buttons have tooltips with their shortcut, taken from the keymap in use, so `keys.toml` changes show.
 - A visible accent focus ring; focus order follows the panes left to right.
 - Text contrast is checked per theme (`readable_on`); state is never shown by colour alone (unread is bold as well as dotted).
 - An Orca smoke test of the list, reader and composer is part of M9.
