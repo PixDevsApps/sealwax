@@ -53,13 +53,15 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-list-selected", 1, 1),
     ("assert-list-position", 1, 1),
     ("assert-list-growth", 1, 1),
-    ("assert-list-top", 0, 0),
+    ("assert-list-top", 1, 1),
+    ("assert-list-focus", 1, 1),
     ("assert-list-placeholders", 1, 1),
     ("assert-list-empty", 1, 1),
     ("assert-list-search", 2, 2),
     ("assert-list-matches-folder", 1, 1),
     ("assert-sidebar-count", 2, 2),
     ("assert-selection-reported", 1, 1),
+    ("assert-action-enabled", 2, 2),
     // Measurements (tests/selftest/perf-list.sealwax-test).
     ("perf-fullscreen", 0, 0),
     ("perf-phase", 1, 1),
@@ -272,7 +274,8 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
         command
             if command.starts_with("assert-list-")
                 || command == "assert-sidebar-count"
-                || command == "assert-selection-reported" =>
+                || command == "assert-selection-reported"
+                || command == "assert-action-enabled" =>
         {
             check(harness, command, args).await
         }
@@ -298,12 +301,14 @@ fn list(harness: &Harness) -> Result<MessageList, String> {
 }
 
 /// Whether the list shows what it should, without anything left to load or grow.
+/// Whether the list shows what it should, without anything left to load; it grows only while
+/// it is on screen.
 fn is_idle(list: &MessageList) -> bool {
     let model = list.model();
+    let shown = list.list_view().is_mapped();
     !model.is_pending()
         && !model.is_searching()
-        && !model.is_growing()
-        && !list.is_growing()
+        && (!shown || (!model.is_growing() && !list.is_growing()))
         && list.bound_rows().iter().all(|row| !row.placeholder)
 }
 
@@ -804,21 +809,32 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
         }
         "assert-list-top" => {
             let value = list.scroller().vadjustment().value();
-            let first = list
-                .bound_rows()
-                .iter()
-                .any(|row| row.position == Some(0) && !row.placeholder);
-            if value != 0.0 || !first {
-                return Err(format!("the list is at {value} px, row 0 bound: {first}"));
-            }
-            let top = list.row_widget(0).ok_or("row 0 isn't bound")?;
-            let bounds = top
-                .compute_bounds(list.scroller())
-                .ok_or("row 0 has no bounds")?;
-            if bounds.y() < 0.0 || bounds.y() > list.scroller().height() as f32 {
-                return Err(format!("row 0 is at {} px, not in view", bounds.y()));
-            }
-            Ok(())
+            let in_view = list.row_widget(0).is_some_and(|top| {
+                top.is_mapped()
+                    && top.compute_bounds(list.scroller()).is_some_and(|bounds| {
+                        bounds.y() >= 0.0
+                            && bounds.y() + bounds.height() <= list.scroller().height() as f32
+                    })
+            });
+            println!("  # the list is at {value} px; row 0 in view: {in_view}");
+            equal(
+                "at the top",
+                value == 0.0 && in_view,
+                super::script::boolean(arg(0))?,
+            )
+        }
+        "assert-list-focus" => {
+            let window = harness.window()?;
+            let focus = GtkWindowExt::focus(window.window()).ok_or("nothing has the focus")?;
+            let within = |widget: &gtk::Widget| &focus == widget || focus.is_ancestor(widget);
+            let actual = if within(list.search_entry().upcast_ref()) {
+                "search"
+            } else if within(list.list_view().upcast_ref()) {
+                "list"
+            } else {
+                "elsewhere"
+            };
+            equal("focus", actual, arg(0))
         }
         "assert-list-placeholders" => equal(
             "placeholder rows",
@@ -860,6 +876,18 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
                 .map(|(_, folder)| folder.count)
                 .ok_or("the sidebar lacks the folder")?;
             equal("sidebar count", count, number(arg(1))? as u32)
+        }
+        "assert-action-enabled" => {
+            let name = arg(0);
+            let window = harness.window()?;
+            let enabled = match name.split_once('.') {
+                Some(("win", action)) => window.window().lookup_action(action),
+                Some(("app", action)) => harness.app.lookup_action(action),
+                _ => return Err(format!("use win.NAME or app.NAME, not {name}")),
+            }
+            .ok_or_else(|| format!("no action {name}"))?
+            .is_enabled();
+            equal(name, enabled, super::script::boolean(arg(1))?)
         }
         "assert-selection-reported" => {
             let reported = REPORTED.with(|reported| reported.borrow().clone());

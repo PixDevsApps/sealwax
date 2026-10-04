@@ -417,9 +417,12 @@ impl MessageModel {
         }
     }
 
-    /// Whether search results are on their way.
+    /// Whether search results are on their way, or a change asked for them again.
     pub fn is_searching(&self) -> bool {
-        matches!(&self.imp().state.borrow().source, Source::Search(search) if search.fetching)
+        matches!(
+            &self.imp().state.borrow().source,
+            Source::Search(search) if search.fetching || search.refresh_queued || search.stale
+        )
     }
 
     /// Whether more search results can be fetched.
@@ -478,7 +481,7 @@ impl MessageModel {
     }
 
     fn item_at(&self, position: u32) -> Option<MessageItem> {
-        let (item, pages, more) = {
+        let (item, pages) = {
             let mut guard = self.imp().state.borrow_mut();
             let state = &mut *guard;
             if position >= state.shown {
@@ -494,41 +497,31 @@ impl MessageModel {
                 }
             };
             let mut pages = Vec::new();
-            let mut more = false;
-            match &state.source {
-                Source::View(view) if view.handle.is_some() => {
-                    let page = position / PAGE;
-                    if !item.is_loaded() {
-                        pages.push(page);
-                    }
-                    let within = position % PAGE;
-                    let neighbour = if within >= PAGE * 7 / 10 {
-                        Some(page + 1)
-                    } else if within < PAGE * 3 / 10 && page > 0 {
-                        Some(page - 1)
-                    } else {
-                        None
-                    };
-                    if let Some(neighbour) = neighbour
-                        && state.page_missing(neighbour)
-                    {
-                        pages.push(neighbour);
-                    }
+            if let Source::View(view) = &state.source
+                && view.handle.is_some()
+            {
+                let page = position / PAGE;
+                if !item.is_loaded() {
+                    pages.push(page);
                 }
-                Source::Search(search) => {
-                    more = !search.exhausted
-                        && !search.fetching
-                        && position + SEARCH_PAGE / 2 >= state.total;
+                let within = position % PAGE;
+                let neighbour = if within >= PAGE * 7 / 10 {
+                    Some(page + 1)
+                } else if within < PAGE * 3 / 10 && page > 0 {
+                    Some(page - 1)
+                } else {
+                    None
+                };
+                if let Some(neighbour) = neighbour
+                    && state.page_missing(neighbour)
+                {
+                    pages.push(neighbour);
                 }
-                _ => {}
             }
-            (item, pages, more)
+            (item, pages)
         };
         for page in pages {
             self.request_page(page);
-        }
-        if more {
-            self.search_more();
         }
         Some(item)
     }
@@ -1266,8 +1259,9 @@ impl MessageModel {
         });
     }
 
-    /// The list nears the end of the results: fetch more.
-    fn search_more(&self) {
+    /// Fetches more search results, when there are more and none are on their way; the list
+    /// asks as its end comes into view.
+    pub fn search_more(&self) {
         let next = {
             let state = self.imp().state.borrow();
             match &state.source {
@@ -1338,8 +1332,10 @@ impl MessageModel {
             search.fetching = false;
             let rows = match result {
                 Ok(found) => found.value,
-                Err(error) => {
-                    tracing::warn!("the search could not be run: {error}");
+                Err(_) => {
+                    // The error could quote the full-text expression, which holds what the user
+                    // typed: it isn't logged.
+                    tracing::warn!("the search could not be run");
                     Vec::new()
                 }
             };

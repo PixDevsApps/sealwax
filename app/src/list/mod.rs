@@ -209,14 +209,16 @@ impl MessageList {
                 row.bind(list_item, &item);
             }
         });
-        factory.connect_unbind(|_, object| {
+        let unbind = |_: &gtk::SignalListItemFactory, object: &glib::Object| {
             if let Some(row) = object
                 .downcast_ref::<gtk::ListItem>()
                 .and_then(|list_item| list_item.child().and_downcast::<MessageRow>())
             {
                 row.unbind();
             }
-        });
+        };
+        factory.connect_unbind(unbind);
+        factory.connect_teardown(unbind);
         let headers = gtk::SignalListItemFactory::new();
         headers.connect_setup(|_, object| {
             if let Some(header) = object.downcast_ref::<gtk::ListHeader>() {
@@ -590,6 +592,12 @@ impl MessageList {
             .set_visible_child_name(if empty { "empty" } else { "list" });
     }
 
+    /// Tells the search listeners again what the list shows (the window resets the list's title
+    /// when it rebuilds its sidebar).
+    pub fn refresh_heading(&self) {
+        self.emit_search();
+    }
+
     fn emit_search(&self) {
         let heading =
             matches!(self.inner.model.content(), Content::Search { .. }).then(|| SearchHeading {
@@ -725,6 +733,7 @@ impl MessageList {
     }
 
     fn scrolled(&self) {
+        self.fetch_more_results();
         if self.inner.speed.borrow().is_some() {
             return;
         }
@@ -764,6 +773,20 @@ impl MessageList {
             glib::ControlFlow::Continue
         });
         self.inner.speed.replace(Some(id));
+    }
+
+    /// Search results come [`SEARCH_PAGE`] at a time; the next ones are fetched once the last
+    /// screenful is in view. GtkListView realizes rows far beyond the view, so the rows it asks
+    /// for can't tell.
+    fn fetch_more_results(&self) {
+        if !matches!(self.inner.model.content(), Content::Search { .. }) {
+            return;
+        }
+        let adjustment = self.inner.scroller.vadjustment();
+        let page = adjustment.page_size();
+        if page > 0.0 && adjustment.value() + 2.0 * page >= adjustment.upper() {
+            self.inner.model.search_more();
+        }
     }
 
     /// Rows show their text again after a fast scroll.

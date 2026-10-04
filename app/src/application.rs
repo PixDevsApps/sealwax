@@ -169,6 +169,7 @@ impl SealwaxApplication {
             mailbox: Mailbox::new(),
             first_rows: Latch::new(),
             list: RefCell::new(None),
+            store_warned: Cell::new(false),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -216,6 +217,7 @@ pub struct AppState {
     /// Opens when the list has the first rows of its first folder, or there is nothing to show.
     first_rows: Rc<Latch>,
     list: RefCell<Option<MessageList>>,
+    store_warned: Cell<bool>,
 }
 
 impl AppState {
@@ -328,6 +330,14 @@ impl AppState {
     fn startup(self: &Rc<Self>, app: &SealwaxApplication) {
         gtk4::Window::set_default_icon_name(ICON_NAME);
         self.start_settings(app);
+        let weak = Rc::downgrade(self);
+        self.mailbox.connect_folders_changed(move || {
+            if let Some(state) = weak.upgrade()
+                && let (Some(window), Some(list)) = (state.window(), state.list())
+            {
+                state.fill_sidebar(&window, &list);
+            }
+        });
         let ready = self.mailbox.wait_ready();
         let first_rows = self.first_rows.wait();
         self.hold_first_window(async move {
@@ -351,6 +361,7 @@ impl AppState {
                     });
                 if ours {
                     state.window.replace(None);
+                    state.list.replace(None);
                 }
             }
         ));
@@ -584,29 +595,28 @@ impl AppState {
         let mailbox = self.mailbox.clone();
         let shown = list.clone();
         window.connect_folder_selected(move |_, key| shown.show(mailbox.scope_for_key(key)));
-        let mailbox = self.mailbox.clone();
-        let sidebar = window.clone();
-        let first_rows = self.first_rows.clone();
-        let warned = Cell::new(false);
-        let fill = move || {
-            if let Some(error) = mailbox.error()
-                && !warned.replace(true)
-            {
-                sidebar.add_toast(adw::Toast::new(&format!(
-                    "The mail store could not be opened: {error}"
-                )));
-            }
-            let model = mailbox.sidebar_model();
-            if model.accounts.is_empty() {
-                first_rows.open();
-            }
-            sidebar.set_sidebar(model);
-        };
         if self.mailbox.is_ready() {
-            fill();
+            self.fill_sidebar(window, &list);
         }
-        self.mailbox.connect_folders_changed(fill);
         self.list.replace(Some(list));
+    }
+
+    /// The store's accounts and folders in the window's sidebar; with no account, the first
+    /// window waits no longer for rows.
+    fn fill_sidebar(&self, window: &Window, list: &MessageList) {
+        if let Some(error) = self.mailbox.error()
+            && !self.store_warned.replace(true)
+        {
+            window.add_toast(adw::Toast::new(&format!(
+                "The mail store could not be opened: {error}"
+            )));
+        }
+        let model = self.mailbox.sidebar_model();
+        if model.accounts.is_empty() {
+            self.first_rows.open();
+        }
+        window.set_sidebar(model);
+        list.refresh_heading();
     }
 
     /// Whether a message is selected, for the commands that act on one.
