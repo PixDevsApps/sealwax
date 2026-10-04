@@ -2961,8 +2961,12 @@ dependencies = [
 name = "sealwax-infrastructure"
 version = "0.0.1"
 dependencies = [
+ "async-channel 2.5.0",
+ "rusqlite",
  "sealwax-domain",
+ "sha2 0.10.9",
  "tempfile",
+ "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
 ]

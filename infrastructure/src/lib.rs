@@ -3,3 +3,7 @@
 
 pub mod logging;
 pub mod xdg;
+
+pub mod blobs;
+pub mod ingest;
+pub mod store;
