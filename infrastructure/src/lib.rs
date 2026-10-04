@@ -2,3 +2,4 @@
 //! No network, no tokio, no GTK.
 
 pub mod logging;
+pub mod xdg;
