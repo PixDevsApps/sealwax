@@ -74,8 +74,10 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Formatting toolbar (bold, italic, underline, strike, lists, link, quote, indent, clear formatting) driven by the editor state.
 - Body, attachments tray (drag and drop), Send (Ctrl+Enter) with "Undo" in the toast that follows.
 
+*Changed after approval, 2026-10-04 (user decision): Sign in with Google is deferred to 1.x. The mock's setup assistant shows Microsoft sign-in for an Outlook.com address, and Gmail's failure state offers only the app-password route.*
+
 **Setup assistant**
-- One column: address → "Looking up your provider…" with the sources it checks → password, or "Sign in with Google / Microsoft" → checking login → done.
+- One column: address → "Looking up your provider…" with the sources it checks → password (an app password for Gmail, with a link to Google's page), or "Sign in with Microsoft" → checking login → done.
 - "Set up manually" expands host, port, security and username fields. Errors say what to do next (for example: "Gmail needs an app password — open the Google account page").
 
 **Feedback**
@@ -171,7 +173,7 @@ Every entry is audited for US and Norwegian layouts (no AltGr; `#`, `/`, `!` and
 
 The interactive DESIGN mock (ML-008), published 2026-10-04 as a private design canvas: [Mail — design mock](https://claude.ai/artifact/TU2jwqgJu1YxTXFLLdpuLS).
 
-- **Artboards:** wide window (interactive: pick a message), medium (rail), narrow (one pane), reader with styled HTML on the paper card, hidden images and the link check, composer, setup assistant (detect, Google sign-in, failure with manual settings), and empty and error states.
+- **Artboards:** wide window (interactive: pick a message), medium (rail), narrow (one pane), reader with styled HTML on the paper card, hidden images and the link check, composer, setup assistant (detect, Microsoft sign-in, Gmail's app-password failure with manual settings; Google sign-in removed 2026-10-04), and empty and error states.
 - **Tweaks on every artboard:** Theme (Matte Black, Tokyo Night, Catppuccin Latte — palettes resolved with `omarchy-theme-color --all`) and Corners (Square, Rounded).
 - **Stand-ins:** JetBrains Mono for the Omarchy font; Arimo (metric-compatible with Liberation Sans) for message text. All names, addresses and content are fictional.
 

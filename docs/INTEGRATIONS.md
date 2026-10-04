@@ -89,7 +89,7 @@ Settings and policies checked on the providers' help pages on 2026-10-04 (S4). A
 
 | Provider | Settings | Sign-in | Notes |
 | --- | --- | --- | --- |
-| Gmail / Google Workspace | imap.gmail.com:993; smtp.gmail.com:465 (587 STARTTLS); user = address | OAuth (XOAUTH2/OAUTHBEARER offered), or an app password with 2-Step Verification | Workspace found by MX (`aspmx.l.google.com`, `smtp.google.com`); admins can turn IMAP off; consumer IMAP always on since 2025-01. Labels appear as folders; Archive = remove from INBOX; Delete = move to Trash; the server saves sent mail |
+| Gmail / Google Workspace | imap.gmail.com:993; smtp.gmail.com:465 (587 STARTTLS); user = address | App password with 2-Step Verification (Sign in with Google deferred to 1.x; the server also offers XOAUTH2/OAUTHBEARER) | Workspace found by MX (`aspmx.l.google.com`, `smtp.google.com`); admins can turn IMAP off; consumer IMAP always on since 2025-01. Labels appear as folders; Archive = remove from INBOX; Delete = move to Trash; the server saves sent mail |
 | Outlook.com | outlook.office365.com:993; smtp-mail.outlook.com:587 STARTTLS (no 465); user = address | OAuth only (basic auth ended 2024-09-16; IMAP offers only XOAUTH2, LOGINDISABLED) | "Let devices and apps use IMAP" toggle; MX `*.olc.protection.outlook.com`; the server saves sent mail |
 | Microsoft 365 | outlook.office365.com:993; smtp.office365.com:587 STARTTLS (465 unsupported) | OAuth (IMAP/POP basic auth off since 2022-10) | MX `*.mail.protection.outlook.com` or `*.mx.microsoft`; the ISPDB route wrongly gives the consumer SMTP host |
 | iCloud | imap.mail.me.com:993 (user = local part, full address as fallback); smtp.mail.me.com:587 STARTTLS (user = address) | App-specific password (two-factor login required) | — |

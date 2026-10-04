@@ -4,11 +4,13 @@ Synced: 2026-10-04
 
 "Sign in with Google" and "Sign in with Microsoft" need an OAuth client registered by the app's publisher ([ADR-008](DECISIONS.md#adr-008--oauth2-and-secrets-2026-10-04)). Only you can create these registrations: they belong to your Google and Microsoft accounts. This page walks through both; it takes about 20 minutes. Spike S5 (ML-013) is blocked until the client IDs exist.
 
+**2026-10-04: Sign in with Google is deferred to 1.x** (user decision, [ADR-008 amendment](DECISIONS.md#adr-008-amendment--sign-in-with-google-deferred-to-1x-2026-10-04)). Only the Microsoft registration is needed now; the Google section is kept for later.
+
 The app is named **Sealwax** ([ADR-010](DECISIONS.md#adr-010-accepted--sealwax-2026-10-04)); name the development registrations "Sealwax (dev)". Use a dedicated test account for the first sign-ins.
 
 Facts below were checked against Google's and Microsoft's documentation on 2026-10-04; provider consoles change, so S5 records anything that differs.
 
-## Google (Gmail and Google Workspace)
+## Google (Gmail and Google Workspace) — deferred to 1.x, skip for now
 
 1. Open the [Google Cloud console](https://console.cloud.google.com/) and create a project, for example "sealwax-dev".
 2. Open **Google Auth Platform** (APIs & Services → OAuth consent screen in older layouts):

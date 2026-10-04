@@ -17,7 +17,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; blob store in M1 |
 | 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
-| 008 | OAuth2 and secrets | OAuth for Google and Microsoft accepted (user decision); mechanism proposed; S5 is go/no-go |
+| 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism proposed; S5 is go/no-go |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision) |
@@ -204,6 +204,18 @@ Interop in Gmail web, Outlook web and Thunderbird is still pending test accounts
 
 **Consequence:** if Microsoft can't be registered, Outlook.com and Microsoft 365 move to 1.x. Google requires app verification before a public release; until then the app works for the owner and up to 100 test users. gnome-keyring's passwordless Default keyring on this machine stores secrets in plaintext under full-disk encryption ([SECURITY.md](SECURITY.md#known-limitations)).
 
+### ADR-008 amendment — Sign in with Google deferred to 1.x (2026-10-04)
+
+**Status:** Accepted — user decision, 2026-10-04: drop the Gmail integration for now, because the OAuth work is too much and most Gmail users read their mail in Google's web app.
+
+**Decision:** "Sign in with Google" leaves 1.0 for 1.x. Microsoft sign-in stays in 1.0: Outlook.com and Microsoft 365 accept only OAuth for IMAP, so without it those accounts can't be added.
+
+**What remains for Gmail without extra work:** a Gmail or Google Workspace account can still be added as a plain IMAP account with an app password (2-Step Verification on), through the generic path and the existing preset; the setup assistant's app-password message links to Google's page. There is no Gmail-specific work in 1.0 and no Gmail test account in the test matrix.
+
+**Reason:** Google classes the `https://mail.google.com/` scope as restricted: a public release needs app verification with a security assessment, and in testing status refresh tokens expire after 7 days. Microsoft's registration has neither.
+
+**Consequence:** S5 (ML-013) and ML-032 cover Microsoft only, and the user registers only the Microsoft Entra client. The Google section of OAUTH-SETUP.md is kept for 1.x; S5's code keeps its Google flow as history.
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
@@ -317,6 +329,10 @@ The layers and the sizing change as follows (SECURITY.md carries the security ru
 **Reason:** the user asked for the core functions, the common protocols and automatic setup first. The review on 2026-10-04 moved COMPRESS, pinned certificates, schedule send, snooze, folder management, server search, rules, List-Unsubscribe and Gmail labels to 1.x.
 
 **Consequence:** moving an item into 1.0 needs a user decision, recorded as a dated PLAN.md entry and an amendment here.
+
+### ADR-013 amendment — Sign in with Google to 1.x (2026-10-04)
+
+**Status:** Accepted — user decision, 2026-10-04 ([ADR-008 amendment](#adr-008-amendment--sign-in-with-google-deferred-to-1x-2026-10-04)). "Sign in with Google" moves from 1.0 to the 1.x list; Microsoft sign-in stays in 1.0.
 
 ### ADR-013 amendment — notifications and background mode (2026-10-04)
 

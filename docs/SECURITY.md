@@ -88,4 +88,4 @@ Third-party protocol crates are capped at `warn` whatever `RUST_LOG` says: S1 fo
 - **Plaintext keyring on this machine:** gnome-keyring's "Default keyring" is passwordless, so its file is stored unencrypted and protected only by full-disk encryption. Sealwax can't fix this; USER_GUIDE will explain how to set a keyring password.
 - **Self-signed servers** (Proton Bridge, some self-hosted servers) can't be added until pinned exceptions arrive in 1.x.
 - **Encrypted and signed mail** (PGP, S/MIME) is displayed gracefully but not decrypted or verified in 1.0.
-- **Google verification:** until the OAuth app is verified, Google shows an "unverified app" screen and limits use to test users ([OAUTH-SETUP.md](OAUTH-SETUP.md)).
+- **Google verification** (only once Sign in with Google returns in 1.x): until the OAuth app is verified, Google shows an "unverified app" screen and limits use to test users ([OAUTH-SETUP.md](OAUTH-SETUP.md)).
