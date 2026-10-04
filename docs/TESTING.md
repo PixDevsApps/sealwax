@@ -12,7 +12,7 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 | Store | Migrations, writer/reader split, overlays, crash consistency (a SIGKILLed child mid-ingest), change events kept exact against a model | `infrastructure/` (scratch stores under `target/scratch`) | Yes |
 | Protocol (scripted) | IMAP, SMTP and POP3 against scripted mock servers: capabilities, auth, fallbacks, faults | `engine/` tests | Yes |
 | Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; randomized two-client and fault-injection suites | `tools/testbed/` + `spikes/s1-imap/tests/testbed.rs` (`engine/` from M3) | Not yet: `tools/testbed/up.sh && tools/testbed/seed.sh`, then `CARGO_TARGET_DIR=target/s1 cargo test -p email-spike-s1 --release -- --ignored --test-threads=1` |
-| UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, and take screenshots; `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*`) |
+| UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, take screenshots, and load fixture stores (`store-dir`, `fixtures`); `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*` and `perf-*`) |
 | Security | Hostile-HTML suite against a local HTTP canary; secret grep over config, database and logs; outgoing-mail checks (no Bcc, no hostname) | `app/` and `engine/` tests | Yes |
 | Live | Real Wayland session (NVIDIA rendering, notifications, activation, fcitx5) and real test accounts | Manual or agent with authorization | No |
 
@@ -56,6 +56,17 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### M1 message list (ML-026) — 2026-10-04
+
+Debug builds for tests and self-tests, release builds for the dry runs; headless on Broadway; fictional data only. Report: [m1/list.md](m1/list.md).
+
+| Part | Evidence | Verdict |
+| --- | --- | --- |
+| Store in the app, list, keys | 18 unit tests; self-tests list-sections 57/57, list-chips 71/71, list-search 55/55, list-select 56/56, list-insert 42/42, list-first-frame 21/21, list-churn 32/32 (change events checked against the store's own view) | Pass headless; real key presses not verified |
+| 100k list (`perf-list`, headless dry run) | work per frame p99 0.23 ms at 1,500 px/s, 4.21 ms at 12,000 px/s, 4.90 ms in a 5,000 rows/s sweep; jump to end p50 89.6 ms, to start 105.2 ms; folder open p50 63.8 ms; insert → row on screen p50 8.2 ms | **Not judged**: Broadway; the live run is pending |
+| Startup (headless dry run) | 10k store: first-frame p50 137.0 ms (11 runs); empty store 91.9 ms | **Not judged** |
+| After the merge (lead) | `tools/ci.sh --ui`: 447 passed, 0 failed, 11 ignored; all 12 self-test scripts pass | Pass |
 
 ### M1 store, blob store and fixtures (ML-023, ML-024, ML-025) — 2026-10-04
 

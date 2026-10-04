@@ -64,6 +64,15 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   - GTK's CSS `line-height` multiplies the font's own line height, so the mock's 1.45 is about 1.1 in GTK;
   - when new mail arrives while the first row is visible, keep the list pinned to the top; otherwise GTK keeps the old row anchored and the new mail lands above the viewport;
   - keep GTK's default Vulkan renderer (GL costs about 95 MiB more on this NVIDIA machine).
+- As built in M1 ([report](m1/list.md)):
+  - **The row** is S3's: unread dot · avatar · sender (bold when unread) · thread count · time / subject / two-line snippet / star and attachment.
+    - The time shows "10:32" for today and yesterday, the weekday this week, "4 Oct" this year, and "04.10.2025" before that.
+    - Each row's accessible label says its state in words.
+  - **Sections** start at local midnight; "This week" starts on Monday. The list regroups at midnight and checks the day at least every 10 minutes (after a suspend).
+  - **Rows not loaded yet** show the row's shape without text, as does every row while the list moves faster than about 30,000 px/s.
+  - **After a folder, chip or search change** the list starts at the top, with 40 rows in the first frame and 40 more each frame. A reload of the same view keeps the place, the selection and the focus.
+  - **Search** replaces the list's title with "Search" and a count ("12 results", "50+ results", "No results"). The chips filter the results, and Escape ends the search. In a folder it searches that folder; in All Inboxes it searches every folder.
+  - **Keys:** `j`/`k` and Down/Up move the selection, Enter/`o` open it, and `/` or Ctrl+F go to the search field.
 
 **Reader**
 - Toolbar: archive, delete, junk, move, mark unread, star, more; position "n of N" with previous and next.

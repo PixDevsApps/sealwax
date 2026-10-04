@@ -106,6 +106,20 @@ Built as the S6 amendment says ([report](m1/shell.md)): an `adw::Application` su
 - **Writer order:** interactive requests are served before pending full-text work and bulk batches.
 - **Closing:** the app must call `close()` at quit; dropping the store doesn't wait for queued writes.
 
+### ADR-003 amendment — the message list on the store (M1, 2026-10-04)
+
+Built as [m1/list.md](m1/list.md) records.
+- **Opening.** One thread opens the blob store and the store at `startup`, reads accounts and folders, and opens the first window's view (100 rows and today's section counts), then hands everything to the GTK thread. The first window waits for the first rows for at most 300 ms, alongside the settings' 150 ms. Headless with a 10k store this took 2.65–2.98 ms.
+- **The model.** The list model applies change events strictly in version order. Pages apply only at the model's version; newer pages wait, and older ones are dropped and requested again. A version gap or `Reload` reopens the view.
+- **Growth.** After every reset the list shows 40 rows, then grows by 40 a frame (S6's trim).
+- **Search** re-runs `search` with a larger limit, because the store has no offset.
+- **GTK 4.22 constraints:**
+  - GtkListView creates ~205 new row widgets on every full reset.
+  - It anchors row 0 under the viewport top.
+  - It moves to row 0 when the focused row's widget dies.
+
+  So the list notes its place before a reset, drops the focus for a same-view reload, and restores the place in the layout phase and the focus two frames later.
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
