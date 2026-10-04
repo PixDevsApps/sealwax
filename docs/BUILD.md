@@ -38,9 +38,22 @@ cargo run -p sealwax -- --version
 | `sealwax-infrastructure` | `infrastructure/` | Local std I/O, logging |
 | `sealwax-engine` | `engine/` | tokio: network, sync, op queue, secrets |
 | `sealwax` | `app/` | GTK app, binary `sealwax` |
+| `sealwax-fixtures` | `devtools/fixtures/` | Synthetic `.eml` corpora, import and store benchmarks (workspace glob `devtools/*`, `publish = false`) |
 | `email-spike-s1` … `email-spike-s7` | `spikes/<id>-<topic>/` | M0 measurement code, one crate per spike (workspace glob `spikes/*`) |
 
 Release profile: thin LTO, one codegen unit. The M0 spike crates keep their `email-spike-*` names (ADR-010).
+
+## Fixture data
+
+```bash
+cargo build --release -p sealwax-fixtures
+target/release/sealwax-fixtures generate --count 2000 --seed 7 --out target/m1-store/eml
+target/release/sealwax-fixtures import --count 100000 --seed 1 --store target/m1-store/100k/store.sqlite
+target/release/sealwax-fixtures bench --store target/m1-store/100k/store.sqlite
+target/release/sealwax-fixtures check --store target/m1-store/100k/store.sqlite
+```
+
+Always give `--store` a scratch path; the app's own store is `SealwaxDirs::from_env().store_file()`. The store links the system SQLite and refuses one without FTS5 or `contentless_delete` (≥ 3.43).
 
 ## Headless GTK runs
 

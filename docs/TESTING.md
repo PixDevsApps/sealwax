@@ -9,7 +9,7 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 | Layer | What | Where | Runs in CI |
 | --- | --- | --- | --- |
 | Unit | Pure logic: threading, query parser, autoconfig XML, reply/forward building, format=flowed, mailto, palette and CSS (22 stock themes, contrast rules), the action registry and keymap audit (US and Norwegian), `config.toml` and `keys.toml` | `domain/` (`cargo test`), insta snapshots, proptest | Yes |
-| Store | Migrations, writer/reader split, overlays, crash consistency (`kill -9` during writes) | `infrastructure/` with `tempfile` | Yes |
+| Store | Migrations, writer/reader split, overlays, crash consistency (a SIGKILLed child mid-ingest), change events kept exact against a model | `infrastructure/` (scratch stores under `target/scratch`) | Yes |
 | Protocol (scripted) | IMAP, SMTP and POP3 against scripted mock servers: capabilities, auth, fallbacks, faults | `engine/` tests | Yes |
 | Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; randomized two-client and fault-injection suites | `tools/testbed/` + `spikes/s1-imap/tests/testbed.rs` (`engine/` from M3) | Not yet: `tools/testbed/up.sh && tools/testbed/seed.sh`, then `CARGO_TARGET_DIR=target/s1 cargo test -p email-spike-s1 --release -- --ignored --test-threads=1` |
 | UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, and take screenshots; `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*`) |
@@ -55,6 +55,21 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### M1 store, blob store and fixtures (ML-023, ML-024, ML-025) — 2026-10-04
+
+Release builds, headless; 100,000 synthetic messages in one folder (`sealwax-fixtures import --count 100000 --seed 1`), then 50,000 more in a second account; system SQLite 3.53.4; other agents building in parallel (load 2–10). Report: [m1/store.md](m1/store.md).
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| Ingest ≥ 2,000 headers/s | 19,986 headers/s in the writer; 2,695 messages/s end to end from raw bytes (durable blobs, parsing, rows, full text; 16 workers) | Pass |
+| FTS ≥ 1,000/s | 7,487 messages/s | Pass |
+| Folder open ≤ 100 ms | cold ≤ 3.25 ms (INBOX), ≤ 15.95 ms (Attachments filter); warm p95 ≤ 0.53 ms | Pass |
+| First 50 FTS results ≤ 100 ms p95 | warm p95 ≤ 9.53 ms over 11 query shapes (≤ 13.76 ms at 150k); cold single runs ≤ 56.4 ms | Pass |
+| One-insert diff ≤ 20 ms | writer p99 4.23 ms, max 16.23 ms after cache evictions; warm p99 3.43, max 3.84 ms; two accounts p99 6.08 ms, 2 of 400 over 20 ms (cold cache) | Pass at p99 |
+| `kill -9` leaves a consistent database (ML-023) | 6 SIGKILL rounds, some between a header commit and its full-text commit: `integrity_check` ok, FTS integrity-check ok, committed messages present, blobs match their keys, a reopen passes the recount and re-indexes what the kill left | Pass |
+
+`cargo test`: domain 19 (4,500 mutated inputs never panic), infrastructure 29 (+1 ignored child process), fixtures 8; after the merge `tools/ci.sh --ui` passes (425 tests, every self-test). Tests write under `target/scratch` because `/tmp` is tmpfs here, where fsync costs nothing.
 
 ### M1 phase A: theme, actions, shell (ML-018 to ML-022, ML-028) — 2026-10-04
 

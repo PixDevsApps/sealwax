@@ -14,7 +14,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
 | 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6, the application shell built in M1 |
 | 004 | Follow the live Omarchy theme | Accepted (user request); built in M1 |
-| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; blob store in M1 |
+| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1 |
 | 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism proposed; S5 is go/no-go |
@@ -25,7 +25,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules) |
-| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1 |
+| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs) |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
@@ -98,6 +98,14 @@ Built as the S6 amendment says ([report](m1/shell.md)): an `adw::Application` su
 - **Startup order:** early hooks run before GTK initialises (where the store's reader thread starts); after GTK's own startup the theme is read synchronously within its 500 ms budget (about 9 ms here), the settings files are read off the GTK thread, and the first window waits up to 150 ms for them, so its first frame already has the user's corners, fonts and keys.
 - **The window reference is released on `window-removed`:** GTK 4 emits `destroy` only once nothing holds the window.
 
+### ADR-003 amendment — the store's API as built (M1, 2026-10-04)
+
+- **Requests** are typed methods on `Store` that return a `Reply<T>`, an async-channel receiver; dropping it cancels a read not yet started.
+- **Opening:** `Store::open_in_background` keeps the opening SQL off the GTK thread.
+- **Change events** carry exact per-view diffs, computed in the writer's transaction: positions removed before and inserted after the commit, rows changed in place, or a reload past 64 rows. Views register under a lock the writer holds from computing a commit's diffs until the commit, so a view never misses or double-applies a change.
+- **Writer order:** interactive requests are served before pending full-text work and bulk batches.
+- **Closing:** the app must call `close()` at quit; dropping the store doesn't wait for queued writes.
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
@@ -157,6 +165,20 @@ S1 synced S3's schema from Dovecot and Stalwart ([report](spikes/S1-imap.md)); s
 - ENVELOPE strings arrive RFC 2047-encoded and are decoded before display.
 
 Real providers are still to check when test accounts exist.
+
+### ADR-005 amendment — schema v1 and the blob store built (M1, 2026-10-04)
+
+Built as [m1/store.md](m1/store.md) records.
+
+**Schema v1:**
+- S3's schema with S1's additions: folder wire name, delimiter, attributes, sync state; message keywords, In-Reply-To, References.
+- Also: full recipient lists, Reply-To, List-Id, the body kind, and a `message_parts` table for body part references and attachments. S3's per-folder conversation table waits for the conversation list (ML-046).
+- Index changes measured at 100k: the filter indexes hold `(folder_id, date, id, flag)` and `messages_date` holds `(date, id, folder_id)`, so filtered and multi-folder views read indexes in list order.
+- Full text is indexed in its own transaction after each header batch. A high-water mark lets a restart index what a crash left unindexed.
+
+**Blob store:** `ab/cd/<sha-256>`, 0700/0600, temp file + fsync + rename + directory fsync, each message stored once. The store reports orphans for the caller to delete. Throughput is bounded by fsync latency and grows with concurrent writers on this disk, so ingest prepares messages on 16 threads.
+
+**At 100k:** 19,986 headers/s, 7,487 full-text messages/s, 2,695 messages/s end to end. The store needs SQLite ≥ 3.43 (FTS5 with `contentless_delete`); the package depends on `sqlite>=3.43`.
 
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
@@ -434,6 +456,10 @@ From the fault-injection runs ([S1 report](spikes/S1-imap.md)):
 The Message-ID alias table and thread merges work at 100k messages (40,548 conversations): a parent arriving late joins its thread, threads merge, duplicates collapse, and the counts the writer maintains match a full recount (kept as a test). The first 100 of 24,844 conversations in a folder load in ≤ 3 ms cold. Not yet exercised: Outlook `Thread-Index`, the Gmail thread-ID hint, and collapsing threads over 100 messages.
 
 S1 (2026-10-04) confirmed the inputs on the testbed: Message-ID, In-Reply-To and References all come from the header sync, and duplicate Message-IDs do occur. Gmail's and Outlook's own thread headers are still unverified.
+
+### ADR-016 amendment — threading as built (M1, 2026-10-04)
+
+Built in M1 ([m1/store.md](m1/store.md)): union-find over `thread_aliases` (every Message-ID, In-Reply-To and References entry, per account); merges go into the largest thread and are reported in change events; a thread's size counts each Message-ID once. Not built yet: Outlook's `Thread-Index`, the Gmail thread-ID hint, collapsing threads over 100 messages, and per-folder conversation rows.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 
