@@ -4,3 +4,4 @@
 *.snap.new
 *.pending-snap
 __pycache__/
+/.claude/
