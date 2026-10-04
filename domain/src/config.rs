@@ -1,0 +1,607 @@
+//! `config.toml` (ADR-009): Sealwax's settings, in `$XDG_CONFIG_HOME/sealwax/`. The file is
+//! TOML read with positions, so every mistake is reported with its line and column, and a
+//! file with mistakes is not applied at all. Missing settings keep their defaults; a missing
+//! file is the defaults. `keys.toml` shares the error type and helpers (`crate::keymap`).
+
+use std::borrow::Cow;
+use std::fmt;
+use std::ops::Range;
+
+use toml::Spanned;
+use toml::de::{DeTable, DeValue};
+
+pub const CONFIG_FILE: &str = "config.toml";
+pub const KEYS_FILE: &str = "keys.toml";
+
+/// A mistake in a settings file, at a 1-based line and column (counted in characters).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FileError {
+    pub line: usize,
+    pub column: usize,
+    pub message: String,
+}
+
+impl FileError {
+    /// The error at byte `byte` of `text`.
+    pub fn at(text: &str, byte: usize, message: impl Into<String>) -> Self {
+        let mut byte = byte.min(text.len());
+        while !text.is_char_boundary(byte) {
+            byte -= 1;
+        }
+        let line_start = text[..byte].rfind('\n').map_or(0, |at| at + 1);
+        Self {
+            line: text[..line_start].matches('\n').count() + 1,
+            column: text[line_start..byte].chars().count() + 1,
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn spanned(text: &str, span: Range<usize>, message: impl Into<String>) -> Self {
+        Self::at(text, span.start, message)
+    }
+}
+
+impl fmt::Display for FileError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "line {}, column {}: {}",
+            self.line, self.column, self.message
+        )
+    }
+}
+
+impl std::error::Error for FileError {}
+
+/// Parses TOML with positions; a syntax error becomes a [`FileError`].
+pub(crate) fn parse_toml(text: &str) -> Result<Spanned<DeTable<'_>>, FileError> {
+    DeTable::parse(text).map_err(|error| {
+        let message = error.message().lines().next().unwrap_or("invalid TOML");
+        FileError::at(text, error.span().map_or(0, |span| span.start), message)
+    })
+}
+
+pub(crate) type Entry<'a, 'i> = (&'a Spanned<Cow<'i, str>>, &'a Spanned<DeValue<'i>>);
+
+/// A table's entries in the order the file lists them.
+pub(crate) fn entries<'a, 'i>(table: &'a DeTable<'i>) -> Vec<Entry<'a, 'i>> {
+    let mut entries: Vec<_> = table.iter().collect();
+    entries.sort_by_key(|(key, _)| key.span().start);
+    entries
+}
+
+/// The candidate closest to `word`, when it is a likely typo of it.
+pub(crate) fn closest<'a>(
+    word: &str,
+    candidates: impl IntoIterator<Item = &'a str>,
+) -> Option<&'a str> {
+    let limit = (word.chars().count() / 3).clamp(1, 3);
+    candidates
+        .into_iter()
+        .map(|candidate| (edit_distance(word, candidate), candidate))
+        .filter(|(distance, _)| *distance <= limit)
+        .min_by_key(|(distance, _)| *distance)
+        .map(|(_, candidate)| candidate)
+}
+
+/// `; did you mean …?` for a likely typo, or nothing.
+pub(crate) fn did_you_mean<'a>(
+    word: &str,
+    candidates: impl IntoIterator<Item = &'a str>,
+) -> String {
+    closest(word, candidates)
+        .map(|near| format!("; did you mean {near}?"))
+        .unwrap_or_default()
+}
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let b: Vec<char> = b.chars().collect();
+    let mut row: Vec<usize> = (0..=b.len()).collect();
+    for (i, ca) in a.chars().enumerate() {
+        let mut diagonal = row[0];
+        row[0] = i + 1;
+        for (j, cb) in b.iter().enumerate() {
+            let above = row[j + 1];
+            row[j + 1] = (diagonal + usize::from(ca != *cb))
+                .min(row[j] + 1)
+                .min(above + 1);
+            diagonal = above;
+        }
+    }
+    row[b.len()]
+}
+
+/// `a string`, `an integer`.
+pub(crate) fn article(kind: &str) -> String {
+    match kind.chars().next() {
+        Some('a' | 'e' | 'i' | 'o' | 'u') => format!("an {kind}"),
+        _ => format!("a {kind}"),
+    }
+}
+
+/// The largest `corner_radius` in pixels.
+pub const MAX_CORNER_RADIUS: u32 = 64;
+
+/// The corner radius of rows, chips, cards and buttons (ADR-019).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CornerRadius {
+    /// Hyprland's `decoration:rounding`, or 0 outside Hyprland.
+    #[default]
+    Auto,
+    Pixels(u32),
+}
+
+/// The font of the chrome: sidebar, list, toolbars and chips (DESIGN.md "Typography").
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ChromeFont {
+    /// The Omarchy font, `fc-match monospace`.
+    #[default]
+    Omarchy,
+    /// `fc-match sans-serif`.
+    Sans,
+}
+
+/// The font of message text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ReadingFont {
+    #[default]
+    Sans,
+    Mono,
+}
+
+/// `[appearance]`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Appearance {
+    pub corner_radius: CornerRadius,
+    pub chrome_font: ChromeFont,
+    pub reading_font: ReadingFont,
+}
+
+/// An OAuth client registration that overrides the build's (ADR-008, OAUTH-SETUP.md). The
+/// section names are final once M2 builds sign-in.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OAuthClient {
+    pub client_id: Option<String>,
+    /// Google's desktop clients have one; Microsoft's public client has none.
+    pub client_secret: Option<String>,
+}
+
+/// `[oauth.google]` and `[oauth.microsoft]`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct OAuth {
+    pub google: OAuthClient,
+    pub microsoft: OAuthClient,
+}
+
+/// The settings in `config.toml`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Config {
+    pub appearance: Appearance,
+    pub oauth: OAuth,
+}
+
+const APPEARANCE_SETTINGS: [&str; 3] = ["corner_radius", "chrome_font", "reading_font"];
+const SECTIONS: [&str; 2] = ["appearance", "oauth"];
+const PROVIDERS: [&str; 2] = ["google", "microsoft"];
+
+/// Where a setting written at the top level belongs.
+fn section_of(name: &str) -> Option<&'static str> {
+    if APPEARANCE_SETTINGS.contains(&name) {
+        Some("[appearance]")
+    } else if matches!(name, "client_id" | "client_secret") {
+        Some("[oauth.google] or [oauth.microsoft]")
+    } else {
+        None
+    }
+}
+
+/// Collects the mistakes of one `config.toml` read.
+struct Reader<'t> {
+    text: &'t str,
+    errors: Vec<FileError>,
+}
+
+impl Reader<'_> {
+    fn error(&mut self, span: Range<usize>, message: impl Into<String>) {
+        self.errors
+            .push(FileError::spanned(self.text, span, message));
+    }
+
+    /// The table in `value`, or a mistake that says what `name` should look like.
+    fn table<'a, 'i>(
+        &mut self,
+        value: &'a Spanned<DeValue<'i>>,
+        expected: &str,
+    ) -> Option<&'a DeTable<'i>> {
+        let table = value.get_ref().as_table();
+        if table.is_none() {
+            self.error(
+                value.span(),
+                format!("{expected} is a table, like [{expected}]"),
+            );
+        }
+        table
+    }
+
+    fn appearance(&mut self, table: &DeTable<'_>, appearance: &mut Appearance) {
+        for (key, value) in entries(table) {
+            let name = key.get_ref().as_ref();
+            let span = value.span();
+            match name {
+                "corner_radius" => match corner_radius(value.get_ref()) {
+                    Some(radius) => appearance.corner_radius = radius,
+                    None => self.error(
+                        span,
+                        format!(
+                            "corner_radius is \"auto\" or a whole number of pixels from 0 to \
+                             {MAX_CORNER_RADIUS}, not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
+                "chrome_font" => match value.get_ref().as_str() {
+                    Some("omarchy") => appearance.chrome_font = ChromeFont::Omarchy,
+                    Some("sans") => appearance.chrome_font = ChromeFont::Sans,
+                    _ => self.error(
+                        span,
+                        format!(
+                            "chrome_font is \"omarchy\" or \"sans\", not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
+                "reading_font" => match value.get_ref().as_str() {
+                    Some("sans") => appearance.reading_font = ReadingFont::Sans,
+                    Some("mono") => appearance.reading_font = ReadingFont::Mono,
+                    _ => self.error(
+                        span,
+                        format!(
+                            "reading_font is \"sans\" or \"mono\", not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
+                _ => self.error(
+                    key.span(),
+                    format!(
+                        "unknown setting {name} in [appearance]{}",
+                        did_you_mean(name, APPEARANCE_SETTINGS)
+                    ),
+                ),
+            }
+        }
+    }
+
+    fn oauth(&mut self, table: &DeTable<'_>, oauth: &mut OAuth) {
+        for (key, value) in entries(table) {
+            let provider = key.get_ref().as_ref();
+            let (client, settings): (&mut OAuthClient, &[&str]) = match provider {
+                "google" => (&mut oauth.google, &["client_id", "client_secret"]),
+                "microsoft" => (&mut oauth.microsoft, &["client_id"]),
+                _ => {
+                    self.error(
+                        key.span(),
+                        format!(
+                            "unknown provider oauth.{provider}{}; Sealwax signs in with google \
+                             and microsoft",
+                            did_you_mean(provider, PROVIDERS)
+                        ),
+                    );
+                    continue;
+                }
+            };
+            let section = format!("oauth.{provider}");
+            let Some(table) = self.table(value, &section) else {
+                continue;
+            };
+            for (key, value) in entries(table) {
+                let name = key.get_ref().as_ref();
+                if !settings.contains(&name) {
+                    let hint = if name == "client_secret" {
+                        "; Microsoft's client is public and has none".to_owned()
+                    } else {
+                        did_you_mean(name, settings.iter().copied())
+                    };
+                    self.error(
+                        key.span(),
+                        format!("unknown setting {name} in [{section}]{hint}"),
+                    );
+                    continue;
+                }
+                let Some(text) = value.get_ref().as_str() else {
+                    self.error(
+                        value.span(),
+                        format!(
+                            "{name} takes a string in quotes, not {}",
+                            article(value.get_ref().type_str())
+                        ),
+                    );
+                    continue;
+                };
+                let text = Some(text.trim().to_owned()).filter(|text| !text.is_empty());
+                match name {
+                    "client_id" => client.client_id = text,
+                    _ => client.client_secret = text,
+                }
+            }
+        }
+    }
+}
+
+fn corner_radius(value: &DeValue<'_>) -> Option<CornerRadius> {
+    match value {
+        DeValue::String(text) if text == "auto" => Some(CornerRadius::Auto),
+        DeValue::Integer(integer) => i64::from_str_radix(integer.as_str(), integer.radix())
+            .ok()
+            .and_then(|pixels| u32::try_from(pixels).ok())
+            .filter(|pixels| *pixels <= MAX_CORNER_RADIUS)
+            .map(CornerRadius::Pixels),
+        _ => None,
+    }
+}
+
+/// A value as a mistake quotes it: a short string in quotes, or its type.
+fn shown(value: &DeValue<'_>) -> String {
+    match value {
+        DeValue::String(text) if text.chars().count() <= 24 => format!("\"{text}\""),
+        DeValue::Integer(integer) => integer.as_str().to_owned(),
+        other => article(other.type_str()),
+    }
+}
+
+impl Config {
+    /// Reads `config.toml`. Every mistake is listed, in the order of the file.
+    pub fn parse(text: &str) -> Result<Self, Vec<FileError>> {
+        let root = parse_toml(text).map_err(|error| vec![error])?;
+        let mut config = Self::default();
+        let mut reader = Reader {
+            text,
+            errors: Vec::new(),
+        };
+        for (key, value) in entries(root.get_ref()) {
+            let name = key.get_ref().as_ref();
+            match name {
+                "appearance" => {
+                    if let Some(table) = reader.table(value, name) {
+                        reader.appearance(table, &mut config.appearance);
+                    }
+                }
+                "oauth" => {
+                    if let Some(table) = reader.table(value, name) {
+                        reader.oauth(table, &mut config.oauth);
+                    }
+                }
+                _ => match section_of(name) {
+                    Some(section) => reader.error(
+                        key.span(),
+                        format!("{name} belongs in {section}; put it under that line"),
+                    ),
+                    None => {
+                        let kind = if value.get_ref().as_table().is_some() {
+                            "section"
+                        } else {
+                            "setting"
+                        };
+                        reader.error(
+                            key.span(),
+                            format!("unknown {kind} {name}{}", did_you_mean(name, SECTIONS)),
+                        );
+                    }
+                },
+            }
+        }
+        if reader.errors.is_empty() {
+            Ok(config)
+        } else {
+            Err(reader.errors)
+        }
+    }
+}
+
+/// The `config.toml` that Preferences creates: every setting commented out with its default,
+/// so the file changes nothing until a line is uncommented.
+pub fn default_config_file() -> String {
+    format!(
+        "# Sealwax settings (config.toml). Uncomment a line and change it; Sealwax applies the\n\
+         # file when you save it. A mistake is shown with its line and column, and the previous\n\
+         # settings stay until the file is fixed.\n\
+         \n\
+         [appearance]\n\
+         # Corners of rows, chips, cards and buttons: \"auto\" follows Hyprland's rounding (0\n\
+         # outside Hyprland), or a number of pixels from 0 to {MAX_CORNER_RADIUS}.\n\
+         # corner_radius = \"auto\"\n\
+         # The sidebar, list and toolbars: \"omarchy\" (the Omarchy font) or \"sans\".\n\
+         # chrome_font = \"omarchy\"\n\
+         # Message text: \"sans\" or \"mono\".\n\
+         # reading_font = \"sans\"\n\
+         \n\
+         # Your own OAuth clients for Sign in with Google and Microsoft, in place of the ones\n\
+         # Sealwax was built with (docs/OAUTH-SETUP.md).\n\
+         [oauth.google]\n\
+         # client_id = \"…apps.googleusercontent.com\"\n\
+         # client_secret = \"…\"\n\
+         \n\
+         [oauth.microsoft]\n\
+         # client_id = \"00000000-0000-0000-0000-000000000000\"\n"
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn errors(text: &str) -> Vec<String> {
+        Config::parse(text)
+            .unwrap_err()
+            .into_iter()
+            .map(|error| error.to_string())
+            .collect()
+    }
+
+    #[test]
+    fn an_empty_file_is_the_defaults() {
+        assert_eq!(Config::parse(""), Ok(Config::default()));
+        assert_eq!(Config::parse("# only comments\n"), Ok(Config::default()));
+        let defaults = Config::default();
+        assert_eq!(defaults.appearance.corner_radius, CornerRadius::Auto);
+        assert_eq!(defaults.appearance.chrome_font, ChromeFont::Omarchy);
+        assert_eq!(defaults.appearance.reading_font, ReadingFont::Sans);
+        assert_eq!(defaults.oauth, OAuth::default());
+    }
+
+    #[test]
+    fn reads_every_setting() {
+        let text = "[appearance]\ncorner_radius = 8\nchrome_font = \"sans\"\n\
+                    reading_font = \"mono\"\n\n[oauth.google]\nclient_id = \" id.example \"\n\
+                    client_secret = \"s\"\n\n[oauth.microsoft]\nclient_id = \"\"\n";
+        let config = Config::parse(text).unwrap();
+        assert_eq!(
+            config.appearance,
+            Appearance {
+                corner_radius: CornerRadius::Pixels(8),
+                chrome_font: ChromeFont::Sans,
+                reading_font: ReadingFont::Mono,
+            }
+        );
+        assert_eq!(config.oauth.google.client_id.as_deref(), Some("id.example"));
+        assert_eq!(config.oauth.google.client_secret.as_deref(), Some("s"));
+        assert_eq!(config.oauth.microsoft, OAuthClient::default());
+        let config = Config::parse("appearance.corner_radius = \"auto\"\n").unwrap();
+        assert_eq!(config.appearance.corner_radius, CornerRadius::Auto);
+        let config = Config::parse("[appearance]\ncorner_radius = 0x40\n").unwrap();
+        assert_eq!(config.appearance.corner_radius, CornerRadius::Pixels(64));
+    }
+
+    #[test]
+    fn mistakes_say_where_they_are() {
+        assert_eq!(
+            errors("[appearance]\ncorner_radius = 65\n"),
+            [
+                "line 2, column 17: corner_radius is \"auto\" or a whole number of pixels from 0 \
+                 to 64, not 65"
+            ]
+        );
+        assert_eq!(
+            errors("[appearance]\ncorner_radius = \"round\"\n"),
+            [
+                "line 2, column 17: corner_radius is \"auto\" or a whole number of pixels from 0 \
+                 to 64, not \"round\""
+            ]
+        );
+        assert_eq!(
+            errors("[appearance]\ncorner_radius = -1\n"),
+            [
+                "line 2, column 17: corner_radius is \"auto\" or a whole number of pixels from 0 \
+                 to 64, not -1"
+            ]
+        );
+        assert_eq!(
+            errors("[appearance]\nchrome_font = \"serif\"\n"),
+            ["line 2, column 15: chrome_font is \"omarchy\" or \"sans\", not \"serif\""]
+        );
+        assert_eq!(
+            errors("[appearance]\nreading_font = true\n"),
+            ["line 2, column 16: reading_font is \"sans\" or \"mono\", not a boolean"]
+        );
+        assert_eq!(
+            errors("[appearance]\ncorner_radios = 4\n"),
+            [
+                "line 2, column 1: unknown setting corner_radios in [appearance]; did you mean \
+                 corner_radius?"
+            ]
+        );
+        assert_eq!(
+            errors("[apperance]\n"),
+            ["line 1, column 2: unknown section apperance; did you mean appearance?"]
+        );
+        assert_eq!(
+            errors("corner_radius = 4\n"),
+            ["line 1, column 1: corner_radius belongs in [appearance]; put it under that line"]
+        );
+        assert_eq!(
+            errors("appearance = 3\n"),
+            ["line 1, column 14: appearance is a table, like [appearance]"]
+        );
+        assert_eq!(
+            errors("[oauth.yahoo]\n"),
+            [
+                "line 1, column 8: unknown provider oauth.yahoo; Sealwax signs in with google and \
+                 microsoft"
+            ]
+        );
+        assert_eq!(
+            errors("[oauth.microsoft]\nclient_secret = \"x\"\n"),
+            [
+                "line 2, column 1: unknown setting client_secret in [oauth.microsoft]; \
+                 Microsoft's client is public and has none"
+            ]
+        );
+        assert_eq!(
+            errors("[oauth.google]\nclient_id = 7\n"),
+            ["line 2, column 13: client_id takes a string in quotes, not an integer"]
+        );
+    }
+
+    #[test]
+    fn every_mistake_is_listed_in_file_order() {
+        let found = errors("zzz = 1\n[appearance]\ncorner_radius = 900\nchrome_font = \"x\"\n");
+        assert_eq!(found.len(), 3, "{found:?}");
+        assert!(found[0].starts_with("line 1, column 1: unknown setting zzz"));
+        assert!(found[1].starts_with("line 3,"));
+        assert!(found[2].starts_with("line 4,"));
+    }
+
+    #[test]
+    fn syntax_errors_have_positions() {
+        let found = errors("[appearance]\ncorner_radius = \n");
+        assert_eq!(found.len(), 1);
+        assert!(found[0].starts_with("line 2, column 17:"), "{found:?}");
+        let found = errors("[appearance]\nchrome_font = \"unterminated\n");
+        assert!(found[0].starts_with("line 2,"), "{found:?}");
+        let found = errors("[appearance]\nchrome_font = \"sans\"\nchrome_font = \"sans\"\n");
+        assert!(found[0].starts_with("line 3,"), "{found:?}");
+    }
+
+    #[test]
+    fn positions_count_characters() {
+        let error = FileError::at("ø = 1\nab", 8, "x");
+        assert_eq!((error.line, error.column), (2, 2));
+        let error = FileError::at("ø", 1, "inside a character");
+        assert_eq!((error.line, error.column), (1, 1));
+    }
+
+    #[test]
+    fn the_default_file_changes_nothing_and_every_line_is_valid() {
+        let file = default_config_file();
+        assert_eq!(Config::parse(&file), Ok(Config::default()));
+        let uncommented: String = file
+            .lines()
+            .map(|line| match line.strip_prefix("# ") {
+                Some(setting)
+                    if setting
+                        .split_once(" = ")
+                        .is_some_and(|(key, _)| !key.contains(' ')) =>
+                {
+                    setting
+                }
+                _ => line,
+            })
+            .map(|line| format!("{line}\n"))
+            .collect();
+        let config = Config::parse(&uncommented).unwrap();
+        assert_eq!(config.appearance, Appearance::default());
+        assert!(config.oauth.google.client_id.is_some());
+        assert!(config.oauth.google.client_secret.is_some());
+        assert!(config.oauth.microsoft.client_id.is_some());
+    }
+
+    #[test]
+    fn typos_get_suggestions() {
+        assert_eq!(
+            closest("readingfont", APPEARANCE_SETTINGS),
+            Some("reading_font")
+        );
+        assert_eq!(closest("zzz", APPEARANCE_SETTINGS), None);
+        assert_eq!(edit_distance("kitten", "sitting"), 3);
+    }
+}

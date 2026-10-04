@@ -3,4 +3,5 @@
 
 pub mod logging;
 pub mod omarchy;
+pub mod settings_files;
 pub mod xdg;
