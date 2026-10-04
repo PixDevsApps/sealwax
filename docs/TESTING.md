@@ -35,7 +35,7 @@ Measured with release builds unless noted; each entry names its spike or milesto
 | Open message | Plain text ≤ 50 ms; cached HTML ≤ 150 ms p95 | S2, M5 |
 | Search | First 50 results ≤ 100 ms p95 over 100k messages | S3, M7 |
 | Ingest | ≥ 2,000 headers/s; FTS ≥ 1,000 messages/s | S3 |
-| Memory | UI ≤ 150 MB; ≤ 300 MB with a 10-message conversation (web processes included); < 20 MB growth after opening 200 messages | S2, S3, M9 |
+| Memory | UI ≤ 150 MB (metric open since S3: an empty GTK4 window is 120 MiB RSS here; proposed PSS); ≤ 300 MB with a 10-message conversation (web processes included); < 20 MB growth after opening 200 messages | S2, S3, M9 |
 | Sync | 10k-header first sync ≤ 20 s (testbed); no-change re-sync ≤ 200 ms (CONDSTORE) / ≤ 2 s (UID diff) | S1 |
 | Push | New mail visible ≤ 3 s (S1, testbed), ≤ 5 s (product) | S1, M3 |
 | Composer | Keystroke to paint < 16 ms, including fcitx5 | S7 |
@@ -47,6 +47,24 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### S3 store and message list (ML-011) — 2026-10-04
+
+Release builds; Ryzen 9 5900X, RTX 3070 Ti, 3440×1440 at 144 Hz, system SQLite 3.53.4, GTK 4.22.4; 100k synthetic messages over 5 years (29.4 % unread, 21.3 % with attachments, Norwegian/English plus about 10 % Chinese and Japanese, 40,548 conversations). Report: [spikes/S3-store.md](spikes/S3-store.md).
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| Ingest ≥ 2,000 headers/s | 19,116 headers/s (batches of 500, threading, counts and 7 indexes included) | Pass |
+| FTS ≥ 1,000/s | 10,324 messages/s alone; 5,733/s sharing the header transaction | Pass |
+| Folder open ≤ 100 ms | ≤ 4.5 ms cold (page cache evicted, new connection), ≤ 0.34 ms warm | Pass |
+| List p99 frame ≤ 16.7 ms | presented-frame interval p99 7.94 ms at 1,500 px/s, 7.96 ms at 12,000 px/s; a 5,000 rows/s sweep p99 48–57 ms with text rows, 7.94 ms with placeholder rows | Pass at normal speeds; the full sweep only with placeholder rows |
+| Jump to end ≤ 100 ms | cache dropped, until the last row is painted: p50 44–51 ms, p95 ≤ 56 ms (the row exactly as mocked: p50 93 ms) | Pass with the row changes |
+| One-insert diff ≤ 20 ms | store p50 0.38 ms, p99 3.4 ms (38 ms under SQLite's default autocheckpoint); live request → row on screen p50 3 ms | Pass with the checkpoint handoff |
+| First 50 FTS results ≤ 100 ms p95 | date-first plan: ≤ 10.3 ms warm, ≤ 34 ms cold (FTS-first: 116 ms cold) | Pass |
+| UI ≤ 150 MB | RSS 158 MiB at first paint, 202 MiB after the 40 s script; PSS 91–100 → 133 MiB; an empty GTK4 + libadwaita window is already 120 MiB RSS (Vulkan; 216 MiB with GL) | **Missed as RSS** — metric to be decided |
+| System SQLite FTS5 | present, with `contentless_delete` and trigram | Pass |
+
+`cargo test -p email-spike-s3`: 14 tests pass (migrations; threading merges; aggregates after inserts, flag changes and expunges; insert-diff positions; FTS for æøå, CJK bigrams and prefixes); fmt and clippy clean (re-run by the lead). Nine self-closing live runs, programmatic scrolling only; the headless smoke run on display 22 passes. Live run 1 (a script bug) and the steady-scroll phase of live run 4 (the compositor sent no frames for 7.3 s) are discarded.
 
 ### S7 composer and MIME (ML-015) — 2026-10-04
 

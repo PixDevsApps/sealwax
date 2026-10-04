@@ -6,4 +6,24 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+bundled = ["rusqlite/bundled"]
+
 [dependencies]
+anyhow.workspace = true
+async-channel.workspace = true
+gtk4.workspace = true
+libadwaita.workspace = true
+libc = "0.2.190"
+rusqlite = { version = "0.40.2", features = ["hooks"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "s3-bench"
+path = "src/bin/s3-bench.rs"
+
+[[bin]]
+name = "s3-list"
+path = "src/bin/s3-list/main.rs"

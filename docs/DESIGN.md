@@ -51,6 +51,13 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Search field and filter chips on top, then sections (Today, Yesterday, This week, This month, Older).
 - Row anatomy: unread dot · avatar (32 px) · sender (bold when unread) and time · subject · one- or two-line snippet · indicators (attachment, star, thread count).
 - Selection mode with checkboxes for batch actions; hover shows quick actions (archive, delete, star).
+- Rules from S3 (2026-10-04, [report](spikes/S3-store.md)) — GtkListView keeps about 205 row widgets realized whatever the window size, so one row's layout cost sets the cost of every jump, first paint and fast drag:
+  - no ligatures in list text (`font-feature-settings: "liga" 0, "calt" 0`): 30–36 % less layout with JetBrains Mono;
+  - cut text to what fits before setting it (−15 %);
+  - placeholder rows while the list moves faster than about 30,000 px/s (a scrollbar drag through 100k rows then stays at p99 7.94 ms instead of 48–57 ms);
+  - GTK's CSS `line-height` multiplies the font's own line height, so the mock's 1.45 is about 1.1 in GTK;
+  - when new mail arrives while the first row is visible, keep the list pinned to the top; otherwise GTK keeps the old row anchored and the new mail lands above the viewport;
+  - keep GTK's default Vulkan renderer (GL costs about 95 MiB more on this NVIDIA machine).
 
 **Reader**
 - Toolbar: archive, delete, junk, move, mark unread, star, more; position "n of N" with previous and next.

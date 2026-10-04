@@ -12,9 +12,9 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | --- | --- | --- |
 | 001 | Standalone native application | Accepted (user request) |
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Proposed; S2 and S7 confirm |
-| 003 | Layering with an engine crate; tokio only there | Proposed |
+| 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3 |
 | 004 | Follow the live Omarchy theme | Accepted (user request) |
-| 005 | SQLite with FTS5 plus a blob store | Proposed; S3 confirms |
+| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); blob store in M1 |
 | 006 | IMAP library and state-driven sync | Proposed; S1 decides the library |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
 | 008 | OAuth2 and secrets | OAuth for Google and Microsoft accepted (user decision); mechanism proposed; S5 is go/no-go |
@@ -25,7 +25,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 013 | Lean 1.0 scope | Accepted (plan approval) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed |
-| 016 | Conversation threading | Proposed |
+| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Proposed |
 | 018 | Logging and privacy | Accepted (plan approval) |
 | 019 | Corner radius follows Hyprland | Proposed; decided at the DESIGN gate |
@@ -69,6 +69,10 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 
 **Consequence:** every engine API is message-based. The GTK thread never runs SQL; reads go through a pool of two read-only connections on worker threads.
 
+### ADR-003 amendment — the store pattern measured in S3 (2026-10-04)
+
+S3 ran the GTK thread with no SQL at 100k messages ([report](spikes/S3-store.md)). The pattern to keep: two read-only readers that serve the newest request first; one writer that commits and emits list diffs; one maintenance thread (checkpoints, see ADR-005); every reply carries the store's `store_version`, and the UI applies a page only when its version matches the last change it applied, because pages and change events travel on different channels.
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
@@ -93,6 +97,18 @@ Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. 
 **Reason:** one well-understood embedded database for metadata, overlays, the op queue and search; raw `.eml` files keep attachments streamable and the database small.
 
 **Consequence:** the schema is checked against real servers in S1 before M1 builds on it.
+
+### ADR-005 amendment — S3 results (2026-10-04)
+
+**Status:** SQLite with FTS5 is accepted on S3's evidence ([report](spikes/S3-store.md)); the blob store is built and measured in M1. At 100k synthetic messages (release, system SQLite 3.53.4): ingest 19,116 headers/s, FTS 10,324 messages/s, folder open ≤ 4.5 ms cold, the first 50 search results ≤ 34 ms cold, a one-message insert with its list diff p99 3.4 ms.
+
+- Link the system SQLite (≥ 3.43) and refuse to start without FTS5; `bundled` isn't needed (3.53.4 has FTS5, `contentless_delete` and trigram).
+- Schema v1 is S3's (accounts, mailboxes with counts, messages, threads with maintained counts, a per-mailbox conversation table, a Message-ID alias table, contentless FTS5, `store_version` and `meta`), adopted once S1 has checked its columns against real servers.
+- **Checkpoints never run in the writer.** The writer's WAL hook only counts frames; a maintenance thread checkpoints at about 1,000 frames and then makes a tiny write so the WAL restart happens there. Otherwise the first commit after a checkpoint pays a ~10 ms WAL-header fsync (p99 38 ms under SQLite's default autocheckpoint).
+- Search text is indexed in its own transaction after the header commit; sync batches stay at about 200 messages (500 headers with text hold the writer for up to 258 ms).
+- CJK text is indexed as overlapping character pairs and queried as bigram phrases (unicode61 keeps a CJK clause as one token).
+- Newest-first search walks the date index against the match set ("date first"); a date-ordered FTS rowid is faster but costs 51 % more index and half the indexing speed — decided in M7.
+- Open (M7): diacritic folding. unicode61 folds å→a and ø→o but not æ, so "gar" finds "går".
 
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
@@ -258,6 +274,10 @@ Still open: the user's fcitx5 and Norwegian dead-key check (`bash spikes/s7-comp
 **Decision:** threads from References and In-Reply-To with union-find aliases (a parent can arrive after its reply), duplicate Message-IDs merged (Gmail labels, copies to yourself), Outlook `Thread-Index` honoured, Gmail `X-GM-THRID` used only as a hint. Never group by subject alone. Threads over 100 messages collapse their middle.
 
 **Consequence:** property tests cover out-of-order arrival and merges.
+
+### ADR-016 amendment — S3 results (2026-10-04)
+
+The Message-ID alias table and thread merges work at 100k messages (40,548 conversations): a parent arriving late joins its thread, threads merge, duplicates collapse, and the counts the writer maintains match a full recount (kept as a test). The first 100 of 24,844 conversations in a folder load in ≤ 3 ms cold. Not yet exercised: Outlook `Thread-Index`, the Gmail thread-ID hint, and collapsing threads over 100 messages.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 
