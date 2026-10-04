@@ -1,0 +1,20 @@
+[package]
+name = "email"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "email"
+path = "src/main.rs"
+
+[dependencies]
+email-domain.workspace = true
+email-infrastructure.workspace = true
+email-engine.workspace = true
+gtk4.workspace = true
+libadwaita.workspace = true
+gio.workspace = true
+tracing.workspace = true

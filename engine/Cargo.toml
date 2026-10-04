@@ -1,0 +1,13 @@
+[package]
+name = "email-engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+email-domain.workspace = true
+email-infrastructure.workspace = true
+tokio.workspace = true
+tracing.workspace = true

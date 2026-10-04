@@ -1,0 +1,6 @@
+/target
+/.local
+/tools/progress/public/*.tmp
+*.snap.new
+*.pending-snap
+__pycache__/
