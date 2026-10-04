@@ -22,7 +22,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision) |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
-| 013 | Lean 1.0 scope | Accepted (plan approval) |
+| 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules) |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1 |
@@ -317,6 +317,14 @@ The layers and the sizing change as follows (SECURITY.md carries the security ru
 **Reason:** the user asked for the core functions, the common protocols and automatic setup first. The review on 2026-10-04 moved COMPRESS, pinned certificates, schedule send, snooze, folder management, server search, rules, List-Unsubscribe and Gmail labels to 1.x.
 
 **Consequence:** moving an item into 1.0 needs a user decision, recorded as a dated PLAN.md entry and an amendment here.
+
+### ADR-013 amendment — notifications and background mode (2026-10-04)
+
+**Status:** Accepted — user decision at the M0 gate, 2026-10-04.
+
+**Decision:** background mode (PRD D6) moves from P1 to P0; opt-in autostart stays P1. D5 is reworded: a click on a new-mail notification opens the message everywhere; Archive and Mark read appear where the notification server shows buttons, and stay one key away in the reader.
+
+**Reason:** S6 showed that on Omarchy a notification click reaches the app only while it runs — GLib's freedesktop path can't start a stopped app, and omarchy-shell's history entries carry no live actions — and that omarchy-shell 0.3.1 shows no action buttons ([report](spikes/S6-desktop.md)).
 
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 

@@ -35,7 +35,7 @@ Measured with release builds unless noted; each entry names its spike or milesto
 
 | Area | Target | Where measured |
 | --- | --- | --- |
-| Startup | Process start → first frame with rows on screen, cached 10k INBOX: ≤ 400 ms. Warm or cold is the user's decision (S6 proposal: ≤ 400 ms warm, plus a separate cold target such as ≤ 600 ms measured in M9) | S6, M1, M9 |
+| Startup | Process start → first frame with rows on screen, cached 10k INBOX: ≤ 400 ms on a warm start; ≤ 600 ms on a cold start, measured in M9 (user decision 2026-10-04) | S6, M1, M9 |
 | List | p99 frame ≤ 16.7 ms while scrolling 100k messages at 3440×1440; jump to end ≤ 100 ms; one-insert diff ≤ 20 ms | S3, M1, M9 |
 | Folder open | ≤ 100 ms | S3 |
 | Open message | Plain text ≤ 50 ms; cached HTML ≤ 150 ms p95 | S2, M5 |
@@ -163,12 +163,14 @@ Release builds, 14:23–14:45 UTC, residential network in Norway, cold DNS at 1.
 
 | Bar | Result | Verdict |
 | --- | --- | --- |
-| ≥ 45/50 correct on S4's list, without Norwegian presets | 44/50 under S4's strict rubric; 45/50 under the extended rubric (E1: the product's second login attempt with the other username form; E2: an undocumented alias on the same addresses, verified). Same binary with the new rules off: 42 and 44 | Strict: missed by one. Extended: met — the user decides which rubric counts |
+| ≥ 45/50 correct on S4's list, without Norwegian presets | 44/50 under S4's strict rubric; 45/50 under the extended rubric (E1: the product's second login attempt with the other username form; E2: an undocumented alias on the same addresses, verified). Same binary with the new rules off: 42 and 44 | Strict: missed by one; with the second login attempt counted: **met** (user decision below) |
 | Held-out list (26 domains: 10 Nordic ISPs and hosts, 8 other European ISPs, 8 organizations' custom domains) | 13/26 strict (50 %); 16/26 extended (62 %); one measured run | No bar set; far below the 90 % that 45/50 implies, because presets answer 34 of S4's 50 rows and none of these |
 | TLS-only | 50/50; held-out 26/26 | Pass |
 | p50 ≤ 2 s / p95 ≤ 6 s / cap 10 s | 52 ms / 4,602 ms / max 5,091 ms (held-out 272 / 5,344 / 5,519 ms) | Pass |
 | Dummy addresses only; full address only to the domain's own HTTPS autoconfig | 3,884 requests logged across six runs; 197 carried the dummy address, 196 to the domain's own autoconfig and 1 through the same-domain `autoconfig.msn.com` → `www.msn.com` redirect (exhaustive run only, where preset domains are queried) | One deviation, the same one S4 missed; fixed by the redirect rule in SECURITY.md |
 | ≤ 2 login attempts | 0 (CAPABILITY, STARTTLS and EHLO only) | Pass |
+
+**Rubric decided by the user (2026-10-04):** the accuracy bar counts the app's second login attempt with the other username form (E1), so S4b's 45/50 meets it and S4b is accepted. Alias equivalence (E2) was not part of the decision; it adds nothing on S4's list. Later autodetect results are reported strict, with E1, and with E2, and M2's re-measure (ML-097) runs on a fresh held-out list.
 
 No row S4 got right is wrong now (checked row by row by the lead). `cargo test -p email-spike-s4b`: 53 tests pass; the whole-workspace `tools/ci.sh --ui` passed afterwards (187 tests, 10 ignored; smoke run `first-frame 45.0`).
 
