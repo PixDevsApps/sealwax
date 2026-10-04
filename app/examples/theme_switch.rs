@@ -168,6 +168,7 @@ struct Probes {
     avatar: gtk::Label,
     secondary: gtk::Label,
     chip: gtk::ToggleButton,
+    attachment_type: gtk::Label,
     body: gtk::Label,
 }
 
@@ -281,7 +282,8 @@ fn build_window(app: &adw::Application, theme: &Theme) -> adw::ApplicationWindow
     let attachment = gtk::Box::builder()
         .css_classes(["sw-attachment-card"])
         .build();
-    attachment.append(&label("PDF", &["sw-attachment-type"]));
+    let attachment_type = label("PDF", &["sw-attachment-type"]);
+    attachment.append(&attachment_type);
     attachment.append(&label("Packing list.pdf", &["sw-attachment-name"]));
     attachment.append(&label("84 KB", &["sw-attachment-meta"]));
     let empty = gtk::Box::builder()
@@ -336,6 +338,7 @@ fn build_window(app: &adw::Application, theme: &Theme) -> adw::ApplicationWindow
             avatar,
             secondary,
             chip,
+            attachment_type,
             body,
         }))
     });
@@ -486,11 +489,16 @@ async fn next_frame(window: &adw::ApplicationWindow) -> Result<(), String> {
 
 /// The centre pixel of what GTK draws for `widget`.
 fn rendered(widget: &impl IsA<gtk::Widget>) -> Result<Rgb, String> {
-    rendered_at(widget, 0.5)
+    rendered_at(widget, 0.5, 0.5)
 }
 
-/// The pixel at mid-width and `from_top` of the height (0–1) of what GTK draws for `widget`.
-fn rendered_at(widget: &impl IsA<gtk::Widget>, from_top: f64) -> Result<Rgb, String> {
+/// The pixel at `from_left` of the width and `from_top` of the height (0–1) of what GTK
+/// draws for `widget`, border included.
+fn rendered_at(
+    widget: &impl IsA<gtk::Widget>,
+    from_left: f64,
+    from_top: f64,
+) -> Result<Rgb, String> {
     let widget = widget.as_ref();
     let paintable = gtk::WidgetPaintable::new(Some(widget));
     let (width, height) = (paintable.intrinsic_width(), paintable.intrinsic_height());
@@ -513,7 +521,8 @@ fn rendered_at(widget: &impl IsA<gtk::Widget>, from_top: f64) -> Result<Rgb, Str
     let mut data = vec![0; stride * texture_height];
     texture.download(&mut data, stride);
     let row = ((texture_height as f64 * from_top) as usize).min(texture_height - 1);
-    let at = row * stride + (texture_width / 2) * 4;
+    let column = ((texture_width as f64 * from_left) as usize).min(texture_width - 1);
+    let at = row * stride + column * 4;
     Ok(Rgb {
         r: data[at + 2],
         g: data[at + 1],
@@ -559,13 +568,18 @@ fn check(controller: &ThemeController, window: &adw::ApplicationWindow) -> Resul
             ),
             ("paper card", rendered(&probes.paper)?, Rgb::WHITE),
             (
+                "paper card border",
+                rendered_at(&probes.paper, 0.0, 0.5)?,
+                theme.ui.border,
+            ),
+            (
                 "unread dot",
                 rendered(&probes.unread_dot)?,
                 theme.mail.unread,
             ),
             (
                 "avatar tint",
-                rendered_at(&probes.avatar, 0.1)?,
+                rendered_at(&probes.avatar, 0.5, 0.1)?,
                 tint.background,
             ),
             (
@@ -577,6 +591,11 @@ fn check(controller: &ThemeController, window: &adw::ApplicationWindow) -> Resul
             (
                 "selected chip text",
                 text_color(&probes.chip),
+                theme.mail.selected_chip,
+            ),
+            (
+                "attachment type text",
+                text_color(&probes.attachment_type),
                 theme.mail.selected_chip,
             ),
             ("window text", text_color(window), theme.palette.foreground),

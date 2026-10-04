@@ -245,13 +245,18 @@ mod tests {
             format!("--popover-bg-color: {};", p.darker_background),
             format!("--dialog-bg-color: {};", p.darker_background),
             format!("--card-bg-color: {};", p.lighter_background),
-            format!("--border-color: {};", p.lighter_background),
+            format!(
+                "--border-color: {};",
+                p.lighter_background.mix(p.foreground, 14)
+            ),
+            format!("--sidebar-border-color: {};", theme.ui.border),
             format!("--accent-bg-color: {};", p.accent),
             format!("--accent-color: {};", p.accent),
             format!(
                 "--sw-secondary-fg-color: {};",
                 p.foreground.mix(p.background, 35)
             ),
+            format!("--sw-chip-selected-fg-color: {};", theme.mail.selected_chip),
             format!("--sw-star-color: {};", p.accent),
             format!("--sw-unread-color: {};", p.accent),
             "--window-radius: 0px;".to_owned(),

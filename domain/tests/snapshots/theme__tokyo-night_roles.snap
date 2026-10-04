@@ -3,11 +3,12 @@ source: domain/tests/theme.rs
 expression: roles(&theme)
 ---
 mode dark
-secondary_text #777d98
+secondary_text #7d839f
 star #7aa2f7
 unread #7aa2f7
 selected_chip #7aa2f7 on #2b334c
 accent_text #1a1b26
+border #2f3347
 error #f7768e warning #e0af68 success #9ece6a
 avatar 0 #ffffff on #2f4574
 avatar 1 #ffffff on #542f74

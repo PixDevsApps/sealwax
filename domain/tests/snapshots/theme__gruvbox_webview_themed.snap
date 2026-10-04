@@ -7,11 +7,11 @@ html,body{height:max-content!important;min-height:0!important;max-height:none!im
 html{background-color:transparent;color:#d4be98;font:15px/1.55 "Liberation Sans", sans-serif}
 body{margin:0;padding:0;overflow-wrap:anywhere}
 a{color:#7daea3}
-blockquote{margin:0 0 0 2px;padding-left:12px;border-left:3px solid #3c3836;color:#988a71}
+blockquote{margin:0 0 0 2px;padding-left:12px;border-left:3px solid #48433e;color:#9d8e74}
 pre,code,kbd,samp,tt{font-family:"JetBrainsMono Nerd Font", monospace;font-size:13px}
 pre{white-space:pre-wrap}
-hr{border:0;border-top:1px solid #3c3836}
+hr{border:0;border-top:1px solid #48433e}
 img{max-width:100%;height:auto}
 table{border-collapse:collapse}
-td,th{border-color:#3c3836}
+td,th{border-color:#48433e}
 ::selection{background-color:rgba(212, 190, 152, 0.35)}

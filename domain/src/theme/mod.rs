@@ -17,8 +17,9 @@ pub use css::{COMPONENT_SIZES, avatar_class};
 pub use palette::{Mode, Palette, resolve_colors};
 pub use roles::{
     AVATAR_HUE_STEP, AVATAR_LIGHTNESS_DARK, AVATAR_LIGHTNESS_LIGHT, AVATAR_SATURATION,
-    AVATAR_TINTS, AvatarTint, INITIALS_DARK, INITIALS_LIGHT, MailRoles, STATUS_HUES,
-    STATUS_MIN_GAP, UiRoles, avatar_index, avatar_tints, initials,
+    AVATAR_TINTS, AvatarTint, BORDER_MIX, INITIALS_DARK, INITIALS_LIGHT, MailRoles, SECONDARY_MIX,
+    STATUS_HUES, STATUS_MIN_GAP, TEXT_CONTRAST, UiRoles, avatar_index, avatar_tints, initials,
+    secondary_text,
 };
 pub use shell::{ControlState, ControlStates, SPACING_TOKENS, ShellValues, Spacing};
 pub use typography::{

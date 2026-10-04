@@ -4,15 +4,18 @@
 
 use proptest::prelude::*;
 use sealwax_domain::theme::{
-    AvatarTint, BodyStyle, FontFamilies, MEASURE_CSS, Mode, Palette, Rgb, ShellValues, Theme,
-    ThemeInputs, ThemeOptions, ThemeSource, avatar_index, avatar_tints, hue_distance,
+    AvatarTint, BORDER_MIX, BodyStyle, FontFamilies, MEASURE_CSS, Mode, Palette, Rgb,
+    SECONDARY_MIX, ShellValues, Theme, ThemeInputs, ThemeOptions, ThemeSource, avatar_index,
+    avatar_tints, hue_distance,
 };
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
-/// WCAG AA for normal text: the avatar initials must reach it on every tint.
+/// WCAG AA for normal text: the avatar initials must reach it on every tint, secondary text
+/// on the window and the list, and the selected chip's text on its background.
 const INITIALS_CONTRAST: f64 = 4.5;
+const TEXT_CONTRAST: f64 = 4.5;
 /// WCAG's floor for large text and controls: text on the accent fill.
 const ACCENT_TEXT_CONTRAST: f64 = 3.0;
 /// Tints are 51° apart by design; quantizing to 8-bit channels moves a hue by about 1°.
@@ -105,6 +108,7 @@ fn roles(theme: &Theme) -> String {
         m.selected_chip, m.selected_chip_background
     );
     let _ = writeln!(text, "accent_text {}", ui.accent_text);
+    let _ = writeln!(text, "border {}", ui.border);
     let _ = writeln!(
         text,
         "error {} warning {} success {}",
@@ -229,6 +233,125 @@ fn text_on_the_accent_stays_readable() {
     }
 }
 
+/// Every stock theme, then the built-in palettes.
+fn all_themes() -> Vec<(String, Theme)> {
+    let mut themes: Vec<(String, Theme)> = theme_names()
+        .into_iter()
+        .map(|name| {
+            let theme = theme(&name);
+            (name, theme)
+        })
+        .collect();
+    for mode in [Mode::Dark, Mode::Light] {
+        let builtin = Theme::new(&ThemeInputs::builtin(mode), &ThemeOptions::default());
+        themes.push((builtin.name().to_owned(), builtin));
+    }
+    themes
+}
+
+fn reads_on_window_and_list(theme: &Theme, color: Rgb) -> bool {
+    color.contrast(theme.palette.background) >= TEXT_CONTRAST
+        && color.contrast(theme.palette.dark_background) >= TEXT_CONTRAST
+}
+
+#[test]
+fn secondary_text_reaches_aa_on_the_window_and_the_list() {
+    for (name, theme) in all_themes() {
+        let secondary = theme.mail.secondary_text;
+        for (surface, background) in [
+            ("window", theme.palette.background),
+            ("list", theme.palette.dark_background),
+        ] {
+            let contrast = secondary.contrast(background);
+            assert!(
+                contrast >= TEXT_CONTRAST,
+                "{name}: {secondary} on the {surface} {background} is {contrast:.2}"
+            );
+        }
+    }
+}
+
+/// Themes that read at the design's 35 % keep it; the others take the largest smaller mix
+/// that reads.
+#[test]
+fn secondary_text_mixes_as_far_as_it_reads() {
+    for (name, theme) in all_themes() {
+        let p = &theme.palette;
+        let secondary = theme.mail.secondary_text;
+        let design = p.foreground.mix(p.background, SECONDARY_MIX);
+        if reads_on_window_and_list(&theme, design) {
+            assert_eq!(
+                secondary, design,
+                "{name} reads at 35 % and must not change"
+            );
+            continue;
+        }
+        let percent = (0..SECONDARY_MIX)
+            .rev()
+            .find(|percent| p.foreground.mix(p.background, *percent) == secondary)
+            .unwrap_or_else(|| panic!("{name}: {secondary} is not a smaller mix"));
+        let more = p.foreground.mix(p.background, percent + 1);
+        assert!(
+            !reads_on_window_and_list(&theme, more),
+            "{name}: {percent} % is not the largest mix that reads"
+        );
+    }
+}
+
+#[test]
+fn the_selected_chip_reaches_aa() {
+    for (name, theme) in all_themes() {
+        let m = &theme.mail;
+        let (accent, foreground) = (theme.palette.accent, theme.palette.foreground);
+        let background = m.selected_chip_background;
+        let contrast = m.selected_chip.contrast(background);
+        assert!(contrast >= TEXT_CONTRAST, "{name}: {contrast:.2}");
+        if accent.contrast(background) >= TEXT_CONTRAST {
+            assert_eq!(m.selected_chip, accent, "{name} keeps the accent");
+        } else {
+            assert!(
+                m.selected_chip == foreground
+                    && foreground.contrast(background) > accent.contrast(background),
+                "{name}: the more readable of accent and foreground"
+            );
+        }
+    }
+}
+
+/// The mock's arithmetic: `Math.round(x + (y - x) * t)` per channel.
+fn mock_mix(from: Rgb, toward: Rgb, amount: f64) -> Rgb {
+    let channel =
+        |x: u8, y: u8| (f64::from(x) + (f64::from(y) - f64::from(x)) * amount).round() as u8;
+    Rgb {
+        r: channel(from.r, toward.r),
+        g: channel(from.g, toward.g),
+        b: channel(from.b, toward.b),
+    }
+}
+
+#[test]
+fn borders_follow_the_mock() {
+    for (name, theme) in all_themes() {
+        let p = &theme.palette;
+        let percent = match p.mode {
+            Mode::Dark => BORDER_MIX[0],
+            Mode::Light => BORDER_MIX[1],
+        };
+        let expected = mock_mix(
+            p.lighter_background,
+            p.foreground,
+            f64::from(percent) / 100.0,
+        );
+        assert_eq!(theme.ui.border, expected, "{name}");
+        assert!(
+            theme
+                .css()
+                .contains(&format!("--border-color: {expected};")),
+            "{name}"
+        );
+    }
+}
+
 #[test]
 fn the_same_sender_keeps_its_tint_across_themes() {
     let address = "ingrid@fjordpost.example";
@@ -250,6 +373,17 @@ fn every_theme_yields_a_complete_stylesheet() {
         for style in [BodyStyle::Themed, BodyStyle::Paper] {
             assert!(theme.webview_css(style).starts_with(MEASURE_CSS), "{name}");
         }
+        let themed = theme.webview_css(BodyStyle::Themed);
+        let quote = format!(
+            "border-left:3px solid {};color:{}}}",
+            theme.ui.border, theme.mail.secondary_text
+        );
+        assert!(
+            themed.contains(&quote),
+            "{name}: quotes take the muted text"
+        );
+        let rule = format!("border-top:1px solid {}", theme.ui.border);
+        assert!(themed.contains(&rule), "{name}: separators take the border");
     }
 }
 

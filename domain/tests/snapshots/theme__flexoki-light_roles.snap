@@ -8,6 +8,7 @@ star #205ea6
 unread #205ea6
 selected_chip #205ea6 on #e0e6e6
 accent_text #fffcf0
+border #c8c6bd
 error #d14d41 warning #d0a215 success #879a39
 avatar 0 #1b1b1f on #b7cae1
 avatar 1 #1b1b1f on #c7b7e1

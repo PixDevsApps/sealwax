@@ -502,7 +502,7 @@ entry.sw-search {
   min-height: var(--sw-size-attachment-type-height);
   border-radius: var(--sw-radius-small);
   background: var(--sw-chip-selected-bg-color);
-  color: var(--accent-color);
+  color: var(--sw-chip-selected-fg-color);
   font-size: var(--sw-text-caption);
   font-weight: bold;
 }

@@ -10,16 +10,16 @@ expression: theme.css()
   --headerbar-bg-color: #13141c;
   --headerbar-fg-color: #a9b1d6;
   --headerbar-backdrop-color: #13141c;
-  --headerbar-border-color: #24283b;
-  --headerbar-shade-color: #24283b;
+  --headerbar-border-color: #2f3347;
+  --headerbar-shade-color: #2f3347;
   --sidebar-bg-color: #13141c;
   --sidebar-fg-color: #a9b1d6;
   --sidebar-backdrop-color: #13141c;
-  --sidebar-border-color: #24283b;
+  --sidebar-border-color: #2f3347;
   --secondary-sidebar-bg-color: #13141c;
   --secondary-sidebar-fg-color: #a9b1d6;
   --secondary-sidebar-backdrop-color: #13141c;
-  --secondary-sidebar-border-color: #24283b;
+  --secondary-sidebar-border-color: #2f3347;
   --popover-bg-color: #0e0e14;
   --popover-fg-color: #a9b1d6;
   --dialog-bg-color: #0e0e14;
@@ -28,7 +28,7 @@ expression: theme.css()
   --card-fg-color: #a9b1d6;
   --thumbnail-bg-color: #24283b;
   --thumbnail-fg-color: #a9b1d6;
-  --border-color: #24283b;
+  --border-color: #2f3347;
   --accent-bg-color: #7aa2f7;
   --accent-fg-color: #1a1b26;
   --accent-color: #7aa2f7;
@@ -44,7 +44,7 @@ expression: theme.css()
   --success-bg-color: #9ece6a;
   --success-fg-color: #1a1b26;
   --success-color: #9ece6a;
-  --sw-secondary-fg-color: #777d98;
+  --sw-secondary-fg-color: #7d839f;
   --sw-star-color: #7aa2f7;
   --sw-unread-color: #7aa2f7;
   --sw-chip-selected-fg-color: #7aa2f7;
