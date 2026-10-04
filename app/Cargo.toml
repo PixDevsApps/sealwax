@@ -6,6 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 publish.workspace = true
 
+[lib]
+name = "sealwax_app"
+path = "src/lib.rs"
+
 [[bin]]
 name = "sealwax"
 path = "src/main.rs"

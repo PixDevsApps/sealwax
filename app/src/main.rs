@@ -1,8 +1,7 @@
-mod config;
-
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use sealwax_app::config;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
