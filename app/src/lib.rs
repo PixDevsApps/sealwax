@@ -12,6 +12,7 @@ pub mod menu;
 pub mod monitor;
 pub mod palette;
 pub mod preferences;
+pub mod reader;
 pub mod selftest;
 pub mod shortcuts;
 pub mod theme;

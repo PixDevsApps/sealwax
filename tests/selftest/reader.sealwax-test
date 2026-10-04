@@ -1,0 +1,113 @@
+# The reader (ML-027) over a scratch store of synthetic messages (app/src/reader/samples.rs):
+# plain text, simple HTML, a styled newsletter on the paper card, an inline cid: image,
+# attachments, remote images blocked and then shown, and a Latin-1 body. Links are recorded,
+# never opened, and the remote images and the clicked link point at a closed port on 127.0.0.1.
+# The screenshots follow the session's theme. Run:
+#   tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/reader.sealwax-test
+
+desktop tiling
+resize 1440 900
+sidebar sample
+reader-open
+assert-reader body none
+
+# Plain text: a text view in the reading font, no WebView.
+reader-show plain
+assert-reader body plain
+assert-label reader-subject "Cabin weekend — final plan"
+assert-label reader-sender "Ingrid Solberg"
+assert-label reader-address "<ingrid@example.test>"
+assert-label reader-recipients "to me"
+assert-reader banner false
+assert-reader attachments 0
+assert-reader text-contains Hemsedal
+screenshot $DIR/../../.local/selftest/reader-plain.png
+
+# Simple HTML takes the theme, at exactly its height.
+reader-show simple
+assert-reader body html-themed
+assert-reader height-exact true
+assert-reader banner false
+assert-label reader-recipients "to me"
+assert-reader text-contains "Two small comments"
+screenshot $DIR/../../.local/selftest/reader-simple.png
+
+# A styled newsletter keeps its design on paper; its logo comes through cid:, its remote
+# images stay hidden behind the banner.
+reader-show newsletter
+assert-reader body html-paper
+assert-reader banner true
+assert-reader cid-loaded 1
+assert-reader remote-loaded 0
+assert-reader height-exact true
+screenshot $DIR/../../.local/selftest/reader-newsletter.png
+
+# An inline image is shown in place, not as an attachment card.
+reader-show cid
+assert-reader body html-themed
+assert-reader cid-loaded 1
+assert-reader attachments 0
+screenshot $DIR/../../.local/selftest/reader-cid.png
+
+# Attachment cards: type, name and size.
+reader-show attachments
+assert-reader body plain
+assert-reader attachments 3
+screenshot $DIR/../../.local/selftest/reader-attachments.png
+
+# Remote images: hidden, then shown for this message for the session; a clicked link goes to
+# the opener, after the vetting, and nowhere else.
+reader-show remote
+assert-reader banner true
+assert-reader remote-allowed false
+assert-reader remote-requests 0
+assert-reader remote-loaded 0
+screenshot $DIR/../../.local/selftest/reader-remote-hidden.png
+reader-click #renew
+assert-reader opened https://127.0.0.1:2/library/renew
+reader-show-images
+assert-reader banner false
+assert-reader remote-allowed true
+assert-reader remote-requests 1
+reader-show plain
+reader-show remote
+assert-reader remote-allowed true
+assert-reader banner false
+assert-reader remote-requests 1
+
+# The pooled views that showed remote images block them again for other messages.
+reader-show simple
+reader-show newsletter
+assert-reader banner true
+assert-reader remote-requests 0
+reader-show cid
+reader-show newsletter
+assert-reader remote-requests 0
+
+# A Latin-1 body and an encoded sender name.
+reader-show latin1
+assert-reader text-contains blåbærsyltetøy
+assert-label reader-sender "Åse Nygård"
+
+# A dark newsletter stays dark on the paper card.
+reader-show dark-promo
+assert-reader body html-paper
+screenshot $DIR/../../.local/selftest/reader-dark-promo.png
+
+# Hidden for three seconds, the reader gives its view back; shown again, it renders again.
+reader-show newsletter
+resize 800 900
+assert-layout narrow
+action nav.pane::list
+sleep 3500
+assert-reader released true
+action nav.pane::reader
+wait-until assert-reader released false
+assert-reader body html-paper
+assert-reader height-exact true
+resize 1440 900
+
+assert-reader live-views-at-most 4
+assert-labelled
+reader-clear
+assert-reader body none

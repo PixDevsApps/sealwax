@@ -805,3 +805,26 @@ separator.sw-toolbar-separator {
 .sw-message-row .sw-indicator {
   -gtk-icon-size: var(--sw-text-body);
 }
+
+/* Reader (ML-027) */
+
+/* Plain-text bodies: GTK multiplies the font's own line height (S3), so 1.35 here is about
+   the 1.55 of message text in a browser (DESIGN.md "Typography"). */
+textview.sw-reader-plain,
+textview.sw-reader-plain > text {
+  background: none;
+  line-height: 1.35;
+}
+
+.sw-reader-details {
+  padding: var(--sw-space-sm) 0;
+}
+
+.sw-reader-attachments {
+  padding-top: var(--sw-space-xxl);
+  border-top: 1px solid var(--border-color);
+}
+
+.sw-reader-notice {
+  padding: var(--sw-space-sm) 0;
+}

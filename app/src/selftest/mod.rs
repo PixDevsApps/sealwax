@@ -11,6 +11,7 @@ mod mail;
 mod perf;
 mod probe;
 mod processes;
+mod reader;
 mod sample;
 mod screenshot;
 mod script;
@@ -389,6 +390,7 @@ impl Harness {
             "test-bus-activate" => self.test_bus_call(None).await,
             "test-bus-signal" => self.test_bus_signal(arg(0)).await,
             "test-bus-stop" => self.stop_test_bus().await,
+            command if reader::handles(command) => reader::step(self, command, args).await,
             command => self.check(command, args).await,
         }
     }
@@ -678,6 +680,7 @@ impl Harness {
                     Err(format!("{} has {:?}", arg(0), arg(1)))
                 }
             }
+            "assert-reader" => reader::check(self, args).await,
             other => Err(format!("unknown command {other}")),
         }
     }
