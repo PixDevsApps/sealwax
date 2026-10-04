@@ -11,7 +11,7 @@ use sealwax_domain::keymap::{Binding, Keymap};
 /// "Not available yet", so the keymap is complete from the start.
 pub fn dialog(keymap: &Keymap, available: &dyn Fn(ActionId) -> bool) -> adw::ShortcutsDialog {
     let dialog = adw::ShortcutsDialog::new();
-    dialog.add_css_class("sealwax-shortcuts");
+    dialog.add_css_class("sw-shortcuts");
     for category in Category::ALL {
         let section = adw::ShortcutsSection::new(Some(category.label()));
         let mut empty = true;
