@@ -1,0 +1,31 @@
+From: "Kari Nordmann" <kari@example.com>
+To: "Ola Nordmann" <ola@example.org>
+Subject: Plain alternative test
+Date: Sun, 4 Oct 2026 12:00:00 +0000
+Message-ID: <ex2cn5ffzrdtxysorqkli2xapm@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="18db53992ec35d62_392edcc170fee014_89d7f45426414ac5"
+
+
+--18db53992ec35d62_392edcc170fee014_89d7f45426414ac5
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Hello **world**, no images and no attachments.
+
+--18db53992ec35d62_392edcc170fee014_89d7f45426414ac5
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+</head>
+<body>
+<div>Hello <b>world</b>, no images and no attachments.</div>
+</body>
+</html>
+
+--18db53992ec35d62_392edcc170fee014_89d7f45426414ac5--

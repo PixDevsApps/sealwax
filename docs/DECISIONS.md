@@ -16,14 +16,14 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 004 | Follow the live Omarchy theme | Accepted (user request) |
 | 005 | SQLite with FTS5 plus a blob store | Proposed; S3 confirms |
 | 006 | IMAP library and state-driven sync | Proposed; S1 decides the library |
-| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirms |
+| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
 | 008 | OAuth2 and secrets | OAuth for Google and Microsoft accepted (user decision); mechanism proposed; S5 is go/no-go |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed |
 | 010 | Name and app-id | Open; the user decides in M0 |
-| 011 | Reading pane: approach A with hardened WebKit | Proposed; S2 decides |
+| 011 | Reading pane: approach A with hardened WebKit | Proposed; S7 amendment (CSP vs isolated worlds); S2 decides |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval) |
-| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism proposed; S7 confirms |
+| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed |
 | 016 | Conversation threading | Proposed |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Proposed |
@@ -121,6 +121,19 @@ Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. 
 
 **Consequence:** no hostname in Message-ID, EHLO or Received headers. Certificate pinning for SMTP isn't possible with lettre (TlsParameters takes no custom rustls config), so pinned exceptions (Proton Bridge) wait for 1.x.
 
+### ADR-007 amendment — S7 results (2026-10-04)
+
+S7 confirms the MIME side ([report](spikes/S7-composer.md)): 12 messages round-trip through mail-parser (structure, both text parts, inline-image links, attachment names, decoded headers); no Bcc header in the transmitted copy; 0 hostname hits in any output. Additions:
+
+- The Sent copy is the transmitted bytes plus one `Bcc:` field.
+- A message with only Bcc recipients gets `To: "undisclosed-recipients":;`.
+- Text attachments set `charset=utf-8` explicitly: mail-builder drops its default once a part has other parameters.
+- File names use RFC 2231 `filename*` plus an RFC 2047 `name=` for older clients.
+- Message-ID domains go through an IDN (punycode) converter in the domain crate.
+- `Date:` stays in UTC (mail-builder's choice), which also keeps the sender's time zone private.
+
+Interop in Gmail web, Outlook web and Thunderbird is still pending test accounts and sending approval; the samples are in `spikes/s7-composer/fixtures/`.
+
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
 **Status:** OAuth2 sign-in for Google and Microsoft in 1.0 is accepted — user decision, 2026-10-04. The mechanism is proposed; S5 is the go/no-go.
@@ -168,6 +181,15 @@ Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. 
 
 **Consequence:** no HTML sanitizer is needed for display; the layers above do the work. The hostile-HTML suite (25+ cases) guards them in CI.
 
+### ADR-011 amendment — S7 findings (2026-10-04)
+
+From the composer spike ([report](spikes/S7-composer.md)), which uses the same hardening:
+
+- **The page's CSP does not bind isolated-world scripts' `fetch()`.** With the CSP alone, a helper `fetch()` reached the local test server; only the content filter stopped it. Rule: helper scripts fetch nothing but `blob:` URLs, and every view that runs helper scripts keeps the content filter.
+- With `enable-javascript-markup = false`, no markup script or event handler ran even without the CSP.
+- The `enable-dns-prefetching` and `enable-hyperlink-auditing` setters are deprecated in WebKitGTK 2.48/2.50; they stay off where they still exist, but nothing relies on them.
+- Every view uses an ephemeral network session: WebKit's default session writes under `$XDG_CACHE_HOME/<prgname>` and `$XDG_DATA_HOME/<prgname>`.
+
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
 **Status:** Accepted — user decision, 2026-10-04.
@@ -197,6 +219,24 @@ Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. 
 **Alternatives:** a Markdown composer in GtkSourceView (faster to build; the user preferred WYSIWYG); a GtkTextView with tags and a hand-written HTML serialiser (poor fidelity for quoted HTML).
 
 **Consequence:** M6 grows by about 6–10 days; fcitx5 and Norwegian dead-key typing are part of S7's pass bar.
+
+### ADR-014 amendment — S7 results (2026-10-04)
+
+S7 confirms the mechanism with conditions ([report](spikes/S7-composer.md)). Formatting, toolbar state, undo and paste cleaning pass; the measured edit-to-painted-frame latency (live, 144 Hz, release) passes only without hardware acceleration:
+
+| Composer view | p50 | p95 |
+| --- | --- | --- |
+| WebKit default (accelerated) | ≈ 14 ms | 16.0–24.1 ms — fails 16 ms |
+| `hardware-acceleration-policy = NEVER` | 8.0–10.0 ms | 9.9–11.9 ms (max 15.8 ms) |
+
+Decisions:
+
+- The composer view sets `hardware-acceleration-policy = NEVER`. The setting is per view; the reader keeps the default unless S2 says otherwise.
+- WebKitGTK binds only Ctrl+B, Ctrl+I and Ctrl+A in editable content, so the app binds Ctrl+U, Ctrl+Z, Ctrl+Shift+Z / Ctrl+Y, Ctrl+K and a paste-without-formatting key as actions (under ADR-017's audit).
+- Spell check is enabled only when WebKit reports at least one language. Optional dependencies: `hunspell` with `hunspell-en_us` and others; Norwegian comes as `aspell-nb` / `aspell-nn` through enchant.
+- Quirks the composer must handle: unlink needs a selection; quote and indent are both `<blockquote>` (indent is told apart by WebKit's margin style); strikethrough writes `<strike>`; lists arrive wrapped in a `div` with a trailing `<br>`; when both are offered, the paste event shows only `text/html`; an image-only clipboard is converted by the helper from a `blob:` image to a `cid:` part.
+
+Still open: the user's fcitx5 and Norwegian dead-key check (`bash spikes/s7-composer/manual-check.sh`); a re-measure on a 60 Hz display and scrolling of long quotes without acceleration, before M6.
 
 ## ADR-015 — Op queue: optimistic overlay, Undo, at-most-once send (2026-10-04)
 

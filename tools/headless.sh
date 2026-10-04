@@ -50,10 +50,17 @@ if ! grep -q '^Listening on' "$log"; then
     exit 1
 fi
 
+# Scratch XDG folders inside the repository, so nothing a headless run writes (WebKit's
+# network session included) lands in the user's home. A command can still set its own.
+xdg="$root/.local/headless-$display"
+mkdir -p "$xdg/config" "$xdg/cache" "$xdg/data" "$xdg/state"
+
 status=0
 env -u WAYLAND_DISPLAY -u DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     GDK_BACKEND=broadway BROADWAY_DISPLAY=":$display" \
     GTK_A11Y=none ADW_DISABLE_PORTAL=1 GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
+    XDG_CONFIG_HOME="$xdg/config" XDG_CACHE_HOME="$xdg/cache" \
+    XDG_DATA_HOME="$xdg/data" XDG_STATE_HOME="$xdg/state" \
     dbus-run-session --config-file="$root/tools/headless-dbus.conf" -- \
     timeout --kill-after=5 "$timeout_s" "$@" || status=$?
 exit "$status"

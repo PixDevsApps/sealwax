@@ -48,6 +48,26 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### S7 composer and MIME (ML-015) — 2026-10-04
+
+Release builds; four headless runs (display 23) and five self-closing live runs on Hyprland (DP-2, 3440×1440 at 144 Hz, NVIDIA); no synthetic input in the live session. Report: [spikes/S7-composer.md](spikes/S7-composer.md).
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| Formatting commands | 98 checks live, 102 headless | Pass |
+| Toolbar follows the selection | caret move → toolbar update, live p50 0.77–1.57 ms, p95 1.46–13.83 ms | Pass |
+| Undo | every format; a typed run and a paste each undo in one step | Pass (the app must bind Ctrl+Z, Ctrl+Shift+Z/Ctrl+Y, Ctrl+U) |
+| Paste cleaned | hostile HTML stripped to the allowlist, 0 canary requests | Pass |
+| Typing < 16 ms | accelerated p95 16.0–24.1 ms; `hardware-acceleration-policy = NEVER` p95 9.9–11.9 ms | Pass without acceleration only |
+| fcitx5 and Norwegian dead keys | `bash spikes/s7-composer/manual-check.sh` | Pending the user |
+| Round trip through mail-parser | 12 `.eml` files | Pass |
+| No Bcc in the transmitted copy; no hostname | 0 hits | Pass |
+| Gmail web / Outlook web / Thunderbird | samples ready | Pending test accounts |
+
+**Method:** an editing command sent by the app, timed to the end of the first frame that shows it; a one-child probe widget around the WebView marks frames where it drew; the frame clock's after-paint ends the frame; caret blink off; 50 ms without frames before each edit; a pixel pass checks that the first frame shows the edit (19–20 of 20 per run). Headless Broadway frame time grows with WebView area (about 18 ms at 1100×595, 3.3 ms at 535×195), so paint latency is judged live only. `cargo test -p email-spike-s7`: 10 tests pass; fmt and clippy clean (re-run by the lead).
+
+**Harness change:** the S7 probe's first headless run wrote WebKit data to `~/.cache/email-spike-s7` and `~/.local/share/email-spike-s7`, because `tools/headless.sh` passed the user's XDG folders through. Since 2026-10-04 the wrapper gives every run scratch XDG folders under `.local/headless-<display>/`.
+
 ### S4 autodetect (ML-012) — 2026-10-04
 
 Release builds, 12:01–12:25 UTC, residential network in Norway; report [spikes/S4-autodetect.md](spikes/S4-autodetect.md).

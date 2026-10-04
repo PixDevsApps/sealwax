@@ -1,0 +1,34 @@
+From: "Kari Nordmann" <kari@example.com>
+To: "undisclosed-recipients":;
+Bcc: "Blind Kopi" <blind@example.net>, "Hemmelig Mottaker"
+ <hemmelig@example.com>
+Subject: Kun blindkopi
+Date: Sun, 4 Oct 2026 12:00:00 +0000
+Message-ID: <uubvy4653qtq3n62cvbd4jqsz4@example.com>
+MIME-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="18db53992ec69de5_82713a90e026f2a_89d7f45426414ac5"
+
+
+--18db53992ec69de5_82713a90e026f2a_89d7f45426414ac5
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: 7bit
+
+Only Bcc recipients: the transmitted copy says undisclosed-recipients.
+
+--18db53992ec69de5_82713a90e026f2a_89d7f45426414ac5
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8">
+</head>
+<body>
+<div>Only Bcc recipients: the transmitted copy says undisclosed-recipients.=
+</div>
+</body>
+</html>
+
+--18db53992ec69de5_82713a90e026f2a_89d7f45426414ac5--
