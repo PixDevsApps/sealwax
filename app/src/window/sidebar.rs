@@ -451,10 +451,6 @@ impl Sidebar {
         sidebar
     }
 
-    pub fn model(&self) -> SidebarModel {
-        self.model.borrow().clone()
-    }
-
     pub fn contains(&self, key: &str) -> bool {
         self.model.borrow().contains(key)
     }
