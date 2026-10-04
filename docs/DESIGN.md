@@ -87,9 +87,9 @@ All colours come from the resolved palette (`omarchy-theme-color --all`), mapped
 | Secondary text (snippets, times, addresses) | mail role | `foreground` mixed 35 % toward `background` |
 | Accent: focus ring, compose button, unread dot, selected chip | `--accent-bg-color`, `--accent-color` | `accent` |
 | Text on accent | `--accent-fg-color` | `readable_on(accent)` |
-| Star | mail role | `yellow` (falls back through `orange`) |
+| Star | mail role | `accent` (several themes' `yellow` isn't yellow — matte-black's is red) |
 | Error / warning / success | `--error-*`, `--warning-*`, `--success-*` | `red` / `yellow` / `green` |
-| Avatar tints | mail role | hues from `red, green, yellow, blue, magenta, cyan, orange`, separated by Stet's `distinct`, chosen by a hash of the address |
+| Avatar tints | mail role | seven hues rotated from the `accent` hue in 51° steps at a fixed saturation and a mode-dependent lightness (the mock's approach; palette hues are often too alike, as in matte-black), picked by a hash of the address; initials take `readable_on` |
 | Light or dark | AdwStyleManager FORCE_DARK / FORCE_LIGHT | `mode` |
 | Corners of rows, chips, cards, buttons | `--window-radius` and CSS | `corner_radius` ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)) |
 
@@ -158,4 +158,10 @@ Every entry is audited for US and Norwegian layouts (no AltGr; `#`, `/`, `!` and
 
 ## Mock and gate
 
-The interactive DESIGN mock (ML-008) is a private web page rendered in the live palette plus a light theme. It shows the three widths, list rows, the reader, the composer, the setup assistant, and empty and error states, each square and rounded. Its link and the user's decisions will be recorded here.
+The interactive DESIGN mock (ML-008), published 2026-10-04 as a private design canvas: [Mail — design mock](https://claude.ai/artifact/TU2jwqgJu1YxTXFLLdpuLS).
+
+- **Artboards:** wide window (interactive: pick a message), medium (rail), narrow (one pane), reader with styled HTML on the paper card, hidden images and the link check, composer, setup assistant (detect, Google sign-in, failure with manual settings), and empty and error states.
+- **Tweaks on every artboard:** Theme (Matte Black, Tokyo Night, Catppuccin Latte — palettes resolved with `omarchy-theme-color --all`) and Corners (Square, Rounded).
+- **Stand-ins:** JetBrains Mono for the Omarchy font; Arimo (metric-compatible with Liberation Sans) for message text. All names, addresses and content are fictional.
+
+The user's decisions at the gate (layout, square or rounded, sizes) will be recorded here as a dated entry.
