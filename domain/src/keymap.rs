@@ -919,13 +919,14 @@ impl Keymap {
         for (key, value) in entries(root.get_ref()) {
             let name = key.get_ref().as_ref();
             let Some(action) = ActionId::from_name(name) else {
+                let hint = match ActionId::from_detailed_name(name) {
+                    Some(id) => format!("; write it without its group, as {}", id.name()),
+                    None => did_you_mean(name, ActionId::ALL.map(ActionId::name)),
+                };
                 errors.push(FileError::spanned(
                     text,
                     key.span(),
-                    format!(
-                        "unknown action {name}{}",
-                        did_you_mean(name, ActionId::ALL.map(ActionId::name))
-                    ),
+                    format!("unknown action {name}{hint}"),
                 ));
                 continue;
             };
@@ -1753,6 +1754,12 @@ mod tests {
         assert_eq!(
             parse("archve = []\n").unwrap_err(),
             ["line 1, column 1: unknown action archve; did you mean archive?"]
+        );
+        assert_eq!(
+            parse("\"win.archive\" = []\n").unwrap_err(),
+            [
+                "line 1, column 1: unknown action win.archive; write it without its group, as archive"
+            ]
         );
         assert_eq!(
             parse("archive = \"e\"\n").unwrap_err(),
