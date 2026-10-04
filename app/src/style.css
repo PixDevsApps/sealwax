@@ -211,19 +211,14 @@ button.sw-primary:active {
 }
 
 /* Until its command exists (compose waits for the composer, M6; Add an account for the
-   setup assistant, M2): libadwaita's half-transparent filter on the button and its label
-   left the text unreadable, so a disabled one takes the selected chip's pair, which keeps
-   4.5:1 on every stock theme. */
+   setup assistant, M2): libadwaita's half-transparent filter left the label at 2.6:1 on
+   matte-black, so a disabled one takes the selected chip's pair, which keeps 4.5:1 on every
+   stock theme. */
 button.sw-compose:disabled,
 button.sw-primary:disabled {
   filter: none;
   background: var(--sw-chip-selected-bg-color);
   color: var(--sw-chip-selected-fg-color);
-}
-
-button.sw-compose:disabled label,
-button.sw-primary:disabled label {
-  filter: none;
 }
 
 /* The window's panes: the folders and the list on the sidebar surface with a border at

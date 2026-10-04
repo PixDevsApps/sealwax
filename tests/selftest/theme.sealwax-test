@@ -13,6 +13,8 @@ theme matte-black
 corners 0
 assert-color welcome background window
 assert-label welcome-hint "or press Ctrl+Shift+P / F1 for every command"
+assert-sensitive add-account false
+assert-contrast add-account 4.5
 assert-labelled
 sidebar sample
 list sample

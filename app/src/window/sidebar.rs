@@ -29,7 +29,7 @@ pub const ALL_INBOXES: &str = "all-inboxes";
 
 const ALL_INBOXES_ICONS: &[&str] = &["mail-unread-symbolic"];
 const FOLDER_ICONS: &[&str] = &["folder-symbolic"];
-pub(super) const COMPOSE_ICONS: &[&str] = &["mail-message-new-symbolic", "document-edit-symbolic"];
+const COMPOSE_ICONS: &[&str] = &["mail-message-new-symbolic", "document-edit-symbolic"];
 const CONFIG_ICONS: &[&str] = &["preferences-other-symbolic", "emblem-system-symbolic"];
 
 /// The special folders every account shows, in display order (DESIGN.md "Components").
