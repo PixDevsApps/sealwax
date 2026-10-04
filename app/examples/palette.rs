@@ -722,7 +722,7 @@ impl Harness {
         r.check(
             "config.toml applies live",
             applied.is_some()
-                && self.prefs.config().appearance.corner_radius == CornerRadius::Pixels(12),
+                && self.prefs.config().appearance.corner_radius == CornerRadius::Px(12),
         );
 
         let seen = self.updates.borrow().len();
@@ -737,7 +737,7 @@ impl Harness {
             "a faulty config.toml is reported and not applied",
             rejected.is_some_and(|update| {
                 update.problems[0].starts_with("config.toml not applied: line 2, column 15:")
-            }) && self.prefs.config().appearance.corner_radius == CornerRadius::Pixels(12),
+            }) && self.prefs.config().appearance.corner_radius == CornerRadius::Px(12),
         );
 
         let seen = self.updates.borrow().len();

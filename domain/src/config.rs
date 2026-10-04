@@ -119,57 +119,22 @@ pub(crate) fn article(kind: &str) -> String {
     }
 }
 
-/// The largest `corner_radius` in pixels.
-pub const MAX_CORNER_RADIUS: u32 = 64;
+pub use crate::theme::{
+    ChromeFont, CornerRadius, MAX_RADIUS as MAX_CORNER_RADIUS, ReadingFont,
+    ThemeOptions as Appearance,
+};
 
-/// The corner radius of rows, chips, cards and buttons (ADR-019).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum CornerRadius {
-    /// Hyprland's `decoration:rounding`, or 0 outside Hyprland.
-    #[default]
-    Auto,
-    Pixels(u32),
-}
-
-/// The font of the chrome: sidebar, list, toolbars and chips (DESIGN.md "Typography").
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ChromeFont {
-    /// The Omarchy font, `fc-match monospace`.
-    #[default]
-    Omarchy,
-    /// `fc-match sans-serif`.
-    Sans,
-}
-
-/// The font of message text.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub enum ReadingFont {
-    #[default]
-    Sans,
-    Mono,
-}
-
-/// `[appearance]`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Appearance {
-    pub corner_radius: CornerRadius,
-    pub chrome_font: ChromeFont,
-    pub reading_font: ReadingFont,
-}
-
-/// An OAuth client registration that overrides the build's (ADR-008, OAUTH-SETUP.md). The
-/// section names are final once M2 builds sign-in.
+/// An OAuth client registration that overrides the build's (ADR-008, OAUTH-SETUP.md). Only
+/// the client ID: Microsoft's client is public, and no settings file holds a secret (ADR-009).
+/// The section names are final once M2 builds sign-in.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OAuthClient {
     pub client_id: Option<String>,
-    /// Google's desktop clients have one; Microsoft's public client has none.
-    pub client_secret: Option<String>,
 }
 
-/// `[oauth.google]` and `[oauth.microsoft]`.
+/// `[oauth.microsoft]`. Sign in with Google is deferred to 1.x (ADR-008 amendment).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OAuth {
-    pub google: OAuthClient,
     pub microsoft: OAuthClient,
 }
 
@@ -182,14 +147,14 @@ pub struct Config {
 
 const APPEARANCE_SETTINGS: [&str; 3] = ["corner_radius", "chrome_font", "reading_font"];
 const SECTIONS: [&str; 2] = ["appearance", "oauth"];
-const PROVIDERS: [&str; 2] = ["google", "microsoft"];
+const PROVIDERS: [&str; 1] = ["microsoft"];
 
 /// Where a setting written at the top level belongs.
 fn section_of(name: &str) -> Option<&'static str> {
     if APPEARANCE_SETTINGS.contains(&name) {
         Some("[appearance]")
-    } else if matches!(name, "client_id" | "client_secret") {
-        Some("[oauth.google] or [oauth.microsoft]")
+    } else if name == "client_id" {
+        Some("[oauth.microsoft]")
     } else {
         None
     }
@@ -276,14 +241,13 @@ impl Reader<'_> {
         for (key, value) in entries(table) {
             let provider = key.get_ref().as_ref();
             let (client, settings): (&mut OAuthClient, &[&str]) = match provider {
-                "google" => (&mut oauth.google, &["client_id", "client_secret"]),
                 "microsoft" => (&mut oauth.microsoft, &["client_id"]),
                 _ => {
                     self.error(
                         key.span(),
                         format!(
-                            "unknown provider oauth.{provider}{}; Sealwax signs in with google \
-                             and microsoft",
+                            "unknown provider oauth.{provider}{}; Sealwax signs in with \
+                             microsoft",
                             did_you_mean(provider, PROVIDERS)
                         ),
                     );
@@ -298,7 +262,9 @@ impl Reader<'_> {
                 let name = key.get_ref().as_ref();
                 if !settings.contains(&name) {
                     let hint = if name == "client_secret" {
-                        "; Microsoft's client is public and has none".to_owned()
+                        "; Microsoft's client is public and has none, and no settings file \
+                         holds a secret"
+                            .to_owned()
                     } else {
                         did_you_mean(name, settings.iter().copied())
                     };
@@ -319,10 +285,7 @@ impl Reader<'_> {
                     continue;
                 };
                 let text = Some(text.trim().to_owned()).filter(|text| !text.is_empty());
-                match name {
-                    "client_id" => client.client_id = text,
-                    _ => client.client_secret = text,
-                }
+                client.client_id = text;
             }
         }
     }
@@ -335,7 +298,7 @@ fn corner_radius(value: &DeValue<'_>) -> Option<CornerRadius> {
             .ok()
             .and_then(|pixels| u32::try_from(pixels).ok())
             .filter(|pixels| *pixels <= MAX_CORNER_RADIUS)
-            .map(CornerRadius::Pixels),
+            .map(CornerRadius::Px),
         _ => None,
     }
 }
@@ -415,12 +378,8 @@ pub fn default_config_file() -> String {
          # Message text: \"sans\" or \"mono\".\n\
          # reading_font = \"sans\"\n\
          \n\
-         # Your own OAuth clients for Sign in with Google and Microsoft, in place of the ones\n\
-         # Sealwax was built with (docs/OAUTH-SETUP.md).\n\
-         [oauth.google]\n\
-         # client_id = \"…apps.googleusercontent.com\"\n\
-         # client_secret = \"…\"\n\
-         \n\
+         # Your own OAuth client for Sign in with Microsoft, in place of the one Sealwax was\n\
+         # built with (docs/OAUTH-SETUP.md).\n\
          [oauth.microsoft]\n\
          # client_id = \"00000000-0000-0000-0000-000000000000\"\n"
     )
@@ -452,24 +411,26 @@ mod tests {
     #[test]
     fn reads_every_setting() {
         let text = "[appearance]\ncorner_radius = 8\nchrome_font = \"sans\"\n\
-                    reading_font = \"mono\"\n\n[oauth.google]\nclient_id = \" id.example \"\n\
-                    client_secret = \"s\"\n\n[oauth.microsoft]\nclient_id = \"\"\n";
+                    reading_font = \"mono\"\n\n[oauth.microsoft]\nclient_id = \" id.example \"\n";
         let config = Config::parse(text).unwrap();
         assert_eq!(
             config.appearance,
             Appearance {
-                corner_radius: CornerRadius::Pixels(8),
+                corner_radius: CornerRadius::Px(8),
                 chrome_font: ChromeFont::Sans,
                 reading_font: ReadingFont::Mono,
             }
         );
-        assert_eq!(config.oauth.google.client_id.as_deref(), Some("id.example"));
-        assert_eq!(config.oauth.google.client_secret.as_deref(), Some("s"));
+        assert_eq!(
+            config.oauth.microsoft.client_id.as_deref(),
+            Some("id.example")
+        );
+        let config = Config::parse("[oauth.microsoft]\nclient_id = \"\"\n").unwrap();
         assert_eq!(config.oauth.microsoft, OAuthClient::default());
         let config = Config::parse("appearance.corner_radius = \"auto\"\n").unwrap();
         assert_eq!(config.appearance.corner_radius, CornerRadius::Auto);
         let config = Config::parse("[appearance]\ncorner_radius = 0x40\n").unwrap();
-        assert_eq!(config.appearance.corner_radius, CornerRadius::Pixels(64));
+        assert_eq!(config.appearance.corner_radius, CornerRadius::Px(64));
     }
 
     #[test]
@@ -525,19 +486,18 @@ mod tests {
         assert_eq!(
             errors("[oauth.yahoo]\n"),
             [
-                "line 1, column 8: unknown provider oauth.yahoo; Sealwax signs in with google and \
-                 microsoft"
+                "line 1, column 8: unknown provider oauth.yahoo; Sealwax signs in with microsoft"
             ]
         );
         assert_eq!(
             errors("[oauth.microsoft]\nclient_secret = \"x\"\n"),
             [
                 "line 2, column 1: unknown setting client_secret in [oauth.microsoft]; \
-                 Microsoft's client is public and has none"
+                 Microsoft's client is public and has none, and no settings file holds a secret"
             ]
         );
         assert_eq!(
-            errors("[oauth.google]\nclient_id = 7\n"),
+            errors("[oauth.microsoft]\nclient_id = 7\n"),
             ["line 2, column 13: client_id takes a string in quotes, not an integer"]
         );
     }
@@ -590,8 +550,6 @@ mod tests {
             .collect();
         let config = Config::parse(&uncommented).unwrap();
         assert_eq!(config.appearance, Appearance::default());
-        assert!(config.oauth.google.client_id.is_some());
-        assert!(config.oauth.google.client_secret.is_some());
         assert!(config.oauth.microsoft.client_id.is_some());
     }
 
