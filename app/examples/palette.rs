@@ -123,6 +123,16 @@ fn start(app: &adw::Application, failures: Rc<Cell<Option<u32>>>) {
         eprintln!("palette check: could not clear {}: {error}", root.display());
     }
     let dirs = SealwaxDirs::under(&root);
+    // The config home exists, as `~/.config` does, so its monitor sees `sealwax/` appear at
+    // once; a missing path is only checked from time to time.
+    if let Some(config_home) = dirs.config.parent()
+        && let Err(error) = std::fs::create_dir_all(config_home)
+    {
+        eprintln!(
+            "palette check: could not create {}: {error}",
+            config_home.display()
+        );
+    }
     let prefs = Preferences::start(&dirs);
     let keymap = prefs.keymap();
 
