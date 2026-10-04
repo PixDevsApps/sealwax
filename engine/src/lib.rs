@@ -7,7 +7,7 @@ pub mod secrets;
 pub fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
-        .thread_name("mail-engine")
+        .thread_name("sealwax-engine")
         .enable_all()
         .build()
 }

@@ -7,7 +7,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
-email-engine.workspace = true
+sealwax-engine.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "query"] }
 serde = { version = "1", features = ["derive"] }

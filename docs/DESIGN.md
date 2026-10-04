@@ -19,7 +19,7 @@ The user approved the [design mock](https://claude.ai/artifact/TU2jwqgJu1YxTXFLL
 
 ## What we take from the inspiration designs
 
-The six reference designs the user shared agree on a layout and a set of row details; Mail keeps those and drops the decoration that would fight the theme.
+The six reference designs the user shared agree on a layout and a set of row details; Sealwax keeps those and drops the decoration that would fight the theme.
 
 | Keep | Drop or change |
 | --- | --- |

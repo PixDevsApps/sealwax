@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 fn main() -> glib::ExitCode {
     let started = Instant::now();
-    if let Err(error) = email_infrastructure::logging::init() {
+    if let Err(error) = sealwax_infrastructure::logging::init() {
         eprintln!("Could not initialize logging: {error}");
         return glib::ExitCode::FAILURE;
     }
@@ -34,12 +34,12 @@ fn activate(app: &adw::Application, started: Instant, exit_after: Option<Duratio
     }
     let placeholder = adw::StatusPage::builder()
         .icon_name("mail-unread-symbolic")
-        .title("Mail")
+        .title("Sealwax")
         .description("M0 scaffold")
         .build();
     let window = adw::ApplicationWindow::builder()
         .application(app)
-        .title("Mail")
+        .title("Sealwax")
         .default_width(1200)
         .default_height(800)
         .content(&placeholder)

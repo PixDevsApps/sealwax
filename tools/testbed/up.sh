@@ -11,7 +11,7 @@ if [[ ! -f certs/ca.pem || ! -f certs/server.pem ]]; then
         cd certs
         umask 077
         openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 3650 \
-            -subj "/CN=Mail testbed CA" -keyout ca.key -out ca.pem \
+            -subj "/CN=Sealwax testbed CA" -keyout ca.key -out ca.pem \
             -addext "basicConstraints=critical,CA:TRUE" \
             -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
         openssl req -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -subj "/CN=localhost" \

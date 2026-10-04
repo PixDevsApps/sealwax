@@ -277,7 +277,7 @@ mod tests {
             .store(
                 account,
                 SecretKind::Password,
-                "Mail test password",
+                "Sealwax test password",
                 b"hunter2",
             )
             .await
@@ -286,7 +286,7 @@ mod tests {
             .store(
                 account,
                 SecretKind::RefreshToken,
-                "Mail test token",
+                "Sealwax test token",
                 b"token-1",
             )
             .await
@@ -295,7 +295,7 @@ mod tests {
             .store(
                 account,
                 SecretKind::RefreshToken,
-                "Mail test token",
+                "Sealwax test token",
                 b"token-2",
             )
             .await
@@ -365,12 +365,12 @@ mod tests {
     }
 
     /// Talks to the live Secret Service; run with
-    /// `cargo test -p email-engine -- --ignored keyring_round_trip` in a desktop session.
+    /// `cargo test -p sealwax-engine -- --ignored keyring_round_trip` in a desktop session.
     #[test]
     #[ignore = "needs the session's Secret Service"]
     fn keyring_round_trip() {
         runtime().block_on(async {
-            let store = KeyringStore::open("io.github.pixdevsapps.Mail.Devel.test")
+            let store = KeyringStore::open("io.github.pixdevsapps.Sealwax.Devel.test")
                 .await
                 .unwrap();
             round_trip(&store).await;
@@ -378,12 +378,12 @@ mod tests {
     }
 
     /// Run on a bus without a Secret Service, as `tools/headless.sh` provides:
-    /// `tools/headless.sh <display> cargo test -p email-engine -- --ignored falls_back`.
+    /// `tools/headless.sh <display> cargo test -p sealwax-engine -- --ignored falls_back`.
     #[test]
     #[ignore = "needs a session bus without a Secret Service"]
     fn falls_back_to_memory_without_a_keyring() {
         runtime().block_on(async {
-            let secrets = Secrets::open("io.github.pixdevsapps.Mail.Devel.test").await;
+            let secrets = Secrets::open("io.github.pixdevsapps.Sealwax.Devel.test").await;
             assert!(!secrets.is_persistent());
             round_trip(&secrets).await;
         });

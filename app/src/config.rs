@@ -1,15 +1,15 @@
 use std::time::Duration;
 
-/// Working ids until the name is decided in M0 (ADR-010).
+/// The app-id (ADR-010); debug builds use `.Devel`, so they run beside an installed build.
 pub const APP_ID: &str = if cfg!(debug_assertions) {
-    "io.github.pixdevsapps.Mail.Devel"
+    "io.github.pixdevsapps.Sealwax.Devel"
 } else {
-    "io.github.pixdevsapps.Mail"
+    "io.github.pixdevsapps.Sealwax"
 };
 
-pub const EXIT_AFTER_ENV: &str = "MAIL_EXIT_AFTER_MS";
+pub const EXIT_AFTER_ENV: &str = "SEALWAX_EXIT_AFTER_MS";
 
-/// `MAIL_EXIT_AFTER_MS`, for headless smoke runs.
+/// `SEALWAX_EXIT_AFTER_MS`, for headless smoke runs.
 pub fn exit_after_from_env() -> Result<Option<Duration>, String> {
     match std::env::var(EXIT_AFTER_ENV) {
         Err(_) => Ok(None),

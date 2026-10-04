@@ -18,14 +18,14 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 
 ## Headless runs
 
-- Always through `tools/headless.sh <display> <cmd...>`: Broadway backend, a private D-Bus bus that starts no services, `GSETTINGS_BACKEND=memory`, `ADW_DISABLE_PORTAL=1`, a time limit (`MAIL_HEADLESS_TIMEOUT`, default 300 s).
-- The app exits by itself after `MAIL_EXIT_AFTER_MS`; the CI smoke run greps for `first-frame`.
-- Parallel agents use different display numbers; CI uses `MAIL_CI_DISPLAY` (default 19).
+- Always through `tools/headless.sh <display> <cmd...>`: Broadway backend, a private D-Bus bus that starts no services, `GSETTINGS_BACKEND=memory`, `ADW_DISABLE_PORTAL=1`, a time limit (`SEALWAX_HEADLESS_TIMEOUT`, default 300 s).
+- The app exits by itself after `SEALWAX_EXIT_AFTER_MS`; the CI smoke run greps for `first-frame`.
+- Parallel agents use different display numbers; CI uses `SEALWAX_CI_DISPLAY` (default 19).
 - WebKitGTK renders under `tools/headless.sh` in software (GTK has no GL there, so WebKit turns acceleration off). Security checks, heights, `cid:` loads and snapshots work headless. Without a Broadway client attached GTK paints about once per second, so frame timing, open-to-paint latency and scrolling are measured on the live session; headless WebView tests wait for events and allocations, never fixed delays (S2).
 
 ## Hostile-HTML suite (ML-065)
 
-47 cases, from `spikes/s2-webkit/src/hostile.rs` until M5 moves them into the app's tests. Each points its network vectors at a local HTTP canary (127.0.0.1, random port) that counts connections, requests per path, connections that send nothing, and TLS ClientHellos; each also carries a script payload with four traces (title, `data-pwned`, `alert()`, a beacon). Clicks are DOM `click()` calls from Mail's isolated world.
+47 cases, from `spikes/s2-webkit/src/hostile.rs` until M5 moves them into the app's tests. Each points its network vectors at a local HTTP canary (127.0.0.1, random port) that counts connections, requests per path, connections that send nothing, and TLS ClientHellos; each also carries a script payload with four traces (title, `data-pwned`, `alert()`, a beacon). Clicks are DOM `click()` calls from Sealwax's isolated world.
 
 Pass with the production reader: 0 connections (not just 0 requests — WebKit pre-connects), 0 TLS hellos, 0 script traces, no allowed navigation, new window or download; the `cid:` test image renders and a foreign `cid:` part never loads. In the same run, a no-defence control must show the vectors are live, and a remote-allowed control (CSP widened with the canary's origin, no filter) must load images only.
 

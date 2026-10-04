@@ -3,8 +3,8 @@
 //! Opens the system browser, completes the flow, stores the refresh token in the keyring under
 //! the test app-id, refreshes once, and prints only timings and booleans — never a token.
 
-use email_engine::secrets::{KeyringStore, SecretKind, SecretStore};
 use email_spike_s5::{Client, Provider, begin, finish, http_client, refresh};
+use sealwax_engine::secrets::{KeyringStore, SecretKind, SecretStore};
 use std::time::{Duration, Instant};
 
 const APP_ID: &str = "io.github.pixdevsapps.Sealwax.Devel.s5";

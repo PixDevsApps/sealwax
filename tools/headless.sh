@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs a command against a private GTK Broadway display and a private D-Bus session,
 # so nothing opens on the live Wayland display. Usage: headless.sh <display-number> <cmd...>
-# MAIL_HEADLESS_TIMEOUT (seconds, default 300) bounds the command's run time.
+# SEALWAX_HEADLESS_TIMEOUT (seconds, default 300) bounds the command's run time.
 set -euo pipefail
 
 if (($# < 2)) || [[ ! $1 =~ ^[0-9]+$ ]]; then
@@ -10,7 +10,7 @@ if (($# < 2)) || [[ ! $1 =~ ^[0-9]+$ ]]; then
 fi
 display=$1
 shift
-timeout_s=${MAIL_HEADLESS_TIMEOUT:-300}
+timeout_s=${SEALWAX_HEADLESS_TIMEOUT:-300}
 
 # A second broadwayd on a busy display would unlink the first one's socket, so refuse early.
 if (exec 3<>"/dev/tcp/127.0.0.1/$((8080 + display))") 2>/dev/null; then

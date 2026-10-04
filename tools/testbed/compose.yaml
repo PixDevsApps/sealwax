@@ -1,4 +1,4 @@
-# Mail testbed (ML-005). Test data only; every port is bound to 127.0.0.1.
+# Sealwax testbed (ML-005). Test data only; every port is bound to 127.0.0.1.
 # Start with tools/testbed/up.sh, seed with seed.sh, stop and remove with down.sh.
 name: mail-testbed
 

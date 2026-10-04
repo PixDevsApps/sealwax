@@ -584,45 +584,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
-name = "email"
-version = "0.0.1"
-dependencies = [
- "email-domain",
- "email-engine",
- "email-infrastructure",
- "gio",
- "gtk4",
- "libadwaita",
- "tracing",
-]
-
-[[package]]
-name = "email-domain"
-version = "0.0.1"
-
-[[package]]
-name = "email-engine"
-version = "0.0.1"
-dependencies = [
- "email-domain",
- "email-infrastructure",
- "oo7",
- "thiserror 2.0.21",
- "tokio",
- "tracing",
- "zeroize",
-]
-
-[[package]]
-name = "email-infrastructure"
-version = "0.0.1"
-dependencies = [
- "email-domain",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
 name = "email-spike-s1"
 version = "0.0.1"
 dependencies = [
@@ -699,9 +660,9 @@ name = "email-spike-s5"
 version = "0.0.1"
 dependencies = [
  "base64 0.22.1",
- "email-engine",
  "getrandom 0.3.4",
  "reqwest",
+ "sealwax-engine",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2961,6 +2922,45 @@ name = "scopeguard"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
+
+[[package]]
+name = "sealwax"
+version = "0.0.1"
+dependencies = [
+ "gio",
+ "gtk4",
+ "libadwaita",
+ "sealwax-domain",
+ "sealwax-engine",
+ "sealwax-infrastructure",
+ "tracing",
+]
+
+[[package]]
+name = "sealwax-domain"
+version = "0.0.1"
+
+[[package]]
+name = "sealwax-engine"
+version = "0.0.1"
+dependencies = [
+ "oo7",
+ "sealwax-domain",
+ "sealwax-infrastructure",
+ "thiserror 2.0.21",
+ "tokio",
+ "tracing",
+ "zeroize",
+]
+
+[[package]]
+name = "sealwax-infrastructure"
+version = "0.0.1"
+dependencies = [
+ "sealwax-domain",
+ "tracing",
+ "tracing-subscriber",
+]
 
 [[package]]
 name = "secrecy"

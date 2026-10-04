@@ -1,5 +1,5 @@
 [package]
-name = "email-infrastructure"
+name = "sealwax-infrastructure"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -7,6 +7,6 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-email-domain.workspace = true
+sealwax-domain.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

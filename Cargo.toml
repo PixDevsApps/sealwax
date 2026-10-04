@@ -11,9 +11,9 @@ license = "MIT"
 publish = false
 
 [workspace.dependencies]
-email-domain = { path = "domain" }
-email-infrastructure = { path = "infrastructure" }
-email-engine = { path = "engine" }
+sealwax-domain = { path = "domain" }
+sealwax-infrastructure = { path = "infrastructure" }
+sealwax-engine = { path = "engine" }
 gtk4 = { version = "0.11.5", features = ["v4_18"] }
 libadwaita = { version = "0.9.2", features = ["v1_9"] }
 gio = { version = "0.22.10", features = ["v2_80"] }

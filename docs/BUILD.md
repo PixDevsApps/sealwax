@@ -25,20 +25,20 @@ cargo build                       # the app (default member)
 cargo build --workspace           # every crate
 cargo test --workspace
 bash tools/ci.sh                  # fmt, clippy -D warnings, tests, build
-MAIL_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run
+SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run
 ```
 
 ## Workspace
 
 | Crate | Path | Role |
 | --- | --- | --- |
-| `email-domain` | `domain/` | Pure logic |
-| `email-infrastructure` | `infrastructure/` | Local std I/O, logging |
-| `email-engine` | `engine/` | tokio: network, sync, op queue, secrets |
-| `email` | `app/` | GTK app, binary `email` |
+| `sealwax-domain` | `domain/` | Pure logic |
+| `sealwax-infrastructure` | `infrastructure/` | Local std I/O, logging |
+| `sealwax-engine` | `engine/` | tokio: network, sync, op queue, secrets |
+| `sealwax` | `app/` | GTK app, binary `sealwax` |
 | `email-spike-s1` … `email-spike-s7` | `spikes/<id>-<topic>/` | M0 measurement code, one crate per spike (workspace glob `spikes/*`) |
 
-Release profile: thin LTO, one codegen unit. Names are working names until ADR-010 is accepted.
+Release profile: thin LTO, one codegen unit. The M0 spike crates keep their `email-spike-*` names (ADR-010).
 
 ## Headless GTK runs
 
@@ -62,7 +62,7 @@ python3 tools/testbed/check.py      # health check
 tools/testbed/down.sh               # stop and remove; --keep-volumes keeps the mail
 ```
 
-The users are alice, bob, perf, rand, fault, idle and spike, password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (override the path with `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
+The users are alice, bob, perf, rand, fault, idle and spike, password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (the S1 harness takes an override path from `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
 
 ## Packaging
 

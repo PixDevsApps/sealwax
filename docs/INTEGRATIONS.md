@@ -2,7 +2,7 @@
 
 Synced: 2026-10-04
 
-How Mail fits Omarchy 4, Hyprland and the mail providers. Facts about this machine were read on 2026-10-04 (Omarchy 4.0.4, Hyprland 0.56.2); anything marked *to verify* is checked in the named spike before code depends on it.
+How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this machine were read on 2026-10-04 (Omarchy 4.0.4, Hyprland 0.56.2); anything marked *to verify* is checked in the named spike before code depends on it.
 
 ## Omarchy theme
 
@@ -10,35 +10,35 @@ How Mail fits Omarchy 4, Hyprland and the mail providers. Facts about this machi
 - **Resolver:** `/usr/share/omarchy/bin/omarchy-theme-color --file <colors.toml> --all` prints `key<TAB>value` lines with every alias and fallback applied (`bg`, `color0`–`color15`, `purple`, derived `dark_background` and so on). Stet's Rust port of the cascade is the fallback when the script is missing.
 - **Light or dark:** first match wins: `mode`, legacy `theme_type`, a `light.mode` file, then background luminance (R+G+B > 382 is light). Five stock themes are light: catppuccin-latte, flexoki-light, white, rose-pine, lupine.
 - **What changes on a switch** (`omarchy-theme-set`): `current/next-theme/` is staged, then `rm -rf current/theme; mv current/next-theme current/theme`, then `theme.name` is rewritten. The reload trigger (from Stet) watches `current/` and its parent: `theme.name` ChangesDoneHint, or `theme` Renamed; debounce 150 ms; retry if a read hits the gap while `theme/` is replaced. Never watch files inside `theme/`; they are replaced.
-- **gsettings lag behind:** `omarchy-theme-set-gnome` sets `color-scheme` and `gtk-theme` after the swap, so Mail takes `mode` from `colors.toml` and forces `adw::StyleManager`.
+- **gsettings lag behind:** `omarchy-theme-set-gnome` sets `color-scheme` and `gtk-theme` after the swap, so Sealwax takes `mode` from `colors.toml` and forces `adw::StyleManager`.
 - **No hook needed:** the directory watch sees every switch. `~/.config/omarchy/hooks/theme-set.d/` exists, but writing there would edit the user's config.
-- **Theme-provided CSS (P2):** if a theme ships `<app>.css`, Omarchy copies it to `current/theme/`; Mail loads it after its generated CSS, giving theme authors an override point without a template.
+- **Theme-provided CSS (P2):** if a theme ships `<app>.css`, Omarchy copies it to `current/theme/`; Sealwax loads it after its generated CSS, giving theme authors an override point without a template.
 
 ## Fonts
 
-- `omarchy font set` writes `~/.config/fontconfig/fonts.conf`, putting the font first for `monospace`; `fc-match monospace -f '%{family[0]}'` returns it (JetBrainsMono Nerd Font here). Mail watches `~/.config/fontconfig/` as Stet does.
+- `omarchy font set` writes `~/.config/fontconfig/fonts.conf`, putting the font first for `monospace`; `fc-match monospace -f '%{family[0]}'` returns it (JetBrainsMono Nerd Font here). Sealwax watches `~/.config/fontconfig/` as Stet does.
 - `/etc/fonts/conf.d/50-omarchy.conf` maps sans-serif to Liberation Sans. WebKit's default fonts are set explicitly from these families.
-- `omarchy display text size` writes `[font] base-size` to `~/.config/omarchy/shell.toml` (12 px default); Mail's chrome scale follows it.
+- `omarchy display text size` writes `[font] base-size` to `~/.config/omarchy/shell.toml` (12 px default); Sealwax's chrome scale follows it.
 - gsettings `font-name` is not updated by Omarchy and is not read.
 
 ## Hyprland
 
 - Configured in Lua (`~/.config/hypr/hyprland.lua` loads Omarchy's defaults, then the user's modules); `hyprctl reload` applies, `hyprctl configerrors` checks.
 - **Corner radius:** `hyprctl -j getoption decoration:rounding` (8 here, 0 on stock Omarchy), read at start and after theme changes, as omarchy-shell does ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)).
-- **Window class:** GTK4 apps use the app-id as their Wayland app_id, so rules match `^io\.github\.pixdevsapps\.<Name>$` (working: `Mail`).
+- **Window class:** GTK4 apps use the app-id as their Wayland app_id, so rules match `^io\.github\.pixdevsapps\.Sealwax$`.
 - **Focus and scale (S6):** Omarchy sets `misc.focus_on_activate = true`, so `present()` focuses the window (2–4 ms). `GDK_SCALE=2` in the session environment has no effect on GTK 4 Wayland apps; it still applies to X11 and XWayland programs.
 - **Default opacity:** Omarchy tags every window `default-opacity` (0.985 / 0.96); an opt-out snippet is `o.window(<match>, { tag = "-default-opacity" })`. This machine's `looknfeel.lua` already forces windows opaque.
-- **Key binding:** the user's `~/.config/hypr/bindings.lua` binds SUPER+SHIFT+E to BlueMail. The snippet the user can paste once Mail is installed (ML-085), with the final name:
+- **Key binding:** the user's `~/.config/hypr/bindings.lua` binds SUPER+SHIFT+E to BlueMail. The snippet the user can paste once Sealwax is installed (ML-085):
   ```lua
   hl.unbind("SUPER + SHIFT + E")
-  o.bind("SUPER + SHIFT + E", "Mail", { launch = "<binary>", focus = "^io\\.github\\.pixdevsapps\\.<Name>$" })
+  o.bind("SUPER + SHIFT + E", "Sealwax", { launch = "sealwax", focus = "^io\\.github\\.pixdevsapps\\.Sealwax$" })
   ```
-  Mail never edits Hyprland files itself.
+  Sealwax never edits Hyprland files itself.
 
 ## omarchy-shell (notifications, launcher)
 
 - omarchy-shell (Quickshell 0.3.1) owns `org.freedesktop.Notifications`. Measured in S6: name and vendor `quickshell`, spec 1.2, capabilities `persistence`, `body`, `body-markup`, `body-hyperlinks`, `actions`, `icon-static`; a notification is accepted in 0.8 ms.
-- **Click behaviour** (read in `/usr/share/omarchy/shell/plugins/notifications/Service.qml`): the shell invokes the notification's `default` action if there is one; otherwise it focuses a window whose class matches `app_name` as a case-insensitive regex. Mail always sends a `default` action. **Cards show no action buttons:** a left click runs `default`, a right click dismisses. GLib 2.88 ignores the `ActivationToken` signal; GTK's `present()` requests its own token and Omarchy's `focus_on_activate = true` focuses the window (2–4 ms, S6). A real click is the user's manual check.
+- **Click behaviour** (read in `/usr/share/omarchy/shell/plugins/notifications/Service.qml`): the shell invokes the notification's `default` action if there is one; otherwise it focuses a window whose class matches `app_name` as a case-insensitive regex. Sealwax always sends a `default` action. **Cards show no action buttons:** a left click runs `default`, a right click dismisses. GLib 2.88 ignores the `ActivationToken` signal; GTK's `present()` requests its own token and Omarchy's `focus_on_activate = true` focuses the window (2–4 ms, S6). A real click is the user's manual check.
 - Low-urgency notifications stay ≥ 5 s, normal ≥ 8 s, none longer than 30 s; Do Not Disturb stores them silently.
 - **History:** toasts are mirrored under `~/.local/state/omarchy/notifications/` and moved to `history/` (newest 10) when they leave the screen. Restored and history entries have no live actions, so a click reaches the app only while it runs (background mode, D6).
 - **What GLib sends** (S6): `app_name` is the process name, so the app sets it to the product name (`g_set_prgname`) before its first notification; the app-id goes in the `desktop-entry` hint, the themed icon name in `image-path`, and actions as detailed action names.
@@ -49,12 +49,12 @@ How Mail fits Omarchy 4, Hyprland and the mail providers. Facts about this machi
 ## Secret Service
 
 - gnome-keyring 50 owns `org.freedesktop.secrets` on this machine; the "Default keyring" is unlocked and passwordless, so its file is stored unencrypted (protected by full-disk encryption only). See [SECURITY.md](SECURITY.md#known-limitations).
-- Mail stores items through oo7 with attributes `{ app: <app-id>, account: <uuid>, kind: password | refresh-token }`. Headless runs use the in-memory store (the private bus starts no services).
+- Sealwax stores items through oo7 with attributes `{ app: <app-id>, account: <uuid>, kind: password | refresh-token }`. Headless runs use the in-memory store (the private bus starts no services).
 
 ## Default mail handler
 
-- Current handler: `bluemail.desktop`. `~/.config/mimeapps.list` still names a removed Thunderbird for `message/rfc822`; Mail does not touch it.
-- Mail's desktop file declares `MimeType=x-scheme-handler/mailto;`. "Make Mail the default email app" is an opt-in command that asks first and then runs `xdg-mime default <app-id>.desktop x-scheme-handler/mailto` (Stet's `set_default` pattern).
+- Current handler: `bluemail.desktop`. `~/.config/mimeapps.list` still names a removed Thunderbird for `message/rfc822`; Sealwax does not touch it.
+- Sealwax's desktop file declares `MimeType=x-scheme-handler/mailto;`. "Make Sealwax the default email app" is an opt-in command that asks first and then runs `xdg-mime default <app-id>.desktop x-scheme-handler/mailto` (Stet's `set_default` pattern).
 - `mailto:` URIs are parsed per RFC 6068; `attach` / `attachment` parameters are ignored. Only `to`, `cc`, `bcc`, `subject`, `body` and `in-reply-to` are kept, and control characters are stripped from header values (S6).
 - **Forwarding (S6):** a second process forwards a `mailto:` to the running instance in ~51 ms, 49 of them loading libraries; a D-Bus `org.freedesktop.Application.Open` call, which launchers use for a `DBusActivatable` app, takes 0.5 ms. The desktop file keeps `DBusActivatable=true`, and the app handles both `open` and `command-line`.
 
