@@ -67,6 +67,8 @@ pub enum Content {
 /// What changed, for the list widget.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Change {
+    /// GTK is about to be told of new content: the list notes its place first.
+    Resetting,
     /// New content: every row may differ, and the list grows from [`FIRST_ROWS`].
     Reset,
     /// Rows were filled, added, removed or updated.
@@ -764,6 +766,7 @@ impl MessageModel {
 
     /// Tells GTK the content changed; it sees at most [`FIRST_ROWS`] rows until the list grows.
     fn reset_items(&self) {
+        self.notify(Change::Resetting);
         let (removed, added) = {
             let mut state = self.imp().state.borrow_mut();
             let removed = state.shown;

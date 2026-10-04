@@ -44,6 +44,8 @@ pub struct RowContext {
     pub headers: RefCell<Vec<SectionHeader>>,
     /// Rows bound so far.
     pub binds: Cell<u64>,
+    /// Row widgets created so far.
+    pub rows_created: Cell<u64>,
 }
 
 impl RowContext {
@@ -59,6 +61,7 @@ impl RowContext {
             bound: RefCell::new(Vec::new()),
             headers: RefCell::new(Vec::new()),
             binds: Cell::new(0),
+            rows_created: Cell::new(0),
         })
     }
 
@@ -197,6 +200,7 @@ fn line(class: &str) -> gtk::Label {
 
 impl MessageRow {
     pub fn new(context: Rc<RowContext>) -> Self {
+        context.rows_created.set(context.rows_created.get() + 1);
         let row: Self = glib::Object::builder()
             .property("orientation", gtk::Orientation::Horizontal)
             .build();

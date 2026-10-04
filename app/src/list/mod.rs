@@ -135,6 +135,11 @@ struct Inner {
     speed: RefCell<Option<gtk::TickCallbackId>>,
     /// The message the list last reported as selected.
     selected: Cell<Option<MessageId>>,
+    /// A message to select again once its row loads, after a reload.
+    wanted: Cell<Option<MessageId>>,
+    /// Where the list was just before its last reset, and whether it had the keyboard focus.
+    place: Cell<f64>,
+    refocus: Cell<bool>,
     settle_queued: Cell<bool>,
     waiting: RefCell<Option<(MessageItem, glib::SignalHandlerId)>>,
     sweep_queued: Cell<bool>,
@@ -295,6 +300,9 @@ impl MessageList {
                 growth_frames: RefCell::new(Vec::new()),
                 speed: RefCell::new(None),
                 selected: Cell::new(None),
+                wanted: Cell::new(None),
+                place: Cell::new(0.0),
+                refocus: Cell::new(false),
                 settle_queued: Cell::new(false),
                 waiting: RefCell::new(None),
                 sweep_queued: Cell::new(false),
@@ -538,21 +546,45 @@ impl MessageList {
 
     fn model_changed(&self, change: Change) {
         match change {
+            Change::Resetting => {
+                self.inner
+                    .place
+                    .set(self.inner.scroller.vadjustment().value());
+                // A reload of the same view destroys the row that has the keyboard focus, and
+                // GTK would then scroll its next focus row, the first, into view: the focus
+                // leaves the list until the rows are back at their place.
+                let reload = *self.inner.content.borrow() == self.inner.model.content();
+                let refocus = reload && self.has_focus_within();
+                self.inner.refocus.set(refocus);
+                if refocus && let Some(root) = self.inner.view.root() {
+                    root.set_focus(None::<&gtk::Widget>);
+                }
+                return;
+            }
             Change::Reset => {
                 self.start_growth();
                 let content = self.inner.model.content();
                 let same = *self.inner.content.borrow() == content;
                 self.inner.content.replace(content);
                 if same {
+                    // The same view read again (a reload): it keeps its place, its selection
+                    // and the keyboard focus. GTK lost the row that had the focus with the reset
+                    // and would scroll its next focus row, the first, into view.
+                    self.inner.model.complete_growth();
+                    self.scroll_after_layout(self.inner.place.get());
+                    if self.inner.refocus.get() {
+                        self.focus_after_layout();
+                    }
                     self.restore_selection();
                 } else {
-                    self.pin_top();
+                    self.inner.wanted.set(None);
+                    self.scroll_after_layout(0.0);
                 }
                 if let Some(latch) = self.inner.first_rows.borrow().as_ref() {
                     latch.open();
                 }
             }
-            Change::Rows => {}
+            Change::Rows => self.select_wanted(),
             Change::Failed => {
                 if let Some(latch) = self.inner.first_rows.borrow().as_ref() {
                     latch.open();
@@ -660,19 +692,19 @@ impl MessageList {
         let at_top = self.inner.scroller.vadjustment().value() < PIN_SLACK;
         let inserted = self.inner.model.apply_event(event);
         if inserted && at_top {
-            self.pin_top();
+            self.scroll_after_layout(0.0);
         }
     }
 
-    /// Keeps the very top in view, section header included, once GTK has laid out the rows that
-    /// just changed. GTK keeps the row it showed first anchored, so new mail would land above
-    /// the view, and after a reset it anchors the first row's top, leaving its header above the
-    /// view (S3). Moving the adjustment in the layout phase, after GTK's own layout, lays the
-    /// list out again within the same frame.
-    fn pin_top(&self) {
+    /// Scrolls to `value` once GTK has laid out the rows that just changed. GTK keeps the row it
+    /// showed first anchored, so new mail would land above the view; after a reset it anchors the
+    /// first row's top, leaving its section header above the view (S3), and loses the place a
+    /// reload should keep. Moving the adjustment in the layout phase, after GTK's own layout,
+    /// lays the list out again within the same frame.
+    fn scroll_after_layout(&self, value: f64) {
         let view = &self.inner.view;
         match view.frame_clock() {
-            Some(clock) => self.pin_on(&clock),
+            Some(clock) => self.scroll_on(&clock, value),
             None => {
                 let weak = self.downgrade();
                 let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
@@ -682,7 +714,7 @@ impl MessageList {
                         view.disconnect(id);
                     }
                     if let Some(clock) = view.frame_clock() {
-                        Self::with(&weak, |list| list.pin_on(&clock));
+                        Self::with(&weak, |list| list.scroll_on(&clock, value));
                     }
                 });
                 handler.replace(Some(id));
@@ -690,7 +722,7 @@ impl MessageList {
         }
     }
 
-    fn pin_on(&self, clock: &gtk::gdk::FrameClock) {
+    fn scroll_on(&self, clock: &gtk::gdk::FrameClock, value: f64) {
         let weak = self.downgrade();
         let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
         let once = handler.clone();
@@ -699,11 +731,65 @@ impl MessageList {
                 clock.disconnect(id);
             }
             Self::with(&weak, |list| {
-                list.inner.scroller.vadjustment().set_value(0.0)
+                list.inner.scroller.vadjustment().set_value(value)
             });
         });
         handler.replace(Some(id));
         self.inner.view.queue_resize();
+    }
+
+    /// Gives the keyboard focus to the selected row, or else the first row in view, once the
+    /// list is laid out at its place: the scroll lands in one frame's layout phase and GTK lays
+    /// the rows out there in the next frame at the latest.
+    fn focus_after_layout(&self) {
+        let Some(clock) = self.inner.view.frame_clock() else {
+            return;
+        };
+        let weak = self.downgrade();
+        let handler: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let once = handler.clone();
+        let painted = Cell::new(0u32);
+        let id = clock.connect_after_paint(move |clock| {
+            painted.set(painted.get() + 1);
+            if painted.get() < 2 {
+                return;
+            }
+            if let Some(id) = once.take() {
+                clock.disconnect(id);
+            }
+            Self::with(&weak, |list| list.focus_row_in_view());
+        });
+        handler.replace(Some(id));
+        self.inner.view.queue_draw();
+    }
+
+    fn focus_row_in_view(&self) {
+        let scroller = self.scroller();
+        let height = scroller.height() as f32;
+        let in_view = |row: &MessageRow| {
+            row.is_mapped()
+                && row.compute_bounds(scroller).is_some_and(|bounds| {
+                    bounds.y() >= 0.0 && bounds.y() + bounds.height() <= height
+                })
+        };
+        let position = self
+            .selected_position()
+            .filter(|position| self.row_widget(*position).is_some_and(|row| in_view(&row)))
+            .or_else(|| {
+                self.inner
+                    .context
+                    .bound
+                    .borrow()
+                    .iter()
+                    .filter(|row| in_view(row))
+                    .filter_map(MessageRow::position)
+                    .min()
+            });
+        if let Some(position) = position {
+            let view = &self.inner.view;
+            view.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+            view.grab_focus();
+        }
     }
 
     /// After rows moved under a page on its way, asks again for the rows still shown as
@@ -846,6 +932,9 @@ impl MessageList {
             .selection
             .selected_item()
             .and_downcast::<MessageItem>();
+        if item.is_some() {
+            inner.wanted.set(None);
+        }
         match item {
             Some(item) if item.is_loaded() => {
                 let id = item.id();
@@ -876,13 +965,23 @@ impl MessageList {
         }
     }
 
-    /// After the same content was read again (a reload), selects the message that was selected
-    /// when it is among the rows loaded.
+    /// After the same content was read again (a reload), selects the message that was selected,
+    /// now or once its row loads.
     fn restore_selection(&self) {
-        let Some(id) = self.inner.selected.get() else {
+        if self.selected_position().is_none()
+            && let Some(id) = self.inner.selected.get()
+        {
+            self.inner.wanted.set(Some(id));
+        }
+        self.select_wanted();
+    }
+
+    fn select_wanted(&self) {
+        let Some(wanted) = self.inner.wanted.get() else {
             return;
         };
-        if let Some(position) = self.inner.model.position_of(id) {
+        if let Some(position) = self.inner.model.position_of(wanted) {
+            self.inner.wanted.set(None);
             if position >= self.inner.model.n_items() {
                 self.inner.model.complete_growth();
             }
@@ -1140,6 +1239,11 @@ impl MessageList {
     /// Rows bound so far.
     pub fn binds(&self) -> u64 {
         self.inner.context.binds.get()
+    }
+
+    /// Row widgets created so far.
+    pub fn rows_created(&self) -> u64 {
+        self.inner.context.rows_created.get()
     }
 
     pub fn folder_of(scope: ViewScope) -> Option<FolderId> {
