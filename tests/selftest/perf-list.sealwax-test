@@ -1,0 +1,60 @@
+# The message list at 100,000 messages (ML-026), measured as S3 measured its spike list: frame
+# intervals from GdkFrameTimings and GTK's work per frame while scrolling at reading and fling
+# speed and while sweeping through every row as a scrollbar drag does; a jump to the end and
+# back with the loaded rows forgotten; folder open; and new mail from the hand-over to the
+# store's writer to its row on screen. It prints the numbers; S3's bars are in TESTING.md
+# ("Performance targets").
+#
+# Not part of tools/ci.sh (perf-*): it needs a release build, a 100,000-message fixture store
+# and, for numbers that count, the live session (M1's live-window authorization):
+#   cargo build --release -p sealwax -p sealwax-fixtures
+#   SEALWAX_SELFTEST_ALLOW_LIVE=1 target/release/sealwax --self-test tests/selftest/perf-list.sealwax-test
+# The store is imported once into target/perf-list/data (about 40 s, 0.9 GB) and reused while
+# it is there; remove that folder to start over. A headless run
+# (tools/headless.sh 36 target/release/sealwax --self-test …) is only a dry run: Broadway paints
+# in software and isn't the bar.
+
+desktop tiling
+store-dir $DIR/../../target/perf-list/data
+fixtures --count 100000 --seed 1
+
+perf-fullscreen
+list-wait
+assert-list-count 100000
+perf-memory "first rows painted"
+perf-phase idle
+sleep 800
+
+# Reading speed and a fling (S3: 1,500 and 12,000 px/s).
+perf-scroll 1500 6000
+perf-scroll 12000 6000
+perf-jump start
+
+# A scrollbar drag through every row in 20 s (5,000 rows/s): rows skip their text while the
+# list moves faster than 30,000 px/s.
+perf-sweep 0 1 20000
+perf-sweep 1 0 20000
+
+# Jump to the end and back, five times, with the loaded rows forgotten each time.
+perf-jump end
+perf-jump start
+perf-jump end
+perf-jump start
+perf-jump end
+perf-jump start
+perf-jump end
+perf-jump start
+perf-jump end
+perf-jump start
+
+# Folder open: the unified inbox and back.
+perf-open all-inboxes
+perf-open inbox
+perf-open all-inboxes
+perf-open inbox
+
+# Ten new messages at the top, 250 ms apart; they are removed again afterwards.
+perf-insert 10
+
+perf-memory "end of script"
+perf-report

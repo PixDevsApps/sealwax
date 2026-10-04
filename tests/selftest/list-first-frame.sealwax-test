@@ -1,0 +1,34 @@
+# The first frame binds only the rows in view (S6's startup trim, ML-026): after every reset the
+# list shows at most 40 rows, then grows by about 40 rows a frame until GtkListView has realized
+# what it keeps (~205 rows); the rest follow in one step without new row widgets. The window
+# waited for the first rows at startup, so its first frame already had them. Every message is
+# fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-first-frame.sealwax-test
+
+desktop tiling
+fixtures --count 2000 --seed 13 --folders single
+
+# Startup: the first view was read ahead with the store; the first frame showed 40 rows.
+list-wait
+assert-list-growth 40
+assert-list-count 2000
+assert-list-placeholders 0
+
+# The same on every reset: a tall window, another view, a chip, a search.
+resize 1440 1600
+folder all-inboxes
+assert-list-growth 40
+chip unread
+assert-list-growth 40
+chip all
+assert-list-growth 40
+search the
+assert-list-growth 40
+search-escape
+assert-list-growth 40
+assert-list-count 2000
+
+# Jumping past the rows shown so far shows every row first.
+list-select 1999
+assert-list-position "2000 of 2000"
+assert-list-placeholders 0

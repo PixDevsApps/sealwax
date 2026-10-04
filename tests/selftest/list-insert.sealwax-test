@@ -1,0 +1,57 @@
+# New mail while the message list is open (ML-026): a message stored through the real ingest
+# path (blob store, parser, the store's writer) reaches the list as a change event; with the
+# first row in view the list stays at its top, so the new row shows (S3); scrolled down, the rows
+# in view stay where they are. Flag changes and removals from elsewhere update rows in place.
+# Every message is fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-insert.sealwax-test
+
+desktop tiling
+fixtures --count 400 --seed 9 --folders single
+resize 1440 900
+list-wait
+assert-list-count 400
+assert-list-top true
+
+# A month after the corpus's newest message, so every fixture is Older whatever the date.
+list-clock 2026-11-04T12:00:00
+assert-list-sections Older:400
+
+# At the top: the new message is the first row, in view with its header.
+mail-add inbox now "Ny post mens lista er åpen"
+assert-list-count 401
+assert-list-row 0 subject "Ny post mens lista er åpen"
+assert-list-row 0 section Today
+assert-list-headers "TODAY,OLDER"
+assert-list-top true
+assert-list-matches-folder total
+assert-list-placeholders 0
+screenshot $DIR/../../.local/selftest/list-insert-1440.png
+
+# Two more in a row.
+mail-add inbox now "Enda en" from=Marius-Dahl
+mail-add inbox now "Og en til" attachment
+assert-list-row 0 subject "Og en til"
+assert-list-row 1 subject "Enda en"
+assert-list-top true
+assert-list-count 403
+
+# Scrolled down: the list keeps its rows in view; the new one goes to the top, out of view.
+list-scroll 3000
+mail-add inbox now "Mens du leser lenger ned"
+assert-list-count 404
+assert-list-row 0 subject "Mens du leser lenger ned"
+assert-list-top false
+
+# Flags changed elsewhere show on the row; a removed message leaves the list.
+list-scroll 0
+assert-list-top true
+assert-list-row 0 unread true
+mail-flag 0 +read
+assert-list-row 0 unread false
+mail-flag 0 +starred
+assert-list-row 0 starred true
+mail-remove 0
+assert-list-row 0 subject "Og en til"
+assert-list-count 403
+assert-list-matches-folder total
+list-clock real
