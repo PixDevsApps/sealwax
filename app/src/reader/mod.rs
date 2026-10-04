@@ -33,9 +33,9 @@ use page::PageWidgets;
 use prepare::{Body, Prepared};
 use sealwax_domain::actions::Scope;
 use sealwax_domain::keymap::Keymap;
-use sealwax_domain::model::MessageId;
+use sealwax_domain::model::{Account, MessageDetail, MessageId};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
-use sealwax_infrastructure::store::Store;
+use sealwax_infrastructure::store::{Reply, Store, Versioned};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -98,6 +98,37 @@ pub struct ReaderState {
 
 type ShownListener = Rc<dyn Fn(&Shown)>;
 type EventListener = Rc<dyn Fn(MessageId, &ViewEvent)>;
+
+/// Where the reader sends its requests: the app's mailbox, whose store opens at startup and
+/// closes at shutdown, or a store of its own (examples and self-tests).
+pub trait MessageSource {
+    /// The reads one message needs, sent together; `None` while no store is open.
+    fn read(&self, id: MessageId) -> Option<Reads>;
+}
+
+/// The replies to [`MessageSource::read`].
+pub struct Reads {
+    pub detail: Reply<Versioned<Option<MessageDetail>>>,
+    pub accounts: Reply<Versioned<Vec<Account>>>,
+    pub raw: Reply<Option<Vec<u8>>>,
+}
+
+impl MessageSource for Store {
+    fn read(&self, id: MessageId) -> Option<Reads> {
+        Some(Reads {
+            detail: self.message(id),
+            accounts: self.accounts(),
+            raw: self.raw_message(id),
+        })
+    }
+}
+
+impl MessageSource for crate::mailbox::Mailbox {
+    fn read(&self, id: MessageId) -> Option<Reads> {
+        self.store()
+            .and_then(|store| MessageSource::read(&*store, id))
+    }
+}
 type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
 type LinkCheck = Rc<dyn Fn(&Link) -> bool>;
 
@@ -135,7 +166,7 @@ impl Page {
 }
 
 struct Inner {
-    store: Rc<Store>,
+    store: Rc<dyn MessageSource>,
     theme: Rc<ThemeController>,
     engine: Rc<Engine>,
     stage: Stage,
@@ -164,7 +195,7 @@ impl Reader {
     /// `cache` is Sealwax's cache folder (`SealwaxDirs::cache`); the compiled content filter
     /// lives there.
     pub fn new(
-        store: Rc<Store>,
+        store: Rc<dyn MessageSource>,
         theme: Rc<ThemeController>,
         keymap: &Keymap,
         cache: &Path,
@@ -416,14 +447,13 @@ impl Inner {
     }
 
     async fn load(self: Rc<Self>, id: MessageId, generation: u64, started: Instant) {
-        let (detail, accounts, raw) = (
-            self.store.message(id),
-            self.store.accounts(),
-            self.store.raw_message(id),
-        );
-        let detail = detail.recv().await;
-        let accounts = accounts.recv().await;
-        let raw = raw.recv().await.ok().flatten();
+        let Some(reads) = self.store.read(id) else {
+            self.show_missing(id, started);
+            return;
+        };
+        let detail = reads.detail.recv().await;
+        let accounts = reads.accounts.recv().await;
+        let raw = reads.raw.recv().await.ok().flatten();
         if self.stale(generation) {
             return;
         }

@@ -79,6 +79,12 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Subject as a heading; per message: avatar, name and address, "to me" or recipients, date with relative time; collapsed older messages as one-line rows.
 - Body in a WebView (HTML) or a text view (plain text); attachment cards (type icon, name, size; Open, Save, Download All); remote-content banner ("Images are hidden — Show / Always for this sender").
 - Quick reply under the conversation, expanding into the full composer.
+- *As built in M1 (ML-027, [report](m1/reader.md)):*
+  - **Toolbar:** archive, delete, junk, move | mark unread, star (insensitive until M4), then "n of N" with previous and next; tooltips name each command's keys.
+  - **Showing a message:** it appears once its body is laid out at its height, replacing the previous one at the top of the column.
+  - **Details:** the toggle shows From, Reply-To, To, Cc, the full date and the list.
+  - **Not built yet:** "Always for this sender" is shown insensitive until M5; attachment cards show type, name and size only.
+  - **Keys:** they work while a message has the focus. WebKitGTK passes back the keys a message doesn't use, and a text field inside a message keeps its letters.
 
 **Composer**
 - From (identity), To / Cc / Bcc as chips with autocomplete, Subject.
@@ -140,7 +146,8 @@ Roles map to palette positions, never hue names: matte-black's `green` is amber 
 - **Plain text and simple HTML** (no colours of their own) take the theme: background, foreground, accent links, muted quotes.
 - **Styled HTML** (newsletters, receipts) keeps its design on a "paper" card: a light surface with the theme's corner radius and a 1 px border, so dark themes never invert someone else's layout. S2 confirmed this on the live matte-black palette, dark newsletters included; the card's `lighter_background` border (#1e1e1e) is nearly invisible against #121212, so dark themes may drop it.
 - Quotes are collapsed behind "…" when they repeat earlier messages in the conversation.
-- Nothing remote loads until allowed ([SECURITY.md](SECURITY.md)); hidden images keep their layout boxes so the page doesn't jump when shown.
+- Nothing remote loads until allowed ([SECURITY.md](SECURITY.md)); hidden images keep the box their HTML declares (WebKit outlines it and shows the alt text), so the page doesn't jump when shown.
+- Themed bodies paint their root in the theme's background: with a transparent root and `color-scheme: dark`, WebKit would paint its own dark canvas. Plain-text bodies set `line-height: 1.35` in GTK, about the 1.55 of message text in a browser (M1).
 
 ## Avatars
 

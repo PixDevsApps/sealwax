@@ -13,6 +13,7 @@ use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
+use crate::reader::{MessageSource, Position, Reader};
 use crate::shortcuts;
 use crate::theme::{self, ThemeController};
 use crate::window::{self, Pane, Window};
@@ -23,6 +24,7 @@ use libadwaita::subclass::prelude::*;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
+use sealwax_domain::model::MessageId;
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::future::Future;
@@ -170,6 +172,8 @@ impl SealwaxApplication {
             first_rows: Latch::new(),
             list: RefCell::new(None),
             store_warned: Cell::new(false),
+            reader: RefCell::new(None),
+            reader_shows: Cell::new(None),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -218,6 +222,9 @@ pub struct AppState {
     first_rows: Rc<Latch>,
     list: RefCell<Option<MessageList>>,
     store_warned: Cell<bool>,
+    reader: RefCell<Option<Reader>>,
+    /// The message the reader shows; `None` while the window shows "No message selected".
+    reader_shows: Cell<Option<MessageId>>,
 }
 
 impl AppState {
@@ -260,6 +267,11 @@ impl AppState {
     /// The window's message list, once there is a window.
     pub fn list(&self) -> Option<MessageList> {
         self.list.borrow().clone()
+    }
+
+    /// The reader (ML-027), once the first window exists.
+    pub fn reader(&self) -> Option<Reader> {
+        self.reader.borrow().clone()
     }
 
     /// When the first window's first frame was painted.
@@ -522,6 +534,9 @@ impl AppState {
             if let Some(list) = self.list() {
                 list.update_keys(&keymap);
             }
+            if let Some(reader) = self.reader() {
+                reader.update_keys(&keymap);
+            }
         }
         for problem in &update.problems {
             tracing::warn!("{problem}");
@@ -600,7 +615,75 @@ impl AppState {
         if self.mailbox.is_ready() {
             self.fill_sidebar(window, &list);
         }
+        self.install_reader(window, &list, keymap);
         self.list.replace(Some(list));
+    }
+
+    /// The reader (ML-027) shows the list's selection, with its place in the list ("n of N")
+    /// and previous and next. Clearing goes reader first, then the window: the other order
+    /// moves GTK's focus through a view already back in the pool.
+    fn install_reader(self: &Rc<Self>, window: &Window, list: &MessageList, keymap: &Keymap) {
+        let Some(theme) = self.theme() else {
+            return;
+        };
+        let source: Rc<dyn MessageSource> = self.mailbox.clone();
+        let reader = Reader::new(source, theme, keymap, &self.config.dirs.cache);
+        window.set_reader_toolbar(&reader.toolbar());
+
+        let weak = Rc::downgrade(self);
+        let target = window.clone();
+        list.connect_message_selected(move |id| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(reader) = state.reader() else {
+                return;
+            };
+            if state.reader_shows.replace(Some(id)).is_none() {
+                target.set_reader(&reader.widget());
+            }
+            reader.show(id);
+            state.update_position();
+        });
+        let weak = Rc::downgrade(self);
+        let target = window.clone();
+        list.connect_selection_cleared(move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if state.reader_shows.take().is_some() {
+                if let Some(reader) = state.reader() {
+                    reader.clear();
+                    reader.set_position(None);
+                }
+                target.clear_reader();
+            }
+        });
+        let previous = list.clone();
+        reader.connect_previous(move || previous.select_previous());
+        let next = list.clone();
+        reader.connect_next(move || next.select_next());
+        let weak = Rc::downgrade(self);
+        self.mailbox.connect_event(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.update_position();
+            }
+        });
+        self.reader.replace(Some(reader));
+    }
+
+    /// "n of N" for the message the reader shows; new mail above it moves it.
+    fn update_position(&self) {
+        let (Some(reader), Some(list), Some(id)) =
+            (self.reader(), self.list(), self.reader_shows.get())
+        else {
+            return;
+        };
+        let position = list.position(id).map(|(n, total)| Position {
+            index: n.saturating_sub(1),
+            total,
+        });
+        reader.set_position(position);
     }
 
     /// The store's accounts and folders in the window's sidebar; with no account, the first

@@ -57,6 +57,18 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M1 reader (ML-027) and the integrated app — 2026-10-04
+
+Headless on Broadway; report [m1/reader.md](m1/reader.md).
+
+| Check | Result |
+| --- | --- |
+| Hostile suite, 47 cases, against the real reader (`app/examples/hostile.rs`) | Three runs: as shipped (DOM clicks), with real pointer clicks (8 cases), and in pooled views after Show images. Every run: 0 connections, 0 requests, 0 TLS hellos, 0 script traces, 0 GLib criticals; after Show images, TLS hellos only, in 13 image cases. No-defence control: network in 37 cases, scripts in 11 |
+| Live theme switch with an open themed and paper HTML message (`app/examples/reader_theme.rs`, headless) | Passes both ways; restyled in place ~24 ms after the theme applied; the paper card keeps its design |
+| Cached open, dry run, release (`app/examples/reader_perf.rs`) | show → on screen p95 13.7 ms settled, 105.9 ms back to back; show → first painted frame p95 102.1 ms settled (paper newsletters 212.7 ms), 146.9 ms back to back. Broadway, software rendering; **not judged** |
+| Keys and focus (`app/examples/reader_keys.rs`, real input through Broadway) | Keys reach the Reader scope from a focused message; a text field in a message keeps its letters; the next message's body takes the focus |
+| Integrated app (lead: the list's selection drives the reader through `MessageSource`) | `tools/ci.sh --ui`: 473 passed, 0 failed, 11 ignored; all 13 self-test scripts pass, reader 83/83; no Gtk-CRITICAL or Gtk-WARNING in the log |
+
 ### M1 message list (ML-026) — 2026-10-04
 
 Debug builds for tests and self-tests, release builds for the dry runs; headless on Broadway; fictional data only. Report: [m1/list.md](m1/list.md).

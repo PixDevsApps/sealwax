@@ -20,7 +20,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism proposed; S5 is go/no-go |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
-| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision) |
+| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1 |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
@@ -374,6 +374,24 @@ The layers and the sizing change as follows (SECURITY.md carries the security ru
 **Decision:** memory is judged as PSS of the whole process tree (app plus WebKit's web and network processes), so memory shared with the GPU driver and between processes is counted once, plus a separate GPU-memory budget. The reader target is sized for a typical conversation, and the number of live message views is capped: only expanded HTML bodies hold a view, views far off screen are released and re-rendered on return. The cap and the GPU budget are set from the M5 measurement (proposed starting cap: 4 expanded bodies). RSS is still recorded. The targets are in [TESTING.md](TESTING.md#performance-targets).
 
 **Consequence:** S3's list passes its bar (133 MiB PSS against 150 MB). S2's reader bar is re-measured in M5 under the new definition and is part of M5's exit criteria.
+
+### ADR-011 amendment — the reader as built in M1 (2026-10-04)
+
+Built as [m1/reader.md](m1/reader.md) records, with every layer of the S2 amendment. Additions:
+- **One engine per process:**
+  - one web context and ephemeral session (cookies never accepted, TLS errors fail);
+  - one compiled content filter;
+  - one `cid:` handler, keyed by the requesting view;
+  - every view sharing the first view's web process.
+
+  At most 4 views are live (the memory decision's starting cap).
+- **The filter is set per load:** on, unless the user allowed that message's images this session; a released view gets it back before it loads anything else.
+- **A message is shown once laid out:** the next page is laid out unseen at the column's width and replaces the shown one once its height is measured (3 s at most). Height reports carry a per-load token.
+- **Views are released** 3 s after the reader is hidden, and rendered again when it returns.
+- **Keys:** WebKitGTK 2.52 hands unhandled keys back to GTK, so the Reader scope works from a focused message without forwarding.
+- **Focus:** before a page leaves, a focus held in it moves to the next body. GTK 4.22 would otherwise move it later, from a widget no longer in the window (a Gtk-CRITICAL the reader's examples now fail on). The lead's wiring clears the reader before the window for the same reason.
+- **The app's store:** the reader reads through a `MessageSource`: the app's `Mailbox`, which owns the store and closes it at shutdown, or a store of its own in examples.
+- **A crashed web process** renders the message once more, then as text.
 
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
