@@ -60,17 +60,29 @@ screenshot $DIR/../../.local/selftest/reader-attachments.png
 reader-show remote
 assert-reader banner true
 assert-reader remote-allowed false
+assert-reader remote-requests 0
 assert-reader remote-loaded 0
 screenshot $DIR/../../.local/selftest/reader-remote-hidden.png
 reader-click #renew
-assert-reader opened https://127.0.0.1:9/library/renew
+assert-reader opened https://127.0.0.1:2/library/renew
 reader-show-images
 assert-reader banner false
 assert-reader remote-allowed true
+assert-reader remote-requests 1
 reader-show plain
 reader-show remote
 assert-reader remote-allowed true
 assert-reader banner false
+assert-reader remote-requests 1
+
+# The pooled views that showed remote images block them again for other messages.
+reader-show simple
+reader-show newsletter
+assert-reader banner true
+assert-reader remote-requests 0
+reader-show cid
+reader-show newsletter
+assert-reader remote-requests 0
 
 # A Latin-1 body and an encoded sender name.
 reader-show latin1

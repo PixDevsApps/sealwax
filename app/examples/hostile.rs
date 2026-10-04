@@ -8,12 +8,13 @@
 //! SEALWAX_HEADLESS_TIMEOUT=900 tools/headless.sh 37 target/debug/examples/hostile
 //! ```
 //!
-//! Four passes, one row per case: `prod` (the reader as shipped; clicks are DOM `click()`
+//! Five passes, one row per case: `prod` (the reader as shipped; clicks are DOM `click()`
 //! from the isolated world, as in S2), `real` (click cases only: the click arrives as real
 //! pointer input through Broadway), `shown` (after "Show images": only https images may load,
-//! upgraded from http, so the canary sees TLS hellos and never a request), and `ctrl` (a bare
-//! WebView with no defences, scripts on, proving the vectors are live). Exits 0 when `prod`
-//! and `real` are clean in every case and both controls saw traffic. Links are recorded, never
+//! upgraded from http, so the canary sees TLS hellos and never a request), `again` (`prod` in a
+//! second reader that reuses the pooled views `shown` lifted the filter from) and `ctrl` (a
+//! bare WebView with no defences, scripts on, proving the vectors are live). Exits 0 when
+//! `prod`, `real` and `again` are clean in every case and both controls saw traffic. Links are recorded, never
 //! opened; every clicked link points at the canary.
 
 #[path = "hostile_support/canary.rs"]
@@ -90,6 +91,10 @@ impl Outcome {
             && self.cid_ok != Some(false)
             && self.heights <= 12
             && self.downloads == 0
+            && !self
+                .resources
+                .iter()
+                .any(|uri| uri.starts_with("http") || uri.starts_with("{canary}"))
             && !self.refused.contains_key("NewWindow")
             && (self.url.is_empty() || self.url == "about:blank")
     }
@@ -197,19 +202,24 @@ fn main() -> glib::ExitCode {
         passed,
         move |app| {
             let theme = ThemeController::start(ThemeOptions::default(), STARTUP_WAIT);
-            let reader = support::reader(&scratch, &theme);
             let recorder: Rc<RefCell<Recorder>> = Rc::default();
-            reader.set_link_opener(glib::clone!(
-                #[strong]
-                recorder,
-                move |_, uri| recorder.borrow_mut().opened.push(uri.to_owned())
-            ));
-            reader.connect_view_event(glib::clone!(
-                #[strong]
-                recorder,
-                move |id, event| recorder.borrow_mut().events.push((id, event.clone()))
-            ));
-            let window = support::window(app, &reader, (1280, 900));
+            let readers = [
+                support::reader(&scratch, &theme),
+                support::reader(&scratch, &theme),
+            ];
+            for reader in &readers {
+                reader.set_link_opener(glib::clone!(
+                    #[strong]
+                    recorder,
+                    move |_, uri| recorder.borrow_mut().opened.push(uri.to_owned())
+                ));
+                reader.connect_view_event(glib::clone!(
+                    #[strong]
+                    recorder,
+                    move |id, event| recorder.borrow_mut().events.push((id, event.clone()))
+                ));
+            }
+            let window = support::window(app, &readers[0], (1280, 900));
             window.present();
             let app = app.clone();
             let passed = passed.clone();
@@ -220,7 +230,8 @@ fn main() -> glib::ExitCode {
             glib::spawn_future_local(async move {
                 let _keep = &theme;
                 let context = Context {
-                    reader,
+                    readers,
+                    current: Cell::new(0),
                     window,
                     canary,
                     recorder,
@@ -241,11 +252,19 @@ fn main() -> glib::ExitCode {
 }
 
 struct Context {
-    reader: Reader,
+    /// The second takes over for the `again` pass: its own allowed set, the same pooled views.
+    readers: [Reader; 2],
+    current: Cell<usize>,
     window: sealwax_app::window::Window,
     canary: Rc<Canary>,
     recorder: Rc<RefCell<Recorder>>,
     input: Input,
+}
+
+impl Context {
+    fn reader(&self) -> &Reader {
+        &self.readers[self.current.get()]
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -253,6 +272,8 @@ enum Pass {
     Production,
     RealClicks,
     ImagesShown,
+    /// Production again in a new reader, after `shown` lifted the filter of the pooled views.
+    Again,
 }
 
 impl Pass {
@@ -261,12 +282,16 @@ impl Pass {
             Pass::Production => "prod",
             Pass::RealClicks => "real",
             Pass::ImagesShown => "shown",
+            Pass::Again => "again",
         }
     }
 }
 
 async fn run(context: &Context, cases: &[Case], filled: &samples::Filled) -> bool {
-    let reports = support::shown_reports(&context.reader);
+    let reports = [
+        support::shown_reports(&context.readers[0]),
+        support::shown_reports(&context.readers[1]),
+    ];
     if let Err(error) = support::resize(context.window.window(), 1280, 900).await {
         println!("ERROR {error}");
         return false;
@@ -274,7 +299,19 @@ async fn run(context: &Context, cases: &[Case], filled: &samples::Filled) -> boo
     let mut rows: BTreeMap<&str, BTreeMap<&str, String>> = BTreeMap::new();
     let mut failures = Vec::new();
     let mut traffic = BTreeMap::new();
-    for pass in [Pass::Production, Pass::RealClicks, Pass::ImagesShown] {
+    for pass in [
+        Pass::Production,
+        Pass::RealClicks,
+        Pass::ImagesShown,
+        Pass::Again,
+    ] {
+        if pass == Pass::Again {
+            context.current.set(1);
+            context.window.set_reader(&context.reader().widget());
+            context
+                .window
+                .set_reader_toolbar(&context.reader().toolbar());
+        }
         let mut network = 0;
         let mut scripts = 0;
         for case in cases {
@@ -285,7 +322,7 @@ async fn run(context: &Context, cases: &[Case], filled: &samples::Filled) -> boo
                 println!("ERROR {} was not stored", case.id);
                 return false;
             };
-            let outcome = run_case(context, &reports, case, id, pass).await;
+            let outcome = run_case(context, &reports[context.current.get()], case, id, pass).await;
             network += usize::from(outcome.network());
             scripts += usize::from(outcome.script());
             print_row(pass.name(), case, &outcome);
@@ -314,16 +351,17 @@ async fn run(context: &Context, cases: &[Case], filled: &samples::Filled) -> boo
             .insert("ctrl", outcome.mark());
     }
     println!("SUMMARY pass=ctrl with_network={control_network} with_script={control_scripts}");
-    println!("MATRIX case                  prod   real  shown   ctrl");
+    println!("MATRIX case                  prod   real  shown  again   ctrl");
     for case in cases {
         let row = &rows[case.id];
         let cell = |pass: &str| row.get(pass).cloned().unwrap_or_else(|| "-".into());
         println!(
-            "MATRIX {:<20} {:>5} {:>6} {:>6} {:>6}",
+            "MATRIX {:<20} {:>5} {:>6} {:>6} {:>6} {:>6}",
             case.id,
             cell("prod"),
             cell("real"),
             cell("shown"),
+            cell("again"),
             cell("ctrl")
         );
     }
@@ -382,7 +420,7 @@ async fn run_case(
     id: MessageId,
     pass: Pass,
 ) -> Outcome {
-    let reader = &context.reader;
+    let reader = context.reader();
     let mut outcome = Outcome::default();
     let before = context.canary.snapshot();
     let downloads = reader.refused_downloads();
@@ -500,7 +538,7 @@ async fn dom_click(reader: &Reader, selector: &str) -> Result<(), String> {
 
 /// Scrolls the element into the window and clicks its centre through Broadway.
 async fn real_click(context: &Context, selector: &str) -> Result<(), String> {
-    let reader = &context.reader;
+    let reader = context.reader();
     let view = reader.web_view().ok_or("no web view")?;
     let rect = reader
         .eval(&format!(

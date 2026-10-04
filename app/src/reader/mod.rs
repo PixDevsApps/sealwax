@@ -713,7 +713,16 @@ impl Inner {
             self.stage.unstage();
             self.stage.show(Some(&page.widgets.root));
         }
-        if let Some(old) = self.shown.replace(None) {
+        let old = self.shown.replace(None);
+        if old.as_ref().is_none_or(|old| old.id != page.id)
+            && let Some(column) = self
+                .stage
+                .ancestor(gtk::ScrolledWindow::static_type())
+                .and_downcast::<gtk::ScrolledWindow>()
+        {
+            column.vadjustment().set_value(0.0);
+        }
+        if let Some(old) = old {
             self.release_page(old);
         }
         let shown = Shown {

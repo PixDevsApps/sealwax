@@ -1,7 +1,8 @@
 //! Synthetic messages for the reader's self-tests and examples: plain text, simple HTML, a
 //! styled newsletter, an inline `cid:` image, attachments, remote images and a Latin-1 body.
-//! Every name and address is fictional (`example.test`). Remote images point at port 9 of
-//! 127.0.0.1, where nothing listens, so even "Show images" never leaves the machine.
+//! Every name and address is fictional (`example.test`). Remote images point at port 2 of
+//! 127.0.0.1, where nothing listens, so even "Show images" never leaves the machine. (Not port
+//! 9: it is on the Fetch standard's list of blocked ports, so WebKit wouldn't even try it.)
 
 use gtk4::glib;
 use sealwax_domain::model::{FolderId, FolderRole, MessageId};
@@ -13,7 +14,7 @@ pub const ACCOUNT_NAME: &str = "Personal";
 pub const ACCOUNT_ADDRESS: &str = "alex.berg@example.test";
 const ME: (&str, &str) = ("Alex Berg", ACCOUNT_ADDRESS);
 /// Where the samples' remote images point: a closed port on this machine.
-pub const REMOTE_ORIGIN: &str = "https://127.0.0.1:9";
+pub const REMOTE_ORIGIN: &str = "https://127.0.0.1:2";
 const CRLF: &str = "\r\n";
 
 /// A 120 × 40 PNG, the newsletter's and the `cid` sample's logo.
@@ -652,7 +653,7 @@ mod tests {
             for body in bodies.into_iter().flatten() {
                 for host in body.split("://").skip(1) {
                     assert!(
-                        host.starts_with("example.test") || host.starts_with("127.0.0.1:9/"),
+                        host.starts_with("example.test") || host.starts_with("127.0.0.1:2/"),
                         "{name}: {}",
                         &host[..host.len().min(30)]
                     );

@@ -10,7 +10,7 @@
 //! | `reader-show-images` | "Show images" for the shown message; waits for the reload |
 //! | `reader-click SELECTOR` | A DOM `click()` in Sealwax's isolated world of the shown body |
 //! | `reader-clear` | Shows nothing |
-//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `released` (the view went back while hidden), `remote-allowed`, `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `text-contains`, `opened` (the last link handed to the opener; `none`) |
+//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `released` (the view went back while hidden), `remote-allowed`, `remote-requests` (remote loads that started since `reader-show`), `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `text-contains`, `opened` (the last link handed to the opener; `none`) |
 
 use super::{Harness, StepResult, blocking, equal};
 use crate::reader::{Reader, ReaderState, Shown, ShownBody, ViewEvent, samples};
@@ -158,6 +158,7 @@ async fn show(name: &str) -> StepResult {
         .id(name)
         .ok_or_else(|| format!("no sample {name}; there are {:?}", samples::NAMES))?;
     while opened.reports.try_recv().is_ok() {}
+    opened.events.borrow_mut().clear();
     opened.reader.show(id);
     loop {
         let shown = glib::future_with_timeout(WAIT, opened.reports.recv())
@@ -241,6 +242,20 @@ pub async fn check(_harness: &Harness, args: &[String]) -> StepResult {
         "body" => equal("body", body_name(state.body.as_ref()), value),
         "banner" => equal("banner", state.banner, boolean(value)?),
         "released" => equal("view released", state.released, boolean(value)?),
+        "remote-requests" => {
+            let id = opened.reader.message().ok_or("no message is shown")?;
+            let started = opened
+                .events
+                .borrow()
+                .iter()
+                .filter(|(event_id, event)| {
+                    *event_id == id
+                        && matches!(event, ViewEvent::Resource(uri)
+                            if uri.starts_with("http:") || uri.starts_with("https:"))
+                })
+                .count();
+            equal("remote loads started", started, number(value)?)
+        }
         "remote-allowed" => {
             let allowed = matches!(
                 state.body,
