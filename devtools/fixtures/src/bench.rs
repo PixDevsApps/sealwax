@@ -206,7 +206,9 @@ pub fn run(options: &Options) -> Result<()> {
         }
         let mut warm = Vec::new();
         for _ in 0..options.warm {
-            warm.push(open_view(&store, spec, options.now)?.0);
+            let (elapsed, total) = open_view(&store, spec, options.now)?;
+            warm.push(elapsed);
+            rows = total;
         }
         println!(
             "- {name} ({rows} rows): cold {} | warm {}",
@@ -281,7 +283,8 @@ pub fn run(options: &Options) -> Result<()> {
             warm.push(started.elapsed());
         }
         println!(
-            "- {name} `{query}`: {found} rows; cold {:.2} ms | warm {}",
+            "- {name} `{query}`: {found} rows; {} {:.2} ms | warm {}",
+            if options.cold > 0 { "cold" } else { "first" },
             ms(cold),
             summary(&warm)
         );
