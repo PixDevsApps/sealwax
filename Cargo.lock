@@ -2939,6 +2939,9 @@ dependencies = [
 [[package]]
 name = "sealwax-domain"
 version = "0.0.1"
+dependencies = [
+ "toml",
+]
 
 [[package]]
 name = "sealwax-engine"
