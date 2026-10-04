@@ -1,0 +1,42 @@
+== run-d-exhaustive: 50 domains, started at unix 1791115847
+options: presets=true exhaustive=true resolver=1.1.1.1 probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms probe_connect=3000ms probe_budget=5000ms
+correct: 42/50
+TLS-only final results: 50/50
+  group big: 22/22
+  group fastmail: 3/3
+  group m365: 5/5
+  group norway: 5/13
+  group workspace: 4/4
+  group zoho: 3/3
+final ranked result: n=50 p50=78 p95=4006 max=5007 ms
+first usable result: n=46 p50=17 p95=1047 max=3032 ms
+  final, group big: n=22 p50=5 p95=151 max=198 ms
+  final, group fastmail: n=3 p50=1431 p95=3240 max=3240 ms
+  final, group m365: n=5 p50=148 p95=1041 max=1041 ms
+  final, group norway: n=13 p50=920 p95=5007 max=5007 ms
+  final, group workspace: n=4 p50=228 p95=612 max=612 ms
+  final, group zoho: n=3 p50=84 p95=142 max=142 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=4 autoconfig=3 ispdb=1 mx-preset=16 preset=21 probe=2 srv=3
+probing ran for 50 domains: 388 TCP connections in total, at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+redirects refused that would have carried the dummy address elsewhere: 0
+privacy: 1432 requests logged; 51 carried the dummy address, all to autoconfig.<domain>: true; violations: none
+redirects: googlemail.com redirect-refused https://mail.google.com; hotmail.com redirect-refused https://outlook.live.com; live.com redirect-followed https://outlook.live.com; live.com redirect-followed https://outlook.live.com; live.com redirect-followed https://outlook.live.com; msn.com redirect-followed https://www.msn.com; msn.com redirect-followed https://www.msn.com; icloud.com redirect-followed https://www.icloud.com; me.com redirect-refused https://www.icloud.com; yahoo.com redirect-followed https://www.yahoo.com; aol.com redirect-followed https://www.aol.com; fastmail.com redirect-followed https://www.fastmail.com; gmx.com redirect-followed https://www.gmx.com; gmx.net redirect-followed https://www.gmx.net; mail.com redirect-followed https://www.mail.com; zoho.com redirect-followed https://www.zoho.com; mail.ru redirect-followed https://mail.ru; mail.ru redirect-refused https://login.vk.ru; mailbox.org redirect-followed https://auto.mailbox.org; tutanota.com redirect-refused https://tuta.com; online.no redirect-followed https://www.online.no; online.no redirect-refused https://www.telenor.no; altibox.no redirect-followed https://www.altibox.no; one.com redirect-followed https://www.one.com; one.com redirect-followed https://login.one.com; one.com redirect-followed https://mail.one.com; hotmail.no redirect-refused https://outlook.live.com; chello.no redirect-refused https://www.fruits.co; mozilla.org redirect-followed https://www.mozilla.org; finn.no redirect-refused http://finn.no; nrk.no redirect-followed https://www.nrk.no; vy.no redirect-followed https://www.vy.no; uib.no redirect-followed https://www.uib.no; oslomet.no redirect-followed https://www.oslomet.no; oslomet.no redirect-followed https://nett.oslomet.no; eff.org redirect-followed https://www.eff.org; cyrusimap.org redirect-followed https://www.cyrusimap.org; gitea.io redirect-refused https://gitea.com
+per-source (each source alone; latency = completion time since start):
+  preset answered=21 correct-alone=21 errors= 0 p50=0 p95=0 max=0 ms
+  autoconfig answered= 7 correct-alone= 4 errors=41 p50=53 p95=541 max=2663 ms
+  well-known answered= 1 correct-alone= 1 errors=14 p50=206 p95=3687 max=4006 ms
+  srv answered=11 correct-alone= 7 errors= 0 p50=40 p95=656 max=1029 ms
+  ispdb answered=20 correct-alone=18 errors= 0 p50=60 p95=244 max=730 ms
+  mx-preset answered=30 correct-alone=26 errors= 0 p50=20 p95=350 max=1047 ms
+  mx-ispdb answered=27 correct-alone=19 errors= 0 p50=60 p95=702 max=1121 ms
+  probe answered=21 correct-alone=10 errors= 0 p50=5007 p95=5008 max=5008 ms
+replayed policies (from this run's per-source completion times; probe start = min(2000 ms, rest done) + measured probe duration):
+  as implemented                           correct=42/50 tls-only=50 final p50=78 p95=5025 max=5085 first p50=17 p95=1047 ms; wrong: online.no altibox.no lyse.net broadpark.no tussa.com domeneshop.no birdlife.no piratpartiet.no
+  well-known capped at 1.5 s               correct=42/50 tls-only=50 final p50=78 p95=4525 max=5085 first p50=17 p95=1047 ms; wrong: online.no altibox.no lyse.net broadpark.no tussa.com domeneshop.no birdlife.no piratpartiet.no
+  well-known after MX preset               correct=42/50 tls-only=50 final p50=55 p95=5025 max=5085 first p50=17 p95=1047 ms; wrong: online.no altibox.no lyse.net broadpark.no tussa.com domeneshop.no birdlife.no piratpartiet.no
+  no well-known                            correct=42/50 tls-only=50 final p50=55 p95=3420 max=5068 first p50=17 p95=1047 ms; wrong: online.no altibox.no lyse.net broadpark.no tussa.com domeneshop.no birdlife.no piratpartiet.no
+  HTTP sources capped at 2 s               correct=42/50 tls-only=50 final p50=78 p95=5025 max=5085 first p50=17 p95=1047 ms; wrong: online.no altibox.no lyse.net broadpark.no tussa.com domeneshop.no birdlife.no piratpartiet.no
+  no presets                               correct=32/50 tls-only=50 final p50=351 p95=5085 max=5156 first p50=62 p95=1121 ms; wrong: googlemail.com proton.me web.de yandex.com tutanota.com online.no altibox.no lyse.net broadpark.no tussa.com domeneshop.no birdlife.no piratpartiet.no vy.no uib.no oslomet.no stortinget.no eff.org
+  no presets, well-known capped at 1.5 s   correct=32/50 tls-only=50 final p50=351 p95=5085 max=5156 first p50=62 p95=1121 ms; wrong: googlemail.com proton.me web.de yandex.com tutanota.com online.no altibox.no lyse.net broadpark.no tussa.com domeneshop.no birdlife.no piratpartiet.no vy.no uib.no oslomet.no stortinget.no eff.org
+wrong: online.no: IMAP username address wrong; altibox.no: IMAP outlook.office365.com:993 TLS not accepted; lyse.net: IMAP mail.altibox.no:993 TLS not accepted; broadpark.no: IMAP mail.broadpark.no:993 TLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; domeneshop.no: IMAP username address wrong; birdlife.no: no IMAP server; piratpartiet.no: no IMAP server

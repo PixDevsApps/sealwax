@@ -54,30 +54,45 @@ How Mail fits Omarchy 4, Hyprland and the mail providers. Facts about this machi
 - Mail's desktop file declares `MimeType=x-scheme-handler/mailto;`. "Make Mail the default email app" is an opt-in command that asks first and then runs `xdg-mime default <app-id>.desktop x-scheme-handler/mailto` (Stet's `set_default` pattern).
 - `mailto:` URIs are parsed per RFC 6068; `attach` / `attachment` parameters are ignored.
 
+
 ## Account autodiscovery sources
 
-Run in parallel with per-source timeouts; the first verified result wins (spike S4 in [PLAN.md](PLAN.md#milestone-plan) measures accuracy):
+Measured in S4 on 2026-10-04 ([report](spikes/S4-autodetect.md)). The sources run in parallel. For each protocol, the highest-priority source that answers wins once every higher-priority source has answered, failed or timed out. The first usable answer is shown at once; only the settled one is used.
 
-1. Built-in presets for the large providers (offline, instant).
-2. The domain's own autoconfig over HTTPS: `https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=<address>` and `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`. The only place the full address is sent.
-3. The Mozilla ISPDB: `https://autoconfig.thunderbird.net/v1.1/<domain>` (domain only).
-4. MX lookup → registrable domain of the MX host (public suffix list) → presets or ISPDB for that domain. This catches custom domains on Google Workspace, Microsoft 365, Fastmail, Zoho and others.
-5. DNS SRV records (RFC 6186, RFC 8314): `_submissions._tcp`, `_submission._tcp`, `_imaps._tcp`, `_imap._tcp`, `_pop3s._tcp`, `_pop3._tcp`.
-6. Guarded probing: `imap.`, `mail.` and `smtp.` hosts on 993, 143 (STARTTLS), 465 and 587 with short timeouts; TLS only.
+1. Built-in presets (offline, no request), including MX host suffixes for hosted platforms: Google, Microsoft 365 (`*.mail.protection.outlook.com`, `*.mx.microsoft`), Fastmail (`messagingengine.com`), Zoho by region, Altibox (`altibox.net`), Domeneshop.
+2. The domain's own autoconfig over HTTPS (4 s): `https://autoconfig.<domain>/mail/config-v1.1.xml?emailaddress=<address>`. The only place the full address is sent; redirects are followed only over HTTPS inside the domain.
+3. DNS SRV records (RFC 6186, RFC 8314).
+4. The Mozilla ISPDB (3 s): `https://autoconfig.thunderbird.net/v1.1/<domain>` (domain only).
+5. MX lookup → the preset suffix table, else the ISPDB for up to two registrable MX domains (public suffix list). A null MX means the domain has no mail.
+6. `https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, capped at 1.5 s (slow and rarely useful in S4).
+7. Guarded probing: `imap.`, `mail.`, `smtp.` and the bare domain on 993, 143 (STARTTLS), 465 and 587 (STARTTLS). It starts when the other sources are done or after 2 s, is TLS only, and stops when the preferred host answers.
 
-Then IMAP login and SMTP AUTH are verified (≤ 2 attempts) before anything is saved.
+Hosts from network sources that are loopback, private or IP literals are never used (Proton's own autoconfig returns the Bridge on 127.0.0.1; that maps to the Bridge notice). SRV- and MX-derived hosts outside the user's domain or a known provider are shown for confirmation before the password is sent. One resolver (hickory) with fully qualified names serves HTTP, DNS and probes, so a search domain such as `home` never turns `autoconfig.<domain>` into `autoconfig.<domain>.home`.
+
+IMAP login and SMTP AUTH are verified before anything is saved, with **at most 2 attempts**: the engine holds a budget of 2 and spends one before any authentication command; the first attempt uses the top-ranked IMAP host and the detected username form; the second comes only after an authentication failure and uses the other form (full address ↔ local part, as RFC 6186 recommends); the password never goes to a lower-ranked host; SMTP reuses the form that worked; where the username can't be derived (Domeneshop account names, some iCloud custom domains) the user is asked first.
 
 ## Providers
 
-Initial notes; policies are re-checked in S4 and S5 and the quirks table grows in M8.
+Settings and policies checked on the providers' help pages on 2026-10-04 (S4). Anything marked unverified needs a real login.
 
-| Provider | Settings | Sign-in | Quirks |
+| Provider | Settings | Sign-in | Notes |
 | --- | --- | --- | --- |
-| Gmail / Google Workspace | imap.gmail.com:993, smtp.gmail.com:465 | OAuth (scope `https://mail.google.com/`), or an app password with 2-Step Verification | Labels appear as folders; Archive = remove from INBOX; Delete = move to Trash; sent mail is saved by the server; X-GM-THRID / X-GM-MSGID available |
-| Outlook.com / Microsoft 365 | outlook.office365.com:993, smtp.office365.com:587 (STARTTLS) | OAuth only for Outlook.com (since 2024); M365 depends on tenant policy | Sent mail is saved by the server; no CONDSTORE expected (*to verify*); `Thread-Index` threading |
-| iCloud | imap.mail.me.com:993, smtp.mail.me.com:587 | App password | — |
-| Yahoo / AOL | imap.mail.yahoo.com:993, smtp.mail.yahoo.com:465 | App password | — |
-| Fastmail | imap.fastmail.com:993, smtp.fastmail.com:465 | App password | CONDSTORE/QRESYNC; JMAP later |
-| GMX / web.de | imap.gmx.net:993, mail.gmx.net:587 | Password; IMAP may need enabling in web settings | — |
-| Proton (Bridge) | 127.0.0.1:1143 (STARTTLS), 127.0.0.1:1025 | Bridge password | Self-signed certificate: pinned exceptions are 1.x |
-| Domeneshop, Norwegian ISPs | via autoconfig, MX and SRV | Password | Checked in S4 |
+| Gmail / Google Workspace | imap.gmail.com:993; smtp.gmail.com:465 (587 STARTTLS); user = address | OAuth (XOAUTH2/OAUTHBEARER offered), or an app password with 2-Step Verification | Workspace found by MX (`aspmx.l.google.com`, `smtp.google.com`); admins can turn IMAP off; consumer IMAP always on since 2025-01. Labels appear as folders; Archive = remove from INBOX; Delete = move to Trash; the server saves sent mail |
+| Outlook.com | outlook.office365.com:993; smtp-mail.outlook.com:587 STARTTLS (no 465); user = address | OAuth only (basic auth ended 2024-09-16; IMAP offers only XOAUTH2, LOGINDISABLED) | "Let devices and apps use IMAP" toggle; MX `*.olc.protection.outlook.com`; the server saves sent mail |
+| Microsoft 365 | outlook.office365.com:993; smtp.office365.com:587 STARTTLS (465 unsupported) | OAuth (IMAP/POP basic auth off since 2022-10) | MX `*.mail.protection.outlook.com` or `*.mx.microsoft`; the ISPDB route wrongly gives the consumer SMTP host |
+| iCloud | imap.mail.me.com:993 (user = local part, full address as fallback); smtp.mail.me.com:587 STARTTLS (user = address) | App-specific password (two-factor login required) | — |
+| Yahoo / AOL | imap.mail.yahoo.com:993, smtp.mail.yahoo.com:465 (587 STARTTLS works) / imap.aol.com:993, smtp.aol.com:465 | App password | AOL help pages didn't load; AOL settings from search-engine text (unverified) |
+| Fastmail | imap.fastmail.com:993; smtp.fastmail.com:465 (587 STARTTLS) | App password (mandatory) | No IMAP on the Basic plan; custom domains by MX `messagingengine.com` |
+| GMX / WEB.DE / mail.com | imap.gmx.net / imap.gmx.com / imap.web.de / imap.mail.com:993; mail.gmx.net / mail.gmx.com / smtp.web.de / smtp.mail.com 465 or 587 STARTTLS; user = address | Password; app password with two-factor login or outside the EU/US/Canada | IMAP must be enabled and switches itself off after long non-use; mail.com IMAP is Premium only |
+| Zoho | Personal and free organizations: imap.zoho.com / smtp.zoho.com; paid organizations: imappro / smtppro; regional .eu/.in/.com.au from MX | App password with two-factor login | IMAP must be enabled; the EU hostnames are not in Zoho's docs (TLS-checked only) |
+| Yandex | imap.yandex.com (imap.ya.ru outside Russia):993; smtp.yandex.com:465; user = local part (docs) | App password | Its own autoconfig says the full address (unverified which works); press reports of paid IMAP from 2026-06-29 unconfirmed |
+| Mail.ru | imap.mail.ru:993; smtp.mail.ru:465 (TLS 1.2) | Password for external applications | Paid-tier press reports unconfirmed |
+| mailbox.org / Posteo | imap/smtp.mailbox.org 993, 465/587 / posteo.de 993 (143 STARTTLS), 465/587 | App password with two-factor login (mailbox.org) | Found by their own autoconfig |
+| Proton | Bridge only: 127.0.0.1:1143/1025 | Bridge password | Its autoconfig returns the loopback Bridge config; pinned certificates are 1.x |
+| Tuta | No IMAP or SMTP | — | "Not supported" |
+| Telenor (online.no) | mail.online.no:993/465; user = the part before @online.no | Password | "Tredjeparts e-postprogrammer" toggle in Mine Sider; port 587 presents an untrusted certificate |
+| Altibox (altibox.no, lyse.net, partners) | imap.altibox.no:993; smtp.altibox.no:465; user = address | Password | altibox.no's MX is Microsoft 365 (staff mail), so MX detection misleads; partner domains by MX `altibox.net`; lyse.net inferred (unverified) |
+| Domeneshop | imap.domeneshop.no:993; smtp.domeneshop.no 587 STARTTLS or 465 | Password | The username is the generated account name (e.g. `mittnavn1`), not the address; ask the user |
+| one.com | imap.one.com:993; send.one.com 465 or 587; user = address | Password | In the ISPDB |
+| NextGenTel (broadpark.no) / Tussa | imap.broadpark.no:993, smtp.broadpark.no:587 STARTTLS / imap.tussa.com:993, smtp.tussa.com:587 STARTTLS | Password | Broadpark's username form is undocumented |
+| Discontinued | c2i.net and tele2.no (closed 2013; c2i.net now held by an unknown party), chello.no (2008, null MX); getmail.no → Wemail, start.no → Mailia (paid third parties) | — | Never autoconfigure c2i.net |

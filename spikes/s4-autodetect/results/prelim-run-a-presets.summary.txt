@@ -1,0 +1,24 @@
+== run-a-presets: 50 domains, started at unix 1791115305
+options: presets=true exhaustive=system resolver=false probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms probe_connect=3000ms probe_budget=5000ms
+correct: 43/50
+TLS-only final results: 50/50
+  group big: 22/22
+  group fastmail: 3/3
+  group m365: 5/5
+  group norway: 6/13
+  group workspace: 4/4
+  group zoho: 3/3
+final ranked result: n=50 p50=213 p95=5009 max=5285 ms
+first usable result: n=46 p50=28 p95=430 max=5009 ms
+  final, group big: n=22 p50=0 p95=213 max=401 ms
+  final, group fastmail: n=3 p50=2877 p95=3852 max=3852 ms
+  final, group m365: n=5 p50=458 p95=1269 max=1269 ms
+  final, group norway: n=13 p50=706 p95=5285 max=5285 ms
+  final, group workspace: n=4 p50=258 p95=629 max=629 ms
+  final, group zoho: n=3 p50=306 p95=321 max=321 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=4 autoconfig=3 ispdb=1 mx-preset=16 preset=21 probe=2 srv=3
+probing ran for 9 domains: 62 TCP connections in total, at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+privacy: 453 requests logged; 29 carried the dummy address, all to autoconfig.<domain>: true; violations: none
+redirects: online.no redirect-followed https://www.online.no; online.no redirect-refused https://www.telenor.no; altibox.no redirect-followed https://www.altibox.no; one.com redirect-followed https://www.one.com; one.com redirect-followed https://login.one.com; one.com redirect-followed https://mail.one.com; chello.no redirect-refused https://www.fruits.co; mozilla.org redirect-followed https://www.mozilla.org; finn.no redirect-refused http://finn.no; nrk.no redirect-followed https://www.nrk.no; vy.no redirect-followed https://www.vy.no; uib.no redirect-followed https://www.uib.no; oslomet.no redirect-followed https://www.oslomet.no; oslomet.no redirect-followed https://nett.oslomet.no; eff.org redirect-followed https://www.eff.org; cyrusimap.org redirect-followed https://www.cyrusimap.org; gitea.io redirect-refused https://gitea.com
+wrong: online.no: IMAP username address wrong; altibox.no: IMAP outlook.office365.com:993 TLS not accepted; lyse.net: IMAP mail.altibox.no:993 TLS not accepted; broadpark.no: IMAP mail.broadpark.no:993 TLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; birdlife.no: no IMAP server; piratpartiet.no: no IMAP server

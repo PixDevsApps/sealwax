@@ -1,0 +1,25 @@
+== run-c-no-presets: 50 domains, started at unix 1791115771
+options: presets=false exhaustive=false resolver=1.1.1.1 probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms probe_connect=3000ms probe_budget=5000ms
+correct: 32/50
+TLS-only final results: 50/50
+  group big: 17/22
+  group fastmail: 3/3
+  group m365: 0/5
+  group norway: 5/13
+  group workspace: 4/4
+  group zoho: 3/3
+final ranked result: n=50 p50=313 p95=5087 max=5296 ms
+first usable result: n=44 p50=68 p95=1070 max=5008 ms
+  final, group big: n=22 p50=278 p95=3141 max=5296 ms
+  final, group fastmail: n=3 p50=1412 p95=2546 max=2546 ms
+  final, group m365: n=5 p50=607 p95=5230 max=5230 ms
+  final, group norway: n=13 p50=706 p95=5087 max=5087 ms
+  final, group workspace: n=4 p50=144 p95=313 max=313 ms
+  final, group zoho: n=3 p50=142 p95=219 max=219 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=6 autoconfig=7 ispdb=13 mx-ispdb=14 mx-preset=1 probe=2 srv=7
+probing ran for 11 domains: 76 TCP connections in total, at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+redirects refused that would have carried the dummy address elsewhere: 0
+privacy: 746 requests logged; 51 carried the dummy address, all to autoconfig.<domain>: true; violations: none
+redirects: googlemail.com redirect-refused https://mail.google.com; hotmail.com redirect-refused https://outlook.live.com; live.com redirect-followed https://outlook.live.com; live.com redirect-followed https://outlook.live.com; live.com redirect-followed https://outlook.live.com; msn.com redirect-followed https://www.msn.com; msn.com redirect-followed https://www.msn.com; icloud.com redirect-followed https://www.icloud.com; me.com redirect-refused https://www.icloud.com; yahoo.com redirect-followed https://www.yahoo.com; aol.com redirect-followed https://www.aol.com; fastmail.com redirect-followed https://www.fastmail.com; gmx.com redirect-followed https://www.gmx.com; gmx.net redirect-followed https://www.gmx.net; mail.com redirect-followed https://www.mail.com; zoho.com redirect-followed https://www.zoho.com; mail.ru redirect-followed https://mail.ru; mail.ru redirect-refused https://login.vk.ru; mailbox.org redirect-followed https://auto.mailbox.org; tutanota.com redirect-refused https://tuta.com; online.no redirect-followed https://www.online.no; online.no redirect-refused https://www.telenor.no; altibox.no redirect-followed https://www.altibox.no; one.com redirect-followed https://www.one.com; one.com redirect-followed https://login.one.com; one.com redirect-followed https://mail.one.com; hotmail.no redirect-refused https://outlook.live.com; chello.no redirect-refused https://www.fruits.co; mozilla.org redirect-followed https://www.mozilla.org; finn.no redirect-refused http://finn.no; nrk.no redirect-followed https://www.nrk.no; vy.no redirect-followed https://www.vy.no; uib.no redirect-followed https://www.uib.no; oslomet.no redirect-followed https://www.oslomet.no; oslomet.no redirect-followed https://nett.oslomet.no; eff.org redirect-followed https://www.eff.org; cyrusimap.org redirect-followed https://www.cyrusimap.org; gitea.io redirect-refused https://gitea.com
+wrong: googlemail.com: IMAP imap.googlemail.com:993 TLS not accepted; proton.me: missed unsupported provider; web.de: IMAP username local-part wrong; yandex.com: IMAP username address wrong; tutanota.com: missed unsupported provider; online.no: IMAP username address wrong; altibox.no: IMAP outlook.office365.com:993 TLS not accepted; lyse.net: IMAP mail.altibox.no:993 TLS not accepted; broadpark.no: IMAP mail.broadpark.no:993 TLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; domeneshop.no: IMAP username address wrong; birdlife.no: no IMAP server; piratpartiet.no: no IMAP server; vy.no: SMTP smtp-mail.outlook.com:587 STARTTLS not accepted; uib.no: SMTP smtp-mail.outlook.com:587 STARTTLS not accepted; oslomet.no: no IMAP server; stortinget.no: SMTP smtp-mail.outlook.com:587 STARTTLS not accepted; eff.org: SMTP smtp-mail.outlook.com:587 STARTTLS not accepted

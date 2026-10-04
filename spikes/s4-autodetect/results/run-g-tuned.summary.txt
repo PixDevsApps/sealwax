@@ -1,0 +1,25 @@
+== run-g-tuned: 50 domains, started at unix 1791116684
+options: presets=true local_presets=false exhaustive=false resolver=1.1.1.1 order=preset>autoconfig>srv>ispdb>mx-preset>well-known>mx-ispdb>probe probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms probe_connect=3000ms probe_budget=5000ms
+correct: 42/50
+TLS-only final results: 50/50
+  group big: 22/22
+  group fastmail: 3/3
+  group m365: 5/5
+  group norway: 5/13
+  group workspace: 4/4
+  group zoho: 3/3
+final ranked result: n=50 p50=56 p95=3162 max=5083 ms
+first usable result: n=46 p50=18 p95=1026 max=1577 ms
+  final, group big: n=22 p50=0 p95=151 max=230 ms
+  final, group fastmail: n=3 p50=678 p95=1026 max=1026 ms
+  final, group m365: n=5 p50=63 p95=182 max=182 ms
+  final, group norway: n=13 p50=126 p95=5083 max=5083 ms
+  final, group workspace: n=4 p50=57 p95=68 max=68 ms
+  final, group zoho: n=3 p50=63 p95=166 max=166 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=4 autoconfig=3 ispdb=1 mx-preset=16 preset=21 probe=2 srv=3
+probing ran for 6 domains: 34 TCP connections in total, at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+redirects refused that would have carried the dummy address elsewhere: 0
+privacy: 384 requests logged; 29 carried the dummy address, all to autoconfig.<domain>: true; violations: none
+redirects: mailbox.org redirect-followed https://auto.mailbox.org; online.no redirect-followed https://www.online.no; online.no redirect-refused https://www.telenor.no; oslomet.no redirect-followed https://www.oslomet.no; cyrusimap.org redirect-followed https://www.cyrusimap.org; gitea.io redirect-refused https://gitea.com
+wrong: online.no: IMAP username address wrong; altibox.no: IMAP outlook.office365.com:993 TLS not accepted; lyse.net: IMAP mail.altibox.no:993 TLS not accepted; broadpark.no: IMAP mail.broadpark.no:993 TLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; domeneshop.no: IMAP username address wrong; birdlife.no: no IMAP server; piratpartiet.no: no IMAP server

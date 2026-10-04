@@ -1,0 +1,25 @@
+== run-h-tuned-local-presets: 50 domains, started at unix 1791116705
+options: presets=true local_presets=true exhaustive=false resolver=1.1.1.1 order=preset>autoconfig>srv>ispdb>mx-preset>well-known>mx-ispdb>probe probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms probe_connect=3000ms probe_budget=5000ms
+correct: 50/50
+TLS-only final results: 50/50
+  group big: 22/22
+  group fastmail: 3/3
+  group m365: 5/5
+  group norway: 13/13
+  group workspace: 4/4
+  group zoho: 3/3
+final ranked result: n=50 p50=0 p95=351 max=3153 ms
+first usable result: n=48 p50=0 p95=258 max=348 ms
+  final, group big: n=22 p50=0 p95=154 max=258 ms
+  final, group fastmail: n=3 p50=342 p95=352 max=352 ms
+  final, group m365: n=5 p50=57 p95=186 max=186 ms
+  final, group norway: n=13 p50=0 p95=3153 max=3153 ms
+  final, group workspace: n=4 p50=55 p95=351 max=351 ms
+  final, group zoho: n=3 p50=56 p95=101 max=101 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=2 autoconfig=2 ispdb=1 mx-preset=17 preset=27 srv=1
+probing ran for 2 domains: 12 TCP connections in total, at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+redirects refused that would have carried the dummy address elsewhere: 0
+privacy: 263 requests logged; 23 carried the dummy address, all to autoconfig.<domain>: true; violations: none
+redirects: mailbox.org redirect-followed https://auto.mailbox.org; cyrusimap.org redirect-followed https://www.cyrusimap.org
+wrong: none

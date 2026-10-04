@@ -1,0 +1,15 @@
+== run-x-unscored: 3 domains, started at unix 1791116547
+options: presets=true exhaustive=false resolver=1.1.1.1 probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms probe_connect=3000ms probe_budget=5000ms
+correct: 0/0
+TLS-only final results: 3/3
+  group -: 0/3
+final ranked result: n=3 p50=5008 p95=5160 max=5160 ms
+first usable result: n=2 p50=27 p95=5160 max=5160 ms
+  final, group -: n=3 p50=5008 p95=5160 max=5160 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=1 autoconfig=1 probe=1
+probing ran for 2 domains: 12 TCP connections in total, at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+redirects refused that would have carried the dummy address elsewhere: 0
+privacy: 63 requests logged; 3 carried the dummy address, all to autoconfig.<domain>: true; violations: none
+redirects: start.no redirect-followed https://www.start.no
+wrong: none

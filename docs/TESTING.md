@@ -48,6 +48,20 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### S4 autodetect (ML-012) — 2026-10-04
+
+Release builds, 12:01–12:25 UTC, residential network in Norway; report [spikes/S4-autodetect.md](spikes/S4-autodetect.md).
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| ≥ 45/50 correct | 42/50 (32/50 without presets) | Missed — all misses Norwegian |
+| 50/50 TLS-only | 50/50 in every run | Pass |
+| p50 ≤ 2 s / p95 ≤ 6 s / cap 10 s | 134 ms / 5,008 ms / max 5,096 ms (tuned: 56 ms / 3,162 ms) | Pass |
+| Dummy addresses only; full address only to the domain's own HTTPS autoconfig | 5,658 requests logged, 0 violations | Pass |
+| ≤ 2 login attempts | 0 (the probe can only send CAPABILITY, STARTTLS and EHLO) | Pass |
+
+`cargo test -p email-spike-s4`: 40 tests pass; fmt and clippy clean (re-run by the lead).
+
 ### SecretStore (ML-006) — 2026-10-04
 
 - `cargo test -p email-engine`: `memory_store_round_trip` and `memory_store_keeps_accounts_apart` pass.

@@ -1,0 +1,78 @@
+protocol	host	port	security	ok	stage	elapsed_ms	tls	auth	banner_or_error
+Imap	imap.gmail.com	993	TLS	ok	-	286	TLSv1_3	OAUTHBEARER,PLAIN,PLAIN-CLIENTTOKEN,XOAUTH2	* OK Gimap ready for requests from [ip] 423d73b8af312-31b82aed753mb73
+Smtp	smtp.gmail.com	465	TLS	ok	-	181	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,PLAIN-CLIENTTOKEN,XOAUTH,XOAUTH2	220 smtp.gmail.com ESMTP a640c23a62f3a-c2e4cf680ddsm290918166b.52 - gsmtp
+Smtp	smtp.gmail.com	587	STARTTLS	ok	-	330	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,PLAIN-CLIENTTOKEN,XOAUTH,XOAUTH2	220 smtp.gmail.com ESMTP 4fb4d7f45d1cf-6afb01e5942sm2042028a12.9 - gsmtp
+Imap	outlook.office365.com	993	TLS	ok	-	101	TLSv1_3	LOGINDISABLED,XOAUTH2	* OK Microsoft Exchange IMAP4 service ready. e19e8070-83aa-409c-8ced-dde49b05d49e (tcpproxy/15.21.04
+Imap	imap-mail.outlook.com	993	TLS	ok	-	131	TLSv1_3	LOGINDISABLED,XOAUTH2	* OK Microsoft Exchange IMAP4 service ready. fcb05440-d6dc-4f93-ae96-7e8e0415f320 (tcpproxy/15.21.04
+Smtp	smtp-mail.outlook.com	587	STARTTLS	ok	-	111	TLSv1_3	LOGIN,XOAUTH2	220 OL1P279CA0067.outlook.office365.com Microsoft ESMTP MAIL Service ready at Sun, 4 Oct 2026 12:20:59 +
+Imap	imap.mail.me.com	993	TLS	ok	-	648	TLSv1_3	ATOKEN,ATOKEN2,PLAIN,XOAUTH2	* OK [CAPABILITY XAPPLEPUSHSERVICE IMAP4 IMAP4rev1 SASL-IR AUTH=ATOKEN AUTH=PLAIN AUTH=ATOKEN2 AUTH=
+Smtp	smtp.mail.me.com	587	STARTTLS	ok	-	990	TLSv1_3	ATOKEN,ATOKEN2,LOGIN,PLAIN,WETOKEN,WSTOKEN,XOAUTH2	220 iCloud SMTP - outbound.ci.icloud.com 3.10.5 (2634B29-9d9a9736810a)
+Imap	imap.mail.yahoo.com	993	TLS	ok	-	476	TLSv1_3	OAUTHBEARER,PLAIN,XOAUTH2	* OK Welcome! IMAP Server up and ready to accept your request
+Smtp	smtp.mail.yahoo.com	465	TLS	ok	-	173	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	220 smtp.mail.yahoo.com ESMTP ready
+Smtp	smtp.mail.yahoo.com	587	STARTTLS	ok	-	295	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	220 smtp.mail.yahoo.com ESMTP ready
+Imap	imap.aol.com	993	TLS	ok	-	474	TLSv1_3	OAUTHBEARER,PLAIN,XOAUTH2	* OK Welcome! IMAP Server up and ready to accept your request
+Smtp	smtp.aol.com	465	TLS	ok	-	337	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	220 smtp.mail.yahoo.com ESMTP ready
+Imap	imap.fastmail.com	993	TLS	ok	-	735	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	* OK IMAP4 ready
+Smtp	smtp.fastmail.com	465	TLS	ok	-	926	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	220 smtp.fastmail.com ESMTP ready
+Smtp	smtp.fastmail.com	587	STARTTLS	ok	-	746	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	220 smtp.fastmail.com ESMTP ready
+Imap	imap.gmx.com	993	TLS	ok	-	433	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Imap	imap.gmx.com	143	STARTTLS	ok	-	319	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Smtp	mail.gmx.com	465	TLS	ok	-	301	TLSv1_3	LOGIN,PLAIN	220 gmx.net (mrgmx104) Nemesis ESMTP Service ready
+Smtp	mail.gmx.com	587	STARTTLS	ok	-	395	TLSv1_3	LOGIN,PLAIN	220 gmx.net (mrgmx105) Nemesis ESMTP Service ready
+Imap	imap.gmx.net	993	TLS	ok	-	272	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Imap	imap.gmx.net	143	STARTTLS	ok	-	381	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Smtp	mail.gmx.net	465	TLS	FAIL	Timeout	8001	-	-	no answer within 8000 ms
+Smtp	mail.gmx.net	587	STARTTLS	ok	-	350	TLSv1_3	LOGIN,PLAIN	220 gmx.net (mrgmx105) Nemesis ESMTP Service ready
+Imap	imap.web.de	993	TLS	ok	-	253	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Imap	imap.web.de	143	STARTTLS	ok	-	335	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Smtp	smtp.web.de	465	TLS	ok	-	249	TLSv1_3	LOGIN,PLAIN	220 web.de (mrweb005) Nemesis ESMTP Service ready
+Smtp	smtp.web.de	587	STARTTLS	ok	-	342	TLSv1_3	LOGIN,PLAIN	220 web.de (mrweb005) Nemesis ESMTP Service ready
+Imap	imap.mail.com	993	TLS	ok	-	650	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Imap	imap.mail.com	143	STARTTLS	ok	-	895	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 CHILDREN ENABLE ID IDLE LIST-EXTENDED LIST-STATUS LITERAL- MOVE NAMESPACE
+Smtp	smtp.mail.com	465	TLS	ok	-	662	TLSv1_3	LOGIN,PLAIN	220 mail.com (mrgmxus005) Nemesis ESMTP Service ready
+Smtp	smtp.mail.com	587	STARTTLS	ok	-	902	TLSv1_3	LOGIN,PLAIN	220 mail.com (mrgmxus003) Nemesis ESMTP Service ready
+Imap	imap.zoho.com	993	TLS	ok	-	772	TLSv1_3	PLAIN,XOAUTH2	* OK svwall.zoho.com IMAP4 Server (Zoho Mail IMAP4rev1 Server version 1.0)
+Smtp	smtp.zoho.com	465	TLS	ok	-	689	TLSv1_3	LOGIN,PLAIN	220 smtp.zohomail.com SMTP Server ready October 4, 2026 5:21:22 AM PDT
+Smtp	smtp.zoho.com	587	STARTTLS	ok	-	1323	TLSv1_3	LOGIN,PLAIN	220 smtp.zohomail.com SMTP Server ready October 4, 2026 5:21:23 AM PDT
+Imap	imap.yandex.com	993	TLS	ok	-	523	TLSv1_3	PLAIN,XOAUTH2	* OK Yandex IMAP4rev1 at mail-imap-production-main-794.vla.yp-c.yandex.net:993 ready to talk with [ip]
+Imap	imap.ya.ru	993	TLS	ok	-	504	TLSv1_3	PLAIN,XOAUTH2	* OK Yandex IMAP4rev1 at mail-imap-production-main-94.klg.yp-c.yandex.net:993 ready to talk with [ip]
+Smtp	smtp.yandex.com	465	TLS	ok	-	449	TLSv1_3	LOGIN,PLAIN,XOAUTH2	220 mail-nwsmtp-smtp-production-main-94.vla.yp-c.yandex.net Ok 1791116485-PLJeffodKeA0
+Smtp	smtp.yandex.com	587	STARTTLS	ok	-	480	TLSv1_3	LOGIN,PLAIN,XOAUTH2	220 mail-nwsmtp-smtp-production-main-88.iva.yp-c.yandex.net Ok 1791116485-PLJVXlSnnGk0
+Imap	imap.mail.ru	993	TLS	ok	-	431	TLSv1_2	PLAIN,XOAUTH2	* OK IMAP4 ready
+Smtp	smtp.mail.ru	465	TLS	ok	-	328	TLSv1_2	LOGIN,PLAIN,XOAUTH2	220 smtp.mail.ru ESMTP ready (Looking for Mail for your domain? Visit https://biz.mail.ru)
+Imap	imap.mailbox.org	993	TLS	ok	-	243	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE UIDPLUS LITERAL+ AUTH=PLAIN AUTH=L
+Smtp	smtp.mailbox.org	465	TLS	ok	-	258	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	220 smtp2.mailbox.org ESMTP Postfix
+Smtp	smtp.mailbox.org	587	STARTTLS	ok	-	273	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,XOAUTH2	220 smtp102.mailbox.org ESMTP Postfix
+Imap	posteo.de	993	TLS	ok	-	213	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 LITERAL+ SASL-IR LOGIN-REFERRALS ID ENABLE IDLE AUTH=PLAIN AUTH=LOGIN] Do
+Imap	posteo.de	143	STARTTLS	ok	-	301	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 LITERAL+ SASL-IR LOGIN-REFERRALS ID ENABLE IDLE STARTTLS LOGINDISABLED] D
+Smtp	posteo.de	465	TLS	ok	-	199	TLSv1_3	LOGIN,PLAIN	220 submission01.posteo.de ESMTP Postfix
+Smtp	posteo.de	587	STARTTLS	ok	-	299	TLSv1_3	LOGIN,PLAIN	220 submission01.posteo.de ESMTP Postfix
+Imap	mail.online.no	993	TLS	ok	-	205	TLSv1_3	LOGIN	* OK [CAPABILITY IMAP4REV1 LITERAL+ UTF8=ALL STATUS=SIZE STARTTLS SASL-IR AUTH=LOGIN ID] mail64c60 I
+Imap	imap.online.no	993	TLS	ok	-	202	TLSv1_3	LOGIN	* OK [CAPABILITY IMAP4REV1 LITERAL+ UTF8=ALL STATUS=SIZE STARTTLS SASL-IR AUTH=LOGIN ID] mail161c60 
+Smtp	mail.online.no	465	TLS	ok	-	1460	TLSv1_3	LOGIN	220 mail33c60.megamailservers.eu ESMTP Sendmail 8.18.2/8.13.1; Sun, 4 Oct 2026 12:21:29 +0000
+Smtp	mail.online.no	587	STARTTLS	FAIL	Tls	5507	-	-	invalid peer certificate: UnknownIssuer
+Smtp	smtp.online.no	465	TLS	ok	-	1480	TLSv1_3	LOGIN	220 mail36c60.megamailservers.eu ESMTP Sendmail 8.18.2/8.13.1; Sun, 4 Oct 2026 12:21:36 +0000
+Smtp	smtp.online.no	587	STARTTLS	FAIL	Tls	1544	-	-	invalid peer certificate: UnknownIssuer
+Imap	imap.altibox.no	993	TLS	ok	-	202	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ STARTTLS AUTH=PLAIN AUTH=
+Smtp	smtp.altibox.no	465	TLS	ok	-	213	TLSv1_3	LOGIN,PLAIN	220 alti-v7-smtp1.altibox.no ESMTP Postfix
+Imap	imap.broadpark.no	993	TLS	ok	-	112	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+Imap	imap.broadpark.no	143	STARTTLS	ok	-	142	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ STARTTLS AUTH=PLAIN AUTH=
+Smtp	smtp.broadpark.no	587	STARTTLS	ok	-	339	TLSv1_3	LOGIN,PLAIN	220 Broadpark.no mailsystem
+Imap	imap.tussa.com	993	TLS	ok	-	42	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+Smtp	smtp.tussa.com	587	STARTTLS	ok	-	105	TLSv1_3	LOGIN,PLAIN	220 mx1-oe32-osl-no ESMTP
+Imap	imap.domeneshop.no	993	TLS	ok	-	55	TLSv1_3	PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN] director02 re
+Smtp	smtp.domeneshop.no	587	STARTTLS	ok	-	136	TLSv1_3	LOGIN,PLAIN	220 smtp.domeneshop.no ESMTP Exim 4.95 Ubuntu Sun, 04 Oct 2026 14:21:40 +0200
+Smtp	smtp.domeneshop.no	465	TLS	ok	-	66	TLSv1_3	LOGIN,PLAIN	220 smtp.domeneshop.no ESMTP Exim 4.95 Ubuntu Sun, 04 Oct 2026 14:21:40 +0200
+Imap	imap.one.com	993	TLS	ok	-	142	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+Smtp	send.one.com	587	STARTTLS	ok	-	195	TLSv1_3	LOGIN,PLAIN	220 mailrelay6.pub.mailoutpod2-cph3.one.com ESMTP
+Smtp	send.one.com	465	TLS	ok	-	157	TLSv1_3	LOGIN,PLAIN	220 mailrelay5.pub.mailoutpod2-cph3.one.com ESMTP
+Smtp	smtp.office365.com	587	STARTTLS	ok	-	129	TLSv1_3	LOGIN,XOAUTH2	220 OS6P279CA0173.outlook.office365.com Microsoft ESMTP MAIL Service ready at Sun, 4 Oct 2026 12:21:40 +
+Imap	imappro.zoho.com	993	TLS	ok	-	688	TLSv1_3	PLAIN,XOAUTH2	* OK svwall.zoho.com IMAP4 Server (Zoho Mail IMAP4rev1 Server version 1.0)
+Smtp	smtppro.zoho.com	465	TLS	ok	-	782	TLSv1_3	LOGIN,PLAIN	220 smtp.zohomail.com SMTP Server ready October 4, 2026 5:21:42 AM PDT
+Smtp	smtppro.zoho.com	587	STARTTLS	ok	-	1213	TLSv1_3	LOGIN,PLAIN	220 smtp.zohomail.com SMTP Server ready October 4, 2026 5:21:42 AM PDT
+Imap	imappro.zoho.eu	993	TLS	ok	-	202	TLSv1_3	PLAIN,XOAUTH2	* OK svwall.zoho.com IMAP4 Server (Zoho Mail IMAP4rev1 Server version 1.0)
+Imap	imap.zoho.eu	993	TLS	ok	-	503	TLSv1_3	PLAIN,XOAUTH2	* OK svwall.zoho.com IMAP4 Server (Zoho Mail IMAP4rev1 Server version 1.0)
+Smtp	smtppro.zoho.eu	465	TLS	ok	-	235	TLSv1_3	LOGIN,PLAIN	220 smtp.zoho.eu SMTP Server ready October 4, 2026 2:21:44 PM CEST
+Smtp	smtppro.zoho.eu	587	STARTTLS	ok	-	337	TLSv1_3	LOGIN,PLAIN	220 smtp.zoho.eu SMTP Server ready October 4, 2026 2:21:44 PM CEST
+Smtp	smtp.zoho.eu	465	TLS	ok	-	525	TLSv1_3	LOGIN,PLAIN	220 smtp.zoho.eu SMTP Server ready October 4, 2026 2:21:45 PM CEST
+Smtp	smtp.zoho.eu	587	STARTTLS	ok	-	308	TLSv1_3	LOGIN,PLAIN	220 smtp.zoho.eu SMTP Server ready October 4, 2026 2:21:45 PM CEST
