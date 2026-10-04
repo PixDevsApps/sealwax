@@ -96,15 +96,18 @@ All colours come from the resolved palette (`omarchy-theme-color --all`), mapped
 | Sidebar, list | `--sidebar-bg-color`, `--headerbar-bg-color` | `dark_background` |
 | Popovers, palette, dialogs | `--popover-bg-color`, `--dialog-bg-color` | `darker_background` |
 | Cards, hovered rows, attachment cards | `--card-bg-color` | `lighter_background` |
-| Borders, separators | `--border-color` | `lighter_background` |
-| Secondary text (snippets, times, addresses) | mail role | `foreground` mixed 35 % toward `background` |
+| Borders, separators | `--border-color` | `lighter_background` mixed 8 % (dark) or 14 % (light) toward `foreground`, as the approved mock (M1) |
+| Secondary text (snippets, times, addresses) | mail role | `foreground` mixed 35 % toward `background`, less where needed to keep 4.5:1 against the window and list backgrounds (M1) |
 | Accent: focus ring, compose button, unread dot, selected chip | `--accent-bg-color`, `--accent-color` | `accent` |
 | Text on accent | `--accent-fg-color` | `readable_on(accent)` |
 | Star | mail role | `accent` (several themes' `yellow` isn't yellow — matte-black's is red) |
-| Error / warning / success | `--error-*`, `--warning-*`, `--success-*` | `red` / `yellow` / `green` |
-| Avatar tints | mail role | seven hues rotated from the `accent` hue in 51° steps at a fixed saturation and a mode-dependent lightness (the mock's approach; palette hues are often too alike, as in matte-black), picked by a hash of the address; initials take `readable_on` |
+| Error / warning / success | `--error-*`, `--warning-*`, `--success-*` | `red` / `yellow` / `green`, kept when every two are at least 20° of hue apart, else turned (matte-black's red and yellow share a hue) |
+| Selected chip | mail role | accent text on the background mixed 18 % (dark) or 14 % (light) toward the accent; the more readable of accent and foreground where the accent stays under 4.5:1 (M1) |
+| Avatar tints | mail role | seven hues rotated from the `accent` hue in 51° steps at a fixed saturation and a mode-dependent lightness (the mock's approach; palette hues are often too alike, as in matte-black), picked by a hash of the address; initials take `readable_on(tint, #ffffff, #1b1b1f)`, at least 4.5:1 |
 | Light or dark | AdwStyleManager FORCE_DARK / FORCE_LIGHT | `mode` |
-| Corners of rows, chips, cards, buttons | `--window-radius` and CSS | `corner_radius` ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)) |
+| Corners of rows, chips, cards, buttons | `--window-radius` and CSS | `corner_radius` ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)); chips, folder rows, icon buttons and controls take three quarters of it; avatars are round while corners are rounded |
+
+The generated CSS variables and the `sw-` classes are listed in [m1/theme.md](m1/theme.md#css-classes-appsrcstylecss).
 
 Roles map to palette positions, never hue names: matte-black's `green` is amber and its `blue` is orange. Contrast is checked with `readable_on`, and Stet's `distinct` rotates hues when a theme can't tell its colours apart.
 
@@ -118,7 +121,7 @@ Roles map to palette positions, never hue names: matte-black's `green` is amber 
 
 - **Chrome** (sidebar, list, toolbars, chips): the Omarchy font, `fc-match monospace` (JetBrainsMono Nerd Font here), re-resolved when `~/.config/fontconfig/` changes, as in Stet and omarchy-shell.
 - **Scale** follows omarchy-shell (base 12 px, or `[font] base-size` from `~/.config/omarchy/shell.toml`): caption 10, small 11, body 12, subtitle 13, title 14, heading 16, display 24.
-- **Message text**: sans-serif (`fc-match sans-serif`, Liberation Sans here) at a comfortable reading size (≈ 15 px, line height 1.55). WebKit's default fonts are set explicitly, because it would otherwise pick its own.
+- **Message text**: sans-serif (`fc-match sans-serif`, Liberation Sans here) at a comfortable reading size: 15 px at base 12, scaled with the base size, line height 1.55; code in messages at 13/15 of it. WebKit's default fonts are set explicitly, because it would otherwise pick its own.
 - `config.toml` can switch the chrome to sans or the reading font to mono. The mock decides the exact sizes.
 
 ## HTML mail inside the theme
@@ -161,6 +164,8 @@ Draft keymap ([ADR-017](DECISIONS.md#adr-017--keymap-scoped-one-key-shortcuts-un
 | Keyboard shortcuts | `?`, Ctrl+? |
 
 Every entry is audited for US and Norwegian layouts (no AltGr; `#`, `/`, `!` and `?` have unshifted alternatives), nothing uses SUPER, and every F-key has an alternative.
+
+As built in M1 ([ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keymap-as-built-in-m1-2026-10-04)): keys with Ctrl or Alt, and F-keys, of window and application commands work anywhere; every key of the message commands, and every one-key shortcut, works only while the list or the reader has the focus, so text fields keep their letters, Delete and Ctrl+Z. `g` waits 1.5 s for its second key. **Proposed, waiting for the user:** `h` for Keyboard Shortcuts (`?` and Ctrl+? need Shift), Ctrl+, Preferences, Ctrl+Q Quit, Ctrl+Alt+R and F5 Refresh, Ctrl+Shift+S and F9 Toggle Sidebar.
 
 ## Accessibility
 

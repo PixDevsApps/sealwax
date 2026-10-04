@@ -26,6 +26,8 @@ cargo build --workspace           # every crate
 cargo test --workspace
 bash tools/ci.sh                  # fmt, clippy -D warnings, tests, build
 SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run
+tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/window.sealwax-test
+cargo run -p sealwax -- --version
 ```
 
 ## Workspace
@@ -66,4 +68,12 @@ The users are alice, bob, perf, rand, fault, idle and spike, password `testbed-p
 
 ## Packaging
 
-M1 adds `packaging/PKGBUILD.in`, the desktop file (`DBusActivatable=true`, `MimeType=x-scheme-handler/mailto;`), the D-Bus service file and `tools/package-source.py`, following Stet. `makepkg` and installs need authorization.
+`packaging/` contains:
+- `PKGBUILD.in`;
+- the desktop file `io.github.pixdevsapps.Sealwax.desktop` (`DBusActivatable=true`, `MimeType=x-scheme-handler/mailto;`, `Exec=sealwax %u`);
+- the D-Bus service file (`sealwax --gapplication-service`);
+- the brand icon under `packaging/icons/hicolor/`. `python3 tools/make-icons.py packaging/icons` regenerates it from the user's brand canvas geometry: the detailed seal for the scalable icon, the simplified seal at 64 px and below.
+
+`python3 tools/package-source.py` writes a deterministic tarball of HEAD and a filled-in PKGBUILD to `.local/package/` (version, SHA-256, `SOURCE_DATE_EPOCH` from the commit). Building it (`cd .local/package && makepkg --cleanbuild --force`) is authorized for M1 as a build without install; installing needs its own authorization.
+
+A command line with no Sealwax running asks the session bus to start the installed service and hands its `mailto:` links to it. Development builds (`.Devel`) have no service file and start directly; run `target/debug/sealwax` for logs.

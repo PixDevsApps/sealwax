@@ -12,13 +12,13 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | --- | --- | --- |
 | 001 | Standalone native application | Accepted (user request) |
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
-| 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6 |
-| 004 | Follow the live Omarchy theme | Accepted (user request) |
+| 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6, the application shell built in M1 |
+| 004 | Follow the live Omarchy theme | Accepted (user request); built in M1 |
 | 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; blob store in M1 |
 | 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism proposed; S5 is go/no-go |
-| 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed |
+| 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision) |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
@@ -26,9 +26,9 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules) |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1 |
-| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Proposed |
+| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs) |
-| 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate) |
+| 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -90,6 +90,14 @@ S6 ran the layering on the live desktop ([report](spikes/S6-desktop.md)): SQL on
 - **Resume and network:** on logind `PrepareForSleep(false)` and when `GNetworkMonitor` reports the network back, drop and reconnect every connection at once. Never wait for a socket to fail: a silently dead connection went unnoticed for 10 s.
 - **Startup:** nothing but building the window runs on the GTK thread before `present()`. The first frame binds only the visible rows, and the list grows in steps of about 40 rows per frame (M1).
 
+### ADR-003 amendment — the application shell built in M1 (2026-10-04)
+
+Built as the S6 amendment says ([report](m1/shell.md)): an `adw::Application` subclass whose `command-line`, `open` and `activate` handlers build the window synchronously; background mode is a hold; signals, the exit timer and Quit share one quit path (`AppState::quit`). Additions:
+
+- **A command line goes through the bus** when no instance runs: it asks the session bus to start the installed service and hands its `mailto:` links over (Stet's pattern, without `--wait`), so the running Sealwax never belongs to the terminal or browser that started it. Cost not measured (S6 suggests about 50 ms more); development builds have no service file and start directly.
+- **Startup order:** early hooks run before GTK initialises (where the store's reader thread starts); after GTK's own startup the theme is read synchronously within its 500 ms budget (about 9 ms here), the settings files are read off the GTK thread, and the first window waits up to 150 ms for them, so its first frame already has the user's corners, fonts and keys.
+- **The window reference is released on `window-removed`:** GTK 4 emits `destroy` only once nothing holds the window.
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
@@ -104,6 +112,19 @@ S6 ran the layering on the live desktop ([report](spikes/S6-desktop.md)): SQL on
 Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. Outside Omarchy the built-in palettes apply.
 
 **Consequence:** no hook script and no writes under `~/.config`. Roles map to palette *positions*, never hue names (matte-black's `green` is amber).
+
+### ADR-004 amendment — the theme follower as built in M1 (2026-10-04)
+
+Built as decided ([report](m1/theme.md)), with these details:
+
+- The palette is read through `omarchy-theme-color`; the built-in cascade matches its output for all 22 stock themes. `shell.toml` is the theme's generated file with the user's merged over it, as omarchy-shell reads it; it supplies the text size, the control states and the spacing.
+- **Lead decisions (2026-10-04):**
+  - secondary text keeps DESIGN's 35 % mix where that reaches 4.5:1 against the window and list backgrounds, and mixes less where it doesn't (six stock themes; lowest now 4.51:1);
+  - the selected chip keeps the accent where it reaches 4.5:1, else the more readable of accent and foreground;
+  - borders are `lighter_background` mixed 8 % (dark) or 14 % (light) toward `foreground`, as the approved mock computed them.
+- Status colours keep a theme's own red, yellow and green when every two are at least 20° of hue apart, and are turned otherwise (11 of 22 stock themes).
+- Avatar initials take `readable_on(tint, #ffffff, #1b1b1f)`, at least 4.5:1 for any accent.
+- Startup blocks for the first read up to 500 ms (about 9 ms here); forcing libadwaita's colour scheme costs about 18 ms more only when the session's scheme disagrees with the theme. Helper programs have deadlines (2 s; `hyprctl` 300 ms). `SEALWAX_OMARCHY_STATE` points the app at a scratch state folder for tests.
 
 ## ADR-005 — SQLite with FTS5 plus a blob store (2026-10-04)
 
@@ -225,6 +246,14 @@ Interop in Gmail web, Outlook web and Thunderbird is still pending test accounts
 **Reason:** Omarchy configures everything through files; a settings window doesn't fit (Stet ADR-013 critique M7). Account setup still needs a guided UI, so the assistant writes the file.
 
 **Consequence:** a grep test asserts that no secret reaches any of these files.
+
+### ADR-009 amendment — config.toml and keys.toml as built in M1 (2026-10-04)
+
+Built in M1 ([report](m1/actions.md)): `config.toml` holds `[appearance]` (`corner_radius`, `chrome_font`, `reading_font`, the theme's own types) and `[oauth.microsoft]` with `client_id` only. Microsoft's client is public, Sign in with Google is deferred, and no settings file holds a secret. `keys.toml` maps action names to key lists. Both files are:
+- read with the `toml` crate's spanned tables, so every mistake carries its line and column, with a "did you mean";
+- applied whole or not at all;
+- reread 150 ms after a change seen on their folder and its parent;
+- created with every default commented out when the palette opens a missing one.
 
 ## ADR-010 — Name and app-id (2026-10-04)
 
@@ -414,6 +443,20 @@ S1 (2026-10-04) confirmed the inputs on the testbed: Message-ID, In-Reply-To and
 
 **Consequence:** the keymap is data in `keys.toml`; the audit tests run in CI.
 
+### ADR-017 amendment — the keymap as built in M1 (2026-10-04)
+
+**Status:** built in M1 (ML-022, [report](m1/actions.md)); the keys DESIGN didn't list are proposed and wait for the user at the M1 gate.
+
+- **One rule places every key:** keys with Ctrl or Alt, and F-keys, of App and Window actions are application accelerators (anywhere); every other key, and every key of List, Reader and Composer actions, is scoped to those widgets, after the focused widget. The message commands' Ctrl alternatives are therefore scoped too, and the composer keeps Ctrl+Z.
+- **Sequences:** two-key sequences (`g` then `i`) wait 1.5 s.
+- **The audit:** one function checks the defaults and `keys.toml` against xkeyboard-config's `us(basic)` and `no(basic)`. On Norwegian, `\` and `|` need no modifier.
+- **Proposed keys:**
+  - `h` for Keyboard Shortcuts (`?` and Ctrl+? need Shift on both layouts);
+  - Ctrl+, for Preferences;
+  - Ctrl+Q for Quit;
+  - Ctrl+Alt+R and F5 for Refresh;
+  - Ctrl+Shift+S and F9 for Toggle Sidebar.
+
 ## ADR-018 — Logging and privacy (2026-10-04)
 
 **Status:** Accepted — plan approval, 2026-10-04.
@@ -439,3 +482,12 @@ S1 found that async-imap's trace logging prints the LOGIN password. The engine t
 ### ADR-019 accepted — corners follow Hyprland (2026-10-04)
 
 **Status:** Accepted — user decision at the DESIGN gate, 2026-10-04, approving the mock's layout with corners that follow Hyprland's rounding (`corner_radius = "auto"` by default, a px value in `config.toml` to override).
+
+### ADR-019 amendment — small radius and round avatars (2026-10-04)
+
+Built in M1 ([report](m1/theme.md)):
+- rows, cards, the compose button and surfaces take `corner_radius`;
+- chips, folder rows, icon buttons and controls take three quarters of it;
+- avatars and circular buttons are round while corners are rounded, and square at 0.
+
+`hyprctl` is skipped without `HYPRLAND_INSTANCE_SIGNATURE` and reread with every theme change.

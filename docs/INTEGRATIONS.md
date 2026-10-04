@@ -18,7 +18,7 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 
 - `omarchy font set` writes `~/.config/fontconfig/fonts.conf`, putting the font first for `monospace`; `fc-match monospace -f '%{family[0]}'` returns it (JetBrainsMono Nerd Font here). Sealwax watches `~/.config/fontconfig/` as Stet does.
 - `/etc/fonts/conf.d/50-omarchy.conf` maps sans-serif to Liberation Sans. WebKit's default fonts are set explicitly from these families.
-- `omarchy display text size` writes `[font] base-size` to `~/.config/omarchy/shell.toml` (12 px default); Sealwax's chrome scale follows it.
+- `omarchy display text size` writes `[font] base-size` to `~/.config/omarchy/shell.toml` (12 px default). omarchy-shell merges this user file over the theme's generated `current/theme/shell.toml` (which carries `[controls]` and `[spacing]`); Sealwax reads both the same way, and its chrome scale follows the result.
 - gsettings `font-name` is not updated by Omarchy and is not read.
 
 ## Hyprland
@@ -27,6 +27,7 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 - **Corner radius:** `hyprctl -j getoption decoration:rounding` (8 here, 0 on stock Omarchy), read at start and after theme changes, as omarchy-shell does ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)).
 - **Window class:** GTK4 apps use the app-id as their Wayland app_id, so rules match `^io\.github\.pixdevsapps\.Sealwax$`.
 - **Focus and scale (S6):** Omarchy sets `misc.focus_on_activate = true`, so `present()` focuses the window (2–4 ms). `GDK_SCALE=2` in the session environment has no effect on GTK 4 Wayland apps; it still applies to X11 and XWayland programs.
+- **No title bar:** Sealwax shows no title bar and no window controls when `HYPRLAND_INSTANCE_SIGNATURE` is set or `XDG_CURRENT_DESKTOP` contains `Hyprland`; elsewhere the pane bars carry the window controls at the window's edges and drag the window (M1).
 - **Default opacity:** Omarchy tags every window `default-opacity` (0.985 / 0.96); an opt-out snippet is `o.window(<match>, { tag = "-default-opacity" })`. This machine's `looknfeel.lua` already forces windows opaque.
 - **Key binding:** the user's `~/.config/hypr/bindings.lua` binds SUPER+SHIFT+E to BlueMail. The snippet the user can paste once Sealwax is installed (ML-085):
   ```lua
@@ -56,7 +57,7 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 - Current handler: `bluemail.desktop`. `~/.config/mimeapps.list` still names a removed Thunderbird for `message/rfc822`; Sealwax does not touch it.
 - Sealwax's desktop file declares `MimeType=x-scheme-handler/mailto;`. "Make Sealwax the default email app" is an opt-in command that asks first and then runs `xdg-mime default <app-id>.desktop x-scheme-handler/mailto` (Stet's `set_default` pattern).
 - `mailto:` URIs are parsed per RFC 6068; `attach` / `attachment` parameters are ignored. Only `to`, `cc`, `bcc`, `subject`, `body` and `in-reply-to` are kept, and control characters are stripped from header values (S6).
-- **Forwarding (S6):** a second process forwards a `mailto:` to the running instance in ~51 ms, 49 of them loading libraries; a D-Bus `org.freedesktop.Application.Open` call, which launchers use for a `DBusActivatable` app, takes 0.5 ms. The desktop file keeps `DBusActivatable=true`, and the app handles both `open` and `command-line`.
+- **Forwarding (S6):** a second process forwards a `mailto:` to the running instance in ~51 ms, 49 of them loading libraries; a D-Bus `org.freedesktop.Application.Open` call, which launchers use for a `DBusActivatable` app, takes 0.5 ms. The desktop file keeps `DBusActivatable=true`, and the app handles both `open` and `command-line` (built in M1). With no instance running, a command line first asks the bus to start the installed service (Stet's pattern), so `xdg-open mailto:…` from a browser starts a Sealwax that doesn't belong to the browser; verified headlessly with a private bus, `xdg-open` on the live desktop not yet.
 
 ## Network and sleep
 

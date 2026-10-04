@@ -8,11 +8,11 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 
 | Layer | What | Where | Runs in CI |
 | --- | --- | --- | --- |
-| Unit | Pure logic: threading, query parser, autoconfig XML, reply/forward building, format=flowed, mailto, palette and CSS | `domain/` (`cargo test`), insta snapshots, proptest | Yes |
+| Unit | Pure logic: threading, query parser, autoconfig XML, reply/forward building, format=flowed, mailto, palette and CSS (22 stock themes, contrast rules), the action registry and keymap audit (US and Norwegian), `config.toml` and `keys.toml` | `domain/` (`cargo test`), insta snapshots, proptest | Yes |
 | Store | Migrations, writer/reader split, overlays, crash consistency (`kill -9` during writes) | `infrastructure/` with `tempfile` | Yes |
 | Protocol (scripted) | IMAP, SMTP and POP3 against scripted mock servers: capabilities, auth, fallbacks, faults | `engine/` tests | Yes |
 | Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; randomized two-client and fault-injection suites | `tools/testbed/` + `spikes/s1-imap/tests/testbed.rs` (`engine/` from M3) | Not yet: `tools/testbed/up.sh && tools/testbed/seed.sh`, then `CARGO_TARGET_DIR=target/s1 cargo test -p email-spike-s1 --release -- --ignored --test-threads=1` |
-| UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; self-test scripts that drive `ActionId`s (from M1) | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes |
+| UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, and take screenshots; `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*`) |
 | Security | Hostile-HTML suite against a local HTTP canary; secret grep over config, database and logs; outgoing-mail checks (no Bcc, no hostname) | `app/` and `engine/` tests | Yes |
 | Live | Real Wayland session (NVIDIA rendering, notifications, activation, fcitx5) and real test accounts | Manual or agent with authorization | No |
 
@@ -21,6 +21,8 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 - Always through `tools/headless.sh <display> <cmd...>`: Broadway backend, a private D-Bus bus that starts no services, `GSETTINGS_BACKEND=memory`, `ADW_DISABLE_PORTAL=1`, a time limit (`SEALWAX_HEADLESS_TIMEOUT`, default 300 s).
 - The app exits by itself after `SEALWAX_EXIT_AFTER_MS`; the CI smoke run greps for `first-frame`.
 - Parallel agents use different display numbers; CI uses `SEALWAX_CI_DISPLAY` (default 19).
+- `sealwax --self-test <script>` (ported from Stet) runs the real app on Broadway and a `.sealwax-test` script against it, printing TAP; the commands are in [m1/shell.md](m1/shell.md#self-test-commands-sealwax-test). `tools/ci.sh --ui` runs every `tests/selftest/*.sealwax-test` except `preview*`, which write the gate's screenshots into `tools/progress/public/`. The harness attaches a stand-in Broadway client reporting a 2560×1600 screen (without one Broadway clamps windows to 1024×768), switches `GTK_A11Y=none` to `test` so accessible labels can be checked, turns animations off and waits for a painted frame after every step.
+- `app/examples/theme_switch.rs` swaps a scratch Omarchy theme (`SEALWAX_OMARCHY_STATE`) as `omarchy-theme-set` does and checks colours, sizes and fonts after each switch; `app/examples/palette.rs` checks the actions, palette, scoped shortcuts, menu, shortcuts dialog and live settings.
 - WebKitGTK renders under `tools/headless.sh` in software (GTK has no GL there, so WebKit turns acceleration off). Security checks, heights, `cid:` loads and snapshots work headless. Without a Broadway client attached GTK paints about once per second, so frame timing, open-to-paint latency and scrolling are measured on the live session; headless WebView tests wait for events and allocations, never fixed delays (S2).
 
 ## Hostile-HTML suite (ML-065)
@@ -53,6 +55,17 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### M1 phase A: theme, actions, shell (ML-018 to ML-022, ML-028) — 2026-10-04
+
+Built on three branches in parallel and merged by the lead (reports: [theme](m1/theme.md), [actions](m1/actions.md), [shell](m1/shell.md)). Debug builds, headless on Broadway.
+
+| Part | Evidence | Verdict |
+| --- | --- | --- |
+| Theme follower and mail roles (ML-018, ML-019) | Domain 48 unit + 16 integration tests (insta snapshots of five themes, contrast rules over all 22 stock themes: secondary text and selected chip ≥ 4.5:1, initials ≥ 4.5:1 for any accent); infrastructure 31 tests (the cascade matches `omarchy-theme-color` for all 22 themes; helper deadlines); `theme_switch` headless: dark → light → dark → built-in, every check passed, applied ~178 ms after the swap (150 ms debounce); live read-only `theme_dump`: 8.8–9.0 ms | Pass headless; the live dark↔light switch with WebViews waits for the reader |
+| Actions, palette, settings (ML-022) | Domain 43, infrastructure 5, app 15 tests (keymap audit for US and Norwegian); `palette` example 36 of 36 checks, five runs, and again after the lead moved preferences onto the shared watcher | Pass; real key presses not verified (GTK can't synthesize them) |
+| Shell, window, packaging (ML-020, ML-021, ML-028) | Self-tests: window 107/107, window-controls 24/24, activation 62/62 (second launch, `mailto:` from a second instance and D-Bus `Open` with `attach` dropped, background hold, D-Bus activation on a private bus), signals 17/17; `desktop-file-validate` clean; `package-source.py` deterministic | Pass; `makepkg` not run yet |
+| After merging and wiring (lead) | `tools/ci.sh --ui`: 371 tests passed, 0 failed, 10 ignored; all four self-tests pass; the app reads and applies the theme at startup (9.2 ms read, 20 ms applied), then `first-frame` | Pass |
 
 ### S6 desktop integration (ML-014) — 2026-10-04
 
