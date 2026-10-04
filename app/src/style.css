@@ -547,3 +547,37 @@ entry.sw-search {
 .sw-empty-body {
   color: var(--sw-secondary-fg-color);
 }
+
+/* Message list (ML-026) */
+.sw-list-head {
+  padding: var(--sw-space-md) var(--sw-space-xl) var(--sw-space-lg);
+}
+
+.sw-list-head entry.sw-search {
+  margin: 0;
+}
+
+.sw-chips {
+  border-spacing: var(--sw-space-md);
+}
+
+/* Constant row heights: the mock's 1.45 is about 1.1 in GTK (S3), and two lines of snippet are
+   kept even for a short one, so rows don't change size as pages fill in. */
+.sw-message-list .sw-snippet {
+  line-height: 1.1;
+  min-height: 2.9em;
+}
+
+.sw-message-row .sw-unread-dot {
+  margin-top: var(--sw-space-md);
+}
+
+.sw-message-row .sw-row-indicators {
+  min-width: var(--sw-space-xxxl);
+  margin-top: var(--sw-space-huge);
+}
+
+.sw-message-row .sw-star,
+.sw-message-row .sw-indicator {
+  -gtk-icon-size: var(--sw-text-body);
+}
