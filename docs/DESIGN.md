@@ -47,11 +47,11 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 ## Components
 
 **Sidebar**
-- Compose button at the top (accent fill, accent text colour, full radius, `c`). While a command doesn't exist yet its button stays readable: an insensitive compose or "Add an account" takes the selected chip's tint and text (M1).
+- Compose button at the top (accent fill, accent text colour, full radius, `c`). While a command doesn't exist yet its button stays readable: an insensitive compose or "Add an account" takes the selected chip's tint and text (M1; kept by the user at the M1 gate, 2026-10-05).
 - "All Inboxes", then each account with its role folders (Inbox, Drafts, Sent, Archive, Junk, Trash) and unread counts; other folders under a collapsible "More".
 - Account status as a small round dot: accent synced, plain syncing, warning offline, error needs sign-in; account headings are upper-cased, letter-spaced captions.
-- A footer with the accounts' summary and `config.toml`. The main menu sits at the end of the list's bar (the welcome page's while there is no account): in the footer it cut off the summary (M1, a change from the mock).
-- **Rail** (900–1279 px): compose, All Inboxes (an addition to the mock), the shown account's role folders with an accent badge at the top-right of those with unread mail, the other accounts as initial and unread count (a dot only when offline or signed out), `config.toml` at the bottom.
+- A footer with the accounts' summary and `config.toml`. The main menu sits at the end of the list's bar (the welcome page's while there is no account): in the footer it cut off the summary (M1, a change from the mock; kept by the user at the M1 gate, 2026-10-05).
+- **Rail** (900–1279 px): compose, All Inboxes (an addition to the mock, kept by the user at the M1 gate, 2026-10-05), the shown account's role folders with an accent badge at the top-right of those with unread mail, the other accounts as initial and unread count (a dot only when offline or signed out), `config.toml` at the bottom.
 
 **Message list**
 - Search field and filter chips on top, then sections (Today, Yesterday, This week, This month, Older).

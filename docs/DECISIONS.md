@@ -375,6 +375,8 @@ The layers and the sizing change as follows (SECURITY.md carries the security ru
 
 **Consequence:** S3's list passes its bar (133 MiB PSS against 150 MB). S2's reader bar is re-measured in M5 under the new definition and is part of M5's exit criteria.
 
+**M1 measurement** (added 2026-10-05): the integrated app's process at the first painted rows of a 100k list is 151.7 MiB PSS, live. 37.4 MiB of it is NVIDIA's GL and Vulkan libraries and device mappings; without them it is 114.3 MiB. Whether the driver's share counts toward the UI's 150 MB or toward the GPU budget is decided in M5, with the reader measurement (user decision at the M1 gate, 2026-10-05, "Decide in M5").
+
 ### ADR-011 amendment — the reader as built in M1 (2026-10-04)
 
 Built as [m1/reader.md](m1/reader.md) records, with every layer of the S2 amendment. Additions:
@@ -515,6 +517,7 @@ Built in M1 ([m1/store.md](m1/store.md)): union-find over `thread_aliases` (ever
   - Ctrl+Q for Quit;
   - Ctrl+Alt+R and F5 for Refresh;
   - Ctrl+Shift+S and F9 for Toggle Sidebar.
+- **Accepted** (user decision at the M1 gate, 2026-10-05, "Accept as proposed"): the proposed keys, and the scoped Ctrl alternatives of the message commands.
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 
