@@ -5,13 +5,20 @@
 //! with neither a window nor a hold (ADR-003 amendment, S6). Until the window is presented the
 //! GTK thread does nothing but build it. SIGTERM, SIGHUP and SIGINT quit cleanly.
 
+use crate::actions::{self, ActionSet};
 use crate::cli;
 use crate::config;
+use crate::menu;
+use crate::palette;
+use crate::preferences::{self, Preferences, SettingsFile, Update};
+use crate::shortcuts;
+use crate::theme::{self, ThemeController};
 use crate::window::{self, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use libadwaita::subclass::prelude::*;
+use sealwax_domain::actions::ActionId;
 use sealwax_domain::mailto::{self, Mailto};
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
@@ -30,6 +37,10 @@ pub const APP_ID_ENV: &str = "SEALWAX_APP_ID";
 /// The signals that end a session: uwsm stops app units with SIGTERM at logout and reboot, a
 /// closing terminal sends SIGHUP, Ctrl+C SIGINT. Linux's numbers.
 const QUIT_SIGNALS: [(i32, &str); 3] = [(15, "SIGTERM"), (1, "SIGHUP"), (2, "SIGINT")];
+
+/// How long the first window waits for `config.toml` and `keys.toml`, so its first frame already
+/// has the user's corners, fonts and keys. The first read takes a few milliseconds.
+const SETTINGS_WAIT: Duration = Duration::from_millis(150);
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -139,6 +150,10 @@ impl SealwaxApplication {
             activations: Cell::new(0),
             background: RefCell::new(None),
             quitting: Cell::new(false),
+            theme: OnceCell::new(),
+            prefs: OnceCell::new(),
+            app_actions: OnceCell::new(),
+            win_actions: RefCell::new(None),
         });
         if app.imp().state.set(state).is_err() {
             unreachable!("a new application has no state yet");
@@ -175,6 +190,10 @@ pub struct AppState {
     activations: Cell<u32>,
     background: RefCell<Option<gio::ApplicationHoldGuard>>,
     quitting: Cell<bool>,
+    theme: OnceCell<Rc<ThemeController>>,
+    prefs: OnceCell<Rc<Preferences>>,
+    app_actions: OnceCell<ActionSet>,
+    win_actions: RefCell<Option<ActionSet>>,
 }
 
 impl AppState {
@@ -236,6 +255,28 @@ impl AppState {
         self.background.borrow().is_some()
     }
 
+    /// The theme follower (ADR-004), from `startup` on.
+    pub fn theme(&self) -> Option<Rc<ThemeController>> {
+        self.theme.get().cloned()
+    }
+
+    /// `config.toml` and `keys.toml` (ADR-009), from `startup` on.
+    pub fn preferences(&self) -> Option<Rc<Preferences>> {
+        self.prefs.get().cloned()
+    }
+
+    /// Whether a command is built and usable now, in either action group.
+    pub fn is_available(&self, id: ActionId) -> bool {
+        self.app_actions
+            .get()
+            .is_some_and(|set| set.is_available(id))
+            || self
+                .win_actions
+                .borrow()
+                .as_ref()
+                .is_some_and(|set| set.is_available(id))
+    }
+
     /// Quits the application: the one path for signals, the exit timer and the Quit action.
     pub fn quit(&self, app: &SealwaxApplication) {
         if self.quitting.replace(true) {
@@ -250,6 +291,7 @@ impl AppState {
 
     fn startup(self: &Rc<Self>, app: &SealwaxApplication) {
         gtk4::Window::set_default_icon_name(ICON_NAME);
+        self.start_settings(app);
         // A closed window leaves the application here; GTK emits `destroy` only once nothing
         // holds the window, and this state does.
         app.connect_window_removed(glib::clone!(
@@ -357,12 +399,124 @@ impl AppState {
         }
     }
 
+    /// The theme, the settings files and the application's commands. The theme read blocks
+    /// for at most `theme::STARTUP_WAIT` (about 9 ms here); the settings are read off the GTK
+    /// thread, and the first window waits up to `SETTINGS_WAIT` for them.
+    fn start_settings(self: &Rc<Self>, app: &SealwaxApplication) {
+        let prefs = Preferences::start(&self.config.dirs);
+        let theme = ThemeController::start(prefs.config().appearance, theme::STARTUP_WAIT);
+        let app_actions = actions::install_app_actions(app);
+        let weak_app = app.downgrade();
+        let weak = Rc::downgrade(self);
+        app_actions.connect(ActionId::Quit, move || {
+            if let (Some(app), Some(state)) = (weak_app.upgrade(), weak.upgrade()) {
+                state.quit(&app);
+            }
+        });
+        for (id, file) in [
+            (ActionId::Preferences, SettingsFile::Config),
+            (ActionId::CustomizeShortcuts, SettingsFile::Keys),
+        ] {
+            let weak = Rc::downgrade(self);
+            app_actions.connect(id, move || {
+                if let Some(state) = weak.upgrade() {
+                    state.open_settings(file);
+                }
+            });
+        }
+        let weak = Rc::downgrade(self);
+        app_actions.connect(ActionId::KeyboardShortcuts, move || {
+            if let Some(state) = weak.upgrade() {
+                state.show_shortcuts();
+            }
+        });
+        let weak_app = app.downgrade();
+        let weak = Rc::downgrade(self);
+        prefs.connect_changed(move |update| {
+            if let (Some(app), Some(state)) = (weak_app.upgrade(), weak.upgrade()) {
+                state.settings_changed(&app, update);
+            }
+        });
+        let ready = prefs.clone();
+        self.hold_first_window(async move { ready.ready(SETTINGS_WAIT).await });
+        let _ = self.theme.set(theme);
+        let _ = self.prefs.set(prefs);
+        let _ = self.app_actions.set(app_actions);
+    }
+
+    /// `config.toml` or `keys.toml` changed, or one of them has a mistake.
+    fn settings_changed(&self, app: &SealwaxApplication, update: &Update) {
+        let Some(prefs) = self.preferences() else {
+            return;
+        };
+        if update.config_before.is_some()
+            && let Some(theme) = self.theme()
+        {
+            theme.set_options(prefs.config().appearance);
+        }
+        if update.keymap_changed {
+            let keymap = prefs.keymap();
+            actions::apply_accels(app, &keymap);
+            if let Some(window) = self.window() {
+                window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
+            }
+        }
+        for problem in &update.problems {
+            tracing::warn!("{problem}");
+            if let Some(window) = self.window() {
+                window.add_toast(adw::Toast::new(problem));
+            }
+        }
+    }
+
+    /// The window's commands: the palette, and the main menu built from the registry.
+    fn install_window(self: &Rc<Self>, app: &SealwaxApplication, window: &Window) {
+        let Some(prefs) = self.preferences() else {
+            return;
+        };
+        let keymap = prefs.keymap();
+        let win_actions = actions::install_window_actions(window.window());
+        let target = window.window().downgrade();
+        win_actions.connect(ActionId::CommandPalette, move || {
+            if let Some(window) = target.upgrade() {
+                palette::present(&window, &prefs.keymap());
+            }
+        });
+        window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
+        actions::apply_accels(app, &keymap);
+        self.win_actions.replace(Some(win_actions));
+    }
+
+    /// Preferences and Customize Shortcuts: the file, created with its defaults when missing,
+    /// in the default text editor; the outcome as a toast.
+    fn open_settings(&self, file: SettingsFile) {
+        let (Some(prefs), Some(window)) = (self.preferences(), self.window()) else {
+            return;
+        };
+        let path = prefs.path(file);
+        glib::spawn_future_local(async move {
+            let message = preferences::open_in_editor(window.window(), path, file).await;
+            window.add_toast(adw::Toast::new(&message));
+        });
+    }
+
+    fn show_shortcuts(self: &Rc<Self>) {
+        let (Some(prefs), Some(window)) = (self.preferences(), self.window()) else {
+            return;
+        };
+        let state = self.clone();
+        shortcuts::present(window.window(), &prefs.keymap(), &move |id| {
+            state.is_available(id)
+        });
+    }
+
     /// The window, built on the first request.
     fn window_or_new(self: &Rc<Self>, app: &SealwaxApplication) -> Window {
         if let Some(window) = self.window() {
             return window;
         }
         let window = Window::new(app.upcast_ref(), self.config.tiling);
+        self.install_window(app, &window);
         self.window.replace(Some(window.clone()));
         window
     }

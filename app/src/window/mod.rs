@@ -30,8 +30,8 @@ pub use sidebar::{
 
 /// Registry actions the window's buttons are bound to (ML-022). A button whose action is not
 /// installed stays insensitive: compose until the composer exists (M6).
-pub const COMPOSE_ACTION: &str = "app.compose";
-pub const OPEN_CONFIG_ACTION: &str = "app.open-config";
+pub const COMPOSE_ACTION: &str = "win.compose";
+pub const OPEN_CONFIG_ACTION: &str = "app.preferences";
 
 /// Pane widths in px (DESIGN.md "Layout").
 pub const SIDEBAR_WIDTH: f64 = 220.0;
@@ -633,4 +633,16 @@ fn find_named(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
         child = current.next_sibling();
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sealwax_domain::actions::ActionId;
+
+    #[test]
+    fn buttons_are_bound_to_the_registry_names() {
+        assert_eq!(COMPOSE_ACTION, ActionId::Compose.detailed_name());
+        assert_eq!(OPEN_CONFIG_ACTION, ActionId::Preferences.detailed_name());
+    }
 }
