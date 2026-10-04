@@ -1,0 +1,19 @@
+---
+source: domain/tests/theme.rs
+expression: roles(&theme)
+---
+mode dark
+secondary_text #828282
+star #e68e0d
+unread #e68e0d
+selected_chip #e68e0d on #382811
+accent_text #121212
+border #2b2b2b
+error #d35f5f warning #b9851c success #26e045
+avatar 0 #ffffff on #74582f
+avatar 1 #ffffff on #55742f
+avatar 2 #ffffff on #2f7444
+avatar 3 #ffffff on #2f6a74
+avatar 4 #ffffff on #2f3074
+avatar 5 #ffffff on #692f74
+avatar 6 #ffffff on #742f44

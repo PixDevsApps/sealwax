@@ -1,0 +1,549 @@
+/* Sealwax's base styles (DESIGN.md). Every colour, size and font is a variable from the
+   theme's generated stylesheet (app::theme); nothing here names a colour or a family.
+   Both load at application priority, which wins over libadwaita whatever the selector, so
+   rules here name Sealwax's own sw- classes or exactly the libadwaita parts they change.
+   docs/m1/theme.md lists every class. */
+
+/* The chrome font and size (the Omarchy font, omarchy-shell's body size). */
+window,
+tooltip {
+  font-family: var(--sw-font-chrome);
+  font-size: var(--sw-text-body);
+}
+
+/* Corners follow Hyprland (ADR-019): controls take the small radius, surfaces the full
+   one; round things are round only while corners are. */
+button,
+entry,
+spinbutton,
+popover.menu modelbutton,
+popover.menu list > row,
+popover.menu listview > row,
+tooltip {
+  border-radius: var(--sw-radius-small);
+}
+
+button.circular,
+button.pill {
+  border-radius: var(--sw-avatar-radius);
+}
+
+popover > contents,
+.card,
+list.boxed-list,
+toast,
+dialog-host > dialog sheet {
+  border-radius: var(--sw-radius);
+}
+
+/* Flat surfaces: no drop shadows; elevation comes from the background roles and 1 px
+   borders. */
+popover > contents,
+.card,
+toast,
+dialog-host > dialog sheet {
+  box-shadow: none;
+}
+
+popover > contents,
+.card,
+dialog-host > dialog sheet {
+  border: 1px solid var(--border-color);
+}
+
+/* Text selection: omarchy-shell's selection fill. */
+selection {
+  background-color: var(--sw-selection-bg-color);
+}
+
+/* Type scale and text roles. */
+.sw-caption {
+  font-size: var(--sw-text-caption);
+}
+
+.sw-small {
+  font-size: var(--sw-text-small);
+}
+
+.sw-body {
+  font-size: var(--sw-text-body);
+}
+
+.sw-subtitle {
+  font-size: var(--sw-text-subtitle);
+}
+
+.sw-title {
+  font-size: var(--sw-text-title);
+}
+
+.sw-heading {
+  font-size: var(--sw-text-heading);
+}
+
+.sw-display {
+  font-size: var(--sw-text-display);
+}
+
+.sw-strong {
+  font-weight: bold;
+}
+
+.sw-secondary {
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-accent {
+  color: var(--accent-color);
+}
+
+.sw-mono {
+  font-family: var(--sw-font-mono);
+}
+
+.sw-sans {
+  font-family: var(--sw-font-sans);
+}
+
+.sw-reading {
+  font-family: var(--sw-font-reading);
+  font-size: var(--sw-text-reading);
+}
+
+.sw-no-ligatures {
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+/* Interactive controls in omarchy-shell's states (shell.toml [controls]). */
+button.sw-control {
+  min-height: calc(var(--sw-space-control-height) - 2px);
+  padding: 0 var(--sw-space-control-padding-x);
+  border: var(--sw-control-border-width) solid var(--sw-control-border-color);
+  border-radius: var(--sw-radius-small);
+  background: var(--sw-control-bg-color);
+  box-shadow: none;
+}
+
+button.sw-control:hover {
+  background: var(--sw-hover-bg-color);
+  border-color: var(--sw-hover-border-color);
+}
+
+button.sw-control:focus-visible {
+  background: var(--sw-focus-bg-color);
+  border-color: var(--sw-focus-border-color);
+}
+
+button.sw-control:checked {
+  background: var(--sw-selected-bg-color);
+}
+
+button.sw-control:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+button.sw-icon-button {
+  min-width: var(--sw-size-icon-button);
+  min-height: var(--sw-size-icon-button);
+  padding: 0;
+  border: none;
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+}
+
+button.sw-icon-button:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-icon-button:checked {
+  background: var(--sw-selected-bg-color);
+}
+
+button.sw-icon-button:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+/* Sidebar: compose, folder rows, account headings, counts and status dots. */
+.sw-sidebar {
+  padding: var(--sw-space-xxxl) var(--sw-space-xl) var(--sw-space-xxl);
+  background-color: var(--sidebar-bg-color);
+  color: var(--sidebar-fg-color);
+  border-right: 1px solid var(--border-color);
+}
+
+button.sw-compose {
+  min-height: var(--sw-size-compose);
+  padding: 0 var(--sw-space-xl);
+  border: none;
+  border-radius: var(--sw-radius);
+  background: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+  box-shadow: none;
+  font-weight: bold;
+}
+
+button.sw-compose:hover {
+  background-image: image(var(--sw-hover-bg-color));
+}
+
+button.sw-compose:active {
+  background-image: image(var(--sw-pressed-bg-color));
+}
+
+.sw-sidebar-row,
+list.sw-sidebar > row,
+listview.sw-sidebar > row {
+  min-height: var(--sw-size-nav-row);
+  padding: 0 var(--sw-space-xl);
+  border: none;
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+}
+
+.sw-sidebar-row:hover,
+list.sw-sidebar > row:hover,
+listview.sw-sidebar > row:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+.sw-sidebar-row.sw-current,
+list.sw-sidebar > row:selected,
+listview.sw-sidebar > row:selected {
+  background: var(--sw-selected-bg-color);
+  font-weight: bold;
+}
+
+.sw-sidebar-heading {
+  padding: var(--sw-space-huge) var(--sw-space-xl) var(--sw-space-md);
+  font-size: var(--sw-text-caption);
+  letter-spacing: 0.08em;
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-count {
+  font-size: var(--sw-text-small);
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-count.sw-unread {
+  color: var(--sw-unread-color);
+}
+
+.sw-status-dot {
+  min-width: var(--sw-size-status-dot);
+  min-height: var(--sw-size-status-dot);
+  border-radius: 9999px;
+  background: var(--sw-secondary-fg-color);
+}
+
+.sw-status-dot.sw-synced {
+  background: var(--sw-unread-color);
+}
+
+.sw-status-dot.sw-offline {
+  background: var(--warning-color);
+}
+
+.sw-status-dot.sw-attention {
+  background: var(--error-color);
+}
+
+/* Message list: no ligatures in list text (S3: 30–36 % less layout). */
+.sw-message-list {
+  background-color: var(--sidebar-bg-color);
+  font-feature-settings: "liga" 0, "calt" 0;
+}
+
+listview.sw-message-list > row {
+  margin: 0 var(--sw-space-lg) var(--sw-space-xxs);
+  padding: 0;
+  border-radius: var(--sw-radius);
+  background: none;
+}
+
+listview.sw-message-list > row:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+listview.sw-message-list > row:selected {
+  background: var(--sw-selected-bg-color);
+}
+
+.sw-section-header {
+  padding: var(--sw-space-xxl) var(--sw-space-xl) var(--sw-space-md);
+  font-size: var(--sw-text-caption);
+  letter-spacing: 0.08em;
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-message-row {
+  padding: var(--sw-space-xl) var(--sw-space-xl) var(--sw-space-xl) var(--sw-space-md);
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-sender {
+  font-size: var(--sw-text-subtitle);
+}
+
+.sw-unread .sw-sender,
+.sw-unread .sw-subject {
+  font-weight: bold;
+}
+
+.sw-snippet,
+.sw-time {
+  font-size: var(--sw-text-small);
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-unread-dot {
+  min-width: var(--sw-size-unread-dot);
+  min-height: var(--sw-size-unread-dot);
+  border-radius: 9999px;
+  background: var(--sw-unread-color);
+}
+
+.sw-thread-count {
+  padding: 0 var(--sw-space-sm);
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  font-size: var(--sw-text-caption);
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-star {
+  color: var(--sw-star-color);
+}
+
+.sw-indicator {
+  color: var(--sw-secondary-fg-color);
+}
+
+entry.sw-search {
+  min-height: calc(var(--sw-size-search) - 2px);
+  padding: 0 var(--sw-space-xl);
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: var(--window-bg-color);
+  box-shadow: none;
+}
+
+/* Filter chips (All, Unread, Starred, Attachments); toggle buttons or .sw-selected. */
+.sw-chip {
+  min-height: calc(var(--sw-size-chip) - 2px);
+  padding: 0 var(--sw-space-xl);
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+  font-weight: normal;
+}
+
+.sw-chip:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+.sw-chip:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+.sw-chip:checked,
+.sw-chip.sw-selected {
+  border-color: transparent;
+  background: var(--sw-chip-selected-bg-color);
+  color: var(--sw-chip-selected-fg-color);
+  font-weight: bold;
+}
+
+/* Avatars: initials on a tint chosen from the address (sw-avatar-tint-<0..6>). */
+.sw-avatar {
+  min-width: var(--sw-size-avatar);
+  min-height: var(--sw-size-avatar);
+  border-radius: var(--sw-avatar-radius);
+  font-size: var(--sw-text-small);
+  font-weight: bold;
+}
+
+.sw-avatar.sw-avatar-small {
+  min-width: var(--sw-size-avatar-small);
+  min-height: var(--sw-size-avatar-small);
+  font-size: var(--sw-text-caption);
+}
+
+.sw-avatar.sw-avatar-large {
+  min-width: var(--sw-size-avatar-large);
+  min-height: var(--sw-size-avatar-large);
+  font-size: var(--sw-text-body);
+}
+
+.sw-avatar-tint-0 {
+  background: var(--sw-avatar-0-bg-color);
+  color: var(--sw-avatar-0-fg-color);
+}
+
+.sw-avatar-tint-1 {
+  background: var(--sw-avatar-1-bg-color);
+  color: var(--sw-avatar-1-fg-color);
+}
+
+.sw-avatar-tint-2 {
+  background: var(--sw-avatar-2-bg-color);
+  color: var(--sw-avatar-2-fg-color);
+}
+
+.sw-avatar-tint-3 {
+  background: var(--sw-avatar-3-bg-color);
+  color: var(--sw-avatar-3-fg-color);
+}
+
+.sw-avatar-tint-4 {
+  background: var(--sw-avatar-4-bg-color);
+  color: var(--sw-avatar-4-fg-color);
+}
+
+.sw-avatar-tint-5 {
+  background: var(--sw-avatar-5-bg-color);
+  color: var(--sw-avatar-5-fg-color);
+}
+
+.sw-avatar-tint-6 {
+  background: var(--sw-avatar-6-bg-color);
+  color: var(--sw-avatar-6-fg-color);
+}
+
+/* Reader: toolbar, subject, tags, message cards, collapsed messages, bodies. */
+.sw-reader {
+  background-color: var(--window-bg-color);
+}
+
+.sw-toolbar {
+  min-height: var(--sw-size-toolbar);
+  padding: 0 var(--sw-space-xxxl);
+  border-bottom: 1px solid var(--border-color);
+  border-spacing: var(--sw-space-xxs);
+}
+
+.sw-subject-heading {
+  font-size: var(--sw-text-display);
+  font-weight: bold;
+}
+
+.sw-tag {
+  padding: 1px var(--sw-space-lg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  font-size: var(--sw-text-small);
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-message-card {
+  padding: var(--sw-space-huge);
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius);
+  border-spacing: var(--sw-space-huge);
+}
+
+.sw-message-header {
+  border-spacing: var(--sw-space-xxl);
+}
+
+.sw-address {
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-collapsed-message {
+  padding: var(--sw-space-xl) var(--sw-space-huge);
+  border-bottom: 1px solid var(--border-color);
+  border-spacing: var(--sw-space-xxl);
+}
+
+.sw-collapsed-message:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+/* HTML with colours of its own keeps its design on a light card (DESIGN.md); the reader
+   clips the WebView to it (gtk::Overflow::Hidden). */
+.sw-paper {
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: var(--sw-paper-bg-color);
+  color: var(--sw-paper-fg-color);
+}
+
+.sw-themed-body {
+  background: var(--window-bg-color);
+}
+
+.sw-quick-reply {
+  padding: var(--sw-space-xxl) var(--sw-space-xxxl);
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: var(--sidebar-bg-color);
+  border-spacing: var(--sw-space-xl);
+}
+
+/* Attachment cards. */
+.sw-attachment-card {
+  padding: var(--sw-space-xl);
+  border: 1px solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: var(--card-bg-color);
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-attachment-card:hover {
+  border-color: var(--sw-secondary-fg-color);
+}
+
+.sw-attachment-type {
+  min-width: var(--sw-size-attachment-type-width);
+  min-height: var(--sw-size-attachment-type-height);
+  border-radius: var(--sw-radius-small);
+  background: var(--sw-chip-selected-bg-color);
+  color: var(--sw-chip-selected-fg-color);
+  font-size: var(--sw-text-caption);
+  font-weight: bold;
+}
+
+.sw-attachment-meta {
+  font-size: var(--sw-text-small);
+  color: var(--sw-secondary-fg-color);
+}
+
+/* Banners for persistent states (offline, sign-in, certificate, quota, keyring). */
+.sw-banner {
+  padding: var(--sw-space-xl) var(--sw-space-xxxl);
+  border-radius: var(--sw-radius);
+  background: var(--card-bg-color);
+  border-spacing: var(--sw-space-xxl);
+}
+
+.sw-banner.sw-error {
+  background: var(--sw-error-soft-bg-color);
+}
+
+.sw-banner.sw-warning {
+  background: var(--sw-warning-soft-bg-color);
+}
+
+/* Empty states: no accounts, empty folder, no search results. */
+.sw-empty-state {
+  padding: var(--sw-space-huge);
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-empty-icon {
+  -gtk-icon-size: var(--sw-size-empty-icon);
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-empty-title {
+  font-size: var(--sw-text-heading);
+  font-weight: bold;
+}
+
+.sw-empty-body {
+  color: var(--sw-secondary-fg-color);
+}

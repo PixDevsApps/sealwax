@@ -1,0 +1,17 @@
+---
+source: domain/tests/theme.rs
+expression: "theme.webview_css(BodyStyle::Themed)"
+---
+html,body{height:max-content!important;min-height:0!important;max-height:none!important}
+:root{color-scheme:dark}
+html{background-color:transparent;color:#a9b1d6;font:15px/1.55 "Liberation Sans", sans-serif}
+body{margin:0;padding:0;overflow-wrap:anywhere}
+a{color:#7aa2f7}
+blockquote{margin:0 0 0 2px;padding-left:12px;border-left:3px solid #2f3347;color:#7d839f}
+pre,code,kbd,samp,tt{font-family:"JetBrainsMono Nerd Font", monospace;font-size:13px}
+pre{white-space:pre-wrap}
+hr{border:0;border-top:1px solid #2f3347}
+img{max-width:100%;height:auto}
+table{border-collapse:collapse}
+td,th{border-color:#2f3347}
+::selection{background-color:rgba(169, 177, 214, 0.35)}

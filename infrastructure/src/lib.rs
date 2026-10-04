@@ -2,4 +2,5 @@
 //! No network, no tokio, no GTK.
 
 pub mod logging;
+pub mod omarchy;
 pub mod xdg;

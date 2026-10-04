@@ -2,3 +2,5 @@
 //! `main.rs` only starts it, so every module here can be built and tested on its own.
 
 pub mod config;
+pub mod monitor;
+pub mod theme;
