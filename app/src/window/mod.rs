@@ -12,16 +12,20 @@
 pub mod empty;
 pub mod panes;
 pub mod sidebar;
+pub mod tooltips;
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use panes::{PaneBar, ReaderColumn, classed, icon_button, named, title_block};
-use sidebar::{COMPOSE_ICONS, Sidebar, menu_button};
+use panes::{PaneBar, ReaderColumn, classed, icon_button, menu_button, named, title_block};
+use sealwax_domain::actions::ActionId;
+use sealwax_domain::keymap::Keymap;
+use sidebar::{Sidebar, compose_button};
 use std::cell::RefCell;
 use std::rc::Rc;
+use tooltips::Tooltips;
 
 pub use panes::READER_COLUMN;
 pub use sidebar::{
@@ -116,16 +120,20 @@ struct Inner {
     list_subtitle: gtk::Label,
     list_slot: adw::Bin,
     list_menu: gtk::MenuButton,
+    welcome_menu: gtk::MenuButton,
     reader_pane: adw::ToolbarView,
     reader_toolbar: adw::Bin,
     /// `empty` or `message`.
     reader: gtk::Stack,
     column: ReaderColumn,
     welcome: adw::ToolbarView,
+    /// "or press Ctrl+Shift+P / F1 for every command", with the keys in use.
+    welcome_hint: gtk::Label,
     toasts: adw::ToastOverlay,
     folder: gio::SimpleAction,
     pane: gio::SimpleAction,
-    /// Widgets the self-test and the stylesheet find by name.
+    tooltips: Rc<Tooltips>,
+    /// Widgets the self-test finds by name.
     named: Vec<gtk::Widget>,
     folder_handlers: RefCell<Vec<FolderHandler>>,
 }
@@ -133,7 +141,8 @@ struct Inner {
 impl Window {
     /// `tiling`: no title bar and no window controls (Hyprland, [`tiling_desktop`]).
     pub fn new(app: &adw::Application, tiling: bool) -> Self {
-        let sidebar = Sidebar::new(tiling);
+        let tooltips = Rc::new(Tooltips::default());
+        let sidebar = Sidebar::new(tiling, &tooltips);
 
         let list_bar = PaneBar::new(
             tiling,
@@ -144,17 +153,19 @@ impl Window {
                 ),
                 Pane::Folders.name(),
             )),
+            &[],
         );
         let list_title = named(gtk::Label::new(None), "list-title");
         let list_subtitle = named(gtk::Label::new(None), "list-subtitle");
         list_bar
             .content
             .append(&title_block(&list_title, &list_subtitle));
-        let list_compose = named(icon_button(COMPOSE_ICONS, "New message"), "list-compose");
-        list_compose.set_action_name(Some(COMPOSE_ACTION));
+        let (list_compose, _) = compose_button("New");
+        let list_compose = named(list_compose, "list-compose");
+        list_compose.set_valign(gtk::Align::Center);
         list_compose.set_visible(false);
-        let list_menu = menu_button();
-        list_menu.set_visible(false);
+        tooltips.add(&list_compose, "New message", ActionId::Compose);
+        let list_menu = named(menu_button(), "list-menu");
         list_bar.content.append(&list_compose);
         list_bar.content.append(&list_menu);
         let list_slot = named(
@@ -170,21 +181,21 @@ impl Window {
         let list_pane = named(
             classed(
                 adw::ToolbarView::builder().content(&list_slot).build(),
-                &["sealwax-list-pane", "sealwax-chrome"],
+                &["sw-list-pane"],
             ),
             "list-pane",
         );
         list_pane.add_top_bar(&list_bar.root);
 
+        let reader_back = named(
+            icon_button(&["go-previous-symbolic"], "Back to the list"),
+            "reader-back",
+        );
+        tooltips.add(&reader_back, "Back to the list", ActionId::BackToList);
         let reader_bar = PaneBar::new(
             tiling,
-            Some((
-                named(
-                    icon_button(&["go-previous-symbolic"], "Back to the list"),
-                    "reader-back",
-                ),
-                Pane::List.name(),
-            )),
+            Some((reader_back, Pane::List.name())),
+            &["sw-toolbar"],
         );
         reader_bar.show_controls(false, true);
         let reader_toolbar = named(adw::Bin::builder().hexpand(true).build(), "reader-toolbar");
@@ -198,16 +209,12 @@ impl Window {
         reader.set_visible_child_name("empty");
         let reader_pane = named(
             classed(
-                adw::ToolbarView::builder()
-                    .content(&reader)
-                    .top_bar_style(adw::ToolbarStyle::RaisedBorder)
-                    .build(),
-                &["sealwax-reader-pane"],
+                adw::ToolbarView::builder().content(&reader).build(),
+                &["sw-reader"],
             ),
             "reader-pane",
         );
         reader_pane.add_top_bar(&reader_bar.root);
-        reader_bar.root.add_css_class("sealwax-chrome");
 
         let welcome_bar = PaneBar::new(
             tiling,
@@ -218,14 +225,22 @@ impl Window {
                 ),
                 Pane::Folders.name(),
             )),
+            &[],
         );
         welcome_bar.show_controls(false, true);
-        let (no_account, add_account) = empty::no_account();
-        let add_account = named(add_account, "add-account");
+        let welcome_menu = named(menu_button(), "welcome-menu");
+        welcome_menu.set_hexpand(true);
+        welcome_menu.set_halign(gtk::Align::End);
+        welcome_bar.content.append(&welcome_menu);
+        let no_account = empty::no_account();
+        let add_account = named(no_account.add, "add-account");
+        let welcome_hint = named(no_account.hint, "welcome-hint");
         let welcome = named(
             classed(
-                adw::ToolbarView::builder().content(&no_account).build(),
-                &["sealwax-welcome"],
+                adw::ToolbarView::builder()
+                    .content(&no_account.page)
+                    .build(),
+                &["sw-welcome"],
             ),
             "welcome",
         );
@@ -261,7 +276,7 @@ impl Window {
             .height_request(MIN_SIZE.1)
             .content(&toasts)
             .build();
-        window.add_css_class("sealwax-window");
+        window.add_css_class("sw-window");
 
         let shown = true.to_value();
         let hidden = false.to_value();
@@ -274,7 +289,6 @@ impl Window {
             Some(&"rail".to_value()),
         );
         rail.add_setter(&sidebar.compose_label, "visible", Some(&hidden));
-        rail.add_setter(&sidebar.menu, "visible", Some(&hidden));
         if let Some(controls) = &sidebar.bar.start_controls {
             rail.add_setter(controls, "visible", Some(&hidden));
         }
@@ -282,12 +296,22 @@ impl Window {
         narrow.add_setter(&panes, "collapsed", Some(&shown));
         narrow.add_setter(&mail, "collapsed", Some(&shown));
         narrow.add_setter(&list_compose, "visible", Some(&shown));
-        narrow.add_setter(&list_menu, "visible", Some(&shown));
         for bar in [&sidebar.bar, &list_bar, &reader_bar, &welcome_bar] {
             bar.narrow_setters(&narrow);
         }
         window.add_breakpoint(rail.clone());
         window.add_breakpoint(narrow.clone());
+        // One pane at a time draws no borders between panes (`style.css`).
+        narrow.connect_apply(glib::clone!(
+            #[weak]
+            window,
+            move |_| window.add_css_class("sw-one-pane")
+        ));
+        narrow.connect_unapply(glib::clone!(
+            #[weak]
+            window,
+            move |_| window.remove_css_class("sw-one-pane")
+        ));
 
         let folder = gio::SimpleAction::new_stateful(
             "folder",
@@ -315,6 +339,7 @@ impl Window {
             column.slot.clone().upcast(),
             welcome.clone().upcast(),
             add_account.upcast(),
+            welcome_hint.clone().upcast(),
             list_compose.upcast(),
             list_title.clone().upcast(),
             list_subtitle.clone().upcast(),
@@ -343,14 +368,17 @@ impl Window {
                 list_subtitle,
                 list_slot,
                 list_menu,
+                welcome_menu,
                 reader_pane,
                 reader_toolbar,
                 reader,
                 column,
                 welcome,
+                welcome_hint,
                 toasts,
                 folder,
                 pane,
+                tooltips,
                 named,
                 folder_handlers: RefCell::new(Vec::new()),
             }),
@@ -562,11 +590,27 @@ impl Window {
         }
     }
 
-    /// The main menu (ML-022), in the sidebar's footer, the rail's, and the list pane's bar when
-    /// one pane fits.
+    /// The main menu (ML-022), at the end of the list pane's bar, or of the welcome page's while
+    /// there is no account.
     pub fn set_menu_model(&self, menu: Option<&gio::MenuModel>) {
-        self.inner.sidebar.set_menu_model(menu);
         self.inner.list_menu.set_menu_model(menu);
+        self.inner.welcome_menu.set_menu_model(menu);
+    }
+
+    /// Shows the keys of `keymap` (the registry with `keys.toml` over it) in every tooltip and
+    /// hint that names a command.
+    pub fn set_keymap(&self, keymap: &Keymap) {
+        self.inner.tooltips.set_keymap(keymap);
+        self.inner
+            .welcome_hint
+            .set_text(&empty::palette_hint(keymap));
+    }
+
+    /// Gives `widget`, an icon-only button, the tooltip `label (keys)` with the keys of `id`,
+    /// kept in step with `keys.toml` (DESIGN.md "Accessibility"): for the reader's toolbar
+    /// (ML-027) and the list's own buttons (ML-026).
+    pub fn add_shortcut_tooltip(&self, widget: &impl IsA<gtk::Widget>, label: &str, id: ActionId) {
+        self.inner.tooltips.add(widget, label, id);
     }
 
     pub fn add_toast(&self, toast: adw::Toast) {

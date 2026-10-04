@@ -459,6 +459,7 @@ impl AppState {
             actions::apply_accels(app, &keymap);
             if let Some(window) = self.window() {
                 window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
+                window.set_keymap(&keymap);
             }
         }
         for problem in &update.problems {
@@ -483,6 +484,7 @@ impl AppState {
             }
         });
         window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
+        window.set_keymap(&keymap);
         actions::apply_accels(app, &keymap);
         self.win_actions.replace(Some(win_actions));
     }

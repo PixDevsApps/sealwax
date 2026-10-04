@@ -37,6 +37,11 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("resize", 2, 2),
     ("action", 1, 1),
     ("color-scheme", 1, 1),
+    // A theme from tests/theme/ (or none) in the scratch Omarchy state; corners auto or px.
+    ("theme", 1, 1),
+    ("corners", 1, 1),
+    // A file under $TMP, such as $TMP/config/sealwax/keys.toml.
+    ("write-file", 2, 2),
     ("sidebar", 1, 1),
     ("list", 1, 1),
     ("reader", 1, 1),
@@ -68,10 +73,18 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-folder", 1, 1),
     ("assert-shown", 2, 2),
     ("assert-width", 2, 2),
+    ("assert-height", 2, 2),
     ("assert-max-width", 2, 2),
     ("assert-centred", 1, 1),
     ("assert-sensitive", 2, 2),
     ("assert-label", 2, 2),
+    ("assert-tooltip", 2, 2),
+    // The look against the applied theme: text|background colour by role, the contrast of
+    // its text on its background, its corner radius in px, its font (chrome|reading).
+    ("assert-color", 3, 3),
+    ("assert-contrast", 2, 2),
+    ("assert-radius", 2, 2),
+    ("assert-font", 2, 2),
     ("assert-window", 1, 1),
     ("assert-window-controls", 1, 1),
     ("assert-labelled", 0, 0),

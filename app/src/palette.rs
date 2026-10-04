@@ -78,16 +78,16 @@ impl Palette {
             .placeholder_text("Type a command")
             .search_delay(0)
             .hexpand(true)
-            .css_classes(["sealwax-palette-search"])
+            .css_classes(["sw-palette-search"])
             .build();
         entry.update_property(&[gtk::accessible::Property::Label("Command palette")]);
         let list = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::Browse)
-            .css_classes(["sealwax-palette-list"])
+            .css_classes(["sw-palette-list"])
             .build();
         let empty = gtk::Label::builder()
             .label("No matching command")
-            .css_classes(["sealwax-palette-empty", "dimmed"])
+            .css_classes(["sw-palette-empty", "sw-secondary"])
             .build();
         list.set_placeholder(Some(&empty));
         let scrolled = gtk::ScrolledWindow::builder()
@@ -105,7 +105,7 @@ impl Palette {
             .content_height(460)
             .child(&content)
             .focus_widget(&entry)
-            .css_classes(["sealwax-palette"])
+            .css_classes(["sw-palette"])
             .build();
         let inner = Rc::new(Inner {
             dialog: dialog.downgrade(),
@@ -323,19 +323,19 @@ fn row(item: &Item) -> gtk::ListBoxRow {
     let title = gtk::Label::builder()
         .label(item.title)
         .xalign(0.0)
-        .css_classes(["sealwax-palette-title"])
+        .css_classes(["sw-palette-title"])
         .build();
     let category = gtk::Label::builder()
         .label(item.category)
         .xalign(0.0)
         .hexpand(true)
         .ellipsize(gtk::pango::EllipsizeMode::End)
-        .css_classes(["sealwax-palette-category", "dimmed"])
+        .css_classes(["sw-palette-category", "sw-secondary"])
         .build();
     let keys = gtk::Label::builder()
         .label(&item.keys)
         .xalign(1.0)
-        .css_classes(["sealwax-palette-keys", "dimmed"])
+        .css_classes(["sw-palette-keys", "sw-secondary"])
         .build();
     // DESIGN.md's control padding, 10 × 6 px; the theme's CSS can change it.
     let content = gtk::Box::builder()
@@ -351,7 +351,7 @@ fn row(item: &Item) -> gtk::ListBoxRow {
     content.append(&keys);
     let row = gtk::ListBoxRow::builder()
         .child(&content)
-        .css_classes(["sealwax-palette-row"])
+        .css_classes(["sw-palette-row"])
         .build();
     // A screen reader reads the row as one: the command, its category, its keys.
     let spoken: Vec<&str> = [item.title, item.category, item.keys.as_str()]

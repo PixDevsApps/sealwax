@@ -2,13 +2,17 @@
 //! executes a `.sealwax-test` script against it and prints a TAP report; exits non-zero when a
 //! step fails. Ported from Stet. It refuses to run on a live display unless
 //! `SEALWAX_SELFTEST_ALLOW_LIVE=1`: run it through `tools/headless.sh`. The format and the
-//! commands are in docs/m1/shell.md (and TESTING.md once merged).
+//! commands are in docs/m1/shell.md and docs/m1/polish.md (and TESTING.md once merged). The
+//! theme follower reads a scratch Omarchy state, never the desktop's: the built-in palette
+//! until a script installs a theme from `tests/theme/` (`theme`).
 
 mod broadway;
+mod probe;
 mod processes;
 mod sample;
 mod screenshot;
 mod script;
+mod theme;
 
 use crate::application::{APP_ID_ENV, AppConfig, AppState, SealwaxApplication};
 use crate::config::APP_ID;
@@ -19,6 +23,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use processes::TestBus;
 use script::{Step, boolean};
+use sealwax_infrastructure::omarchy::STATE_DIR_ENV;
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -71,6 +76,18 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
             return glib::ExitCode::from(2);
         }
     };
+    // The configuration home exists, as `~/.config` does, so the settings folder's watch sees
+    // `sealwax/` appear when a script writes `keys.toml`.
+    let omarchy = theme::state_dir(&root.path);
+    for dir in [omarchy.clone(), root.path.join("config")] {
+        if let Err(error) = fs::create_dir_all(&dir) {
+            eprintln!("sealwax: cannot create {}: {error}", dir.display());
+            return glib::ExitCode::from(2);
+        }
+    }
+    // SAFETY: still one thread; the Broadway client starts below. Spawned instances inherit
+    // the scratch state too.
+    unsafe { std::env::set_var(STATE_DIR_ENV, &omarchy) };
     let tmp = root.path.to_string_lossy().into_owned();
     let dir = script_dir.to_string_lossy().into_owned();
     let steps = match script::parse(&text, &[("TMP", &tmp), ("DIR", &dir)]) {
@@ -256,6 +273,9 @@ impl Harness {
                 adw::StyleManager::default().set_color_scheme(scheme);
                 Ok(())
             }
+            "theme" => self.switch_theme(arg(0)).await,
+            "corners" => self.set_corners(arg(0)),
+            "write-file" => self.write_file(arg(0), arg(1)),
             "sidebar" => {
                 let model = match arg(0) {
                     "sample" => sample::model(),
@@ -281,8 +301,8 @@ impl Harness {
                 let window = self.window()?;
                 match arg(0) {
                     "sample" => {
-                        window.set_reader(&sample::reader());
-                        window.set_reader_toolbar(&sample::reader_toolbar());
+                        window.set_reader(&sample::reader(&window));
+                        window.set_reader_toolbar(&sample::reader_toolbar(&window));
                     }
                     "none" => {
                         window.clear_reader();
@@ -486,7 +506,15 @@ impl Harness {
                 let wanted = Pane::from_name(arg(0)).ok_or("use folders, list or reader")?;
                 equal("pane", self.window()?.pane(), wanted)
             }
-            "assert-folder" => equal("folder", self.window()?.selected_folder().as_str(), arg(0)),
+            "assert-folder" => {
+                let window = self.window()?;
+                equal("folder", window.selected_folder().as_str(), arg(0))?;
+                equal(
+                    "folder marked in the sidebar",
+                    window.sidebar().marked_folder().as_deref(),
+                    Some(arg(0)),
+                )
+            }
             "assert-shown" => {
                 let shown = match self.window()?.widget(arg(0)) {
                     Some(widget) => self.shown(&widget)?,
@@ -502,6 +530,22 @@ impl Harness {
                 } else {
                     Err(format!("{} is {width} px wide, not {wanted}", arg(0)))
                 }
+            }
+            "assert-height" => {
+                let height = self.bounds(arg(0))?.height();
+                let wanted = number(arg(1))? as f32;
+                if (height - wanted).abs() <= TOLERANCE {
+                    Ok(())
+                } else {
+                    Err(format!("{} is {height} px high, not {wanted}", arg(0)))
+                }
+            }
+            "assert-tooltip" => {
+                let tooltip = self.widget(arg(0))?.tooltip_text().unwrap_or_default();
+                equal(&format!("{}'s tooltip", arg(0)), tooltip.as_str(), arg(1))
+            }
+            "assert-color" | "assert-contrast" | "assert-radius" | "assert-font" => {
+                self.check_look(assertion, args)
             }
             "assert-max-width" => {
                 let width = self.bounds(arg(0))?.width();
@@ -652,6 +696,21 @@ impl Harness {
         widget
             .compute_bounds(window.window())
             .ok_or_else(|| format!("{name} has no bounds"))
+    }
+
+    /// `write-file PATH TEXT`: a file in the run's scratch directory, such as `keys.toml`.
+    fn write_file(&self, path: &str, text: &str) -> StepResult {
+        let path = normalise(Path::new(path));
+        if !path.starts_with(&self.root) {
+            return Err(format!(
+                "{} is outside the run's scratch directory",
+                path.display()
+            ));
+        }
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        fs::write(&path, text).map_err(|error| format!("{}: {error}", path.display()))
     }
 
     /// The widget sits in the middle of its pane: as much room on its left as on its right.

@@ -1,18 +1,25 @@
 //! The folder sidebar (DESIGN.md "Components"): the compose button; "All Inboxes"; each account
 //! with its status and its role folders (Inbox, Drafts, Sent, Archive, Junk, Trash) with their
 //! counts, and its other folders under a collapsible "More"; and a footer with the accounts'
-//! state. Between 900 and 1280 px it becomes a rail of icons and counts (DESIGN.md "Layout").
+//! state and `config.toml`. Between 900 and 1280 px it becomes a rail of icons with unread
+//! badges and the other accounts (DESIGN.md "Layout", the mock's medium window). The main
+//! menu is in the list's bar.
 //!
 //! It shows a plain-data [`SidebarModel`], which the store fills (ML-023). Picking a folder
 //! activates `nav.folder` with the folder's key; the window answers with
-//! [`Sidebar::set_selected`].
+//! [`Sidebar::set_selected`]. For the self-test, rows are named `folder:<key>` (their counts
+//! `count:<key>`), account headings `heading:<account>` (their dots `status:<account>`), rail
+//! buttons `rail:<key>` (their badges `badge:<key>`) and `rail-account:<account>`, and the
+//! `config.toml` buttons `config` and `rail-config`.
 
 use super::panes::{PaneBar, classed, icon, icon_button, named};
+use super::tooltips::Tooltips;
 use super::{COMPOSE_ACTION, OPEN_CONFIG_ACTION};
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
-use gtk4::{gio, glib};
 use libadwaita as adw;
+use sealwax_domain::actions::ActionId;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
@@ -22,9 +29,8 @@ pub const ALL_INBOXES: &str = "all-inboxes";
 
 const ALL_INBOXES_ICONS: &[&str] = &["mail-unread-symbolic"];
 const FOLDER_ICONS: &[&str] = &["folder-symbolic"];
-pub(super) const COMPOSE_ICONS: &[&str] = &["mail-message-new-symbolic", "document-edit-symbolic"];
+const COMPOSE_ICONS: &[&str] = &["mail-message-new-symbolic", "document-edit-symbolic"];
 const CONFIG_ICONS: &[&str] = &["preferences-other-symbolic", "emblem-system-symbolic"];
-const MENU_ICONS: &[&str] = &["open-menu-symbolic"];
 
 /// The special folders every account shows, in display order (DESIGN.md "Components").
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -62,12 +68,12 @@ impl FolderRole {
 
     fn class(self) -> &'static str {
         match self {
-            Self::Inbox => "sealwax-role-inbox",
-            Self::Drafts => "sealwax-role-drafts",
-            Self::Sent => "sealwax-role-sent",
-            Self::Archive => "sealwax-role-archive",
-            Self::Junk => "sealwax-role-junk",
-            Self::Trash => "sealwax-role-trash",
+            Self::Inbox => "sw-role-inbox",
+            Self::Drafts => "sw-role-drafts",
+            Self::Sent => "sw-role-sent",
+            Self::Archive => "sw-role-archive",
+            Self::Junk => "sw-role-junk",
+            Self::Trash => "sw-role-trash",
         }
     }
 }
@@ -91,17 +97,21 @@ impl AccountStatus {
         }
     }
 
-    fn classes(self) -> [&'static str; 3] {
+    /// The status dot's colour (`style.css`): accent, warning or error; syncing is the plain,
+    /// secondary dot.
+    fn class(self) -> Option<&'static str> {
         match self {
-            Self::Synced => ["sealwax-status-dot", "sealwax-status-synced", "accent"],
-            Self::Syncing => ["sealwax-status-dot", "sealwax-status-syncing", "dim-label"],
-            Self::Offline => ["sealwax-status-dot", "sealwax-status-offline", "dim-label"],
-            Self::NeedsSignIn => [
-                "sealwax-status-dot",
-                "sealwax-status-needs-sign-in",
-                "error",
-            ],
+            Self::Synced => Some("sw-synced"),
+            Self::Syncing => None,
+            Self::Offline => Some("sw-offline"),
+            Self::NeedsSignIn => Some("sw-attention"),
         }
+    }
+
+    /// The states the rail marks on an account: the mock's rail shows none for synced or
+    /// syncing accounts.
+    fn needs_attention(self) -> bool {
+        matches!(self, Self::Offline | Self::NeedsSignIn)
     }
 }
 
@@ -304,68 +314,53 @@ pub struct Sidebar {
     rows: RefCell<Vec<Row>>,
     rail_items: gtk::Box,
     summary: gtk::Label,
-    /// The main menu beside the compose button; hidden in the rail, which has its own.
-    pub menu: gtk::MenuButton,
-    rail_menu: gtk::MenuButton,
     model: RefCell<SidebarModel>,
     selected: RefCell<String>,
     expanded: RefCell<HashSet<String>>,
 }
 
 impl Sidebar {
-    pub fn new(tiling: bool) -> Rc<Self> {
-        let compose_label = gtk::Label::new(Some("New message"));
-        let compose_content = gtk::Box::builder()
-            .spacing(8)
-            .halign(gtk::Align::Center)
-            .build();
-        compose_content.append(&icon(COMPOSE_ICONS));
-        compose_content.append(&compose_label);
-        let compose = named(
-            classed(
-                gtk::Button::builder()
-                    .child(&compose_content)
-                    .hexpand(true)
-                    .action_name(COMPOSE_ACTION)
-                    .tooltip_text("New message")
-                    .build(),
-                &["suggested-action", "sealwax-compose"],
-            ),
-            "compose",
-        );
-        compose.update_property(&[gtk::accessible::Property::Label("New message")]);
-        let menu = menu_button();
-        let bar = PaneBar::new(tiling, None);
+    /// `tooltips` names the keys of the buttons that run a registry command.
+    pub fn new(tiling: bool, tooltips: &Tooltips) -> Rc<Self> {
+        let (compose, compose_label) = compose_button("New message");
+        let compose = named(compose, "compose");
+        compose.set_hexpand(true);
+        tooltips.add(&compose, "New message", ActionId::Compose);
+        let bar = PaneBar::new(tiling, None, &["sw-sidebar-bar"]);
         bar.content.append(&compose);
-        bar.content.append(&menu);
         bar.show_controls(true, false);
 
         let list = named(
             classed(
                 gtk::ListBox::builder()
-                    .selection_mode(gtk::SelectionMode::Single)
+                    .selection_mode(gtk::SelectionMode::None)
                     .build(),
-                &["navigation-sidebar", "sealwax-folder-list"],
+                &["sw-folder-list"],
             ),
             "folder-list",
         );
         list.update_property(&[gtk::accessible::Property::Label("Folders")]);
         let summary = named(
-            gtk::Label::builder()
-                .xalign(0.0)
-                .hexpand(true)
-                .ellipsize(gtk::pango::EllipsizeMode::End)
-                .css_classes(["caption", "dim-label"])
-                .build(),
+            classed(
+                gtk::Label::builder()
+                    .xalign(0.0)
+                    .hexpand(true)
+                    .ellipsize(gtk::pango::EllipsizeMode::End)
+                    .build(),
+                &["sw-sidebar-summary"],
+            ),
             "sidebar-summary",
         );
         let footer = classed(
-            gtk::Box::builder().spacing(4).build(),
-            &["toolbar", "sealwax-sidebar-footer"],
+            gtk::Box::new(gtk::Orientation::Horizontal, 0),
+            &["sw-sidebar-footer"],
         );
         footer.append(&summary);
-        footer.append(&config_button());
-        let full = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        footer.append(&named(config_button(tooltips, "sw-icon-button"), "config"));
+        let full = classed(
+            gtk::Box::new(gtk::Orientation::Vertical, 0),
+            &["sw-sidebar-body"],
+        );
         full.append(
             &gtk::ScrolledWindow::builder()
                 .hscrollbar_policy(gtk::PolicyType::Never)
@@ -375,29 +370,26 @@ impl Sidebar {
         );
         full.append(&footer);
 
-        let rail_items = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .spacing(4)
-            .halign(gtk::Align::Center)
-            .margin_top(6)
-            .build();
+        let rail_items = classed(
+            gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .halign(gtk::Align::Center)
+                .build(),
+            &["sw-rail-items"],
+        );
         let rail_footer = classed(
             gtk::Box::builder()
                 .orientation(gtk::Orientation::Vertical)
-                .spacing(4)
                 .halign(gtk::Align::Center)
-                .margin_bottom(6)
                 .build(),
-            &["sealwax-rail-footer"],
+            &["sw-rail-footer"],
         );
-        let rail_menu = menu_button();
-        rail_footer.append(&config_button());
-        rail_footer.append(&rail_menu);
+        rail_footer.append(&named(
+            config_button(tooltips, "sw-rail-button"),
+            "rail-config",
+        ));
         let rail = named(
-            classed(
-                gtk::Box::new(gtk::Orientation::Vertical, 0),
-                &["sealwax-rail"],
-            ),
+            classed(gtk::Box::new(gtk::Orientation::Vertical, 0), &["sw-rail"]),
             "rail",
         );
         rail.append(
@@ -420,7 +412,7 @@ impl Sidebar {
         let root = named(
             classed(
                 adw::ToolbarView::builder().content(&stack).build(),
-                &["sealwax-sidebar", "sealwax-chrome"],
+                &["sw-sidebar"],
             ),
             "sidebar",
         );
@@ -436,8 +428,6 @@ impl Sidebar {
             rows: RefCell::new(Vec::new()),
             rail_items,
             summary,
-            menu,
-            rail_menu,
             model: RefCell::new(SidebarModel::default()),
             selected: RefCell::new(String::new()),
             expanded: RefCell::new(HashSet::new()),
@@ -515,10 +505,16 @@ impl Sidebar {
         }
     }
 
-    pub fn set_menu_model(&self, menu: Option<&gio::MenuModel>) {
-        for button in [&self.menu, &self.rail_menu] {
-            button.set_menu_model(menu);
-        }
+    /// The key of the folder row marked as the one shown.
+    pub fn marked_folder(&self) -> Option<String> {
+        self.rows
+            .borrow()
+            .iter()
+            .find(|row| row.widget.has_css_class("sw-current"))
+            .and_then(|row| match &row.kind {
+                RowKind::Folder(key) => Some(key.clone()),
+                _ => None,
+            })
     }
 
     /// The keys of the folder rows the user can see in the full sidebar, in order.
@@ -580,23 +576,20 @@ impl Sidebar {
         let expanded = self.expanded.borrow();
         let mut rows = Vec::new();
         if !model.accounts.is_empty() {
-            let all = SidebarFolder {
-                key: ALL_INBOXES.to_owned(),
-                name: "All Inboxes".to_owned(),
-                role: None,
-                count: model.all_inboxes_unread(),
-            };
-            rows.push(folder_row(&all, ALL_INBOXES_ICONS, "sealwax-all-inboxes"));
+            rows.push(folder_row(
+                &all_inboxes(&model),
+                ALL_INBOXES_ICONS,
+                "sw-all-inboxes",
+                false,
+            ));
         }
         for account in &model.accounts {
             rows.push(header_row(account));
             for folder in account.role_folders() {
-                let (icons, class) = folder
-                    .role
-                    .map_or((FOLDER_ICONS, "sealwax-role-other"), |role| {
-                        (role.icons(), role.class())
-                    });
-                rows.push(folder_row(folder, icons, class));
+                let (icons, class) = folder.role.map_or((FOLDER_ICONS, "sw-role-other"), |role| {
+                    (role.icons(), role.class())
+                });
+                rows.push(folder_row(folder, icons, class, folder.count_stands_out()));
             }
             if account.more.is_empty() {
                 continue;
@@ -604,7 +597,12 @@ impl Sidebar {
             let open = expanded.contains(&account.key);
             rows.push(more_row(account, open));
             for folder in &account.more {
-                let mut row = folder_row(folder, FOLDER_ICONS, "sealwax-role-other");
+                let mut row = folder_row(
+                    folder,
+                    FOLDER_ICONS,
+                    "sw-role-other",
+                    folder.count_stands_out(),
+                );
                 row.widget.set_visible(open);
                 row.more_of = Some(account.key.clone());
                 rows.push(row);
@@ -619,18 +617,26 @@ impl Sidebar {
         self.sync_selection();
     }
 
+    /// Marks the row of the folder shown. The list has no selection of its own: GTK's follows
+    /// the focus and the cursor, and then left another row marked than the folder shown.
     fn sync_selection(&self) {
         let selected = self.selected.borrow();
-        let rows = self.rows.borrow();
-        match rows
-            .iter()
-            .find(|row| row.kind == RowKind::Folder(selected.clone()))
-        {
-            Some(row) => self.list.select_row(Some(&row.widget)),
-            None => self.list.unselect_all(),
+        for row in self.rows.borrow().iter() {
+            let current = row.kind == RowKind::Folder(selected.clone());
+            if current {
+                row.widget.add_css_class("sw-current");
+            } else {
+                row.widget.remove_css_class("sw-current");
+            }
+            if matches!(row.kind, RowKind::Folder(_)) {
+                row.widget
+                    .update_state(&[gtk::accessible::State::Selected(Some(current))]);
+            }
         }
     }
 
+    /// All Inboxes, the shown account's role folders with unread badges, and the other accounts
+    /// (the mock's medium window).
     fn rebuild_rail(&self) {
         while let Some(child) = self.rail_items.first_child() {
             self.rail_items.remove(&child);
@@ -641,64 +647,82 @@ impl Sidebar {
             return;
         };
         self.rail_items.append(&rail_folder(
+            &all_inboxes(&model),
             ALL_INBOXES_ICONS,
             "All Inboxes",
-            model.all_inboxes_unread(),
-            ALL_INBOXES,
-            true,
+            false,
         ));
         self.rail_items.append(&rail_separator());
         for folder in current.role_folders() {
-            let icons = folder.role.map_or(FOLDER_ICONS, FolderRole::icons);
             self.rail_items.append(&rail_folder(
-                icons,
+                folder,
+                folder.role.map_or(FOLDER_ICONS, FolderRole::icons),
                 &format!("{} · {}", folder.title(), current.name),
-                folder.count,
-                &folder.key,
                 folder.count_stands_out(),
             ));
         }
-        self.rail_items.append(&rail_separator());
-        for account in &model.accounts {
-            self.rail_items
-                .append(&rail_account(account, account.key == current.key));
+        let others: Vec<&SidebarAccount> = model
+            .accounts
+            .iter()
+            .filter(|account| account.key != current.key)
+            .collect();
+        if !others.is_empty() {
+            self.rail_items.append(&rail_separator());
+        }
+        for account in others {
+            self.rail_items.append(&rail_account(account));
         }
     }
 }
 
-pub(super) fn menu_button() -> gtk::MenuButton {
+/// The compose button: the accent fill with an icon and `label`, bound to the registry's
+/// Compose (insensitive until the composer exists, M6). The label is hidden in the rail.
+pub(super) fn compose_button(label: &str) -> (gtk::Button, gtk::Label) {
+    let text = gtk::Label::new(Some(label));
+    let content = gtk::Box::builder().halign(gtk::Align::Center).build();
+    content.append(&icon(COMPOSE_ICONS));
+    content.append(&text);
     let button = classed(
-        gtk::MenuButton::builder()
-            .icon_name(MENU_ICONS[0])
-            .tooltip_text("Main menu")
+        gtk::Button::builder()
+            .child(&content)
+            .action_name(COMPOSE_ACTION)
             .build(),
-        &["flat", "sealwax-menu"],
+        &["sw-compose"],
     );
-    button.update_property(&[gtk::accessible::Property::Label("Main menu")]);
+    button.update_property(&[gtk::accessible::Property::Label("New message")]);
+    (button, text)
+}
+
+fn config_button(tooltips: &Tooltips, class: &str) -> gtk::Button {
+    let button = icon_button(CONFIG_ICONS, "Open config.toml");
+    button.remove_css_class("sw-icon-button");
+    button.add_css_class(class);
+    button.set_action_name(Some(OPEN_CONFIG_ACTION));
+    tooltips.add(&button, "Open config.toml", ActionId::Preferences);
     button
 }
 
-fn config_button() -> gtk::Button {
-    let button = icon_button(CONFIG_ICONS, "Open config.toml");
-    button.set_action_name(Some(OPEN_CONFIG_ACTION));
-    button.add_css_class("sealwax-config");
-    button
+/// The unified inbox as a folder of its own; its count is the accounts' Inboxes, so it stays
+/// quiet beside them (the mock).
+fn all_inboxes(model: &SidebarModel) -> SidebarFolder {
+    SidebarFolder {
+        key: ALL_INBOXES.to_owned(),
+        name: "All Inboxes".to_owned(),
+        role: None,
+        count: model.all_inboxes_unread(),
+    }
 }
 
 fn count_label(count: u32, stands_out: bool) -> gtk::Label {
-    let label = gtk::Label::builder()
-        .label(count.to_string())
-        .css_classes(["numeric", "sealwax-count"])
-        .build();
-    label.add_css_class(if stands_out { "accent" } else { "dim-label" });
+    let label = classed(gtk::Label::new(Some(&count.to_string())), &["sw-count"]);
     if stands_out {
-        label.add_css_class("sealwax-unread");
+        label.add_css_class("sw-unread");
     }
     label
 }
 
-fn folder_row(folder: &SidebarFolder, icons: &[&str], class: &str) -> Row {
-    let content = gtk::Box::builder().spacing(10).build();
+fn folder_row(folder: &SidebarFolder, icons: &[&str], class: &str, stands_out: bool) -> Row {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     content.append(&icon(icons));
     content.append(
         &gtk::Label::builder()
@@ -709,11 +733,17 @@ fn folder_row(folder: &SidebarFolder, icons: &[&str], class: &str) -> Row {
             .build(),
     );
     if folder.count > 0 {
-        content.append(&count_label(folder.count, folder.count_stands_out()));
+        content.append(&named(
+            count_label(folder.count, stands_out),
+            &format!("count:{}", folder.key),
+        ));
     }
-    let widget = classed(
-        gtk::ListBoxRow::builder().child(&content).build(),
-        &["sealwax-folder-row", class],
+    let widget = named(
+        classed(
+            gtk::ListBoxRow::builder().child(&content).build(),
+            &["sw-sidebar-row", class],
+        ),
+        &format!("folder:{}", folder.key),
     );
     widget.update_property(&[gtk::accessible::Property::Label(&folder.accessible_label())]);
     Row {
@@ -724,39 +754,53 @@ fn folder_row(folder: &SidebarFolder, icons: &[&str], class: &str) -> Row {
     }
 }
 
-fn status_dot(status: AccountStatus) -> gtk::Label {
-    gtk::Label::builder()
-        .label("●")
-        .css_classes(status.classes())
-        .build()
+/// The account's state as a dot (DESIGN.md "Components"); the words beside it say the same.
+fn status_dot(status: AccountStatus) -> gtk::Box {
+    let dot = classed(
+        gtk::Box::builder()
+            .halign(gtk::Align::Center)
+            .valign(gtk::Align::Center)
+            .build(),
+        &["sw-status-dot"],
+    );
+    if let Some(class) = status.class() {
+        dot.add_css_class(class);
+    }
+    dot
 }
 
+/// The account's heading: its status dot, its name (upper-cased by `style.css`) and its
+/// status in words.
 fn header_row(account: &SidebarAccount) -> Row {
-    let content = gtk::Box::builder().spacing(8).margin_top(10).build();
-    content.append(&status_dot(account.status));
-    content.append(
-        &gtk::Label::builder()
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    content.append(&named(
+        status_dot(account.status),
+        &format!("status:{}", account.key),
+    ));
+    content.append(&classed(
+        gtk::Label::builder()
             .label(&account.name)
             .xalign(0.0)
             .hexpand(true)
             .ellipsize(gtk::pango::EllipsizeMode::End)
-            .css_classes(["caption-heading", "dim-label"])
             .build(),
-    );
-    content.append(
-        &gtk::Label::builder()
-            .label(account.status.label())
-            .css_classes(["caption", "dim-label", "sealwax-account-status"])
-            .build(),
-    );
-    let widget = classed(
-        gtk::ListBoxRow::builder()
-            .child(&content)
-            .activatable(false)
-            .selectable(false)
-            .focusable(false)
-            .build(),
-        &["sealwax-account-header"],
+        &["sw-account-name"],
+    ));
+    content.append(&classed(
+        gtk::Label::new(Some(account.status.label())),
+        &["sw-account-status"],
+    ));
+    let widget = named(
+        classed(
+            gtk::ListBoxRow::builder()
+                .child(&content)
+                .activatable(false)
+                .selectable(false)
+                .focusable(false)
+                .build(),
+            &["sw-sidebar-heading"],
+        ),
+        &format!("heading:{}", account.key),
     );
     widget.update_property(&[gtk::accessible::Property::Label(&format!(
         "{}, {}",
@@ -773,14 +817,13 @@ fn header_row(account: &SidebarAccount) -> Row {
 
 fn more_row(account: &SidebarAccount, open: bool) -> Row {
     let arrow = gtk::Image::new();
-    let content = gtk::Box::builder().spacing(10).build();
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     content.append(&arrow);
     content.append(
         &gtk::Label::builder()
             .label("More folders")
             .xalign(0.0)
             .hexpand(true)
-            .css_classes(["dim-label"])
             .build(),
     );
     let widget = classed(
@@ -788,7 +831,7 @@ fn more_row(account: &SidebarAccount, open: bool) -> Row {
             .child(&content)
             .selectable(false)
             .build(),
-        &["sealwax-more-row"],
+        &["sw-sidebar-row", "sw-more-row"],
     );
     widget.update_property(&[gtk::accessible::Property::Label(&format!(
         "More folders in {}",
@@ -816,70 +859,75 @@ fn set_expanded(row: &Row, open: bool) {
         .update_state(&[gtk::accessible::State::Expanded(Some(open))]);
 }
 
-fn badge(count: u32, stands_out: bool) -> gtk::Label {
-    let label = count_label(count, stands_out);
-    label.add_css_class("caption");
-    label.add_css_class("sealwax-badge");
-    label.set_halign(gtk::Align::End);
-    label.set_valign(gtk::Align::Start);
-    label
-}
-
+/// A rail button for a folder: its icon, and an accent badge at the top-right corner when its
+/// count stands out (the mock badges only unread mail; the tooltip has every count).
 fn rail_folder(
+    folder: &SidebarFolder,
     icons: &[&str],
     name: &str,
-    count: u32,
-    key: &str,
     stands_out: bool,
 ) -> gtk::ToggleButton {
-    let overlay = gtk::Overlay::builder()
-        .child(&icon(icons))
-        .width_request(36)
-        .height_request(28)
-        .build();
-    let label = match count {
-        0 => name.to_owned(),
-        count => {
-            overlay.add_overlay(&badge(count, stands_out));
-            format!("{name}, {count}")
-        }
+    let overlay = gtk::Overlay::builder().child(&icon(icons)).build();
+    if folder.count > 0 && stands_out {
+        overlay.add_overlay(&named(
+            classed(
+                gtk::Label::builder()
+                    .label(folder.count.to_string())
+                    .halign(gtk::Align::End)
+                    .valign(gtk::Align::Start)
+                    .build(),
+                &["sw-rail-badge"],
+            ),
+            &format!("badge:{}", folder.key),
+        ));
+    }
+    let label = match folder.count_text() {
+        Some(count) => format!("{name}, {count}"),
+        None => name.to_owned(),
     };
-    let button = classed(
-        gtk::ToggleButton::builder()
-            .child(&overlay)
-            .action_name("nav.folder")
-            .action_target(&key.to_variant())
-            .tooltip_text(&label)
-            .build(),
-        &["flat", "sealwax-rail-button"],
+    let button = named(
+        classed(
+            gtk::ToggleButton::builder()
+                .child(&overlay)
+                .action_name("nav.folder")
+                .action_target(&folder.key.to_variant())
+                .tooltip_text(&label)
+                .build(),
+            &["sw-rail-button"],
+        ),
+        &format!("rail:{}", folder.key),
     );
     button.update_property(&[gtk::accessible::Property::Label(&label)]);
     button
 }
 
-fn rail_account(account: &SidebarAccount, current: bool) -> gtk::Button {
+/// Another account: its initial and its unread count in the accent, as in the mock ("W4"), and
+/// a status dot only when it needs the user (offline or signed out).
+fn rail_account(account: &SidebarAccount) -> gtk::Button {
     let initial: String = account
         .name
         .chars()
         .next()
         .map(|first| first.to_uppercase().collect())
         .unwrap_or_default();
-    let letter = gtk::Label::builder()
-        .label(initial)
-        .css_classes(["heading"])
+    let content = gtk::Box::builder()
+        .halign(gtk::Align::Center)
+        .valign(gtk::Align::Center)
         .build();
-    let overlay = gtk::Overlay::builder()
-        .child(&letter)
-        .width_request(36)
-        .height_request(28)
-        .build();
-    let dot = status_dot(account.status);
-    dot.set_halign(gtk::Align::End);
-    dot.set_valign(gtk::Align::End);
-    overlay.add_overlay(&dot);
+    content.append(&classed(
+        gtk::Label::new(Some(&initial)),
+        &["sw-rail-initial"],
+    ));
     let unread = account.unread();
     if unread > 0 {
-        overlay.add_overlay(&badge(unread, true));
+        content.append(&count_label(unread, true));
+    }
+    let overlay = gtk::Overlay::builder().child(&content).build();
+    if account.status.needs_attention() {
+        let dot = status_dot(account.status);
+        dot.set_halign(gtk::Align::End);
+        dot.set_valign(gtk::Align::End);
+        overlay.add_overlay(&dot);
     }
     let mut label = format!("{}, {}", account.name, account.status.label());
     if unread > 0 {
@@ -889,30 +937,30 @@ fn rail_account(account: &SidebarAccount, current: bool) -> gtk::Button {
         .inbox()
         .or_else(|| account.folders.first())
         .map_or_else(|| ALL_INBOXES.to_owned(), |folder| folder.key.clone());
-    let button = classed(
-        gtk::Button::builder()
-            .child(&overlay)
-            .action_name("nav.folder")
-            .action_target(&target.to_variant())
-            .tooltip_text(&label)
-            .build(),
-        &["flat", "sealwax-rail-account"],
+    let button = named(
+        classed(
+            gtk::Button::builder()
+                .child(&overlay)
+                .action_name("nav.folder")
+                .action_target(&target.to_variant())
+                .tooltip_text(&label)
+                .build(),
+            &["sw-rail-button", "sw-rail-account"],
+        ),
+        &format!("rail-account:{}", account.key),
     );
-    if current {
-        button.add_css_class("sealwax-current");
-    }
     button.update_property(&[gtk::accessible::Property::Label(&label)]);
     button
 }
 
 fn rail_separator() -> gtk::Separator {
-    gtk::Separator::builder()
-        .orientation(gtk::Orientation::Horizontal)
-        .margin_top(4)
-        .margin_bottom(4)
-        .margin_start(8)
-        .margin_end(8)
-        .build()
+    classed(
+        gtk::Separator::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .halign(gtk::Align::Center)
+            .build(),
+        &["sw-rail-separator"],
+    )
 }
 
 #[cfg(test)]

@@ -523,7 +523,7 @@ impl Harness {
             opened.is_some()
                 && self
                     .visible_dialog()
-                    .is_some_and(|dialog| dialog.has_css_class("sealwax-palette")),
+                    .is_some_and(|dialog| dialog.has_css_class("sw-palette")),
         );
         let Some(palette) = opened else {
             return self.report.failed.get() + 1;

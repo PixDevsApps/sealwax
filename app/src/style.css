@@ -1,14 +1,24 @@
-/* Sealwax's base styles (DESIGN.md). Every colour, size and font is a variable from the
-   theme's generated stylesheet (app::theme); nothing here names a colour or a family.
-   Both load at application priority, which wins over libadwaita whatever the selector, so
-   rules here name Sealwax's own sw- classes or exactly the libadwaita parts they change.
-   docs/m1/theme.md lists every class. */
+/* Sealwax's base styles (DESIGN.md). Every colour, size, radius and font is a variable from
+   the theme's generated stylesheet (app::theme); nothing here names a colour, a family or a
+   length of its own. Borders are omarchy-shell's control border width; the only numbers are
+   ratios (letter-spacing in em, multiples of a spacing token). Both stylesheets load at
+   application priority, which wins over libadwaita whatever the selector, so rules here name
+   Sealwax's own sw- classes or exactly the libadwaita parts they change.
+   docs/m1/theme.md and docs/m1/polish.md list every class. */
 
 /* The chrome font and size (the Omarchy font, omarchy-shell's body size). */
 window,
 tooltip {
   font-family: var(--sw-font-chrome);
   font-size: var(--sw-text-body);
+}
+
+/* Tooltips name a command's keys; they take the popover surface, not libadwaita's black. */
+tooltip.background {
+  padding: var(--sw-space-control-padding-y) var(--sw-space-control-padding-x);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  background-color: var(--popover-bg-color);
+  color: var(--popover-fg-color);
 }
 
 /* Corners follow Hyprland (ADR-019): controls take the small radius, surfaces the full
@@ -48,7 +58,7 @@ dialog-host > dialog sheet {
 popover > contents,
 .card,
 dialog-host > dialog sheet {
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
 }
 
 /* Text selection: omarchy-shell's selection fill. */
@@ -116,7 +126,7 @@ selection {
 
 /* Interactive controls in omarchy-shell's states (shell.toml [controls]). */
 button.sw-control {
-  min-height: calc(var(--sw-space-control-height) - 2px);
+  min-height: calc(var(--sw-space-control-height) - 2 * var(--sw-control-border-width));
   padding: 0 var(--sw-space-control-padding-x);
   border: var(--sw-control-border-width) solid var(--sw-control-border-color);
   border-radius: var(--sw-radius-small);
@@ -142,7 +152,9 @@ button.sw-control:active {
   background: var(--sw-pressed-bg-color);
 }
 
-button.sw-icon-button {
+/* Flat icon buttons: toolbars, pane bars, the sidebar's footer (menu buttons too). */
+button.sw-icon-button,
+menubutton.sw-icon-button > button {
   min-width: var(--sw-size-icon-button);
   min-height: var(--sw-size-icon-button);
   padding: 0;
@@ -152,27 +164,24 @@ button.sw-icon-button {
   box-shadow: none;
 }
 
-button.sw-icon-button:hover {
+button.sw-icon-button:hover,
+menubutton.sw-icon-button > button:hover {
   background: var(--sw-hover-bg-color);
 }
 
-button.sw-icon-button:checked {
+button.sw-icon-button:checked,
+menubutton.sw-icon-button > button:checked {
   background: var(--sw-selected-bg-color);
 }
 
-button.sw-icon-button:active {
+button.sw-icon-button:active,
+menubutton.sw-icon-button > button:active {
   background: var(--sw-pressed-bg-color);
 }
 
-/* Sidebar: compose, folder rows, account headings, counts and status dots. */
-.sw-sidebar {
-  padding: var(--sw-space-xxxl) var(--sw-space-xl) var(--sw-space-xxl);
-  background-color: var(--sidebar-bg-color);
-  color: var(--sidebar-fg-color);
-  border-right: 1px solid var(--border-color);
-}
-
-button.sw-compose {
+/* Compose and the other primary buttons (Add an account): the accent fill, full radius. */
+button.sw-compose,
+button.sw-primary {
   min-height: var(--sw-size-compose);
   padding: 0 var(--sw-space-xl);
   border: none;
@@ -183,17 +192,102 @@ button.sw-compose {
   font-weight: bold;
 }
 
-button.sw-compose:hover {
+button.sw-primary {
+  padding: 0 var(--sw-space-huge);
+}
+
+button.sw-compose > box {
+  border-spacing: var(--sw-space-lg);
+}
+
+button.sw-compose:hover,
+button.sw-primary:hover {
   background-image: image(var(--sw-hover-bg-color));
 }
 
-button.sw-compose:active {
+button.sw-compose:active,
+button.sw-primary:active {
   background-image: image(var(--sw-pressed-bg-color));
 }
 
-.sw-sidebar-row,
-list.sw-sidebar > row,
-listview.sw-sidebar > row {
+/* Until its command exists (compose waits for the composer, M6; Add an account for the
+   setup assistant, M2): libadwaita's half-transparent filter left the label at 2.6:1 on
+   matte-black, so a disabled one takes the selected chip's pair, which keeps 4.5:1 on every
+   stock theme. */
+button.sw-compose:disabled,
+button.sw-primary:disabled {
+  filter: none;
+  background: var(--sw-chip-selected-bg-color);
+  color: var(--sw-chip-selected-fg-color);
+}
+
+/* The window's panes: the folders and the list on the sidebar surface with a border at
+   their end, the reader and the welcome page on the window's. One pane at a time (narrow,
+   the window's sw-one-pane) needs no borders. */
+.sw-sidebar,
+.sw-list-pane {
+  border-right: var(--sw-control-border-width) solid var(--sidebar-border-color);
+  background-color: var(--sidebar-bg-color);
+  color: var(--sidebar-fg-color);
+}
+
+window.sw-one-pane .sw-sidebar,
+window.sw-one-pane .sw-list-pane {
+  border-right: none;
+}
+
+/* Alone in the window, the list's bar is set off from it, as in the mock's narrow window. */
+window.sw-one-pane .sw-list-pane .sw-pane-bar {
+  border-bottom: var(--sw-control-border-width) solid var(--border-color);
+}
+
+.sw-reader,
+.sw-welcome {
+  background-color: var(--window-bg-color);
+}
+
+/* The bar on top of each pane: the mock's 48 px header row. */
+.sw-pane-bar {
+  min-height: var(--sw-size-toolbar);
+  padding: 0 var(--sw-space-xxxl);
+  border-spacing: var(--sw-space-sm);
+}
+
+.sw-pane-bar > box {
+  border-spacing: var(--sw-space-sm);
+}
+
+/* The sidebar's bar holds the compose button, as far from the top as the mock has it, so it
+   ends where the reader's toolbar does. */
+.sw-pane-bar.sw-sidebar-bar {
+  min-height: var(--sw-size-compose);
+  padding: var(--sw-space-xxxl) var(--sw-space-xl) 0;
+}
+
+.sw-pane-heading {
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-pane-title {
+  font-size: var(--sw-text-heading);
+  font-weight: bold;
+}
+
+.sw-pane-subtitle {
+  color: var(--sw-secondary-fg-color);
+}
+
+/* Sidebar: folder rows, account headings, counts, status dots and the footer. */
+.sw-sidebar-body {
+  padding: var(--sw-space-xxxl) var(--sw-space-xl) var(--sw-space-xxl);
+}
+
+list.sw-folder-list {
+  background: none;
+  color: inherit;
+}
+
+.sw-sidebar-row {
   min-height: var(--sw-size-nav-row);
   padding: 0 var(--sw-space-xl);
   border: none;
@@ -202,17 +296,26 @@ listview.sw-sidebar > row {
   box-shadow: none;
 }
 
-.sw-sidebar-row:hover,
-list.sw-sidebar > row:hover,
-listview.sw-sidebar > row:hover {
+.sw-sidebar-row > box {
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-sidebar-row:hover {
   background: var(--sw-hover-bg-color);
 }
 
+.sw-sidebar-row:active {
+  background: var(--sw-pressed-bg-color);
+}
+
 .sw-sidebar-row.sw-current,
-list.sw-sidebar > row:selected,
-listview.sw-sidebar > row:selected {
+.sw-sidebar-row:selected {
   background: var(--sw-selected-bg-color);
   font-weight: bold;
+}
+
+.sw-more-row {
+  color: var(--sw-secondary-fg-color);
 }
 
 .sw-sidebar-heading {
@@ -222,8 +325,17 @@ listview.sw-sidebar > row:selected {
   color: var(--sw-secondary-fg-color);
 }
 
+.sw-sidebar-heading > box {
+  border-spacing: var(--sw-space-lg);
+}
+
+.sw-account-name {
+  text-transform: uppercase;
+}
+
 .sw-count {
   font-size: var(--sw-text-small);
+  font-variant-numeric: tabular-nums;
   color: var(--sw-secondary-fg-color);
 }
 
@@ -231,10 +343,11 @@ listview.sw-sidebar > row:selected {
   color: var(--sw-unread-color);
 }
 
+/* Dots stay round with square corners, as in the mock: a radius as large as the dot. */
 .sw-status-dot {
   min-width: var(--sw-size-status-dot);
   min-height: var(--sw-size-status-dot);
-  border-radius: 9999px;
+  border-radius: var(--sw-size-status-dot);
   background: var(--sw-secondary-fg-color);
 }
 
@@ -250,24 +363,122 @@ listview.sw-sidebar > row:selected {
   background: var(--error-color);
 }
 
+.sw-sidebar-footer {
+  padding: var(--sw-space-xl) var(--sw-space-xl) 0;
+  border-top: var(--sw-control-border-width) solid var(--border-color);
+  border-spacing: var(--sw-space-sm);
+  font-size: var(--sw-text-small);
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-sidebar-footer button.sw-icon-button,
+.sw-sidebar-footer menubutton.sw-icon-button > button {
+  min-width: var(--sw-space-control-height);
+  min-height: var(--sw-space-control-height);
+}
+
+/* The rail (900–1279 px): icon buttons with the accent badge on unread mail at their
+   top-right corner, the other accounts as initial and count, as in the mock. */
+.sw-rail {
+  padding: var(--sw-space-xl) 0 var(--sw-space-xxl);
+}
+
+.sw-rail-items,
+.sw-rail-footer {
+  border-spacing: var(--sw-space-sm);
+}
+
+button.sw-rail-button,
+menubutton.sw-rail-button > button {
+  min-width: calc(var(--sw-size-icon-button) + var(--sw-space-lg));
+  min-height: calc(var(--sw-size-icon-button) + var(--sw-space-sm));
+  padding: 0;
+  border: none;
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+}
+
+button.sw-rail-button:hover,
+menubutton.sw-rail-button > button:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-rail-button:checked,
+menubutton.sw-rail-button > button:checked {
+  background: var(--sw-selected-bg-color);
+}
+
+button.sw-rail-button:active,
+menubutton.sw-rail-button > button:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+.sw-rail-badge {
+  min-width: var(--sw-space-lg);
+  min-height: var(--sw-space-xxxl);
+  margin: var(--sw-space-xxs) var(--sw-space-xxs) 0 0;
+  padding: 0 var(--sw-space-xs);
+  border-radius: var(--sw-space-xxxl);
+  background: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+  font-size: var(--sw-text-caption);
+  font-weight: bold;
+}
+
+button.sw-rail-account box {
+  border-spacing: var(--sw-space-xxs);
+}
+
+.sw-rail-initial {
+  font-size: var(--sw-text-small);
+}
+
+separator.sw-rail-separator {
+  min-width: calc(2 * var(--sw-space-xxl));
+  min-height: var(--sw-control-border-width);
+  margin: var(--sw-space-lg) 0;
+  background: var(--border-color);
+}
+
+/* The command palette (ML-022): its rows in the theme's corners and selection. */
+list.sw-palette-list {
+  background: none;
+}
+
+list.sw-palette-list > row {
+  border-radius: var(--sw-radius-small);
+}
+
+list.sw-palette-list > row:selected {
+  background: var(--sw-selected-bg-color);
+}
+
+.sw-palette-keys {
+  font-size: var(--sw-text-small);
+}
+
 /* Message list: no ligatures in list text (S3: 30–36 % less layout). */
 .sw-message-list {
   background-color: var(--sidebar-bg-color);
   font-feature-settings: "liga" 0, "calt" 0;
 }
 
-listview.sw-message-list > row {
+listview.sw-message-list > row,
+list.sw-message-list > row {
   margin: 0 var(--sw-space-lg) var(--sw-space-xxs);
   padding: 0;
   border-radius: var(--sw-radius);
   background: none;
 }
 
-listview.sw-message-list > row:hover {
+listview.sw-message-list > row:hover,
+list.sw-message-list > row:hover {
   background: var(--sw-hover-bg-color);
 }
 
-listview.sw-message-list > row:selected {
+listview.sw-message-list > row:selected,
+list.sw-message-list > row:selected {
   background: var(--sw-selected-bg-color);
 }
 
@@ -275,6 +486,7 @@ listview.sw-message-list > row:selected {
   padding: var(--sw-space-xxl) var(--sw-space-xl) var(--sw-space-md);
   font-size: var(--sw-text-caption);
   letter-spacing: 0.08em;
+  text-transform: uppercase;
   color: var(--sw-secondary-fg-color);
 }
 
@@ -301,13 +513,13 @@ listview.sw-message-list > row:selected {
 .sw-unread-dot {
   min-width: var(--sw-size-unread-dot);
   min-height: var(--sw-size-unread-dot);
-  border-radius: 9999px;
+  border-radius: var(--sw-size-unread-dot);
   background: var(--sw-unread-color);
 }
 
 .sw-thread-count {
   padding: 0 var(--sw-space-sm);
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius-small);
   font-size: var(--sw-text-caption);
   color: var(--sw-secondary-fg-color);
@@ -322,9 +534,9 @@ listview.sw-message-list > row:selected {
 }
 
 entry.sw-search {
-  min-height: calc(var(--sw-size-search) - 2px);
+  min-height: calc(var(--sw-size-search) - 2 * var(--sw-control-border-width));
   padding: 0 var(--sw-space-xl);
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius);
   background: var(--window-bg-color);
   box-shadow: none;
@@ -332,9 +544,9 @@ entry.sw-search {
 
 /* Filter chips (All, Unread, Starred, Attachments); toggle buttons or .sw-selected. */
 .sw-chip {
-  min-height: calc(var(--sw-size-chip) - 2px);
+  min-height: calc(var(--sw-size-chip) - 2 * var(--sw-control-border-width));
   padding: 0 var(--sw-space-xl);
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius-small);
   background: none;
   box-shadow: none;
@@ -351,7 +563,7 @@ entry.sw-search {
 
 .sw-chip:checked,
 .sw-chip.sw-selected {
-  border-color: transparent;
+  border-color: var(--sw-chip-selected-bg-color);
   background: var(--sw-chip-selected-bg-color);
   color: var(--sw-chip-selected-fg-color);
   font-weight: bold;
@@ -413,16 +625,23 @@ entry.sw-search {
   color: var(--sw-avatar-6-fg-color);
 }
 
-/* Reader: toolbar, subject, tags, message cards, collapsed messages, bodies. */
-.sw-reader {
-  background-color: var(--window-bg-color);
+/* Reader: the column, toolbar, subject, tags, message cards, collapsed messages, bodies. */
+.sw-reader-clamp {
+  margin: calc(2 * var(--sw-space-xxl));
 }
 
 .sw-toolbar {
   min-height: var(--sw-size-toolbar);
   padding: 0 var(--sw-space-xxxl);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: var(--sw-control-border-width) solid var(--border-color);
   border-spacing: var(--sw-space-xxs);
+}
+
+separator.sw-toolbar-separator {
+  min-width: var(--sw-control-border-width);
+  min-height: var(--sw-space-huge);
+  margin: 0 var(--sw-space-md);
+  background: var(--border-color);
 }
 
 .sw-subject-heading {
@@ -431,8 +650,8 @@ entry.sw-search {
 }
 
 .sw-tag {
-  padding: 1px var(--sw-space-lg);
-  border: 1px solid var(--border-color);
+  padding: 0 var(--sw-space-lg);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius-small);
   font-size: var(--sw-text-small);
   color: var(--sw-secondary-fg-color);
@@ -440,7 +659,7 @@ entry.sw-search {
 
 .sw-message-card {
   padding: var(--sw-space-huge);
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius);
   border-spacing: var(--sw-space-huge);
 }
@@ -455,7 +674,7 @@ entry.sw-search {
 
 .sw-collapsed-message {
   padding: var(--sw-space-xl) var(--sw-space-huge);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: var(--sw-control-border-width) solid var(--border-color);
   border-spacing: var(--sw-space-xxl);
 }
 
@@ -466,7 +685,7 @@ entry.sw-search {
 /* HTML with colours of its own keeps its design on a light card (DESIGN.md); the reader
    clips the WebView to it (gtk::Overflow::Hidden). */
 .sw-paper {
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius);
   background: var(--sw-paper-bg-color);
   color: var(--sw-paper-fg-color);
@@ -478,7 +697,7 @@ entry.sw-search {
 
 .sw-quick-reply {
   padding: var(--sw-space-xxl) var(--sw-space-xxxl);
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius);
   background: var(--sidebar-bg-color);
   border-spacing: var(--sw-space-xl);
@@ -487,7 +706,7 @@ entry.sw-search {
 /* Attachment cards. */
 .sw-attachment-card {
   padding: var(--sw-space-xl);
-  border: 1px solid var(--border-color);
+  border: var(--sw-control-border-width) solid var(--border-color);
   border-radius: var(--sw-radius);
   background: var(--card-bg-color);
   border-spacing: var(--sw-space-xl);
@@ -528,10 +747,14 @@ entry.sw-search {
   background: var(--sw-warning-soft-bg-color);
 }
 
-/* Empty states: no accounts, empty folder, no search results. */
+/* Empty states: no accounts, no message, empty folder, no search results. */
 .sw-empty-state {
   padding: var(--sw-space-huge);
   border-spacing: var(--sw-space-xl);
+}
+
+.sw-empty-state.sw-no-account {
+  border-spacing: var(--sw-space-xxxl);
 }
 
 .sw-empty-icon {
@@ -544,6 +767,7 @@ entry.sw-search {
   font-weight: bold;
 }
 
-.sw-empty-body {
+.sw-empty-body,
+.sw-empty-hint {
   color: var(--sw-secondary-fg-color);
 }

@@ -1,4 +1,5 @@
 //! What the panes share: the bar on top of each pane, icon buttons, and the reader's column.
+//! Sizes, spacing and colours come from `style.css`; the classes are in docs/m1/polish.md.
 
 use gtk4 as gtk;
 use gtk4::gio;
@@ -16,7 +17,7 @@ pub fn icon_button(icons: &[&str], label: &str) -> gtk::Button {
             .child(&icon(icons))
             .tooltip_text(label)
             .build(),
-        &["flat"],
+        &["sw-icon-button"],
     );
     button.update_property(&[gtk::accessible::Property::Label(label)]);
     button
@@ -25,6 +26,19 @@ pub fn icon_button(icons: &[&str], label: &str) -> gtk::Button {
 /// A themed icon with fallbacks: Yaru has `mail-inbox-symbolic`, Adwaita doesn't.
 pub fn icon(icons: &[&str]) -> gtk::Image {
     gtk::Image::from_gicon(&gio::ThemedIcon::from_names(icons))
+}
+
+/// The main menu (ML-022), filled by `Window::set_menu_model`.
+pub fn menu_button() -> gtk::MenuButton {
+    let button = classed(
+        gtk::MenuButton::builder()
+            .icon_name("open-menu-symbolic")
+            .tooltip_text("Main menu")
+            .build(),
+        &["sw-icon-button"],
+    );
+    button.update_property(&[gtk::accessible::Property::Label("Main menu")]);
+    button
 }
 
 /// The bar on top of a pane: a back button for one-pane navigation, the pane's own widgets, and
@@ -42,11 +56,15 @@ pub struct PaneBar {
 }
 
 impl PaneBar {
-    /// `back` goes to the `nav.pane` page it names (`folders` or `list`).
-    pub fn new(tiling: bool, back: Option<(gtk::Button, &str)>) -> Self {
+    /// `back` goes to the `nav.pane` page it names (`folders` or `list`); `classes` style the
+    /// bar beside `sw-pane-bar`.
+    pub fn new(tiling: bool, back: Option<(gtk::Button, &str)>, classes: &[&str]) -> Self {
         let row = classed(
-            gtk::Box::builder().spacing(4).build(),
-            &["toolbar", "sealwax-pane-bar"],
+            classed(
+                gtk::Box::new(gtk::Orientation::Horizontal, 0),
+                &["sw-pane-bar"],
+            ),
+            classes,
         );
         let controls = |side| {
             let controls = gtk::WindowControls::new(side);
@@ -61,7 +79,7 @@ impl PaneBar {
             button.set_visible(false);
             button
         });
-        let content = gtk::Box::builder().spacing(4).hexpand(true).build();
+        let content = gtk::Box::builder().hexpand(true).build();
         if let Some(controls) = &start_controls {
             row.append(controls);
         }
@@ -111,7 +129,7 @@ impl PaneBar {
 
 /// The reader's column: one scrolled column, centred and at most [`READER_COLUMN`] px wide (a
 /// plain maximum, as the mock's `max-width`: the clamp doesn't ease toward it), while the
-/// reader's toolbar above it stretches.
+/// reader's toolbar above it stretches. Its margins are `style.css`'s.
 pub struct ReaderColumn {
     pub scroller: gtk::ScrolledWindow,
     /// Holds the reader's content (`Window::set_reader`).
@@ -120,17 +138,16 @@ pub struct ReaderColumn {
 
 impl ReaderColumn {
     pub fn new() -> Self {
-        let slot = classed(adw::Bin::new(), &["sealwax-reader-column"]);
-        let clamp = adw::Clamp::builder()
-            .maximum_size(READER_COLUMN)
-            .tightening_threshold(READER_COLUMN)
-            .unit(adw::LengthUnit::Px)
-            .margin_top(24)
-            .margin_bottom(32)
-            .margin_start(24)
-            .margin_end(24)
-            .child(&slot)
-            .build();
+        let slot = classed(adw::Bin::new(), &["sw-reader-column"]);
+        let clamp = classed(
+            adw::Clamp::builder()
+                .maximum_size(READER_COLUMN)
+                .tightening_threshold(READER_COLUMN)
+                .unit(adw::LengthUnit::Px)
+                .child(&slot)
+                .build(),
+            &["sw-reader-clamp"],
+        );
         let scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
@@ -146,21 +163,24 @@ impl Default for ReaderColumn {
     }
 }
 
-/// A row of a title over a smaller subtitle, as a pane bar's title.
+/// A pane bar's title with a quieter subtitle after it on the same baseline, as the mock's
+/// list header ("Inbox  12 unread · Personal").
 pub fn title_block(title: &gtk::Label, subtitle: &gtk::Label) -> gtk::Box {
-    title.add_css_class("heading");
-    subtitle.add_css_class("caption");
-    subtitle.add_css_class("dim-label");
+    title.add_css_class("sw-pane-title");
+    subtitle.add_css_class("sw-pane-subtitle");
+    subtitle.set_hexpand(true);
     for label in [title, subtitle] {
         label.set_xalign(0.0);
+        label.set_valign(gtk::Align::BaselineCenter);
         label.set_ellipsize(gtk::pango::EllipsizeMode::End);
     }
-    let block = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .valign(gtk::Align::Center)
-        .hexpand(true)
-        .margin_start(6)
-        .build();
+    let block = classed(
+        gtk::Box::builder()
+            .valign(gtk::Align::Center)
+            .hexpand(true)
+            .build(),
+        &["sw-pane-heading"],
+    );
     block.append(title);
     block.append(subtitle);
     block
@@ -175,7 +195,7 @@ pub fn classed<W: IsA<gtk::Widget>>(widget: W, classes: &[&str]) -> W {
     widget
 }
 
-/// Keeps `widget` named for the self-test and for CSS (`#name`).
+/// Keeps `widget` named for the self-test (`Window::widget`).
 pub fn named<W: IsA<gtk::Widget>>(widget: W, name: &str) -> W {
     widget.set_widget_name(name);
     widget
