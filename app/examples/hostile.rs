@@ -14,8 +14,8 @@
 //! upgraded from http, so the canary sees TLS hellos and never a request), `again` (`prod` in a
 //! second reader that reuses the pooled views `shown` lifted the filter from) and `ctrl` (a
 //! bare WebView with no defences, scripts on, proving the vectors are live). Exits 0 when
-//! `prod`, `real` and `again` are clean in every case and both controls saw traffic. Links are recorded, never
-//! opened; every clicked link points at the canary.
+//! `prod`, `real` and `again` are clean in every case, both controls saw traffic and GLib wrote
+//! no critical. Links are recorded, never opened; every clicked link points at the canary.
 
 #[path = "hostile_support/canary.rs"]
 mod canary;
