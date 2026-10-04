@@ -541,9 +541,9 @@ async fn fullscreen(harness: &Harness, window: &libadwaita::ApplicationWindow) -
     harness.wait_frames(2).await
 }
 
-/// `perf-jump end|start [warm]`: forgets the loaded rows (unless `warm`, S3's row bench, where
-/// both ends stay loaded), jumps, and times `scroll_to` → the first painted frame with the target
-/// row bound and no placeholder.
+/// `perf-jump end|start|FRACTION [warm]`: forgets the loaded rows (unless `warm`, S3's row
+/// bench, where both ends stay loaded), jumps, and times `scroll_to` → the first painted frame
+/// with the target row bound and no placeholder.
 async fn jump(harness: &Harness, to: &str, mode: Option<&str>) -> StepResult {
     let warm = match mode {
         None => false,
