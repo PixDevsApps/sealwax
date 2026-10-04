@@ -17,6 +17,9 @@ pub struct PageWidgets {
     /// Where the body goes, inside the card.
     pub body: gtk::Box,
     pub banner: Option<Banner>,
+    /// What takes the focus when the reader keeps it across messages: the body once it has
+    /// one, else the details button.
+    pub focus: Option<gtk::Widget>,
 }
 
 pub struct Banner {
@@ -60,7 +63,8 @@ pub fn build(header: &Header<'_>, attachments: &[Attachment], remote_images: boo
         .spacing(18)
         .css_classes(["sw-message-card", "sealwax-reader-card"])
         .build();
-    card.append(&sender_block(header));
+    let (sender, details) = sender_block(header);
+    card.append(&sender);
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .css_classes(["sealwax-reader-body"])
@@ -71,7 +75,12 @@ pub fn build(header: &Header<'_>, attachments: &[Attachment], remote_images: boo
         card.append(&attachment_cards(attachments));
     }
     root.append(&card);
-    PageWidgets { root, body, banner }
+    PageWidgets {
+        root,
+        body,
+        banner,
+        focus: Some(details.upcast()),
+    }
 }
 
 fn selectable(text: &str, classes: &[&str]) -> gtk::Label {
@@ -92,7 +101,8 @@ fn label(text: &str, classes: &[&str]) -> gtk::Label {
         .build()
 }
 
-fn sender_block(header: &Header<'_>) -> gtk::Box {
+/// The sender block, and its details button.
+fn sender_block(header: &Header<'_>) -> (gtk::Box, gtk::ToggleButton) {
     let headers = &header.detail.headers;
     let sender = headers.from.first().cloned().unwrap_or_default();
     let name = if sender.name.trim().is_empty() {
@@ -174,7 +184,7 @@ fn sender_block(header: &Header<'_>) -> gtk::Box {
         .build();
     block.append(&row);
     block.append(&details);
-    block
+    (block, toggle)
 }
 
 fn details_grid(detail: &MessageDetail, date: i64, zone: &glib::TimeZone) -> gtk::Grid {

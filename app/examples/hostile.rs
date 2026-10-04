@@ -144,6 +144,7 @@ fn messages(cases: &[Case], now: i64) -> Vec<(&'static str, Vec<u8>)> {
 }
 
 fn main() -> glib::ExitCode {
+    support::count_criticals();
     let _ = sealwax_infrastructure::logging::init();
     let wanted: Option<Vec<String>> = std::env::args()
         .skip(1)
@@ -377,11 +378,12 @@ async fn run(context: &Context, cases: &[Case], filled: &samples::Filled) -> boo
     if blind {
         println!("SUMMARY the controls saw no traffic: the canary proves nothing");
     }
+    let criticals = support::criticals();
     println!(
-        "SUMMARY production_failures={failures:?} cases={}",
+        "SUMMARY production_failures={failures:?} cases={} glib_criticals={criticals}",
         cases.len()
     );
-    failures.is_empty() && !blind
+    failures.is_empty() && !blind && criticals == 0
 }
 
 fn print_row(pass: &str, case: &Case, outcome: &Outcome) {

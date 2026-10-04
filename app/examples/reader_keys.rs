@@ -1,6 +1,7 @@
-//! Do keys pressed while a message has the focus reach the Reader scope, and do wheel steps
-//! over a message scroll the reader (ML-027)? Real key, click and wheel events go in through
-//! Broadway, as a browser client would send them; nothing is synthesized inside GTK.
+//! Do keys pressed while a message has the focus reach the Reader scope, do wheel steps over
+//! a message scroll the reader, and does the focus stay in the reader from one message to the
+//! next (ML-027)? Real key, click, motion and wheel events go in through Broadway, as a
+//! browser client would send them; nothing is synthesized inside GTK.
 //!
 //! ```sh
 //! SEALWAX_HEADLESS_TIMEOUT=120 tools/headless.sh 37 target/debug/examples/reader_keys
@@ -60,6 +61,7 @@ fn keys_message(now: i64) -> Vec<u8> {
 }
 
 fn main() -> glib::ExitCode {
+    support::count_criticals();
     let _ = sealwax_infrastructure::logging::init();
     let input = match broadway::connect() {
         Ok(input) => input,
@@ -399,7 +401,71 @@ async fn scenario(
             count(counts, ActionId::NextMessage)
         ),
     );
+
+    // 7. Another message keeps the focus in the reader: the next body takes it. Left to GTK,
+    // the focus moved out of the page that left on the next pointer event, through the whole
+    // window (a Gtk-CRITICAL), to the next page's subject.
+    let focus = || describe(GtkWindowExt::focus(window.window()));
+    support::show(reader, &reports, id("keys")?).await?;
+    support::frames(window.window(), 2).await?;
+    let first = reader.web_view().ok_or("no web view")?;
+    expect(
+        "from a focused plain-text body, the next HTML body takes the focus",
+        first.has_focus(),
+        format!("focus on {}", focus()),
+    );
+    column.vadjustment().set_value(0.0);
+    support::frames(window.window(), 1).await?;
+    let (x, y) = element_point(reader, "#text").await?;
+    input.click(x, y).map_err(|error| error.to_string())?;
+    support::sleep(300).await;
+    support::show(reader, &reports, id("newsletter")?).await?;
+    input
+        .motion(x, y + 12.0)
+        .map_err(|error| error.to_string())?;
+    support::sleep(300).await;
+    support::frames(window.window(), 2).await?;
+    let second = reader.web_view().ok_or("no web view")?;
+    expect(
+        "after a click into a message, the next message's body takes the focus",
+        second != first && second.has_focus(),
+        format!("focus on {}", focus()),
+    );
+    support::show(reader, &reports, id("plain")?).await?;
+    input.motion(x, y).map_err(|error| error.to_string())?;
+    support::sleep(300).await;
+    let plain = find(&reader.widget(), "reader-plain").ok_or("no plain text view")?;
+    expect(
+        "from an HTML body, the next plain-text body takes the focus",
+        plain.has_focus(),
+        format!("focus on {}", focus()),
+    );
+    reader.clear();
+    input
+        .motion(x, y + 12.0)
+        .map_err(|error| error.to_string())?;
+    support::sleep(300).await;
+    support::frames(window.window(), 1).await?;
+    let left = GtkWindowExt::focus(window.window());
+    expect(
+        "a cleared reader keeps no focus",
+        left.as_ref()
+            .is_none_or(|left| !left.is_ancestor(&reader.widget())),
+        format!("focus on {}", describe(left)),
+    );
+    expect(
+        "no GLib criticals",
+        support::criticals() == 0,
+        format!("{} written", support::criticals()),
+    );
     Ok(ok)
+}
+
+fn describe(widget: Option<gtk::Widget>) -> String {
+    widget.map_or_else(
+        || "nothing".to_owned(),
+        |widget| format!("{} {:?}", widget.type_().name(), widget.widget_name()),
+    )
 }
 
 fn find(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {

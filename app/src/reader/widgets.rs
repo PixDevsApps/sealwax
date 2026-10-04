@@ -2,6 +2,7 @@
 //! height (S2: a WebView's natural height is WebKit's contents size, which never drops below
 //! its viewport). [`Stage`] shows one page and lays the next one out unseen at the same width,
 //! so a message appears once its body has its height, with no jump and no blank frame.
+//! [`hand_over_focus`] keeps GTK from moving the focus out of a page that has left the window.
 
 use gtk4 as gtk;
 use gtk4::glib;
@@ -183,30 +184,54 @@ impl Stage {
         }
     }
 
-    /// Shows the waiting page in place of the shown one; returns the page it replaced.
-    pub fn promote(&self) -> Option<gtk::Widget> {
+    /// Shows the waiting page in place of the shown one; returns the page it replaced. If the
+    /// focus was in the replaced page, `focus` takes it.
+    pub fn promote(&self, focus: Option<&gtk::Widget>) -> Option<gtk::Widget> {
         let page = self.imp().staged.take()?;
         page.set_can_target(true);
         page.set_can_focus(true);
         let old = self.imp().shown.replace(Some(page));
         if let Some(old) = &old {
+            hand_over_focus(old, focus);
             old.unparent();
         }
         self.queue_resize();
         old
     }
 
-    /// Shows `page` at once; returns the page it replaced. A waiting page stays waiting.
-    pub fn show(&self, page: Option<&impl IsA<gtk::Widget>>) -> Option<gtk::Widget> {
+    /// Shows `page` at once; returns the page it replaced. If the focus was in the replaced
+    /// page, `focus` takes it. A waiting page stays waiting.
+    pub fn show(
+        &self,
+        page: Option<&impl IsA<gtk::Widget>>,
+        focus: Option<&gtk::Widget>,
+    ) -> Option<gtk::Widget> {
         let page = page.map(|page| page.as_ref().clone());
         if let Some(page) = &page {
             page.set_parent(self);
         }
         let old = self.imp().shown.replace(page);
         if let Some(old) = &old {
+            hand_over_focus(old, focus);
             old.unparent();
         }
         self.queue_resize();
         old
+    }
+}
+
+/// Before `old` leaves the window: if the focus is in it, `target` takes it, or nothing does.
+/// Left to GTK 4.22, the focus moves later, from a widget no longer in the window, through the
+/// whole window's focus chain (a Gtk-CRITICAL on the way), to the first selectable label.
+pub fn hand_over_focus(old: &impl IsA<gtk::Widget>, target: Option<&gtk::Widget>) {
+    let old = old.as_ref();
+    let Some(root) = old.root() else {
+        return;
+    };
+    let inside = root
+        .focus()
+        .is_some_and(|focus| &focus == old || focus.is_ancestor(old));
+    if inside && !target.is_some_and(|target| target.grab_focus()) {
+        root.set_focus(None::<&gtk::Widget>);
     }
 }

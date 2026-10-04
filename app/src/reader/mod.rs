@@ -125,6 +125,15 @@ struct Page {
     released: bool,
 }
 
+impl Page {
+    fn focus_target(&self) -> Option<gtk::Widget> {
+        match &self.html {
+            Some(html) => Some(html.view.web_view().clone().upcast()),
+            None => self.widgets.focus.clone(),
+        }
+    }
+}
+
 struct Inner {
     store: Rc<Store>,
     theme: Rc<ThemeController>,
@@ -232,10 +241,10 @@ impl Reader {
     pub fn clear(&self) {
         self.inner.next_generation();
         self.inner.stage.unstage();
+        self.inner.stage.show(None::<&gtk::Widget>, None);
         if let Some(page) = self.inner.shown.take() {
             self.inner.release_page(page);
         }
-        self.inner.stage.show(None::<&gtk::Widget>);
     }
 
     /// The message shown, if any.
@@ -508,7 +517,9 @@ impl Inner {
                 }
             }
             Body::Plain(text) => {
-                page.widgets.body.append(&page::plain_text(&text));
+                let text = page::plain_text(&text);
+                page.widgets.body.append(&text);
+                page.widgets.focus = Some(text.upcast());
                 page.body = ShownBody::Plain;
             }
             Body::Empty => {
@@ -523,7 +534,9 @@ impl Inner {
                     "The rest of this message hasn't been downloaded yet.",
                 ));
                 if !snippet.is_empty() {
-                    page.widgets.body.append(&page::plain_text(snippet));
+                    let snippet = page::plain_text(snippet);
+                    page.widgets.body.append(&snippet);
+                    page.widgets.focus = Some(snippet.upcast());
                 }
                 page.body = ShownBody::NotDownloaded;
             }
@@ -677,7 +690,9 @@ impl Inner {
         page.widgets.body.append(&page::notice(
             "This message is shown as text: its formatted view isn't available.",
         ));
-        page.widgets.body.append(&page::plain_text(&text));
+        let text = page::plain_text(&text);
+        page.widgets.body.append(&text);
+        page.widgets.focus = Some(text.upcast());
         page.body = ShownBody::TextFallback;
     }
 
@@ -693,6 +708,7 @@ impl Inner {
                 root,
                 body,
                 banner: None,
+                focus: None,
             },
             html: None,
             body: ShownBody::Missing,
@@ -703,13 +719,15 @@ impl Inner {
         self.present(page, started, elapsed, elapsed);
     }
 
-    /// Puts `page` on screen in place of the shown one, which gives its view back.
+    /// Puts `page` on screen in place of the shown one, which gives its view back. A focus in
+    /// the shown page moves to the new one's body.
     fn present(&self, page: Page, started: Instant, fetched: Duration, prepared: Duration) {
+        let focus = page.focus_target();
         if page.html.is_some() {
-            self.stage.promote();
+            self.stage.promote(focus.as_ref());
         } else {
             self.stage.unstage();
-            self.stage.show(Some(&page.widgets.root));
+            self.stage.show(Some(&page.widgets.root), focus.as_ref());
         }
         let old = self.shown.replace(None);
         if old.as_ref().is_none_or(|old| old.id != page.id)
@@ -807,6 +825,7 @@ impl Inner {
         if let Some(banner) = &page.widgets.banner
             && banner.root.parent().is_some()
         {
+            widgets::hand_over_focus(&banner.root, page.focus_target().as_ref());
             page.widgets.root.remove(&banner.root);
         }
         let Some(html) = page.html.as_mut() else {
@@ -962,6 +981,7 @@ impl Inner {
         if let Some(page) = shown.as_mut()
             && let Some(html) = page.html.take()
         {
+            widgets::hand_over_focus(&page.widgets.root, None);
             self.engine.release(html.view);
             page.released = true;
             tracing::debug!("reader: hidden, so its view went back to the pool");

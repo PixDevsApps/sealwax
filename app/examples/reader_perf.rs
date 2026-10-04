@@ -65,6 +65,7 @@ fn args() -> Result<Args, String> {
 }
 
 fn main() -> glib::ExitCode {
+    support::count_criticals();
     let _ = sealwax_infrastructure::logging::init();
     let args = match args() {
         Ok(args) => args,
@@ -303,5 +304,6 @@ async fn measure(
         reader.state().live_views,
         sealwax_app::reader::MAX_LIVE_VIEWS
     );
-    Ok(ok)
+    println!("PERF GLib criticals: {}", support::criticals());
+    Ok(ok && support::criticals() == 0)
 }

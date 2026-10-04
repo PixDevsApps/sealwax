@@ -22,7 +22,26 @@ use sealwax_infrastructure::store::{Store, StoreOptions};
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
+
+static CRITICALS: AtomicU32 = AtomicU32::new(0);
+
+/// Counts GLib criticals from every library (GTK's failed assertions among them); they are
+/// still written as GLib writes them. Call it first thing, once.
+pub fn count_criticals() {
+    glib::log_set_writer_func(|level, fields| {
+        if matches!(level, glib::LogLevel::Critical) {
+            CRITICALS.fetch_add(1, Ordering::Relaxed);
+        }
+        glib::log_writer_default(level, fields)
+    });
+}
+
+/// The criticals written since [`count_criticals`].
+pub fn criticals() -> u32 {
+    CRITICALS.load(Ordering::Relaxed)
+}
 
 /// A scratch folder under the repository's git-ignored `.local/`, emptied first.
 pub fn scratch(name: &str) -> PathBuf {

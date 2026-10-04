@@ -96,6 +96,7 @@ fn install_theme(state: &Path, name: &str) -> std::io::Result<()> {
 }
 
 fn main() -> glib::ExitCode {
+    support::count_criticals();
     let _ = sealwax_infrastructure::logging::init();
     let state = match scratch_state() {
         Ok(state) => state,
@@ -164,6 +165,9 @@ fn main() -> glib::ExitCode {
                         false
                     }
                 };
+                let criticals = support::criticals();
+                println!("THEME GLib criticals: {criticals}");
+                let ok = ok && criticals == 0;
                 println!("THEME {}", if ok { "every check passed" } else { "FAILED" });
                 passed.set(ok);
                 app.quit();
