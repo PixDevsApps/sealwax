@@ -1,0 +1,27 @@
+# SIGTERM, SIGHUP and SIGINT end Sealwax cleanly (ML-020): uwsm stops apps with SIGTERM, a
+# closing terminal sends SIGHUP, Ctrl+C SIGINT. Each signal goes to a Sealwax of its own (its own
+# id and folders) once it has painted its first frame, and it must exit with status 0.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/signals.sealwax-test
+
+desktop tiling
+
+spawn-bg term
+wait-until assert-file-contains $TMP/term.err first-frame
+signal term TERM
+wait-process term 0
+assert-file-contains $TMP/term.err "SIGTERM: quitting"
+
+spawn-bg hup
+wait-until assert-file-contains $TMP/hup.err first-frame
+signal hup HUP
+wait-process hup 0
+assert-file-contains $TMP/hup.err "SIGHUP: quitting"
+
+spawn-bg int
+wait-until assert-file-contains $TMP/int.err first-frame
+signal int INT
+wait-process int 0
+assert-file-contains $TMP/int.err "SIGINT: quitting"
+
+# This instance too, after its last step: the run passes only if SIGTERM quits it cleanly.
+quit signal TERM

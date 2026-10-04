@@ -1,0 +1,88 @@
+# Single instance and D-Bus activation (ML-020). `spawn` runs a second sealwax with this
+# instance's id, as a terminal or `xdg-open mailto:…` would: it hands its command line here and
+# exits. `bus-open` and `bus-activate` are the calls a launcher makes for DBusActivatable=true.
+# Every address here is fictional.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/activation.sealwax-test
+
+desktop tiling
+assert-activations 1
+
+# A second launch shows the running window instead of opening another.
+spawn
+wait-until assert-activations 2
+assert-window true
+
+# A mailto: link reaches the running instance; attachments are dropped.
+spawn "mailto:ingrid@example.com?subject=Cabin%20weekend&body=See%20you%20there&attach=%2Fetc%2Fpasswd"
+wait-until assert-compose-count 1
+assert-compose 1 to ingrid@example.com
+assert-compose 1 subject "Cabin weekend"
+assert-compose 1 body "See you there"
+assert-compose 1 ignored attach
+assert-activations 3
+
+# Several links at once, the scheme in capitals.
+spawn MAILTO:leah@example.com mailto:?to=marius@example.com&cc=ingrid@example.com
+wait-until assert-compose-count 3
+assert-compose 2 to leah@example.com
+assert-compose 3 to marius@example.com
+assert-compose 3 cc ingrid@example.com
+assert-activations 4
+
+# Mistakes fail in the calling terminal and never reach this instance.
+spawn-expect 2 https://example.com
+spawn-expect 2 --no-such-flag
+spawn-expect 0 --version
+spawn-expect 0 --help
+assert-compose-count 3
+assert-activations 4
+
+# D-Bus Open and Activate, as a launcher calls them.
+bus-open "mailto:aker.library@example.com?subject=Reservation"
+wait-until assert-compose-count 4
+assert-compose 4 to aker.library@example.com
+assert-compose 4 subject Reservation
+bus-activate
+assert-activations 6
+bus-open https://example.com
+assert-compose-count 4
+assert-activations 7
+
+# Background mode (D6) is an application hold: the window closes, the process stays, and the
+# next launch builds a new window.
+background true
+close-window
+wait-until assert-window false
+spawn
+wait-until assert-window true
+assert-activations 8
+background false
+
+# D-Bus activation from a service file: a private bus whose only service is Sealwax's own
+# (`sealwax --gapplication-service`, as packaging/io.github.pixdevsapps.Sealwax.service runs it).
+# The activated Sealwax logs that a compose was asked for, never the link's contents.
+test-bus-start
+assert-bus-owner false
+test-bus-activate
+wait-until assert-bus-owner true
+wait-until assert-file-contains $TMP/testbus/daemon.err first-frame
+test-bus-open "mailto:ingrid@example.com?subject=Cabin%20weekend"
+wait-until assert-file-contains $TMP/testbus/daemon.err "compose requested"
+assert-file-lacks $TMP/testbus/daemon.err ingrid
+assert-file-lacks $TMP/testbus/daemon.err Cabin
+test-bus-signal TERM
+wait-until assert-bus-owner false
+assert-file-contains $TMP/testbus/daemon.err "SIGTERM: quitting"
+test-bus-stop
+
+# With no Sealwax running, a command line asks the bus to start the service, hands its link to
+# it as a remote and exits; the started Sealwax keeps running.
+test-bus-start
+test-bus-spawn first "mailto:leah@example.com?subject=Invoice"
+wait-process first 0
+assert-bus-owner true
+wait-until assert-file-contains $TMP/testbus/daemon.err "compose requested"
+assert-file-lacks $TMP/testbus/daemon.err leah
+test-bus-signal TERM
+wait-until assert-bus-owner false
+test-bus-stop
