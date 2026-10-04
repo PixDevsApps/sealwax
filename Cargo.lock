@@ -3017,6 +3017,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 name = "sealwax"
 version = "0.0.1"
 dependencies = [
+ "async-channel 2.5.0",
  "gio",
  "gtk4",
  "libadwaita",
