@@ -1,0 +1,15 @@
+s6-event {"active":true,"event":"window-active","pid":239118,"t":16679155250893}
+s6-event {"active":false,"event":"window-active","pid":239118,"t":16679155472254}
+s6-event {"active":true,"event":"window-active","pid":239118,"t":16682225988755}
+s6-event {"event":"present-check","hyprland_class_after":"io.github.pixdevsapps.Mail.SpikeS6","hyprland_class_before":"io.github.pixdevsapps.Mail.SpikeS6","main_active_after_present":true,"main_was_active":false,"pid":239118,"present_to_active_ms":3.896065,"second_took_focus":true,"t":16682332828733}
+s6-event {"active":false,"event":"window-active","pid":239118,"t":16682338506099}
+s6-event {"active":true,"event":"window-active","pid":239180,"t":16683860720123}
+s6-event {"active":false,"event":"window-active","pid":239180,"t":16683909206960}
+s6-event {"active":true,"event":"window-active","pid":239180,"t":16683920169820}
+s6-event {"event":"present-check","hyprland_class_after":"io.github.pixdevsapps.Mail.SpikeS6","hyprland_class_before":"io.github.pixdevsapps.Mail.SpikeS6","main_active_after_present":true,"main_was_active":true,"pid":239180,"present_to_active_ms":3.24646,"second_took_focus":true,"t":16684024510082}
+s6-event {"active":false,"event":"window-active","pid":239180,"t":16684029897616}
+s6-event {"active":true,"event":"window-active","pid":239217,"t":16685563203427}
+s6-event {"active":false,"event":"window-active","pid":239217,"t":16685616021592}
+s6-event {"active":true,"event":"window-active","pid":239217,"t":16685626108496}
+s6-event {"event":"present-check","hyprland_class_after":"io.github.pixdevsapps.Mail.SpikeS6","hyprland_class_before":"io.github.pixdevsapps.Mail.SpikeS6","main_active_after_present":true,"main_was_active":true,"pid":239217,"present_to_active_ms":2.208274,"second_took_focus":true,"t":16685729797143}
+s6-event {"active":false,"event":"window-active","pid":239217,"t":16685735441679}

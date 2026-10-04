@@ -1,0 +1,58 @@
+# background: stalwart, user spike, 10 appends, 10 cuts, 5 freezes, fake notification server, headless (Broadway, private bus) (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=Some("none"))
+emptied INBOX of spike on stalwart (2 messages)
+raw events: ./target/s6/results/1791122890-background-stalwart.jsonl
+first frame 284 ms after start; IDLE 132 ms after start; window closed into background: true
+append 0: APPEND OK → new mail 1.4 ms → notification sent 1.4 ms → server accepted 1.9 ms
+append 1: APPEND OK → new mail 1.2 ms → notification sent 1.3 ms → server accepted 1.5 ms
+append 2: APPEND OK → new mail 1.4 ms → notification sent 1.4 ms → server accepted 1.6 ms
+append 3: APPEND OK → new mail 1.2 ms → notification sent 1.2 ms → server accepted 1.5 ms
+append 4: APPEND OK → new mail 1.2 ms → notification sent 1.3 ms → server accepted 1.6 ms
+append 5: APPEND OK → new mail 1.3 ms → notification sent 1.3 ms → server accepted 1.6 ms
+append 6: APPEND OK → new mail 1.8 ms → notification sent 1.9 ms → server accepted 2.4 ms
+append 7: APPEND OK → new mail 1.2 ms → notification sent 1.3 ms → server accepted 1.6 ms
+append 8: APPEND OK → new mail 1.2 ms → notification sent 1.2 ms → server accepted 1.5 ms
+append 9: APPEND OK → new mail 1.4 ms → notification sent 1.5 ms → server accepted 1.7 ms
+cut 0 (1 connections): detected 0.1 ms, connected 13.5 ms, synced 13.9 ms, idling 14.2 ms after the cut
+after cut 0: APPEND OK → new mail 1.4 ms → notification sent 1.5 ms → server accepted 1.7 ms
+cut 1 (1 connections): detected 0.2 ms, connected 12.9 ms, synced 13.1 ms, idling 13.4 ms after the cut
+after cut 1: APPEND OK → new mail 1.4 ms → notification sent 1.4 ms → server accepted 1.6 ms
+cut 2 (1 connections): detected 0.1 ms, connected 13.1 ms, synced 13.3 ms, idling 13.6 ms after the cut
+after cut 2: APPEND OK → new mail 1.3 ms → notification sent 1.3 ms → server accepted 1.5 ms
+cut 3 (1 connections): detected 0.2 ms, connected 12.9 ms, synced 13.1 ms, idling 13.4 ms after the cut
+after cut 3: APPEND OK → new mail 1.2 ms → notification sent 1.2 ms → server accepted 1.5 ms
+cut 4 (1 connections): detected 0.2 ms, connected 13.2 ms, synced 13.4 ms, idling 13.6 ms after the cut
+after cut 4: APPEND OK → new mail 1.3 ms → notification sent 1.3 ms → server accepted 1.6 ms
+cut 5 (1 connections): detected 0.1 ms, connected 12.6 ms, synced 12.9 ms, idling 13.2 ms after the cut
+after cut 5: APPEND OK → new mail 1.3 ms → notification sent 1.3 ms → server accepted 1.6 ms
+cut 6 (1 connections): detected 0.2 ms, connected 13.5 ms, synced 13.7 ms, idling 14.0 ms after the cut
+after cut 6: APPEND OK → new mail 1.4 ms → notification sent 1.4 ms → server accepted 1.7 ms
+cut 7 (1 connections): detected 0.2 ms, connected 12.8 ms, synced 13.0 ms, idling 13.3 ms after the cut
+after cut 7: APPEND OK → new mail 1.3 ms → notification sent 1.4 ms → server accepted 1.7 ms
+cut 8 (1 connections): detected 0.1 ms, connected 13.5 ms, synced 13.7 ms, idling 14.0 ms after the cut
+after cut 8: APPEND OK → new mail 1.1 ms → notification sent 1.1 ms → server accepted 1.5 ms
+cut 9 (1 connections): detected 0.1 ms, connected 13.4 ms, synced 13.6 ms, idling 14.2 ms after the cut
+after cut 9: APPEND OK → new mail 1.2 ms → notification sent 1.2 ms → server accepted 1.5 ms
+freeze 0: with no resume signal the app noticed nothing for 10 s: true (a message appended 1 ms after the freeze did not arrive)
+freeze 0 (1 connections): resume signal → connected 13.4 ms, synced 14.2 ms, idling 14.4 ms
+freeze 0: the message appended while frozen reached the app after the resume: true
+after resume 0: APPEND OK → new mail 1.2 ms → notification sent 1.2 ms → server accepted 1.4 ms
+freeze 1 (1 connections): resume signal → connected 12.7 ms, synced 12.9 ms, idling 13.2 ms
+after resume 1: APPEND OK → new mail 1.3 ms → notification sent 1.4 ms → server accepted 1.7 ms
+freeze 2 (1 connections): resume signal → connected 13.7 ms, synced 13.9 ms, idling 14.2 ms
+after resume 2: APPEND OK → new mail 1.3 ms → notification sent 1.4 ms → server accepted 1.6 ms
+freeze 3 (1 connections): resume signal → connected 13.5 ms, synced 13.7 ms, idling 14.0 ms
+after resume 3: APPEND OK → new mail 1.5 ms → notification sent 1.5 ms → server accepted 1.8 ms
+freeze 4 (1 connections): resume signal → connected 12.7 ms, synced 12.9 ms, idling 13.2 ms
+after resume 4: APPEND OK → new mail 1.2 ms → notification sent 1.2 ms → server accepted 1.5 ms
+quit: process exited 51 ms after the quit action (exit status: 0); engine stopped: true; notifications sent: 26; messages on the server: 26; relay links still open: 0
+fake server received 26 notifications
+
+| measure | n | p50 ms | p95 ms | min | max |
+| --- | --- | --- | --- | --- | --- |
+| APPEND OK → engine has the new mail | 25 | 1.3 | 1.5 | 1.1 | 1.8 |
+| APPEND OK → notification sent | 25 | 1.3 | 1.5 | 1.1 | 1.9 |
+| APPEND OK → server accepted (Notify reply) | 25 | 1.6 | 1.9 | 1.4 | 2.4 |
+| cut: → detected | 10 | 0.1 | 0.2 | 0.1 | 0.2 |
+| cut: → idling | 10 | 13.6 | 14.2 | 13.2 | 14.2 |
+| freeze+resume: → synced | 5 | 13.7 | 14.2 | 12.9 | 14.2 |
+| freeze+resume: → idling | 5 | 14.0 | 14.4 | 13.2 | 14.4 |

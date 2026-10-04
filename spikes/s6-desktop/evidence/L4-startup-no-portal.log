@@ -1,0 +1,33 @@
+# startup: live-no-portal, 7 runs (1 discarded), warm, live session (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=None)
+raw events: ./target/s6/results/1791122614-startup-live-no-portal.jsonl
+run 0: exec→painted 511.1 ms, exec→presented 528.3 ms, frame #1 cpu 139.1 ms layout 118.4 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0 (discarded)
+run 1: exec→painted 455.3 ms, exec→presented 466.9 ms, frame #1 cpu 136.2 ms layout 115.3 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0
+run 2: exec→painted 476.5 ms, exec→presented 487.3 ms, frame #1 cpu 133.1 ms layout 111.9 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0
+run 3: exec→painted 447.1 ms, exec→presented 457.3 ms, frame #1 cpu 133.1 ms layout 111.9 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0
+run 4: exec→painted 487.6 ms, exec→presented 500.6 ms, frame #1 cpu 139.2 ms layout 117.2 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0
+run 5: exec→painted 470.9 ms, exec→presented 480.4 ms, frame #1 cpu 132.4 ms layout 111.1 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0
+run 6: exec→painted 486.8 ms, exec→presented 495.8 ms, frame #1 cpu 138.6 ms layout 117.7 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0
+
+| stage | p50 ms | p95 ms | min | max |
+| --- | --- | --- | --- | --- |
+| exec → main (loader, Rust init) | 50.1 | 53.2 | 50.0 | 53.2 |
+| main → dbus_register (GApplication, bus connection) | 0.9 | 0.9 | 0.8 | 0.9 |
+| dbus_register → startup (name request) | 0.1 | 0.2 | 0.1 | 0.2 |
+| startup → gtk_init done | 5.4 | 5.8 | 5.4 | 5.8 |
+| gtk_init → GtkApplication + Adw startup | 38.3 | 41.0 | 38.1 | 41.0 |
+| Adw → theme + CSS | 18.4 | 19.2 | 18.2 | 19.2 |
+| CSS → window built | 2.2 | 2.5 | 2.1 | 2.5 |
+| window built → present (rows in model) | 36.9 | 38.4 | 35.9 | 38.4 |
+| present → realize | 177.3 | 187.2 | 150.8 | 187.2 |
+| realize → map | 6.8 | 7.0 | 6.7 | 7.0 |
+| map → first frame painted | 135.4 | 141.2 | 134.3 | 141.2 |
+| first frame painted → presented | 10.2 | 13.0 | 9.0 | 13.0 |
+| startup → reader connection open | 1.0 | 1.0 | 0.9 | 1.0 |
+| reader: first page (open_view) | 1.1 | 1.3 | 1.0 | 1.3 |
+| reader → GTK thread has rows | 62.5 | 65.8 | 62.1 | 65.8 |
+| exec → first frame painted | 470.9 | 487.6 | 447.1 | 487.6 |
+| exec → presented on screen | 480.4 | 500.6 | 457.3 | 500.6 |
+| first frame: GTK work (before-paint → after-paint) | 133.1 | 139.2 | 132.4 | 139.2 |
+| first frame: layout part | 111.9 | 117.7 | 111.1 | 117.7 |
+
+first kept run: renderer "GskVulkanRenderer", window [3440,1440], list [383,1300], rows bound 205, frame index 1, scale {"backend":"GdkWaylandDisplay","env_gdk_dpi_scale":null,"env_gdk_scale":"2","font_name":"Adwaita Sans 11","list":[383,1300],"monitor_geometry":[0,0,3440,1440],"monitor_scale":1.0,"monitor_scale_factor":1,"row_height":75,"sender_text_px":[86,19],"surface_scale":1.0,"surface_scale_factor":1,"widget_scale_factor":1,"window":[3440,1440],"xft_dpi":98304}, memory {"pss_mib":110.6181640625,"rss_mib":169.74609375,"threads":18}

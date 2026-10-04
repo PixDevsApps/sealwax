@@ -1,0 +1,40 @@
+# startup: live-cold, 13 runs (1 discarded), cold-ish, live session (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=None)
+raw events: ./target/s6/results/1791122512-startup-live-cold.jsonl
+run 0: exec→painted 656.2 ms, exec→presented 673.4 ms, frame #1 cpu 156.3 ms layout 131.4 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 50 of 373 MiB resident (discarded)
+run 1: exec→painted 544.8 ms, exec→presented 558.7 ms, frame #1 cpu 154.4 ms layout 129.8 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 2: exec→painted 551.3 ms, exec→presented 569.8 ms, frame #1 cpu 154.8 ms layout 129.7 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 3: exec→painted 555.4 ms, exec→presented 573.6 ms, frame #1 cpu 157.3 ms layout 132.1 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 4: exec→painted 560.8 ms, exec→presented 579.3 ms, frame #1 cpu 159.5 ms layout 134.1 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 5: exec→painted 530.0 ms, exec→presented 541.2 ms, frame #1 cpu 154.8 ms layout 130.7 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 6: exec→painted 562.2 ms, exec→presented 579.5 ms, frame #1 cpu 156.2 ms layout 131.3 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 7: exec→painted 540.7 ms, exec→presented 549.8 ms, frame #1 cpu 160.0 ms layout 134.5 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 8: exec→painted 557.7 ms, exec→presented 575.9 ms, frame #1 cpu 157.5 ms layout 132.1 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 9: exec→painted 557.1 ms, exec→presented 566.8 ms, frame #1 cpu 163.6 ms layout 138.7 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 10: exec→painted 554.0 ms, exec→presented 572.7 ms, frame #1 cpu 158.9 ms layout 133.9 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 11: exec→painted 554.4 ms, exec→presented 572.7 ms, frame #1 cpu 156.7 ms layout 132.1 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+run 12: exec→painted 549.3 ms, exec→presented 566.6 ms, frame #1 cpu 155.9 ms layout 130.9 ms, rows bound 205, renderer GskVulkanRenderer, scale 1×1.0, evicted 6 of 329 MiB resident
+
+| stage | p50 ms | p95 ms | min | max |
+| --- | --- | --- | --- | --- |
+| exec → main (loader, Rust init) | 112.4 | 118.6 | 111.5 | 118.6 |
+| main → dbus_register (GApplication, bus connection) | 0.9 | 0.9 | 0.9 | 0.9 |
+| dbus_register → startup (name request) | 0.1 | 0.1 | 0.1 | 0.1 |
+| startup → gtk_init done | 6.0 | 6.8 | 5.7 | 6.8 |
+| gtk_init → GtkApplication + Adw startup | 41.5 | 43.5 | 40.5 | 43.5 |
+| Adw → theme + CSS | 0.2 | 0.2 | 0.2 | 0.2 |
+| CSS → window built | 2.2 | 2.3 | 2.1 | 2.3 |
+| window built → present (rows in model) | 36.7 | 38.6 | 35.6 | 38.6 |
+| present → realize | 184.8 | 192.6 | 165.6 | 192.6 |
+| realize → map | 6.9 | 7.2 | 6.7 | 7.2 |
+| map → first frame painted | 159.1 | 165.8 | 156.5 | 165.8 |
+| first frame painted → presented | 17.3 | 18.7 | 9.1 | 18.7 |
+| startup → reader connection open | 1.8 | 1.8 | 1.7 | 1.8 |
+| reader: first page (open_view) | 4.9 | 5.6 | 4.7 | 5.6 |
+| reader → GTK thread has rows | 43.1 | 45.3 | 42.4 | 45.3 |
+| exec → first frame painted | 554.0 | 562.2 | 530.0 | 562.2 |
+| exec → presented on screen | 569.8 | 579.5 | 541.2 | 579.5 |
+| first frame: GTK work (before-paint → after-paint) | 156.7 | 163.6 | 154.4 | 163.6 |
+| first frame: layout part | 132.1 | 138.7 | 129.7 | 138.7 |
+
+first kept run: renderer "GskVulkanRenderer", window [3440,1440], list [383,1300], rows bound 205, frame index 1, scale {"backend":"GdkWaylandDisplay","env_gdk_dpi_scale":null,"env_gdk_scale":"2","font_name":"Adwaita Sans 11","list":[383,1300],"monitor_geometry":[0,0,3440,1440],"monitor_scale":1.0,"monitor_scale_factor":1,"row_height":75,"sender_text_px":[86,19],"surface_scale":1.0,"surface_scale_factor":1,"widget_scale_factor":1,"window":[3440,1440],"xft_dpi":98304}, memory {"pss_mib":108.720703125,"rss_mib":168.171875,"threads":18}
+eviction over kept runs: 329 MiB resident before, 322 MiB after (files mapped by other processes stay resident)

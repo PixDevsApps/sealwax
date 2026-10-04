@@ -1,0 +1,44 @@
+# background: dovecot, user spike, 6 appends, 6 cuts, 4 freezes, fake notification server, headless (Broadway, private bus) (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=Some("none"))
+emptied INBOX of spike on dovecot (6 messages)
+raw events: ./target/s6/results/1791122922-background-dovecot.jsonl
+first frame 286 ms after start; IDLE 137 ms after start; window closed into background: true
+append 0: APPEND OK → new mail 489.5 ms → notification sent 489.5 ms → server accepted 490.1 ms
+append 1: APPEND OK → new mail 489.4 ms → notification sent 489.4 ms → server accepted 489.7 ms
+append 2: APPEND OK → new mail 494.6 ms → notification sent 494.6 ms → server accepted 495.0 ms
+append 3: APPEND OK → new mail 495.3 ms → notification sent 495.3 ms → server accepted 495.6 ms
+append 4: APPEND OK → new mail 497.3 ms → notification sent 497.4 ms → server accepted 497.8 ms
+append 5: APPEND OK → new mail 495.4 ms → notification sent 495.4 ms → server accepted 495.7 ms
+cut 0 (1 connections): detected 0.2 ms, connected 13.4 ms, synced 14.1 ms, idling 14.5 ms after the cut
+after cut 0: APPEND OK → new mail 486.2 ms → notification sent 486.2 ms → server accepted 486.6 ms
+cut 1 (1 connections): detected 0.1 ms, connected 13.2 ms, synced 14.2 ms, idling 14.6 ms after the cut
+after cut 1: APPEND OK → new mail 492.1 ms → notification sent 492.1 ms → server accepted 492.5 ms
+cut 2 (1 connections): detected 0.1 ms, connected 13.0 ms, synced 13.8 ms, idling 14.1 ms after the cut
+after cut 2: APPEND OK → new mail 494.2 ms → notification sent 494.2 ms → server accepted 494.6 ms
+cut 3 (1 connections): detected 0.2 ms, connected 12.8 ms, synced 13.7 ms, idling 14.1 ms after the cut
+after cut 3: APPEND OK → new mail 490.5 ms → notification sent 490.6 ms → server accepted 490.9 ms
+cut 4 (1 connections): detected 0.2 ms, connected 13.1 ms, synced 13.9 ms, idling 14.2 ms after the cut
+after cut 4: APPEND OK → new mail 494.8 ms → notification sent 494.9 ms → server accepted 495.2 ms
+cut 5 (1 connections): detected 0.2 ms, connected 12.8 ms, synced 13.5 ms, idling 13.8 ms after the cut
+after cut 5: APPEND OK → new mail 493.4 ms → notification sent 493.5 ms → server accepted 493.8 ms
+freeze 0: with no resume signal the app noticed nothing for 10 s: true (a message appended 17 ms after the freeze did not arrive)
+freeze 0 (1 connections): resume signal → connected 13.8 ms, synced 15.5 ms, idling 15.8 ms
+freeze 0: the message appended while frozen reached the app after the resume: true
+after resume 0: APPEND OK → new mail 481.0 ms → notification sent 481.1 ms → server accepted 481.4 ms
+freeze 1 (1 connections): resume signal → connected 13.8 ms, synced 14.7 ms, idling 15.1 ms
+after resume 1: APPEND OK → new mail 491.8 ms → notification sent 491.9 ms → server accepted 492.2 ms
+freeze 2 (1 connections): resume signal → connected 13.1 ms, synced 14.0 ms, idling 14.5 ms
+after resume 2: APPEND OK → new mail 495.5 ms → notification sent 495.6 ms → server accepted 495.9 ms
+freeze 3 (1 connections): resume signal → connected 12.8 ms, synced 13.6 ms, idling 13.9 ms
+after resume 3: APPEND OK → new mail 489.8 ms → notification sent 489.9 ms → server accepted 490.2 ms
+quit: process exited 61 ms after the quit action (exit status: 0); engine stopped: true; notifications sent: 17; messages on the server: 17; relay links still open: 0
+fake server received 17 notifications
+
+| measure | n | p50 ms | p95 ms | min | max |
+| --- | --- | --- | --- | --- | --- |
+| APPEND OK → engine has the new mail | 16 | 492.1 | 497.3 | 481.0 | 497.3 |
+| APPEND OK → notification sent | 16 | 492.1 | 497.4 | 481.1 | 497.4 |
+| APPEND OK → server accepted (Notify reply) | 16 | 492.5 | 497.8 | 481.4 | 497.8 |
+| cut: → detected | 6 | 0.2 | 0.2 | 0.1 | 0.2 |
+| cut: → idling | 6 | 14.1 | 14.6 | 13.8 | 14.6 |
+| freeze+resume: → synced | 4 | 14.0 | 15.5 | 13.6 | 15.5 |
+| freeze+resume: → idling | 4 | 14.5 | 15.8 | 13.9 | 15.8 |

@@ -1,0 +1,38 @@
+[package]
+name = "email-spike-s6"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[features]
+webkit = ["dep:webkit6"]
+
+[dependencies]
+anyhow.workspace = true
+ash = "0.38.0"
+async-channel.workspace = true
+email-spike-s1 = { path = "../s1-imap" }
+email-spike-s3 = { path = "../s3-store" }
+gio.workspace = true
+glib-unix.workspace = true
+gtk4.workspace = true
+libadwaita.workspace = true
+libc = "0.2.190"
+rusqlite = "0.40.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tokio = { workspace = true, features = ["io-util", "rt-multi-thread", "macros", "net", "time", "sync"] }
+webkit6 = { version = "0.6.1", features = ["v2_52"], optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "email-spike-s6"
+path = "src/bin/email-spike-s6/main.rs"
+
+[[bin]]
+name = "s6-bench"
+path = "src/bin/s6-bench/main.rs"

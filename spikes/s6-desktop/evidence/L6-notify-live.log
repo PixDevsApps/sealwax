@@ -1,0 +1,12 @@
+# notify: the session's server, live session (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=None)
+raw events: ./target/s6/results/1791122868-notify-live.jsonl
+server-info: {"capabilities":["persistence","body","body-markup","body-hyperlinks","actions","icon-static"],"error":null,"event":"server-info","name":"quickshell","pid":232221,"spec":"1.2","t":16098473552050,"vendor":"quickshell","version":""}
+notification-sent: {"event":"notification-sent","key":"notify-1","pid":232221,"t":16098473573020,"target":"cache:1"}
+dbus-notify: {"actions":["default","","app.archive-message('cache:1')","Archive","app.mark-read('cache:1')","Mark read"],"app_icon":"","app_name":"email-spike-s6","desktop_entry":"io.github.pixdevsapps.Mail.SpikeS6","event":"dbus-notify","expire_timeout":-1,"hints":["desktop-entry","urgency","category","image-path"],"image_path":"mail-unread-symbolic","key":"notify-1","pid":232221,"replaces_id":0,"serial":45,"t":16098473821952,"urgency":0}
+dbus-reply: {"error":null,"event":"dbus-reply","id":13,"key":"notify-1","pid":232221,"sent":16098473573020,"serial":45,"t":16098474377365}
+platform-data: {"activation_token":null,"event":"platform-data","keys":["cwd","environ","options"],"pid":232221,"s6_sent":null,"t":16098051622877}
+dbus-closed: {"event":"dbus-closed","id":13,"ours":"notify-1","pid":232221,"reason":1,"t":16103445607940}
+window-active: {"active":true,"event":"window-active","pid":232221,"t":16098446488855}
+window-active: {"active":false,"event":"window-active","pid":232221,"t":16104494444421}
+notification "notify-1": id 13, send → server reply (accepted) 0.8 ms, action null, closed {"reason":1,"t":16103445607940}
+app exit: Ok(ExitStatus(unix_wait_status(0)))

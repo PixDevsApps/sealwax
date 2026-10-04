@@ -1,0 +1,20 @@
+# manual-notify smoke test, headless (Broadway, private bus) (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=Some("none"))
+raw events: ./target/s6/results/1791123262-manual-smoke.jsonl
+
+== Mail spike S6 — notification check, step 1 of 2
+Click any other window (for example the terminal you started this from), so this window loses focus. Two seconds later a notification “Mail spike S6” appears. Click it (left button, anywhere on the card). This window should come to the front with the newest message selected.
+
+step 1: the click arrived
+
+== Step 2 of 2
+In five seconds this window closes by itself; the app keeps running in the background. Three seconds later a second notification appears. Click it: a new window should open with the second message selected.
+
+
+== Results
+server: "s6-fake-notifyd" "0.1" (spec "1.2"), capabilities ["actions","body","body-markup","persistence"]
+step 1 (window unfocused): ActionInvoked → action 0.0 ms; action → message painted 856.9 ms; action → window active n/a; active now true; Hyprland active class null; server activation token used: 15
+step 2 (window closed): ActionInvoked → action 0.0 ms; action → message painted 129.6 ms; action → window active 92.0 ms; active now true; Hyprland active class null; server activation token used: 15
+Saved to ./target/s6/manual/notify-1791123270.json
+summary: {"event":"manual-summary","notifications":[{"accepted":16495092956582,"action":{"key":"default","t":16495393269961},"closed":null,"id":1,"key":"manual-a","sent":16495092418068,"target":"cache:1","token":16495393239611},{"accepted":16497712165226,"action":{"key":"default","t":16498012461865},"closed":null,"id":2,"key":"manual-b","sent":16497711750723,"target":"cache:2","token":16498012430045}],"pid":235700,"server":{"capabilities":["actions","body","body-markup","persistence"],"error":null,"name":"s6-fake-notifyd","spec":"1.2","vendor":"Mail spike S6","version":"0.1"},"step_a":{"action":16495393308072,"active_at":null,"active_now":true,"had_window":true,"hyprland_active_class":null,"invoked_signal":16495393269961,"key":"manual-a","notification_id":1,"platform_keys":[],"present":16495393697194,"read":16495393450102,"row_found":true,"server_token_used":15,"shown_frame_end":16496250233930,"shown_presented":null,"target":"cache:1"},"step_b":{"action":16498012500075,"active_at":16498104500667,"active_now":true,"had_window":false,"hyprland_active_class":null,"invoked_signal":16498012461865,"key":"manual-b","notification_id":2,"platform_keys":[],"present":16498042858991,"read":16498012676386,"row_found":true,"server_token_used":15,"shown_frame_end":16498142118098,"shown_presented":null,"target":"cache:2"},"t":16499193170323,"window_lost_focus":false}
+fake server clicks: [(1, "default", 16495393094340), (2, "default", 16498012245044)]
+app exit: Ok(ExitStatus(unix_wait_status(0)))

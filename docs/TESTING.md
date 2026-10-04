@@ -35,7 +35,7 @@ Measured with release builds unless noted; each entry names its spike or milesto
 
 | Area | Target | Where measured |
 | --- | --- | --- |
-| Startup | First frame with a cached 10k INBOX ≤ 400 ms | S6, M9 |
+| Startup | Process start → first frame with rows on screen, cached 10k INBOX: ≤ 400 ms. Warm or cold is the user's decision (S6 proposal: ≤ 400 ms warm, plus a separate cold target such as ≤ 600 ms measured in M9) | S6, M1, M9 |
 | List | p99 frame ≤ 16.7 ms while scrolling 100k messages at 3440×1440; jump to end ≤ 100 ms; one-insert diff ≤ 20 ms | S3, M1, M9 |
 | Folder open | ≤ 100 ms | S3 |
 | Open message | Plain text ≤ 50 ms; cached HTML ≤ 150 ms p95 | S2, M5 |
@@ -53,6 +53,21 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### S6 desktop integration (ML-014) — 2026-10-04
+
+Release builds, 16:00–16:18 CEST: 18 self-closing live runs on Hyprland under the live-window authorization (127 windows, most under 1 s; 3 fictional low-urgency notifications), headless runs on Broadway display 26, Dovecot and Stalwart from the testbed (15:57–16:21, removed afterwards). Report: [spikes/S6-desktop.md](spikes/S6-desktop.md); logs in `spikes/s6-desktop/evidence/`.
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| First frame with a cached 10k INBOX ≤ 400 ms | Process start → first frame with rows on screen, fullscreen 3440×1440, Vulkan: warm p50 467 / p95 490 ms (20 runs); cold-ish p50 570 / p95 580 ms (12 runs); with the first frame limited to 40 rows, warm p50 326–330 / p95 341–361 ms (two batches of 6) | **Fail as built**; passes warm with the first-frame trim (cold with the trim not measured) |
+| Second-instance `mailto:` ≤ 100 ms | p50 50.8 / p95 52.7 ms (20 runs); `attach` and `attachment` dropped in 5 of 5 runs; D-Bus `Open` 0.5 ms | Pass |
+| A notification click focuses the window and opens the message | omarchy-shell accepts a notification in 0.8 ms; headless, the click path works (default action → `app.open-message` in 0.05 ms); live, `present()` refocuses an unfocused window in 2.2–3.9 ms (3 of 3) | Pending the user's click (`bash spikes/s6-desktop/manual-check.sh`) |
+| Background mode keeps IDLE alive | APPEND → notification sent p50 1.3 ms (Stalwart), 492 ms (Dovecot's own IDLE delay); 16 cut connections back in IDLE in ~14 ms; a 330 s hold crossed one IDLE restart without a disconnect | Pass (minutes on the testbed; hours not verified) |
+| Reconnect after resume ≤ 10 s | A silently frozen connection went unnoticed for 10 s; after a resume signal, idling again in p50 14.0 ms (Stalwart) / 14.5 ms (Dovecot) on localhost | Pending the user's suspend (`bash spikes/s6-desktop/manual-resume.sh`) |
+| GDK_SCALE=2 doesn't change the scale | Same scale factors, sizes and timing with it set or unset | Pass — GTK 4 on Wayland ignores it |
+
+`cargo test -p email-spike-s6`: 14 tests pass; fmt and clippy clean (re-run by the lead).
 
 ### S1 IMAP library and sync model (ML-009) and the testbed (ML-005) — 2026-10-04
 

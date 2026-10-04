@@ -12,7 +12,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | --- | --- | --- |
 | 001 | Standalone native application | Accepted (user request) |
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
-| 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3 |
+| 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6 |
 | 004 | Follow the live Omarchy theme | Accepted (user request) |
 | 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; blob store in M1 |
 | 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery |
@@ -80,6 +80,15 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 ### ADR-003 amendment — the store pattern measured in S3 (2026-10-04)
 
 S3 ran the GTK thread with no SQL at 100k messages ([report](spikes/S3-store.md)). The pattern to keep: two read-only readers that serve the newest request first; one writer that commits and emits list diffs; one maintenance thread (checkpoints, see ADR-005); every reply carries the store's `store_version`, and the UI applies a page only when its version matches the last change it applied, because pages and change events travel on different channels.
+
+### ADR-003 amendment — desktop integration measured in S6 (2026-10-04)
+
+S6 ran the layering on the live desktop ([report](spikes/S6-desktop.md)): SQL only on the reader thread (started in `startup`; the first page was ready 2 ms later), tokio only on the engine thread, and GDBus callbacks that run off the GTK thread only forward plain values over async-channel. Additions:
+
+- **Single instance:** `HANDLES_COMMAND_LINE | HANDLES_OPEN`. The `command-line`, `open` and `activate` handlers create the window or take a hold synchronously; when a handler returns with neither, GApplication shuts down and a window created later fails.
+- **Background mode** is an application hold while it is on. Closing the window destroys it; a notification click or a launcher activation builds a new one. Quit stops the engine (LOGOUT) before `quit()` (51–91 ms).
+- **Resume and network:** on logind `PrepareForSleep(false)` and when `GNetworkMonitor` reports the network back, drop and reconnect every connection at once. Never wait for a socket to fail: a silently dead connection went unnoticed for 10 s.
+- **Startup:** nothing but building the window runs on the GTK thread before `present()`. The first frame binds only the visible rows, and the list grows in steps of about 40 rows per frame (M1).
 
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 

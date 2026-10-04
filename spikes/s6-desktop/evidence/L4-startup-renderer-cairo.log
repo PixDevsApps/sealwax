@@ -1,0 +1,33 @@
+# startup: live-renderer-cairo, 7 runs (1 discarded), warm, live session (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=None)
+raw events: ./target/s6/results/1791122574-startup-live-renderer-cairo.jsonl
+run 0: exec→painted 306.0 ms, exec→presented 324.3 ms, frame #1 cpu 128.8 ms layout 112.7 ms, rows bound 205, renderer GskCairoRenderer, scale 1×1.0 (discarded)
+run 1: exec→painted 314.1 ms, exec→presented 332.2 ms, frame #1 cpu 132.5 ms layout 116.7 ms, rows bound 205, renderer GskCairoRenderer, scale 1×1.0
+run 2: exec→painted 311.3 ms, exec→presented 328.7 ms, frame #1 cpu 133.7 ms layout 117.4 ms, rows bound 205, renderer GskCairoRenderer, scale 1×1.0
+run 3: exec→painted 305.5 ms, exec→presented 322.6 ms, frame #1 cpu 128.3 ms layout 112.9 ms, rows bound 205, renderer GskCairoRenderer, scale 1×1.0
+run 4: exec→painted 306.6 ms, exec→presented 324.7 ms, frame #1 cpu 128.1 ms layout 112.4 ms, rows bound 205, renderer GskCairoRenderer, scale 1×1.0
+run 5: exec→painted 312.1 ms, exec→presented 330.6 ms, frame #1 cpu 133.4 ms layout 117.2 ms, rows bound 205, renderer GskCairoRenderer, scale 1×1.0
+run 6: exec→painted 315.4 ms, exec→presented 333.9 ms, frame #1 cpu 134.4 ms layout 118.1 ms, rows bound 205, renderer GskCairoRenderer, scale 1×1.0
+
+| stage | p50 ms | p95 ms | min | max |
+| --- | --- | --- | --- | --- |
+| exec → main (loader, Rust init) | 50.5 | 52.1 | 48.8 | 52.1 |
+| main → dbus_register (GApplication, bus connection) | 0.9 | 1.0 | 0.9 | 1.0 |
+| dbus_register → startup (name request) | 0.1 | 0.1 | 0.1 | 0.1 |
+| startup → gtk_init done | 5.3 | 5.6 | 5.1 | 5.6 |
+| gtk_init → GtkApplication + Adw startup | 39.6 | 39.8 | 39.5 | 39.8 |
+| Adw → theme + CSS | 0.2 | 0.2 | 0.2 | 0.2 |
+| CSS → window built | 2.2 | 2.2 | 2.1 | 2.2 |
+| window built → present (rows in model) | 36.9 | 37.5 | 36.7 | 37.5 |
+| present → realize | 35.0 | 35.7 | 33.4 | 35.7 |
+| realize → map | 6.7 | 7.2 | 6.2 | 7.2 |
+| map → first frame painted | 134.0 | 136.2 | 129.7 | 136.2 |
+| first frame painted → presented | 18.1 | 18.5 | 17.1 | 18.5 |
+| startup → reader connection open | 0.9 | 1.0 | 0.9 | 1.0 |
+| reader: first page (open_view) | 1.0 | 1.3 | 1.0 | 1.3 |
+| reader → GTK thread has rows | 45.3 | 45.8 | 45.0 | 45.8 |
+| exec → first frame painted | 311.3 | 315.4 | 305.5 | 315.4 |
+| exec → presented on screen | 328.7 | 333.9 | 322.6 | 333.9 |
+| first frame: GTK work (before-paint → after-paint) | 132.5 | 134.4 | 128.1 | 134.4 |
+| first frame: layout part | 116.7 | 118.1 | 112.4 | 118.1 |
+
+first kept run: renderer "GskCairoRenderer", window [3440,1440], list [383,1300], rows bound 205, frame index 1, scale {"backend":"GdkWaylandDisplay","env_gdk_dpi_scale":null,"env_gdk_scale":"2","font_name":"Adwaita Sans 11","list":[383,1300],"monitor_geometry":[0,0,3440,1440],"monitor_scale":1.0,"monitor_scale_factor":1,"row_height":75,"sender_text_px":[86,19],"surface_scale":1.0,"surface_scale_factor":1,"widget_scale_factor":1,"window":[3440,1440],"xft_dpi":98304}, memory {"pss_mib":90.4560546875,"rss_mib":144.45703125,"threads":13}

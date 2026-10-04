@@ -1,0 +1,24 @@
+# background: stalwart, user spike, 2 appends, 1 cuts, 0 freezes, fake notification server, headless (Broadway, private bus) (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=Some("none"))
+emptied INBOX of spike on stalwart (26 messages)
+raw events: ./target/s6/results/1791123326-background-stalwart.jsonl
+first frame 280 ms after start; IDLE 134 ms after start; window closed into background: true
+append 0: APPEND OK → new mail 1.4 ms → notification sent 1.4 ms → server accepted 2.0 ms
+append 1: APPEND OK → new mail 1.3 ms → notification sent 1.4 ms → server accepted 1.7 ms
+cut 0 (1 connections): detected 0.2 ms, connected 14.0 ms, synced 14.2 ms, idling 14.4 ms after the cut
+after cut 0: APPEND OK → new mail 1.3 ms → notification sent 1.3 ms → server accepted 1.7 ms
+holding 330 s in background mode before a last append
+during the hold: 1 new IDLE starts, 0 disconnects
+after the hold: APPEND OK → new mail 1.5 ms → notification sent 1.5 ms → server accepted 1.8 ms
+quit: process exited 60 ms after the quit action (exit status: 0); engine stopped: true; notifications sent: 4; messages on the server: 4; relay links still open: 0
+fake server received 4 notifications
+
+| measure | n | p50 ms | p95 ms | min | max |
+| --- | --- | --- | --- | --- | --- |
+| APPEND OK → engine has the new mail | 4 | 1.3 | 1.5 | 1.3 | 1.5 |
+| APPEND OK → notification sent | 4 | 1.4 | 1.5 | 1.3 | 1.5 |
+| APPEND OK → server accepted (Notify reply) | 4 | 1.7 | 2.0 | 1.7 | 2.0 |
+| cut: → detected | 1 | 0.2 | 0.2 | 0.2 | 0.2 |
+| cut: → idling | 1 | 14.4 | 14.4 | 14.4 | 14.4 |
+| freeze+resume: → synced | 0 | 0.0 | 0.0 | 0.0 | 0.0 |
+| freeze+resume: → idling | 0 | 0.0 | 0.0 | 0.0 | 0.0 |
+exit 0

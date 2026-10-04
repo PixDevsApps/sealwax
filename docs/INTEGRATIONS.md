@@ -26,6 +26,7 @@ How Mail fits Omarchy 4, Hyprland and the mail providers. Facts about this machi
 - Configured in Lua (`~/.config/hypr/hyprland.lua` loads Omarchy's defaults, then the user's modules); `hyprctl reload` applies, `hyprctl configerrors` checks.
 - **Corner radius:** `hyprctl -j getoption decoration:rounding` (8 here, 0 on stock Omarchy), read at start and after theme changes, as omarchy-shell does ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)).
 - **Window class:** GTK4 apps use the app-id as their Wayland app_id, so rules match `^io\.github\.pixdevsapps\.<Name>$` (working: `Mail`).
+- **Focus and scale (S6):** Omarchy sets `misc.focus_on_activate = true`, so `present()` focuses the window (2–4 ms). `GDK_SCALE=2` in the session environment has no effect on GTK 4 Wayland apps; it still applies to X11 and XWayland programs.
 - **Default opacity:** Omarchy tags every window `default-opacity` (0.985 / 0.96); an opt-out snippet is `o.window(<match>, { tag = "-default-opacity" })`. This machine's `looknfeel.lua` already forces windows opaque.
 - **Key binding:** the user's `~/.config/hypr/bindings.lua` binds SUPER+SHIFT+E to BlueMail. The snippet the user can paste once Mail is installed (ML-085), with the final name:
   ```lua
@@ -36,9 +37,11 @@ How Mail fits Omarchy 4, Hyprland and the mail providers. Facts about this machi
 
 ## omarchy-shell (notifications, launcher)
 
-- omarchy-shell (Quickshell 0.3.1) owns `org.freedesktop.Notifications`; it supports actions, body markup, hyperlinks and `image-path`.
-- **Click behaviour** (read in `/usr/share/omarchy/shell/plugins/notifications/Service.qml`): the shell invokes the notification's `default` action if there is one; otherwise it focuses a window whose class matches `app_name` as a case-insensitive regex. Mail always sends a `default` action. Whether the activation token reaches `present()` is checked live in S6 (*to verify*).
+- omarchy-shell (Quickshell 0.3.1) owns `org.freedesktop.Notifications`. Measured in S6: name and vendor `quickshell`, spec 1.2, capabilities `persistence`, `body`, `body-markup`, `body-hyperlinks`, `actions`, `icon-static`; a notification is accepted in 0.8 ms.
+- **Click behaviour** (read in `/usr/share/omarchy/shell/plugins/notifications/Service.qml`): the shell invokes the notification's `default` action if there is one; otherwise it focuses a window whose class matches `app_name` as a case-insensitive regex. Mail always sends a `default` action. **Cards show no action buttons:** a left click runs `default`, a right click dismisses. GLib 2.88 ignores the `ActivationToken` signal; GTK's `present()` requests its own token and Omarchy's `focus_on_activate = true` focuses the window (2–4 ms, S6). A real click is the user's manual check.
 - Low-urgency notifications stay ≥ 5 s, normal ≥ 8 s, none longer than 30 s; Do Not Disturb stores them silently.
+- **History:** toasts are mirrored under `~/.local/state/omarchy/notifications/` and moved to `history/` (newest 10) when they leave the screen. Restored and history entries have no live actions, so a click reaches the app only while it runs (background mode, D6).
+- **What GLib sends** (S6): `app_name` is the process name, so the app sets it to the product name (`g_set_prgname`) before its first notification; the app-id goes in the `desktop-entry` hint, the themed icon name in `image-path`, and actions as detailed action names.
 - **Launcher:** the `.desktop` file is found through Quickshell `DesktopEntries` and started with `uwsm-app -- gtk-launch <id>.desktop`.
 - **Omarchy menu (snippet only):** entries can be added in `~/.config/omarchy/extensions/omarchy-menu.jsonc` (ids like `"mail.compose"`). Documented in M7, never written by the app.
 - **Unread count in the bar:** a 1.x bar-widget plugin (manifest `kinds: ["bar-widget"]`, QML with `qs.Commons`), following the user's Hertz Radio and Scarlett Control plugins.
@@ -52,7 +55,14 @@ How Mail fits Omarchy 4, Hyprland and the mail providers. Facts about this machi
 
 - Current handler: `bluemail.desktop`. `~/.config/mimeapps.list` still names a removed Thunderbird for `message/rfc822`; Mail does not touch it.
 - Mail's desktop file declares `MimeType=x-scheme-handler/mailto;`. "Make Mail the default email app" is an opt-in command that asks first and then runs `xdg-mime default <app-id>.desktop x-scheme-handler/mailto` (Stet's `set_default` pattern).
-- `mailto:` URIs are parsed per RFC 6068; `attach` / `attachment` parameters are ignored.
+- `mailto:` URIs are parsed per RFC 6068; `attach` / `attachment` parameters are ignored. Only `to`, `cc`, `bcc`, `subject`, `body` and `in-reply-to` are kept, and control characters are stripped from header values (S6).
+- **Forwarding (S6):** a second process forwards a `mailto:` to the running instance in ~51 ms, 49 of them loading libraries; a D-Bus `org.freedesktop.Application.Open` call, which launchers use for a `DBusActivatable` app, takes 0.5 ms. The desktop file keeps `DBusActivatable=true`, and the app handles both `open` and `command-line`.
+
+## Network and sleep
+
+- GIO's network monitor uses NetworkManager here (`GNetworkMonitorNM`); logind's `PrepareForSleep` signal is on the system bus (read-only subscription).
+- IMAP IDLE never notices a silently dead connection: in S6 one went unnoticed for 10 s, and it would stay unnoticed until the IDLE restart plus the read timeout. On `PrepareForSleep(false)` and when the network monitor reports the network back, the engine drops and reconnects every connection at once ([ADR-003](DECISIONS.md#adr-003-amendment--desktop-integration-measured-in-s6-2026-10-04)); the reconnect itself took ~14 ms on localhost.
+- Real suspend, Wi-Fi reassociation and NAT timeouts are not verified yet: the user's manual check first, then the M3 soak.
 
 
 ## Account autodiscovery sources

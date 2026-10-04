@@ -1,0 +1,56 @@
+# forward: 20 second instances, 10 D-Bus Open calls, live session (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=None)
+raw events: ./target/s6/results/1791122846-forward.jsonl
+run 0: exec → primary parsed 53.3 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored []
+run 1: exec → primary parsed 52.7 ms, exec → second process exited 90.7 ms, remote exit status: 0, ignored []
+run 2: exec → primary parsed 51.0 ms, exec → second process exited 91.0 ms, remote exit status: 0, ignored []
+run 3: exec → primary parsed 52.2 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored ["attach","attachment"]
+run 4: exec → primary parsed 50.4 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored []
+run 5: exec → primary parsed 51.8 ms, exec → second process exited 90.6 ms, remote exit status: 0, ignored []
+run 6: exec → primary parsed 50.4 ms, exec → second process exited 90.7 ms, remote exit status: 0, ignored []
+run 7: exec → primary parsed 52.2 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored ["attach","attachment"]
+run 8: exec → primary parsed 50.3 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored []
+run 9: exec → primary parsed 49.3 ms, exec → second process exited 90.7 ms, remote exit status: 0, ignored []
+run 10: exec → primary parsed 51.4 ms, exec → second process exited 90.9 ms, remote exit status: 0, ignored []
+run 11: exec → primary parsed 50.8 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored ["attach","attachment"]
+run 12: exec → primary parsed 52.7 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored []
+run 13: exec → primary parsed 50.7 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored []
+run 14: exec → primary parsed 51.5 ms, exec → second process exited 90.7 ms, remote exit status: 0, ignored []
+run 15: exec → primary parsed 50.5 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored ["attach","attachment"]
+run 16: exec → primary parsed 50.0 ms, exec → second process exited 90.7 ms, remote exit status: 0, ignored []
+run 17: exec → primary parsed 52.0 ms, exec → second process exited 90.7 ms, remote exit status: 0, ignored []
+run 18: exec → primary parsed 50.8 ms, exec → second process exited 90.8 ms, remote exit status: 0, ignored []
+run 19: exec → primary parsed 49.9 ms, exec → second process exited 90.7 ms, remote exit status: 0, ignored ["attach","attachment"]
+open 0: call → parsed 0.85 ms, call → reply 1.01 ms
+open 1: call → parsed 0.47 ms, call → reply 0.59 ms
+open 2: call → parsed 0.47 ms, call → reply 0.59 ms
+open 3: call → parsed 0.48 ms, call → reply 0.58 ms
+open 4: call → parsed 0.67 ms, call → reply 0.81 ms
+open 5: call → parsed 0.60 ms, call → reply 0.74 ms
+open 6: call → parsed 0.58 ms, call → reply 0.72 ms
+open 7: call → parsed 0.58 ms, call → reply 0.73 ms
+open 8: call → parsed 0.47 ms, call → reply 0.57 ms
+open 9: call → parsed 0.47 ms, call → reply 0.63 ms
+stub 0: process start → primary parsed 3.3 ms (exit status: 0)
+stub 1: process start → primary parsed 3.0 ms (exit status: 0)
+stub 2: process start → primary parsed 3.4 ms (exit status: 0)
+stub 3: process start → primary parsed 2.8 ms (exit status: 0)
+stub 4: process start → primary parsed 3.1 ms (exit status: 0)
+stub 5: process start → primary parsed 3.6 ms (exit status: 0)
+stub 6: process start → primary parsed 2.9 ms (exit status: 0)
+stub 7: process start → primary parsed 2.9 ms (exit status: 0)
+stub 8: process start → primary parsed 2.7 ms (exit status: 0)
+stub 9: process start → primary parsed 3.3 ms (exit status: 0)
+primary quit 201.5 ms after the quit action, exit status: 0
+
+| measure | n | p50 ms | p95 ms | min | max |
+| --- | --- | --- | --- | --- | --- |
+| second process start → primary parsed the mailto | 20 | 50.8 | 52.7 | 49.3 | 53.3 |
+| second process start → second process exited | 20 | 90.8 | 90.9 | 90.6 | 91.0 |
+| second process start → its main() | 20 | 48.9 | 50.8 | 47.2 | 51.4 |
+| second process main() → registered (found the primary) | 20 | 1.3 | 1.6 | 1.2 | 1.6 |
+| second process registered → primary received the command line | 20 | 0.5 | 0.6 | 0.4 | 0.9 |
+| D-Bus Open call → primary parsed | 10 | 0.5 | 0.8 | 0.5 | 0.8 |
+| D-Bus Open call → reply | 10 | 0.6 | 1.0 | 0.6 | 1.0 |
+| GTK-free stub process start → primary parsed | 10 | 3.0 | 3.6 | 2.7 | 3.6 |
+| GTK-free stub process start → its main() | 10 | 2.1 | 2.6 | 1.9 | 2.6 |
+attach variants: ignored fields reported by the primary: [Array [String("attach"), String("attachment")], Array [String("attach"), String("attachment")], Array [String("attach"), String("attachment")], Array [String("attach"), String("attachment")], Array [String("attach"), String("attachment")]]

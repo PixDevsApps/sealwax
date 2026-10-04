@@ -1,0 +1,25 @@
+# notify: fake server, headless (Broadway, private bus) (GDK_SCALE=Some("2"), GSK_RENDERER=None, GTK_A11Y=Some("none"))
+raw events: ./target/s6/results/1791123256-notify-fake.jsonl
+server-info: {"capabilities":["actions","body","body-markup","persistence"],"error":null,"event":"server-info","name":"s6-fake-notifyd","pid":235608,"spec":"1.2","t":16487286600305,"vendor":"Mail spike S6","version":"0.1"}
+notification-sent: {"event":"notification-sent","key":"notify-1","pid":235608,"t":16487286625165,"target":"cache:1"}
+notification-sent: {"event":"notification-sent","key":"notify-2","pid":235608,"t":16488760879616,"target":"cache:2"}
+dbus-notify: {"actions":["default","","app.archive-message('cache:1')","Archive","app.mark-read('cache:1')","Mark read"],"app_icon":"","app_name":"email-spike-s6","desktop_entry":"io.github.pixdevsapps.Mail.SpikeS6","event":"dbus-notify","expire_timeout":-1,"hints":["desktop-entry","urgency","category","image-path"],"image_path":"mail-unread-symbolic","key":"notify-1","pid":235608,"replaces_id":0,"serial":16,"t":16487286868267,"urgency":0}
+dbus-notify: {"actions":["default","","app.archive-message('cache:2')","Archive","app.mark-read('cache:2')","Mark read"],"app_icon":"","app_name":"email-spike-s6","desktop_entry":"io.github.pixdevsapps.Mail.SpikeS6","event":"dbus-notify","expire_timeout":-1,"hints":["desktop-entry","urgency","category","image-path"],"image_path":"mail-unread-symbolic","key":"notify-2","pid":235608,"replaces_id":0,"serial":17,"t":16488760946216,"urgency":0}
+dbus-reply: {"error":null,"event":"dbus-reply","id":1,"key":"notify-1","pid":235608,"sent":16487286625165,"serial":16,"t":16487287127238}
+dbus-reply: {"error":null,"event":"dbus-reply","id":2,"key":"notify-2","pid":235608,"sent":16488760879616,"serial":17,"t":16488761292428}
+dbus-activation-token: {"event":"dbus-activation-token","id":1,"ours":"notify-1","pid":235608,"t":16487587423119,"token_len":15}
+dbus-action-invoked: {"action":"default","event":"dbus-action-invoked","id":1,"ours":"notify-1","pid":235608,"t":16487587451419}
+dbus-action-invoked: {"action":"app.archive-message('cache:2')","event":"dbus-action-invoked","id":2,"ours":"notify-2","pid":235608,"t":16489061568558}
+platform-data: {"activation_token":null,"event":"platform-data","keys":["cwd","environ","options"],"pid":235608,"s6_sent":null,"t":16486097185646}
+message-shown: {"action":16487587474720,"active_at":null,"active_now":true,"event":"message-shown","had_window":true,"hyprland_active_class":null,"invoked_signal":16487587451419,"key":"notify-1","notification_id":1,"pid":235608,"platform_keys":[],"present":16487587708511,"read":16487587612430,"row_found":true,"server_token_used":15,"shown_frame_end":16487710106088,"shown_presented":null,"t":16488760840506,"target":"cache:1"}
+button-action: {"action":"archive-message","event":"button-action","pid":235608,"platform":null,"t":16489061614848,"target":"cache:2"}
+window-active: {"active":true,"event":"window-active","pid":235608,"t":16486237187856}
+window-active: {"active":false,"event":"window-active","pid":235608,"t":16491371615161}
+notification "notify-1": id 1, send → server reply (accepted) 0.5 ms, action {"key":"default","t":16487587451419}, closed null
+notification "notify-2": id 2, send → server reply (accepted) 0.4 ms, action {"key":"app.archive-message('cache:2')","t":16489061568558}, closed null
+click: ActionInvoked → action handler 0.0 ms, action → message frame painted 122.6 ms, server token used: 15
+fake server received id 1 at 16487287056668: app_name "email-spike-s6", summary "Mail spike S6", actions ["default", "", "app.archive-message('cache:1')", "Archive", "app.mark-read('cache:1')", "Mark read"], hints ["desktop-entry", "urgency", "category", "image-path"]
+fake server received id 2 at 16488761182158: app_name "email-spike-s6", summary "Mail spike S6", actions ["default", "", "app.archive-message('cache:2')", "Archive", "app.mark-read('cache:2')", "Mark read"], hints ["desktop-entry", "urgency", "category", "image-path"]
+fake server clicked id 1 action "default" at 16487587289698
+fake server clicked id 2 action "app.archive-message('cache:2')" at 16489061354817
+app exit: Ok(ExitStatus(unix_wait_status(0)))
