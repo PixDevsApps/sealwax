@@ -1,0 +1,111 @@
+# The shell in the live Omarchy theme (ML-021 visual pass, DESIGN.md "Theme tokens"): stock
+# themes from tests/theme/ swapped into the run's scratch Omarchy state as omarchy-theme-set
+# does, corners set as config.toml's corner_radius, and the shell's surfaces, colours, corners,
+# fonts, contrast and tooltips checked against the theme the follower applied. Fictional sample
+# accounts, list and message. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/theme.sealwax-test
+
+desktop tiling
+resize 1440 900
+
+# Dark and square: matte-black on stock Omarchy (no Hyprland rounding).
+theme matte-black
+corners 0
+assert-color welcome background window
+assert-label welcome-hint "or press Ctrl+Shift+P / F1 for every command"
+assert-labelled
+sidebar sample
+list sample
+reader sample
+assert-layout wide
+screenshot $DIR/../../.local/selftest/theme-1440-matte-black.png
+
+# Surfaces: the folders and the list on the sidebar role, the reader on the window's.
+assert-color sidebar background sidebar
+assert-color list-pane background sidebar
+assert-color reader-pane background window
+assert-font folder-list chrome
+assert-font list-title chrome
+
+# Compose is insensitive until the composer exists (M6) and still reads: the selected chip's
+# pair instead of libadwaita's half-transparent accent.
+assert-sensitive compose false
+assert-color compose background chip
+assert-color compose text chip-text
+assert-contrast compose 4.5
+assert-height compose 34
+assert-radius compose 0
+
+# Folder rows: 30 px, square with square corners (libadwaita's sidebar rows were 36 px with
+# 9 px corners); unread counts in the accent, the rest quiet; the status dot is a widget.
+assert-height folder:personal/inbox 30
+assert-radius folder:personal/inbox 0
+assert-color count:personal/inbox text unread
+assert-color count:personal/drafts text secondary
+assert-color count:all-inboxes text secondary
+assert-color heading:personal text secondary
+assert-width status:personal 6
+assert-height status:personal 6
+assert-color status:personal background accent
+assert-color status:work background secondary
+assert-color sidebar-summary text secondary
+assert-color list-subtitle text secondary
+
+# Tooltips name the keys in use, and follow keys.toml.
+assert-tooltip compose "New message (c, Ctrl+N)"
+assert-tooltip config "Open config.toml (Ctrl+,)"
+assert-tooltip reader-back "Back to the list (Escape, u)"
+write-file $TMP/config/sealwax/keys.toml "compose = [\"<Control>m\"]\ncommand-palette = [\"<Control><Shift>k\", \"F1\"]\n"
+wait-until assert-tooltip compose "New message (Ctrl+M)"
+assert-label welcome-hint "or press Ctrl+Shift+K / F1 for every command"
+write-file $TMP/config/sealwax/keys.toml ""
+wait-until assert-tooltip compose "New message (c, Ctrl+N)"
+
+# The rail: an accent badge on unread mail only, the other account as initial and count.
+resize 1100 900
+assert-layout rail
+assert-width rail:personal/inbox 40
+assert-height rail:personal/inbox 36
+assert-radius rail:personal/inbox 0
+assert-color badge:personal/inbox background accent
+assert-color badge:personal/inbox text on-accent
+assert-shown badge:personal/drafts false
+assert-shown rail-account:work true
+assert-shown rail-account:personal false
+assert-labelled
+screenshot $DIR/../../.local/selftest/theme-1100-matte-black.png
+
+# Light and rounded: catppuccin-latte with Hyprland's rounding of 8 (6 for rows and controls).
+theme catppuccin-latte
+corners 8
+assert-radius rail:personal/inbox 6
+resize 1440 900
+assert-layout wide
+# Back from the rail, the sidebar still marks the folder shown (GTK's own list selection
+# followed the focus to Drafts).
+assert-folder personal/inbox
+assert-color sidebar background sidebar
+assert-color reader-pane background window
+assert-color compose background chip
+assert-contrast compose 4.5
+assert-radius compose 8
+assert-radius folder:personal/inbox 6
+assert-color count:personal/inbox text unread
+assert-color status:personal background accent
+assert-width status:personal 6
+screenshot $DIR/../../.local/selftest/theme-1440-catppuccin-latte.png
+
+# One pane at a time: the list keeps the sidebar surface without the pane borders.
+resize 800 900
+assert-layout narrow
+assert-color list-pane background sidebar
+assert-color list-compose background chip
+assert-contrast list-compose 4.5
+assert-tooltip list-compose "New message (c, Ctrl+N)"
+
+# Back to the built-in palette when no Omarchy theme is installed.
+theme none
+resize 1440 900
+assert-color sidebar background sidebar
+assert-color reader-pane background window
+assert-contrast compose 4.5
