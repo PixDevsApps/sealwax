@@ -157,6 +157,7 @@ impl SealwaxApplication {
             started: Cell::new(Some(started)),
             window: RefCell::new(None),
             first_frame: Rc::new(Cell::new(None)),
+            after_first_frame: Rc::default(),
             early_startup: RefCell::new(Vec::new()),
             on_first_window: RefCell::new(None),
             present_gate: RefCell::new(None),
@@ -206,6 +207,8 @@ pub struct AppState {
     started: Cell<Option<Instant>>,
     window: RefCell<Option<Window>>,
     first_frame: Rc<Cell<Option<Instant>>>,
+    /// Work that waits until the first frame is painted, so it never delays it.
+    after_first_frame: Rc<RefCell<Vec<Hook>>>,
     early_startup: RefCell<Vec<Hook>>,
     on_first_window: RefCell<Option<WindowHook>>,
     present_gate: RefCell<Option<PresentGate>>,
@@ -615,8 +618,29 @@ impl AppState {
         if self.mailbox.is_ready() {
             self.fill_sidebar(window, &list);
         }
-        self.install_reader(window, &list, keymap);
+        // The reader's WebKit engine is created after the first frame: it isn't needed to show
+        // the list, and creating it inside the window build cost startup time (M1, live). It
+        // takes the keymap current by then, since `settings_changed` only updates a reader
+        // that exists.
+        let weak = Rc::downgrade(self);
+        let (target, shown) = (window.clone(), list.clone());
+        self.run_after_first_frame(move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(prefs) = state.preferences()
+            {
+                state.install_reader(&target, &shown, &prefs.keymap());
+            }
+        });
         self.list.replace(Some(list));
+    }
+
+    /// Runs `hook` once the first window's first frame is painted, or at once if it already is.
+    fn run_after_first_frame(&self, hook: impl FnOnce() + 'static) {
+        if self.first_frame.get().is_some() {
+            hook();
+        } else {
+            self.after_first_frame.borrow_mut().push(Box::new(hook));
+        }
     }
 
     /// The reader (ML-027) shows the list's selection, with its place in the list ("n of N")
@@ -659,6 +683,11 @@ impl AppState {
                 target.clear_reader();
             }
         });
+        if let Some(id) = list.selected() {
+            self.reader_shows.set(Some(id));
+            window.set_reader(&reader.widget());
+            reader.show(id);
+        }
         let previous = list.clone();
         reader.connect_previous(move || previous.select_previous());
         let next = list.clone();
@@ -773,7 +802,13 @@ impl AppState {
             if std::env::var_os(config::START_FULLSCREEN_ENV).is_some_and(|value| value == "1") {
                 window.window().fullscreen();
             }
-            log_first_frame(window.window(), started, exec_ns, self.first_frame.clone());
+            log_first_frame(
+                window.window(),
+                started,
+                exec_ns,
+                self.first_frame.clone(),
+                self.after_first_frame.clone(),
+            );
         }
         window.present();
         if let Some(hook) = self.on_first_window.take() {
@@ -806,6 +841,7 @@ fn log_first_frame(
     started: Instant,
     exec_ns: Option<i64>,
     painted: Rc<Cell<Option<Instant>>>,
+    after: Rc<RefCell<Vec<Hook>>>,
 ) {
     let on_map = Rc::new(RefCell::new(None));
     let handler = window.connect_map(glib::clone!(
@@ -821,6 +857,7 @@ fn log_first_frame(
             };
             let on_paint = Rc::new(RefCell::new(None));
             let painted = painted.clone();
+            let after = after.clone();
             let handler = clock.connect_after_paint(glib::clone!(
                 #[strong]
                 on_paint,
@@ -834,6 +871,14 @@ fn log_first_frame(
                     if let Some(exec_ns) = exec_ns {
                         let since = (glib::monotonic_time() * 1000 - exec_ns) as f64 / 1e6;
                         tracing::info!("first-frame-from-exec {since:.1}");
+                    }
+                    let hooks = std::mem::take(&mut *after.borrow_mut());
+                    if !hooks.is_empty() {
+                        glib::idle_add_local_once(move || {
+                            for hook in hooks {
+                                hook();
+                            }
+                        });
                     }
                 }
             ));

@@ -392,6 +392,7 @@ Built as [m1/reader.md](m1/reader.md) records, with every layer of the S2 amendm
 - **Focus:** before a page leaves, a focus held in it moves to the next body. GTK 4.22 would otherwise move it later, from a widget no longer in the window (a Gtk-CRITICAL the reader's examples now fail on). The lead's wiring clears the reader before the window for the same reason.
 - **The app's store:** the reader reads through a `MessageSource`: the app's `Mailbox`, which owns the store and closes it at shutdown, or a store of its own in examples.
 - **A crashed web process** renders the message once more, then as text.
+- **Started after the first frame** (added 2026-10-04, after the live startup check): the reader, and with it the engine, is created right after the first window's first painted frame instead of in the window build. A selection made before then is shown once the reader exists, and the reader takes the keymap current at that moment. The view prewarm still waits for the reader to be shown.
 
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 

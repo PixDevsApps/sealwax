@@ -68,7 +68,7 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
             probe
                 .memory
                 .borrow_mut()
-                .push((arg(0).to_owned(), memory()));
+                .push((arg(0).to_owned(), memory(), Mappings::read()));
         }),
         "perf-report" => probe(harness).map(|probe| probe.report()),
         _ => return None,
@@ -109,7 +109,7 @@ struct Probe {
     /// Inserted message ids as their change events arrived, with when.
     inserted: RefCell<Vec<(MessageId, Instant)>>,
     results: RefCell<Vec<(String, f64)>>,
-    memory: RefCell<Vec<(String, [f64; 7])>>,
+    memory: RefCell<Vec<(String, [f64; 7], Mappings)>>,
     window: (i32, i32),
 }
 
@@ -417,11 +417,15 @@ impl Probe {
             "  # | memory (MiB) | VmRSS | VmHWM | RssAnon | RssFile | Pss | Pss_Anon | Pss_File |"
         );
         println!("  # | --- | --- | --- | --- | --- | --- | --- | --- |");
-        for (label, values) in self.memory.borrow().iter() {
+        for (label, values, _) in self.memory.borrow().iter() {
             println!(
                 "  # | {label} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} | {:.1} |",
                 values[0], values[1], values[2], values[3], values[4], values[5], values[6]
             );
+        }
+        for (label, _, mappings) in self.memory.borrow().iter() {
+            println!("  # Pss by mapping at {label} (MiB): {}", mappings.kinds());
+            println!("  # largest files at {label} (MiB): {}", mappings.files(8));
         }
     }
 }
@@ -476,6 +480,117 @@ fn memory() -> [f64; 7] {
         field(&rollup, "Pss_Anon"),
         field(&rollup, "Pss_File"),
     ]
+}
+
+/// Pss from `/proc/self/smaps`, summed by what is mapped, so the GPU driver's share can be told
+/// from Sealwax's own heap. Files are named by their base name only.
+struct Mappings {
+    kinds: Vec<(&'static str, f64)>,
+    files: Vec<(String, f64)>,
+}
+
+impl Mappings {
+    fn read() -> Self {
+        let smaps = std::fs::read_to_string("/proc/self/smaps").unwrap_or_default();
+        let mut kinds: Vec<(&'static str, f64)> = Vec::new();
+        let mut files: Vec<(String, f64)> = Vec::new();
+        let mut path = String::new();
+        for line in smaps.lines() {
+            let mut fields = line.split_whitespace();
+            let Some(first) = fields.next() else {
+                continue;
+            };
+            if !first.ends_with(':') {
+                path = fields.skip(4).collect::<Vec<_>>().join(" ");
+                continue;
+            }
+            if first != "Pss:" {
+                continue;
+            }
+            let mib = fields
+                .next()
+                .and_then(|kib| kib.parse::<f64>().ok())
+                .unwrap_or(0.0)
+                / 1024.0;
+            let kind = mapping_kind(&path);
+            match kinds.iter_mut().find(|(name, _)| *name == kind) {
+                Some((_, total)) => *total += mib,
+                None => kinds.push((kind, mib)),
+            }
+            if path.starts_with('/') {
+                let name = path.rsplit('/').next().unwrap_or_default().to_owned();
+                match files.iter_mut().find(|(file, _)| *file == name) {
+                    Some((_, total)) => *total += mib,
+                    None => files.push((name, mib)),
+                }
+            }
+        }
+        kinds.sort_by(|a, b| b.1.total_cmp(&a.1));
+        files.sort_by(|a, b| b.1.total_cmp(&a.1));
+        Self { kinds, files }
+    }
+
+    fn kinds(&self) -> String {
+        let parts: Vec<String> = self
+            .kinds
+            .iter()
+            .map(|(kind, mib)| format!("{kind} {mib:.1}"))
+            .collect();
+        parts.join(" · ")
+    }
+
+    fn files(&self, count: usize) -> String {
+        let parts: Vec<String> = self
+            .files
+            .iter()
+            .take(count)
+            .map(|(file, mib)| format!("{file} {mib:.1}"))
+            .collect();
+        parts.join(" · ")
+    }
+}
+
+fn mapping_kind(path: &str) -> &'static str {
+    let lower = path.to_ascii_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|needle| lower.contains(needle));
+    if path.is_empty() || path.starts_with('[') {
+        "heap and anonymous"
+    } else if path.starts_with("/memfd:") || has(&["/dev/shm/", "sysv"]) {
+        "shared memory"
+    } else if path.starts_with("/dev/") {
+        "GPU device mappings"
+    } else if has(&[
+        "nvidia",
+        "vulkan",
+        "libegl",
+        "libglx",
+        "libgldispatch",
+        "libgl.so",
+        "libgles",
+        "libopengl",
+        "libllvm",
+        "spirv",
+        "libgbm",
+        "libdrm",
+        "mesa",
+        "/dri/",
+    ]) {
+        "GPU driver and GL/Vulkan libraries"
+    } else if has(&["webkit", "javascriptcore"]) {
+        "WebKit libraries"
+    } else if has(&[".ttf", ".otf", ".ttc", "fontconfig", "/fonts/"]) {
+        "fonts"
+    } else if lower
+        .rsplit('/')
+        .next()
+        .is_some_and(|name| name.starts_with("sealwax"))
+    {
+        "the sealwax binary"
+    } else if has(&[".so"]) {
+        "other libraries"
+    } else {
+        "other files"
+    }
 }
 
 #[derive(Clone, Copy)]
