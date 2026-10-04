@@ -10,6 +10,10 @@ publish.workspace = true
 sealwax-domain.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+async-channel.workspace = true
+rusqlite = { workspace = true, features = ["hooks"] }
+sha2.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

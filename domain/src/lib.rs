@@ -4,5 +4,8 @@ pub mod actions;
 pub mod config;
 pub mod keymap;
 pub mod mailto;
+pub mod message;
+pub mod model;
 pub mod palette;
+pub mod snippet;
 pub mod theme;

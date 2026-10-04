@@ -1,0 +1,22 @@
+[package]
+name = "sealwax-fixtures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "sealwax-fixtures"
+path = "src/main.rs"
+
+[dependencies]
+sealwax-domain.workspace = true
+sealwax-infrastructure.workspace = true
+anyhow.workspace = true
+encoding_rs.workspace = true
+libc.workspace = true
+rusqlite.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
