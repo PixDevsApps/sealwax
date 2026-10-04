@@ -150,12 +150,27 @@ Release builds, 12:01–12:25 UTC, residential network in Norway; report [spikes
 | ≥ 45/50 correct | 42/50 (32/50 without presets) | Missed — all misses Norwegian |
 | 50/50 TLS-only | 50/50 in every run | Pass |
 | p50 ≤ 2 s / p95 ≤ 6 s / cap 10 s | 134 ms / 5,008 ms / max 5,096 ms (tuned: 56 ms / 3,162 ms) | Pass |
-| Dummy addresses only; full address only to the domain's own HTTPS autoconfig | 5,658 requests logged, 0 violations | Pass |
+| Dummy addresses only; full address only to the domain's own HTTPS autoconfig | 5,658 requests logged, 0 violations | Pass — **corrected 2026-10-04 (S4b):** the audit checked only first requests; runs C, D1 and D2 followed `autoconfig.msn.com` → `www.msn.com`, a redirect that keeps the query, so the dummy address `test@msn.com` most likely reached `www.msn.com` there (S4's log kept only the redirect target). A dummy address, no personal data; the rule as written was not met |
 | ≤ 2 login attempts | 0 (the probe can only send CAPABILITY, STARTTLS and EHLO) | Pass |
 
 `cargo test -p email-spike-s4`: 40 tests pass; fmt and clippy clean (re-run by the lead).
 
 At the M0 gate (2026-10-04) the user declined the Norwegian-preset fix; S4b (ML-098) looks for general rules that pass the bar.
+
+### S4b autodetect, general rules (ML-098) — 2026-10-04
+
+Release builds, 14:23–14:45 UTC, residential network in Norway, cold DNS at 1.1.1.1; report [spikes/S4b-autodetect.md](spikes/S4b-autodetect.md). Rubric frozen 14:10 UTC before any code, rules frozen 14:28:35, held-out list frozen 14:42:23 (sha256 `a8d32d12…6281c`, re-checked by the lead) before any request to its domains.
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| ≥ 45/50 correct on S4's list, without Norwegian presets | 44/50 under S4's strict rubric; 45/50 under the extended rubric (E1: the product's second login attempt with the other username form; E2: an undocumented alias on the same addresses, verified). Same binary with the new rules off: 42 and 44 | Strict: missed by one. Extended: met — the user decides which rubric counts |
+| Held-out list (26 domains: 10 Nordic ISPs and hosts, 8 other European ISPs, 8 organizations' custom domains) | 13/26 strict (50 %); 16/26 extended (62 %); one measured run | No bar set; far below the 90 % that 45/50 implies, because presets answer 34 of S4's 50 rows and none of these |
+| TLS-only | 50/50; held-out 26/26 | Pass |
+| p50 ≤ 2 s / p95 ≤ 6 s / cap 10 s | 52 ms / 4,602 ms / max 5,091 ms (held-out 272 / 5,344 / 5,519 ms) | Pass |
+| Dummy addresses only; full address only to the domain's own HTTPS autoconfig | 3,884 requests logged across six runs; 197 carried the dummy address, 196 to the domain's own autoconfig and 1 through the same-domain `autoconfig.msn.com` → `www.msn.com` redirect (exhaustive run only, where preset domains are queried) | One deviation, the same one S4 missed; fixed by the redirect rule in SECURITY.md |
+| ≤ 2 login attempts | 0 (CAPABILITY, STARTTLS and EHLO only) | Pass |
+
+No row S4 got right is wrong now (checked row by row by the lead). `cargo test -p email-spike-s4b`: 53 tests pass; the whole-workspace `tools/ci.sh --ui` passed afterwards (187 tests, 10 ignored; smoke run `first-frame 45.0`).
 
 ### SecretStore (ML-006) — 2026-10-04
 

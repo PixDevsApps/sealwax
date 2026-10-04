@@ -1,0 +1,5 @@
+Rubric freeze for S4b, recorded before any run of the S4b pipeline.
+file: docs/spikes/S4b-autodetect.md
+utc: 2026-10-04T14:10:16Z
+sha256: 8f9ebd7d781f4ba7524749789ff7e94d52e5470d35abe65285822815f3106516
+rubric section sha256 (from '## Rubric' to '## Verdict', exclusive): d0c48f4451aa2ce5b27c7e12a5fa1e09d9b28393894f7b4343bcad4c5719e73f

@@ -1,0 +1,44 @@
+== exhaustive-s4: 50 domains (S4 list), started at unix 1791124700
+options: presets=true exhaustive=true rules: own_host=true srv_conventional=true mx_hosts=true; resolver=1.1.1.1 order=preset>autoconfig>srv>ispdb>own-host>mx-preset>well-known>mx-autoconfig>mx-ispdb>probe>mx-probe probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms mx_autoconfig=1500ms own_host=3000ms probe_connect=3000ms probe_budget=5000ms
+correct (strict rubric): 44/50
+correct (extended rubric): 45/50
+  extended adds via E1: online.no
+replay, not a rule: strict score if MX-host-probe results asked for the username: 46/50
+TLS-only final results: 50/50
+  group big: strict 22/22, extended 22/22
+  group fastmail: strict 3/3, extended 3/3
+  group m365: strict 5/5, extended 5/5
+  group norway: strict 7/13, extended 8/13
+  group workspace: strict 4/4, extended 4/4
+  group zoho: strict 3/3, extended 3/3
+final ranked result: n=50 p50=57 p95=3092 max=5021 ms
+first usable result: n=48 p50=15 p95=1499 max=5021 ms
+  final, group big: n=22 p50=5 p95=148 max=438 ms
+  final, group fastmail: n=3 p50=641 p95=1040 max=1040 ms
+  final, group m365: n=5 p50=57 p95=184 max=184 ms
+  final, group norway: n=13 p50=239 p95=5021 max=5021 ms
+  final, group workspace: n=4 p50=61 p95=66 max=66 ms
+  final, group zoho: n=3 p50=79 p95=113 max=113 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=2 autoconfig=3 ispdb=2 mx-preset=15 mx-probe=2 own-host=3 preset=20 srv=3
+rule mx-probe decided: birdlife.no piratpartiet.no
+rule own-host decided: online.no tussa.com
+rule own-host-over-mx decided: altibox.no
+rule srv-conventional decided: lyse.net broadpark.no
+TCP connections in discovery: 422 (general probe started for 50 domains), at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+privacy: 1563 requests logged (1563 in discovery, 0 in scoring checks); 51 carried the dummy address, all to autoconfig.<domain>: true; violations: none; refused redirects that would have carried it elsewhere: 0
+redirects: googlemail.com redirect-refused https://mail.google.com; hotmail.com redirect-refused https://outlook.live.com; live.com redirect-followed https://outlook.live.com; live.com redirect-followed https://outlook.live.com; live.com redirect-followed https://outlook.live.com; msn.com redirect-followed https://www.msn.com; msn.com redirect-followed https://www.msn.com; icloud.com redirect-followed https://www.icloud.com; me.com redirect-refused https://www.icloud.com; yahoo.com redirect-followed https://www.yahoo.com; aol.com redirect-followed https://www.aol.com; fastmail.com redirect-followed https://www.fastmail.com; gmx.com redirect-followed https://www.gmx.com; gmx.net redirect-followed https://www.gmx.net; mail.com redirect-followed https://www.mail.com; zoho.com redirect-followed https://www.zoho.com; mail.ru redirect-followed https://mail.ru; mail.ru redirect-refused https://login.vk.ru; mailbox.org redirect-followed https://auto.mailbox.org; tutanota.com redirect-refused https://tuta.com; online.no redirect-followed https://www.online.no; online.no redirect-refused https://www.telenor.no; altibox.no redirect-followed https://www.altibox.no; one.com redirect-followed https://www.one.com; one.com redirect-followed https://login.one.com; one.com redirect-followed https://mail.one.com; hotmail.no redirect-refused https://outlook.live.com; chello.no redirect-refused https://www.fruits.co; mozilla.org redirect-followed https://www.mozilla.org; finn.no redirect-refused http://finn.no; nrk.no redirect-followed https://www.nrk.no; vy.no redirect-followed https://www.vy.no; uib.no redirect-followed https://www.uib.no; oslomet.no redirect-followed https://www.oslomet.no; oslomet.no redirect-followed https://nett.oslomet.no; eff.org redirect-followed https://www.eff.org; cyrusimap.org redirect-followed https://www.cyrusimap.org; gitea.io redirect-refused https://gitea.com
+per-source (each source alone, strict rubric; latency = completion time since start):
+  preset        answered=20 correct-alone=20 p50=0 p95=0 max=0 ms; wrong for: []
+  autoconfig    answered= 6 correct-alone= 4 p50=40 p95=438 max=640 ms; wrong for: [yandex.com domeneshop.no]
+  srv           answered=11 correct-alone= 8 p50=51 p95=550 max=1040 ms; wrong for: [googlemail.com yandex.com lyse.net]
+  ispdb         answered=20 correct-alone=18 p50=61 p95=265 max=588 ms; wrong for: [web.de yandex.com]
+  own-host      answered=19 correct-alone= 9 p50=172 p95=3006 max=3018 ms; wrong for: [googlemail.com outlook.com gmx.com gmx.net yandex.com online.no broadpark.no tussa.com domeneshop.no one.com]
+  mx-preset     answered=30 correct-alone=26 p50=17 p95=121 max=1040 ms; wrong for: [icloud.com me.com zoho.com altibox.no]
+  well-known    answered= 1 correct-alone= 1 p50=218 p95=1505 max=1506 ms; wrong for: []
+  mx-autoconfig answered= 1 correct-alone= 0 p50=44 p95=571 max=1481 ms; wrong for: [yandex.com]
+  mx-ispdb      answered=27 correct-alone=19 p50=56 p95=563 max=1069 ms; wrong for: [aol.com gmx.com yandex.com altibox.no vy.no uib.no stortinget.no eff.org]
+  probe         answered=21 correct-alone=10 p50=5015 p95=5027 max=5032 ms; wrong for: [googlemail.com outlook.com me.com gmx.com gmx.net yandex.com online.no broadpark.no tussa.com domeneshop.no one.com]
+  mx-probe      answered= 4 correct-alone= 0 p50=5015 p95=5027 max=5032 ms; wrong for: [gmx.com yandex.com birdlife.no piratpartiet.no]
+wrong (strict): online.no: IMAP username address wrong; lyse.net: SMTP smtp.altibox.no:587 STARTTLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; domeneshop.no: IMAP username address wrong; birdlife.no: IMAP username address wrong; piratpartiet.no: IMAP username address wrong
+wrong (extended): lyse.net: SMTP smtp.altibox.no:587 STARTTLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; domeneshop.no: IMAP username address wrong; birdlife.no: IMAP username address wrong; piratpartiet.no: IMAP username address wrong

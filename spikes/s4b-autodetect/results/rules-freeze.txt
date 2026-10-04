@@ -1,0 +1,19 @@
+Rule freeze for S4b: the source of the final rules, recorded before the held-out list was read and before any request to its domains.
+utc: 2026-10-04T14:28:35Z
+sources (sha256):
+f13c6ea0951a29249aed47c5b6d26365a68cabdda793637bb95344822755bd80  Cargo.toml
+3a00fb1aa55b5bc9dfac605b111bf091d7e0ee689cd9ef1a46299679c3385917  src/clientconfig.rs
+9e9d7037aa1981bcde352969098cf5e5af5d7fc39872f5e4a0e6a3b1e324aa10  src/dnsdata.rs
+24d4a910067b6006abd3c61d4adfaa76c4e110a39c25d27186d2e6729115cf6a  src/fetch.rs
+d3c1e5ecf8ea070eff5ba18c002211d7c9f22ea19268a45e855109ade064bab7  src/heldout.rs
+01f8f012ad3c23d236a942350c3fcf2740af8e4dc60b374973e4baea626b4998  src/main.rs
+b9a2746f68af0fb4e73f105399e16a01af705c771c8099182ba672e5ada82f7b  src/model.rs
+6955907ef0d423640d5a4652aa4cdff53ee30ad0f52c2d45870ca4e636b38850  src/pipeline.rs
+d80e6e6af020074771b2cc24a047ef04b7ba85b582cbbddf448806dcbee8ded6  src/presets.rs
+10c6b41601a0c891260007e40c861a6ccfab7f215a266546ffbec397cd2ac911  src/probe.rs
+26d3977dc0209db125c49fb07bca23784a827e74a3181c871acb8b506e34764c  src/rank.rs
+053539447244500def94ad617a99b86892d1242353e8e9220d41096989bf64c5  src/score.rs
+445e20d5c0a01834f09ae3d4295c3d7185ec92c6d383940d41a2cbe0ff7c61fe  ../s4-autodetect/src/truth.rs
+combined sha256 of the lines above: ad6d1b7a977c40219be0971722b1f17ec8e30f32fd6521ca8abe66f4cab2bf55
+release binary sha256: 967e4e20bae74833f8a116b37617134c11ebaf2dfb8dda9a277e40b3985be468
+held-out fragments present at this moment (not read): heldout-europe.tsv 

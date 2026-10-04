@@ -1,0 +1,7 @@
+Held-out freeze for S4b: recorded before any pipeline, probe, DNS, autoconfig or ISPDB request to these domains.
+file: spikes/s4b-autodetect/data/heldout.tsv
+utc: 2026-10-04T14:42:23Z
+sha256: a8d32d12908e5f7c29f165a7b525360e975d5c7a6b79f5a7c1a38125e7e6281c
+rows: 26 (nordic 10, europe 8, custom 8; 1 no-mail, 1 unsupported, 0 unknown)
+rules in force: results/rules-freeze.txt (combined sha256 ad6d1b7a977c40219be0971722b1f17ec8e30f32fd6521ca8abe66f4cab2bf55)
+binary sha256 now: 967e4e20bae74833f8a116b37617134c11ebaf2dfb8dda9a277e40b3985be468

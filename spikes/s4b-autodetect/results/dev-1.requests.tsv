@@ -1,0 +1,478 @@
+domain	phase	kind	target	carries_dummy_address
+mailbox.org	discovery	https	autoconfig.mailbox.org/mail/config-v1.1.xml?emailaddress=…	true
+mailbox.org	discovery	dns	imap.mailbox.org AAAA/A	false
+mailbox.org	discovery	dns	mailbox.org MX	false
+mailbox.org	discovery	https	mailbox.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+mailbox.org	discovery	dns	_submissions._tcp.mailbox.org SRV	false
+mailbox.org	discovery	dns	_submission._tcp.mailbox.org SRV	false
+mailbox.org	discovery	dns	_imaps._tcp.mailbox.org SRV	false
+mailbox.org	discovery	dns	_imap._tcp.mailbox.org SRV	false
+mailbox.org	discovery	dns	_pop3s._tcp.mailbox.org SRV	false
+mailbox.org	discovery	dns	_pop3._tcp.mailbox.org SRV	false
+mailbox.org	discovery	https	autoconfig.thunderbird.net/v1.1/mailbox.org	false
+mailbox.org	discovery	tcp	imap.mailbox.org:993	false
+mailbox.org	discovery	dns	smtp.mailbox.org AAAA/A	false
+mailbox.org	discovery	redirect-followed	https://auto.mailbox.org	false
+mailbox.org	discovery	tcp	smtp.mailbox.org:465	false
+posteo.de	discovery	https	autoconfig.posteo.de/mail/config-v1.1.xml?emailaddress=…	true
+posteo.de	discovery	https	posteo.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+posteo.de	discovery	dns	_submissions._tcp.posteo.de SRV	false
+posteo.de	discovery	dns	_submission._tcp.posteo.de SRV	false
+posteo.de	discovery	dns	_imaps._tcp.posteo.de SRV	false
+posteo.de	discovery	dns	_imap._tcp.posteo.de SRV	false
+posteo.de	discovery	dns	_pop3s._tcp.posteo.de SRV	false
+posteo.de	discovery	dns	_pop3._tcp.posteo.de SRV	false
+posteo.de	discovery	dns	posteo.de MX	false
+posteo.de	discovery	https	autoconfig.thunderbird.net/v1.1/posteo.de	false
+posteo.de	discovery	dns	imap.posteo.de AAAA/A	false
+online.no	discovery	https	autoconfig.online.no/mail/config-v1.1.xml?emailaddress=…	true
+online.no	discovery	https	online.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+online.no	discovery	dns	_submissions._tcp.online.no SRV	false
+online.no	discovery	dns	_submission._tcp.online.no SRV	false
+online.no	discovery	dns	_imaps._tcp.online.no SRV	false
+online.no	discovery	dns	_imap._tcp.online.no SRV	false
+online.no	discovery	dns	_pop3s._tcp.online.no SRV	false
+online.no	discovery	dns	_pop3._tcp.online.no SRV	false
+online.no	discovery	dns	online.no MX	false
+online.no	discovery	https	autoconfig.thunderbird.net/v1.1/online.no	false
+online.no	discovery	dns	imap.online.no AAAA/A	false
+online.no	discovery	tcp	imap.online.no:993	false
+online.no	discovery	https	autoconfig.megamailservers.eu/mail/config-v1.1.xml	false
+online.no	discovery	https	autoconfig.thunderbird.net/v1.1/megamailservers.eu	false
+online.no	discovery	redirect-followed	https://www.online.no	false
+online.no	discovery	redirect-refused	https://www.telenor.no	false
+online.no	discovery	dns	smtp.online.no AAAA/A	false
+online.no	discovery	tcp	smtp.online.no:465	false
+altibox.no	discovery	https	autoconfig.altibox.no/mail/config-v1.1.xml?emailaddress=…	true
+altibox.no	discovery	dns	imap.altibox.no AAAA/A	false
+altibox.no	discovery	https	altibox.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+altibox.no	discovery	dns	altibox.no MX	false
+altibox.no	discovery	dns	_submissions._tcp.altibox.no SRV	false
+altibox.no	discovery	dns	_submission._tcp.altibox.no SRV	false
+altibox.no	discovery	dns	_imaps._tcp.altibox.no SRV	false
+altibox.no	discovery	dns	_imap._tcp.altibox.no SRV	false
+altibox.no	discovery	dns	_pop3s._tcp.altibox.no SRV	false
+altibox.no	discovery	dns	_pop3._tcp.altibox.no SRV	false
+altibox.no	discovery	https	autoconfig.thunderbird.net/v1.1/altibox.no	false
+altibox.no	discovery	tcp	imap.altibox.no:993	false
+altibox.no	discovery	redirect-followed	https://www.altibox.no	false
+altibox.no	discovery	dns	smtp.altibox.no AAAA/A	false
+altibox.no	discovery	tcp	smtp.altibox.no:465	false
+lyse.net	discovery	https	autoconfig.lyse.net/mail/config-v1.1.xml?emailaddress=…	true
+lyse.net	discovery	dns	imap.lyse.net AAAA/A	false
+lyse.net	discovery	https	lyse.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+lyse.net	discovery	dns	_submissions._tcp.lyse.net SRV	false
+lyse.net	discovery	dns	_submission._tcp.lyse.net SRV	false
+lyse.net	discovery	dns	_imaps._tcp.lyse.net SRV	false
+lyse.net	discovery	dns	_imap._tcp.lyse.net SRV	false
+lyse.net	discovery	dns	_pop3s._tcp.lyse.net SRV	false
+lyse.net	discovery	dns	_pop3._tcp.lyse.net SRV	false
+lyse.net	discovery	dns	lyse.net MX	false
+lyse.net	discovery	https	autoconfig.thunderbird.net/v1.1/lyse.net	false
+lyse.net	discovery	tcp	imap.lyse.net:993	false
+lyse.net	discovery	https	autoconfig.altibox.net/mail/config-v1.1.xml	false
+lyse.net	discovery	https	autoconfig.thunderbird.net/v1.1/altibox.net	false
+lyse.net	discovery	dns	mail.altibox.no AAAA/A	false
+lyse.net	discovery	dns	imap.altibox.no AAAA/A	false
+lyse.net	discovery	dns	imap.altibox.no AAAA/A	false
+lyse.net	discovery	tcp	imap.altibox.no:993	false
+broadpark.no	discovery	dns	imap.broadpark.no AAAA/A	false
+broadpark.no	discovery	https	autoconfig.broadpark.no/mail/config-v1.1.xml?emailaddress=…	true
+broadpark.no	discovery	https	broadpark.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+broadpark.no	discovery	dns	broadpark.no MX	false
+broadpark.no	discovery	dns	_submissions._tcp.broadpark.no SRV	false
+broadpark.no	discovery	dns	_submission._tcp.broadpark.no SRV	false
+broadpark.no	discovery	dns	_imaps._tcp.broadpark.no SRV	false
+broadpark.no	discovery	dns	_imap._tcp.broadpark.no SRV	false
+broadpark.no	discovery	dns	_pop3s._tcp.broadpark.no SRV	false
+broadpark.no	discovery	dns	_pop3._tcp.broadpark.no SRV	false
+broadpark.no	discovery	https	autoconfig.thunderbird.net/v1.1/broadpark.no	false
+broadpark.no	discovery	tcp	imap.broadpark.no:993	false
+broadpark.no	discovery	dns	mail.broadpark.no AAAA/A	false
+broadpark.no	discovery	dns	imap.broadpark.no AAAA/A	false
+broadpark.no	discovery	dns	smtp.broadpark.no AAAA/A	false
+broadpark.no	discovery	dns	imap.broadpark.no AAAA/A	false
+broadpark.no	discovery	dns	mail.broadpark.no AAAA/A	false
+broadpark.no	discovery	dns	smtp.broadpark.no AAAA/A	false
+broadpark.no	discovery	dns	smtp.broadpark.no AAAA/A	false
+broadpark.no	discovery	tcp	smtp.broadpark.no:587	false
+broadpark.no	discovery	tcp	smtp.broadpark.no:465	false
+tussa.com	discovery	https	autoconfig.tussa.com/mail/config-v1.1.xml?emailaddress=…	true
+tussa.com	discovery	https	tussa.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+tussa.com	discovery	dns	_submissions._tcp.tussa.com SRV	false
+tussa.com	discovery	dns	_submission._tcp.tussa.com SRV	false
+tussa.com	discovery	dns	_imaps._tcp.tussa.com SRV	false
+tussa.com	discovery	https	autoconfig.thunderbird.net/v1.1/tussa.com	false
+tussa.com	discovery	dns	_imap._tcp.tussa.com SRV	false
+tussa.com	discovery	dns	_pop3s._tcp.tussa.com SRV	false
+tussa.com	discovery	dns	_pop3._tcp.tussa.com SRV	false
+tussa.com	discovery	dns	imap.tussa.com AAAA/A	false
+tussa.com	discovery	dns	tussa.com MX	false
+tussa.com	discovery	https	autoconfig.tikt.no/mail/config-v1.1.xml	false
+tussa.com	discovery	https	autoconfig.thunderbird.net/v1.1/tikt.no	false
+tussa.com	discovery	tcp	imap.tussa.com:993	false
+tussa.com	discovery	dns	smtp.tussa.com AAAA/A	false
+tussa.com	discovery	tcp	smtp.tussa.com:465	false
+domeneshop.no	discovery	https	domeneshop.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+domeneshop.no	discovery	https	autoconfig.domeneshop.no/mail/config-v1.1.xml?emailaddress=…	true
+domeneshop.no	discovery	dns	_submissions._tcp.domeneshop.no SRV	false
+domeneshop.no	discovery	dns	_submission._tcp.domeneshop.no SRV	false
+domeneshop.no	discovery	dns	_imaps._tcp.domeneshop.no SRV	false
+domeneshop.no	discovery	dns	_imap._tcp.domeneshop.no SRV	false
+domeneshop.no	discovery	dns	_pop3s._tcp.domeneshop.no SRV	false
+domeneshop.no	discovery	dns	_pop3._tcp.domeneshop.no SRV	false
+domeneshop.no	discovery	https	autoconfig.thunderbird.net/v1.1/domeneshop.no	false
+domeneshop.no	discovery	dns	imap.domeneshop.no AAAA/A	false
+domeneshop.no	discovery	dns	domeneshop.no MX	false
+domeneshop.no	discovery	tcp	imap.domeneshop.no:993	false
+birdlife.no	discovery	https	autoconfig.birdlife.no/mail/config-v1.1.xml?emailaddress=…	true
+birdlife.no	discovery	https	birdlife.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+birdlife.no	discovery	dns	_submissions._tcp.birdlife.no SRV	false
+birdlife.no	discovery	dns	_submission._tcp.birdlife.no SRV	false
+birdlife.no	discovery	dns	_imaps._tcp.birdlife.no SRV	false
+birdlife.no	discovery	dns	_imap._tcp.birdlife.no SRV	false
+birdlife.no	discovery	dns	_pop3s._tcp.birdlife.no SRV	false
+birdlife.no	discovery	dns	_pop3._tcp.birdlife.no SRV	false
+birdlife.no	discovery	dns	birdlife.no MX	false
+birdlife.no	discovery	https	autoconfig.thunderbird.net/v1.1/birdlife.no	false
+birdlife.no	discovery	dns	imap.birdlife.no AAAA/A	false
+birdlife.no	discovery	https	autoconfig.domeneshop.no/mail/config-v1.1.xml	false
+birdlife.no	discovery	https	autoconfig.thunderbird.net/v1.1/domeneshop.no	false
+birdlife.no	discovery	dns	imap.domeneshop.no AAAA/A	false
+birdlife.no	discovery	dns	mail.domeneshop.no AAAA/A	false
+birdlife.no	discovery	dns	imap.birdlife.no AAAA/A	false
+birdlife.no	discovery	dns	mail.domeneshop.no AAAA/A	false
+birdlife.no	discovery	dns	mail.birdlife.no AAAA/A	false
+birdlife.no	discovery	dns	birdlife.no AAAA/A	false
+birdlife.no	discovery	tcp	birdlife.no:993	false
+birdlife.no	discovery	dns	smtp.birdlife.no AAAA/A	false
+birdlife.no	discovery	dns	mail.birdlife.no AAAA/A	false
+birdlife.no	discovery	dns	birdlife.no AAAA/A	false
+birdlife.no	discovery	tcp	birdlife.no:465	false
+birdlife.no	discovery	dns	smtp.domeneshop.no AAAA/A	false
+birdlife.no	discovery	tcp	smtp.domeneshop.no:465	false
+birdlife.no	discovery	tcp	imap.domeneshop.no:993	false
+birdlife.no	discovery	tcp	mail.domeneshop.no:465	false
+birdlife.no	discovery	tcp	mail.domeneshop.no:993	false
+birdlife.no	discovery	dns	birdlife.no AAAA/A	false
+birdlife.no	discovery	dns	mail.domeneshop.no AAAA/A	false
+birdlife.no	discovery	tcp	birdlife.no:587	false
+birdlife.no	discovery	tcp	mail.domeneshop.no:143	false
+birdlife.no	discovery	dns	birdlife.no AAAA/A	false
+birdlife.no	discovery	tcp	birdlife.no:143	false
+piratpartiet.no	discovery	https	autoconfig.piratpartiet.no/mail/config-v1.1.xml?emailaddress=…	true
+piratpartiet.no	discovery	dns	imap.piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	https	piratpartiet.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+piratpartiet.no	discovery	dns	piratpartiet.no MX	false
+piratpartiet.no	discovery	dns	_submissions._tcp.piratpartiet.no SRV	false
+piratpartiet.no	discovery	dns	_submission._tcp.piratpartiet.no SRV	false
+piratpartiet.no	discovery	dns	_imaps._tcp.piratpartiet.no SRV	false
+piratpartiet.no	discovery	dns	_imap._tcp.piratpartiet.no SRV	false
+piratpartiet.no	discovery	dns	_pop3s._tcp.piratpartiet.no SRV	false
+piratpartiet.no	discovery	dns	_pop3._tcp.piratpartiet.no SRV	false
+piratpartiet.no	discovery	https	autoconfig.thunderbird.net/v1.1/piratpartiet.no	false
+piratpartiet.no	discovery	https	autoconfig.domeneshop.no/mail/config-v1.1.xml	false
+piratpartiet.no	discovery	https	autoconfig.thunderbird.net/v1.1/domeneshop.no	false
+piratpartiet.no	discovery	dns	mail.piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	dns	imap.piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	dns	mail.domeneshop.no AAAA/A	false
+piratpartiet.no	discovery	dns	piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	tcp	piratpartiet.no:993	false
+piratpartiet.no	discovery	dns	mail.piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	dns	imap.domeneshop.no AAAA/A	false
+piratpartiet.no	discovery	dns	mail.domeneshop.no AAAA/A	false
+piratpartiet.no	discovery	dns	piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	tcp	piratpartiet.no:465	false
+piratpartiet.no	discovery	dns	smtp.piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	dns	smtp.domeneshop.no AAAA/A	false
+piratpartiet.no	discovery	tcp	mail.domeneshop.no:993	false
+piratpartiet.no	discovery	tcp	smtp.domeneshop.no:465	false
+piratpartiet.no	discovery	tcp	mail.domeneshop.no:465	false
+piratpartiet.no	discovery	tcp	imap.domeneshop.no:993	false
+piratpartiet.no	discovery	tcp	mail.piratpartiet.no:465	false
+piratpartiet.no	discovery	tcp	mail.piratpartiet.no:993	false
+piratpartiet.no	discovery	dns	mail.piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	dns	mail.piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	tcp	mail.piratpartiet.no:587	false
+piratpartiet.no	discovery	tcp	mail.piratpartiet.no:143	false
+piratpartiet.no	discovery	dns	piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	dns	piratpartiet.no AAAA/A	false
+piratpartiet.no	discovery	tcp	piratpartiet.no:143	false
+piratpartiet.no	discovery	tcp	piratpartiet.no:587	false
+piratpartiet.no	discovery	dns	mail.domeneshop.no AAAA/A	false
+piratpartiet.no	discovery	tcp	mail.domeneshop.no:143	false
+one.com	discovery	https	autoconfig.one.com/mail/config-v1.1.xml?emailaddress=…	true
+one.com	discovery	dns	imap.one.com AAAA/A	false
+one.com	discovery	https	one.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+one.com	discovery	dns	_submissions._tcp.one.com SRV	false
+one.com	discovery	dns	one.com MX	false
+one.com	discovery	dns	_submission._tcp.one.com SRV	false
+one.com	discovery	dns	_imaps._tcp.one.com SRV	false
+one.com	discovery	dns	_imap._tcp.one.com SRV	false
+one.com	discovery	dns	_pop3s._tcp.one.com SRV	false
+one.com	discovery	dns	_pop3._tcp.one.com SRV	false
+one.com	discovery	https	autoconfig.thunderbird.net/v1.1/one.com	false
+one.com	discovery	tcp	imap.one.com:993	false
+hotmail.no	discovery	https	autoconfig.hotmail.no/mail/config-v1.1.xml?emailaddress=…	true
+hotmail.no	discovery	https	hotmail.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+hotmail.no	discovery	dns	hotmail.no MX	false
+hotmail.no	discovery	dns	_submissions._tcp.hotmail.no SRV	false
+hotmail.no	discovery	dns	_submission._tcp.hotmail.no SRV	false
+hotmail.no	discovery	dns	_imaps._tcp.hotmail.no SRV	false
+hotmail.no	discovery	dns	_imap._tcp.hotmail.no SRV	false
+hotmail.no	discovery	dns	_pop3s._tcp.hotmail.no SRV	false
+hotmail.no	discovery	dns	_pop3._tcp.hotmail.no SRV	false
+hotmail.no	discovery	https	autoconfig.thunderbird.net/v1.1/hotmail.no	false
+hotmail.no	discovery	dns	imap.hotmail.no AAAA/A	false
+hotmail.no	discovery	redirect-refused	https://outlook.live.com	false
+c2i.net	discovery	https	autoconfig.c2i.net/mail/config-v1.1.xml?emailaddress=…	true
+c2i.net	discovery	dns	imap.c2i.net AAAA/A	false
+c2i.net	discovery	dns	c2i.net MX	false
+c2i.net	discovery	https	c2i.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+c2i.net	discovery	dns	_submissions._tcp.c2i.net SRV	false
+c2i.net	discovery	dns	_submission._tcp.c2i.net SRV	false
+c2i.net	discovery	dns	_imaps._tcp.c2i.net SRV	false
+c2i.net	discovery	dns	_imap._tcp.c2i.net SRV	false
+c2i.net	discovery	dns	_pop3s._tcp.c2i.net SRV	false
+c2i.net	discovery	dns	_pop3._tcp.c2i.net SRV	false
+c2i.net	discovery	https	autoconfig.thunderbird.net/v1.1/c2i.net	false
+c2i.net	discovery	https	autoconfig.aftermarket.pl/mail/config-v1.1.xml	false
+c2i.net	discovery	https	autoconfig.thunderbird.net/v1.1/aftermarket.pl	false
+c2i.net	discovery	tcp	imap.c2i.net:993	false
+c2i.net	discovery	dns	imap.c2i.net AAAA/A	false
+c2i.net	discovery	dns	imap.c2i.net AAAA/A	false
+c2i.net	discovery	dns	mail.aftermarket.pl AAAA/A	false
+c2i.net	discovery	tcp	imap.c2i.net:143	false
+c2i.net	discovery	dns	mail.c2i.net AAAA/A	false
+c2i.net	discovery	dns	c2i.net AAAA/A	false
+c2i.net	discovery	tcp	c2i.net:993	false
+c2i.net	discovery	dns	imap.aftermarket.pl AAAA/A	false
+c2i.net	discovery	dns	c2i.net AAAA/A	false
+c2i.net	discovery	tcp	c2i.net:465	false
+c2i.net	discovery	dns	smtp.aftermarket.pl AAAA/A	false
+c2i.net	discovery	dns	mail.aftermarket.pl AAAA/A	false
+c2i.net	discovery	dns	smtp.c2i.net AAAA/A	false
+c2i.net	discovery	dns	mail.c2i.net AAAA/A	false
+c2i.net	discovery	tcp	mail.aftermarket.pl:993	false
+c2i.net	discovery	tcp	mail.aftermarket.pl:465	false
+c2i.net	discovery	tcp	smtp.aftermarket.pl:465	false
+c2i.net	discovery	tcp	mail.c2i.net:465	false
+c2i.net	discovery	tcp	mail.c2i.net:993	false
+c2i.net	discovery	tcp	imap.aftermarket.pl:993	false
+c2i.net	discovery	tcp	smtp.c2i.net:465	false
+c2i.net	discovery	dns	mail.aftermarket.pl AAAA/A	false
+c2i.net	discovery	tcp	mail.aftermarket.pl:143	false
+c2i.net	discovery	dns	mail.aftermarket.pl AAAA/A	false
+c2i.net	discovery	tcp	mail.aftermarket.pl:587	false
+c2i.net	discovery	dns	smtp.aftermarket.pl AAAA/A	false
+c2i.net	discovery	tcp	smtp.aftermarket.pl:587	false
+c2i.net	discovery	dns	c2i.net AAAA/A	false
+c2i.net	discovery	dns	c2i.net AAAA/A	false
+c2i.net	discovery	tcp	c2i.net:587	false
+c2i.net	discovery	tcp	c2i.net:143	false
+c2i.net	discovery	dns	mail.c2i.net AAAA/A	false
+c2i.net	discovery	dns	mail.c2i.net AAAA/A	false
+c2i.net	discovery	tcp	mail.c2i.net:143	false
+c2i.net	discovery	tcp	mail.c2i.net:587	false
+c2i.net	discovery	dns	smtp.c2i.net AAAA/A	false
+c2i.net	discovery	tcp	smtp.c2i.net:587	false
+chello.no	discovery	https	autoconfig.chello.no/mail/config-v1.1.xml?emailaddress=…	true
+chello.no	discovery	dns	imap.chello.no AAAA/A	false
+chello.no	discovery	dns	chello.no MX	false
+chello.no	discovery	https	chello.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+chello.no	discovery	dns	_submissions._tcp.chello.no SRV	false
+chello.no	discovery	dns	_submission._tcp.chello.no SRV	false
+chello.no	discovery	dns	_imaps._tcp.chello.no SRV	false
+chello.no	discovery	dns	_imap._tcp.chello.no SRV	false
+chello.no	discovery	dns	_pop3s._tcp.chello.no SRV	false
+chello.no	discovery	dns	_pop3._tcp.chello.no SRV	false
+chello.no	discovery	https	autoconfig.thunderbird.net/v1.1/chello.no	false
+chello.no	discovery	tcp	imap.chello.no:993	false
+chello.no	discovery	redirect-refused	https://www.fruits.co	false
+tele2.no	discovery	https	autoconfig.tele2.no/mail/config-v1.1.xml?emailaddress=…	true
+tele2.no	discovery	https	tele2.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+tele2.no	discovery	dns	tele2.no MX	false
+tele2.no	discovery	dns	_submissions._tcp.tele2.no SRV	false
+tele2.no	discovery	dns	_submission._tcp.tele2.no SRV	false
+tele2.no	discovery	dns	_imaps._tcp.tele2.no SRV	false
+tele2.no	discovery	dns	_imap._tcp.tele2.no SRV	false
+tele2.no	discovery	dns	_pop3s._tcp.tele2.no SRV	false
+tele2.no	discovery	dns	_pop3._tcp.tele2.no SRV	false
+tele2.no	discovery	https	autoconfig.thunderbird.net/v1.1/tele2.no	false
+tele2.no	discovery	dns	imap.tele2.no AAAA/A	false
+tele2.no	discovery	dns	mail.tele2.no AAAA/A	false
+tele2.no	discovery	dns	tele2.no AAAA/A	false
+tele2.no	discovery	dns	tele2.no AAAA/A	false
+tele2.no	discovery	dns	smtp.tele2.no AAAA/A	false
+tele2.no	discovery	dns	imap.tele2.no AAAA/A	false
+tele2.no	discovery	dns	mail.tele2.no AAAA/A	false
+mozilla.org	discovery	https	autoconfig.mozilla.org/mail/config-v1.1.xml?emailaddress=…	true
+mozilla.org	discovery	dns	imap.mozilla.org AAAA/A	false
+mozilla.org	discovery	dns	mozilla.org MX	false
+mozilla.org	discovery	https	mozilla.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+mozilla.org	discovery	https	autoconfig.thunderbird.net/v1.1/mozilla.org	false
+mozilla.org	discovery	dns	_submissions._tcp.mozilla.org SRV	false
+mozilla.org	discovery	dns	_submission._tcp.mozilla.org SRV	false
+mozilla.org	discovery	dns	_imaps._tcp.mozilla.org SRV	false
+mozilla.org	discovery	dns	_imap._tcp.mozilla.org SRV	false
+mozilla.org	discovery	dns	_pop3s._tcp.mozilla.org SRV	false
+mozilla.org	discovery	dns	_pop3._tcp.mozilla.org SRV	false
+finn.no	discovery	https	autoconfig.finn.no/mail/config-v1.1.xml?emailaddress=…	true
+finn.no	discovery	https	finn.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+finn.no	discovery	dns	finn.no MX	false
+finn.no	discovery	dns	_submissions._tcp.finn.no SRV	false
+finn.no	discovery	dns	_submission._tcp.finn.no SRV	false
+finn.no	discovery	dns	_imaps._tcp.finn.no SRV	false
+finn.no	discovery	dns	_imap._tcp.finn.no SRV	false
+finn.no	discovery	dns	_pop3s._tcp.finn.no SRV	false
+finn.no	discovery	dns	_pop3._tcp.finn.no SRV	false
+finn.no	discovery	https	autoconfig.thunderbird.net/v1.1/finn.no	false
+finn.no	discovery	dns	imap.finn.no AAAA/A	false
+nrk.no	discovery	https	autoconfig.nrk.no/mail/config-v1.1.xml?emailaddress=…	true
+nrk.no	discovery	dns	imap.nrk.no AAAA/A	false
+nrk.no	discovery	dns	nrk.no MX	false
+nrk.no	discovery	https	nrk.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+nrk.no	discovery	dns	_submissions._tcp.nrk.no SRV	false
+nrk.no	discovery	dns	_submission._tcp.nrk.no SRV	false
+nrk.no	discovery	dns	_imaps._tcp.nrk.no SRV	false
+nrk.no	discovery	dns	_imap._tcp.nrk.no SRV	false
+nrk.no	discovery	dns	_pop3s._tcp.nrk.no SRV	false
+nrk.no	discovery	dns	_pop3._tcp.nrk.no SRV	false
+nrk.no	discovery	https	autoconfig.thunderbird.net/v1.1/nrk.no	false
+letsencrypt.org	discovery	https	autoconfig.letsencrypt.org/mail/config-v1.1.xml?emailaddress=…	true
+letsencrypt.org	discovery	https	letsencrypt.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+letsencrypt.org	discovery	dns	_submissions._tcp.letsencrypt.org SRV	false
+letsencrypt.org	discovery	dns	_submission._tcp.letsencrypt.org SRV	false
+letsencrypt.org	discovery	dns	_imaps._tcp.letsencrypt.org SRV	false
+letsencrypt.org	discovery	dns	_imap._tcp.letsencrypt.org SRV	false
+letsencrypt.org	discovery	dns	_pop3s._tcp.letsencrypt.org SRV	false
+letsencrypt.org	discovery	dns	_pop3._tcp.letsencrypt.org SRV	false
+letsencrypt.org	discovery	https	autoconfig.thunderbird.net/v1.1/letsencrypt.org	false
+letsencrypt.org	discovery	dns	letsencrypt.org MX	false
+letsencrypt.org	discovery	dns	imap.letsencrypt.org AAAA/A	false
+vy.no	discovery	https	autoconfig.vy.no/mail/config-v1.1.xml?emailaddress=…	true
+vy.no	discovery	https	vy.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+vy.no	discovery	dns	_submissions._tcp.vy.no SRV	false
+vy.no	discovery	dns	_submission._tcp.vy.no SRV	false
+vy.no	discovery	dns	_imaps._tcp.vy.no SRV	false
+vy.no	discovery	dns	_imap._tcp.vy.no SRV	false
+vy.no	discovery	dns	_pop3s._tcp.vy.no SRV	false
+vy.no	discovery	dns	_pop3._tcp.vy.no SRV	false
+vy.no	discovery	dns	vy.no MX	false
+vy.no	discovery	https	autoconfig.thunderbird.net/v1.1/vy.no	false
+vy.no	discovery	dns	imap.vy.no AAAA/A	false
+uib.no	discovery	https	autoconfig.uib.no/mail/config-v1.1.xml?emailaddress=…	true
+uib.no	discovery	dns	imap.uib.no AAAA/A	false
+uib.no	discovery	https	uib.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+uib.no	discovery	dns	_submissions._tcp.uib.no SRV	false
+uib.no	discovery	dns	_submission._tcp.uib.no SRV	false
+uib.no	discovery	dns	_imaps._tcp.uib.no SRV	false
+uib.no	discovery	dns	_imap._tcp.uib.no SRV	false
+uib.no	discovery	dns	_pop3s._tcp.uib.no SRV	false
+uib.no	discovery	dns	_pop3._tcp.uib.no SRV	false
+uib.no	discovery	dns	uib.no MX	false
+uib.no	discovery	https	autoconfig.thunderbird.net/v1.1/uib.no	false
+uib.no	discovery	redirect-followed	https://www.uib.no	false
+oslomet.no	discovery	https	autoconfig.oslomet.no/mail/config-v1.1.xml?emailaddress=…	true
+oslomet.no	discovery	dns	imap.oslomet.no AAAA/A	false
+oslomet.no	discovery	dns	oslomet.no MX	false
+oslomet.no	discovery	https	oslomet.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+oslomet.no	discovery	dns	_submissions._tcp.oslomet.no SRV	false
+oslomet.no	discovery	dns	_submission._tcp.oslomet.no SRV	false
+oslomet.no	discovery	dns	_imaps._tcp.oslomet.no SRV	false
+oslomet.no	discovery	dns	_imap._tcp.oslomet.no SRV	false
+oslomet.no	discovery	dns	_pop3s._tcp.oslomet.no SRV	false
+oslomet.no	discovery	dns	_pop3._tcp.oslomet.no SRV	false
+oslomet.no	discovery	https	autoconfig.thunderbird.net/v1.1/oslomet.no	false
+oslomet.no	discovery	redirect-followed	https://www.oslomet.no	false
+stortinget.no	discovery	https	autoconfig.stortinget.no/mail/config-v1.1.xml?emailaddress=…	true
+stortinget.no	discovery	dns	imap.stortinget.no AAAA/A	false
+stortinget.no	discovery	dns	stortinget.no MX	false
+stortinget.no	discovery	https	stortinget.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+stortinget.no	discovery	dns	_submissions._tcp.stortinget.no SRV	false
+stortinget.no	discovery	dns	_submission._tcp.stortinget.no SRV	false
+stortinget.no	discovery	dns	_imaps._tcp.stortinget.no SRV	false
+stortinget.no	discovery	dns	_imap._tcp.stortinget.no SRV	false
+stortinget.no	discovery	dns	_pop3s._tcp.stortinget.no SRV	false
+stortinget.no	discovery	dns	_pop3._tcp.stortinget.no SRV	false
+stortinget.no	discovery	https	autoconfig.thunderbird.net/v1.1/stortinget.no	false
+eff.org	discovery	https	autoconfig.eff.org/mail/config-v1.1.xml?emailaddress=…	true
+eff.org	discovery	dns	imap.eff.org AAAA/A	false
+eff.org	discovery	dns	eff.org MX	false
+eff.org	discovery	https	eff.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+eff.org	discovery	dns	_submissions._tcp.eff.org SRV	false
+eff.org	discovery	dns	_submission._tcp.eff.org SRV	false
+eff.org	discovery	dns	_imaps._tcp.eff.org SRV	false
+eff.org	discovery	dns	_imap._tcp.eff.org SRV	false
+eff.org	discovery	dns	_pop3s._tcp.eff.org SRV	false
+eff.org	discovery	dns	_pop3._tcp.eff.org SRV	false
+eff.org	discovery	https	autoconfig.thunderbird.net/v1.1/eff.org	false
+linux.org.au	discovery	https	autoconfig.linux.org.au/mail/config-v1.1.xml?emailaddress=…	true
+linux.org.au	discovery	dns	imap.linux.org.au AAAA/A	false
+linux.org.au	discovery	https	linux.org.au/.well-known/autoconfig/mail/config-v1.1.xml	false
+linux.org.au	discovery	dns	linux.org.au MX	false
+linux.org.au	discovery	dns	_submissions._tcp.linux.org.au SRV	false
+linux.org.au	discovery	dns	_submission._tcp.linux.org.au SRV	false
+linux.org.au	discovery	dns	_imaps._tcp.linux.org.au SRV	false
+linux.org.au	discovery	dns	_imap._tcp.linux.org.au SRV	false
+linux.org.au	discovery	dns	_pop3s._tcp.linux.org.au SRV	false
+linux.org.au	discovery	dns	_pop3._tcp.linux.org.au SRV	false
+linux.org.au	discovery	https	autoconfig.thunderbird.net/v1.1/linux.org.au	false
+digitalrightswatch.org.au	discovery	https	autoconfig.digitalrightswatch.org.au/mail/config-v1.1.xml?emailaddress=…	true
+digitalrightswatch.org.au	discovery	dns	imap.digitalrightswatch.org.au AAAA/A	false
+digitalrightswatch.org.au	discovery	dns	digitalrightswatch.org.au MX	false
+digitalrightswatch.org.au	discovery	https	digitalrightswatch.org.au/.well-known/autoconfig/mail/config-v1.1.xml	false
+digitalrightswatch.org.au	discovery	dns	_submissions._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	discovery	dns	_submission._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	discovery	dns	_imaps._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	discovery	dns	_imap._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	discovery	dns	_pop3s._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	discovery	dns	_pop3._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	discovery	https	autoconfig.thunderbird.net/v1.1/digitalrightswatch.org.au	false
+cyrusimap.org	discovery	https	autoconfig.cyrusimap.org/mail/config-v1.1.xml?emailaddress=…	true
+cyrusimap.org	discovery	dns	imap.cyrusimap.org AAAA/A	false
+cyrusimap.org	discovery	dns	cyrusimap.org MX	false
+cyrusimap.org	discovery	https	cyrusimap.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+cyrusimap.org	discovery	dns	_submissions._tcp.cyrusimap.org SRV	false
+cyrusimap.org	discovery	dns	_submission._tcp.cyrusimap.org SRV	false
+cyrusimap.org	discovery	dns	_imaps._tcp.cyrusimap.org SRV	false
+cyrusimap.org	discovery	dns	_imap._tcp.cyrusimap.org SRV	false
+cyrusimap.org	discovery	dns	_pop3s._tcp.cyrusimap.org SRV	false
+cyrusimap.org	discovery	dns	_pop3._tcp.cyrusimap.org SRV	false
+cyrusimap.org	discovery	https	autoconfig.thunderbird.net/v1.1/cyrusimap.org	false
+cyrusimap.org	discovery	tcp	imap.cyrusimap.org:993	false
+cyrusimap.org	discovery	redirect-followed	https://www.cyrusimap.org	false
+gitea.io	discovery	https	autoconfig.gitea.io/mail/config-v1.1.xml?emailaddress=…	true
+gitea.io	discovery	https	gitea.io/.well-known/autoconfig/mail/config-v1.1.xml	false
+gitea.io	discovery	dns	gitea.io MX	false
+gitea.io	discovery	dns	_submissions._tcp.gitea.io SRV	false
+gitea.io	discovery	dns	_submission._tcp.gitea.io SRV	false
+gitea.io	discovery	dns	_imaps._tcp.gitea.io SRV	false
+gitea.io	discovery	dns	_imap._tcp.gitea.io SRV	false
+gitea.io	discovery	dns	_pop3s._tcp.gitea.io SRV	false
+gitea.io	discovery	dns	_pop3._tcp.gitea.io SRV	false
+gitea.io	discovery	https	autoconfig.thunderbird.net/v1.1/gitea.io	false
+gitea.io	discovery	dns	imap.gitea.io AAAA/A	false
+pine64.org	discovery	https	autoconfig.pine64.org/mail/config-v1.1.xml?emailaddress=…	true
+pine64.org	discovery	dns	imap.pine64.org AAAA/A	false
+pine64.org	discovery	https	pine64.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+pine64.org	discovery	dns	_submissions._tcp.pine64.org SRV	false
+pine64.org	discovery	dns	_submission._tcp.pine64.org SRV	false
+pine64.org	discovery	dns	_imaps._tcp.pine64.org SRV	false
+pine64.org	discovery	dns	_imap._tcp.pine64.org SRV	false
+pine64.org	discovery	dns	_pop3s._tcp.pine64.org SRV	false
+pine64.org	discovery	dns	_pop3._tcp.pine64.org SRV	false
+pine64.org	discovery	https	autoconfig.thunderbird.net/v1.1/pine64.org	false
+pine64.org	discovery	dns	pine64.org MX	false
+pine64.org	discovery	tcp	imap.pine64.org:993	false
+fosstodon.org	discovery	https	fosstodon.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+fosstodon.org	discovery	https	autoconfig.fosstodon.org/mail/config-v1.1.xml?emailaddress=…	true
+fosstodon.org	discovery	dns	_submissions._tcp.fosstodon.org SRV	false
+fosstodon.org	discovery	dns	_submission._tcp.fosstodon.org SRV	false
+fosstodon.org	discovery	dns	_imaps._tcp.fosstodon.org SRV	false
+fosstodon.org	discovery	dns	_imap._tcp.fosstodon.org SRV	false
+fosstodon.org	discovery	dns	_pop3s._tcp.fosstodon.org SRV	false
+fosstodon.org	discovery	dns	_pop3._tcp.fosstodon.org SRV	false
+fosstodon.org	discovery	https	autoconfig.thunderbird.net/v1.1/fosstodon.org	false
+fosstodon.org	discovery	dns	fosstodon.org MX	false
+fosstodon.org	discovery	dns	imap.fosstodon.org AAAA/A	false

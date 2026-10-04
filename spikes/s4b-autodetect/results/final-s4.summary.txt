@@ -1,0 +1,32 @@
+== final-s4: 50 domains (S4 list), started at unix 1791124118
+options: presets=true exhaustive=false rules: own_host=true srv_conventional=true mx_hosts=true; resolver=1.1.1.1 order=preset>autoconfig>srv>ispdb>own-host>mx-preset>well-known>mx-autoconfig>mx-ispdb>probe>mx-probe probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms mx_autoconfig=1500ms own_host=3000ms probe_connect=3000ms probe_budget=5000ms
+correct (strict rubric): 44/50
+correct (extended rubric): 45/50
+  extended adds via E1: online.no
+replay, not a rule: strict score if MX-host-probe results asked for the username: 46/50
+TLS-only final results: 50/50
+  group big: strict 22/22, extended 22/22
+  group fastmail: strict 3/3, extended 3/3
+  group m365: strict 5/5, extended 5/5
+  group norway: strict 7/13, extended 8/13
+  group workspace: strict 4/4, extended 4/4
+  group zoho: strict 3/3, extended 3/3
+final ranked result: n=50 p50=52 p95=4602 max=5091 ms
+first usable result: n=48 p50=15 p95=1687 max=5091 ms
+  final, group big: n=22 p50=0 p95=131 max=191 ms
+  final, group fastmail: n=3 p50=327 p95=1031 max=1031 ms
+  final, group m365: n=5 p50=56 p95=181 max=181 ms
+  final, group norway: n=13 p50=209 p95=5091 max=5091 ms
+  final, group workspace: n=4 p50=48 p95=60 max=60 ms
+  final, group zoho: n=3 p50=59 p95=104 max=104 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=2 autoconfig=3 ispdb=2 mx-preset=15 mx-probe=2 own-host=3 preset=20 srv=3
+rule mx-probe decided: birdlife.no piratpartiet.no
+rule own-host decided: online.no tussa.com
+rule own-host-over-mx decided: altibox.no
+rule srv-conventional decided: lyse.net broadpark.no
+TCP connections in discovery: 57 (general probe started for 4 domains), at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+privacy: 467 requests logged (467 in discovery, 0 in scoring checks); 30 carried the dummy address, all to autoconfig.<domain>: true; violations: none; refused redirects that would have carried it elsewhere: 0
+redirects: online.no redirect-followed https://www.online.no; online.no redirect-refused https://www.telenor.no; altibox.no redirect-followed https://www.altibox.no; chello.no redirect-refused https://www.fruits.co; uib.no redirect-followed https://www.uib.no; oslomet.no redirect-followed https://www.oslomet.no; cyrusimap.org redirect-followed https://www.cyrusimap.org
+wrong (strict): online.no: IMAP username address wrong; lyse.net: SMTP smtp.altibox.no:587 STARTTLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; domeneshop.no: IMAP username address wrong; birdlife.no: IMAP username address wrong; piratpartiet.no: IMAP username address wrong
+wrong (extended): lyse.net: SMTP smtp.altibox.no:587 STARTTLS not accepted; tussa.com: SMTP smtp.tussa.com:465 TLS not accepted; domeneshop.no: IMAP username address wrong; birdlife.no: IMAP username address wrong; piratpartiet.no: IMAP username address wrong

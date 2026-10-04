@@ -1,0 +1,77 @@
+domain	protocol	host	port	security	ok	stage	elapsed_ms	tls	auth	banner_or_error
+proisp.no	Imap	imap.proisp.no	993	TLS	ok	-	158	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE STARTTLS AUTH=PLAIN AUTH=PLAIN AUT
+proisp.no	Imap	imap.proisp.no	143	STARTTLS	ok	-	160	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE STARTTLS AUTH=PLAIN STARTTLS AUTH=
+proisp.no	Smtp	smtp.proisp.no	465	TLS	ok	-	130	TLSv1_3	LOGIN,PLAIN	220 mailproxy5.cst.dirpod4-cph3.one.com Dovecot ready.
+proisp.no	Smtp	smtp.proisp.no	587	STARTTLS	ok	-	164	TLSv1_3	LOGIN,PLAIN	220 mailproxy1.cst.dirpod3-cph3.one.com Dovecot ready.
+uniweb.no	Imap	mail.uniweb.no	993	TLS	ok	-	167	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE STARTTLS AUTH=PLAIN AUTH=PLAIN AUT
+uniweb.no	Imap	mail.uniweb.no	143	STARTTLS	ok	-	204	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE STARTTLS AUTH=PLAIN STARTTLS AUTH=
+uniweb.no	Smtp	mail.uniweb.no	465	TLS	ok	-	123	TLSv1_3	LOGIN,PLAIN	220 mailproxy1.cst.dirpod4-cph3.one.com Dovecot ready.
+uniweb.no	Smtp	mail.uniweb.no	587	STARTTLS	ok	-	166	TLSv1_3	LOGIN,PLAIN	220 mailproxy5.cst.dirpod3-cph3.one.com Dovecot ready.
+webhuset.no	Imap	imap.webhuset.no	993	TLS	ok	-	95	TLSv1_2	LOGIN,PLAIN	* OK IMAP4 ready
+webhuset.no	Smtp	smtp.webhuset.no	465	TLS	ok	-	93	TLSv1_2	LOGIN,PLAIN	220 mailproxy05.hmg9.webhuset.no ESMTP ready
+webhuset.no	Smtp	smtp.webhuset.no	587	STARTTLS	ok	-	55	TLSv1_2	LOGIN,PLAIN	220 mailproxy03.hmg9.webhuset.no ESMTP ready
+domene.no	Imap	mail.domene.no	993	TLS	FAIL	Dns	15	-	-	DNS error: no records found for Query { name: Name("mail.domene.no."), query_type: AAAA, query_class: IN }
+domene.no	Smtp	mail.domene.no	465	TLS	FAIL	Dns	0	-	-	DNS error: no records found for Query { name: Name("mail.domene.no."), query_type: AAAA, query_class: IN }
+telia.com	Imap	mailin.telia.com	993	TLS	ok	-	234	TLSv1_2	CRAM-MD5,DIGEST-MD5,PLAIN	* OK IMAP4 server ready.
+telia.com	Smtp	mailout.telia.com	465	TLS	ok	-	161	TLSv1_2	CRAM-MD5,DIGEST-MD5,LOGIN,PLAIN	220 ts301-smtpout04.itc.cdc.telia.net ESMTP Service ready
+youmail.dk	Imap	imap.yousee.dk	993	TLS	ok	-	283	TLSv1_2	PLAIN	* OK IMAP4rev1 proxy server ready
+youmail.dk	Imap	imap.mail.dk	993	TLS	ok	-	275	TLSv1_2	PLAIN	* OK IMAP4rev1 proxy server ready
+youmail.dk	Smtp	asmtp.yousee.dk	465	TLS	ok	-	515	TLSv1_2	LOGIN,PLAIN	220 smtp-abo-yousee.gl-mut-gbl.as8677.net mwumf0304 ESMTP **************************
+youmail.dk	Smtp	asmtp.yousee.dk	587	STARTTLS	ok	-	486	TLSv1_2	LOGIN,PLAIN	220 smtp-abo-yousee.gl-mut-gbl.as8677.net mwumf0305 ESMTP **************************
+youmail.dk	Smtp	asmtp.mail.dk	465	TLS	ok	-	498	TLSv1_2	LOGIN,PLAIN	220 smtp-abo-yousee.gl-mut-gbl.as8677.net mwumf0303 ESMTP **************************
+youmail.dk	Smtp	asmtp.mail.dk	587	STARTTLS	ok	-	365	TLSv1_2	LOGIN,PLAIN	220 smtp-abo-yousee.gl-mut-gbl.as8677.net mwumf0305 ESMTP **************************
+saunalahti.fi	Imap	mail.kolumbus.fi	993	TLS	ok	-	111	TLSv1_2	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE I18NLEVEL=1 LITERAL+ AUTH=PLAIN AU
+saunalahti.fi	Smtp	smtpa.kolumbus.fi	465	TLS	ok	-	152	TLSv1_2	LOGIN,PLAIN	220 fgw20.mail.saunalahti.fi ESMTP
+dnainternet.net	Imap	mail.dnamail.fi	993	TLS	ok	-	180	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+dnainternet.net	Imap	imap.welho.com	993	TLS	ok	-	186	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+dnainternet.net	Imap	mail.dnainternet.net	993	TLS	ok	-	191	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+dnainternet.net	Smtp	smtp.dnamail.fi	465	TLS	ok	-	212	TLSv1_3	LOGIN,PLAIN	220 smtp.dnamail.fi ESMTP Postfix
+dnainternet.net	Smtp	smtp.dnamail.fi	587	STARTTLS	ok	-	229	TLSv1_3	LOGIN,PLAIN	220 smtp.dnamail.fi ESMTP Postfix
+dnainternet.net	Smtp	smtp.welho.com	465	TLS	ok	-	174	TLSv1_3	LOGIN,PLAIN	220 smtp.dnamail.fi ESMTP Postfix
+dnainternet.net	Smtp	smtp.welho.com	587	STARTTLS	ok	-	198	TLSv1_3	LOGIN,PLAIN	220 smtp.dnamail.fi ESMTP Postfix
+dnainternet.net	Smtp	smtp.dnainternet.net	465	TLS	ok	-	174	TLSv1_3	LOGIN,PLAIN	220 smtp.dnamail.fi ESMTP Postfix
+dnainternet.net	Smtp	smtp.dnainternet.net	587	STARTTLS	ok	-	202	TLSv1_3	LOGIN,PLAIN	220 smtp.dnamail.fi ESMTP Postfix
+dnainternet.net	Smtp	smtp.dna044.com	465	TLS	FAIL	Tls	155	-	-	invalid peer certificate: certificate not valid for name "smtp.dna044.com"; certificate is only valid for DnsName("*.dnainternet.net") or DnsName("dnainternet.net")
+dnainternet.net	Smtp	smtp.dna044.com	587	STARTTLS	FAIL	Tls	146	-	-	invalid peer certificate: certificate not valid for name "smtp.dna044.com"; certificate is only valid for DnsName("*.dnainternet.net") or DnsName("dnainternet.net")
+simnet.is	Imap	postur.simnet.is	993	TLS	ok	-	539	TLSv1_3	PLAIN	* OK IMAP4rev1 proxy server ready
+simnet.is	Smtp	postur.simnet.is	587	STARTTLS	ok	-	551	TLSv1_3	LOGIN,PLAIN	220 vist-zimproxy-06.vist.is ESMTP Postfix
+t-online.de	Imap	secureimap.t-online.de	993	TLS	ok	-	307	TLSv1_3	-	* OK [CAPABILITY IMAP4 IMAP4rev1 QUOTA LITERAL+ NAMESPACE UIDPLUS IDLE SORT] IMAP Proxy ready (secur
+t-online.de	Smtp	securesmtp.t-online.de	465	TLS	ok	-	506	TLSv1_3	LOGIN,PLAIN	220 fwd90.t-online.de T-Online ESMTP receiver fmsad ready.
+t-online.de	Smtp	securesmtp.t-online.de	587	STARTTLS	ok	-	530	TLSv1_3	LOGIN,PLAIN	220 fwd76.t-online.de T-Online ESMTP receiver fmsad ready. / T-Online ESMTP receiver securesmtp.t-online
+orange.fr	Imap	imap.orange.fr	993	TLS	ok	-	249	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 LITERAL+ SASL-IR LOGIN-REFERRALS ID ENABLE AUTH=PLAIN AUTH=LOGIN] Dovecot
+orange.fr	Smtp	smtp.orange.fr	465	TLS	ok	-	684	TLSv1_3	LOGIN,PLAIN	220 opmta1mto12nd1 smtp.orange.fr ESMTP server ready
+btinternet.com	Imap	mail.btinternet.com	993	TLS	ok	-	260	TLSv1_3	PLAIN	* OK IMAP4 server ready.
+btinternet.com	Smtp	mail.btinternet.com	465	TLS	ok	-	143	TLSv1_3	LOGIN,PLAIN	220 btprdrgo009.btinternet.com ESMTP Service ready
+bluewin.ch	Imap	imaps.bluewin.ch	993	TLS	ok	-	235	TLSv1_3	OAUTHBEARER,PLAIN,XOAUTH2	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=OAUTHBEAR
+bluewin.ch	Smtp	smtpauths.bluewin.ch	465	TLS	ok	-	285	TLSv1_3	LOGIN,PLAIN	220 bluewin.ch mailout-005.p.bluenet.ch Swisscom AG ESMTP server ready
+kpnmail.nl	Imap	imap.kpnmail.nl	993	TLS	ok	-	227	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Se
+kpnmail.nl	Smtp	smtp.kpnmail.nl	587	STARTTLS	ok	-	522	TLSv1_3	LOGIN	220 smtp.kpnmail.nl ESMTP
+tim.it	Imap	imap.tim.it	143	STARTTLS	ok	-	375	TLSv1_3	PLAIN	* OK IMAP4 Server
+tim.it	Smtp	smtp.tim.it	587	STARTTLS	FAIL	Greeting	1156	-	-	550 mail not accepted from blacklisted IP address [ip]
+proximus.be	Imap	imap.proximus.be	993	TLS	ok	-	212	TLSv1_3	PLAIN	* OK IMAP4 server (InterMail vM.9.07.03.050 cheetah-release-release-32) ready Sun, 4 Oct 2026 16:44:
+proximus.be	Smtp	relay.proximus.be	587	STARTTLS	ok	-	3613	TLSv1_3	LOGIN,PLAIN	220 smtp.skynet.be ESMTP
+a1.net	Imap	securemail.a1.net	993	TLS	ok	-	423	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+a1.net	Smtp	securemail.a1.net	587	STARTTLS	ok	-	817	TLSv1_3	LOGIN,PLAIN	220 smtpout02.a1.net ESMTP (1)
+ntnu.no	Imap	outlook.office365.com	993	TLS	ok	-	332	TLSv1_3	LOGINDISABLED,XOAUTH2	* OK Microsoft Exchange IMAP4 service ready. 1a8202d2-0ac6-4df5-a0f0-7efbeb453890 (tcpproxy/15.21.04
+ntnu.no	Smtp	smtp.office365.com	587	STARTTLS	ok	-	121	TLSv1_3	LOGIN,XOAUTH2	220 OL1P279CA0002.outlook.office365.com Microsoft ESMTP MAIL Service ready at Sun, 4 Oct 2026 14:44:49 +
+unimore.it	Imap	imap.gmail.com	993	TLS	ok	-	144	TLSv1_3	OAUTHBEARER,PLAIN,PLAIN-CLIENTTOKEN,XOAUTH2	* OK Gimap ready for requests from [ip] 988c60f3423e3-212a24692d0mb663578864442
+unimore.it	Smtp	smtp.gmail.com	465	TLS	ok	-	269	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,PLAIN-CLIENTTOKEN,XOAUTH,XOAUTH2	220 smtp.gmail.com ESMTP 4fb4d7f45d1cf-6afb01fcd6bsm2168049a12.18 - gsmtp
+unimore.it	Smtp	smtp.gmail.com	587	STARTTLS	ok	-	300	TLSv1_3	LOGIN,OAUTHBEARER,PLAIN,PLAIN-CLIENTTOKEN,XOAUTH,XOAUTH2	220 smtp.gmail.com ESMTP a640c23a62f3a-c2e4cf60571sm307267366b.44 - gsmtp
+kaersholm.com	Imap	imap.one.com	993	TLS	ok	-	143	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+kaersholm.com	Smtp	send.one.com	465	TLS	ok	-	219	TLSv1_3	LOGIN,PLAIN	220 mailrelay5.pub.mailoutpod3-cph3.one.com ESMTP
+kaersholm.com	Smtp	send.one.com	587	STARTTLS	ok	-	330	TLSv1_3	LOGIN,PLAIN	220 mailrelay6.pub.mailoutpod2-cph3.one.com ESMTP
+redder.dk	Imap	mail.simply.com	993	TLS	ok	-	163	TLSv1_3	CRAM-MD5,LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN AUT
+redder.dk	Imap	mail.simply.com	143	STARTTLS	ok	-	203	TLSv1_3	CRAM-MD5,LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ STARTTLS AUTH=PLAIN AUTH=
+redder.dk	Smtp	smtp.simply.com	587	STARTTLS	ok	-	250	TLSv1_3	CRAM-MD5,LOGIN,PLAIN	220 smtp.simply.com ready. No automated mails or mass-mailing activities allowed.
+redder.dk	Smtp	smtp.simply.com	465	TLS	ok	-	118	TLSv1_3	CRAM-MD5,LOGIN,PLAIN	220 smtp.simply.com ready. No automated mails or mass-mailing activities allowed.
+esam-c2.fr	Imap	mail.infomaniak.com	993	TLS	ok	-	307	TLSv1_3	LOGIN,PLAIN	* OK IMAP4 ready
+esam-c2.fr	Imap	mail.infomaniak.com	143	STARTTLS	ok	-	431	TLSv1_3	LOGIN,PLAIN	* OK IMAP4 ready
+esam-c2.fr	Smtp	mail.infomaniak.com	587	STARTTLS	ok	-	442	TLSv1_3	LOGIN,PLAIN	220 mail.infomaniak.com ESMTP ready
+esam-c2.fr	Smtp	mail.infomaniak.com	465	TLS	ok	-	300	TLSv1_3	LOGIN,PLAIN	220 mail.infomaniak.com ESMTP ready
+esam-c2.fr	Smtp	mail.infomaniak.com	25	STARTTLS	ok	-	385	TLSv1_3	LOGIN,PLAIN	220 mail.infomaniak.com ESMTP ready
+civam.org	Imap	ssl0.ovh.net	993	TLS	ok	-	251	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+civam.org	Imap	imap.mail.ovh.net	993	TLS	ok	-	279	TLSv1_3	LOGIN,PLAIN	* OK [CAPABILITY IMAP4rev1 SASL-IR LOGIN-REFERRALS ID ENABLE IDLE LITERAL+ AUTH=PLAIN AUTH=LOGIN] Do
+civam.org	Smtp	ssl0.ovh.net	465	TLS	ok	-	399	TLSv1_2	LOGIN,PLAIN	220 GARM-107S001 Sunday, October 4, 2026
+civam.org	Smtp	ssl0.ovh.net	587	STARTTLS	ok	-	259	TLSv1_2	LOGIN,PLAIN	220 GARM-100R003 Sunday, October 4, 2026
+civam.org	Smtp	smtp.mail.ovh.net	465	TLS	ok	-	228	TLSv1_2	LOGIN,PLAIN	220 GARM-104R005 Sunday, October 4, 2026
+civam.org	Smtp	smtp.mail.ovh.net	587	STARTTLS	ok	-	270	TLSv1_2	LOGIN,PLAIN	220 GARM-102R004 Sunday, October 4, 2026

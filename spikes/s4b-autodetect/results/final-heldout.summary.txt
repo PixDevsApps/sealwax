@@ -1,0 +1,24 @@
+== final-heldout: 26 domains (Heldout list), started at unix 1791124957
+options: presets=true exhaustive=false rules: own_host=true srv_conventional=true mx_hosts=true; resolver=1.1.1.1 order=preset>autoconfig>srv>ispdb>own-host>mx-preset>well-known>mx-autoconfig>mx-ispdb>probe>mx-probe probe_delay=2000ms cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms mx_autoconfig=1500ms own_host=3000ms probe_connect=3000ms probe_budget=5000ms
+correct (strict rubric): 13/26
+correct (extended rubric): 16/26
+  extended adds via E2: dnainternet.net redder.dk esam-c2.fr
+replay, not a rule: strict score if MX-host-probe results asked for the username: 13/26
+TLS-only final results: 26/26
+  group custom: strict 2/8, extended 4/8
+  group europe: strict 7/8, extended 7/8
+  group nordic: strict 4/10, extended 5/10
+final ranked result: n=26 p50=272 p95=5344 max=5519 ms
+first usable result: n=24 p50=227 p95=5344 max=5519 ms
+  final, group custom: n=8 p50=272 p95=5344 max=5344 ms
+  final, group europe: n=8 p50=257 p95=954 max=954 ms
+  final, group nordic: n=10 p50=286 p95=5519 max=5519 ms
+hit the 10000 ms cap or ended unsettled: 0
+winning source: -=2 autoconfig=4 ispdb=5 mx-ispdb=2 mx-preset=4 mx-probe=3 own-host=3 srv=3
+rule mx-probe decided: domene.no redder.dk esam-c2.fr
+rule own-host decided: proisp.no dnainternet.net simnet.is
+TCP connections in discovery: 73 (general probe started for 5 domains), at most 4 to one host in one discovery; no AUTH/LOGIN/USER sent (the probe code has no such command)
+privacy: 500 requests logged (468 in discovery, 32 in scoring checks); 26 carried the dummy address, all to autoconfig.<domain>: true; violations: none; refused redirects that would have carried it elsewhere: 0
+redirects: uniweb.no redirect-followed https://www.uniweb.no; webhuset.no redirect-followed https://www.webhuset.no; domene.no redirect-followed https://www.domene.no; saunalahti.fi redirect-refused https://elisa.fi; t-online.de redirect-followed https://www.t-online.de; orange.fr redirect-followed https://www.orange.fr; bluewin.ch redirect-followed https://www.bluewin.ch; bluewin.ch redirect-followed https://www.bluewin.ch; tim.it redirect-followed https://www.tim.it; proximus.be redirect-followed https://www.proximus.be; ntnu.no redirect-followed https://www.ntnu.no; student.lu.se redirect-refused https://www.lu.se; esam-c2.fr redirect-refused https://www.infomaniak.com
+wrong (strict): uniweb.no: IMAP imap.one.com:993 TLS not accepted; domene.no: IMAP imap.ilait.se:993 TLS not accepted; comhem.se: offered settings for a domain without mail; saunalahti.fi: no IMAP server; dnainternet.net: IMAP imap.dnainternet.net:993 TLS not accepted; simnet.is: IMAP imap.simnet.is:993 TLS not accepted; btinternet.com: IMAP imap.btinternet.com:993 TLS not accepted; ntnu.no: no IMAP server; student.lu.se: IMAP username address wrong; redder.dk: IMAP imap.simply.com:993 TLS not accepted; esam-c2.fr: IMAP imap.infomaniak.ch:993 TLS not accepted; civam.org: SMTP ssl0.ovh.net:465 STARTTLS not accepted; student.uu.se: missed unsupported provider
+wrong (extended): uniweb.no: IMAP imap.one.com:993 TLS not accepted; domene.no: IMAP imap.ilait.se:993 TLS not accepted; comhem.se: offered settings for a domain without mail; saunalahti.fi: no IMAP server; simnet.is: IMAP imap.simnet.is:993 TLS not accepted; btinternet.com: IMAP imap.btinternet.com:993 TLS not accepted; ntnu.no: no IMAP server; student.lu.se: IMAP username address wrong; civam.org: SMTP ssl0.ovh.net:465 STARTTLS not accepted; student.uu.se: missed unsupported provider
