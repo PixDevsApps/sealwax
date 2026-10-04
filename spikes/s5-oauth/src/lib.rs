@@ -143,7 +143,7 @@ impl Loopback {
                     .await?;
                 continue;
             }
-            let body = "<!doctype html><meta charset=utf-8><title>Mail</title><p>You can close this tab and return to Mail.</p>";
+            let body = "<!doctype html><meta charset=utf-8><title>Sealwax</title><p>You can close this tab and return to Sealwax.</p>";
             let response = format!(
                 "HTTP/1.1 200 OK\r\ncontent-type: text/html; charset=utf-8\r\ncontent-security-policy: default-src 'none'\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
                 body.len()

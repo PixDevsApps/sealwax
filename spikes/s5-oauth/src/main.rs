@@ -1,5 +1,5 @@
 //! Live S5 run: `email-spike-s5 google|microsoft <address>` with the client IDs in
-//! MAIL_GOOGLE_CLIENT_ID / MAIL_GOOGLE_CLIENT_SECRET / MAIL_MICROSOFT_CLIENT_ID.
+//! SEALWAX_GOOGLE_CLIENT_ID / SEALWAX_GOOGLE_CLIENT_SECRET / SEALWAX_MICROSOFT_CLIENT_ID.
 //! Opens the system browser, completes the flow, stores the refresh token in the keyring under
 //! the test app-id, refreshes once, and prints only timings and booleans — never a token.
 
@@ -7,7 +7,7 @@ use email_engine::secrets::{KeyringStore, SecretKind, SecretStore};
 use email_spike_s5::{Client, Provider, begin, finish, http_client, refresh};
 use std::time::{Duration, Instant};
 
-const APP_ID: &str = "io.github.pixdevsapps.Mail.Devel.s5";
+const APP_ID: &str = "io.github.pixdevsapps.Sealwax.Devel.s5";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -20,14 +20,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "google" => (
             Provider::google(),
             Client {
-                id: std::env::var("MAIL_GOOGLE_CLIENT_ID")?,
-                secret: std::env::var("MAIL_GOOGLE_CLIENT_SECRET").ok(),
+                id: std::env::var("SEALWAX_GOOGLE_CLIENT_ID")?,
+                secret: std::env::var("SEALWAX_GOOGLE_CLIENT_SECRET").ok(),
             },
         ),
         "microsoft" => (
             Provider::microsoft(),
             Client {
-                id: std::env::var("MAIL_MICROSOFT_CLIENT_ID")?,
+                id: std::env::var("SEALWAX_MICROSOFT_CLIENT_ID")?,
                 secret: None,
             },
         ),
@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .store(
             "s5-test",
             SecretKind::RefreshToken,
-            "Mail S5 test token",
+            "Sealwax S5 test token",
             refresh_token.as_bytes(),
         )
         .await?;
