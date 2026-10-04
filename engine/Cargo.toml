@@ -9,5 +9,8 @@ publish.workspace = true
 [dependencies]
 email-domain.workspace = true
 email-infrastructure.workspace = true
+oo7 = "0.6"
+thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+zeroize = "1"

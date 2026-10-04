@@ -1,6 +1,8 @@
 //! Network, sync, the op queue and secrets, on a private tokio runtime.
 //! The app talks to it only through plain `Send` messages; no tokio type leaves this crate.
 
+pub mod secrets;
+
 /// The engine's runtime: two worker threads, so sync never competes with the GTK thread.
 pub fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
     tokio::runtime::Builder::new_multi_thread()
