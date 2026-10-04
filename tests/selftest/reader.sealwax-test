@@ -82,6 +82,19 @@ reader-show dark-promo
 assert-reader body html-paper
 screenshot $DIR/../../.local/selftest/reader-dark-promo.png
 
+# Hidden for three seconds, the reader gives its view back; shown again, it renders again.
+reader-show newsletter
+resize 800 900
+assert-layout narrow
+action nav.pane::list
+sleep 3500
+assert-reader released true
+action nav.pane::reader
+wait-until assert-reader released false
+assert-reader body html-paper
+assert-reader height-exact true
+resize 1440 900
+
 assert-reader live-views-at-most 4
 assert-labelled
 reader-clear

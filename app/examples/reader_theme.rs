@@ -396,6 +396,13 @@ async fn scenario(
     support::frames(&readers.second, 2).await?;
     mark(&readers.themed).await?;
     mark(&readers.paper).await?;
+    let (web, network) = support::webkit_processes();
+    let live = readers.themed.state().live_views;
+    expect(
+        "every view shares one web process (related-view)",
+        web == 1 && network == 1 && live >= 2,
+        format!("{live} live views, {web} web process(es), {network} network process(es)"),
+    )?;
 
     let theme = controller.theme();
     expect(

@@ -265,6 +265,52 @@ pub fn screenshot(widget: &impl IsA<gtk::Widget>, path: &Path) -> Result<(), Str
     texture.save_to_png(path).map_err(|error| error.to_string())
 }
 
+/// WebKit's web and network processes descended from this one (the web processes run under
+/// bubblewrap, so they are grandchildren), from `/proc`.
+pub fn webkit_processes() -> (usize, usize) {
+    let mut parents = std::collections::HashMap::new();
+    let mut names = std::collections::HashMap::new();
+    for entry in std::fs::read_dir("/proc").into_iter().flatten().flatten() {
+        let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+            continue;
+        };
+        let Ok(stat) = std::fs::read_to_string(entry.path().join("stat")) else {
+            continue;
+        };
+        let (Some(open), Some(close)) = (stat.find('('), stat.rfind(')')) else {
+            continue;
+        };
+        let name = stat[open + 1..close].to_owned();
+        let ppid = stat[close + 1..]
+            .split_whitespace()
+            .nth(1)
+            .and_then(|ppid| ppid.parse::<u32>().ok())
+            .unwrap_or(0);
+        parents.insert(pid, ppid);
+        names.insert(pid, name);
+    }
+    let me = std::process::id();
+    let descends = |mut pid: u32| {
+        while let Some(&parent) = parents.get(&pid) {
+            if parent == me {
+                return true;
+            }
+            if parent <= 1 {
+                return false;
+            }
+            pid = parent;
+        }
+        false
+    };
+    let count = |prefix: &str| {
+        names
+            .iter()
+            .filter(|(pid, name)| name.starts_with(prefix) && descends(**pid))
+            .count()
+    };
+    (count("WebKitWebProces"), count("WebKitNetworkPr"))
+}
+
 /// The repository's `.local/reader/`, where the examples put screenshots.
 pub fn output(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))

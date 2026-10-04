@@ -91,6 +91,8 @@ pub struct ReaderState {
     pub attachments: usize,
     /// The HTML view's height (px) and its allocated width, when an HTML body is shown.
     pub view_size: Option<(i32, i32)>,
+    /// The shown message's view went back to the pool while the reader was hidden.
+    pub released: bool,
     pub live_views: usize,
 }
 
@@ -321,6 +323,7 @@ impl Reader {
                 .as_ref()
                 .and_then(|page| page.html.as_ref())
                 .map(|html| (html.view.height(), html.view.web_view().width())),
+            released: shown.as_ref().is_some_and(|page| page.released),
             live_views: self.inner.engine.live_views(),
         }
     }

@@ -10,7 +10,7 @@
 //! | `reader-show-images` | "Show images" for the shown message; waits for the reload |
 //! | `reader-click SELECTOR` | A DOM `click()` in Sealwax's isolated world of the shown body |
 //! | `reader-clear` | Shows nothing |
-//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `remote-allowed`, `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `text-contains`, `opened` (the last link handed to the opener; `none`) |
+//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `released` (the view went back while hidden), `remote-allowed`, `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `text-contains`, `opened` (the last link handed to the opener; `none`) |
 
 use super::{Harness, StepResult, blocking, equal};
 use crate::reader::{Reader, ReaderState, Shown, ShownBody, ViewEvent, samples};
@@ -240,6 +240,7 @@ pub async fn check(_harness: &Harness, args: &[String]) -> StepResult {
     match field {
         "body" => equal("body", body_name(state.body.as_ref()), value),
         "banner" => equal("banner", state.banner, boolean(value)?),
+        "released" => equal("view released", state.released, boolean(value)?),
         "remote-allowed" => {
             let allowed = matches!(
                 state.body,
