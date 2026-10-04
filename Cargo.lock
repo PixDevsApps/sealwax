@@ -2958,6 +2958,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sealwax-fixtures"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "encoding_rs",
+ "libc",
+ "rusqlite",
+ "sealwax-domain",
+ "sealwax-infrastructure",
+ "tempfile",
+]
+
+[[package]]
 name = "sealwax-infrastructure"
 version = "0.0.1"
 dependencies = [
