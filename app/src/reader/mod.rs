@@ -407,8 +407,14 @@ impl Inner {
     }
 
     async fn load(self: Rc<Self>, id: MessageId, generation: u64, started: Instant) {
-        let detail = self.store.message(id).recv().await;
-        let accounts = self.store.accounts().recv().await;
+        let (detail, accounts, raw) = (
+            self.store.message(id),
+            self.store.accounts(),
+            self.store.raw_message(id),
+        );
+        let detail = detail.recv().await;
+        let accounts = accounts.recv().await;
+        let raw = raw.recv().await.ok().flatten();
         if self.stale(generation) {
             return;
         }
@@ -432,14 +438,6 @@ impl Inner {
                     .collect()
             })
             .unwrap_or_default();
-        let raw = if detail.blob.is_some() {
-            self.store.raw_message(id).recv().await.ok().flatten()
-        } else {
-            None
-        };
-        if self.stale(generation) {
-            return;
-        }
         let fetched = started.elapsed();
         let for_worker = detail.clone();
         let prepared = gio::spawn_blocking(move || prepare::prepare(&for_worker, raw.as_deref()))
