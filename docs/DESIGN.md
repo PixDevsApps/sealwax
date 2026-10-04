@@ -114,7 +114,7 @@ All colours come from the resolved palette (`omarchy-theme-color --all`), mapped
 | Popovers, palette, dialogs | `--popover-bg-color`, `--dialog-bg-color` | `darker_background` |
 | Cards, hovered rows, attachment cards | `--card-bg-color` | `lighter_background` |
 | Borders, separators | `--border-color` | `lighter_background` mixed 8 % (dark) or 14 % (light) toward `foreground`, as the approved mock (M1) |
-| Secondary text (snippets, times, addresses) | mail role | `foreground` mixed 35 % toward `background`, less where needed to keep 4.5:1 against the window and list backgrounds (M1) |
+| Secondary text (snippets, times, addresses) | mail role | `foreground` mixed 35 % toward `background`, less where needed to keep 4.5:1 against the window and list backgrounds (M1). On a hovered or selected list row, mixed less again until it also keeps 4.5:1 on the row's fill, omarchy-shell's hover or selected fill over the list (`--sw-hover-secondary-fg-color`, `--sw-selected-secondary-fg-color`; 2026-10-04: plain secondary text was 3.6:1 on matte-black's selected row) |
 | Accent: focus ring, compose button, unread dot, selected chip | `--accent-bg-color`, `--accent-color` | `accent` |
 | Text on accent | `--accent-fg-color` | `readable_on(accent)` |
 | Star | mail role | `accent` (several themes' `yellow` isn't yellow — matte-black's is red) |

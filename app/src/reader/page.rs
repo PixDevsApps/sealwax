@@ -336,6 +336,16 @@ pub fn plain_text(text: &str) -> gtk::TextView {
     view.set_widget_name("reader-plain");
     view.update_property(&[gtk::accessible::Property::Label("Message text")]);
     view.buffer().set_text(text.trim_end());
+    // GTK 4.22 leaves a text view that holds a single line at no height until something
+    // resizes it, so a one-paragraph message showed no text (M1 gate previews). A resize once
+    // it is on screen, after its first validation, gives it its height.
+    view.connect_map(|view| {
+        glib::idle_add_local_once(glib::clone!(
+            #[weak]
+            view,
+            move || view.queue_resize()
+        ));
+    });
     view
 }
 

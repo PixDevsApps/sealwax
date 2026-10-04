@@ -4,6 +4,8 @@ expression: roles(&theme)
 ---
 mode dark
 secondary_text #9d8e74
+hovered row: secondary_text #9f9075 on #2d2b28
+selected row: secondary_text #b5a384 on #3f3b34
 star #7daea3
 unread #7daea3
 selected_chip #d4be98 on #37403e

@@ -45,6 +45,8 @@ expression: theme.css()
   --success-fg-color: #100f0f;
   --success-color: #879a39;
   --sw-secondary-fg-color: #64625e;
+  --sw-hover-secondary-fg-color: #61605c;
+  --sw-selected-secondary-fg-color: #53514e;
   --sw-star-color: #205ea6;
   --sw-unread-color: #205ea6;
   --sw-chip-selected-fg-color: #205ea6;

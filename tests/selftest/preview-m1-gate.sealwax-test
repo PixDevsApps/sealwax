@@ -1,0 +1,46 @@
+# Preview screenshots for the M1 preview gate (ML-029): the integrated app over a fixture store
+# of two fictional accounts, the store-backed list with a message selected, and the reader
+# showing it through the app's own store, at the design mock's three widths. Three fictional
+# messages dated today and yesterday go on top, so the list shows the mock's sections.
+# matte-black (dark, square corners as on stock Omarchy) and catppuccin-latte (light, corners
+# rounded 8 as on this desktop) are swapped into the run's scratch Omarchy state; the desktop's
+# own theme is never read or changed. The sleeps give the reader's web view time to lay the
+# message out. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the
+# repository root:
+#   cargo build -p sealwax -p sealwax-fixtures
+#   tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/preview-m1-gate.sealwax-test
+
+desktop tiling
+fixtures --count 1200 --seed 7 --now now --folders spread --account Personal
+fixtures --count 300 --seed 8 --now now --folders spread --account Work
+theme matte-black
+corners 0
+resize 1440 900
+list-wait
+mail-add Personal:inbox yesterday "Saturday ride: route and coffee stop" "from=Fjord Cycling Club" "text=We meet at 09:00 by the fountain. 62 km, mostly flat, coffee in Drøbak at the halfway point." read starred
+mail-add Personal:inbox 3h "Re: Quarterly report draft" "from=Marius Dahl" "text=Looks good. Two small comments on page 4: the churn chart uses last year's scale, and the summary could lead with the support numbers." read attachment
+mail-add Personal:inbox 1h "Cabin weekend — final plan" "from=Ingrid Solberg" "text=Hi! I've booked the cabin in Hemsedal for the 17th to the 19th. It sleeps six, has a sauna, and the key is in the box by the door."
+list-select 1
+sleep 1500
+assert-layout wide
+screenshot $DIR/../../tools/progress/public/m1-gate-wide-matte-black-square-2026-10-04.png
+resize 1100 900
+sleep 800
+assert-layout rail
+screenshot $DIR/../../tools/progress/public/m1-gate-rail-matte-black-square-2026-10-04.png
+resize 800 900
+sleep 800
+assert-layout narrow
+screenshot $DIR/../../tools/progress/public/m1-gate-narrow-matte-black-square-2026-10-04.png
+
+theme catppuccin-latte
+corners 8
+resize 1440 900
+list-select 4
+sleep 1500
+assert-layout wide
+screenshot $DIR/../../tools/progress/public/m1-gate-wide-catppuccin-latte-rounded-2026-10-04.png
+resize 1100 900
+sleep 800
+assert-layout rail
+screenshot $DIR/../../tools/progress/public/m1-gate-rail-catppuccin-latte-rounded-2026-10-04.png

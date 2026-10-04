@@ -100,6 +100,17 @@ fn roles(theme: &Theme) -> String {
     let ui = &theme.ui;
     let _ = writeln!(text, "mode {}", theme.mode().as_str());
     let _ = writeln!(text, "secondary_text {}", m.secondary_text);
+    let rows = &theme.rows;
+    let _ = writeln!(
+        text,
+        "hovered row: secondary_text {} on {}",
+        rows.hover_secondary_text, rows.hover_background
+    );
+    let _ = writeln!(
+        text,
+        "selected row: secondary_text {} on {}",
+        rows.selected_secondary_text, rows.selected_background
+    );
     let _ = writeln!(text, "star {}", m.star);
     let _ = writeln!(text, "unread {}", m.unread);
     let _ = writeln!(
@@ -268,6 +279,55 @@ fn secondary_text_reaches_aa_on_the_window_and_the_list() {
                 "{name}: {secondary} on the {surface} {background} is {contrast:.2}"
             );
         }
+    }
+}
+
+/// A hovered or selected row's fill must not take secondary text below AA: its own colour reads
+/// on the fill and on both backgrounds, mixed as far toward the background as it can be.
+#[test]
+fn secondary_text_reaches_aa_on_hovered_and_selected_rows() {
+    for (name, theme) in all_themes() {
+        let p = &theme.palette;
+        let rows = &theme.rows;
+        for (state, background, secondary) in [
+            ("hovered", rows.hover_background, rows.hover_secondary_text),
+            (
+                "selected",
+                rows.selected_background,
+                rows.selected_secondary_text,
+            ),
+        ] {
+            let contrast = secondary.contrast(background);
+            assert!(
+                contrast >= TEXT_CONTRAST,
+                "{name}: {secondary} on the {state} row {background} is {contrast:.2}"
+            );
+            assert!(
+                reads_on_window_and_list(&theme, secondary),
+                "{name} {state}"
+            );
+            let percent = (0..=SECONDARY_MIX)
+                .rev()
+                .find(|percent| p.foreground.mix(p.background, *percent) == secondary)
+                .unwrap_or_else(|| panic!("{name} {state}: {secondary} is not a mix"));
+            if percent < SECONDARY_MIX {
+                let more = p.foreground.mix(p.background, percent + 1);
+                assert!(
+                    !reads_on_window_and_list(&theme, more)
+                        || more.contrast(background) < TEXT_CONTRAST,
+                    "{name} {state}: {percent} % is not the largest mix that reads"
+                );
+            }
+        }
+        let list = theme.ui.sidebar;
+        assert_eq!(
+            rows.selected_background,
+            theme
+                .controls
+                .selected
+                .color
+                .over(list, theme.controls.selected.fill)
+        );
     }
 }
 

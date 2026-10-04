@@ -54,6 +54,12 @@ reader-show attachments
 assert-reader body plain
 assert-reader attachments 3
 screenshot $DIR/../../.local/selftest/reader-attachments.png
+# A one-paragraph plain body: GTK 4.22 left a one-line text view at no height (M1 gate).
+reader-show short
+assert-reader body plain
+assert-reader text-contains "see you at noon"
+assert-reader text-shown true
+screenshot $DIR/../../.local/selftest/reader-short.png
 
 # Remote images: hidden, then shown for this message for the session; a clicked link goes to
 # the opener, after the vetting, and nowhere else.

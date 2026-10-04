@@ -525,6 +525,28 @@ list.sw-message-list > row:selected {
   color: var(--sw-secondary-fg-color);
 }
 
+/* A hovered or selected row's fill lowers the contrast of secondary text, so it takes the
+   colour made to read there (4.5:1), and the thread count's box a border that shows on the
+   fill: the plain border is about the selected fill's own colour. */
+listview.sw-message-list > row:hover .sw-snippet,
+listview.sw-message-list > row:hover .sw-time,
+listview.sw-message-list > row:hover .sw-thread-count,
+listview.sw-message-list > row:hover .sw-indicator {
+  color: var(--sw-hover-secondary-fg-color);
+}
+
+listview.sw-message-list > row:selected .sw-snippet,
+listview.sw-message-list > row:selected .sw-time,
+listview.sw-message-list > row:selected .sw-thread-count,
+listview.sw-message-list > row:selected .sw-indicator {
+  color: var(--sw-selected-secondary-fg-color);
+}
+
+listview.sw-message-list > row:hover .sw-thread-count,
+listview.sw-message-list > row:selected .sw-thread-count {
+  border-color: alpha(currentColor, 0.3);
+}
+
 .sw-star {
   color: var(--sw-star-color);
 }

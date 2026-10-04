@@ -313,6 +313,14 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
             );
             equal("height exact", exact, boolean(value)?)
         }
+        "text-shown" => {
+            use gtk4::prelude::*;
+            let shown = wait_until(Duration::from_secs(2), || {
+                plain_view(&opened.reader).is_some_and(|view| view.height() > 0)
+            })
+            .await;
+            equal("plain text shown", shown, boolean(value)?)
+        }
         "follows-theme" => {
             let style = match state.body {
                 Some(ShownBody::Html { style, .. }) => style,
@@ -381,6 +389,19 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
 /// The shown plain-text body's text.
 fn plain_text(reader: &Reader) -> String {
     use gtk4::prelude::*;
+    plain_view(reader)
+        .map(|view| {
+            let buffer = view.buffer();
+            buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .to_string()
+        })
+        .unwrap_or_default()
+}
+
+/// The text view of the plain body shown, if any.
+fn plain_view(reader: &Reader) -> Option<gtk4::TextView> {
+    use gtk4::prelude::*;
     fn find(widget: &gtk4::Widget) -> Option<gtk4::TextView> {
         if let Some(view) = widget.downcast_ref::<gtk4::TextView>() {
             return Some(view.clone());
@@ -395,13 +416,18 @@ fn plain_text(reader: &Reader) -> String {
         None
     }
     find(&reader.widget())
-        .map(|view| {
-            let buffer = view.buffer();
-            buffer
-                .text(&buffer.start_iter(), &buffer.end_iter(), false)
-                .to_string()
-        })
-        .unwrap_or_default()
+}
+
+/// Polls `condition` every 20 ms until it holds or `timeout` passes.
+async fn wait_until(timeout: Duration, condition: impl Fn() -> bool) -> bool {
+    let started = std::time::Instant::now();
+    while started.elapsed() < timeout {
+        if condition() {
+            return true;
+        }
+        glib::timeout_future(Duration::from_millis(20)).await;
+    }
+    condition()
 }
 
 /// Whether a computed CSS colour (`rgb(r, g, b)` or `rgba(…)`) is `expected`, within 2 per

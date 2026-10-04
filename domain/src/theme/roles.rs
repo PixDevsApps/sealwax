@@ -1,5 +1,6 @@
 use super::color::{Rgb, distinct_pairs, readable_on};
 use super::palette::{Mode, Palette};
+use super::shell::{ControlState, ControlStates};
 
 /// The hues the status colours turn to when a theme can't tell its `red`, `yellow` and
 /// `green` apart ([`distinct_pairs`]): error, warning, success. Matte-black's are two reds
@@ -165,15 +166,53 @@ pub const TEXT_CONTRAST: f64 = 4.5;
 /// percent at a time, until it reaches [`TEXT_CONTRAST`] against both the window background
 /// and `dark_background`; plain `foreground` when nothing does.
 pub fn secondary_text(palette: &Palette) -> Rgb {
+    secondary_text_on(palette, &[palette.background, palette.dark_background])
+}
+
+/// [`secondary_text`] mixed only as far as it still reaches [`TEXT_CONTRAST`] on every one of
+/// `surfaces`; plain `foreground` when nothing does.
+pub fn secondary_text_on(palette: &Palette, surfaces: &[Rgb]) -> Rgb {
     let p = palette;
     (0..=SECONDARY_MIX)
         .rev()
         .map(|percent| p.foreground.mix(p.background, percent))
         .find(|color| {
-            color.contrast(p.background) >= TEXT_CONTRAST
-                && color.contrast(p.dark_background) >= TEXT_CONTRAST
+            surfaces
+                .iter()
+                .all(|surface| color.contrast(*surface) >= TEXT_CONTRAST)
         })
         .unwrap_or(p.foreground)
+}
+
+/// The message list's hovered and selected rows: omarchy-shell's hover and selected fills over
+/// the list background, and the secondary text that still reads on each (DESIGN.md contrast
+/// floors). On matte-black the selected fill takes plain secondary text to 3.6:1.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RowRoles {
+    pub hover_background: Rgb,
+    pub hover_secondary_text: Rgb,
+    pub selected_background: Rgb,
+    pub selected_secondary_text: Rgb,
+}
+
+impl RowRoles {
+    pub fn new(palette: &Palette, list: Rgb, controls: &ControlStates) -> Self {
+        let fill = |state: &ControlState| state.color.over(list, state.fill);
+        let reads_on = |surface: Rgb| {
+            secondary_text_on(
+                palette,
+                &[palette.background, palette.dark_background, surface],
+            )
+        };
+        let hover_background = fill(&controls.hover);
+        let selected_background = fill(&controls.selected);
+        Self {
+            hover_background,
+            hover_secondary_text: reads_on(hover_background),
+            selected_background,
+            selected_secondary_text: reads_on(selected_background),
+        }
+    }
 }
 
 /// The roles Sealwax adds to the palette (DESIGN.md "Theme tokens").

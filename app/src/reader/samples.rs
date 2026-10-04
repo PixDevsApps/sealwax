@@ -282,7 +282,7 @@ pub struct Sample {
 }
 
 /// The sample names, in the order [`all`] returns them.
-pub const NAMES: [&str; 8] = [
+pub const NAMES: [&str; 9] = [
     "plain",
     "simple",
     "newsletter",
@@ -290,6 +290,7 @@ pub const NAMES: [&str; 8] = [
     "attachments",
     "remote",
     "latin1",
+    "short",
     "dark-promo",
 ];
 
@@ -438,6 +439,16 @@ fn draft(name: &str, date: i64) -> Draft {
                  <p>Hilsen Åse</p></body></html>"
                     .into(),
             );
+            draft
+        }
+        "short" => {
+            let mut draft = Draft::new(
+                ("Tomas Berg", "tomas@example.test"),
+                "Re: Lunch Thursday?",
+                date,
+                "sample-short",
+            );
+            draft.text = Some("Sounds good, see you at noon by the fountain.\n".into());
             draft
         }
         _ => {
@@ -620,7 +631,7 @@ mod tests {
             assert_eq!(parsed.headers.subject, sample.draft.subject, "{name}");
             assert!(parsed.headers.date.is_some(), "{name}");
             let kind = match name {
-                "plain" | "attachments" => BodyKind::Plain,
+                "plain" | "attachments" | "short" => BodyKind::Plain,
                 "simple" => BodyKind::Both,
                 _ => BodyKind::Html,
             };

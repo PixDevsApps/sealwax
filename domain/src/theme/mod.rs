@@ -17,9 +17,9 @@ pub use css::{COMPONENT_SIZES, avatar_class};
 pub use palette::{Mode, Palette, resolve_colors};
 pub use roles::{
     AVATAR_HUE_STEP, AVATAR_LIGHTNESS_DARK, AVATAR_LIGHTNESS_LIGHT, AVATAR_SATURATION,
-    AVATAR_TINTS, AvatarTint, BORDER_MIX, INITIALS_DARK, INITIALS_LIGHT, MailRoles, SECONDARY_MIX,
-    STATUS_HUES, STATUS_MIN_GAP, TEXT_CONTRAST, UiRoles, avatar_index, avatar_tints, initials,
-    secondary_text,
+    AVATAR_TINTS, AvatarTint, BORDER_MIX, INITIALS_DARK, INITIALS_LIGHT, MailRoles, RowRoles,
+    SECONDARY_MIX, STATUS_HUES, STATUS_MIN_GAP, TEXT_CONTRAST, UiRoles, avatar_index, avatar_tints,
+    initials, secondary_text, secondary_text_on,
 };
 pub use shell::{ControlState, ControlStates, SPACING_TOKENS, ShellValues, Spacing};
 pub use typography::{
@@ -119,6 +119,8 @@ pub struct Theme {
     pub ui: UiRoles,
     pub mail: MailRoles,
     pub controls: ControlStates,
+    /// The message list's hovered and selected rows.
+    pub rows: RowRoles,
     pub fonts: Fonts,
     pub scale: TypeScale,
     pub spacing: Spacing,
@@ -133,12 +135,15 @@ impl Theme {
         let palette = &inputs.palette;
         let scale = TypeScale::from_shell(&inputs.shell);
         let radius = options.corner_radius.resolve(inputs.hyprland_rounding);
+        let ui = UiRoles::new(palette);
+        let controls = ControlStates::from_shell(&inputs.shell, palette);
         Self {
             source: inputs.source.clone(),
             palette: palette.clone(),
-            ui: UiRoles::new(palette),
+            rows: RowRoles::new(palette, ui.sidebar, &controls),
+            ui,
             mail: MailRoles::new(palette),
-            controls: ControlStates::from_shell(&inputs.shell, palette),
+            controls,
             fonts: Fonts::new(&inputs.fonts, options.chrome_font, options.reading_font),
             spacing: Spacing::from_shell(&inputs.shell, scale.base),
             scale,

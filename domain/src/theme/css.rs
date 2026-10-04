@@ -93,6 +93,14 @@ impl Theme {
         let mut push = |name: &str, value: String| variables.push((name.to_owned(), value));
 
         push("--sw-secondary-fg-color", mail.secondary_text.to_string());
+        push(
+            "--sw-hover-secondary-fg-color",
+            self.rows.hover_secondary_text.to_string(),
+        );
+        push(
+            "--sw-selected-secondary-fg-color",
+            self.rows.selected_secondary_text.to_string(),
+        );
         push("--sw-star-color", mail.star.to_string());
         push("--sw-unread-color", mail.unread.to_string());
         push(

@@ -78,6 +78,21 @@ impl Rgb {
         }
     }
 
+    /// This colour drawn at `alpha` over `base`, blended per channel in sRGB as GTK 4.22
+    /// composites unless `GDK_DEBUG=linear` is set (a selected row in the M1 previews matches
+    /// it to the unit).
+    pub fn over(self, base: Self, alpha: f64) -> Self {
+        let alpha = alpha.clamp(0.0, 1.0);
+        let channel = |top: u8, bottom: u8| {
+            (f64::from(top) * alpha + f64::from(bottom) * (1.0 - alpha)).round() as u8
+        };
+        Self {
+            r: channel(self.r, base.r),
+            g: channel(self.g, base.g),
+            b: channel(self.b, base.b),
+        }
+    }
+
     /// WCAG 2 relative luminance.
     pub fn relative_luminance(self) -> f64 {
         let linear = |channel: u8| {
