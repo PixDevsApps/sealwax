@@ -25,3 +25,4 @@ glib-unix.workspace = true
 async-channel.workspace = true
 clap.workspace = true
 tracing.workspace = true
+webkit6.workspace = true

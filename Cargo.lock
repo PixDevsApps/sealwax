@@ -3059,6 +3059,7 @@ dependencies = [
  "sealwax-engine",
  "sealwax-infrastructure",
  "tracing",
+ "webkit6",
 ]
 
 [[package]]

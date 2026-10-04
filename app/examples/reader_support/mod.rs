@@ -1,0 +1,241 @@
+//! What the reader examples share: a scratch folder inside the repository, a scratch store
+//! filled through `ingest_raw`, the real window around a reader, and waiting helpers. Run the
+//! examples through `tools/headless.sh`.
+
+#![allow(dead_code)]
+
+pub mod broadway;
+
+use gtk4 as gtk;
+use gtk4::prelude::*;
+use gtk4::{gdk, glib, graphene};
+use libadwaita as adw;
+use sealwax_app::reader::{Reader, Shown};
+use sealwax_app::theme::ThemeController;
+use sealwax_app::window::{
+    AccountStatus, FolderRole, Pane, SidebarAccount, SidebarFolder, SidebarModel, Window,
+};
+use sealwax_domain::keymap::Keymap;
+use sealwax_domain::theme::Rgb;
+use sealwax_infrastructure::blobs::BlobStore;
+use sealwax_infrastructure::store::{Store, StoreOptions};
+use sealwax_infrastructure::xdg::SealwaxDirs;
+use std::path::{Path, PathBuf};
+use std::rc::Rc;
+use std::time::{Duration, Instant};
+
+/// A scratch folder under the repository's git-ignored `.local/`, emptied first.
+pub fn scratch(name: &str) -> PathBuf {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../.local/reader-examples")
+        .join(name);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).expect("a scratch folder in .local");
+    std::fs::canonicalize(&root).unwrap_or(root)
+}
+
+pub struct Scratch {
+    pub dirs: SealwaxDirs,
+    pub store: Rc<Store>,
+    pub blobs: BlobStore,
+}
+
+/// A store and blob store under `root`. Opened before the GTK main loop runs.
+pub fn store(root: &Path) -> Scratch {
+    let dirs = SealwaxDirs::under(root);
+    let blobs = BlobStore::open(&dirs.blobs_dir()).expect("a scratch blob store");
+    let store = Store::open(
+        &dirs.store_file(),
+        StoreOptions {
+            blobs: Some(blobs.clone()),
+            ..StoreOptions::default()
+        },
+    )
+    .expect("a scratch store");
+    Scratch {
+        dirs,
+        store: Rc::new(store),
+        blobs,
+    }
+}
+
+/// The real window with one account, showing `reader` in its reader pane.
+pub fn window(app: &adw::Application, reader: &Reader, size: (i32, i32)) -> Window {
+    let window = Window::new(app, true);
+    window.set_sidebar(SidebarModel {
+        accounts: vec![SidebarAccount {
+            key: "personal".into(),
+            name: "Personal".into(),
+            status: AccountStatus::Synced,
+            folders: vec![SidebarFolder {
+                key: "personal/inbox".into(),
+                name: "Inbox".into(),
+                role: Some(FolderRole::Inbox),
+                count: 0,
+            }],
+            more: Vec::new(),
+        }],
+    });
+    window.set_reader(&reader.widget());
+    window.set_reader_toolbar(&reader.toolbar());
+    window.window().set_default_size(size.0, size.1);
+    window.show_pane(Pane::Reader);
+    window
+}
+
+pub fn reader(scratch: &Scratch, theme: &Rc<ThemeController>) -> Reader {
+    Reader::new(
+        scratch.store.clone(),
+        theme.clone(),
+        &Keymap::default(),
+        &scratch.dirs.cache,
+    )
+}
+
+/// Every `Shown` report of `reader`, in order.
+pub fn shown_reports(reader: &Reader) -> async_channel::Receiver<Shown> {
+    let (sender, receiver) = async_channel::unbounded();
+    reader.connect_shown(move |shown| {
+        let _ = sender.try_send(shown.clone());
+    });
+    receiver
+}
+
+/// Shows `id` and waits for its report (10 s at most).
+pub async fn show(
+    reader: &Reader,
+    reports: &async_channel::Receiver<Shown>,
+    id: sealwax_domain::model::MessageId,
+) -> Result<Shown, String> {
+    reader.show(id);
+    loop {
+        let report = glib::future_with_timeout(Duration::from_secs(10), reports.recv())
+            .await
+            .map_err(|_| format!("message {} was never shown", id.0))?
+            .map_err(|error| error.to_string())?;
+        if report.id == id {
+            return Ok(report);
+        }
+    }
+}
+
+pub async fn sleep(ms: u64) {
+    glib::timeout_future(Duration::from_millis(ms)).await;
+}
+
+/// Waits until `check` holds, polling every 10 ms, for at most `limit`.
+pub async fn wait_until(limit: Duration, mut check: impl FnMut() -> bool) -> bool {
+    let started = Instant::now();
+    while !check() {
+        if started.elapsed() > limit {
+            return false;
+        }
+        sleep(10).await;
+    }
+    true
+}
+
+/// Waits for `count` painted frames of `widget`'s window.
+pub async fn frames(widget: &impl IsA<gtk::Widget>, count: usize) -> Result<(), String> {
+    let clock = widget
+        .as_ref()
+        .frame_clock()
+        .ok_or("the widget has no frame clock")?;
+    let (sender, receiver) = async_channel::unbounded();
+    let handler = clock.connect_after_paint(move |_| {
+        let _ = sender.try_send(Instant::now());
+    });
+    clock.begin_updating();
+    let mut result = Ok(());
+    for _ in 0..count {
+        widget.as_ref().queue_draw();
+        if glib::future_with_timeout(Duration::from_secs(5), receiver.recv())
+            .await
+            .is_err()
+        {
+            result = Err("no frame was painted".to_owned());
+            break;
+        }
+    }
+    clock.end_updating();
+    clock.disconnect(handler);
+    result
+}
+
+/// Where `x, y` of `widget` is in its window's surface, for Broadway input.
+pub fn surface_point(widget: &impl IsA<gtk::Widget>, x: f64, y: f64) -> Option<(f64, f64)> {
+    let widget = widget.as_ref();
+    let native = widget.native()?;
+    let point = widget.compute_point(&native, &graphene::Point::new(x as f32, y as f32))?;
+    let (dx, dy) = native.surface_transform();
+    Some((f64::from(point.x()) + dx, f64::from(point.y()) + dy))
+}
+
+/// The colour GTK draws at `x, y` of `widget` (its own coordinates).
+pub fn pixel(widget: &impl IsA<gtk::Widget>, x: i32, y: i32) -> Result<Rgb, String> {
+    let widget = widget.as_ref();
+    let (width, height) = (widget.width(), widget.height());
+    if width <= 0 || height <= 0 {
+        return Err("the widget has no size".to_owned());
+    }
+    let snapshot = gtk::Snapshot::new();
+    gtk::WidgetPaintable::new(Some(widget)).snapshot(
+        &snapshot,
+        f64::from(width),
+        f64::from(height),
+    );
+    let node = snapshot.to_node().ok_or("the widget drew nothing")?;
+    let renderer = widget
+        .native()
+        .and_then(|native| native.renderer())
+        .ok_or("no renderer")?;
+    let viewport = graphene::Rect::new(0.0, 0.0, width as f32, height as f32);
+    let texture: gdk::Texture = renderer.render_texture(&node, Some(&viewport));
+    let (texture_width, texture_height) = (texture.width() as usize, texture.height() as usize);
+    let stride = texture_width * 4;
+    let mut data = vec![0; stride * texture_height];
+    texture.download(&mut data, stride);
+    let column = (x.max(0) as usize).min(texture_width - 1);
+    let row = (y.max(0) as usize).min(texture_height - 1);
+    let at = row * stride + column * 4;
+    Ok(Rgb {
+        r: data[at + 2],
+        g: data[at + 1],
+        b: data[at],
+    })
+}
+
+pub fn close(a: Rgb, b: Rgb) -> bool {
+    a.r.abs_diff(b.r) <= 3 && a.g.abs_diff(b.g) <= 3 && a.b.abs_diff(b.b) <= 3
+}
+
+/// The window as a PNG, with GSK's Cairo renderer (as the self-test's `screenshot`).
+pub fn screenshot(widget: &impl IsA<gtk::Widget>, path: &Path) -> Result<(), String> {
+    let widget = widget.as_ref();
+    let (width, height) = (widget.width(), widget.height());
+    let snapshot = gtk::Snapshot::new();
+    gtk::WidgetPaintable::new(Some(widget)).snapshot(
+        &snapshot,
+        f64::from(width),
+        f64::from(height),
+    );
+    let node = snapshot.to_node().ok_or("nothing drawn")?;
+    let renderer = gtk::gsk::CairoRenderer::new();
+    renderer
+        .realize_for_display(&WidgetExt::display(widget))
+        .map_err(|error| error.to_string())?;
+    let viewport = graphene::Rect::new(0.0, 0.0, width as f32, height as f32);
+    let texture = renderer.render_texture(&node, Some(&viewport));
+    renderer.unrealize();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    texture.save_to_png(path).map_err(|error| error.to_string())
+}
+
+/// The repository's `.local/reader/`, where the examples put screenshots.
+pub fn output(name: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../.local/reader")
+        .join(name)
+}
