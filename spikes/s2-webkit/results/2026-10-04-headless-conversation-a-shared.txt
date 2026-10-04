@@ -1,0 +1,37 @@
+# S2 evidence log. Machine: Omarchy 4.0.4, Hyprland 0.56.2, RTX 3070 Ti (nvidia-open 610.57.04), 3440x1440 @ 144 Hz, scale 1.
+# Mode: HEADLESS Broadway :21 (software rendering) [before the BodyBox and height-following fixes; heights then 10/10]. Build: release (thin LTO), target/s2/release/email-spike-s2.
+# Command: tools/headless.sh 21 env XDG_CACHE_HOME=<scratch> XDG_DATA_HOME=<scratch> MAIL_S2_CACHE_DIR=<scratch> email-spike-s2 conversation --views 10  --scroll 3
+# Finished at about 14:18 CEST on 2026-10-04 (log file modification time); exit status 1 (the memory bar fails).
+ENV mode=conversation display=GdkBroadwayDisplay renderer=GskBroadwayRenderer gtk=4.22.4 webkit=2.52.6 palette=omarchy:matte-black dark=true sans="Liberation Sans" radius=0 share_process=true window=1024x768 column=860 canary_port=44609 font_face=true
+ROW conversation id=nl-01 applied=1125 allocated=1125 scrollHeight=1125 height_ok=true cid=2/2 ready_ms=272.8 timeout=false
+ROW conversation id=nl-07 applied=1252 allocated=1252 scrollHeight=1252 height_ok=true cid=7/7 ready_ms=263.1 timeout=false
+ROW conversation id=nl-13 applied=1366 allocated=1366 scrollHeight=1366 height_ok=true cid=7/7 ready_ms=263.2 timeout=false
+ROW conversation id=nl-19 applied=914 allocated=914 scrollHeight=914 height_ok=true cid=2/2 ready_ms=263.2 timeout=false
+ROW conversation id=nl-25 applied=2967 allocated=2967 scrollHeight=2967 height_ok=true cid=1/1 ready_ms=263.2 timeout=false
+ROW conversation id=nl-26 applied=931 allocated=931 scrollHeight=931 height_ok=true cid=2/2 ready_ms=263.2 timeout=false
+ROW conversation id=nl-32 applied=1029 allocated=1029 scrollHeight=1029 height_ok=true cid=1/1 ready_ms=265.9 timeout=false
+ROW conversation id=nl-38 applied=2296 allocated=2296 scrollHeight=2296 height_ok=true cid=2/2 ready_ms=272.8 timeout=false
+ROW conversation id=nl-44 applied=732 allocated=732 scrollHeight=732 height_ok=true cid=1/1 ready_ms=272.9 timeout=false
+ROW conversation id=nl-50 applied=12997 allocated=12997 scrollHeight=12997 height_ok=true cid=5/5 ready_ms=260.9 timeout=false
+SUMMARY conversation views=10 height_ok=10/10 all_ready_ms=272.9 total_height=27407
+MEM pid=132293 ppid=132292 name=email-spike-s2 rss_kib=298672 pss_kib=188654
+MEM pid=132305 ppid=132293 name=WebKitNetworkPr rss_kib=96272 pss_kib=34528
+MEM pid=132309 ppid=132293 name=bwrap rss_kib=2208 pss_kib=125
+MEM pid=132314 ppid=132293 name=bwrap rss_kib=2212 pss_kib=127
+MEM pid=132310 ppid=132309 name=bwrap rss_kib=1532 pss_kib=163
+MEM pid=132315 ppid=132314 name=bwrap rss_kib=1548 pss_kib=177
+MEM pid=132311 ppid=132310 name=xdg-dbus-proxy rss_kib=6452 pss_kib=577
+MEM pid=132317 ppid=132315 name=WebKitWebProces rss_kib=218420 pss_kib=103244
+MEM-GROUP name=WebKitNetworkPr count=1 rss_mib=94.0 pss_mib=33.7
+MEM-GROUP name=WebKitWebProces count=1 rss_mib=213.3 pss_mib=100.8
+MEM-GROUP name=bwrap count=4 rss_mib=7.3 pss_mib=0.6
+MEM-GROUP name=email-spike-s2 count=1 rss_mib=291.7 pss_mib=184.2
+MEM-GROUP name=xdg-dbus-proxy count=1 rss_mib=6.3 pss_mib=0.6
+SUMMARY memory views=10 share_process=true rss_app_and_webkit_mib=599.0 rss_tree_mib=612.6 pss_tree_mib=319.9 pss_complete=true
+SUMMARY conversation_blank 0/10 []
+SUMMARY scroll secs=3 speed_px_s=2400 content_height=27844 page=768 bounces=0 frames=4 presented=2 incomplete=2 refresh_ms=33.333
+SUMMARY scroll_presentation_interval_ms n=1 min=946.96 p50=946.96 p95=946.96 p99=946.96 max=946.96 mean=946.96
+SUMMARY scroll_tick_interval_ms n=3 min=999.99 p50=999.99 p95=1399.99 p99=1399.99 max=1399.99 mean=1133.32
+SUMMARY scroll_ui_frame_work_ms n=4 min=0.02 p50=31.16 p95=83.46 p99=83.46 max=83.46 mean=40.57
+SUMMARY scroll_long_frames presentation>16.7ms=1 tick>16.7ms=3 presentation>1.5x_refresh=1
+CANARY-TOTAL connections=0 requests=0 silent=0 tls=0

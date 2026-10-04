@@ -1,0 +1,41 @@
+# S2 evidence log. Machine: Omarchy 4.0.4, Hyprland 0.56.2, RTX 3070 Ti (nvidia-open 610.57.04), 3440x1440 @ 144 Hz, scale 1.
+# Mode: LIVE Wayland session. Build: release (thin LTO), target/s2/release/email-spike-s2.
+# Command: email-spike-s2 conversation --views 10 --no-accel --scroll 6 (tools: scratchpad live.sh = timeout --kill-after=2 58 env XDG_CACHE_HOME=<scratch> XDG_DATA_HOME=<scratch> MAIL_S2_CACHE_DIR=<scratch> email-spike-s2 <args> --deadline 55)
+# 2026-10-04T14:30:11+02:00
+# exit=1 wall_s=10.39
+ENV mode=conversation display=GdkWaylandDisplay renderer=GskVulkanRenderer gtk=4.22.4 webkit=2.52.6 palette=omarchy:matte-black dark=true sans="Liberation Sans" radius=8 share_process=true accelerated=false window=1709x1400 column=860 canary_port=46787 font_face=true
+MEM-BASELINE processes=2 rss_mib=274.6 pss_mib=133.4
+ROW conversation id=nl-01 applied=1125 allocated=1125 scrollHeight=1125 height_ok=true cid=2/2 ready_ms=326.9 timeout=false
+ROW conversation id=nl-07 applied=1252 allocated=1252 scrollHeight=1252 height_ok=true cid=7/7 ready_ms=326.8 timeout=false
+ROW conversation id=nl-13 applied=1366 allocated=1366 scrollHeight=1366 height_ok=true cid=7/7 ready_ms=326.8 timeout=false
+ROW conversation id=nl-19 applied=914 allocated=914 scrollHeight=914 height_ok=true cid=2/2 ready_ms=326.8 timeout=false
+ROW conversation id=nl-25 applied=2967 allocated=2967 scrollHeight=2967 height_ok=true cid=1/1 ready_ms=326.8 timeout=false
+ROW conversation id=nl-26 applied=931 allocated=931 scrollHeight=931 height_ok=true cid=2/2 ready_ms=384.1 timeout=false
+ROW conversation id=nl-32 applied=1029 allocated=1029 scrollHeight=1029 height_ok=true cid=1/1 ready_ms=326.8 timeout=false
+ROW conversation id=nl-38 applied=2296 allocated=2296 scrollHeight=2296 height_ok=true cid=2/2 ready_ms=326.9 timeout=false
+ROW conversation id=nl-44 applied=589 allocated=589 scrollHeight=589 height_ok=true cid=1/1 ready_ms=326.9 timeout=false
+ROW conversation id=nl-50 applied=12997 allocated=12997 scrollHeight=12997 height_ok=true cid=5/5 ready_ms=333.3 timeout=false
+SUMMARY conversation views=10 height_ok=10/10 all_ready_ms=384.1 total_height=27665
+MEM pid=149889 ppid=149888 name=email-spike-s2 rss_kib=323464 pss_kib=216217
+MEM pid=149912 ppid=149889 name=WebKitNetworkPr rss_kib=95904 pss_kib=38083
+MEM pid=149924 ppid=149889 name=bwrap rss_kib=2196 pss_kib=143
+MEM pid=149929 ppid=149889 name=bwrap rss_kib=2196 pss_kib=145
+MEM pid=149925 ppid=149924 name=bwrap rss_kib=1532 pss_kib=170
+MEM pid=149930 ppid=149929 name=bwrap rss_kib=1548 pss_kib=188
+MEM pid=149926 ppid=149925 name=xdg-dbus-proxy rss_kib=6344 pss_kib=628
+MEM pid=149931 ppid=149930 name=WebKitWebProces rss_kib=223752 pss_kib=130287
+MEM-GROUP name=WebKitNetworkPr count=1 rss_mib=93.7 pss_mib=37.2
+MEM-GROUP name=WebKitWebProces count=1 rss_mib=218.5 pss_mib=127.2
+MEM-GROUP name=bwrap count=4 rss_mib=7.3 pss_mib=0.6
+MEM-GROUP name=email-spike-s2 count=1 rss_mib=315.9 pss_mib=211.1
+MEM-GROUP name=xdg-dbus-proxy count=1 rss_mib=6.2 pss_mib=0.6
+SUMMARY memory views=10 share_process=true rss_app_and_webkit_mib=628.0 rss_tree_mib=641.5 pss_tree_mib=376.8 pss_complete=true gpu_device_used_mib_before=947 after=915
+SUMMARY conversation_blank 0/10 []
+SUMMARY scroll secs=6 speed_px_s=2400 content_height=27701 page=1400 bounces=0 frames=850 presented=849 incomplete=2 refresh_ms=6.944
+SUMMARY scroll_presentation_interval_ms n=848 min=6.91 p50=6.95 p95=6.95 p99=13.89 max=13.97 mean=7.06
+SUMMARY scroll_tick_interval_ms n=849 min=6.19 p50=6.94 p95=6.95 p99=13.89 max=16.67 mean=7.08
+SUMMARY scroll_ui_frame_work_ms n=851 min=0.00 p50=3.54 p95=4.96 p99=6.11 max=6.88 mean=3.62
+SUMMARY scroll_long_frames presentation>16.7ms=0 tick>16.7ms=0 presentation>1.5x_refresh=14
+CANARY-TOTAL connections=0 requests=0 silent=0 tls=0
+# stderr (repeated lines counted):
+#      10 ** (email-spike-s2): WARNING **: : webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.

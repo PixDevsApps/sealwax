@@ -11,7 +11,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | ADR | Title | Status (2026-10-04) |
 | --- | --- | --- |
 | 001 | Standalone native application | Accepted (user request) |
-| 002 | GTK4 + libadwaita + WebKitGTK 6 | Proposed; S2 and S7 confirm |
+| 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
 | 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3 |
 | 004 | Follow the live Omarchy theme | Accepted (user request) |
 | 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); blob store in M1 |
@@ -20,7 +20,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 008 | OAuth2 and secrets | OAuth for Google and Microsoft accepted (user decision); mechanism proposed; S5 is go/no-go |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed |
 | 010 | Name and app-id | Open; the user decides in M0 |
-| 011 | Reading pane: approach A with hardened WebKit | Proposed; S7 amendment (CSP vs isolated worlds); S2 decides |
+| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory bar open |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
@@ -54,6 +54,14 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 **Alternatives:** Qt 6 / QML through cxx-qt (Hertz) with QtWebEngine: a heavier engine (282 MiB installed) and a C++ bridge. iced, Slint or GPUI: no HTML engine, so HTML mail would need an embedded browser anyway.
 
 **Consequence:** WebKit's web processes cost memory and start in roughly 100–300 ms, so views are pooled, share one process and stay off the startup path. Rendering on NVIDIA (nvidia-open 610) is unproven until S2.
+
+### ADR-002 amendment — S2 and S7 results (2026-10-04)
+
+**Status:** Accepted on spike evidence. WebKitGTK renders correctly on nvidia-open 610 without workarounds — no blank frames in 63 bodies, open p95 17.4 ms, scrolling p95 6.95 ms at 144 Hz ([S2 report](spikes/S2-webkit.md)) — and the editable view meets the composer's typing bar ([S7 report](spikes/S7-composer.md)).
+
+**Further consequences:**
+- WebKit pages are memory-heavy: about 45 MiB of GPU memory per accelerated page plus a surface as tall as the whole body; the app plus WebKit's network process already take 274 MiB RSS before any message is shown. Reader and composer views therefore render with `hardware-acceleration-policy = NEVER` (no GPU memory, a 4× faster cold start, scrolling still at 144 Hz).
+- WebKit paces its own frames with a 60 Hz timer here; inside approach A the GTK side still scrolls at the monitor's rate.
 
 ## ADR-003 — Layering with an engine crate; tokio only there (2026-10-04)
 
@@ -205,6 +213,25 @@ From the composer spike ([report](spikes/S7-composer.md)), which uses the same h
 - With `enable-javascript-markup = false`, no markup script or event handler ran even without the CSP.
 - The `enable-dns-prefetching` and `enable-hyperlink-auditing` setters are deprecated in WebKitGTK 2.48/2.50; they stay off where they still exist, but nothing relies on them.
 - Every view uses an ephemeral network session: WebKit's default session writes under `$XDG_CACHE_HOME/<prgname>` and `$XDG_DATA_HOME/<prgname>`.
+
+### ADR-011 amendment — S2 results: approach A accepted (2026-10-04)
+
+**Status:** Approach A is accepted on S2's evidence ([report](spikes/S2-webkit.md)); approach B is rejected (its scrolling runs at WebKit's 60 Hz timer, p95 17.0 ms, missing the bar at 144 Hz; WebKit strips `srcdoc` with script markup off; no memory advantage over A rendered on the CPU). Every S2 bar passes except memory: 47 hostile cases with 0 connections, 0 TLS hellos and 0 script traces; `cid:` 158/158; 0 blank bodies of 63; scrolling p95 6.95 ms; heights 63/63 within ±1 px; open p95 17.4 ms; renders under `tools/headless.sh` in software.
+
+The layers and the sizing change as follows (SECURITY.md carries the security rules):
+
+1. The runtime features `LinkDNSPrefetch`, `LinkPreconnect`, `LinkPrefetch`, `LinkPreload` and `SpeculationRulesPrefetch` are off.
+2. Mail's isolated world intercepts link clicks and form submits and hands the URL to Mail, which opens only absolute http(s) and mailto links after the mismatch check; `decide-policy` still blocks everything as the backstop. (As first written, WebKit connected to a clicked link's host — 3 of 47 cases — before `decide-policy` answered.)
+3. The content filter blocks `.*`, then one `ignore-previous-rules` rule each re-allows `^cid:`, `^data:` and `^about:` (WebKit's filter regexes reject alternation).
+4. The CSP ends with `upgrade-insecure-requests`; without it, http images never load even after the user allows remote content.
+5. Reader views render with `hardware-acceleration-policy = NEVER`, as the composer does (S7).
+6. Each body sits in a container whose height is exactly the reported height (a WebView's natural height is WebKit's contents size, which never drops below the current viewport).
+7. The reader stylesheet adds `html,body{height:max-content!important;min-height:0!important;max-height:none!important}` (quirks-mode bodies otherwise fill the viewport and report a wrong height).
+8. Height reports are followed until they settle; growth driven by viewport units is frozen, and views are capped at 16,000 px.
+9. `related-view` is mandatory (4× the RSS without it).
+10. Scripts-off markup stays the script defence of record (alone it stopped every script in 47 cases); the content filter stays because scripts-off makes `<noscript>` content live.
+
+**Open:** memory. Ten tall newsletter bodies in one shared web process measured 804 MiB RSS with GPU rendering and 628 MiB on the CPU (PSS 512 / 377 MiB), against the bar of 300 MB. The bar's metric and size are the user's decision at the M0 gate; the design answer is to cap live views per conversation (only expanded bodies have views, typically one to three) and release views far off screen.
 
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 

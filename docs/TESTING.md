@@ -21,7 +21,13 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 - Always through `tools/headless.sh <display> <cmd...>`: Broadway backend, a private D-Bus bus that starts no services, `GSETTINGS_BACKEND=memory`, `ADW_DISABLE_PORTAL=1`, a time limit (`MAIL_HEADLESS_TIMEOUT`, default 300 s).
 - The app exits by itself after `MAIL_EXIT_AFTER_MS`; the CI smoke run greps for `first-frame`.
 - Parallel agents use different display numbers; CI uses `MAIL_CI_DISPLAY` (default 19).
-- Whether WebKitGTK renders under Broadway is part of S2. If it doesn't, the WebView tests need another harness, documented here.
+- WebKitGTK renders under `tools/headless.sh` in software (GTK has no GL there, so WebKit turns acceleration off). Security checks, heights, `cid:` loads and snapshots work headless. Without a Broadway client attached GTK paints about once per second, so frame timing, open-to-paint latency and scrolling are measured on the live session; headless WebView tests wait for events and allocations, never fixed delays (S2).
+
+## Hostile-HTML suite (ML-065)
+
+47 cases, from `spikes/s2-webkit/src/hostile.rs` until M5 moves them into the app's tests. Each points its network vectors at a local HTTP canary (127.0.0.1, random port) that counts connections, requests per path, connections that send nothing, and TLS ClientHellos; each also carries a script payload with four traces (title, `data-pwned`, `alert()`, a beacon). Clicks are DOM `click()` calls from Mail's isolated world.
+
+Pass with the production reader: 0 connections (not just 0 requests — WebKit pre-connects), 0 TLS hellos, 0 script traces, no allowed navigation, new window or download; the `cid:` test image renders and a foreign `cid:` part never loads. In the same run, a no-defence control must show the vectors are live, and a remote-allowed control (CSP widened with the canary's origin, no filter) must load images only.
 
 ## Performance targets
 
@@ -47,6 +53,23 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### S2 WebKit reader (ML-010) — 2026-10-04
+
+Release builds; 13 short self-closing live runs on Hyprland (3440×1440 at 144 Hz, NVIDIA; one stopped by the harness's own 55 s watchdog and not used) and headless runs on display 21. Corpus: 55 synthetic newsletters and 8 simple messages. Report: [spikes/S2-webkit.md](spikes/S2-webkit.md); raw logs in `spikes/s2-webkit/results/`.
+
+| Bar | Result | Verdict |
+| --- | --- | --- |
+| 25+ hostile cases: 0 canary requests, 0 page scripts | 47 cases: 0 connections, 0 TLS hellos, 0 script traces; the no-defence control showed traffic in 37 cases and scripts in 11 | Pass with the ADR-011 S2 amendment (pre-click connections) |
+| `cid:` images render | 158/158 in 63 bodies; a foreign part never loads | Pass |
+| No blank frames, 50 newsletters | 0 of 63 bodies blank (WebKit snapshot and GTK render), 0 of 10 in conversations | Pass |
+| Scroll ≤ 16.7 ms p95 | p95 6.95 ms at 144 Hz (2 of 1,146 frames over 16.7 ms), GPU and CPU rendering | Pass |
+| Height ±1 px, 50/50 | 63/63 (GPU, CPU and headless) | Pass with the sizing fixes |
+| Open ≤ 150 ms p95 | load → first WebKit frame p95 17.4 ms; first GTK paint at final height p95 32.6 ms (CPU rendering 56.9 ms) | Pass |
+| ≤ 300 MB with 10 views | 10 tall newsletters: 804 MiB RSS GPU / 628 MiB RSS CPU (PSS 512 / 377); 10 short messages, GPU: 711 MiB; without process sharing 3,413 MiB | **Fail** — metric and design to decide |
+| Renders under `tools/headless.sh` | yes, in software; timing not meaningful there | Pass |
+
+`cargo test -p email-spike-s2`: 19 tests pass; fmt and clippy clean (re-run by the lead).
 
 ### S3 store and message list (ML-011) — 2026-10-04
 

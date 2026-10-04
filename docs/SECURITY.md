@@ -38,17 +38,18 @@ Mail handles hostile content (every incoming message), long-lived credentials an
 
 ### Message rendering
 
-Every layer stays even when another would suffice ([ADR-011](DECISIONS.md#adr-011--reading-pane-approach-a-with-hardened-webkit-2026-10-04)):
+Every layer stays even when another would suffice ([ADR-011](DECISIONS.md#adr-011--reading-pane-approach-a-with-hardened-webkit-2026-10-04) and its S2 and S7 amendments). S2 checked them against 47 hostile cases: 0 connections, 0 TLS hellos and 0 script traces at a local canary, while a no-defence control showed the attacks were live.
 
-1. `enable-javascript-markup = false`: no script in a message ever runs. Mail's own helper scripts run in an isolated world.
-2. `default-content-security-policy` set when each view is built: `default-src 'none'; img-src cid: data: https:; style-src 'unsafe-inline'; font-src cid: data:; form-action 'none'; base-uri 'none'; frame-src 'none'`.
-3. A WebKit content filter blocks every http(s) request until the user allows remote content for that message or sender.
-4. `decide-policy` blocks every navigation; link clicks go to the default browser through `gtk::UriLauncher`.
-5. An ephemeral network session (no cookies, no cache on disk), and DNS prefetching, hyperlink auditing, page cache, local storage, databases, WebGL, WebAudio, media and (in release builds) developer extras turned off.
-6. `cid:` parts come from a per-view URI scheme backed by the local blob store.
-7. WebKitGTK 6's web-process sandbox (bubblewrap) stays on.
+1. `enable-javascript-markup = false`: no script in a message ever runs; WebKit also strips `javascript:` URLs and `srcdoc` attributes. It makes `<noscript>` content live, so the other layers must stay. Mail's own helper scripts run in an isolated world.
+2. `default-content-security-policy` set when each view is built: `default-src 'none'; img-src cid: data: https:; style-src 'unsafe-inline'; font-src cid: data:; form-action 'none'; base-uri 'none'; frame-src 'none'; upgrade-insecure-requests` (so remote images the user allows load over TLS).
+3. A WebKit content filter blocks every URL except `cid:`, `data:` and `about:` until the user allows remote content for that message or sender.
+4. Link clicks and form submits are intercepted in Mail's isolated world, because WebKit connects to a clicked link's host before `decide-policy` answers. Mail opens only absolute http(s) and mailto links, after the link-mismatch check, in the default browser (`gtk::UriLauncher`). `decide-policy` blocks every navigation as the backstop.
+5. An ephemeral network session (no cookies, no cache on disk). The runtime features `LinkDNSPrefetch`, `LinkPreconnect`, `LinkPrefetch`, `LinkPreload` and `SpeculationRulesPrefetch` are off (`Settings::set_feature_enabled`): the older `enable-dns-prefetching` and `enable-hyperlink-auditing` settings do nothing in WebKitGTK 2.52, and `<a ping>` is otherwise sent. Page cache, local storage, databases, WebGL, WebAudio, media and (in release builds) developer extras are off.
+6. `cid:` parts come from a per-view URI scheme backed by the local blob store; a part belonging to another message never loads.
+7. View heights are capped at 16,000 px, and growth driven by viewport units is frozen (a hostile `150vh` would otherwise inflate the view).
+8. WebKitGTK 6's web-process sandbox (bubblewrap) stays on. Only web processes run inside it; WebKit's network process is a plain child of the app.
 
-Isolated-world helper scripts are **not** bound by the page's CSP for `fetch()`: in S7 a helper `fetch()` reached a local test server with the CSP alone, and only the content filter stopped it. So helper scripts fetch nothing but `blob:` URLs, and every view that runs helpers keeps the content filter. With script markup off, no markup script or event handler ran even without the CSP (S7).
+Isolated-world helper scripts are **not** bound by the page's CSP for `fetch()`: in S7 a helper `fetch()` reached a local test server with the CSP alone, and only the content filter stopped it. So helper scripts fetch nothing but `blob:` URLs, and every view that runs helpers keeps the content filter. With script markup off, no markup script or event handler ran even without the CSP (S2, S7).
 
 ### Composer
 

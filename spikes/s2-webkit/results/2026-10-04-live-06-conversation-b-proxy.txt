@@ -1,0 +1,27 @@
+# S2 evidence log. Machine: Omarchy 4.0.4, Hyprland 0.56.2, RTX 3070 Ti (nvidia-open 610.57.04), 3440x1440 @ 144 Hz, scale 1.
+# Mode: LIVE Wayland session. Build: release (thin LTO), target/s2/release/email-spike-s2.
+# Command: email-spike-s2 conversation --views 10 --approach-b --scroll 6 --save <scratch> (tools: scratchpad live.sh = timeout --kill-after=2 58 env XDG_CACHE_HOME=<scratch> XDG_DATA_HOME=<scratch> MAIL_S2_CACHE_DIR=<scratch> email-spike-s2 <args> --deadline 55)
+# 2026-10-04T14:35:53+02:00
+# exit=1 wall_s=9.44
+ENV mode=conversation display=GdkWaylandDisplay renderer=GskVulkanRenderer gtk=4.22.4 webkit=2.52.6 palette=omarchy:matte-black dark=true sans="Liberation Sans" radius=8 share_process=true accelerated=true window=1709x1400 column=860 canary_port=46395 font_face=true
+SUMMARY approach_b messages=13 frames_filled=10 frame_heights=[1130 1260 1374 925 3017 939 1029 2319 712 13045] view_height=1360 content_height=27884 ready_ms=331.6 timeout=false
+MEM pid=156247 ppid=156246 name=email-spike-s2 rss_kib=243340 pss_kib=141397
+MEM pid=156270 ppid=156247 name=WebKitNetworkPr rss_kib=96040 pss_kib=39223
+MEM pid=156276 ppid=156247 name=bwrap rss_kib=2208 pss_kib=142
+MEM pid=156281 ppid=156247 name=bwrap rss_kib=2216 pss_kib=148
+MEM pid=156277 ppid=156276 name=bwrap rss_kib=1528 pss_kib=168
+MEM pid=156282 ppid=156281 name=bwrap rss_kib=1552 pss_kib=190
+MEM pid=156278 ppid=156277 name=xdg-dbus-proxy rss_kib=6508 pss_kib=633
+MEM pid=156283 ppid=156282 name=WebKitWebProces rss_kib=324992 pss_kib=222754
+MEM-GROUP name=WebKitNetworkPr count=1 rss_mib=93.8 pss_mib=38.3
+MEM-GROUP name=WebKitWebProces count=1 rss_mib=317.4 pss_mib=217.5
+MEM-GROUP name=bwrap count=4 rss_mib=7.3 pss_mib=0.6
+MEM-GROUP name=email-spike-s2 count=1 rss_mib=237.6 pss_mib=138.1
+MEM-GROUP name=xdg-dbus-proxy count=1 rss_mib=6.4 pss_mib=0.6
+SUMMARY memory views=10 share_process=true rss_app_and_webkit_mib=648.8 rss_tree_mib=662.5 pss_tree_mib=395.2 pss_complete=true gpu_device_used_mib_before=985 after=1106
+SUMMARY approach_b_blank 860x1360 distinct=1465 dominant=0.347
+SUMMARY approach_b_scroll_webkit_frame_interval_ms n=375 min=10.00 p50=16.00 p95=17.00 p99=17.00 max=17.00 mean=16.03
+SUMMARY approach_b_scroll_gtk_paint_interval_ms n=376 min=6.80 p50=16.03 p95=17.18 p99=18.77 max=20.44 mean=15.95
+CANARY-TOTAL connections=0 requests=0 silent=0 tls=0
+# stderr (repeated lines counted):
+#       1 ** (email-spike-s2): WARNING **: : webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.

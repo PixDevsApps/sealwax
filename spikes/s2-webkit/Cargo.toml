@@ -7,3 +7,8 @@ license.workspace = true
 publish = false
 
 [dependencies]
+gtk4.workspace = true
+libadwaita.workspace = true
+gio.workspace = true
+async-channel.workspace = true
+webkit6 = { version = "0.6.1", features = ["v2_52"] }

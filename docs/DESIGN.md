@@ -118,7 +118,7 @@ Roles map to palette positions, never hue names: matte-black's `green` is amber 
 ## HTML mail inside the theme
 
 - **Plain text and simple HTML** (no colours of their own) take the theme: background, foreground, accent links, muted quotes.
-- **Styled HTML** (newsletters, receipts) keeps its design on a "paper" card: a light surface with the theme's corner radius and a 1 px border, so dark themes never invert someone else's layout.
+- **Styled HTML** (newsletters, receipts) keeps its design on a "paper" card: a light surface with the theme's corner radius and a 1 px border, so dark themes never invert someone else's layout. S2 confirmed this on the live matte-black palette, dark newsletters included; the card's `lighter_background` border (#1e1e1e) is nearly invisible against #121212, so dark themes may drop it.
 - Quotes are collapsed behind "…" when they repeat earlier messages in the conversation.
 - Nothing remote loads until allowed ([SECURITY.md](SECURITY.md)); hidden images keep their layout boxes so the page doesn't jump when shown.
 

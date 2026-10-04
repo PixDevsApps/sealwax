@@ -1,0 +1,24 @@
+# S2 evidence log. Machine: Omarchy 4.0.4, Hyprland 0.56.2, RTX 3070 Ti (nvidia-open 610.57.04), 3440x1440 @ 144 Hz, scale 1.
+# Mode: HEADLESS Broadway :21 (software rendering). Build: release (thin LTO), target/s2/release/email-spike-s2.
+# Command: tools/headless.sh 21 env XDG_CACHE_HOME=<scratch> XDG_DATA_HOME=<scratch> MAIL_S2_CACHE_DIR=<scratch> email-spike-s2 conversation --views 10 --approach-b --scroll 3
+# Finished at about 14:35 CEST on 2026-10-04 (log file modification time); exit status 1 (the memory bar fails).
+ENV mode=conversation display=GdkBroadwayDisplay renderer=GskBroadwayRenderer gtk=4.22.4 webkit=2.52.6 palette=omarchy:matte-black dark=true sans="Liberation Sans" radius=0 share_process=true accelerated=true window=1024x768 column=860 canary_port=44463 font_face=true
+SUMMARY approach_b messages=13 frames_filled=10 frame_heights=[1130 1260 1374 925 3017 939 1029 2319 712 13045] view_height=728 content_height=27884 ready_ms=161.6 timeout=false
+MEM pid=155829 ppid=155828 name=email-spike-s2 rss_kib=185272 pss_kib=91398
+MEM pid=155843 ppid=155829 name=WebKitNetworkPr rss_kib=96352 pss_kib=39265
+MEM pid=155849 ppid=155829 name=bwrap rss_kib=2208 pss_kib=142
+MEM pid=155854 ppid=155829 name=bwrap rss_kib=2212 pss_kib=146
+MEM pid=155850 ppid=155849 name=bwrap rss_kib=1528 pss_kib=168
+MEM pid=155856 ppid=155854 name=bwrap rss_kib=1544 pss_kib=184
+MEM pid=155851 ppid=155850 name=xdg-dbus-proxy rss_kib=6384 pss_kib=612
+MEM pid=155857 ppid=155856 name=WebKitWebProces rss_kib=207528 pss_kib=114884
+MEM-GROUP name=WebKitNetworkPr count=1 rss_mib=94.1 pss_mib=38.3
+MEM-GROUP name=WebKitWebProces count=1 rss_mib=202.7 pss_mib=112.2
+MEM-GROUP name=bwrap count=4 rss_mib=7.3 pss_mib=0.6
+MEM-GROUP name=email-spike-s2 count=1 rss_mib=180.9 pss_mib=89.3
+MEM-GROUP name=xdg-dbus-proxy count=1 rss_mib=6.2 pss_mib=0.6
+SUMMARY memory views=10 share_process=true rss_app_and_webkit_mib=477.7 rss_tree_mib=491.2 pss_tree_mib=241.0 pss_complete=true gpu_device_used_mib_before=874 after=873
+SUMMARY approach_b_blank 860x728 distinct=1026 dominant=0.341
+SUMMARY approach_b_scroll_webkit_frame_interval_ms n=247 min=2.00 p50=15.00 p95=16.00 p99=17.00 max=21.00 mean=12.14
+SUMMARY approach_b_scroll_gtk_paint_interval_ms n=2 min=997.29 p50=997.29 p95=998.94 p99=998.94 max=998.94 mean=998.12
+CANARY-TOTAL connections=0 requests=0 silent=0 tls=0

@@ -1,0 +1,33 @@
+# S2 evidence log. Machine: Omarchy 4.0.4, Hyprland 0.56.2, RTX 3070 Ti (nvidia-open 610.57.04), 3440x1440 @ 144 Hz, scale 1.
+# Mode: LIVE Wayland session. Build: release (thin LTO), target/s2/release/email-spike-s2.
+# Command: email-spike-s2 conversation --views 0 --heights 12000,16000 --no-accel --scroll 3 (tools: scratchpad live.sh = timeout --kill-after=2 58 env XDG_CACHE_HOME=<scratch> XDG_DATA_HOME=<scratch> MAIL_S2_CACHE_DIR=<scratch> email-spike-s2 <args> --deadline 55)
+# 2026-10-04T14:40:20+02:00
+# exit=1 wall_s=7.13
+ENV mode=conversation display=GdkWaylandDisplay renderer=GskVulkanRenderer gtk=4.22.4 webkit=2.52.6 palette=omarchy:matte-black dark=true sans="Liberation Sans" radius=8 share_process=true accelerated=false window=860x1400 column=860 canary_port=43943 font_face=true
+MEM-BASELINE processes=2 rss_mib=273.9 pss_mib=131.4
+ROW conversation id=height-12000 applied=12000 allocated=12000 scrollHeight=12000 height_ok=true cid=0/0 ready_ms=138.1 timeout=false
+ROW conversation id=height-16000 applied=16000 allocated=16000 scrollHeight=16000 height_ok=true cid=0/0 ready_ms=182.7 timeout=false
+SUMMARY conversation views=2 height_ok=2/2 all_ready_ms=182.7 total_height=28140
+MEM pid=160887 ppid=160886 name=email-spike-s2 rss_kib=328616 pss_kib=226909
+MEM pid=160910 ppid=160887 name=WebKitNetworkPr rss_kib=96060 pss_kib=39212
+MEM pid=160922 ppid=160887 name=bwrap rss_kib=2188 pss_kib=138
+MEM pid=160927 ppid=160887 name=bwrap rss_kib=2204 pss_kib=150
+MEM pid=160923 ppid=160922 name=bwrap rss_kib=1528 pss_kib=168
+MEM pid=160928 ppid=160927 name=bwrap rss_kib=1548 pss_kib=188
+MEM pid=160924 ppid=160923 name=xdg-dbus-proxy rss_kib=6580 pss_kib=636
+MEM pid=160929 ppid=160928 name=WebKitWebProces rss_kib=183056 pss_kib=92147
+MEM-GROUP name=WebKitNetworkPr count=1 rss_mib=93.8 pss_mib=38.3
+MEM-GROUP name=WebKitWebProces count=1 rss_mib=178.8 pss_mib=90.0
+MEM-GROUP name=bwrap count=4 rss_mib=7.3 pss_mib=0.6
+MEM-GROUP name=email-spike-s2 count=1 rss_mib=320.9 pss_mib=221.6
+MEM-GROUP name=xdg-dbus-proxy count=1 rss_mib=6.4 pss_mib=0.6
+SUMMARY memory views=0 short=false share_process=true rss_app_and_webkit_mib=593.5 rss_tree_mib=607.2 pss_tree_mib=351.1 pss_complete=true gpu_device_used_mib_before=898 after=928
+SUMMARY conversation_blank 0/2 []
+SUMMARY scroll secs=3 speed_px_s=2400 content_height=28176 page=1400 bounces=0 frames=432 presented=431 incomplete=2 refresh_ms=6.944
+SUMMARY scroll_presentation_interval_ms n=430 min=6.91 p50=6.95 p95=6.95 p99=6.97 max=6.98 mean=6.94
+SUMMARY scroll_tick_interval_ms n=431 min=6.08 p50=6.94 p95=6.95 p99=6.95 max=16.67 mean=6.98
+SUMMARY scroll_ui_frame_work_ms n=433 min=0.00 p50=3.43 p95=4.34 p99=4.65 max=5.00 mean=3.35
+SUMMARY scroll_long_frames presentation>16.7ms=0 tick>16.7ms=0 presentation>1.5x_refresh=0
+CANARY-TOTAL connections=0 requests=0 silent=0 tls=0
+# stderr (repeated lines counted):
+#       2 ** (email-spike-s2): WARNING **: : webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.

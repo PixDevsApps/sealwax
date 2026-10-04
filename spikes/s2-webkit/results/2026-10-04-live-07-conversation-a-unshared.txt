@@ -1,0 +1,90 @@
+# S2 evidence log. Machine: Omarchy 4.0.4, Hyprland 0.56.2, RTX 3070 Ti (nvidia-open 610.57.04), 3440x1440 @ 144 Hz, scale 1.
+# Mode: LIVE Wayland session. Build: release (thin LTO), target/s2/release/email-spike-s2.
+# Command: email-spike-s2 conversation --views 10 --no-related (tools: scratchpad live.sh = timeout --kill-after=2 58 env XDG_CACHE_HOME=<scratch> XDG_DATA_HOME=<scratch> MAIL_S2_CACHE_DIR=<scratch> email-spike-s2 <args> --deadline 55)
+# 2026-10-04T14:36:49+02:00
+# exit=1 wall_s=5.21
+ENV mode=conversation display=GdkWaylandDisplay renderer=GskVulkanRenderer gtk=4.22.4 webkit=2.52.6 palette=omarchy:matte-black dark=true sans="Liberation Sans" radius=8 share_process=false accelerated=true window=1709x1400 column=860 canary_port=43611 font_face=true
+MEM-BASELINE processes=2 rss_mib=274.1 pss_mib=139.6
+ROW conversation id=nl-01 applied=1125 allocated=1125 scrollHeight=1125 height_ok=true cid=2/2 ready_ms=1807.9 timeout=false
+ROW conversation id=nl-07 applied=1252 allocated=1252 scrollHeight=1252 height_ok=true cid=7/7 ready_ms=1832.3 timeout=false
+ROW conversation id=nl-13 applied=1366 allocated=1366 scrollHeight=1366 height_ok=true cid=7/7 ready_ms=1785.1 timeout=false
+ROW conversation id=nl-19 applied=914 allocated=914 scrollHeight=914 height_ok=true cid=2/2 ready_ms=1807.9 timeout=false
+ROW conversation id=nl-25 applied=2967 allocated=2967 scrollHeight=2967 height_ok=true cid=1/1 ready_ms=1808.0 timeout=false
+ROW conversation id=nl-26 applied=931 allocated=931 scrollHeight=931 height_ok=true cid=2/2 ready_ms=1819.3 timeout=false
+ROW conversation id=nl-32 applied=1029 allocated=1029 scrollHeight=1029 height_ok=true cid=1/1 ready_ms=1816.8 timeout=false
+ROW conversation id=nl-38 applied=2296 allocated=2296 scrollHeight=2296 height_ok=true cid=2/2 ready_ms=1847.7 timeout=false
+ROW conversation id=nl-44 applied=589 allocated=589 scrollHeight=589 height_ok=true cid=1/1 ready_ms=1893.0 timeout=false
+ROW conversation id=nl-50 applied=12997 allocated=12997 scrollHeight=12997 height_ok=true cid=5/5 ready_ms=1871.7 timeout=false
+SUMMARY conversation views=10 height_ok=10/10 all_ready_ms=1893.0 total_height=27665
+MEM pid=156994 ppid=156993 name=email-spike-s2 rss_kib=247560 pss_kib=124873
+MEM pid=157031 ppid=156994 name=WebKitNetworkPr rss_kib=96240 pss_kib=32286
+MEM pid=157043 ppid=156994 name=bwrap rss_kib=2204 pss_kib=105
+MEM pid=157048 ppid=156994 name=bwrap rss_kib=2200 pss_kib=115
+MEM pid=157050 ppid=156994 name=bwrap rss_kib=2208 pss_kib=109
+MEM pid=157056 ppid=156994 name=bwrap rss_kib=2212 pss_kib=113
+MEM pid=157057 ppid=156994 name=bwrap rss_kib=2192 pss_kib=109
+MEM pid=157063 ppid=156994 name=bwrap rss_kib=2212 pss_kib=113
+MEM pid=157065 ppid=156994 name=bwrap rss_kib=2208 pss_kib=109
+MEM pid=157071 ppid=156994 name=bwrap rss_kib=2216 pss_kib=115
+MEM pid=157072 ppid=156994 name=bwrap rss_kib=2204 pss_kib=105
+MEM pid=157079 ppid=156994 name=bwrap rss_kib=2216 pss_kib=117
+MEM pid=157080 ppid=156994 name=bwrap rss_kib=2192 pss_kib=109
+MEM pid=157087 ppid=156994 name=bwrap rss_kib=2204 pss_kib=115
+MEM pid=157089 ppid=156994 name=bwrap rss_kib=2192 pss_kib=109
+MEM pid=157098 ppid=156994 name=bwrap rss_kib=2216 pss_kib=115
+MEM pid=157118 ppid=156994 name=bwrap rss_kib=2204 pss_kib=107
+MEM pid=157128 ppid=156994 name=bwrap rss_kib=2212 pss_kib=113
+MEM pid=157130 ppid=156994 name=bwrap rss_kib=2208 pss_kib=109
+MEM pid=157140 ppid=156994 name=bwrap rss_kib=2216 pss_kib=115
+MEM pid=157141 ppid=156994 name=bwrap rss_kib=2192 pss_kib=107
+MEM pid=157154 ppid=156994 name=bwrap rss_kib=2200 pss_kib=113
+MEM pid=157044 ppid=157043 name=bwrap rss_kib=1524 pss_kib=147
+MEM pid=157049 ppid=157048 name=bwrap rss_kib=1552 pss_kib=173
+MEM pid=157051 ppid=157050 name=bwrap rss_kib=1532 pss_kib=155
+MEM pid=157058 ppid=157056 name=bwrap rss_kib=1544 pss_kib=167
+MEM pid=157059 ppid=157057 name=bwrap rss_kib=1532 pss_kib=155
+MEM pid=157066 ppid=157063 name=bwrap rss_kib=1548 pss_kib=171
+MEM pid=157067 ppid=157065 name=bwrap rss_kib=1532 pss_kib=155
+MEM pid=157074 ppid=157071 name=bwrap rss_kib=1548 pss_kib=169
+MEM pid=157075 ppid=157072 name=bwrap rss_kib=1536 pss_kib=159
+MEM pid=157081 ppid=157079 name=bwrap rss_kib=1548 pss_kib=171
+MEM pid=157082 ppid=157080 name=bwrap rss_kib=1536 pss_kib=159
+MEM pid=157090 ppid=157087 name=bwrap rss_kib=1556 pss_kib=177
+MEM pid=157091 ppid=157089 name=bwrap rss_kib=1536 pss_kib=159
+MEM pid=157106 ppid=157098 name=bwrap rss_kib=1548 pss_kib=169
+MEM pid=157120 ppid=157118 name=bwrap rss_kib=1544 pss_kib=165
+MEM pid=157129 ppid=157128 name=bwrap rss_kib=1548 pss_kib=171
+MEM pid=157132 ppid=157130 name=bwrap rss_kib=1540 pss_kib=163
+MEM pid=157142 ppid=157140 name=bwrap rss_kib=1552 pss_kib=173
+MEM pid=157144 ppid=157141 name=bwrap rss_kib=1540 pss_kib=161
+MEM pid=157161 ppid=157154 name=bwrap rss_kib=1552 pss_kib=175
+MEM pid=157045 ppid=157044 name=xdg-dbus-proxy rss_kib=6456 pss_kib=555
+MEM pid=157055 ppid=157049 name=WebKitWebProces rss_kib=322932 pss_kib=172349
+MEM pid=157052 ppid=157051 name=xdg-dbus-proxy rss_kib=6476 pss_kib=565
+MEM pid=157064 ppid=157058 name=WebKitWebProces rss_kib=321824 pss_kib=169898
+MEM pid=157060 ppid=157059 name=xdg-dbus-proxy rss_kib=6468 pss_kib=558
+MEM pid=157073 ppid=157066 name=WebKitWebProces rss_kib=241988 pss_kib=99011
+MEM pid=157068 ppid=157067 name=xdg-dbus-proxy rss_kib=6332 pss_kib=555
+MEM pid=157083 ppid=157074 name=WebKitWebProces rss_kib=319164 pss_kib=170080
+MEM pid=157076 ppid=157075 name=xdg-dbus-proxy rss_kib=6396 pss_kib=556
+MEM pid=157088 ppid=157081 name=WebKitWebProces rss_kib=306208 pss_kib=154706
+MEM pid=157084 ppid=157082 name=xdg-dbus-proxy rss_kib=6520 pss_kib=560
+MEM pid=157104 ppid=157090 name=WebKitWebProces rss_kib=319880 pss_kib=169899
+MEM pid=157093 ppid=157091 name=xdg-dbus-proxy rss_kib=6404 pss_kib=556
+MEM pid=157119 ppid=157106 name=WebKitWebProces rss_kib=317908 pss_kib=167233
+MEM pid=157125 ppid=157120 name=xdg-dbus-proxy rss_kib=6504 pss_kib=558
+MEM pid=157143 ppid=157129 name=WebKitWebProces rss_kib=347812 pss_kib=197362
+MEM pid=157137 ppid=157132 name=xdg-dbus-proxy rss_kib=6492 pss_kib=558
+MEM pid=157168 ppid=157142 name=WebKitWebProces rss_kib=296480 pss_kib=145970
+MEM pid=157150 ppid=157144 name=xdg-dbus-proxy rss_kib=6364 pss_kib=555
+MEM pid=157176 ppid=157161 name=WebKitWebProces rss_kib=356448 pss_kib=205590
+MEM-GROUP name=WebKitNetworkPr count=1 rss_mib=94.0 pss_mib=31.5
+MEM-GROUP name=WebKitWebProces count=10 rss_mib=3076.8 pss_mib=1613.4
+MEM-GROUP name=bwrap count=40 rss_mib=73.2 pss_mib=5.4
+MEM-GROUP name=email-spike-s2 count=1 rss_mib=241.8 pss_mib=121.9
+MEM-GROUP name=xdg-dbus-proxy count=10 rss_mib=62.9 pss_mib=5.4
+SUMMARY memory views=10 short=false share_process=false rss_app_and_webkit_mib=3412.5 rss_tree_mib=3548.6 pss_tree_mib=1777.7 pss_complete=true gpu_device_used_mib_before=946 after=2299
+SUMMARY conversation_blank 0/10 []
+CANARY-TOTAL connections=0 requests=0 silent=0 tls=0
+# stderr (repeated lines counted):
+#      10 ** (email-spike-s2): WARNING **: : webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.

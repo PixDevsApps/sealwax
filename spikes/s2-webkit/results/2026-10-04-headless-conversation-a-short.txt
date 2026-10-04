@@ -1,0 +1,57 @@
+# S2 evidence log. Machine: Omarchy 4.0.4, Hyprland 0.56.2, RTX 3070 Ti (nvidia-open 610.57.04), 3440x1440 @ 144 Hz, scale 1.
+# Mode: HEADLESS Broadway :21 (software rendering). Build: release (thin LTO), target/s2/release/email-spike-s2.
+# Command: tools/headless.sh 21 env XDG_CACHE_HOME=<scratch> XDG_DATA_HOME=<scratch> MAIL_S2_CACHE_DIR=<scratch> email-spike-s2 conversation --views 10 --short
+# Finished at about 14:41 CEST on 2026-10-04 (log file modification time); exit status 1 (the memory bar fails).
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.720: Disabled hardware acceleration because GTK failed to initialize GL: The current backend does not support OpenGL.
+ENV mode=conversation display=GdkBroadwayDisplay renderer=GskBroadwayRenderer gtk=4.22.4 webkit=2.52.6 palette=omarchy:matte-black dark=true sans="Liberation Sans" radius=0 share_process=true accelerated=true window=1024x768 column=860 canary_port=39001 font_face=true
+MEM-BASELINE processes=2 rss_mib=243.6 pss_mib=116.0
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.923: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.929: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.943: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.944: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.945: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.946: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.946: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.947: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.948: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (email-spike-s2:164387): WARNING **: 14:41:46.949: webkit_settings_set_enable_hyperlink_auditing is deprecated and does nothing.
+
+** (process:2): WARNING **: 14:41:47.036: Can't connect to a11y bus: Could not connect: No such file or directory
+ROW conversation id=simple-01 applied=304 allocated=304 scrollHeight=304 height_ok=true cid=0/0 ready_ms=198.9 timeout=false
+ROW conversation id=simple-02 applied=295 allocated=295 scrollHeight=295 height_ok=true cid=0/0 ready_ms=187.6 timeout=false
+ROW conversation id=simple-03 applied=232 allocated=232 scrollHeight=232 height_ok=true cid=0/0 ready_ms=199.0 timeout=false
+ROW conversation id=simple-04 applied=226 allocated=226 scrollHeight=226 height_ok=true cid=0/0 ready_ms=199.0 timeout=false
+ROW conversation id=simple-05 applied=166 allocated=166 scrollHeight=166 height_ok=true cid=0/0 ready_ms=199.1 timeout=false
+ROW conversation id=simple-06 applied=685 allocated=685 scrollHeight=685 height_ok=true cid=0/0 ready_ms=199.1 timeout=false
+ROW conversation id=simple-07 applied=101 allocated=101 scrollHeight=101 height_ok=true cid=0/0 ready_ms=199.1 timeout=false
+ROW conversation id=simple-08 applied=195 allocated=195 scrollHeight=195 height_ok=true cid=0/0 ready_ms=199.1 timeout=false
+ROW conversation id=simple-01 applied=304 allocated=304 scrollHeight=304 height_ok=true cid=0/0 ready_ms=199.1 timeout=false
+ROW conversation id=simple-02 applied=295 allocated=295 scrollHeight=295 height_ok=true cid=0/0 ready_ms=199.2 timeout=false
+SUMMARY conversation views=10 height_ok=10/10 all_ready_ms=199.2 total_height=4982
+MEM pid=164387 ppid=164386 name=email-spike-s2 rss_kib=192568 pss_kib=97346
+MEM pid=164401 ppid=164387 name=WebKitNetworkPr rss_kib=95764 pss_kib=38853
+MEM pid=164426 ppid=164387 name=bwrap rss_kib=2192 pss_kib=139
+MEM pid=164432 ppid=164387 name=bwrap rss_kib=2212 pss_kib=145
+MEM pid=164427 ppid=164426 name=bwrap rss_kib=1532 pss_kib=170
+MEM pid=164433 ppid=164432 name=bwrap rss_kib=1536 pss_kib=176
+MEM pid=164429 ppid=164427 name=xdg-dbus-proxy rss_kib=6436 pss_kib=611
+MEM pid=164435 ppid=164433 name=WebKitWebProces rss_kib=195152 pss_kib=103378
+MEM-GROUP name=WebKitNetworkPr count=1 rss_mib=93.5 pss_mib=37.9
+MEM-GROUP name=WebKitWebProces count=1 rss_mib=190.6 pss_mib=101.0
+MEM-GROUP name=bwrap count=4 rss_mib=7.3 pss_mib=0.6
+MEM-GROUP name=email-spike-s2 count=1 rss_mib=188.1 pss_mib=95.1
+MEM-GROUP name=xdg-dbus-proxy count=1 rss_mib=6.3 pss_mib=0.6
+SUMMARY memory views=10 short=true share_process=true rss_app_and_webkit_mib=472.2 rss_tree_mib=485.7 pss_tree_mib=235.2 pss_complete=true gpu_device_used_mib_before=864 after=864
+SUMMARY conversation_blank 0/10 []
+CANARY-TOTAL connections=0 requests=0 silent=0 tls=0
