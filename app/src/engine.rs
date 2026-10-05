@@ -53,6 +53,7 @@ pub fn start(
     store: Arc<Store>,
     blobs: BlobStore,
     options: &EngineOptions,
+    microsoft_client_id: Option<String>,
 ) -> std::io::Result<Engine> {
     Engine::start(EngineConfig {
         application: app_id.to_owned(),
@@ -62,7 +63,7 @@ pub fn start(
         trust: options.trust.clone(),
         secrets: options.secrets,
         detect: DetectOptions::default(),
-        microsoft_client_id: None,
+        microsoft_client_id,
         sign_in: SignInOptions::default(),
     })
 }

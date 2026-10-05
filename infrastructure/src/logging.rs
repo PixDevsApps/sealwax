@@ -7,7 +7,7 @@ use tracing_subscriber::{EnvFilter, Layer};
 
 /// Third-party protocol crates capped at `warn` whatever `RUST_LOG` asks for: their trace output
 /// carries protocol traces, and async-imap's prints the LOGIN password (ADR-018 amendment).
-pub const CAPPED: [&str; 8] = [
+pub const CAPPED: [&str; 11] = [
     "async_imap",
     "imap_proto",
     "lettre",
@@ -15,6 +15,9 @@ pub const CAPPED: [&str; 8] = [
     "tokio_rustls",
     "hickory",
     "reqwest",
+    "hyper",
+    "hyper_util",
+    "h2",
     "zbus",
 ];
 

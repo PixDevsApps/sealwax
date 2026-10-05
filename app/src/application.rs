@@ -658,6 +658,7 @@ impl AppState {
             }
             // A client ID added or removed makes Microsoft sign-in available or not.
             setup::refresh();
+            self.send_microsoft_client();
         }
         if update.keymap_changed {
             let keymap = prefs.keymap();
@@ -813,6 +814,7 @@ impl AppState {
             store,
             blobs,
             options,
+            self.microsoft_client_id(),
         ) {
             Ok(engine) => engine,
             Err(error) => {
@@ -824,6 +826,21 @@ impl AppState {
         self.engine_service.replace(Some(engine));
         tracing::info!("engine started");
         self.send_accounts();
+    }
+
+    /// Hands the Microsoft client ID in use to the engine this application started.
+    fn send_microsoft_client(&self) {
+        if self.engine_service.borrow().is_none() {
+            return;
+        }
+        let client_id = self.microsoft_client_id();
+        if self
+            .engine
+            .send(Command::MicrosoftClient { client_id })
+            .is_err()
+        {
+            tracing::warn!("the engine stopped listening");
+        }
     }
 
     /// The accounts Remove Account offers: those `accounts.toml` lists, so not the local

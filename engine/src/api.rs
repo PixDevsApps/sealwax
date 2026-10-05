@@ -68,6 +68,9 @@ pub enum Command {
     },
     /// Stops waiting for the browser; nothing is answered.
     CancelSignIn { request: RequestId },
+    /// The Microsoft client ID in use (ADR-008: `config.toml`, else the build's), after every
+    /// read of `config.toml` that changes it; `None` makes sign-in unavailable.
+    MicrosoftClient { client_id: Option<String> },
     /// Delete the account's settings, secrets, rows and blobs (ML-038).
     RemoveAccount { request: RequestId, key: AccountKey },
     /// The accounts `accounts.toml` lists, after every read without mistakes: the store follows

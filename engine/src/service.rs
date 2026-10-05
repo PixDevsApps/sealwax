@@ -30,7 +30,7 @@ use sealwax_infrastructure::accounts::{self as files, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::Store;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use tokio::sync::OnceCell;
@@ -161,6 +161,11 @@ struct Kept {
     until: Instant,
 }
 
+struct MicrosoftClient {
+    id: Option<String>,
+    client: Option<Arc<oauth::Client>>,
+}
+
 struct Shared {
     application: String,
     store: Arc<Store>,
@@ -170,10 +175,10 @@ struct Shared {
     backend: SecretBackend,
     secrets: OnceCell<Secrets>,
     detect: DetectOptions,
-    microsoft_client_id: Option<String>,
     sign_in: SignInOptions,
-    /// Built on first use, so the engine's start makes no TLS setup it may not need.
-    oauth: OnceLock<Option<oauth::Client>>,
+    /// The client ID in use and its client, built on first use (so the engine's start makes no
+    /// TLS setup it may not need) and again when `config.toml` changes the ID.
+    oauth: Mutex<MicrosoftClient>,
     sign_ins: Mutex<HashMap<RequestId, SignIn>>,
     access: AccessTokens,
     events: async_channel::Sender<Event>,
@@ -192,9 +197,11 @@ impl Shared {
             backend: config.secrets,
             secrets: OnceCell::new(),
             detect: config.detect,
-            microsoft_client_id: config.microsoft_client_id,
             sign_in: config.sign_in,
-            oauth: OnceLock::new(),
+            oauth: Mutex::new(MicrosoftClient {
+                id: config.microsoft_client_id,
+                client: None,
+            }),
             sign_ins: Mutex::default(),
             access: AccessTokens::default(),
             events,
@@ -215,19 +222,28 @@ impl Shared {
     }
 
     /// The Microsoft client, when a client ID is configured.
-    fn oauth(&self) -> Option<&oauth::Client> {
-        self.oauth
-            .get_or_init(|| {
-                let id = self
-                    .microsoft_client_id
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|id| !id.is_empty())?;
-                oauth::Client::new(id.to_owned(), self.sign_in.microsoft.clone())
-                    .inspect_err(|error| tracing::warn!(%error, "Microsoft sign-in is unavailable"))
-                    .ok()
-            })
-            .as_ref()
+    fn oauth(&self) -> Option<Arc<oauth::Client>> {
+        let mut current = self.oauth.lock().unwrap_or_else(PoisonError::into_inner);
+        if current.client.is_none() {
+            let id = current
+                .id
+                .as_deref()
+                .map(str::trim)
+                .filter(|id| !id.is_empty())?;
+            current.client = oauth::Client::new(id.to_owned(), self.sign_in.microsoft.clone())
+                .inspect_err(|error| tracing::warn!(%error, "Microsoft sign-in is unavailable"))
+                .ok()
+                .map(Arc::new);
+        }
+        current.client.clone()
+    }
+
+    /// A new client ID from `config.toml`; the next sign-in or refresh builds its client.
+    fn set_microsoft_client_id(&self, id: Option<String>) {
+        let mut current = self.oauth.lock().unwrap_or_else(PoisonError::into_inner);
+        if current.id != id {
+            *current = MicrosoftClient { id, client: None };
+        }
     }
 
     /// Fails only when the app has stopped listening.
@@ -339,6 +355,10 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
             }
             Command::CancelSignIn { request } => {
                 cancel_sign_in(&shared, request);
+                continue;
+            }
+            Command::MicrosoftClient { client_id } => {
+                shared.set_microsoft_client_id(client_id);
                 continue;
             }
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
@@ -598,7 +618,13 @@ async fn log_in_with_token(
     loop {
         let fetched = shared
             .access
-            .get(&settings.key, &label, secrets, shared.oauth(), renew)
+            .get(
+                &settings.key,
+                &label,
+                secrets,
+                shared.oauth().as_deref(),
+                renew,
+            )
             .await?;
         let credentials = Credentials::OAuth2 {
             username: &settings.username,

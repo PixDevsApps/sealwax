@@ -486,6 +486,11 @@ fn fields(
             Some(*request),
             vec![("sign-in", sign_in(Some(*request)))],
         ),
+        Command::MicrosoftClient { client_id } => (
+            "microsoft-client",
+            None,
+            vec![("set", client_id.is_some().to_string())],
+        ),
         Command::Accounts { accounts } => (
             "accounts",
             None,
