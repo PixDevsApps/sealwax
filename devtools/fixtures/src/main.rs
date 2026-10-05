@@ -6,6 +6,7 @@ mod bench;
 mod corpus;
 mod import;
 mod mime;
+mod remove;
 mod rng;
 mod stats;
 mod words;
@@ -24,6 +25,7 @@ const USAGE: &str = "usage:
                           [--folders single|spread] [--account NAME] [--chunk N] [--workers N]
   sealwax-fixtures bench --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
   sealwax-fixtures check --store PATH
+  sealwax-fixtures remove-account --store PATH [--blobs DIR] [--account NAME]
 
 The blob store defaults to `blobs` next to the store file. Messages are numbered newest first,
 the order of a first sync.";
@@ -223,6 +225,17 @@ fn main() -> Result<()> {
             })
         }
         "check" => check(&args),
+        "remove-account" => {
+            let store = args.path("store")?;
+            remove::run(&remove::Options {
+                blobs: args.blobs(&store)?,
+                store,
+                account: args
+                    .get("account")
+                    .unwrap_or(import::ACCOUNT_NAME)
+                    .to_owned(),
+            })
+        }
         "help" | "--help" | "-h" => {
             println!("{USAGE}");
             Ok(())
