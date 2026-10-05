@@ -115,6 +115,13 @@ pub struct FolderSpec {
     pub name_raw: String,
     pub delimiter: Option<char>,
     pub role: FolderRole,
+    /// LIST attributes as the server sent them (`\HasNoChildren`, `\Sent`…).
+    pub attributes: Vec<String>,
+    /// False for `\Noselect` and `\NonExistent` folders, which hold no messages.
+    pub selectable: bool,
+    /// The server's STATUS counts. The sidebar shows them while the folder is new and empty,
+    /// until its first sync starts; after that the store counts what it holds.
+    pub server_counts: Option<ServerCounts>,
 }
 
 impl FolderSpec {
@@ -126,8 +133,68 @@ impl FolderSpec {
             name_raw: name.to_owned(),
             delimiter: Some('/'),
             role,
+            attributes: Vec::new(),
+            selectable: true,
+            server_counts: None,
         }
     }
+}
+
+/// MESSAGES and UNSEEN from STATUS.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ServerCounts {
+    pub total: u32,
+    pub unread: u32,
+}
+
+/// Where a folder's sync stands (S1's resumable first sync).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SyncState {
+    /// Listed; nothing fetched yet.
+    New,
+    /// The first sync is under way: every UID from `floor` up to `top` (the UIDNEXT when it
+    /// started, exclusive) is stored, so an interrupted sync continues below `floor`.
+    Initial { top: u32, modseq: u64, floor: u32 },
+    /// The first sync is done; every UID below `uidnext` that the sync reached is stored.
+    Ready,
+}
+
+/// A folder as the sync engine reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FolderSync {
+    pub folder: FolderId,
+    pub account: AccountId,
+    pub name_raw: String,
+    pub delimiter: Option<char>,
+    pub role: FolderRole,
+    pub selectable: bool,
+    pub uidvalidity: Option<u32>,
+    pub uidnext: u32,
+    pub highestmodseq: u64,
+    pub state: SyncState,
+    /// The lowest UID the first sync reached, once it started.
+    pub floor: Option<u32>,
+    /// Messages the store holds for the folder.
+    pub messages: u32,
+}
+
+/// One step of a folder's first sync, each committed on its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FirstSyncStep {
+    /// Starts the first sync of a new folder with the server's UIDVALIDITY, UIDNEXT and
+    /// HIGHESTMODSEQ (0 without CONDSTORE) at that moment. The folder's counts become the
+    /// store's own again.
+    Start {
+        uidvalidity: u32,
+        top: u32,
+        modseq: u64,
+    },
+    /// Every UID from `floor` up to the start's UIDNEXT is stored. Commit it only after the
+    /// messages' ingest has replied.
+    Floor(u32),
+    /// Done: the folder becomes `Ready` with the UIDNEXT and HIGHESTMODSEQ from the start, so
+    /// the next re-sync catches whatever changed while the first sync ran.
+    Finish,
 }
 
 /// How much of a message the store holds.

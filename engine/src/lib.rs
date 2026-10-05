@@ -2,7 +2,11 @@
 //! The app talks to it only through plain `Send` messages; no tokio type leaves this crate.
 
 pub mod api;
+pub mod imap;
+pub mod net;
 pub mod secrets;
+pub mod smtp;
+pub mod verify;
 
 /// The engine's runtime: two worker threads, so sync never competes with the GTK thread.
 pub fn runtime() -> std::io::Result<tokio::runtime::Runtime> {
