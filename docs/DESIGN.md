@@ -97,7 +97,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - One column: address → "Looking up your provider…" with the sources it checks → password (an app password for Gmail, with a link to Google's page), or "Sign in with Microsoft" → checking login → done.
 - "Set up manually" expands host, port, security and username fields. Errors say what to do next (for example: "Gmail needs an app password — open the Google account page").
 
-*As built in M2 (ML-033, [report](m2/setup.md)); the differences from the mock are choices for the user at the M2 gate:*
+*As built in M2 (ML-033, [report](m2/setup.md)). Approved with M2 on 2026-10-05 ("I approve M2"); the differences from the mock weren't answered one by one, so they stay as built:*
 - One column in a dialog over the window (the mock's card, 428 × 740): address and sender name → "Looking up your provider…" with the sources as the engine starts them → the found settings and the password (an app password, with the provider's page, where one is needed; the username to confirm when only the domain's mail host gave the settings, or to type when the provider assigns it), or "Sign in with Microsoft" → checking login → done, with a toast. Microsoft sign-in waits for S5 and is shown unavailable.
 - "Set up manually" opens host, port, security and username for IMAP and SMTP, filled from detection when there was one; host names and ports are checked before Check settings. A login failure shows why, what to do next and the settings tried.
 - Keys: Enter advances, Escape goes back a step and closes on the first; each step puts the focus in its first field that needs typing. Add Account is in the palette and the main menu, without a default key.
