@@ -3247,6 +3247,7 @@ dependencies = [
  "async-imap",
  "base64 0.22.1",
  "futures-util",
+ "getrandom 0.4.3",
  "hickory-resolver",
  "lettre",
  "mail-parser",
@@ -3258,6 +3259,9 @@ dependencies = [
  "rustls-platform-verifier",
  "sealwax-domain",
  "sealwax-infrastructure",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
  "socket2",
  "tempfile",
  "thiserror 2.0.21",
@@ -3265,6 +3269,7 @@ dependencies = [
  "tokio-rustls",
  "tracing",
  "tracing-subscriber",
+ "url",
  "zeroize",
 ]
 

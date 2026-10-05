@@ -95,7 +95,9 @@ pub enum Event {
     },
     /// Open `url` in the browser for the sign-in; it can be opened again while the engine waits.
     SignInOpen { request: RequestId, url: String },
-    /// `Ok` carries the username the sign-in belongs to, which IMAP and SMTP accepted.
+    /// `Ok` carries the username the sign-in belongs to, which IMAP and SMTP accepted. A failure
+    /// before the IMAP check (the browser, the token endpoint, the ID token) is reported as
+    /// IMAP's; a re-sign-in as another user than the account's is `WrongPassword`.
     SignedIn {
         request: RequestId,
         result: Result<String, LoginError>,
@@ -139,4 +141,8 @@ pub enum AccountError {
     Exists,
     #[error("no such account")]
     Missing,
+    /// An OAuth account's add names no sign-in, or one that expired (after 30 minutes), was
+    /// cancelled or was made for another address: sign in again.
+    #[error("the sign-in expired")]
+    SignInExpired,
 }
