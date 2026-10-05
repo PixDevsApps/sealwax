@@ -229,13 +229,14 @@ async fn user(
     }
 }
 
-/// Faults every two to five minutes, on every proxy at once.
+/// Faults every two to five minutes, on every proxy at once; each one logged as it ends.
 async fn faults(
     proxies: Vec<Arc<Proxy>>,
     commands: async_channel::Sender<Command>,
     seed: u64,
     gate: Arc<RwLock<()>>,
     counters: Shared,
+    started: Instant,
     mut stop: watch::Receiver<bool>,
 ) {
     let mut rng = Rng(seed);
@@ -250,33 +251,42 @@ async fn faults(
             break;
         }
         let _open = gate.read().await;
+        let began = started.elapsed();
         let roll = rng.below(100);
-        match roll {
+        let (kind, length) = match roll {
             0..30 => {
                 for proxy in &proxies {
                     proxy.cut_all();
                 }
-                count(&counters, |c| &mut c.faults, "cut");
+                ("cut", Duration::ZERO)
             }
             30..75 => {
+                let length = Duration::from_secs(60 + rng.below(120) as u64);
                 hole(true);
-                tokio::time::sleep(Duration::from_secs(60 + rng.below(120) as u64)).await;
+                tokio::time::sleep(length).await;
                 hole(false);
                 if roll < 55 {
                     let _ = commands.try_send(Command::Reconnect);
-                    count(&counters, |c| &mut c.faults, "hole-then-reconnect");
+                    ("hole-then-reconnect", length)
                 } else {
-                    count(&counters, |c| &mut c.faults, "hole-unannounced");
+                    ("hole-unannounced", length)
                 }
             }
             _ => {
+                let length = Duration::from_secs(10 + rng.below(50) as u64);
                 hole(true);
-                tokio::time::sleep(Duration::from_secs(10 + rng.below(50) as u64)).await;
+                tokio::time::sleep(length).await;
                 hole(false);
                 let _ = commands.try_send(Command::Reconnect);
-                count(&counters, |c| &mut c.faults, "suspend");
+                ("suspend", length)
             }
-        }
+        };
+        count(&counters, |c| &mut c.faults, kind);
+        println!(
+            "soak fault {kind} at {:.1} min, {} s",
+            began.as_secs_f64() / 60.0,
+            length.as_secs()
+        );
     }
 }
 
@@ -415,7 +425,7 @@ fn soak() {
         }
         for account in &accounts {
             assert_eq!(
-                engine.status(account.id, Duration::from_secs(300)).await,
+                engine.settled(account.id, Duration::from_secs(300)).await,
                 Some(SyncStatus::Synced),
                 "account {}'s first pass",
                 account.id.0
@@ -455,14 +465,17 @@ fn soak() {
             seed + 13,
             gate.clone(),
             counters.clone(),
+            started,
             stop_rx.clone(),
         )));
 
         let mut problems = 0;
         let mut next = every;
         while started.elapsed() < length {
-            let left = length.saturating_sub(started.elapsed());
-            let until_check = next.saturating_sub(started.elapsed());
+            // One reading of the clock, so a check due with the end leaves it to the end's.
+            let now = started.elapsed();
+            let left = length.saturating_sub(now);
+            let until_check = next.saturating_sub(now);
             if until_check < left {
                 tokio::time::sleep(until_check).await;
                 problems += check(

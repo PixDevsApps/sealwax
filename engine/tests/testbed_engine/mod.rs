@@ -126,6 +126,22 @@ impl TestEngine {
         .await
     }
 
+    /// The account's latest status other than syncing, counting events already read: its last
+    /// status read, unless that is syncing, else the next one.
+    pub async fn settled(&mut self, account: AccountId, within: Duration) -> Option<SyncStatus> {
+        let last = self.seen.iter().rev().find_map(|event| match event {
+            Event::AccountStatus {
+                account: id,
+                status,
+            } if *id == account => Some(*status),
+            _ => None,
+        });
+        match last {
+            Some(status) if status != SyncStatus::Syncing => Some(status),
+            _ => self.status(account, within).await,
+        }
+    }
+
     /// Adds the testbed user `user` on the TLS port `port` (a server's, or a proxy's) and
     /// waits until it is saved; its sync starts then.
     pub async fn add(&mut self, request: u64, user: &str, port: u16) -> AccountId {
