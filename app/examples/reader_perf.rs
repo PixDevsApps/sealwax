@@ -173,6 +173,8 @@ fn kind(body: &ShownBody) -> &'static str {
         ShownBody::TextFallback => "text-fallback",
         ShownBody::Empty => "empty",
         ShownBody::NotDownloaded => "not-downloaded",
+        ShownBody::Downloading => "downloading",
+        ShownBody::DownloadFailed(_) => "download-failed",
         ShownBody::Missing => "missing",
     }
 }

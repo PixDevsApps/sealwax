@@ -220,6 +220,10 @@ pub enum BodyState {
     Partial,
     /// The whole raw message is in the blob store.
     Full,
+    /// A message too large to download whole (ML-044): the blob store holds its headers and
+    /// text parts in the message's own MIME structure, every attachment left empty and recorded
+    /// by its IMAP section for fetching on demand.
+    Text,
 }
 
 impl BodyState {
@@ -228,6 +232,16 @@ impl BodyState {
             BodyState::Headers => 0,
             BodyState::Partial => 1,
             BodyState::Full => 2,
+            BodyState::Text => 3,
+        }
+    }
+
+    pub(crate) fn from_code(code: i64) -> BodyState {
+        match code {
+            1 => BodyState::Partial,
+            2 => BodyState::Full,
+            3 => BodyState::Text,
+            _ => BodyState::Headers,
         }
     }
 }
@@ -329,7 +343,7 @@ pub struct ChangeEvent {
     pub version: StoreVersion,
     pub inserted: Vec<MessageId>,
     pub removed: Vec<MessageId>,
-    /// Messages whose flags changed.
+    /// Messages whose flags changed, or whose body was downloaded.
     pub changed: Vec<MessageId>,
     /// New counts of the folders this commit touched.
     pub folders: Vec<FolderCounts>,
@@ -339,4 +353,96 @@ pub struct ChangeEvent {
     pub threads: Vec<ThreadCount>,
     pub merged_threads: Vec<ThreadMerge>,
     pub views: Vec<ViewChange>,
+}
+
+/// A body downloaded for a message the store holds as headers (ML-044). Its raw message, or for
+/// a large one its text parts ([`BodyState::Text`]), is in the blob store already.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BodyUpgrade {
+    pub message: MessageId,
+    /// The UID it was fetched by; a row with another UID is left alone.
+    pub uid: u32,
+    pub blob: BlobKey,
+    /// The blob's length.
+    pub blob_size: u64,
+    /// [`BodyState::Full`] or [`BodyState::Text`].
+    pub body_state: BodyState,
+    pub body_kind: BodyKind,
+    pub has_attachments: bool,
+    /// Replaces the preview's snippet unless empty.
+    pub snippet: String,
+    pub text_parts: Vec<u32>,
+    pub html_parts: Vec<u32>,
+    pub attachments: Vec<Attachment>,
+    /// IMAP sections of the attachments by mail-parser part index, for fetching one alone.
+    pub sections: Vec<(u32, String)>,
+    /// The body as plain text, for the search index.
+    pub search_text: String,
+    /// When it was fetched (Unix seconds): the disk cap evicts the bodies used longest ago.
+    pub used: i64,
+}
+
+/// The writer's reply to an upgrade.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Upgraded {
+    pub version: StoreVersion,
+    /// Whether the message was still there with its UID.
+    pub found: bool,
+    /// Raw messages no row refers to any more (the new one when the message was gone, or the
+    /// one it replaced); the caller deletes them from the blob store.
+    pub orphaned_blobs: Vec<BlobKey>,
+}
+
+/// What the engine needs to download a message's body.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BodyTarget {
+    pub message: MessageId,
+    pub account: AccountId,
+    pub folder: FolderId,
+    pub uid: u32,
+    /// RFC822.SIZE.
+    pub size: u64,
+    pub body_state: BodyState,
+    pub blob: Option<BlobKey>,
+}
+
+/// Where one attachment of a stored message is on the server.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PartSource {
+    pub message: MessageId,
+    pub folder: FolderId,
+    pub uid: u32,
+    pub section: String,
+    pub mime_type: String,
+}
+
+/// A message without a body in an Inbox of a server account, for the background prefetch.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BodyCandidate {
+    pub message: MessageId,
+    pub account: AccountId,
+    pub folder: FolderId,
+    pub role: FolderRole,
+    pub date: i64,
+    pub size: u64,
+}
+
+/// What the downloaded bodies take on disk.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BodyUsage {
+    pub bodies: u64,
+    pub bytes: u64,
+}
+
+/// The writer's reply to an eviction.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Evicted {
+    /// Messages back to their headers and preview.
+    pub messages: Vec<MessageId>,
+    /// Raw messages to delete from the blob store.
+    pub blobs: Vec<BlobKey>,
+    /// What the downloaded bodies take afterwards.
+    pub bytes: u64,
+    /// Still over the cap after a full batch: evict again.
+    pub more: bool,
 }

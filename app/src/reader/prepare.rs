@@ -117,7 +117,8 @@ fn shown_inline(attachment: &Attachment, referenced: &HashSet<String>) -> bool {
 }
 
 /// The parts the HTML references, decoded, within [`MAX_INLINE_PARTS`] and
-/// [`MAX_INLINE_BYTES`].
+/// [`MAX_INLINE_BYTES`]. A large message stored as its text parts has its images empty until
+/// they are fetched (ML-044); they are left out.
 fn inline_parts(
     raw: &[u8],
     attachments: &[Attachment],
@@ -136,7 +137,8 @@ fn inline_parts(
             tracing::debug!(cap = MAX_INLINE_PARTS, "reader: inline parts left out");
             break;
         }
-        let Some(part) = message::part(raw, attachment.part) else {
+        let Some(part) = message::part(raw, attachment.part).filter(|part| !part.data.is_empty())
+        else {
             continue;
         };
         bytes += part.data.len();
@@ -206,6 +208,25 @@ mod tests {
         let mut refs: Vec<_> = refs.into_iter().collect();
         refs.sort();
         assert_eq!(refs, ["bg@x", "image001.png@01d9", "logo@example.test"]);
+    }
+
+    #[test]
+    fn an_image_left_empty_by_a_text_only_download_is_not_served() {
+        let raw = "Subject: x\r\nContent-Type: multipart/related; boundary=\"r\"\r\n\r\n\
+                   --r\r\nContent-Type: text/html\r\n\r\n<img src=\"cid:pic@x\">\r\n\
+                   --r\r\nContent-Type: image/png\r\nContent-ID: <pic@x>\r\n\
+                   Content-Transfer-Encoding: base64\r\n\r\n\r\n--r--\r\n";
+        let detail = detail(raw.as_bytes());
+        assert_eq!(detail.attachments.len(), 1, "the image is a part");
+        let prepared = prepare(&detail, Some(raw.as_bytes()));
+        let Body::Html { parts, .. } = prepared.body else {
+            panic!("not HTML");
+        };
+        assert_eq!(parts.len(), 0);
+        assert!(
+            prepared.attachments.is_empty(),
+            "still no card: the HTML shows it"
+        );
     }
 
     #[test]

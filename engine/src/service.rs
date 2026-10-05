@@ -36,6 +36,8 @@ use std::time::{Duration, Instant};
 use tokio::sync::OnceCell;
 use zeroize::Zeroizing;
 
+mod bodies;
+
 /// How long stopping waits for tasks still writing files.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
 /// How long a sign-in waits for the browser.
@@ -184,6 +186,8 @@ struct Shared {
     events: async_channel::Sender<Event>,
     /// Each account's running sync.
     syncs: Mutex<HashMap<AccountKey, tokio::task::JoinHandle<()>>>,
+    /// Body downloads and the disk cap (ML-044).
+    bodies: bodies::Bodies,
 }
 
 impl Shared {
@@ -206,6 +210,7 @@ impl Shared {
             access: AccessTokens::default(),
             events,
             syncs: Mutex::default(),
+            bodies: bodies::Bodies::default(),
         }
     }
 
@@ -389,10 +394,15 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 ));
                 continue;
             }
-            Command::FolderOpened { .. }
-            | Command::LoadOlder { .. }
-            | Command::FetchBodies { .. }
-            | Command::Reconnect => {
+            Command::FetchBodies { messages } => {
+                bodies::request(&shared, messages, true);
+                continue;
+            }
+            Command::Storage { storage } => {
+                bodies::set_storage(&shared, storage);
+                continue;
+            }
+            Command::FolderOpened { .. } | Command::LoadOlder { .. } | Command::Reconnect => {
                 tracing::debug!("an M3 command arrived before M3 built it");
                 continue;
             }
@@ -409,6 +419,7 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
     for (_, sync) in shared.syncs().drain() {
         sync.abort();
     }
+    shared.bodies.stop();
 }
 
 async fn detect(shared: Arc<Shared>, request: RequestId, address: String) {

@@ -1,0 +1,112 @@
+# The reader asks for bodies the store doesn't hold (ML-044), against the fake engine: synthetic
+# samples stored as headers and a preview, as the first sync leaves them. Selecting one asks the
+# engine for its body and shows the snippet under "Downloading…"; the store's change event, or
+# the engine's answer, shows the message in place, the list's selection kept. A failure says why
+# with Retry, and a message being downloaded isn't asked for twice. Every message is fictional.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/reader-bodies.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+mail-account Bodies
+bodies-add plain simple remote newsletter
+assert-list-count 4
+
+# Selected: the reader asks for the body and shows the preview meanwhile.
+list-select 0
+engine-expect fetch-bodies count=1
+assert-bodies-requested plain
+wait-until assert-body downloading
+assert-text-contains reader-notice Downloading
+assert-label reader-subject "Cabin weekend — final plan"
+assert-shown reader-retry false
+screenshot $DIR/../../.local/selftest/reader-bodies-downloading.png
+
+# The engine stores the body: the change event alone shows it, in place.
+bodies-store plain
+wait-until assert-body plain
+assert-body-text Hemsedal
+screenshot $DIR/../../.local/selftest/reader-bodies-downloaded.png
+assert-list-selected 0
+assert-list-count 4
+engine-reply body-fetched ok
+assert-body plain
+engine-expect none
+
+# A failure says why, with Retry; Retry asks again.
+list-select 1
+engine-expect fetch-bodies count=1
+assert-bodies-requested simple
+wait-until assert-body downloading
+engine-reply body-fetched offline
+wait-until assert-body download-failed
+assert-text-contains reader-notice "the mail server can't be reached"
+assert-shown reader-retry true
+screenshot $DIR/../../.local/selftest/reader-bodies-offline.png
+setup-click reader-retry
+engine-expect fetch-bodies count=1
+assert-bodies-requested simple
+wait-until assert-body downloading
+engine-reply body-fetched needs-sign-in
+wait-until assert-body download-failed
+assert-text-contains reader-notice "sign in again"
+setup-click reader-retry
+engine-expect fetch-bodies count=1
+bodies-store simple
+engine-reply body-fetched ok
+wait-until assert-body html-themed
+assert-body-text "Two small comments"
+assert-list-selected 1
+assert-labelled
+
+# Gone from the server.
+list-select 2
+engine-expect fetch-bodies count=1
+assert-bodies-requested remote
+engine-reply body-fetched gone
+wait-until assert-body download-failed
+assert-text-contains reader-notice "no longer on the server"
+
+# Another change to the message (a flag) keeps the failure and asks nothing.
+mail-flag 2 +starred
+assert-body download-failed
+assert-text-contains reader-notice "no longer on the server"
+engine-expect none
+
+# A message whose download is under way isn't asked for again when it is selected again; the
+# answer arriving while another message is shown changes nothing there.
+list-select 3
+engine-expect fetch-bodies count=1
+assert-bodies-requested newsletter
+wait-until assert-body downloading
+list-select 0
+wait-until assert-body plain
+list-select 3
+wait-until assert-body downloading
+engine-expect none
+list-select 0
+wait-until assert-body plain
+engine-reply body-fetched ok
+assert-body plain
+engine-expect none
+
+# An answer of "done" with still no body in the store is a failure, not another request.
+list-select 3
+engine-expect fetch-bodies count=1
+assert-bodies-requested newsletter
+wait-until assert-body downloading
+engine-reply body-fetched ok
+wait-until assert-body download-failed
+assert-text-contains reader-notice "couldn't be downloaded"
+engine-expect none
+
+# A body that arrives later, as a background download would bring it, replaces the failure.
+bodies-store newsletter
+wait-until assert-body html-paper
+assert-list-selected 3
+
+# Selected again, a message whose download failed asks once more.
+list-select 2
+engine-expect fetch-bodies count=1
+assert-bodies-requested remote
+wait-until assert-body downloading

@@ -3,7 +3,8 @@
 //! fast scroll isn't stuck behind stale pages; a request whose reply was dropped is skipped.
 
 use super::api::{
-    FolderSync, OpenView, Page, StoreVersion, SyncState, Versioned, ViewOpened, ViewSpec,
+    BodyCandidate, BodyTarget, BodyUsage, FolderSync, OpenView, Page, PartSource, StoreVersion,
+    SyncState, Versioned, ViewOpened, ViewSpec,
 };
 use super::{Shared, StoreError, check, codec, fts, views};
 use rusqlite::{Connection, OptionalExtension};
@@ -17,6 +18,7 @@ use std::sync::Arc;
 mod sync;
 
 pub(crate) use sync::SyncRead;
+mod bodies;
 
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
 
@@ -63,6 +65,23 @@ pub(crate) enum ReadJob {
         reply: Sender<Option<FolderSync>>,
     },
     Sync(SyncRead),
+    BodyTargets {
+        ids: Vec<MessageId>,
+        reply: Sender<Vec<BodyTarget>>,
+    },
+    PartSource {
+        message: MessageId,
+        part: u32,
+        reply: Sender<Option<PartSource>>,
+    },
+    BodyCandidates {
+        since: i64,
+        limit: u32,
+        reply: Sender<Vec<BodyCandidate>>,
+    },
+    BodyUsage {
+        reply: Sender<BodyUsage>,
+    },
 }
 
 impl ReadJob {
@@ -79,6 +98,10 @@ impl ReadJob {
             ReadJob::Check { reply } => reply.is_closed(),
             ReadJob::FolderSync { reply, .. } => reply.is_closed(),
             ReadJob::Sync(read) => read.cancelled(),
+            ReadJob::BodyTargets { reply, .. } => reply.is_closed(),
+            ReadJob::PartSource { reply, .. } => reply.is_closed(),
+            ReadJob::BodyCandidates { reply, .. } => reply.is_closed(),
+            ReadJob::BodyUsage { reply } => reply.is_closed(),
         }
     }
 }
@@ -167,6 +190,26 @@ impl Reader {
                 let _ = reply.try_send(self.folder_sync(folder));
             }
             ReadJob::Sync(read) => self.sync_read(read),
+            ReadJob::BodyTargets { ids, reply } => {
+                let _ = reply.try_send(self.body_targets(&ids));
+            }
+            ReadJob::PartSource {
+                message,
+                part,
+                reply,
+            } => {
+                let _ = reply.try_send(self.part_source(message, part));
+            }
+            ReadJob::BodyCandidates {
+                since,
+                limit,
+                reply,
+            } => {
+                let _ = reply.try_send(self.body_candidates(since, limit));
+            }
+            ReadJob::BodyUsage { reply } => {
+                let _ = reply.try_send(self.body_usage());
+            }
         }
     }
 

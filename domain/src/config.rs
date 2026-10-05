@@ -138,15 +138,48 @@ pub struct OAuth {
     pub microsoft: OAuthClient,
 }
 
+const MIB: u64 = 1024 * 1024;
+const GIB: u64 = 1024 * MIB;
+
+/// The disk downloaded messages may use by default (a proposal, ML-044).
+pub const DEFAULT_CACHE_SIZE: u64 = 2 * GIB;
+/// The smallest `cache_size`: a few large messages must fit.
+pub const MIN_CACHE_SIZE: u64 = 100 * MIB;
+/// Days of Inbox mail downloaded in the background by default (a proposal, ML-044).
+pub const DEFAULT_PREFETCH_DAYS: u32 = 14;
+pub const MAX_PREFETCH_DAYS: u32 = 365;
+
+/// `[storage]`: how much of an account's mail is kept on this computer (ML-044).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Storage {
+    /// Bytes the downloaded messages may take; `None` for no limit. Past it, the messages
+    /// opened or fetched longest ago go back to their headers and preview.
+    pub cache_size: Option<u64>,
+    /// Inbox messages from the last this many days are downloaded in the background; 0 turns
+    /// it off.
+    pub prefetch_days: u32,
+}
+
+impl Default for Storage {
+    fn default() -> Self {
+        Self {
+            cache_size: Some(DEFAULT_CACHE_SIZE),
+            prefetch_days: DEFAULT_PREFETCH_DAYS,
+        }
+    }
+}
+
 /// The settings in `config.toml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Config {
     pub appearance: Appearance,
     pub oauth: OAuth,
+    pub storage: Storage,
 }
 
 const APPEARANCE_SETTINGS: [&str; 3] = ["corner_radius", "chrome_font", "reading_font"];
-const SECTIONS: [&str; 2] = ["appearance", "oauth"];
+const STORAGE_SETTINGS: [&str; 2] = ["cache_size", "prefetch_days"];
+const SECTIONS: [&str; 3] = ["appearance", "oauth", "storage"];
 const PROVIDERS: [&str; 1] = ["microsoft"];
 
 /// Where a setting written at the top level belongs.
@@ -155,9 +188,36 @@ fn section_of(name: &str) -> Option<&'static str> {
         Some("[appearance]")
     } else if name == "client_id" {
         Some("[oauth.microsoft]")
+    } else if STORAGE_SETTINGS.contains(&name) {
+        Some("[storage]")
     } else {
         None
     }
+}
+
+/// A size such as `2 GiB`, `500 MB` or `1.5GB`: decimal units are powers of 1000, binary ones
+/// of 1024.
+fn size(text: &str) -> Option<u64> {
+    let text = text.trim();
+    let split = text
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(text.len());
+    let (number, unit) = text.split_at(split);
+    let number: f64 = number.parse().ok()?;
+    let scale: u64 = match unit.trim().to_ascii_lowercase().as_str() {
+        "b" => 1,
+        "kb" => 1000,
+        "mb" => 1000 * 1000,
+        "gb" => 1000 * 1000 * 1000,
+        "tb" => 1000 * 1000 * 1000 * 1000,
+        "kib" => 1024,
+        "mib" => MIB,
+        "gib" => GIB,
+        "tib" => 1024 * GIB,
+        _ => return None,
+    };
+    let bytes = number * scale as f64;
+    (bytes.is_finite() && bytes >= 0.0 && bytes < u64::MAX as f64).then_some(bytes as u64)
 }
 
 /// Collects the mistakes of one `config.toml` read.
@@ -289,6 +349,75 @@ impl Reader<'_> {
             }
         }
     }
+
+    fn storage(&mut self, table: &DeTable<'_>, storage: &mut Storage) {
+        for (key, value) in entries(table) {
+            let name = key.get_ref().as_ref();
+            let span = value.span();
+            match name {
+                "cache_size" => match value.get_ref() {
+                    DeValue::String(text) if text.trim().eq_ignore_ascii_case("unlimited") => {
+                        storage.cache_size = None;
+                    }
+                    DeValue::String(text) => match size(text) {
+                        Some(bytes) if bytes >= MIN_CACHE_SIZE => {
+                            storage.cache_size = Some(bytes);
+                        }
+                        Some(_) => self.error(
+                            span,
+                            format!(
+                                "cache_size is at least 100 MiB, not {}",
+                                shown(value.get_ref())
+                            ),
+                        ),
+                        None => self.error(
+                            span,
+                            format!(
+                                "cache_size is a size such as \"2 GiB\" or \"500 MB\", or \
+                                 \"unlimited\", not {}",
+                                shown(value.get_ref())
+                            ),
+                        ),
+                    },
+                    other => self.error(
+                        span,
+                        format!(
+                            "cache_size is a size in quotes such as \"2 GiB\", not {}",
+                            shown(other)
+                        ),
+                    ),
+                },
+                "prefetch_days" => match whole_number(value.get_ref())
+                    .and_then(|days| u32::try_from(days).ok())
+                    .filter(|days| *days <= MAX_PREFETCH_DAYS)
+                {
+                    Some(days) => storage.prefetch_days = days,
+                    None => self.error(
+                        span,
+                        format!(
+                            "prefetch_days is a whole number of days from 0 to \
+                             {MAX_PREFETCH_DAYS}, not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
+                _ => self.error(
+                    key.span(),
+                    format!(
+                        "unknown setting {name} in [storage]{}",
+                        did_you_mean(name, STORAGE_SETTINGS)
+                    ),
+                ),
+            }
+        }
+    }
+}
+
+fn whole_number(value: &DeValue<'_>) -> Option<i64> {
+    match value {
+        DeValue::Integer(integer) => i64::from_str_radix(integer.as_str(), integer.radix()).ok(),
+        _ => None,
+    }
 }
 
 fn corner_radius(value: &DeValue<'_>) -> Option<CornerRadius> {
@@ -332,6 +461,11 @@ impl Config {
                 "oauth" => {
                     if let Some(table) = reader.table(value, name) {
                         reader.oauth(table, &mut config.oauth);
+                    }
+                }
+                "storage" => {
+                    if let Some(table) = reader.table(value, name) {
+                        reader.storage(table, &mut config.storage);
                     }
                 }
                 _ => match section_of(name) {
@@ -381,7 +515,16 @@ pub fn default_config_file() -> String {
          # Your own OAuth client for Sign in with Microsoft, in place of the one Sealwax was\n\
          # built with (docs/OAUTH-SETUP.md).\n\
          [oauth.microsoft]\n\
-         # client_id = \"00000000-0000-0000-0000-000000000000\"\n"
+         # client_id = \"00000000-0000-0000-0000-000000000000\"\n\
+         \n\
+         [storage]\n\
+         # Disk space for messages downloaded from your accounts: a size such as \"2 GiB\" or\n\
+         # \"500 MB\" (at least 100 MiB), or \"unlimited\". When it is full, the messages opened\n\
+         # longest ago keep only their headers and preview, and download again when opened.\n\
+         # cache_size = \"2 GiB\"\n\
+         # Inbox messages from this many days download in the background, so they open\n\
+         # without waiting; 0 turns it off.\n\
+         # prefetch_days = {DEFAULT_PREFETCH_DAYS}\n"
     )
 }
 
@@ -549,6 +692,77 @@ mod tests {
         let config = Config::parse(&uncommented).unwrap();
         assert_eq!(config.appearance, Appearance::default());
         assert!(config.oauth.microsoft.client_id.is_some());
+    }
+
+    #[test]
+    fn storage_takes_sizes_with_units_and_days() {
+        assert_eq!(Config::default().storage, Storage::default());
+        assert_eq!(Storage::default().cache_size, Some(2 * 1024 * 1024 * 1024));
+        assert_eq!(Storage::default().prefetch_days, 14);
+        let storage = |text: &str| Config::parse(text).unwrap().storage;
+        assert_eq!(
+            storage("[storage]\ncache_size = \"500 MB\"\nprefetch_days = 0\n"),
+            Storage {
+                cache_size: Some(500_000_000),
+                prefetch_days: 0,
+            }
+        );
+        assert_eq!(
+            storage("[storage]\ncache_size = \"1.5GiB\"\n").cache_size,
+            Some(1_610_612_736)
+        );
+        assert_eq!(
+            storage("[storage]\ncache_size = \" Unlimited \"\n").cache_size,
+            None
+        );
+        assert_eq!(storage("storage.prefetch_days = 365\n").prefetch_days, 365);
+        assert_eq!(
+            errors("[storage]\ncache_size = \"50 MiB\"\n"),
+            ["line 2, column 14: cache_size is at least 100 MiB, not \"50 MiB\""]
+        );
+        assert_eq!(
+            errors("[storage]\ncache_size = \"lots\"\n"),
+            [
+                "line 2, column 14: cache_size is a size such as \"2 GiB\" or \"500 MB\", or \
+                 \"unlimited\", not \"lots\""
+            ]
+        );
+        assert_eq!(
+            errors("[storage]\ncache_size = 2000\n"),
+            ["line 2, column 14: cache_size is a size in quotes such as \"2 GiB\", not 2000"]
+        );
+        assert_eq!(
+            errors("[storage]\nprefetch_days = 400\n"),
+            ["line 2, column 17: prefetch_days is a whole number of days from 0 to 365, not 400"]
+        );
+        assert_eq!(
+            errors("[storage]\nprefetch_days = -1\n"),
+            ["line 2, column 17: prefetch_days is a whole number of days from 0 to 365, not -1"]
+        );
+        assert_eq!(
+            errors("[storage]\nprefech_days = 3\n"),
+            [
+                "line 2, column 1: unknown setting prefech_days in [storage]; did you mean \
+                 prefetch_days?"
+            ]
+        );
+        assert_eq!(
+            errors("cache_size = \"1 GiB\"\n"),
+            ["line 1, column 1: cache_size belongs in [storage]; put it under that line"]
+        );
+    }
+
+    #[test]
+    fn sizes_read_decimal_and_binary_units() {
+        assert_eq!(size("2 GiB"), Some(2 * GIB));
+        assert_eq!(size("2GB"), Some(2_000_000_000));
+        assert_eq!(size("100 mib"), Some(100 * MIB));
+        assert_eq!(size("0.5 KB"), Some(500));
+        assert_eq!(size("12 B"), Some(12));
+        assert_eq!(size("1 TiB"), Some(1024 * GIB));
+        for bad in ["", "GiB", "2", "2 GiBs", "1e9 B", "-1 MB", "1..2 MB"] {
+            assert_eq!(size(bad), None, "{bad}");
+        }
     }
 
     #[test]

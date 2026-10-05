@@ -3,6 +3,7 @@
 //! the first header sync; M3 adds the state-driven re-sync, the first-sync window and older
 //! mail (`sync`), with IDLE and polling on the same layer.
 
+pub mod bodies;
 mod connection;
 mod error;
 mod fetch;

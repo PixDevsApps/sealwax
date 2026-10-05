@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 4;
+pub const VERSION: i64 = 5;
 
-const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
+const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -147,6 +147,25 @@ ALTER TABLE messages ADD COLUMN thread_index BLOB;
 const V4: &str = "
 ALTER TABLE folders ADD COLUMN below_floor INTEGER NOT NULL DEFAULT 0;
 UPDATE folders SET sync_floor = 1 WHERE sync_state = 'ready';
+";
+
+/// M3's bodies (ML-044): every raw message the engine downloaded, with its size on disk and when
+/// it was last fetched or opened, for the disk cap, which evicts the oldest first. A body leaves
+/// the table with the last message that refers to it, however that message goes. Attachments of
+/// a message stored as its text parts keep their IMAP section, to be fetched on demand.
+const V5: &str = "
+CREATE TABLE bodies(
+    blob_key BLOB PRIMARY KEY,
+    size INTEGER NOT NULL,
+    used INTEGER NOT NULL
+) WITHOUT ROWID;
+CREATE INDEX bodies_used ON bodies(used, blob_key);
+CREATE TRIGGER bodies_unreferenced AFTER DELETE ON messages WHEN old.blob_key IS NOT NULL
+BEGIN
+    DELETE FROM bodies WHERE blob_key = old.blob_key
+        AND NOT EXISTS (SELECT 1 FROM messages WHERE blob_key = old.blob_key);
+END;
+ALTER TABLE message_parts ADD COLUMN section TEXT;
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

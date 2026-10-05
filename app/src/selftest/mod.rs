@@ -6,6 +6,7 @@
 //! theme follower reads a scratch Omarchy state, never the desktop's: the built-in palette
 //! until a script installs a theme from `tests/theme/` (`theme`).
 
+mod bodies;
 mod broadway;
 mod mail;
 mod perf;
@@ -396,6 +397,7 @@ impl Harness {
             "test-bus-signal" => self.test_bus_signal(arg(0)).await,
             "test-bus-stop" => self.stop_test_bus().await,
             command if reader::handles(command) => reader::step(self, command, args).await,
+            command if bodies::handles(command) => bodies::step(self, command, args).await,
             command if setup::handles(command) => setup::step(self, command, args).await,
             command => self.check(command, args).await,
         }
@@ -687,6 +689,7 @@ impl Harness {
                 }
             }
             "assert-reader" => reader::check(self, args).await,
+            assertion if bodies::handles(assertion) => bodies::step(self, assertion, args).await,
             assertion if setup::checks(assertion) => setup::check(self, assertion, args),
             other => Err(format!("unknown command {other}")),
         }
