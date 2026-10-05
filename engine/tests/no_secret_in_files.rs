@@ -15,7 +15,7 @@ use sealwax_domain::account::{
 };
 use sealwax_domain::model::FolderRole;
 use sealwax_engine::accounts::Accounts;
-use sealwax_engine::api::{AccountError, Command, Event, Password};
+use sealwax_engine::api::{AccountError, Command, Event, Password, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::secrets::{MemoryStore, SecretKind, SecretStore};
 use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
@@ -289,8 +289,11 @@ async fn sign_in(engine: &Engine, request: u64, account: Option<AccountKey>) -> 
 
 async fn synced(engine: &Engine) -> Result<(), LoginFailure> {
     next(engine, |event| match event {
-        Event::SyncFinished { .. } => Some(Ok(())),
-        Event::SyncFailed { failure, .. } => Some(Err(failure)),
+        Event::AccountStatus {
+            status: SyncStatus::Synced,
+            ..
+        } => Some(Ok(())),
+        Event::AccountStatus { status, .. } => status.failure().map(Err),
         _ => None,
     })
     .await

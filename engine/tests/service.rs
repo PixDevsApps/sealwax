@@ -139,10 +139,10 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
         _ => None,
     });
     let failure = next(&engine, |event| match event {
-        Event::SyncFailed {
+        Event::AccountStatus {
             account: id,
-            failure,
-        } if id == account => Some(failure),
+            status,
+        } if id == account => status.failure(),
         _ => None,
     });
     assert_eq!(failure, LoginFailure::Unreachable);

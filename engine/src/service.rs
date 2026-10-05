@@ -11,7 +11,7 @@
 //! token.
 
 use crate::accounts::{Accounts, secret_label};
-use crate::api::{AccountError, Command, Event, Password, RequestId};
+use crate::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
 use crate::autoconfig::{self, DetectOptions};
 use crate::imap::{self, Credentials, ImapError, SyncError};
 use crate::net::Trust;
@@ -362,6 +362,14 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 continue;
             }
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
+            Command::FolderOpened { .. }
+            | Command::LoadOlder { .. }
+            | Command::FetchBodies { .. }
+            | Command::Reconnect
+            | Command::UpdatePassword { .. } => {
+                tracing::debug!("an M3 command arrived before M3 built it");
+                continue;
+            }
         };
         let _ = jobs.send(job).await;
     }
@@ -549,13 +557,18 @@ async fn sync_account(shared: Arc<Shared>, settings: AccountSettings) {
             return;
         }
     };
-    match sync_once(&shared, &settings, account).await {
-        Ok(()) => shared.send(Event::SyncFinished { account }),
+    shared.send(Event::AccountStatus {
+        account,
+        status: SyncStatus::Syncing,
+    });
+    let status = match sync_once(&shared, &settings, account).await {
+        Ok(()) => SyncStatus::Synced,
         Err(failure) => {
             tracing::info!(account = account.0, ?failure, "the account's sync stopped");
-            shared.send(Event::SyncFailed { account, failure });
+            SyncStatus::from_failure(failure)
         }
-    }
+    };
+    shared.send(Event::AccountStatus { account, status });
 }
 
 /// Logs in, stores the folder list, then the INBOX's headers newest first.

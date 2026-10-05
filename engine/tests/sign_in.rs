@@ -11,7 +11,7 @@ use sealwax_domain::account::{
     AccountKey, AccountSettings, AuthMethod, LoginError, LoginFailure, OAuthProvider, Protocol,
 };
 use sealwax_domain::model::AccountId;
-use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId};
+use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
 use sealwax_infrastructure::accounts::{self, AccountPaths};
@@ -207,11 +207,14 @@ async fn add(
 /// Waits for the account's sync to finish or fail.
 async fn synced(engine: &Engine, account: AccountId) -> Result<(), LoginFailure> {
     next(engine, |event| match event {
-        Event::SyncFinished { account: id } if id == account => Some(Ok(())),
-        Event::SyncFailed {
+        Event::AccountStatus {
             account: id,
-            failure,
-        } if id == account => Some(Err(failure)),
+            status: SyncStatus::Synced,
+        } if id == account => Some(Ok(())),
+        Event::AccountStatus {
+            account: id,
+            status,
+        } if id == account => status.failure().map(Err),
         _ => None,
     })
     .await

@@ -117,7 +117,7 @@ pub enum SyncError {
 }
 
 impl SyncError {
-    /// What the sidebar shows for a failed sync (`Event::SyncFailed`).
+    /// Why a sync failed, for the account's status (`Event::AccountStatus`).
     pub fn failure(&self) -> LoginFailure {
         match self {
             SyncError::Imap(error) => error.failure(),

@@ -15,7 +15,7 @@
 //! | `engine-reply signed-in ok USERNAME`, `engine-reply signed-in [imap\|smtp] FAILURE` | `SignedIn` (IMAP when no protocol is named) |
 //! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would |
 //! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
-//! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `SyncFailed` or `SyncFinished` for the store's account with ADDRESS |
+//! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `AccountStatus` for the store's account with ADDRESS: the failure's state, or `Synced` |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -43,7 +43,7 @@ use sealwax_domain::account::{
     UsernameForm,
 };
 use sealwax_domain::model::FolderRole;
-use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId};
+use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
 use sealwax_infrastructure::store::{FolderSpec, NewAccount};
@@ -496,6 +496,32 @@ fn fields(
             None,
             vec![("count", accounts.len().to_string())],
         ),
+        Command::FolderOpened { folder } => (
+            "folder-opened",
+            None,
+            vec![("folder", folder.0.to_string())],
+        ),
+        Command::LoadOlder { folder } => {
+            ("load-older", None, vec![("folder", folder.0.to_string())])
+        }
+        Command::FetchBodies { messages } => (
+            "fetch-bodies",
+            None,
+            vec![(
+                "messages",
+                messages
+                    .iter()
+                    .map(|message| message.0.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+            )],
+        ),
+        Command::Reconnect => ("reconnect", None, Vec::new()),
+        Command::UpdatePassword { request, key, .. } => (
+            "update-password",
+            Some(*request),
+            vec![("key", key.to_string())],
+        ),
         Command::Shutdown => ("shutdown", None, Vec::new()),
     }
 }
@@ -678,12 +704,13 @@ fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, Strin
             .ok_or_else(|| format!("no account has the address {address}"))
     };
     Ok(match (args[0].as_str(), &args[1..]) {
-        ("sync-failed", [address, failure]) => Some(Event::SyncFailed {
+        ("sync-failed", [address, failure]) => Some(Event::AccountStatus {
             account: account(address)?,
-            failure: login_failure(failure)?,
+            status: SyncStatus::from_failure(login_failure(failure)?),
         }),
-        ("sync-finished", [address]) => Some(Event::SyncFinished {
+        ("sync-finished", [address]) => Some(Event::AccountStatus {
             account: account(address)?,
+            status: SyncStatus::Synced,
         }),
         _ => None,
     })

@@ -1,10 +1,11 @@
 //! What the app sends the engine and what it hears back: plain `Send` values over async-channel
-//! (ADR-003). M2 covers account setup and the first sync; M3 grows it into the sync engine's API.
+//! (ADR-003). M2 covers account setup and the first sync; M3 adds the sync engine's commands:
+//! folders opened, older mail, bodies, reconnecting, a new password, and the account's status.
 
 use sealwax_domain::account::{
     AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure, OAuthProvider,
 };
-use sealwax_domain::model::{AccountId, FolderId};
+use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use std::fmt;
 use zeroize::Zeroizing;
 
@@ -76,6 +77,22 @@ pub enum Command {
     /// The accounts `accounts.toml` lists, after every read without mistakes: the store follows
     /// them, and every listed account gets its folder list and first INBOX sync.
     Accounts { accounts: Vec<AccountSettings> },
+    /// The user opened `folder`: sync it now and keep it current while it stays open (ML-042).
+    FolderOpened { folder: FolderId },
+    /// The list reached the end of `folder`'s first-sync window: fetch older headers (ML-043).
+    LoadOlder { folder: FolderId },
+    /// Download the bodies of `messages`, most wanted first: the reader's message (ML-044).
+    FetchBodies { messages: Vec<MessageId> },
+    /// The network came back or the machine resumed: drop every connection and reconnect now,
+    /// without waiting for a socket to fail (ML-045, S6).
+    Reconnect,
+    /// A new password for a password account the server refused (ML-048): checked on IMAP and
+    /// SMTP, stored in the keyring, and the account syncs again.
+    UpdatePassword {
+        request: RequestId,
+        key: AccountKey,
+        password: Password,
+    },
     /// Stop every connection and the runtime.
     Shutdown,
 }
@@ -122,13 +139,88 @@ pub enum Event {
         fetched: u32,
         total: u32,
     },
-    /// The account's folder list and first INBOX sync are done.
-    SyncFinished { account: AccountId },
-    /// An account's connection failed; the sidebar shows its state.
-    SyncFailed {
+    /// Where the account's sync stands; the sidebar and the banners show it (ML-048).
+    AccountStatus {
         account: AccountId,
-        failure: LoginFailure,
+        status: SyncStatus,
     },
+    /// A body download for `FetchBodies` finished; the store's change event shows the message.
+    BodyFetched {
+        message: MessageId,
+        result: Result<(), BodyError>,
+    },
+    /// `LoadOlder` stored `fetched` older headers; `complete` when the folder has none left.
+    OlderLoaded {
+        folder: FolderId,
+        fetched: u32,
+        complete: bool,
+    },
+    PasswordUpdated {
+        request: RequestId,
+        result: Result<(), LoginError>,
+    },
+    /// The keyring didn't answer: secrets stay in memory until Sealwax quits (ADR-008).
+    KeyringUnavailable,
+}
+
+/// Where an account's sync stands (ML-048).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SyncStatus {
+    /// Logging in, or a pass is running.
+    Syncing,
+    /// The last pass finished: the account matches the server and waits for changes.
+    Synced,
+    /// The server can't be reached; the engine tries again by itself.
+    Offline(LoginFailure),
+    /// The server refused the account's password or token: the user types a password again or
+    /// signs in again.
+    NeedsSignIn(LoginFailure),
+    /// The server's certificate no longer verifies.
+    CertificateChanged,
+    /// The server says the mailbox is full.
+    QuotaFull,
+}
+
+impl SyncStatus {
+    /// The state a failed login or sync leaves an account in.
+    pub fn from_failure(failure: LoginFailure) -> Self {
+        match failure {
+            LoginFailure::WrongPassword
+            | LoginFailure::AppPasswordRequired
+            | LoginFailure::ImapDisabled
+            | LoginFailure::OAuthRequired
+            | LoginFailure::SignInDeclined => SyncStatus::NeedsSignIn(failure),
+            LoginFailure::Certificate => SyncStatus::CertificateChanged,
+            LoginFailure::NoTls
+            | LoginFailure::Unreachable
+            | LoginFailure::Timeout
+            | LoginFailure::Other => SyncStatus::Offline(failure),
+        }
+    }
+
+    /// The failure behind a failed state.
+    pub fn failure(self) -> Option<LoginFailure> {
+        match self {
+            SyncStatus::Offline(failure) | SyncStatus::NeedsSignIn(failure) => Some(failure),
+            SyncStatus::CertificateChanged => Some(LoginFailure::Certificate),
+            SyncStatus::Syncing | SyncStatus::Synced | SyncStatus::QuotaFull => None,
+        }
+    }
+}
+
+/// Why a body download failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum BodyError {
+    #[error("the account is offline")]
+    Offline,
+    #[error("the account needs sign-in")]
+    NeedsSignIn,
+    #[error("the server no longer has the message")]
+    Gone,
+    #[error("the local store failed")]
+    Store,
+    #[error("the download failed")]
+    Other,
 }
 
 /// Why saving or removing an account failed.

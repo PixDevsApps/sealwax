@@ -31,7 +31,7 @@ use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint,
 use sealwax_domain::autoconfig::{address_domain, presets};
 use sealwax_domain::config::Config;
 use sealwax_domain::model::AccountId;
-use sealwax_engine::api::{Command, Event, Password};
+use sealwax_engine::api::{Command, Event, Password, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
 use sealwax_engine::secrets::{KeyringStore, Secret, SecretKind, SecretStore};
@@ -232,11 +232,14 @@ impl Running {
                     headers = fetched;
                     None
                 }
-                Event::SyncFinished { account: id } if id == account => Some(Ok(())),
-                Event::SyncFailed {
+                Event::AccountStatus {
                     account: id,
-                    failure,
-                } if id == account => Some(Err(failure)),
+                    status: SyncStatus::Synced,
+                } if id == account => Some(Ok(())),
+                Event::AccountStatus {
+                    account: id,
+                    status,
+                } if id == account => status.failure().map(Err),
                 _ => None,
             })
             .await?;

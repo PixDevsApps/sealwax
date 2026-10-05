@@ -4,9 +4,8 @@
 //! through the mailbox.
 
 use crate::window::AccountStatus;
-use sealwax_domain::account::LoginFailure;
 use sealwax_domain::model::AccountId;
-use sealwax_engine::api::Event;
+use sealwax_engine::api::{Event, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
@@ -74,30 +73,24 @@ pub fn account_status(event: &Event) -> Option<(AccountId, AccountStatus)> {
         Event::FoldersSynced { account, .. } | Event::SyncProgress { account, .. } => {
             Some((account, AccountStatus::Syncing))
         }
-        Event::SyncFinished { account } => Some((account, AccountStatus::Synced)),
-        Event::SyncFailed { account, failure } => Some((account, failure_status(failure))),
+        Event::AccountStatus { account, status } => Some((account, sidebar_status(status))),
         _ => None,
     }
 }
 
-fn failure_status(failure: LoginFailure) -> AccountStatus {
-    match failure {
-        LoginFailure::WrongPassword
-        | LoginFailure::AppPasswordRequired
-        | LoginFailure::ImapDisabled
-        | LoginFailure::OAuthRequired
-        | LoginFailure::SignInDeclined => AccountStatus::NeedsSignIn,
-        LoginFailure::NoTls
-        | LoginFailure::Certificate
-        | LoginFailure::Unreachable
-        | LoginFailure::Timeout
-        | LoginFailure::Other => AccountStatus::Offline,
+fn sidebar_status(status: SyncStatus) -> AccountStatus {
+    match status {
+        SyncStatus::Syncing => AccountStatus::Syncing,
+        SyncStatus::Synced | SyncStatus::QuotaFull => AccountStatus::Synced,
+        SyncStatus::NeedsSignIn(_) => AccountStatus::NeedsSignIn,
+        SyncStatus::Offline(_) | SyncStatus::CertificateChanged => AccountStatus::Offline,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sealwax_domain::account::LoginFailure;
     use sealwax_domain::model::FolderId;
 
     #[test]
@@ -113,11 +106,12 @@ mod tests {
             account_status(&progress),
             Some((account, AccountStatus::Syncing))
         );
+        let status = |status| account_status(&Event::AccountStatus { account, status });
         assert_eq!(
-            account_status(&Event::SyncFinished { account }),
+            status(SyncStatus::Synced),
             Some((account, AccountStatus::Synced))
         );
-        let failed = |failure| account_status(&Event::SyncFailed { account, failure });
+        let failed = |failure| status(SyncStatus::from_failure(failure));
         assert_eq!(
             failed(LoginFailure::WrongPassword),
             Some((account, AccountStatus::NeedsSignIn))
