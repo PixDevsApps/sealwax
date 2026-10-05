@@ -1,6 +1,7 @@
 //! The mail data model shared by the store, the engine and the app: plain values with newtype
 //! ids, no behaviour beyond small conversions.
 
+use crate::account::AccountKey;
 use std::fmt;
 
 macro_rules! id {
@@ -39,6 +40,9 @@ pub struct Account {
     pub id: AccountId,
     pub name: String,
     pub address: String,
+    /// Its key in `accounts.toml` and the keyring; `None` for a local account with no server
+    /// (fixtures, self-tests), which no settings file lists.
+    pub key: Option<AccountKey>,
 }
 
 /// What a folder is for, from SPECIAL-USE or the name table (ADR-006).

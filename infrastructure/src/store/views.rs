@@ -107,12 +107,15 @@ pub(crate) fn passes(filter: ViewFilter, flags: u32, has_attachments: bool) -> b
     }
 }
 
-/// The folders a view lists.
+/// The folders a view lists; the unified inbox leaves out detached accounts.
 pub(crate) fn folders(conn: &Connection, scope: ViewScope) -> rusqlite::Result<Vec<FolderId>> {
     match scope {
         ViewScope::Folder(folder) => Ok(vec![folder]),
         ViewScope::UnifiedInbox => conn
-            .prepare_cached("SELECT id FROM folders WHERE role = 'inbox' ORDER BY id")?
+            .prepare_cached(
+                "SELECT f.id FROM folders f JOIN accounts a ON a.id = f.account_id \
+                 WHERE f.role = 'inbox' AND a.detached = 0 ORDER BY f.id",
+            )?
             .query_map([], |row| row.get(0).map(FolderId))?
             .collect(),
     }

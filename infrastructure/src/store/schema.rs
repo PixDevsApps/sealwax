@@ -1,18 +1,18 @@
-//! Schema v1 and its `user_version` migrations (the Hertz pattern): each migration runs in its own
-//! transaction, and a database from a newer build is refused and left untouched.
+//! The schema and its `user_version` migrations (the Hertz pattern): each migration runs in its
+//! own transaction, and a database from a newer build is refused and left untouched.
 
 use super::StoreError;
 use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 1;
+pub const VERSION: i64 = 2;
 
-const MIGRATIONS: &[&str] = &[V1];
+const MIGRATIONS: &[&str] = &[V1, V2];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
-const V1: &str = "
+pub(super) const V1: &str = "
 CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied INTEGER NOT NULL);
 
 CREATE TABLE store_version(version INTEGER NOT NULL);
@@ -120,6 +120,16 @@ CREATE VIRTUAL TABLE message_fts USING fts5(
     content='', contentless_delete=1,
     tokenize='unicode61 remove_diacritics 2'
 );
+";
+
+/// M2's account key (ML-034): the account's name in `accounts.toml` and the keyring, so a
+/// deleted store finds its accounts again. Rows from before it, and local accounts that no
+/// settings file lists (fixtures, self-tests), have none. `detached` marks an account that
+/// `accounts.toml` no longer lists: its mail stays until it comes back or is removed.
+const V2: &str = "
+ALTER TABLE accounts ADD COLUMN key TEXT;
+ALTER TABLE accounts ADD COLUMN detached INTEGER NOT NULL DEFAULT 0;
+CREATE UNIQUE INDEX accounts_key ON accounts(key);
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

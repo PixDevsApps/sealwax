@@ -17,6 +17,9 @@ mod writer;
 #[cfg(test)]
 pub(crate) mod tests;
 
+#[cfg(test)]
+mod account_tests;
+
 pub use api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
 pub use views::ViewHandle;
@@ -24,6 +27,7 @@ pub use views::ViewHandle;
 use crate::blobs::BlobStore;
 use crate::xdg::ensure_private_dir;
 use reader::{ReadJob, Reader};
+use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{
     Account, AccountId, BlobKey, Flags, Folder, FolderId, MessageDetail, MessageId, MessageSummary,
 };
@@ -106,6 +110,18 @@ pub struct Removed {
     pub version: StoreVersion,
     pub removed: Vec<MessageId>,
     /// Raw messages no remaining row refers to; the caller may delete them from the blob store.
+    pub orphaned_blobs: Vec<BlobKey>,
+}
+
+/// The writer's reply to an account's removal.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct RemovedAccount {
+    pub version: StoreVersion,
+    /// Whether the account existed; removing one that doesn't is no error.
+    pub found: bool,
+    pub folders: u32,
+    pub messages: u32,
+    /// Raw messages no other account refers to; the caller deletes them from the blob store.
     pub orphaned_blobs: Vec<BlobKey>,
 }
 
@@ -303,8 +319,44 @@ impl Store {
         self.read(|reply| ReadJob::Check { reply })
     }
 
+    /// A local account with no key: fixtures and self-tests, which no settings file lists.
     pub fn add_account(&self, account: NewAccount) -> Reply<Versioned<AccountId>> {
         self.write(|reply| WriteJob::AddAccount { account, reply })
+    }
+
+    /// The account `accounts.toml` lists under `key`: added, or its name and address updated
+    /// and the account attached again.
+    pub fn ensure_account(
+        &self,
+        key: AccountKey,
+        account: NewAccount,
+    ) -> Reply<Versioned<AccountId>> {
+        self.write(|reply| WriteJob::EnsureAccount {
+            key,
+            account,
+            reply,
+        })
+    }
+
+    /// Brings the keyed accounts in line with `accounts.toml`: every listed account as in
+    /// `ensure_account`, every other keyed account detached (hidden from `accounts()` and the
+    /// unified inbox, its mail kept). Replies with the ids in the order given.
+    pub fn reconcile_accounts(
+        &self,
+        accounts: Vec<(AccountKey, NewAccount)>,
+    ) -> Reply<Versioned<Vec<AccountId>>> {
+        self.write(|reply| WriteJob::ReconcileAccounts { accounts, reply })
+    }
+
+    /// The account with `key`, detached or not.
+    pub fn account_by_key(&self, key: AccountKey) -> Reply<Versioned<Option<Account>>> {
+        self.read(|reply| ReadJob::AccountByKey { key, reply })
+    }
+
+    /// Deletes an account and everything it owns in one transaction (ML-038); the reply lists
+    /// the raw messages to delete from the blob store.
+    pub fn remove_account(&self, account: AccountId) -> Reply<RemovedAccount> {
+        self.write(|reply| WriteJob::RemoveAccount { account, reply })
     }
 
     pub fn upsert_folder(&self, folder: FolderSpec) -> Reply<Versioned<FolderId>> {
