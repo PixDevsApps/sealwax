@@ -354,19 +354,26 @@ impl Reader {
         }
     }
 
-    /// Messages a store commit changed: one waiting for its body is shown again.
+    /// Messages a store commit changed: one waiting for its body, or whose download failed, is
+    /// shown again, with its body if it came; a failure stays rather than asking again.
     pub fn messages_changed(&self, ids: &[MessageId]) {
-        let waiting = self.inner.shown.borrow().as_ref().is_some_and(|page| {
-            ids.contains(&page.id)
-                && self.inner.target.get() == Some(page.id)
-                && matches!(
-                    page.body,
-                    ShownBody::Downloading | ShownBody::DownloadFailed(_)
-                )
+        let waiting = self.inner.shown.borrow().as_ref().and_then(|page| {
+            if !ids.contains(&page.id) || self.inner.target.get() != Some(page.id) {
+                return None;
+            }
+            match page.body {
+                ShownBody::Downloading => Some((page.id, None)),
+                ShownBody::DownloadFailed(error) => Some((page.id, Some(error))),
+                _ => None,
+            }
         });
-        if let (true, Some(id)) = (waiting, self.inner.target.get()) {
-            self.inner.reshow(id);
+        let Some((id, failure)) = waiting else {
+            return;
+        };
+        if let Some(error) = failure {
+            self.inner.answers.borrow_mut().insert(id, Err(error));
         }
+        self.inner.reshow(id);
     }
 
     /// Shows nothing and gives every view back.

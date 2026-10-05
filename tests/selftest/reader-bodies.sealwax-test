@@ -67,6 +67,12 @@ engine-reply body-fetched gone
 wait-until assert-body download-failed
 assert-text-contains reader-notice "no longer on the server"
 
+# Another change to the message (a flag) keeps the failure and asks nothing.
+mail-flag 2 +starred
+assert-body download-failed
+assert-text-contains reader-notice "no longer on the server"
+engine-expect none
+
 # A message whose download is under way isn't asked for again when it is selected again; the
 # answer arriving while another message is shown changes nothing there.
 list-select 3
@@ -93,6 +99,11 @@ engine-reply body-fetched ok
 wait-until assert-body download-failed
 assert-text-contains reader-notice "couldn't be downloaded"
 engine-expect none
+
+# A body that arrives later, as a background download would bring it, replaces the failure.
+bodies-store newsletter
+wait-until assert-body html-paper
+assert-list-selected 3
 
 # Selected again, a message whose download failed asks once more.
 list-select 2
