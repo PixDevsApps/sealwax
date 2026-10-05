@@ -69,3 +69,6 @@ pub async fn verify(
         })?;
     Ok(username.to_owned())
 }
+
+#[cfg(test)]
+mod tests;

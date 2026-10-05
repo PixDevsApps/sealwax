@@ -63,16 +63,24 @@ fn the_login_check_on_the_testbed() {
         );
 
         let refused = |protocol, failure| Err(LoginError { protocol, failure });
-        let account = settings(
+        for server in SERVERS {
+            let account = settings(
+                imap(server, Security::Tls),
+                submission(Security::Tls),
+                "alice",
+            );
+            assert_eq!(
+                check(&account, None, &password("wrong-password"), &trust).await,
+                refused(Protocol::Imap, LoginFailure::WrongPassword),
+                "{}",
+                server.name
+            );
+        }
+        let mut account = settings(
             imap(STALWART, Security::Tls),
             submission(Security::Tls),
             "alice",
         );
-        assert_eq!(
-            check(&account, None, &password("wrong-password"), &trust).await,
-            refused(Protocol::Imap, LoginFailure::WrongPassword)
-        );
-        let mut account = account.clone();
         account.username = "nobody".into();
         assert_eq!(
             check(&account, Some("alice"), &right, &trust).await,
