@@ -55,6 +55,11 @@ fn secret_kind(auth: AuthMethod) -> SecretKind {
     }
 }
 
+/// What keyring browsers show for an account's secret.
+pub(crate) fn secret_label(address: &str) -> String {
+    format!("Sealwax: {address}")
+}
+
 /// What account operations work on. The engine service owns these and lends them per command.
 pub struct Accounts<'a, S> {
     pub paths: &'a AccountPaths,
@@ -117,7 +122,7 @@ impl<S: SecretStore> Accounts<'_, S> {
         let key = settings.key.clone();
         self.journal(Some(PendingOp::Add), &key).await?;
 
-        let label = format!("Sealwax: {}", settings.address);
+        let label = secret_label(&settings.address);
         if let Err(error) = self
             .secrets
             .store(

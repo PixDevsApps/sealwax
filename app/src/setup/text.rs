@@ -300,6 +300,10 @@ pub fn account_error(error: &AccountError) -> Notice {
             "Couldn't save the account",
             "Something went wrong on the way. Try again.",
         ),
+        AccountError::SignInExpired => Notice::problem(
+            "The sign-in expired",
+            "Sign in with Microsoft again, then add the account.",
+        ),
     }
 }
 

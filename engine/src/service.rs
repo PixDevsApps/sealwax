@@ -1,34 +1,47 @@
 //! The engine service (ADR-003): a thread of its own runs the engine's tokio runtime, takes the
-//! app's commands and sends events back. M2: autodetect, the login check, adding and removing
-//! accounts, and for every account its folder list and first INBOX header sync; M3 grows it
-//! into the sync engine.
+//! app's commands and sends events back. M2: autodetect, the login check, Microsoft sign-in
+//! (ML-032), adding and removing accounts, and for every account its folder list and first
+//! INBOX header sync; M3 grows it into the sync engine.
 //!
-//! Autodetect and login checks run side by side. Everything that touches `accounts.toml`, the
-//! keyring entries or an account's store rows runs in one lane, one job at a time, so an add
-//! never races a removal or a reconcile.
+//! Autodetect, login checks and sign-ins run side by side. Everything that touches
+//! `accounts.toml`, the keyring entries or an account's store rows runs in one lane, one job at
+//! a time, so an add never races a removal or a reconcile; a re-sign-in's refresh token is
+//! stored there too. The only other keyring write is an account's sync storing a rotated
+//! refresh token, and the lane stops that sync before it removes the account or replaces its
+//! token.
 
-use crate::accounts::Accounts;
-use crate::api::{Command, Event, Password, RequestId};
+use crate::accounts::{Accounts, secret_label};
+use crate::api::{AccountError, Command, Event, Password, RequestId};
 use crate::autoconfig::{self, DetectOptions};
-use crate::imap::{self, Credentials, SyncError};
+use crate::imap::{self, Credentials, ImapError, SyncError};
 use crate::net::Trust;
+use crate::oauth::{self, AccessToken, AccessTokens, Identity};
 use crate::secrets::{MemoryStore, SecretKind, SecretStore, Secrets};
+use crate::smtp;
 use crate::verify::verify;
+use rustls::ClientConfig;
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, AuthMethod, LoginError, LoginFailure, Protocol,
+    AccountKey, AccountSettings, AuthMethod, Endpoint, LoginError, LoginFailure, OAuthProvider,
+    Protocol,
 };
+use sealwax_domain::autoconfig::{address_domain, presets};
 use sealwax_domain::model::AccountId;
-use sealwax_infrastructure::accounts::AccountPaths;
+use sealwax_infrastructure::accounts::{self as files, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::Store;
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::OnceCell;
+use zeroize::Zeroizing;
 
 /// How long stopping waits for tasks still writing files.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
+/// How long a sign-in waits for the browser.
+pub const SIGN_IN_WAIT: Duration = Duration::from_secs(300);
+/// How long a finished sign-in's tokens wait for the `AddAccount` that names it.
+pub const SIGN_IN_KEPT: Duration = Duration::from_secs(30 * 60);
 
 /// Where secrets go.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -49,6 +62,32 @@ pub struct EngineConfig {
     pub trust: Trust,
     pub secrets: SecretBackend,
     pub detect: DetectOptions,
+    /// The Microsoft client ID (ADR-008: the build's, or `config.toml`'s). Without one, a
+    /// sign-in answers that it's unavailable and Microsoft accounts can't sync.
+    pub microsoft_client_id: Option<String>,
+    pub sign_in: SignInOptions,
+}
+
+/// Where sign-ins go and how long they wait; tests point them at local servers.
+#[derive(Clone, Debug)]
+pub struct SignInOptions {
+    /// Microsoft's authorize and token endpoints.
+    pub microsoft: oauth::Provider,
+    /// The IMAP and SMTP servers a new account's sign-in is checked on; `None` takes Outlook.com's
+    /// or Microsoft 365's from the presets.
+    pub servers: Option<(Endpoint, Endpoint)>,
+    /// How long to wait for the browser.
+    pub wait: Duration,
+}
+
+impl Default for SignInOptions {
+    fn default() -> Self {
+        Self {
+            microsoft: oauth::Provider::microsoft(),
+            servers: None,
+            wait: SIGN_IN_WAIT,
+        }
+    }
 }
 
 /// The running engine: its command and event channels and its thread.
@@ -102,6 +141,26 @@ impl Drop for Engine {
     }
 }
 
+/// A sign-in the app started.
+enum SignIn {
+    /// Waiting for the browser, or checking IMAP and SMTP.
+    Running(tokio::task::AbortHandle),
+    /// Finished: its tokens wait for the `AddAccount` that names it.
+    Done(Box<Kept>),
+}
+
+/// A finished sign-in's tokens, in memory only.
+struct Kept {
+    provider: OAuthProvider,
+    /// The address the sign-in was made for.
+    address: String,
+    /// The identity the token belongs to: XOAUTH2's `user=`.
+    username: String,
+    refresh: Zeroizing<String>,
+    access: AccessToken,
+    until: Instant,
+}
+
 struct Shared {
     application: String,
     store: Arc<Store>,
@@ -111,6 +170,12 @@ struct Shared {
     backend: SecretBackend,
     secrets: OnceCell<Secrets>,
     detect: DetectOptions,
+    microsoft_client_id: Option<String>,
+    sign_in: SignInOptions,
+    /// Built on first use, so the engine's start makes no TLS setup it may not need.
+    oauth: OnceLock<Option<oauth::Client>>,
+    sign_ins: Mutex<HashMap<RequestId, SignIn>>,
+    access: AccessTokens,
     events: async_channel::Sender<Event>,
     /// Each account's running sync.
     syncs: Mutex<HashMap<AccountKey, tokio::task::JoinHandle<()>>>,
@@ -127,6 +192,11 @@ impl Shared {
             backend: config.secrets,
             secrets: OnceCell::new(),
             detect: config.detect,
+            microsoft_client_id: config.microsoft_client_id,
+            sign_in: config.sign_in,
+            oauth: OnceLock::new(),
+            sign_ins: Mutex::default(),
+            access: AccessTokens::default(),
             events,
             syncs: Mutex::default(),
         }
@@ -144,13 +214,56 @@ impl Shared {
             .await
     }
 
+    /// The Microsoft client, when a client ID is configured.
+    fn oauth(&self) -> Option<&oauth::Client> {
+        self.oauth
+            .get_or_init(|| {
+                let id = self
+                    .microsoft_client_id
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|id| !id.is_empty())?;
+                oauth::Client::new(id.to_owned(), self.sign_in.microsoft.clone())
+                    .inspect_err(|error| tracing::warn!(%error, "Microsoft sign-in is unavailable"))
+                    .ok()
+            })
+            .as_ref()
+    }
+
     /// Fails only when the app has stopped listening.
     fn send(&self, event: Event) {
         let _ = self.events.try_send(event);
     }
 
-    fn syncs(&self) -> std::sync::MutexGuard<'_, HashMap<AccountKey, tokio::task::JoinHandle<()>>> {
+    fn syncs(&self) -> MutexGuard<'_, HashMap<AccountKey, tokio::task::JoinHandle<()>>> {
         self.syncs.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn sign_ins(&self) -> MutexGuard<'_, HashMap<RequestId, SignIn>> {
+        self.sign_ins.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The finished sign-in `request` for an add of `address`. One that is still running or was
+    /// made for another address stays; an expired one is dropped.
+    fn take_sign_in(&self, request: RequestId, address: &str) -> Option<Box<Kept>> {
+        let mut sign_ins = self.sign_ins();
+        match sign_ins.remove(&request)? {
+            SignIn::Done(kept) if kept.until <= Instant::now() => None,
+            SignIn::Done(kept) if kept.address.trim().eq_ignore_ascii_case(address.trim()) => {
+                Some(kept)
+            }
+            other => {
+                sign_ins.insert(request, other);
+                None
+            }
+        }
+    }
+
+    /// Gives a failed add's sign-in back, so the app can try the add again.
+    fn restore_sign_in(&self, request: RequestId, kept: Box<Kept>) {
+        if kept.until > Instant::now() {
+            self.sign_ins().entry(request).or_insert(SignIn::Done(kept));
+        }
     }
 }
 
@@ -161,10 +274,18 @@ enum Job {
         request: RequestId,
         settings: AccountSettings,
         password: Password,
+        /// An OAuth account's sign-in, whose refresh token is its secret.
+        sign_in: Option<(RequestId, Box<Kept>)>,
     },
     Remove {
         request: RequestId,
         key: AccountKey,
+    },
+    /// A re-sign-in's tokens for the account in `settings`.
+    SignedInAgain {
+        request: RequestId,
+        settings: AccountSettings,
+        kept: Box<Kept>,
     },
 }
 
@@ -202,30 +323,35 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 request,
                 settings,
                 password,
-                sign_in: _,
-            } => Job::Add {
-                request,
-                settings,
-                password,
+                sign_in,
+            } => match add_job(&shared, request, settings, password, sign_in) {
+                Some(job) => job,
+                None => continue,
             },
-            // ML-032 builds the browser sign-in; until then it answers as unavailable.
-            Command::SignIn { request, .. } => {
-                shared.send(Event::SignedIn {
-                    request,
-                    result: Err(LoginError {
-                        protocol: Protocol::Imap,
-                        failure: LoginFailure::OAuthRequired,
-                    }),
-                });
+            Command::SignIn {
+                request,
+                provider,
+                address,
+                account,
+            } => {
+                start_sign_in(&shared, &jobs, request, provider, address, account);
                 continue;
             }
-            Command::CancelSignIn { .. } => continue,
+            Command::CancelSignIn { request } => {
+                cancel_sign_in(&shared, request);
+                continue;
+            }
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
         };
         let _ = jobs.send(job).await;
     }
     jobs.close();
     lane_task.abort();
+    for (_, sign_in) in shared.sign_ins().drain() {
+        if let SignIn::Running(task) = sign_in {
+            task.abort();
+        }
+    }
     for (_, sync) in shared.syncs().drain() {
         sync.abort();
     }
@@ -238,6 +364,43 @@ async fn detect(shared: Arc<Shared>, request: RequestId, address: String) {
     })
     .await;
     shared.send(Event::Detected { request, detection });
+}
+
+/// An add for the lane. An OAuth account takes its sign-in's refresh token as its secret and
+/// the sign-in's identity as its username; without a usable sign-in it fails at once.
+fn add_job(
+    shared: &Shared,
+    request: RequestId,
+    mut settings: AccountSettings,
+    password: Password,
+    sign_in: Option<RequestId>,
+) -> Option<Job> {
+    let kept = match sign_in {
+        Some(sign_in) => shared.take_sign_in(sign_in, &settings.address),
+        None => None,
+    };
+    let sign_in = match (sign_in, kept) {
+        (Some(sign_in), Some(kept)) => {
+            settings.username = kept.username.clone();
+            settings.auth = AuthMethod::OAuth(kept.provider);
+            Some((sign_in, kept))
+        }
+        (None, None) if settings.auth == AuthMethod::Password => None,
+        _ => {
+            tracing::info!(request, "an OAuth account's add names no usable sign-in");
+            shared.send(Event::AccountAdded {
+                request,
+                result: Err(AccountError::SignInExpired),
+            });
+            return None;
+        }
+    };
+    Some(Job::Add {
+        request,
+        settings,
+        password,
+        sign_in,
+    })
 }
 
 /// Runs account jobs one at a time, after finishing what a crash interrupted.
@@ -264,6 +427,7 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                     .filter(|key| list.iter().all(|account| &account.key != *key))
                 {
                     stop_sync(&shared, key).await;
+                    shared.access.forget(key);
                 }
                 listed = list.iter().map(|account| account.key.clone()).collect();
                 for settings in list {
@@ -274,24 +438,54 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                 request,
                 mut settings,
                 password,
-            } => match accounts.add(settings.clone(), &password).await {
-                Ok((key, id)) => {
-                    shared.send(Event::AccountAdded {
-                        request,
-                        result: Ok(id),
-                    });
-                    settings.key = key;
-                    start_sync(&shared, settings);
+                sign_in,
+            } => {
+                let secret = match &sign_in {
+                    Some((_, kept)) => Password::new(kept.refresh.as_str().to_owned()),
+                    None => password,
+                };
+                match accounts.add(settings.clone(), &secret).await {
+                    Ok((key, id)) => {
+                        if let Some((_, kept)) = sign_in {
+                            shared.access.seed(&key, kept.access);
+                        }
+                        shared.send(Event::AccountAdded {
+                            request,
+                            result: Ok(id),
+                        });
+                        settings.key = key;
+                        start_sync(&shared, settings);
+                    }
+                    Err(error) => {
+                        if let Some((sign_in, kept)) = sign_in {
+                            shared.restore_sign_in(sign_in, kept);
+                        }
+                        shared.send(Event::AccountAdded {
+                            request,
+                            result: Err(error),
+                        });
+                    }
                 }
-                Err(error) => shared.send(Event::AccountAdded {
-                    request,
-                    result: Err(error),
-                }),
-            },
+            }
             Job::Remove { request, key } => {
                 stop_sync(&shared, &key).await;
+                shared.access.forget(&key);
                 let result = accounts.remove(&key).await;
                 shared.send(Event::AccountRemoved { request, result });
+            }
+            Job::SignedInAgain {
+                request,
+                settings,
+                kept,
+            } => {
+                // A cancelled sign-in answers nothing and changes nothing.
+                if shared.sign_ins().remove(&request).is_none() {
+                    continue;
+                }
+                stop_sync(&shared, &settings.key).await;
+                let result = store_sign_in(&shared, &accounts, &settings, *kept).await;
+                shared.send(Event::SignedIn { request, result });
+                start_sync(&shared, settings);
             }
         }
     }
@@ -350,10 +544,26 @@ async fn sync_once(
     settings: &AccountSettings,
     account: AccountId,
 ) -> Result<(), LoginFailure> {
-    if let AuthMethod::OAuth(_) = settings.auth {
-        // Microsoft sign-in waits for S5 (ML-032).
-        return Err(LoginFailure::OAuthRequired);
-    }
+    let mut connection = match settings.auth {
+        AuthMethod::Password => log_in_with_password(shared, settings).await?,
+        AuthMethod::OAuth(_) => log_in_with_token(shared, settings).await?,
+    };
+    let synced = sync_folders_and_inbox(shared, &mut connection, account).await;
+    connection.logout().await;
+    synced.map_err(|error| error.failure())
+}
+
+fn tls(shared: &Shared) -> Result<Arc<ClientConfig>, LoginFailure> {
+    shared
+        .trust
+        .client_config()
+        .map_err(|_| LoginFailure::Certificate)
+}
+
+async fn log_in_with_password(
+    shared: &Shared,
+    settings: &AccountSettings,
+) -> Result<imap::Connection, LoginFailure> {
     let password = shared
         .secrets()
         .await
@@ -365,20 +575,47 @@ async fn sync_once(
         })?
         .ok_or(LoginFailure::WrongPassword)?;
     let password = std::str::from_utf8(&password).map_err(|_| LoginFailure::WrongPassword)?;
-    let tls = shared
-        .trust
-        .client_config()
-        .map_err(|_| LoginFailure::Certificate)?;
     let credentials = Credentials::Password {
         username: &settings.username,
         password,
     };
-    let mut connection = imap::connect(&settings.imap, credentials, tls)
+    imap::connect(&settings.imap, credentials, tls(shared)?)
         .await
-        .map_err(|error| error.failure())?;
-    let synced = sync_folders_and_inbox(shared, &mut connection, account).await;
-    connection.logout().await;
-    synced.map_err(|error| error.failure())
+        .map_err(|error| error.failure())
+}
+
+/// XOAUTH2 with the account's access token, refreshed when it is about to expire and once more
+/// when the server refuses it. A refused refresh, or a server refusing a fresh token, means the
+/// account must sign in again (`OAuthRequired`).
+async fn log_in_with_token(
+    shared: &Shared,
+    settings: &AccountSettings,
+) -> Result<imap::Connection, LoginFailure> {
+    let tls = tls(shared)?;
+    let secrets = shared.secrets().await;
+    let label = secret_label(&settings.address);
+    let mut renew = false;
+    loop {
+        let fetched = shared
+            .access
+            .get(&settings.key, &label, secrets, shared.oauth(), renew)
+            .await?;
+        let credentials = Credentials::OAuth2 {
+            username: &settings.username,
+            token: &fetched.token,
+        };
+        match imap::connect(&settings.imap, credentials, tls.clone()).await {
+            Ok(connection) => return Ok(connection),
+            Err(ImapError::Rejected(_)) if !fetched.refreshed => {
+                tracing::debug!("the server refused the access token; refreshing it");
+                renew = true;
+            }
+            Err(ImapError::Rejected(LoginFailure::WrongPassword)) => {
+                return Err(LoginFailure::OAuthRequired);
+            }
+            Err(error) => return Err(error.failure()),
+        }
+    }
 }
 
 async fn sync_folders_and_inbox(
@@ -416,4 +653,324 @@ async fn sync_folders_and_inbox(
         .await;
     }
     Ok(())
+}
+
+fn imap_error(failure: LoginFailure) -> LoginError {
+    LoginError {
+        protocol: Protocol::Imap,
+        failure,
+    }
+}
+
+/// Starts a browser sign-in as its own task, or answers at once that sign-in is unavailable.
+fn start_sign_in(
+    shared: &Arc<Shared>,
+    jobs: &async_channel::Sender<Job>,
+    request: RequestId,
+    provider: OAuthProvider,
+    address: String,
+    account: Option<AccountKey>,
+) {
+    if shared.oauth().is_none() {
+        shared.send(Event::SignedIn {
+            request,
+            result: Err(imap_error(LoginFailure::OAuthRequired)),
+        });
+        return;
+    }
+    // Registered before the task can finish, which looks for its entry.
+    let mut sign_ins = shared.sign_ins();
+    let task = tokio::spawn(sign_in(
+        shared.clone(),
+        jobs.clone(),
+        request,
+        provider,
+        address,
+        account,
+    ));
+    if let Some(SignIn::Running(earlier)) =
+        sign_ins.insert(request, SignIn::Running(task.abort_handle()))
+    {
+        earlier.abort();
+    }
+}
+
+/// Stops a running sign-in, or drops a finished one's tokens. Nothing is answered.
+fn cancel_sign_in(shared: &Shared, request: RequestId) {
+    match shared.sign_ins().remove(&request) {
+        Some(SignIn::Running(task)) => {
+            task.abort();
+            tracing::info!(request, "sign-in cancelled");
+        }
+        Some(SignIn::Done(_)) => tracing::info!(request, "a finished sign-in was dropped"),
+        None => {}
+    }
+}
+
+async fn sign_in(
+    shared: Arc<Shared>,
+    jobs: async_channel::Sender<Job>,
+    request: RequestId,
+    provider: OAuthProvider,
+    address: String,
+    account: Option<AccountKey>,
+) {
+    match signed_in(&shared, request, provider, &address, account.as_ref()).await {
+        Ok((kept, Some(settings))) => {
+            let job = Job::SignedInAgain {
+                request,
+                settings,
+                kept,
+            };
+            let _ = jobs.send(job).await;
+        }
+        Ok((kept, None)) => {
+            let username = kept.username.clone();
+            let mut sign_ins = shared.sign_ins();
+            if let Some(entry @ SignIn::Running(_)) = sign_ins.get_mut(&request) {
+                *entry = SignIn::Done(kept);
+                shared.send(Event::SignedIn {
+                    request,
+                    result: Ok(username),
+                });
+                drop(sign_ins);
+                tokio::spawn(expire_sign_in(shared.clone(), request));
+            }
+        }
+        Err(error) => {
+            if shared.sign_ins().remove(&request).is_some() {
+                shared.send(Event::SignedIn {
+                    request,
+                    result: Err(error),
+                });
+            }
+        }
+    }
+}
+
+/// Drops a finished sign-in's tokens once nothing can use them any more.
+async fn expire_sign_in(shared: Arc<Shared>, request: RequestId) {
+    tokio::time::sleep(SIGN_IN_KEPT).await;
+    let mut sign_ins = shared.sign_ins();
+    if let Some(SignIn::Done(kept)) = sign_ins.get(&request)
+        && kept.until <= Instant::now()
+    {
+        sign_ins.remove(&request);
+        tracing::info!(request, "an unused sign-in expired");
+    }
+}
+
+/// The sign-in itself: the browser, the code exchange, the identity from the ID token, then
+/// IMAP and SMTP with the token as that identity. A re-sign-in (`account`) uses the account's
+/// servers and must be the account's own user; it returns the account's settings too.
+async fn signed_in(
+    shared: &Shared,
+    request: RequestId,
+    provider: OAuthProvider,
+    address: &str,
+    account: Option<&AccountKey>,
+) -> Result<(Box<Kept>, Option<AccountSettings>), LoginError> {
+    let OAuthProvider::Microsoft = provider;
+    let client = shared
+        .oauth()
+        .ok_or(imap_error(LoginFailure::OAuthRequired))?;
+    let target = match account {
+        Some(key) => Some(listed_account(shared, key).await?),
+        None => None,
+    };
+    let failed = |error: oauth::OAuthError| {
+        tracing::info!(request, %error, "the sign-in failed");
+        imap_error(error.failure())
+    };
+    let authorization = client.begin().await.map_err(failed)?;
+    shared.send(Event::SignInOpen {
+        request,
+        url: authorization.url().to_owned(),
+    });
+    tracing::info!(request, "sign-in page ready");
+    let started = Instant::now();
+    let granted = client
+        .finish(authorization, shared.sign_in.wait)
+        .await
+        .map_err(failed)?;
+    tracing::info!(
+        request,
+        seconds = started.elapsed().as_secs_f64(),
+        consumer = granted.identity.consumer(),
+        imap_scope = granted
+            .tokens
+            .granted("https://outlook.office.com/IMAP.AccessAsUser.All"),
+        smtp_scope = granted
+            .tokens
+            .granted("https://outlook.office.com/SMTP.Send"),
+        "signed in in the browser"
+    );
+    let username = granted.identity.username.clone();
+    let (imap, smtp) = match &target {
+        Some(settings) => {
+            if !settings.username.trim().eq_ignore_ascii_case(&username) {
+                tracing::info!(
+                    request,
+                    "the sign-in belongs to another user than the account"
+                );
+                return Err(imap_error(LoginFailure::WrongPassword));
+            }
+            (settings.imap.clone(), settings.smtp.clone())
+        }
+        None => match &shared.sign_in.servers {
+            Some(servers) => servers.clone(),
+            None => microsoft_servers(&granted.identity, address)
+                .ok_or(imap_error(LoginFailure::Other))?,
+        },
+    };
+    check_servers(shared, &imap, &smtp, &username, &granted.tokens.access).await?;
+    let oauth::Granted { tokens, .. } = granted;
+    let refresh = tokens.refresh.ok_or(imap_error(LoginFailure::Other))?;
+    let kept = Box::new(Kept {
+        provider,
+        address: target
+            .as_ref()
+            .map_or(address, |settings| settings.address.as_str())
+            .to_owned(),
+        username,
+        refresh,
+        access: AccessToken::new(tokens.access, tokens.lifetime),
+        until: Instant::now() + SIGN_IN_KEPT,
+    });
+    Ok((kept, target))
+}
+
+/// The Microsoft account `key` from `accounts.toml`, for a re-sign-in.
+async fn listed_account(shared: &Shared, key: &AccountKey) -> Result<AccountSettings, LoginError> {
+    let path = shared.paths.settings.clone();
+    let listed = tokio::task::spawn_blocking(move || files::read(&path))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    listed
+        .into_iter()
+        .find(|account| &account.key == key && matches!(account.auth, AuthMethod::OAuth(_)))
+        .ok_or_else(|| {
+            tracing::info!("no such Microsoft account to sign in again");
+            imap_error(LoginFailure::Other)
+        })
+}
+
+/// Outlook.com's servers for a personal Microsoft account or an Outlook.com address, Microsoft
+/// 365's otherwise, from the presets.
+fn microsoft_servers(identity: &Identity, address: &str) -> Option<(Endpoint, Endpoint)> {
+    let outlook = identity.consumer()
+        || address_domain(address)
+            .and_then(|domain| presets::by_domain(&domain))
+            .is_some_and(|preset| preset.id == "outlook");
+    let id = if outlook { "outlook" } else { "microsoft365" };
+    let preset = presets::PRESETS.iter().find(|preset| preset.id == id)?;
+    let presets::Kind::Servers { imap, smtp, .. } = &preset.kind else {
+        return None;
+    };
+    let endpoint = |found: &presets::Endpoint| Endpoint {
+        host: found.host.to_owned(),
+        port: found.port,
+        security: found.security,
+    };
+    Some((endpoint(imap.first()?), endpoint(smtp.first()?)))
+}
+
+/// IMAP, then SMTP, with XOAUTH2 as `username`; nothing is read or sent.
+async fn check_servers(
+    shared: &Shared,
+    imap: &Endpoint,
+    smtp: &Endpoint,
+    username: &str,
+    token: &str,
+) -> Result<(), LoginError> {
+    let credentials = Credentials::OAuth2 { username, token };
+    let tls = tls(shared).map_err(imap_error)?;
+    let connection = imap::connect(imap, credentials, tls)
+        .await
+        .map_err(|error| imap_error(error.failure()))?;
+    connection.logout().await;
+    smtp::check_login(smtp, credentials, &shared.trust)
+        .await
+        .map_err(|failure| LoginError {
+            protocol: Protocol::Smtp,
+            failure,
+        })
+}
+
+/// A re-sign-in's refresh token replaces the account's, and its access token is kept.
+async fn store_sign_in(
+    shared: &Shared,
+    accounts: &Accounts<'_, Secrets>,
+    settings: &AccountSettings,
+    kept: Kept,
+) -> Result<String, LoginError> {
+    let path = shared.paths.settings.clone();
+    let listed = tokio::task::spawn_blocking(move || files::read(&path))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .unwrap_or_default();
+    if !listed.iter().any(|account| account.key == settings.key) {
+        tracing::info!("the account was removed during its sign-in");
+        return Err(imap_error(LoginFailure::Other));
+    }
+    accounts
+        .secrets
+        .store(
+            &settings.key.0,
+            SecretKind::RefreshToken,
+            &secret_label(&settings.address),
+            kept.refresh.as_bytes(),
+        )
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "the keyring refused the new refresh token");
+            imap_error(LoginFailure::Other)
+        })?;
+    shared.access.seed(&settings.key, kept.access);
+    tracing::info!("signed in again; the new refresh token replaced the old one");
+    Ok(kept.username)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::oauth::CONSUMER_TENANT;
+    use sealwax_domain::account::Security;
+
+    fn identity(tenant: &str) -> Identity {
+        Identity {
+            username: "signin@example.test".into(),
+            tenant: tenant.into(),
+        }
+    }
+
+    #[test]
+    fn a_sign_in_is_checked_on_outlook_com_or_microsoft_365() {
+        let work = "0b5e8d2a-1c3f-4e6a-9d7b-2f4a6c8e0a1b";
+        let smtp = |identity: &Identity, address: &str| {
+            let (imap, smtp) = microsoft_servers(identity, address).unwrap();
+            assert_eq!(
+                (imap.host.as_str(), imap.port, imap.security),
+                ("outlook.office365.com", 993, Security::Tls)
+            );
+            assert_eq!((smtp.port, smtp.security), (587, Security::StartTls));
+            smtp.host
+        };
+        let consumer = identity(CONSUMER_TENANT);
+        assert_eq!(
+            smtp(&consumer, "someone@example.test"),
+            "smtp-mail.outlook.com"
+        );
+        assert_eq!(
+            smtp(&identity(work), "someone@hotmail.com"),
+            "smtp-mail.outlook.com"
+        );
+        assert_eq!(
+            smtp(&identity(work), "someone@example.test"),
+            "smtp.office365.com"
+        );
+    }
 }

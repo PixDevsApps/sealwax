@@ -9,7 +9,7 @@ use sealwax_domain::model::AccountId;
 use sealwax_engine::api::Event;
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
 use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::Store;
@@ -62,6 +62,8 @@ pub fn start(
         trust: options.trust.clone(),
         secrets: options.secrets,
         detect: DetectOptions::default(),
+        microsoft_client_id: None,
+        sign_in: SignInOptions::default(),
     })
 }
 

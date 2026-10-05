@@ -26,9 +26,14 @@ hickory-resolver.workspace = true
 lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "tokio1-rustls", "rustls-platform-verifier", "ring"] }
 socket2 = "0.6.5"
 mail-parser.workspace = true
+base64 = "0.22.1"
+sha2.workspace = true
+getrandom.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+url = "2.5.8"
 
 [dev-dependencies]
-base64 = "0.22.1"
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
 tempfile.workspace = true
 tracing-subscriber.workspace = true

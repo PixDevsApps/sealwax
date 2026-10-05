@@ -9,7 +9,7 @@ use sealwax_domain::account::{
 use sealwax_engine::api::{Command, Event, Password};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
 use sealwax_infrastructure::accounts::{self, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{Store, StoreOptions};
@@ -35,6 +35,8 @@ fn start(dirs: &SealwaxDirs) -> Engine {
         trust: Trust::Platform,
         secrets: SecretBackend::Memory,
         detect: DetectOptions::default(),
+        microsoft_client_id: None,
+        sign_in: SignInOptions::default(),
     })
     .unwrap()
 }
