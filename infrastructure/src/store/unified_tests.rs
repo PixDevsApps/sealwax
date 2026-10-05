@@ -186,6 +186,65 @@ fn catch_up(
     seen
 }
 
+/// Asserts that All Inboxes lists exactly the stored inbox messages under every filter: its
+/// count, section counts, first page, every row and pages around the middle and the end.
+fn unified_lists_match(
+    store: &Store,
+    stored: &BTreeMap<MessageId, NewMessage>,
+    accounts: &[Mailbox],
+) {
+    let inboxes: Vec<FolderId> = accounts.iter().map(|account| account.inbox).collect();
+    let starts = [50_300, 50_100];
+    for filter in FILTERS {
+        let spec = ViewSpec::unified_inbox().with_filter(filter);
+        let want = expected(stored, &inboxes, filter);
+        let total = want.len() as u32;
+        assert!(total > 40, "{filter:?}: {total}");
+        let opened = store
+            .open_view(OpenView {
+                spec,
+                first_page: 25,
+                section_starts: starts.to_vec(),
+            })
+            .recv_blocking()
+            .unwrap();
+        assert_eq!(opened.total, total, "{filter:?}");
+        assert_eq!(
+            opened.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
+            ids_of(&want[..25]),
+            "{filter:?}"
+        );
+        let since = |start: i64| want.iter().filter(|row| row.0 >= start).count() as u32;
+        assert_eq!(opened.section_counts, [since(starts[0]), since(starts[1])]);
+        assert_eq!(
+            listed(store, spec, 0, u32::MAX),
+            ids_of(&want),
+            "{filter:?}"
+        );
+        let half = total / 2;
+        for offset in [1, 24, half - 1, half, half + 1, total - 30, total - 1] {
+            let end = (offset as usize + 17).min(want.len());
+            assert_eq!(
+                listed(store, spec, offset, 17),
+                ids_of(&want[offset as usize..end]),
+                "{filter:?} at {offset}"
+            );
+        }
+        let accounts_listed: BTreeSet<AccountId> = opened
+            .rows
+            .iter()
+            .map(|row| {
+                accounts
+                    .iter()
+                    .find(|account| account.inbox == row.folder)
+                    .unwrap()
+                    .id
+            })
+            .collect();
+        assert_eq!(accounts_listed.len(), 3, "{filter:?}: every account shows");
+    }
+}
+
 #[test]
 fn all_inboxes_merges_three_accounts_by_date_under_every_filter() {
     let dir = scratch();
@@ -209,56 +268,16 @@ fn all_inboxes_merges_three_accounts_by_date_under_every_filter() {
             stored.extend(ingest(&store, &batch).into_iter().zip(batch));
         }
     }
-    let inboxes: Vec<FolderId> = accounts.iter().map(|account| account.inbox).collect();
-    let starts = [50_300, 50_100];
-    for filter in FILTERS {
-        let spec = ViewSpec::unified_inbox().with_filter(filter);
-        let want = expected(&stored, &inboxes, filter);
-        let total = want.len() as u32;
-        assert!(total > 40, "{filter:?}: {total}");
-        let opened = store
-            .open_view(OpenView {
-                spec,
-                first_page: 25,
-                section_starts: starts.to_vec(),
-            })
-            .recv_blocking()
-            .unwrap();
-        assert_eq!(opened.total, total, "{filter:?}");
-        assert_eq!(
-            opened.rows.iter().map(|row| row.id).collect::<Vec<_>>(),
-            ids_of(&want[..25]),
-            "{filter:?}"
-        );
-        let since = |start: i64| want.iter().filter(|row| row.0 >= start).count() as u32;
-        assert_eq!(opened.section_counts, [since(starts[0]), since(starts[1])]);
-        assert_eq!(
-            listed(&store, spec, 0, u32::MAX),
-            ids_of(&want),
-            "{filter:?}"
-        );
-        let half = total / 2;
-        for offset in [1, 24, half - 1, half, half + 1, total - 30, total - 1] {
-            let end = (offset as usize + 17).min(want.len());
-            assert_eq!(
-                listed(&store, spec, offset, 17),
-                ids_of(&want[offset as usize..end]),
-                "{filter:?} at {offset}"
-            );
-        }
-        let accounts_listed: BTreeSet<AccountId> = opened
-            .rows
-            .iter()
-            .map(|row| {
-                accounts
-                    .iter()
-                    .find(|account| account.inbox == row.folder)
-                    .unwrap()
-                    .id
-            })
+    // The inboxes hold most of the mail; then the archives grow past them. Both ways the
+    // unified views list the same rows (the unfiltered one changes its plan, see `views::page`).
+    unified_lists_match(&store, &stored, &accounts);
+    for account in &accounts {
+        let batch: Vec<NewMessage> = (0..200)
+            .map(|n| message(&mut rng, account.archive, 1_000 + n))
             .collect();
-        assert_eq!(accounts_listed.len(), 3, "{filter:?}: every account shows");
+        stored.extend(ingest(&store, &batch).into_iter().zip(batch));
     }
+    unified_lists_match(&store, &stored, &accounts);
     // Each account's folders list only its own mail, under every filter.
     for account in &accounts {
         for folder in [account.inbox, account.archive, account.sent] {

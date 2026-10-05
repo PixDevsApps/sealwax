@@ -255,7 +255,9 @@ pub(crate) fn summary(conn: &Connection, id: MessageId) -> rusqlite::Result<Mess
 /// index from the oldest end, so no page reads more than half the view. Each folder's index
 /// (its date index, or the filter's partial index) holds its rows in list order, so several
 /// folders are one compound SELECT whose ORDER BY every arm's index satisfies: SQLite merges
-/// the folders' index walks without sorting and reads only the rows up to the page.
+/// the folders' index walks without sorting and reads only the rows up to the page. Without a
+/// filter, folders that hold at least half of all mail walk the global date index instead,
+/// which costs less per row than the merge and skips little.
 pub(crate) fn page(
     conn: &Connection,
     folders: &[FolderId],
@@ -280,6 +282,13 @@ pub(crate) fn page(
             "SELECT id FROM messages INDEXED BY {index} WHERE folder_id = {}{condition} \
              ORDER BY date {order}, id {order} LIMIT ?1 OFFSET ?2",
             folder.0
+        )
+    } else if filter == ViewFilter::All && u64::from(total) * 2 >= stored(conn)? {
+        let list: Vec<String> = folders.iter().map(|folder| folder.0.to_string()).collect();
+        format!(
+            "SELECT id FROM messages INDEXED BY messages_date WHERE folder_id IN ({}) \
+             ORDER BY date {order}, id {order} LIMIT ?1 OFFSET ?2",
+            list.join(", ")
         )
     } else {
         let mut walks = String::new();
@@ -307,6 +316,13 @@ pub(crate) fn page(
         rows.reverse();
     }
     Ok(rows)
+}
+
+/// Messages in the store, from the folders' maintained counts.
+fn stored(conn: &Connection) -> rusqlite::Result<u64> {
+    conn.prepare_cached("SELECT coalesce(sum(total_count), 0) FROM folders")?
+        .query_row([], |row| row.get::<_, i64>(0))
+        .map(|count| count.max(0) as u64)
 }
 
 /// The newest `limit` messages matching an FTS5 expression, walking the date index against the
