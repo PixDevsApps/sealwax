@@ -3077,11 +3077,22 @@ dependencies = [
 name = "sealwax-engine"
 version = "0.0.1"
 dependencies = [
+ "async-channel 2.5.0",
+ "async-imap",
+ "futures-util",
+ "hickory-resolver",
  "oo7",
+ "psl",
+ "quick-xml",
+ "reqwest",
+ "rustls",
+ "rustls-pki-types",
+ "rustls-platform-verifier",
  "sealwax-domain",
  "sealwax-infrastructure",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
  "tracing",
  "zeroize",
 ]

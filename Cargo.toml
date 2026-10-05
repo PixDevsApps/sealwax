@@ -38,6 +38,16 @@ insta = "1.48"
 proptest = "1.11"
 clap = { version = "4.6", default-features = false, features = ["std", "help", "usage", "error-context", "suggestions"] }
 encoding_rs = "0.8.35"
+async-imap = { version = "=0.12.0", default-features = false, features = ["runtime-tokio"] }
+futures-util = "0.3.34"
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring", "tls12"] }
+rustls-platform-verifier = "0.7.1"
+rustls-pki-types = { version = "1.15", features = ["std"] }
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls-no-provider", "http2"] }
+hickory-resolver = { version = "0.26.3", default-features = false, features = ["system-config", "tokio"] }
+quick-xml = "0.42.0"
+psl = "2.1"
 
 [profile.release]
 lto = "thin"
