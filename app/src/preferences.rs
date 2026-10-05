@@ -1,13 +1,16 @@
-//! `config.toml` and `keys.toml` (ADR-009): read off the GTK thread when Sealwax starts and
-//! again whenever either changes in `$XDG_CONFIG_HOME/sealwax/` (GFileMonitors on the folder
-//! and its parent, debounced), as in Stet. A file with mistakes is not applied: the previous
-//! settings or keys stay, and the listeners hear what is wrong, with the line and column. A
-//! missing file is the defaults. Preferences and Customize Shortcuts open the files.
+//! `config.toml`, `keys.toml` and `accounts.toml` (ADR-009): read off the GTK thread when
+//! Sealwax starts and again whenever one changes in `$XDG_CONFIG_HOME/sealwax/` (GFileMonitors
+//! on the folder and its parent, debounced), as in Stet. A file with mistakes is not applied:
+//! the previous settings, keys or accounts stay, and the listeners hear what is wrong, with the
+//! line and column. A missing file is the defaults (no accounts). Preferences and Customize
+//! Shortcuts open the files.
 
 use crate::monitor::{DirWatch, TriggerRule};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
+use sealwax_domain::account::AccountSettings;
+use sealwax_domain::accounts_file::{self, ACCOUNTS_FILE, default_accounts_file};
 use sealwax_domain::config::{CONFIG_FILE, Config, FileError, KEYS_FILE, default_config_file};
 use sealwax_domain::keymap::{Keymap, default_keys_file};
 use sealwax_infrastructure::settings_files::{create_if_missing, read_optional};
@@ -18,11 +21,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-/// The two settings files.
+/// The settings files.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingsFile {
     Config,
     Keys,
+    /// Written by the setup assistant through the engine; the app only reads it.
+    Accounts,
 }
 
 impl SettingsFile {
@@ -30,14 +35,17 @@ impl SettingsFile {
         match self {
             Self::Config => CONFIG_FILE,
             Self::Keys => KEYS_FILE,
+            Self::Accounts => ACCOUNTS_FILE,
         }
     }
 
-    /// The file a missing one is created as: every default, commented out.
+    /// The file a missing one is created as: every default, commented out (for accounts, an
+    /// explanation and a commented example).
     pub fn defaults(self) -> String {
         match self {
             Self::Config => default_config_file(),
             Self::Keys => default_keys_file(),
+            Self::Accounts => default_accounts_file(),
         }
     }
 
@@ -45,6 +53,7 @@ impl SettingsFile {
         match self {
             Self::Config => 0,
             Self::Keys => 1,
+            Self::Accounts => 2,
         }
     }
 }
@@ -57,34 +66,41 @@ pub struct Update {
     /// Whether the keys changed (always on the first read): reinstall the accelerators, update
     /// the scoped shortcuts and rebuild the menu.
     pub keymap_changed: bool,
+    /// Whether the accounts changed (always on the first read): hand them to the engine, which
+    /// brings the store in line and starts or stops syncing.
+    pub accounts_changed: bool,
     /// One message per file that could not be read or applied, for a toast.
     pub problems: Vec<String>,
 }
 
 impl Update {
     fn is_empty(&self) -> bool {
-        self.config_before.is_none() && !self.keymap_changed && self.problems.is_empty()
+        self.config_before.is_none()
+            && !self.keymap_changed
+            && !self.accounts_changed
+            && self.problems.is_empty()
     }
 }
 
-/// The settings and keys in use, and what each file said at the last read.
+/// The settings, keys and accounts in use, and what each file said at the last read.
 #[derive(Debug, Default)]
 struct Loaded {
     config: Config,
     keymap: Keymap,
+    accounts: Vec<AccountSettings>,
     /// Each file's text at its last read (`None` inside: no file), so an unchanged file is
     /// neither applied nor reported again.
-    texts: [Option<Option<String>>; 2],
-    errors: [Vec<FileError>; 2],
+    texts: [Option<Option<String>>; 3],
+    errors: [Vec<FileError>; 3],
     loaded: bool,
 }
 
 impl Loaded {
-    /// Applies freshly read texts of `config.toml` and `keys.toml`.
-    fn apply(&mut self, texts: [io::Result<Option<String>>; 2]) -> Update {
+    /// Applies freshly read texts of `config.toml`, `keys.toml` and `accounts.toml`.
+    fn apply(&mut self, texts: [io::Result<Option<String>>; 3]) -> Update {
         let mut update = Update::default();
         let first = !self.loaded;
-        let [config, keys] = texts;
+        let [config, keys, accounts] = texts;
         if let Some(text) = self.changed(SettingsFile::Config, config, first, &mut update) {
             match Config::parse(text.as_deref().unwrap_or("")) {
                 Ok(config) => {
@@ -106,6 +122,18 @@ impl Loaded {
                     }
                 }
                 Err(errors) => self.reject(SettingsFile::Keys, errors, &mut update),
+            }
+        }
+        if let Some(text) = self.changed(SettingsFile::Accounts, accounts, first, &mut update) {
+            match accounts_file::parse(text.as_deref().unwrap_or("")) {
+                Ok(accounts) => {
+                    self.errors[2].clear();
+                    if first || self.accounts != accounts {
+                        self.accounts = accounts;
+                        update.accounts_changed = true;
+                    }
+                }
+                Err(errors) => self.reject(SettingsFile::Accounts, errors, &mut update),
             }
         }
         self.loaded = true;
@@ -164,10 +192,11 @@ fn problem(file: &str, errors: &[FileError]) -> String {
 
 type Listener = Rc<dyn Fn(&Update)>;
 
-/// Sealwax's settings and keys, kept in step with the files.
+/// Sealwax's settings, keys and accounts, kept in step with the files.
 pub struct Preferences {
     config_file: PathBuf,
     keys_file: PathBuf,
+    accounts_file: PathBuf,
     loaded: RefCell<Loaded>,
     generation: Cell<u64>,
     listeners: RefCell<Vec<Listener>>,
@@ -175,11 +204,12 @@ pub struct Preferences {
 }
 
 impl Preferences {
-    /// Starts reading both files and watching their folder.
+    /// Starts reading the files and watching their folder.
     pub fn start(dirs: &SealwaxDirs) -> Rc<Self> {
         let this = Rc::new(Self {
             config_file: dirs.config_file(),
             keys_file: dirs.keys_file(),
+            accounts_file: dirs.accounts_file(),
             loaded: RefCell::new(Loaded::default()),
             generation: Cell::new(0),
             listeners: RefCell::new(Vec::new()),
@@ -187,7 +217,8 @@ impl Preferences {
         });
         let weak = Rc::downgrade(&this);
         let rule: TriggerRule = Box::new(|_, file, other| {
-            let settings = |name: &str| name == CONFIG_FILE || name == KEYS_FILE;
+            let settings =
+                |name: &str| name == CONFIG_FILE || name == KEYS_FILE || name == ACCOUNTS_FILE;
             settings(file) || other.is_some_and(settings)
         });
         let watch = DirWatch::start(dirs.config.clone(), rule, move || {
@@ -208,10 +239,18 @@ impl Preferences {
         self.loaded.borrow().keymap.clone()
     }
 
+    /// The accounts `accounts.toml` lists, from the last read that had no mistakes. An account
+    /// that leaves the file is detached, never deleted: the engine stops syncing it and the
+    /// store hides it, keeping its mail until the entry comes back or the account is removed.
+    pub fn accounts(&self) -> Vec<AccountSettings> {
+        self.loaded.borrow().accounts.clone()
+    }
+
     pub fn path(&self, file: SettingsFile) -> PathBuf {
         match file {
             SettingsFile::Config => self.config_file.clone(),
             SettingsFile::Keys => self.keys_file.clone(),
+            SettingsFile::Accounts => self.accounts_file.clone(),
         }
     }
 
@@ -220,7 +259,7 @@ impl Preferences {
         self.loaded.borrow().errors[file.index()].clone()
     }
 
-    /// Whether both files have been read once.
+    /// Whether the files have been read once.
     pub fn is_loaded(&self) -> bool {
         self.loaded.borrow().loaded
     }
@@ -238,11 +277,15 @@ impl Preferences {
         }
     }
 
-    /// Reads both files again; the newest read wins.
+    /// Reads the files again; the newest read wins.
     pub fn reload(self: &Rc<Self>) {
         let generation = self.generation.get() + 1;
         self.generation.set(generation);
-        let paths = [self.config_file.clone(), self.keys_file.clone()];
+        let paths = [
+            self.config_file.clone(),
+            self.keys_file.clone(),
+            self.accounts_file.clone(),
+        ];
         let this = self.clone();
         glib::spawn_future_local(async move {
             let texts = gio::spawn_blocking(move || paths.map(|path| read_optional(&path))).await;
@@ -305,27 +348,79 @@ mod tests {
         Ok(Some(text.to_owned()))
     }
 
+    impl Loaded {
+        /// `apply` with no `accounts.toml`.
+        fn apply_two(&mut self, [config, keys]: [io::Result<Option<String>>; 2]) -> Update {
+            self.apply([config, keys, Ok(None)])
+        }
+    }
+
+    const ACCOUNT: &str = "[[account]]\nkey = \"work\"\nname = \"Test\"\n\
+                           address = \"test@example.test\"\n[account.imap]\n\
+                           host = \"imap.example.test\"\n[account.smtp]\n\
+                           host = \"smtp.example.test\"\n";
+
+    #[test]
+    fn accounts_are_read_and_a_faulty_file_keeps_them() {
+        let mut loaded = Loaded::default();
+        let update = loaded.apply([Ok(None), Ok(None), Ok(None)]);
+        assert!(
+            update.accounts_changed,
+            "the first read reports the accounts"
+        );
+        assert!(loaded.accounts.is_empty());
+        let update = loaded.apply([Ok(None), Ok(None), read(ACCOUNT)]);
+        assert!(update.accounts_changed && update.problems.is_empty());
+        assert!(update.config_before.is_none() && !update.keymap_changed);
+        assert_eq!(loaded.accounts[0].key.0, "work");
+        assert!(
+            loaded
+                .apply([Ok(None), Ok(None), read(&format!("# mine\n{ACCOUNT}"))])
+                .is_empty(),
+            "a comment changes nothing"
+        );
+
+        let secret = ACCOUNT.replace("name = ", "password = \"x\"\nname = ");
+        let update = loaded.apply([Ok(None), Ok(None), read(&secret)]);
+        assert!(!update.accounts_changed);
+        assert_eq!(update.problems.len(), 1);
+        assert!(
+            update.problems[0].starts_with(
+                "accounts.toml not applied: line 3, column 1: password looks like a password"
+            ),
+            "{:?}",
+            update.problems
+        );
+        assert!(!update.problems[0].contains("\"x\""));
+        assert_eq!(loaded.accounts.len(), 1, "the previous accounts stay");
+        assert_eq!(loaded.errors[2].len(), 1);
+
+        let update = loaded.apply([Ok(None), Ok(None), Ok(None)]);
+        assert!(update.accounts_changed);
+        assert!(loaded.accounts.is_empty() && loaded.errors[2].is_empty());
+    }
+
     #[test]
     fn the_first_read_applies_both_files() {
         let mut loaded = Loaded::default();
-        let update = loaded.apply([Ok(None), Ok(None)]);
+        let update = loaded.apply_two([Ok(None), Ok(None)]);
         assert_eq!(update.config_before, Some(Config::default()));
         assert!(update.keymap_changed);
         assert!(update.problems.is_empty());
         assert!(loaded.loaded);
         // The same files again change nothing.
-        assert!(loaded.apply([Ok(None), Ok(None)]).is_empty());
+        assert!(loaded.apply_two([Ok(None), Ok(None)]).is_empty());
     }
 
     #[test]
     fn changes_are_applied_and_reported_once() {
         let mut loaded = Loaded::default();
-        loaded.apply([Ok(None), Ok(None)]);
-        let update = loaded.apply([read("[appearance]\ncorner_radius = 12\n"), Ok(None)]);
+        loaded.apply_two([Ok(None), Ok(None)]);
+        let update = loaded.apply_two([read("[appearance]\ncorner_radius = 12\n"), Ok(None)]);
         assert_eq!(update.config_before, Some(Config::default()));
         assert!(!update.keymap_changed);
         assert_eq!(loaded.config.appearance.corner_radius, CornerRadius::Px(12));
-        let update = loaded.apply([
+        let update = loaded.apply_two([
             read("[appearance]\ncorner_radius = 12\n"),
             read("archive = [\"e\"]\n"),
         ]);
@@ -333,7 +428,7 @@ mod tests {
         assert!(update.keymap_changed);
         assert_eq!(loaded.keymap.keys(ActionId::Archive).len(), 1);
         // A comment changes the text but not the keys.
-        let update = loaded.apply([
+        let update = loaded.apply_two([
             read("[appearance]\ncorner_radius = 12\n"),
             read("# mine\narchive = [\"e\"]\n"),
         ]);
@@ -343,8 +438,8 @@ mod tests {
     #[test]
     fn a_faulty_file_is_never_applied() {
         let mut loaded = Loaded::default();
-        loaded.apply([Ok(None), read("archive = [\"e\"]\n")]);
-        let update = loaded.apply([
+        loaded.apply_two([Ok(None), read("archive = [\"e\"]\n")]);
+        let update = loaded.apply_two([
             read("[appearance]\ncorner_radius = 900\n"),
             read("archive = [\"e\"]\nstar = [\"e\"]\n"),
         ]);
@@ -361,12 +456,12 @@ mod tests {
         assert_eq!(loaded.keymap.keys(ActionId::Archive).len(), 1);
         assert_eq!(loaded.errors[0].len(), 1);
         // The same faulty text isn't reported again; fixing it applies it.
-        let update = loaded.apply([
+        let update = loaded.apply_two([
             read("[appearance]\ncorner_radius = 900\n"),
             read("archive = [\"e\"]\nstar = [\"e\"]\n"),
         ]);
         assert!(update.is_empty());
-        let update = loaded.apply([
+        let update = loaded.apply_two([
             read("[appearance]\ncorner_radius = 9\n"),
             read("archive = [\"e\"]\nstar = [\"e\"]\n"),
         ]);
@@ -377,9 +472,9 @@ mod tests {
     #[test]
     fn a_deleted_file_means_defaults() {
         let mut loaded = Loaded::default();
-        loaded.apply([Ok(None), read("quit = []\n")]);
+        loaded.apply_two([Ok(None), read("quit = []\n")]);
         assert!(loaded.keymap.keys(ActionId::Quit).is_empty());
-        let update = loaded.apply([Ok(None), Ok(None)]);
+        let update = loaded.apply_two([Ok(None), Ok(None)]);
         assert!(update.keymap_changed);
         assert_eq!(loaded.keymap, Keymap::default());
     }
@@ -387,8 +482,8 @@ mod tests {
     #[test]
     fn read_errors_are_reported_and_keep_the_settings() {
         let mut loaded = Loaded::default();
-        loaded.apply([read("[appearance]\nreading_font = \"mono\"\n"), Ok(None)]);
-        let update = loaded.apply([
+        loaded.apply_two([read("[appearance]\nreading_font = \"mono\"\n"), Ok(None)]);
+        let update = loaded.apply_two([
             Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "it is not UTF-8 text",

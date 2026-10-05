@@ -147,7 +147,7 @@ fn migrates_once_and_refuses_a_newer_schema() {
         .unwrap();
     assert_eq!(
         (version, journal.as_str(), migrations),
-        (SCHEMA_VERSION, "wal", 1)
+        (SCHEMA_VERSION, "wal", SCHEMA_VERSION)
     );
     drop(conn);
 
@@ -165,7 +165,7 @@ fn migrates_once_and_refuses_a_newer_schema() {
             error,
             StoreError::NewerSchema {
                 found: 9,
-                supported: 1
+                supported: SCHEMA_VERSION
             }
         ),
         "{error}"

@@ -9,9 +9,10 @@ use super::api::{
     ViewFilter, ViewId, ViewScope, ViewSpec,
 };
 use super::maintenance::Maintenance;
-use super::{Removed, Shared, StoreError, codec, fts, views};
+use super::{Removed, RemovedAccount, Shared, StoreError, codec, fts, views};
 use rusqlite::hooks::Wal;
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use sealwax_domain::account::AccountKey;
 use sealwax_domain::message::{self, base_subject};
 use sealwax_domain::model::{AccountId, Address, BlobKey, Flags, FolderId, MessageId, ThreadId};
 use std::cell::Cell;
@@ -19,6 +20,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ffi::c_int;
 use std::sync::Arc;
 use std::time::Instant;
+
+mod accounts;
 
 /// Messages per header transaction (S3: 500 held the writer for up to 258 ms with text).
 pub(crate) const MAX_BATCH: usize = 200;
@@ -43,6 +46,19 @@ pub(crate) enum WriteJob {
     AddAccount {
         account: NewAccount,
         reply: Sender<Versioned<AccountId>>,
+    },
+    EnsureAccount {
+        key: AccountKey,
+        account: NewAccount,
+        reply: Sender<Versioned<AccountId>>,
+    },
+    ReconcileAccounts {
+        accounts: Vec<(AccountKey, NewAccount)>,
+        reply: Sender<Versioned<Vec<AccountId>>>,
+    },
+    RemoveAccount {
+        account: AccountId,
+        reply: Sender<RemovedAccount>,
     },
     UpsertFolder {
         folder: FolderSpec,
@@ -237,6 +253,24 @@ impl Writer {
         match job {
             WriteJob::AddAccount { account, reply } => {
                 let _ = reply.try_send(self.add_account(&account));
+            }
+            WriteJob::EnsureAccount {
+                key,
+                account,
+                reply,
+            } => {
+                let _ = reply.try_send(self.reconcile_accounts(&[(key, account)], false).map(
+                    |ids| Versioned {
+                        version: ids.version,
+                        value: ids.value[0],
+                    },
+                ));
+            }
+            WriteJob::ReconcileAccounts { accounts, reply } => {
+                let _ = reply.try_send(self.reconcile_accounts(&accounts, true));
+            }
+            WriteJob::RemoveAccount { account, reply } => {
+                let _ = reply.try_send(self.remove_account(account));
             }
             WriteJob::UpsertFolder { folder, reply } => {
                 let _ = reply.try_send(self.upsert_folder(&folder));

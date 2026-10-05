@@ -7,6 +7,7 @@ use super::api::{
 };
 use super::{Shared, StoreError, check, codec, fts, views};
 use rusqlite::{Connection, OptionalExtension};
+use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{
     Account, AccountId, Attachment, BlobKey, BodyKind, Folder, FolderId, FolderRole, Headers,
     MessageDetail, MessageId, MessageSummary,
@@ -25,6 +26,10 @@ pub(crate) enum ReadJob {
         offset: u32,
         limit: u32,
         reply: Sender<Page>,
+    },
+    AccountByKey {
+        key: AccountKey,
+        reply: Sender<Versioned<Option<Account>>>,
     },
     Accounts {
         reply: Sender<Versioned<Vec<Account>>>,
@@ -60,6 +65,7 @@ impl ReadJob {
         match self {
             ReadJob::OpenView { reply, .. } => reply.is_closed(),
             ReadJob::Page { reply, .. } => reply.is_closed(),
+            ReadJob::AccountByKey { reply, .. } => reply.is_closed(),
             ReadJob::Accounts { reply } => reply.is_closed(),
             ReadJob::Folders { reply } => reply.is_closed(),
             ReadJob::Detail { reply, .. } => reply.is_closed(),
@@ -74,6 +80,15 @@ impl ReadJob {
 pub(crate) struct Reader {
     conn: Connection,
     shared: Arc<Shared>,
+}
+
+fn account_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Account> {
+    Ok(Account {
+        id: AccountId(row.get(0)?),
+        name: row.get(1)?,
+        address: row.get(2)?,
+        key: row.get::<_, Option<String>>(3)?.map(AccountKey),
+    })
 }
 
 fn version(conn: &Connection) -> rusqlite::Result<StoreVersion> {
@@ -115,6 +130,9 @@ impl Reader {
                 reply,
             } => {
                 let _ = reply.try_send(self.page(spec, offset, limit));
+            }
+            ReadJob::AccountByKey { key, reply } => {
+                let _ = reply.try_send(self.account_by_key(&key));
             }
             ReadJob::Accounts { reply } => {
                 let _ = reply.try_send(self.accounts());
@@ -184,18 +202,26 @@ impl Reader {
         })
     }
 
+    /// The account with `key`, detached or not.
+    fn account_by_key(&self, key: &AccountKey) -> Result<Versioned<Option<Account>>, StoreError> {
+        let tx = self.conn.unchecked_transaction()?;
+        let version = version(&tx)?;
+        let value = tx
+            .prepare_cached("SELECT id, name, address, key FROM accounts WHERE key = ?1")?
+            .query_row([&key.0], account_row)
+            .optional()?;
+        Ok(Versioned { version, value })
+    }
+
+    /// The accounts the app shows: all but the detached ones.
     fn accounts(&self) -> Result<Versioned<Vec<Account>>, StoreError> {
         let tx = self.conn.unchecked_transaction()?;
         let version = version(&tx)?;
         let value = tx
-            .prepare_cached("SELECT id, name, address FROM accounts ORDER BY id")?
-            .query_map([], |row| {
-                Ok(Account {
-                    id: AccountId(row.get(0)?),
-                    name: row.get(1)?,
-                    address: row.get(2)?,
-                })
-            })?
+            .prepare_cached(
+                "SELECT id, name, address, key FROM accounts WHERE detached = 0 ORDER BY id",
+            )?
+            .query_map([], account_row)?
             .collect::<rusqlite::Result<_>>()?;
         Ok(Versioned { version, value })
     }

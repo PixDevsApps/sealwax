@@ -1,6 +1,7 @@
 //! Pure mail logic: no I/O, no GTK, no threads.
 
 pub mod account;
+pub mod accounts_file;
 pub mod actions;
 pub mod config;
 pub mod keymap;

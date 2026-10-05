@@ -1,6 +1,7 @@
 //! Network, sync, the op queue and secrets, on a private tokio runtime.
 //! The app talks to it only through plain `Send` messages; no tokio type leaves this crate.
 
+pub mod accounts;
 pub mod api;
 pub mod imap;
 pub mod net;

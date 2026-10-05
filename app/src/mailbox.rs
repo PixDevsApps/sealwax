@@ -549,6 +549,7 @@ impl Mailbox {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sealwax_domain::account::AccountKey;
     use sealwax_domain::model::AccountId;
 
     fn folder(id: i64, account: i64, name: &str, role: StoreRole, unread: u32) -> Folder {
@@ -569,11 +570,13 @@ mod tests {
                 id: AccountId(1),
                 name: "Personal".into(),
                 address: "personal@example.test".into(),
+                key: None,
             },
             Account {
                 id: AccountId(2),
                 name: "Work".into(),
                 address: "work@example.test".into(),
+                key: Some(AccountKey("work".into())),
             },
         ];
         let folders = vec![
