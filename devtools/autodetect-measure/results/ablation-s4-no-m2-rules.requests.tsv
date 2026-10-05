@@ -1,0 +1,518 @@
+domain	phase	kind	target	carries_dummy_address
+mailbox.org	detect	https	https://autoconfig.mailbox.org/mail/config-v1.1.xml?emailaddress=…	true
+mailbox.org	detect	dns	autoconfig.mailbox.org A/AAAA	false
+mailbox.org	detect	https	https://autoconfig.thunderbird.net/v1.1/mailbox.org	false
+mailbox.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+mailbox.org	detect	dns	_submissions._tcp.mailbox.org SRV	false
+mailbox.org	detect	dns	_submission._tcp.mailbox.org SRV	false
+mailbox.org	detect	dns	_imaps._tcp.mailbox.org SRV	false
+mailbox.org	detect	dns	_imap._tcp.mailbox.org SRV	false
+mailbox.org	detect	dns	imap.mailbox.org A/AAAA	false
+mailbox.org	detect	https	https://mailbox.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+mailbox.org	detect	dns	mailbox.org A/AAAA	false
+mailbox.org	detect	dns	mailbox.org MX	false
+mailbox.org	detect	tcp	imap.mailbox.org:993	false
+mailbox.org	detect	redirect-followed	https://auto.mailbox.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+mailbox.org	detect	dns	auto.mailbox.org A/AAAA	false
+mailbox.org	detect	dns	smtp.mailbox.org A/AAAA	false
+mailbox.org	detect	tcp	smtp.mailbox.org:465	false
+posteo.de	detect	https	https://autoconfig.posteo.de/mail/config-v1.1.xml?emailaddress=…	true
+posteo.de	detect	dns	autoconfig.posteo.de A/AAAA	false
+posteo.de	detect	https	https://autoconfig.thunderbird.net/v1.1/posteo.de	false
+posteo.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+posteo.de	detect	dns	_submissions._tcp.posteo.de SRV	false
+posteo.de	detect	dns	_submission._tcp.posteo.de SRV	false
+posteo.de	detect	dns	_imaps._tcp.posteo.de SRV	false
+posteo.de	detect	dns	_imap._tcp.posteo.de SRV	false
+posteo.de	detect	dns	imap.posteo.de A/AAAA	false
+posteo.de	detect	https	https://posteo.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+posteo.de	detect	dns	posteo.de A/AAAA	false
+posteo.de	detect	dns	posteo.de MX	false
+online.no	detect	https	https://autoconfig.online.no/mail/config-v1.1.xml?emailaddress=…	true
+online.no	detect	dns	autoconfig.online.no A/AAAA	false
+online.no	detect	https	https://autoconfig.thunderbird.net/v1.1/online.no	false
+online.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+online.no	detect	dns	_submissions._tcp.online.no SRV	false
+online.no	detect	dns	_submission._tcp.online.no SRV	false
+online.no	detect	dns	_imaps._tcp.online.no SRV	false
+online.no	detect	dns	_imap._tcp.online.no SRV	false
+online.no	detect	dns	imap.online.no A/AAAA	false
+online.no	detect	https	https://online.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+online.no	detect	dns	online.no A/AAAA	false
+online.no	detect	dns	online.no MX	false
+online.no	detect	tcp	imap.online.no:993	false
+online.no	detect	https	https://autoconfig.megamailservers.eu/mail/config-v1.1.xml	false
+online.no	detect	dns	autoconfig.megamailservers.eu A/AAAA	false
+online.no	detect	https	https://autoconfig.thunderbird.net/v1.1/megamailservers.eu	false
+online.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+online.no	detect	redirect-followed	https://www.online.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+online.no	detect	dns	www.online.no A/AAAA	false
+online.no	detect	redirect-refused	https://www.telenor.no/online	false
+online.no	detect	dns	smtp.online.no A/AAAA	false
+online.no	detect	tcp	smtp.online.no:465	false
+altibox.no	detect	https	https://autoconfig.altibox.no/mail/config-v1.1.xml?emailaddress=…	true
+altibox.no	detect	dns	autoconfig.altibox.no A/AAAA	false
+altibox.no	detect	https	https://autoconfig.thunderbird.net/v1.1/altibox.no	false
+altibox.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+altibox.no	detect	dns	_submissions._tcp.altibox.no SRV	false
+altibox.no	detect	dns	_submission._tcp.altibox.no SRV	false
+altibox.no	detect	dns	_imaps._tcp.altibox.no SRV	false
+altibox.no	detect	dns	_imap._tcp.altibox.no SRV	false
+altibox.no	detect	dns	imap.altibox.no A/AAAA	false
+altibox.no	detect	https	https://altibox.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+altibox.no	detect	dns	altibox.no A/AAAA	false
+altibox.no	detect	dns	altibox.no MX	false
+altibox.no	detect	tcp	imap.altibox.no:993	false
+altibox.no	detect	redirect-followed	https://www.altibox.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+altibox.no	detect	dns	www.altibox.no A/AAAA	false
+altibox.no	detect	dns	smtp.altibox.no A/AAAA	false
+altibox.no	detect	tcp	smtp.altibox.no:465	false
+lyse.net	detect	https	https://autoconfig.lyse.net/mail/config-v1.1.xml?emailaddress=…	true
+lyse.net	detect	dns	autoconfig.lyse.net A/AAAA	false
+lyse.net	detect	https	https://autoconfig.thunderbird.net/v1.1/lyse.net	false
+lyse.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+lyse.net	detect	dns	_submissions._tcp.lyse.net SRV	false
+lyse.net	detect	dns	_submission._tcp.lyse.net SRV	false
+lyse.net	detect	dns	_imaps._tcp.lyse.net SRV	false
+lyse.net	detect	dns	_imap._tcp.lyse.net SRV	false
+lyse.net	detect	dns	imap.lyse.net A/AAAA	false
+lyse.net	detect	https	https://lyse.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+lyse.net	detect	dns	lyse.net A/AAAA	false
+lyse.net	detect	dns	lyse.net MX	false
+lyse.net	detect	https	https://autoconfig.altibox.net/mail/config-v1.1.xml	false
+lyse.net	detect	dns	autoconfig.altibox.net A/AAAA	false
+lyse.net	detect	https	https://autoconfig.thunderbird.net/v1.1/altibox.net	false
+lyse.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+lyse.net	detect	tcp	imap.lyse.net:993	false
+lyse.net	detect	dns	mail.altibox.no A/AAAA	false
+lyse.net	detect	dns	imap.altibox.no A/AAAA	false
+lyse.net	detect	dns	imap.altibox.no A/AAAA	false
+lyse.net	detect	tcp	imap.altibox.no:993	false
+broadpark.no	detect	https	https://autoconfig.broadpark.no/mail/config-v1.1.xml?emailaddress=…	true
+broadpark.no	detect	dns	autoconfig.broadpark.no A/AAAA	false
+broadpark.no	detect	https	https://autoconfig.thunderbird.net/v1.1/broadpark.no	false
+broadpark.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+broadpark.no	detect	dns	_submissions._tcp.broadpark.no SRV	false
+broadpark.no	detect	dns	_submission._tcp.broadpark.no SRV	false
+broadpark.no	detect	dns	_imaps._tcp.broadpark.no SRV	false
+broadpark.no	detect	dns	_imap._tcp.broadpark.no SRV	false
+broadpark.no	detect	dns	imap.broadpark.no A/AAAA	false
+broadpark.no	detect	https	https://broadpark.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+broadpark.no	detect	dns	broadpark.no A/AAAA	false
+broadpark.no	detect	dns	broadpark.no MX	false
+broadpark.no	detect	tcp	imap.broadpark.no:993	false
+broadpark.no	detect	dns	smtp.broadpark.no A/AAAA	false
+broadpark.no	detect	dns	mail.broadpark.no A/AAAA	false
+broadpark.no	detect	dns	imap.broadpark.no A/AAAA	false
+broadpark.no	detect	dns	mail.broadpark.no A/AAAA	false
+broadpark.no	detect	dns	smtp.broadpark.no A/AAAA	false
+broadpark.no	detect	tcp	smtp.broadpark.no:465	false
+broadpark.no	detect	dns	smtp.broadpark.no A/AAAA	false
+broadpark.no	detect	tcp	smtp.broadpark.no:587	false
+tussa.com	detect	https	https://autoconfig.tussa.com/mail/config-v1.1.xml?emailaddress=…	true
+tussa.com	detect	dns	autoconfig.tussa.com A/AAAA	false
+tussa.com	detect	https	https://autoconfig.thunderbird.net/v1.1/tussa.com	false
+tussa.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+tussa.com	detect	dns	_submissions._tcp.tussa.com SRV	false
+tussa.com	detect	dns	_submission._tcp.tussa.com SRV	false
+tussa.com	detect	dns	_imaps._tcp.tussa.com SRV	false
+tussa.com	detect	dns	_imap._tcp.tussa.com SRV	false
+tussa.com	detect	dns	imap.tussa.com A/AAAA	false
+tussa.com	detect	https	https://tussa.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+tussa.com	detect	dns	tussa.com A/AAAA	false
+tussa.com	detect	dns	tussa.com MX	false
+tussa.com	detect	https	https://autoconfig.tikt.no/mail/config-v1.1.xml	false
+tussa.com	detect	dns	autoconfig.tikt.no A/AAAA	false
+tussa.com	detect	https	https://autoconfig.thunderbird.net/v1.1/tikt.no	false
+tussa.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+tussa.com	detect	tcp	imap.tussa.com:993	false
+tussa.com	detect	dns	smtp.tussa.com A/AAAA	false
+tussa.com	detect	tcp	smtp.tussa.com:465	false
+domeneshop.no	detect	https	https://autoconfig.domeneshop.no/mail/config-v1.1.xml?emailaddress=…	true
+domeneshop.no	detect	dns	autoconfig.domeneshop.no A/AAAA	false
+domeneshop.no	detect	https	https://autoconfig.thunderbird.net/v1.1/domeneshop.no	false
+domeneshop.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+domeneshop.no	detect	dns	_submissions._tcp.domeneshop.no SRV	false
+domeneshop.no	detect	dns	_submission._tcp.domeneshop.no SRV	false
+domeneshop.no	detect	dns	_imaps._tcp.domeneshop.no SRV	false
+domeneshop.no	detect	dns	_imap._tcp.domeneshop.no SRV	false
+domeneshop.no	detect	dns	imap.domeneshop.no A/AAAA	false
+domeneshop.no	detect	https	https://domeneshop.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+domeneshop.no	detect	dns	domeneshop.no A/AAAA	false
+domeneshop.no	detect	dns	domeneshop.no MX	false
+domeneshop.no	detect	tcp	imap.domeneshop.no:993	false
+birdlife.no	detect	https	https://autoconfig.birdlife.no/mail/config-v1.1.xml?emailaddress=…	true
+birdlife.no	detect	dns	autoconfig.birdlife.no A/AAAA	false
+birdlife.no	detect	https	https://autoconfig.thunderbird.net/v1.1/birdlife.no	false
+birdlife.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+birdlife.no	detect	dns	_submissions._tcp.birdlife.no SRV	false
+birdlife.no	detect	dns	_submission._tcp.birdlife.no SRV	false
+birdlife.no	detect	dns	_imaps._tcp.birdlife.no SRV	false
+birdlife.no	detect	dns	_imap._tcp.birdlife.no SRV	false
+birdlife.no	detect	dns	imap.birdlife.no A/AAAA	false
+birdlife.no	detect	https	https://birdlife.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+birdlife.no	detect	dns	birdlife.no A/AAAA	false
+birdlife.no	detect	dns	birdlife.no MX	false
+birdlife.no	detect	https	https://autoconfig.domeneshop.no/mail/config-v1.1.xml	false
+birdlife.no	detect	dns	autoconfig.domeneshop.no A/AAAA	false
+birdlife.no	detect	https	https://autoconfig.thunderbird.net/v1.1/domeneshop.no	false
+birdlife.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+birdlife.no	detect	dns	mail.birdlife.no A/AAAA	false
+birdlife.no	detect	dns	birdlife.no A/AAAA	false
+birdlife.no	detect	tcp	birdlife.no:993	false
+birdlife.no	detect	dns	imap.domeneshop.no A/AAAA	false
+birdlife.no	detect	dns	mail.domeneshop.no A/AAAA	false
+birdlife.no	detect	dns	smtp.birdlife.no A/AAAA	false
+birdlife.no	detect	dns	mail.birdlife.no A/AAAA	false
+birdlife.no	detect	dns	birdlife.no A/AAAA	false
+birdlife.no	detect	tcp	birdlife.no:465	false
+birdlife.no	detect	dns	smtp.domeneshop.no A/AAAA	false
+birdlife.no	detect	dns	mail.domeneshop.no A/AAAA	false
+birdlife.no	detect	tcp	imap.domeneshop.no:993	false
+birdlife.no	detect	tcp	mail.domeneshop.no:993	false
+birdlife.no	detect	tcp	mail.domeneshop.no:465	false
+birdlife.no	detect	tcp	smtp.domeneshop.no:465	false
+birdlife.no	detect	dns	birdlife.no A/AAAA	false
+birdlife.no	detect	tcp	birdlife.no:143	false
+birdlife.no	detect	dns	birdlife.no A/AAAA	false
+birdlife.no	detect	tcp	birdlife.no:587	false
+birdlife.no	detect	dns	mail.domeneshop.no A/AAAA	false
+birdlife.no	detect	tcp	mail.domeneshop.no:143	false
+piratpartiet.no	detect	https	https://autoconfig.piratpartiet.no/mail/config-v1.1.xml?emailaddress=…	true
+piratpartiet.no	detect	dns	autoconfig.piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	https	https://autoconfig.thunderbird.net/v1.1/piratpartiet.no	false
+piratpartiet.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+piratpartiet.no	detect	dns	_submissions._tcp.piratpartiet.no SRV	false
+piratpartiet.no	detect	dns	_submission._tcp.piratpartiet.no SRV	false
+piratpartiet.no	detect	dns	_imaps._tcp.piratpartiet.no SRV	false
+piratpartiet.no	detect	dns	_imap._tcp.piratpartiet.no SRV	false
+piratpartiet.no	detect	dns	imap.piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	https	https://piratpartiet.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+piratpartiet.no	detect	dns	piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	dns	piratpartiet.no MX	false
+piratpartiet.no	detect	https	https://autoconfig.domeneshop.no/mail/config-v1.1.xml	false
+piratpartiet.no	detect	dns	autoconfig.domeneshop.no A/AAAA	false
+piratpartiet.no	detect	https	https://autoconfig.thunderbird.net/v1.1/domeneshop.no	false
+piratpartiet.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+piratpartiet.no	detect	dns	mail.piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	dns	piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	tcp	piratpartiet.no:993	false
+piratpartiet.no	detect	dns	imap.domeneshop.no A/AAAA	false
+piratpartiet.no	detect	dns	mail.domeneshop.no A/AAAA	false
+piratpartiet.no	detect	dns	smtp.piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	dns	mail.piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	dns	piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	tcp	piratpartiet.no:465	false
+piratpartiet.no	detect	dns	smtp.domeneshop.no A/AAAA	false
+piratpartiet.no	detect	dns	mail.domeneshop.no A/AAAA	false
+piratpartiet.no	detect	tcp	imap.domeneshop.no:993	false
+piratpartiet.no	detect	tcp	mail.domeneshop.no:993	false
+piratpartiet.no	detect	tcp	mail.domeneshop.no:465	false
+piratpartiet.no	detect	tcp	smtp.domeneshop.no:465	false
+piratpartiet.no	detect	tcp	mail.piratpartiet.no:993	false
+piratpartiet.no	detect	tcp	mail.piratpartiet.no:465	false
+piratpartiet.no	detect	dns	mail.piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	tcp	mail.piratpartiet.no:143	false
+piratpartiet.no	detect	dns	mail.piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	tcp	mail.piratpartiet.no:587	false
+piratpartiet.no	detect	dns	piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	tcp	piratpartiet.no:143	false
+piratpartiet.no	detect	dns	piratpartiet.no A/AAAA	false
+piratpartiet.no	detect	tcp	piratpartiet.no:587	false
+piratpartiet.no	detect	dns	mail.domeneshop.no A/AAAA	false
+piratpartiet.no	detect	tcp	mail.domeneshop.no:143	false
+one.com	detect	https	https://autoconfig.one.com/mail/config-v1.1.xml?emailaddress=…	true
+one.com	detect	dns	autoconfig.one.com A/AAAA	false
+one.com	detect	https	https://autoconfig.thunderbird.net/v1.1/one.com	false
+one.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+one.com	detect	dns	_submissions._tcp.one.com SRV	false
+one.com	detect	dns	_submission._tcp.one.com SRV	false
+one.com	detect	dns	_imaps._tcp.one.com SRV	false
+one.com	detect	dns	_imap._tcp.one.com SRV	false
+one.com	detect	dns	imap.one.com A/AAAA	false
+one.com	detect	https	https://one.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+one.com	detect	dns	one.com A/AAAA	false
+one.com	detect	dns	one.com MX	false
+one.com	detect	tcp	imap.one.com:993	false
+hotmail.no	detect	https	https://autoconfig.hotmail.no/mail/config-v1.1.xml?emailaddress=…	true
+hotmail.no	detect	dns	autoconfig.hotmail.no A/AAAA	false
+hotmail.no	detect	https	https://autoconfig.thunderbird.net/v1.1/hotmail.no	false
+hotmail.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+hotmail.no	detect	dns	_submissions._tcp.hotmail.no SRV	false
+hotmail.no	detect	dns	_submission._tcp.hotmail.no SRV	false
+hotmail.no	detect	dns	_imaps._tcp.hotmail.no SRV	false
+hotmail.no	detect	dns	_imap._tcp.hotmail.no SRV	false
+hotmail.no	detect	dns	imap.hotmail.no A/AAAA	false
+hotmail.no	detect	https	https://hotmail.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+hotmail.no	detect	dns	hotmail.no A/AAAA	false
+hotmail.no	detect	dns	hotmail.no MX	false
+c2i.net	detect	https	https://autoconfig.c2i.net/mail/config-v1.1.xml?emailaddress=…	true
+c2i.net	detect	dns	autoconfig.c2i.net A/AAAA	false
+c2i.net	detect	https	https://autoconfig.thunderbird.net/v1.1/c2i.net	false
+c2i.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+c2i.net	detect	dns	_submissions._tcp.c2i.net SRV	false
+c2i.net	detect	dns	_submission._tcp.c2i.net SRV	false
+c2i.net	detect	dns	_imaps._tcp.c2i.net SRV	false
+c2i.net	detect	dns	_imap._tcp.c2i.net SRV	false
+c2i.net	detect	dns	imap.c2i.net A/AAAA	false
+c2i.net	detect	https	https://c2i.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+c2i.net	detect	dns	c2i.net A/AAAA	false
+c2i.net	detect	dns	c2i.net MX	false
+c2i.net	detect	https	https://autoconfig.aftermarket.pl/mail/config-v1.1.xml	false
+c2i.net	detect	dns	autoconfig.aftermarket.pl A/AAAA	false
+c2i.net	detect	https	https://autoconfig.thunderbird.net/v1.1/aftermarket.pl	false
+c2i.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+c2i.net	detect	tcp	imap.c2i.net:993	false
+c2i.net	detect	dns	imap.c2i.net A/AAAA	false
+c2i.net	detect	tcp	imap.c2i.net:143	false
+c2i.net	detect	dns	mail.c2i.net A/AAAA	false
+c2i.net	detect	dns	c2i.net A/AAAA	false
+c2i.net	detect	tcp	c2i.net:993	false
+c2i.net	detect	dns	imap.aftermarket.pl A/AAAA	false
+c2i.net	detect	dns	mail.aftermarket.pl A/AAAA	false
+c2i.net	detect	dns	smtp.c2i.net A/AAAA	false
+c2i.net	detect	dns	mail.c2i.net A/AAAA	false
+c2i.net	detect	dns	c2i.net A/AAAA	false
+c2i.net	detect	tcp	c2i.net:465	false
+c2i.net	detect	dns	smtp.aftermarket.pl A/AAAA	false
+c2i.net	detect	dns	mail.aftermarket.pl A/AAAA	false
+c2i.net	detect	tcp	mail.c2i.net:993	false
+c2i.net	detect	tcp	mail.c2i.net:465	false
+c2i.net	detect	tcp	smtp.aftermarket.pl:465	false
+c2i.net	detect	tcp	mail.aftermarket.pl:993	false
+c2i.net	detect	tcp	mail.aftermarket.pl:465	false
+c2i.net	detect	tcp	smtp.c2i.net:465	false
+c2i.net	detect	tcp	imap.aftermarket.pl:993	false
+c2i.net	detect	dns	smtp.aftermarket.pl A/AAAA	false
+c2i.net	detect	tcp	smtp.aftermarket.pl:587	false
+c2i.net	detect	dns	mail.aftermarket.pl A/AAAA	false
+c2i.net	detect	tcp	mail.aftermarket.pl:587	false
+c2i.net	detect	dns	mail.aftermarket.pl A/AAAA	false
+c2i.net	detect	tcp	mail.aftermarket.pl:143	false
+c2i.net	detect	dns	c2i.net A/AAAA	false
+c2i.net	detect	tcp	c2i.net:143	false
+c2i.net	detect	dns	c2i.net A/AAAA	false
+c2i.net	detect	tcp	c2i.net:587	false
+c2i.net	detect	dns	mail.c2i.net A/AAAA	false
+c2i.net	detect	tcp	mail.c2i.net:143	false
+c2i.net	detect	dns	mail.c2i.net A/AAAA	false
+c2i.net	detect	tcp	mail.c2i.net:587	false
+c2i.net	detect	dns	smtp.c2i.net A/AAAA	false
+c2i.net	detect	tcp	smtp.c2i.net:587	false
+chello.no	detect	https	https://autoconfig.chello.no/mail/config-v1.1.xml?emailaddress=…	true
+chello.no	detect	dns	autoconfig.chello.no A/AAAA	false
+chello.no	detect	https	https://autoconfig.thunderbird.net/v1.1/chello.no	false
+chello.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+chello.no	detect	dns	_submissions._tcp.chello.no SRV	false
+chello.no	detect	dns	_submission._tcp.chello.no SRV	false
+chello.no	detect	dns	_imaps._tcp.chello.no SRV	false
+chello.no	detect	dns	_imap._tcp.chello.no SRV	false
+chello.no	detect	dns	imap.chello.no A/AAAA	false
+chello.no	detect	https	https://chello.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+chello.no	detect	dns	chello.no A/AAAA	false
+chello.no	detect	dns	chello.no MX	false
+chello.no	detect	tcp	imap.chello.no:993	false
+tele2.no	detect	https	https://autoconfig.tele2.no/mail/config-v1.1.xml?emailaddress=…	true
+tele2.no	detect	dns	autoconfig.tele2.no A/AAAA	false
+tele2.no	detect	https	https://autoconfig.thunderbird.net/v1.1/tele2.no	false
+tele2.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+tele2.no	detect	dns	_submissions._tcp.tele2.no SRV	false
+tele2.no	detect	dns	_submission._tcp.tele2.no SRV	false
+tele2.no	detect	dns	_imaps._tcp.tele2.no SRV	false
+tele2.no	detect	dns	_imap._tcp.tele2.no SRV	false
+tele2.no	detect	dns	imap.tele2.no A/AAAA	false
+tele2.no	detect	https	https://tele2.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+tele2.no	detect	dns	tele2.no A/AAAA	false
+tele2.no	detect	dns	tele2.no MX	false
+tele2.no	detect	dns	mail.tele2.no A/AAAA	false
+tele2.no	detect	dns	tele2.no A/AAAA	false
+tele2.no	detect	dns	smtp.tele2.no A/AAAA	false
+tele2.no	detect	dns	mail.tele2.no A/AAAA	false
+tele2.no	detect	dns	tele2.no A/AAAA	false
+mozilla.org	detect	https	https://autoconfig.mozilla.org/mail/config-v1.1.xml?emailaddress=…	true
+mozilla.org	detect	dns	autoconfig.mozilla.org A/AAAA	false
+mozilla.org	detect	https	https://autoconfig.thunderbird.net/v1.1/mozilla.org	false
+mozilla.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+mozilla.org	detect	dns	_submissions._tcp.mozilla.org SRV	false
+mozilla.org	detect	dns	_submission._tcp.mozilla.org SRV	false
+mozilla.org	detect	dns	_imaps._tcp.mozilla.org SRV	false
+mozilla.org	detect	dns	_imap._tcp.mozilla.org SRV	false
+mozilla.org	detect	dns	imap.mozilla.org A/AAAA	false
+mozilla.org	detect	https	https://mozilla.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+mozilla.org	detect	dns	mozilla.org A/AAAA	false
+mozilla.org	detect	dns	mozilla.org MX	false
+finn.no	detect	https	https://autoconfig.finn.no/mail/config-v1.1.xml?emailaddress=…	true
+finn.no	detect	dns	autoconfig.finn.no A/AAAA	false
+finn.no	detect	https	https://autoconfig.thunderbird.net/v1.1/finn.no	false
+finn.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+finn.no	detect	dns	_submissions._tcp.finn.no SRV	false
+finn.no	detect	dns	_submission._tcp.finn.no SRV	false
+finn.no	detect	dns	_imaps._tcp.finn.no SRV	false
+finn.no	detect	dns	_imap._tcp.finn.no SRV	false
+finn.no	detect	dns	imap.finn.no A/AAAA	false
+finn.no	detect	https	https://finn.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+finn.no	detect	dns	finn.no A/AAAA	false
+finn.no	detect	dns	finn.no MX	false
+nrk.no	detect	https	https://autoconfig.nrk.no/mail/config-v1.1.xml?emailaddress=…	true
+nrk.no	detect	dns	autoconfig.nrk.no A/AAAA	false
+nrk.no	detect	https	https://autoconfig.thunderbird.net/v1.1/nrk.no	false
+nrk.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+nrk.no	detect	dns	_submissions._tcp.nrk.no SRV	false
+nrk.no	detect	dns	_submission._tcp.nrk.no SRV	false
+nrk.no	detect	dns	_imaps._tcp.nrk.no SRV	false
+nrk.no	detect	dns	_imap._tcp.nrk.no SRV	false
+nrk.no	detect	dns	imap.nrk.no A/AAAA	false
+nrk.no	detect	https	https://nrk.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+nrk.no	detect	dns	nrk.no A/AAAA	false
+nrk.no	detect	dns	nrk.no MX	false
+letsencrypt.org	detect	https	https://autoconfig.letsencrypt.org/mail/config-v1.1.xml?emailaddress=…	true
+letsencrypt.org	detect	dns	autoconfig.letsencrypt.org A/AAAA	false
+letsencrypt.org	detect	https	https://autoconfig.thunderbird.net/v1.1/letsencrypt.org	false
+letsencrypt.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+letsencrypt.org	detect	dns	_submissions._tcp.letsencrypt.org SRV	false
+letsencrypt.org	detect	dns	_submission._tcp.letsencrypt.org SRV	false
+letsencrypt.org	detect	dns	_imaps._tcp.letsencrypt.org SRV	false
+letsencrypt.org	detect	dns	_imap._tcp.letsencrypt.org SRV	false
+letsencrypt.org	detect	dns	imap.letsencrypt.org A/AAAA	false
+letsencrypt.org	detect	https	https://letsencrypt.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+letsencrypt.org	detect	dns	letsencrypt.org A/AAAA	false
+letsencrypt.org	detect	dns	letsencrypt.org MX	false
+vy.no	detect	https	https://autoconfig.vy.no/mail/config-v1.1.xml?emailaddress=…	true
+vy.no	detect	dns	autoconfig.vy.no A/AAAA	false
+vy.no	detect	https	https://autoconfig.thunderbird.net/v1.1/vy.no	false
+vy.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+vy.no	detect	dns	_submissions._tcp.vy.no SRV	false
+vy.no	detect	dns	_submission._tcp.vy.no SRV	false
+vy.no	detect	dns	_imaps._tcp.vy.no SRV	false
+vy.no	detect	dns	_imap._tcp.vy.no SRV	false
+vy.no	detect	dns	imap.vy.no A/AAAA	false
+vy.no	detect	https	https://vy.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+vy.no	detect	dns	vy.no A/AAAA	false
+vy.no	detect	dns	vy.no MX	false
+uib.no	detect	https	https://autoconfig.uib.no/mail/config-v1.1.xml?emailaddress=…	true
+uib.no	detect	dns	autoconfig.uib.no A/AAAA	false
+uib.no	detect	https	https://autoconfig.thunderbird.net/v1.1/uib.no	false
+uib.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+uib.no	detect	dns	_submissions._tcp.uib.no SRV	false
+uib.no	detect	dns	_submission._tcp.uib.no SRV	false
+uib.no	detect	dns	_imaps._tcp.uib.no SRV	false
+uib.no	detect	dns	_imap._tcp.uib.no SRV	false
+uib.no	detect	dns	imap.uib.no A/AAAA	false
+uib.no	detect	https	https://uib.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+uib.no	detect	dns	uib.no A/AAAA	false
+uib.no	detect	dns	uib.no MX	false
+oslomet.no	detect	https	https://autoconfig.oslomet.no/mail/config-v1.1.xml?emailaddress=…	true
+oslomet.no	detect	dns	autoconfig.oslomet.no A/AAAA	false
+oslomet.no	detect	https	https://autoconfig.thunderbird.net/v1.1/oslomet.no	false
+oslomet.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+oslomet.no	detect	dns	_submissions._tcp.oslomet.no SRV	false
+oslomet.no	detect	dns	_submission._tcp.oslomet.no SRV	false
+oslomet.no	detect	dns	_imaps._tcp.oslomet.no SRV	false
+oslomet.no	detect	dns	_imap._tcp.oslomet.no SRV	false
+oslomet.no	detect	dns	imap.oslomet.no A/AAAA	false
+oslomet.no	detect	https	https://oslomet.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+oslomet.no	detect	dns	oslomet.no A/AAAA	false
+oslomet.no	detect	dns	oslomet.no MX	false
+oslomet.no	detect	redirect-followed	https://www.oslomet.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+oslomet.no	detect	dns	www.oslomet.no A/AAAA	false
+stortinget.no	detect	https	https://autoconfig.stortinget.no/mail/config-v1.1.xml?emailaddress=…	true
+stortinget.no	detect	dns	autoconfig.stortinget.no A/AAAA	false
+stortinget.no	detect	https	https://autoconfig.thunderbird.net/v1.1/stortinget.no	false
+stortinget.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+stortinget.no	detect	dns	_submissions._tcp.stortinget.no SRV	false
+stortinget.no	detect	dns	_submission._tcp.stortinget.no SRV	false
+stortinget.no	detect	dns	_imaps._tcp.stortinget.no SRV	false
+stortinget.no	detect	dns	_imap._tcp.stortinget.no SRV	false
+stortinget.no	detect	dns	imap.stortinget.no A/AAAA	false
+stortinget.no	detect	https	https://stortinget.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+stortinget.no	detect	dns	stortinget.no A/AAAA	false
+stortinget.no	detect	dns	stortinget.no MX	false
+eff.org	detect	https	https://autoconfig.eff.org/mail/config-v1.1.xml?emailaddress=…	true
+eff.org	detect	dns	autoconfig.eff.org A/AAAA	false
+eff.org	detect	https	https://autoconfig.thunderbird.net/v1.1/eff.org	false
+eff.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+eff.org	detect	dns	_submissions._tcp.eff.org SRV	false
+eff.org	detect	dns	_submission._tcp.eff.org SRV	false
+eff.org	detect	dns	_imaps._tcp.eff.org SRV	false
+eff.org	detect	dns	_imap._tcp.eff.org SRV	false
+eff.org	detect	dns	imap.eff.org A/AAAA	false
+eff.org	detect	https	https://eff.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+eff.org	detect	dns	eff.org A/AAAA	false
+eff.org	detect	dns	eff.org MX	false
+linux.org.au	detect	https	https://autoconfig.linux.org.au/mail/config-v1.1.xml?emailaddress=…	true
+linux.org.au	detect	dns	autoconfig.linux.org.au A/AAAA	false
+linux.org.au	detect	https	https://autoconfig.thunderbird.net/v1.1/linux.org.au	false
+linux.org.au	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+linux.org.au	detect	dns	_submissions._tcp.linux.org.au SRV	false
+linux.org.au	detect	dns	_submission._tcp.linux.org.au SRV	false
+linux.org.au	detect	dns	_imaps._tcp.linux.org.au SRV	false
+linux.org.au	detect	dns	_imap._tcp.linux.org.au SRV	false
+linux.org.au	detect	dns	imap.linux.org.au A/AAAA	false
+linux.org.au	detect	https	https://linux.org.au/.well-known/autoconfig/mail/config-v1.1.xml	false
+linux.org.au	detect	dns	linux.org.au A/AAAA	false
+linux.org.au	detect	dns	linux.org.au MX	false
+digitalrightswatch.org.au	detect	https	https://autoconfig.digitalrightswatch.org.au/mail/config-v1.1.xml?emailaddress=…	true
+digitalrightswatch.org.au	detect	dns	autoconfig.digitalrightswatch.org.au A/AAAA	false
+digitalrightswatch.org.au	detect	https	https://autoconfig.thunderbird.net/v1.1/digitalrightswatch.org.au	false
+digitalrightswatch.org.au	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+digitalrightswatch.org.au	detect	dns	_submissions._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	detect	dns	_submission._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	detect	dns	_imaps._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	detect	dns	_imap._tcp.digitalrightswatch.org.au SRV	false
+digitalrightswatch.org.au	detect	dns	imap.digitalrightswatch.org.au A/AAAA	false
+digitalrightswatch.org.au	detect	https	https://digitalrightswatch.org.au/.well-known/autoconfig/mail/config-v1.1.xml	false
+digitalrightswatch.org.au	detect	dns	digitalrightswatch.org.au A/AAAA	false
+digitalrightswatch.org.au	detect	dns	digitalrightswatch.org.au MX	false
+cyrusimap.org	detect	https	https://autoconfig.cyrusimap.org/mail/config-v1.1.xml?emailaddress=…	true
+cyrusimap.org	detect	dns	autoconfig.cyrusimap.org A/AAAA	false
+cyrusimap.org	detect	https	https://autoconfig.thunderbird.net/v1.1/cyrusimap.org	false
+cyrusimap.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+cyrusimap.org	detect	dns	_submissions._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	_submission._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	_imaps._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	_imap._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	imap.cyrusimap.org A/AAAA	false
+cyrusimap.org	detect	https	https://cyrusimap.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+cyrusimap.org	detect	dns	cyrusimap.org A/AAAA	false
+cyrusimap.org	detect	dns	cyrusimap.org MX	false
+cyrusimap.org	detect	redirect-followed	https://www.cyrusimap.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+cyrusimap.org	detect	dns	www.cyrusimap.org A/AAAA	false
+cyrusimap.org	detect	tcp	imap.cyrusimap.org:993	false
+gitea.io	detect	https	https://autoconfig.gitea.io/mail/config-v1.1.xml?emailaddress=…	true
+gitea.io	detect	dns	autoconfig.gitea.io A/AAAA	false
+gitea.io	detect	https	https://autoconfig.thunderbird.net/v1.1/gitea.io	false
+gitea.io	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+gitea.io	detect	dns	_submissions._tcp.gitea.io SRV	false
+gitea.io	detect	dns	_submission._tcp.gitea.io SRV	false
+gitea.io	detect	dns	_imaps._tcp.gitea.io SRV	false
+gitea.io	detect	dns	_imap._tcp.gitea.io SRV	false
+gitea.io	detect	dns	imap.gitea.io A/AAAA	false
+gitea.io	detect	https	https://gitea.io/.well-known/autoconfig/mail/config-v1.1.xml	false
+gitea.io	detect	dns	gitea.io A/AAAA	false
+gitea.io	detect	dns	gitea.io MX	false
+gitea.io	detect	redirect-refused	https://gitea.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+pine64.org	detect	https	https://autoconfig.pine64.org/mail/config-v1.1.xml?emailaddress=…	true
+pine64.org	detect	dns	autoconfig.pine64.org A/AAAA	false
+pine64.org	detect	https	https://autoconfig.thunderbird.net/v1.1/pine64.org	false
+pine64.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+pine64.org	detect	dns	_submissions._tcp.pine64.org SRV	false
+pine64.org	detect	dns	_submission._tcp.pine64.org SRV	false
+pine64.org	detect	dns	_imaps._tcp.pine64.org SRV	false
+pine64.org	detect	dns	_imap._tcp.pine64.org SRV	false
+pine64.org	detect	dns	imap.pine64.org A/AAAA	false
+pine64.org	detect	https	https://pine64.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+pine64.org	detect	dns	pine64.org A/AAAA	false
+pine64.org	detect	dns	pine64.org MX	false
+pine64.org	detect	tcp	imap.pine64.org:993	false
+fosstodon.org	detect	https	https://autoconfig.fosstodon.org/mail/config-v1.1.xml?emailaddress=…	true
+fosstodon.org	detect	dns	autoconfig.fosstodon.org A/AAAA	false
+fosstodon.org	detect	https	https://autoconfig.thunderbird.net/v1.1/fosstodon.org	false
+fosstodon.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+fosstodon.org	detect	dns	_submissions._tcp.fosstodon.org SRV	false
+fosstodon.org	detect	dns	_submission._tcp.fosstodon.org SRV	false
+fosstodon.org	detect	dns	_imaps._tcp.fosstodon.org SRV	false
+fosstodon.org	detect	dns	_imap._tcp.fosstodon.org SRV	false
+fosstodon.org	detect	dns	imap.fosstodon.org A/AAAA	false
+fosstodon.org	detect	https	https://fosstodon.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+fosstodon.org	detect	dns	fosstodon.org A/AAAA	false
+fosstodon.org	detect	dns	fosstodon.org MX	false

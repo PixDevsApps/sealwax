@@ -1,0 +1,33 @@
+== final-s4: 50 domains (S4 list), started 2026-10-05T08:22:44Z
+rules: own_host=true srv_conventional=true mx_hosts=true ispdb_before_srv=true verify_srv=true autodiscover=true
+options: resolver=1.1.1.1 order=preset>autoconfig>ispdb>srv>own-host>mx-preset>well-known>mx-autoconfig>mx-ispdb>probe>mx-probe cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms mx_autoconfig=1500ms connect=3000ms probe_delay=2000ms probe_budget=5000ms user_agent="mail-dev (automated)"
+correct, strict: 44/50
+correct, with the second login attempt (E1): 45/50
+correct, E1 plus verified aliases (E2): 45/50
+  E1 adds: ["online.no"]
+  E2 adds: []
+truth unknown (not scored): []
+  big: strict 22/22, E1 22/22, E1+E2 22/22
+  fastmail: strict 3/3, E1 3/3, E1+E2 3/3
+  m365: strict 5/5, E1 5/5, E1+E2 5/5
+  norway: strict 7/13, E1 8/13, E1+E2 8/13
+  workspace: strict 4/4, E1 4/4, E1+E2 4/4
+  zoho: strict 3/3, E1 3/3, E1+E2 3/3
+strict misses: [
+    "online.no: username Address wrong",
+    "lyse.net: SMTP smtp.altibox.no:587 StartTls not accepted",
+    "tussa.com: SMTP smtp.tussa.com:465 Tls not accepted",
+    "domeneshop.no: username Address wrong",
+    "birdlife.no: username Address wrong",
+    "piratpartiet.no: username Address wrong",
+]
+TLS-only: 45/45 offered settings use TLS or STARTTLS (the contract has no plaintext mode)
+shown for confirmation: ["lyse.net", "birdlife.no", "piratpartiet.no"]
+final: n=50 p50=59 p95=4599 max=6508 ms
+first usable: n=48 p50=19 p95=1762 max=6508 ms
+hit the cap unsettled: []
+won by: {"-": 2, "autoconfig": 3, "ispdb": 2, "mx-preset": 15, "mx-probe": 2, "own-host": 3, "preset": 20, "srv": 3}
+requests: 560 (dns 386, https 102, redirects followed 7, refused 2, tcp 63); scoring checks after detection: 0
+carrying the dummy address: 30 (30 to the row's own https://autoconfig.<domain>/)
+privacy violations: 0 []
+scoring checks carrying an address or using HTTPS: 0

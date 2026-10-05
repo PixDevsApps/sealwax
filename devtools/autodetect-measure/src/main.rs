@@ -36,6 +36,7 @@ const USAGE: &str = "usage: sealwax-autodetect-measure run [--list s4|heldout] [
        sealwax-autodetect-measure verify [--list s4|heldout] [--dns IP] [--label NAME]
        sealwax-autodetect-measure truth [--list s4|heldout]
        sealwax-autodetect-measure table --label NAME
+       sealwax-autodetect-measure probe [--dns IP] imap|smtp:HOST:PORT:tls|starttls...
 rule switches (each turns one rule off): --no-own-host --no-srv-conventional --no-mx-hosts
        --srv-before-ispdb --no-srv-verify --no-autodiscover";
 
@@ -110,6 +111,7 @@ fn main() -> ExitCode {
     let result = match args.command.as_str() {
         "run" => runtime.block_on(run(&args)),
         "verify" => runtime.block_on(verify(&args)),
+        "probe" => runtime.block_on(probe(&args)),
         "truth" => lists::entries(args.list).map(|e| print!("{}", truth_table(&e))),
         "table" => table(&args),
         _ => Err(USAGE.to_string()),
@@ -872,6 +874,37 @@ async fn verify(args: &Args) -> Result<(), String> {
     Ok(())
 }
 
+/// The TLS check of endpoints named on the command line (`imap:host:993:tls`), for looking at
+/// what a run offered after the run.
+async fn probe(args: &Args) -> Result<(), String> {
+    let network = RealNetwork::new(&args.options, None).map_err(|e| e.0)?;
+    println!("# {}", utc(SystemTime::now()));
+    for spec in &args.domains {
+        let parts: Vec<&str> = spec.split(':').collect();
+        let [protocol, host, port, mode] = parts[..] else {
+            return Err(format!("bad endpoint {spec:?}\n{USAGE}"));
+        };
+        let protocol = match protocol {
+            "imap" => Protocol::Imap,
+            "smtp" => Protocol::Smtp,
+            _ => return Err(format!("bad protocol in {spec:?}")),
+        };
+        let security = match mode {
+            "tls" => sealwax_domain::account::Security::Tls,
+            "starttls" => sealwax_domain::account::Security::StartTls,
+            _ => return Err(format!("bad mode in {spec:?}")),
+        };
+        let port: u16 = port.parse().map_err(|_| format!("bad port in {spec:?}"))?;
+        let target = Target::new(protocol, host, port, security);
+        let result = match network.probe(&target, Duration::from_secs(8)).await {
+            Ok(()) => "ok".to_string(),
+            Err(e) => format!("{:?}: {}", e.stage, clean(&e.detail)),
+        };
+        println!("{spec} {result}");
+    }
+    Ok(())
+}
+
 fn users_text(users: &[User]) -> String {
     users
         .iter()
@@ -940,12 +973,10 @@ fn table(args: &Args) -> Result<(), String> {
                 .copied()
                 .unwrap_or("")
         };
-        let mark = |verdict: &str, why: &str| {
-            if verdict == "yes" {
-                "yes".to_string()
-            } else {
-                format!("**no**: {why}")
-            }
+        let mark = |verdict: &str, why: &str| match verdict {
+            "yes" => "yes".to_string(),
+            "?" => "truth unknown".to_string(),
+            _ => format!("**no**: {why}"),
         };
         let _ = writeln!(
             out,

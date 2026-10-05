@@ -1,0 +1,22 @@
+Rule freeze for ML-097: the production pipeline as committed, recorded before the held-out list was read and before any request to its domains.
+commit: f1a52ae (M2 autodetect: the pipeline and provider presets (ML-030, ML-031))
+utc: 2026-10-05T08:22:16Z
+sources (sha256):
+6e0a94d8e56c3c96218bb610949c681939c876e7a80c244af7a69b128c52d933  domain/src/autoconfig/clientconfig.rs
+29edf5bb082390f8f0b056fd034e67463837df2191627b750e3b97a881bf7fe3  domain/src/autoconfig/dns.rs
+75eb0dc7e21abbefa616cd5d0f7a6d6efb6cda33ab67ce3a7ad953b03de540cd  domain/src/autoconfig/mod.rs
+b6849476e3a2b1e4b5aa20bef91ff9e8f725420ce55a7d80b6a2092957e4aa5a  domain/src/autoconfig/presets.rs
+e5addacab5d2f0bf306fdea560224a804ccc5b6379bb92309030c1bfe9476ecd  domain/src/autoconfig/probing.rs
+2b877f243bb1468f193b60c0f5e7881249849ff9ce7c831ae2fdd4a53a8ce028  domain/src/autoconfig/rank.rs
+280c1bbf815e6d3b30010bec33157dc851b9bd6536f847226710b6431d60157a  domain/src/autoconfig/redirect.rs
+94b1522967e924055e9e17cc44e794d8beb43d04319587e010938fd8ffbb0015  engine/src/autoconfig/mod.rs
+fc09518f729db0ba765cf2de56556d27efbb830069ef5d221e80072116314da9  engine/src/autoconfig/network.rs
+34cd6e6e052ab91f3e74dffc37c6f5b0046322c578ad43be78e919ba4f047150  engine/src/autoconfig/pipeline.rs
+3dc1883486334c1f5a7c37cecb8e32796ca8e822c688baf55aa6e5af62ef2175  engine/src/autoconfig/probe.rs
+76a9fed1169bf6543e3c5b527b534757575b5c904e222221f33bf1f193811437  engine/src/autoconfig/tests.rs
+726677b601eee0f314b8b2f711b21db9c4afbaa790bf1ffe7794918bf0b07ad8  devtools/autodetect-measure/src/lists.rs
+0a56b690221ecb84192103229c0e6db262ff38b1e329b96f5f350ad15c447eab  devtools/autodetect-measure/src/main.rs
+bd670e1604aae2775cb94abb93a90b4860b273f5410ffabcd2edb0fcf297b89d  devtools/autodetect-measure/src/score.rs
+445e20d5c0a01834f09ae3d4295c3d7185ec92c6d383940d41a2cbe0ff7c61fe  spikes/s4-autodetect/src/truth.rs
+release binary sha256: 2f896f51a5f21268ebbe43d1d93efe5e23faeb342eee2b21b8b4f3eac341a529  target/release/sealwax-autodetect-measure
+held-out fragments present at this moment (not read): data/heldout-nordic.tsv, data/heldout-europe.tsv, data/heldout-custom.tsv

@@ -1,0 +1,21 @@
+domain	phase	kind	target	carries_dummy_address
+cyrusimap.org	detect	https	https://autoconfig.cyrusimap.org/mail/config-v1.1.xml?emailaddress=…	true
+cyrusimap.org	detect	dns	autoconfig.cyrusimap.org A/AAAA	false
+cyrusimap.org	detect	https	https://autoconfig.thunderbird.net/v1.1/cyrusimap.org	false
+cyrusimap.org	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+cyrusimap.org	detect	dns	_submissions._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	_submission._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	_imaps._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	_imap._tcp.cyrusimap.org SRV	false
+cyrusimap.org	detect	dns	imap.cyrusimap.org A/AAAA	false
+cyrusimap.org	detect	https	https://cyrusimap.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+cyrusimap.org	detect	dns	cyrusimap.org A/AAAA	false
+cyrusimap.org	detect	dns	cyrusimap.org MX	false
+cyrusimap.org	detect	dns	autodiscover.cyrusimap.org CNAME	false
+cyrusimap.org	detect	dns	imap.fastmail.com A/AAAA	false
+cyrusimap.org	detect	dns	smtp.fastmail.com A/AAAA	false
+cyrusimap.org	detect	tcp	imap.fastmail.com:993	false
+cyrusimap.org	detect	tcp	smtp.fastmail.com:465	false
+cyrusimap.org	detect	tcp	imap.cyrusimap.org:993	false
+cyrusimap.org	detect	redirect-followed	https://www.cyrusimap.org/.well-known/autoconfig/mail/config-v1.1.xml	false
+cyrusimap.org	detect	dns	www.cyrusimap.org A/AAAA	false
