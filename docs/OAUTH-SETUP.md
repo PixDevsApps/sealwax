@@ -1,6 +1,6 @@
 # OAuth setup: Google and Microsoft sign-in
 
-Synced: 2026-10-04
+Synced: 2026-10-05
 
 "Sign in with Google" and "Sign in with Microsoft" need an OAuth client registered by the app's publisher ([ADR-008](DECISIONS.md#adr-008--oauth2-and-secrets-2026-10-04)). Only you can create these registrations: they belong to your Google and Microsoft accounts. This page walks through both; it takes about 20 minutes. Spike S5 (ML-013) is blocked until the client IDs exist.
 
@@ -45,6 +45,16 @@ Outlook.com accepts only OAuth for IMAP and SMTP, so without this registration t
 5. Copy the **Application (client) ID** from the Overview page. There is no client secret: the app is a public client and uses PKCE.
 
 Scopes the app requests: `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access` (plus `https://outlook.office.com/POP.AccessAsUser.All` for POP3 accounts). IMAP and SMTP then authenticate with SASL XOAUTH2.
+
+### As registered on 2026-10-05
+
+The development registration "Sealwax (dev)" was made on 2026-10-05 in the owner's Azure tenant ("Default Directory"), with the agent driving the portal in the owner's Chrome and the owner confirming Register. The portal differed from the steps above, and one step proved unnecessary:
+
+- **Supported account types** is a drop-down in the new form: choose "Any Entra ID Tenant + Personal Microsoft accounts". The Overview then reads "All Microsoft account users".
+- **Redirect URI:** platform "Public client/native (mobile & desktop)", value `http://localhost`. Authentication (Preview) lists it under "Mobile and desktop applications". "Allow public client flows" stays Disabled: the authorization-code flow with PKCE doesn't need it.
+- **API permissions (step 4): nothing to add.** Microsoft's guide ["Authenticate an IMAP, POP or SMTP connection using OAuth"](https://learn.microsoft.com/en-us/exchange/client-developer/legacy-protocols/how-to-authenticate-an-imap-pop-smtp-application-by-using-oauth) (updated 2025-10-17) asks a delegated app only to register and then to request the full scopes at sign-in (above). Its "APIs my organization uses → Office 365 Exchange Online" step is for application permissions (client credentials), and that entry exists only in tenants with Exchange Online; this tenant has none, so searching for it found nothing. The default Microsoft Graph `User.Read` stays.
+- **Unverified publisher:** the portal warns "End users cannot grant consent to newly registered multitenant apps without verified publishers". Per Microsoft's [publisher verification overview](https://learn.microsoft.com/en-us/entra/identity-platform/publisher-verification-overview) (updated 2026-06-15), when risk-based step-up consent is on, users in tenants other than the app's can't consent to an unverified multitenant app registered after November 2020 that asks for more than sign-in and profile. Verification needs a Microsoft AI Cloud Partner Program account and a publisher domain that isn't `*.onmicrosoft.com`. Personal Outlook.com accounts aren't another organization's tenant; S5 confirms their consent. Work accounts in other organizations may need their admin's consent until the publisher is verified (PLAN.md follow-up).
+- The Application (client) ID is on the app's Overview page; it isn't recorded in this repository (below).
 
 ## Where the IDs go
 
