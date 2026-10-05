@@ -5,6 +5,7 @@
 use sealwax_domain::account::{
     AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure, OAuthProvider,
 };
+use sealwax_domain::config::Storage;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use std::fmt;
 use zeroize::Zeroizing;
@@ -83,6 +84,9 @@ pub enum Command {
     LoadOlder { folder: FolderId },
     /// Download the bodies of `messages`, most wanted first: the reader's message (ML-044).
     FetchBodies { messages: Vec<MessageId> },
+    /// `config.toml`'s `[storage]` (ML-044), after the engine starts and after every read that
+    /// changes it. The disk cap is enforced once it arrives, and after every download.
+    Storage { storage: Storage },
     /// The network came back or the machine resumed: drop every connection and reconnect now,
     /// without waiting for a socket to fail (ML-045, S6).
     Reconnect,

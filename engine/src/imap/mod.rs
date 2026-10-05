@@ -2,6 +2,7 @@
 //! through the raw layer that checks completions. M2 builds the connection, the folder list
 //! and the first header sync; M3 builds re-sync, IDLE and polling on the same layer.
 
+pub mod bodies;
 mod connection;
 mod error;
 mod fetch;

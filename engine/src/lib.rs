@@ -4,6 +4,7 @@
 pub mod accounts;
 pub mod api;
 pub mod autoconfig;
+pub mod bodies;
 pub mod imap;
 pub mod net;
 pub mod oauth;

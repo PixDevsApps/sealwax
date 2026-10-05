@@ -507,14 +507,30 @@ fn fields(
         Command::FetchBodies { messages } => (
             "fetch-bodies",
             None,
-            vec![(
-                "messages",
-                messages
-                    .iter()
-                    .map(|message| message.0.to_string())
-                    .collect::<Vec<_>>()
-                    .join(","),
-            )],
+            vec![
+                (
+                    "messages",
+                    messages
+                        .iter()
+                        .map(|message| message.0.to_string())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                ),
+                ("count", messages.len().to_string()),
+            ],
+        ),
+        Command::Storage { storage } => (
+            "storage",
+            None,
+            vec![
+                (
+                    "cache-size",
+                    storage
+                        .cache_size
+                        .map_or_else(|| "unlimited".to_owned(), |bytes| bytes.to_string()),
+                ),
+                ("prefetch-days", storage.prefetch_days.to_string()),
+            ],
         ),
         Command::Reconnect => ("reconnect", None, Vec::new()),
         Command::UpdatePassword { request, key, .. } => (
