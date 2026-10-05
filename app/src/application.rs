@@ -34,6 +34,7 @@ use sealwax_domain::mailto::{self, Mailto};
 use sealwax_domain::model::MessageId;
 use sealwax_engine::api::{Command, Event};
 use sealwax_engine::service::Engine;
+use sealwax_infrastructure::store::ViewScope;
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::future::Future;
@@ -600,6 +601,15 @@ impl AppState {
                 state.keyring_missing.set(true);
                 state.update_banner();
             }
+            if let Event::OlderLoaded {
+                folder,
+                fetched,
+                complete,
+            } = event
+                && let Some(list) = state.list()
+            {
+                list.older_loaded(*folder, *fetched, *complete);
+            }
         });
         self.engine_events.replace(Some(subscription));
         if let Some(options) = self.config.engine.clone() {
@@ -912,9 +922,26 @@ impl AppState {
             }
         });
 
-        let mailbox = self.mailbox.clone();
+        // A folder (not All Inboxes) is synced now and kept current while it is shown (ML-042);
+        // at the end of its first-sync window the list asks for older mail (ML-043).
+        let (mailbox, engine) = (self.mailbox.clone(), self.engine.clone());
         let shown = list.clone();
-        window.connect_folder_selected(move |_, key| shown.show(mailbox.scope_for_key(key)));
+        window.connect_folder_selected(move |_, key| {
+            let scope = mailbox.scope_for_key(key);
+            if let Some(ViewScope::Folder(folder)) = scope {
+                let _ = engine.send(Command::FolderOpened { folder });
+            }
+            shown.show(scope);
+        });
+        let weak = Rc::downgrade(self);
+        list.connect_older_wanted(move |folder| {
+            if let Some(state) = weak.upgrade()
+                && state.engine.send(Command::LoadOlder { folder }).is_err()
+                && let Some(list) = state.list()
+            {
+                list.older_loaded(folder, 0, false);
+            }
+        });
         if self.mailbox.is_ready() {
             self.fill_sidebar(window, &list);
         }
