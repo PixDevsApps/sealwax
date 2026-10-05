@@ -5,13 +5,14 @@
 # As on Hyprland: no title bar and no window controls (window-controls.sealwax-test has the rest).
 desktop tiling
 
-# No account yet: "No accounts yet" fills the list and reader, "Add an account" waits for M2.
+# No account yet: "No accounts yet" fills the list and reader; "Add an account" opens the setup
+# assistant (setup.sealwax-test has the rest).
 resize 1440 900
 assert-layout wide
 assert-window-controls 0
 assert-shown welcome true
 assert-shown add-account true
-assert-sensitive add-account false
+assert-sensitive add-account true
 assert-shown reader false
 assert-label sidebar-summary "No accounts"
 assert-labelled

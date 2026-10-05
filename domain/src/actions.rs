@@ -209,6 +209,7 @@ pub enum ActionId {
     Refresh,
     ToggleSidebar,
     CommandPalette,
+    AddAccount,
     KeyboardShortcuts,
     Preferences,
     CustomizeShortcuts,
@@ -216,7 +217,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 30] = [
+    pub const ALL: [Self; 31] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::OpenMessage,
@@ -243,6 +244,7 @@ impl ActionId {
         Self::Refresh,
         Self::ToggleSidebar,
         Self::CommandPalette,
+        Self::AddAccount,
         Self::KeyboardShortcuts,
         Self::Preferences,
         Self::CustomizeShortcuts,
@@ -368,6 +370,12 @@ impl ActionId {
                     Scope::Window,
                     &["<Control><Shift>p", "F1"],
                 )
+            },
+            // The setup assistant (ML-033), over the window. No default key: the palette, the
+            // main menu and the welcome page reach it, and `keys.toml` can bind one.
+            Self::AddAccount => ActionSpec {
+                menu: Some(MenuSection::Settings),
+                ..command("add-account", "Add Account", General, Scope::Window, &[])
             },
             // `app.shortcuts` with Ctrl+? is libadwaita's convention. `?` needs Shift on both
             // layouts, so `h` is the unshifted alternative.
@@ -558,6 +566,7 @@ mod tests {
                 ActionId::Refresh,
                 ActionId::ToggleSidebar,
                 ActionId::CommandPalette,
+                ActionId::AddAccount,
                 ActionId::KeyboardShortcuts,
                 ActionId::Preferences,
                 ActionId::CustomizeShortcuts,
@@ -565,6 +574,8 @@ mod tests {
             ]
         );
         assert!(!ActionId::CommandPalette.spec().palette);
+        assert!(ActionId::AddAccount.spec().palette);
+        assert_eq!(ActionId::AddAccount.detailed_name(), "win.add-account");
         assert_eq!(ActionId::ToggleSidebar.kind(), ActionKind::Toggle);
     }
 
@@ -636,5 +647,7 @@ mod tests {
         assert_eq!(keys(ActionId::Refresh), ["<Control><Alt>r", "F5"]);
         assert_eq!(keys(ActionId::ToggleSidebar), ["<Control><Shift>s", "F9"]);
         assert!(keys(ActionId::CustomizeShortcuts).is_empty());
+        // No default key until the user picks one (ADR-017: keys wait for the user).
+        assert!(keys(ActionId::AddAccount).is_empty());
     }
 }

@@ -36,6 +36,8 @@ pub use sidebar::{
 /// installed stays insensitive: compose until the composer exists (M6).
 pub const COMPOSE_ACTION: &str = "win.compose";
 pub const OPEN_CONFIG_ACTION: &str = "app.preferences";
+/// The welcome page's "Add an account": the setup assistant (ML-033).
+pub const ADD_ACCOUNT_ACTION: &str = "win.add-account";
 
 /// Pane widths in px (DESIGN.md "Layout").
 pub const SIDEBAR_WIDTH: f64 = 220.0;
@@ -616,6 +618,11 @@ impl Window {
         self.inner.toasts.add_toast(toast);
     }
 
+    /// Where toasts appear, for a dialog that reports its outcome after it closes.
+    pub fn toasts(&self) -> adw::ToastOverlay {
+        self.inner.toasts.clone()
+    }
+
     pub fn sidebar(&self) -> &Sidebar {
         &self.inner.sidebar
     }
@@ -687,5 +694,6 @@ mod tests {
     fn buttons_are_bound_to_the_registry_names() {
         assert_eq!(COMPOSE_ACTION, ActionId::Compose.detailed_name());
         assert_eq!(OPEN_CONFIG_ACTION, ActionId::Preferences.detailed_name());
+        assert_eq!(ADD_ACCOUNT_ACTION, ActionId::AddAccount.detailed_name());
     }
 }
