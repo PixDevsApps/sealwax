@@ -10,7 +10,7 @@ use super::panes::{classed, icon, named};
 use gtk4 as gtk;
 use gtk4::gio;
 use gtk4::prelude::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 /// A state the banner can show (ML-048), from the most to the least important kind.
@@ -183,6 +183,8 @@ pub(super) struct Banner {
     primary: gtk::Button,
     /// What each button does for the state shown.
     actions: Rc<[Cell<Option<BannerAction>>; 2]>,
+    /// What it shows now: the account states change often during a sync, the banner rarely.
+    shown: RefCell<Vec<Attention>>,
 }
 
 impl Banner {
@@ -266,11 +268,16 @@ impl Banner {
             secondary,
             primary,
             actions: Rc::new([Cell::new(None), Cell::new(None)]),
+            shown: RefCell::default(),
         }
     }
 
     /// Shows the first of `queue` and counts the others; an empty queue hides the banner.
     pub(super) fn show(&self, queue: &[Attention]) {
+        if *self.shown.borrow() == queue {
+            return;
+        }
+        self.shown.replace(queue.to_vec());
         let Some((shown, rest)) = queue.split_first() else {
             self.root.set_reveal_child(false);
             if !self.root.is_child_revealed() {
