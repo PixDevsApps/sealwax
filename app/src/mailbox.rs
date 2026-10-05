@@ -434,6 +434,15 @@ impl Mailbox {
         )
     }
 
+    /// What the engine last reported for `account`; synced until it reports.
+    pub fn status(&self, account: AccountId) -> AccountStatus {
+        self.statuses
+            .borrow()
+            .get(&account)
+            .copied()
+            .unwrap_or(AccountStatus::Synced)
+    }
+
     /// Shows what the engine reported for `account` in the sidebar.
     pub fn set_status(self: &Rc<Self>, account: AccountId, status: AccountStatus) {
         if self.statuses.borrow_mut().insert(account, status) != Some(status) {

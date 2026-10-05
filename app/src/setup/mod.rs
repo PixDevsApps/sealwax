@@ -10,7 +10,14 @@
 //! password is wrapped in `Password` as soon as it is read, and nothing typed is logged.
 //! Enter advances, Escape goes back a step (and closes on the first), and each step puts the
 //! focus in its first field that needs typing.
+//!
+//! Microsoft sign-in (ML-032) runs in the browser: the engine sends the page to open, the
+//! assistant opens it (and again on request) and waits with a Cancel, and the username the
+//! sign-in belongs to is the one saved. The window's banner opens the assistant straight at that
+//! step for an account that must sign in again. Neither the page's address nor the username
+//! is logged.
 
+pub mod browser;
 pub mod form;
 pub mod remove;
 pub mod sources;
@@ -26,8 +33,8 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
-    AccountSettings, AuthMethod, DetectedSettings, Detection, LoginError, LoginFailure, Protocol,
-    Security,
+    AccountKey, AccountSettings, AuthMethod, DetectedSettings, Detection, LoginError, LoginFailure,
+    OAuthProvider, Protocol, Security,
 };
 use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId};
@@ -52,8 +59,11 @@ pub enum Step {
     /// Settings found for a password: the settings, the username where it must be typed or
     /// confirmed, and the password.
     Password,
-    /// Settings found for Microsoft sign-in, which waits for S5.
+    /// Settings found for Microsoft sign-in, or an account to sign in again: the button that
+    /// starts it, or how to make it available without a client ID.
     Microsoft,
+    /// Waiting for `SignedIn` while the browser signs in.
+    SigningIn,
     /// Nothing to sign in to: a provider without IMAP, Bridge only, or a domain without mail.
     Blocked,
     /// Host, port, security and username for IMAP and SMTP, and the password.
@@ -73,6 +83,7 @@ impl Step {
             Self::Detecting => "detecting",
             Self::Password => "password",
             Self::Microsoft => "microsoft",
+            Self::SigningIn => "signing-in",
             Self::Blocked => "blocked",
             Self::Manual => "manual",
             Self::Checking => "checking",
@@ -90,7 +101,10 @@ impl Step {
     }
 
     fn is_busy(self) -> bool {
-        matches!(self, Self::Detecting | Self::Checking | Self::Adding)
+        matches!(
+            self,
+            Self::Detecting | Self::Checking | Self::SigningIn | Self::Adding
+        )
     }
 }
 
@@ -99,8 +113,23 @@ impl Step {
 enum Pending {
     Detect(RequestId),
     Verify(RequestId),
+    SignIn(RequestId),
     Add(RequestId),
 }
+
+/// An account that must sign in again (the window's banner): what `SignIn` names, and what the
+/// assistant shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Again {
+    pub key: AccountKey,
+    pub name: String,
+    pub address: String,
+}
+
+/// Whether Microsoft sign-in can start: a client ID is in use
+/// ([`crate::oauth::microsoft_client_id`]). Asked whenever the assistant draws, so a client ID
+/// added to `config.toml` meanwhile counts.
+pub type MicrosoftAvailable = Rc<dyn Fn() -> bool>;
 
 #[derive(Default)]
 struct State {
@@ -121,6 +150,10 @@ struct State {
     password: Option<Password>,
     /// Enter was pressed on an address that isn't one: say why from now on.
     address_tried: bool,
+    /// The sign-in page the engine asked to open, to open it again; never logged.
+    sign_in_url: Option<String>,
+    /// The account this assistant signs in again, when the banner opened it.
+    again: Option<Again>,
 }
 
 impl State {
@@ -128,6 +161,7 @@ impl State {
     fn shown(&self) -> Step {
         match self.step {
             Step::Checking | Step::Adding => self.from.unwrap_or(Step::Manual),
+            Step::SigningIn => Step::Microsoft,
             step => step,
         }
     }
@@ -164,11 +198,42 @@ struct Inner {
     dialog: adw::Dialog,
     engine: EngineLink,
     toasts: glib::WeakRef<adw::ToastOverlay>,
+    microsoft: MicrosoftAvailable,
     widgets: Widgets,
     state: RefCell<State>,
     /// The rows of the sources list as last drawn.
     drawn_sources: RefCell<Option<Sources>>,
     subscription: RefCell<Option<Subscription>>,
+}
+
+impl Inner {
+    /// Tells the engine to stop waiting for the browser, if it still does; the late answer is
+    /// ignored.
+    fn abandon_sign_in(&self) {
+        let request = {
+            let mut state = self.state.borrow_mut();
+            match state.pending {
+                Some(Pending::SignIn(request)) => {
+                    state.pending = None;
+                    state.sign_in_url = None;
+                    Some(request)
+                }
+                _ => None,
+            }
+        };
+        if let Some(request) = request {
+            tracing::info!(request, "setup: sign-in cancelled");
+            let _ = self.engine.send(Command::CancelSignIn { request });
+        }
+    }
+}
+
+impl Drop for Inner {
+    /// An assistant that goes away while the browser signs in cancels the sign-in, so the
+    /// engine frees its redirect port.
+    fn drop(&mut self) {
+        self.abandon_sign_in();
+    }
 }
 
 /// An open assistant. At most one is open; [`open`] brings it back to the front.
@@ -188,19 +253,16 @@ pub fn current() -> Option<Assistant> {
 }
 
 /// Add Account: opens the assistant over `window`, or shows the one already open there.
-pub fn open(window: &Window, engine: &EngineLink) -> Assistant {
+pub fn open(window: &Window, engine: &EngineLink, microsoft: MicrosoftAvailable) -> Assistant {
     let parent = window.window();
     if let Some(open) = current() {
-        let root = open.inner.dialog.root();
-        if root.as_ref().map(|root| root.upcast_ref::<gtk::Widget>())
-            == Some(parent.upcast_ref::<gtk::Widget>())
-        {
+        if open.is_over(window) {
             open.inner.dialog.present(Some(parent));
             return open;
         }
-        open.inner.dialog.force_close();
+        open.close();
     }
-    let assistant = Assistant::new(engine, window.toasts());
+    let assistant = Assistant::new(engine, window.toasts(), microsoft);
     CURRENT.with(|current| current.replace(Some(assistant.clone())));
     assistant.inner.dialog.present(Some(parent));
     assistant.render();
@@ -208,14 +270,60 @@ pub fn open(window: &Window, engine: &EngineLink) -> Assistant {
     assistant
 }
 
+/// The banner's Sign in (ML-032): opens the assistant over `window` at Microsoft sign-in for
+/// `again` and starts it, or shows the one already open for it (or saving an account).
+pub fn sign_in_again(
+    window: &Window,
+    engine: &EngineLink,
+    microsoft: MicrosoftAvailable,
+    again: Again,
+) -> Assistant {
+    let parent = window.window();
+    if let Some(open) = current() {
+        let state = open.inner.state.borrow();
+        let keep = state.step == Step::Adding
+            || state
+                .again
+                .as_ref()
+                .is_some_and(|open| open.key == again.key);
+        drop(state);
+        if keep && open.is_over(window) {
+            open.inner.dialog.present(Some(parent));
+            return open;
+        }
+        open.close();
+    }
+    let assistant = Assistant::new(engine, window.toasts(), microsoft);
+    assistant.inner.widgets.address.set_text(&again.address);
+    {
+        let mut state = assistant.inner.state.borrow_mut();
+        state.again = Some(again);
+        state.step = Step::Microsoft;
+    }
+    CURRENT.with(|current| current.replace(Some(assistant.clone())));
+    assistant.inner.dialog.present(Some(parent));
+    assistant.render();
+    assistant.focus_first();
+    assistant.sign_in();
+    assistant
+}
+
+/// Draws the open assistant again, as after a change to `config.toml`'s client ID.
+pub fn refresh() {
+    if let Some(open) = current() {
+        open.render();
+    }
+}
+
 impl Assistant {
-    fn new(engine: &EngineLink, toasts: adw::ToastOverlay) -> Self {
+    fn new(engine: &EngineLink, toasts: adw::ToastOverlay, microsoft: MicrosoftAvailable) -> Self {
         let (widgets, dialog) = Widgets::build();
         let assistant = Self {
             inner: Rc::new(Inner {
                 dialog,
                 engine: engine.clone(),
                 toasts: toasts.downgrade(),
+                microsoft,
                 widgets,
                 state: RefCell::new(State::default()),
                 drawn_sources: RefCell::new(None),
@@ -228,6 +336,21 @@ impl Assistant {
 
     fn weak(&self) -> Weak<Inner> {
         Rc::downgrade(&self.inner)
+    }
+
+    fn is_over(&self, window: &Window) -> bool {
+        self.inner
+            .dialog
+            .root()
+            .as_ref()
+            .map(|root| root.upcast_ref::<gtk::Widget>())
+            == Some(window.window().upcast_ref::<gtk::Widget>())
+    }
+
+    /// Closes the assistant from any step; a sign-in it waits for is cancelled.
+    fn close(&self) {
+        self.inner.abandon_sign_in();
+        self.inner.dialog.force_close();
     }
 
     /// Runs `action` on the assistant from a signal handler, if it still exists.
@@ -292,9 +415,15 @@ impl Assistant {
         w.back.connect_clicked(move |_| back());
         let manual = self.handler(Assistant::open_manual);
         w.manual_link.connect_clicked(move |_| manual());
+        let sign_in = self.handler(Assistant::sign_in);
+        w.microsoft_button.connect_clicked(move |_| sign_in());
+        let cancel_sign_in = self.handler(Assistant::cancel_sign_in);
+        w.cancel.connect_clicked(move |_| cancel_sign_in());
+        let open_again = self.handler(Assistant::open_again);
+        w.open_again.connect_clicked(move |_| open_again());
         let escape = self.handler(Assistant::back);
         self.inner.dialog.connect_close_attempt(move |_| escape());
-        let cancel = self.handler(|assistant| assistant.inner.dialog.force_close());
+        let cancel = self.handler(Assistant::close);
         w.close.connect_clicked(move |_| cancel());
         self.inner.dialog.connect_closed(|dialog| {
             // Dropping the assistant ends its engine subscription; a late reply finds no one.
@@ -306,6 +435,7 @@ impl Assistant {
                 if ours { current.take() } else { None }
             });
             if let Some(assistant) = closed {
+                assistant.inner.abandon_sign_in();
                 assistant.inner.subscription.take();
                 assistant.inner.state.borrow_mut().password = None;
             }
@@ -675,6 +805,169 @@ impl Assistant {
         self.render();
     }
 
+    /// "Sign in with Microsoft": `SignIn` for the address (or the account signed in again);
+    /// the engine answers with the page to open, then `SignedIn`.
+    fn sign_in(&self) {
+        if !(self.inner.microsoft)() {
+            return;
+        }
+        let target = {
+            let state = self.inner.state.borrow();
+            if state.step != Step::Microsoft {
+                return;
+            }
+            let provider = match state.found().map(|settings| settings.auth) {
+                Some(AuthMethod::OAuth(provider)) => provider,
+                _ => OAuthProvider::Microsoft,
+            };
+            match &state.again {
+                Some(again) => Some((provider, again.address.clone(), Some(again.key.clone()))),
+                None => state
+                    .address
+                    .as_ref()
+                    .map(|address| (provider, address.text.clone(), None)),
+            }
+        };
+        let Some((provider, address, account)) = target else {
+            return;
+        };
+        let request = self.inner.engine.next_request();
+        let sent = self.engine_send(Command::SignIn {
+            request,
+            provider,
+            address,
+            account,
+        });
+        {
+            let mut state = self.inner.state.borrow_mut();
+            if sent {
+                tracing::info!(request, "setup: signing in in the browser");
+                state.pending = Some(Pending::SignIn(request));
+                state.notice = None;
+                state.sign_in_url = None;
+                state.step = Step::SigningIn;
+            } else {
+                state.notice = Some(text::not_connected());
+            }
+        }
+        self.render();
+    }
+
+    /// `SignInOpen`: the page goes to the browser, and stays at hand to open again.
+    fn sign_in_open(&self, url: &str) {
+        self.inner.state.borrow_mut().sign_in_url = Some(url.to_owned());
+        tracing::info!("setup: opening the sign-in page");
+        self.render();
+        browser::open(self.inner.dialog.upcast_ref(), url);
+    }
+
+    /// "Open the sign-in page again", for a tab closed before the sign-in ended.
+    fn open_again(&self) {
+        let url = {
+            let state = self.inner.state.borrow();
+            state
+                .sign_in_url
+                .clone()
+                .filter(|_| state.step == Step::SigningIn)
+        };
+        if let Some(url) = url {
+            tracing::info!("setup: opening the sign-in page again");
+            browser::open(self.inner.dialog.upcast_ref(), &url);
+        }
+    }
+
+    /// Cancel, Back and Escape while the browser signs in: `CancelSignIn`, and the step's
+    /// button again.
+    fn cancel_sign_in(&self) {
+        if self.step() != Step::SigningIn {
+            return;
+        }
+        self.inner.abandon_sign_in();
+        self.inner.state.borrow_mut().step = Step::Microsoft;
+        self.render();
+        self.focus_first();
+    }
+
+    /// `SignedIn`: a new account is saved with the username the sign-in belongs to and the
+    /// sign-in's token; an account signed in again is done. A failure says why, and the step's
+    /// button signs in again.
+    fn signed_in(&self, request: RequestId, result: Result<String, LoginError>) {
+        let username = match result {
+            Ok(username) => username,
+            Err(error) => {
+                tracing::info!(failure = ?error.failure, "setup: the sign-in failed");
+                {
+                    let mut state = self.inner.state.borrow_mut();
+                    state.pending = None;
+                    state.sign_in_url = None;
+                    let provider = state.found().and_then(|settings| settings.provider.clone());
+                    state.notice = Some(text::sign_in_failure(&error, provider.as_deref()));
+                    state.step = Step::Microsoft;
+                }
+                self.render();
+                self.focus_first();
+                return;
+            }
+        };
+        let again = {
+            let mut state = self.inner.state.borrow_mut();
+            state.pending = None;
+            state.sign_in_url = None;
+            state.again.clone()
+        };
+        if let Some(again) = again {
+            tracing::info!(request, "setup: signed in again");
+            if let Some(toasts) = self.inner.toasts.upgrade() {
+                toasts.add_toast(adw::Toast::new(&text::signed_in_again(&again.name)));
+            }
+            self.inner.dialog.force_close();
+            return;
+        }
+        let settings = {
+            let state = self.inner.state.borrow();
+            state
+                .found()
+                .zip(state.address.as_ref())
+                .map(|(found, address)| {
+                    let mut settings = form::settings(
+                        address,
+                        &self.inner.widgets.name.text(),
+                        found.imap.clone(),
+                        found.smtp.clone(),
+                        username,
+                    );
+                    settings.auth = found.auth;
+                    settings
+                })
+        };
+        let Some(settings) = settings else {
+            self.inner.state.borrow_mut().step = Step::Microsoft;
+            self.render();
+            return;
+        };
+        let add = self.inner.engine.next_request();
+        let sent = self.engine_send(Command::AddAccount {
+            request: add,
+            settings: settings.clone(),
+            password: Password::new(String::new()),
+            sign_in: Some(request),
+        });
+        {
+            let mut state = self.inner.state.borrow_mut();
+            state.from = Some(Step::Microsoft);
+            if sent {
+                tracing::info!(request = add, "setup: signed in; saving the account");
+                state.pending = Some(Pending::Add(add));
+                state.attempt = Some(settings);
+                state.step = Step::Adding;
+            } else {
+                state.notice = Some(text::not_connected());
+                state.step = Step::Microsoft;
+            }
+        }
+        self.render();
+    }
+
     fn added(&self, result: Result<AccountId, AccountError>) {
         match result {
             Ok(_) => {
@@ -732,6 +1025,14 @@ impl Assistant {
                 drop(state);
                 self.added(result.clone());
             }
+            Event::SignInOpen { request, url } if state.is_pending(Pending::SignIn(*request)) => {
+                drop(state);
+                self.sign_in_open(url);
+            }
+            Event::SignedIn { request, result } if state.is_pending(Pending::SignIn(*request)) => {
+                drop(state);
+                self.signed_in(*request, result.clone());
+            }
             _ => {}
         }
     }
@@ -739,6 +1040,10 @@ impl Assistant {
     /// Escape, Back and the dialog's close: a step back, or out on the first one. Saving an
     /// account can't be abandoned halfway.
     fn back(&self) {
+        if self.step() == Step::SigningIn {
+            self.cancel_sign_in();
+            return;
+        }
         let close = {
             let mut state = self.inner.state.borrow_mut();
             match state.step {
@@ -861,10 +1166,11 @@ impl Assistant {
 
     fn render(&self) {
         let problem = self.problem();
+        let microsoft = (self.inner.microsoft)();
         let state = self.inner.state.borrow();
         self.inner
             .widgets
-            .draw(&state, problem, &self.inner.drawn_sources);
+            .draw(&state, problem, &self.inner.drawn_sources, microsoft);
     }
 
     /// The first field the step needs typed: the address, a username to type or confirm, the
@@ -885,7 +1191,12 @@ impl Assistant {
                 Some(problem) => self.field_widget(problem.field()),
                 None => w.imap.host.clone().upcast(),
             }),
+            Step::Microsoft if (self.inner.microsoft)() => {
+                Some(w.microsoft_button.clone().upcast())
+            }
+            Step::Microsoft if !w.back.is_visible() => Some(w.close.clone().upcast()),
             Step::Microsoft | Step::Blocked => Some(w.back.clone().upcast()),
+            Step::SigningIn => Some(w.cancel.clone().upcast()),
             Step::Detecting | Step::Checking | Step::Adding => None,
         };
         if let Some(target) = target {

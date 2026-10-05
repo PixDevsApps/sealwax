@@ -13,17 +13,19 @@ use crate::engine_link::{EngineLink, Subscription};
 use crate::list::MessageList;
 use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
+use crate::oauth;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{MessageSource, Position, Reader};
-use crate::setup::{self, remove::Removable};
+use crate::setup::{self, Again, remove::Removable};
 use crate::shortcuts;
 use crate::theme::{self, ThemeController};
-use crate::window::{self, AccountStatus, Pane, Window};
+use crate::window::{self, AccountStatus, Pane, SignInPrompt, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use libadwaita::subclass::prelude::*;
+use sealwax_domain::account::{AuthMethod, OAuthProvider};
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
@@ -65,6 +67,9 @@ pub struct AppConfig {
     pub tiling: bool,
     /// Starts the engine after the first frame; self-tests start it from their script.
     pub engine: Option<EngineOptions>,
+    /// The build's Microsoft client ID ([`oauth::BUILD_MICROSOFT_CLIENT_ID`]), which
+    /// `config.toml` overrides. Self-tests run without one, whatever the build had.
+    pub microsoft_client_id: Option<String>,
 }
 
 impl AppConfig {
@@ -75,6 +80,7 @@ impl AppConfig {
             exit_after,
             tiling: window::tiling_desktop(),
             engine: Some(EngineOptions::from_env()),
+            microsoft_client_id: oauth::BUILD_MICROSOFT_CLIENT_ID.map(str::to_owned),
         }
     }
 }
@@ -302,6 +308,71 @@ impl AppState {
         self.engine.clone()
     }
 
+    /// The Microsoft client ID in use (ADR-008): `config.toml`'s, else the build's. Microsoft
+    /// sign-in is offered only with one.
+    pub fn microsoft_client_id(&self) -> Option<String> {
+        let config = self
+            .preferences()
+            .map(|prefs| prefs.config())
+            .unwrap_or_default();
+        oauth::microsoft_client_id(&config, self.config.microsoft_client_id.as_deref())
+    }
+
+    /// For the setup assistant: whether a Microsoft client ID is in use, asked when it draws.
+    fn microsoft_available(self: &Rc<Self>) -> setup::MicrosoftAvailable {
+        let weak = Rc::downgrade(self);
+        Rc::new(move || {
+            weak.upgrade()
+                .is_some_and(|state| state.microsoft_client_id().is_some())
+        })
+    }
+
+    /// The accounts that must sign in again with Microsoft (ML-032), in the sidebar's order:
+    /// those the engine reported as needing it that `accounts.toml` signs in with Microsoft.
+    /// Password accounts keep the sidebar's state.
+    pub fn sign_in_needed(&self) -> Vec<Again> {
+        let Some(prefs) = self.preferences() else {
+            return Vec::new();
+        };
+        let listed = prefs.accounts();
+        self.mailbox
+            .accounts()
+            .into_iter()
+            .filter(|account| self.mailbox.status(account.id) == AccountStatus::NeedsSignIn)
+            .filter_map(|account| {
+                let key = account.key?;
+                let settings = listed.iter().find(|settings| settings.key == key)?;
+                (settings.auth == AuthMethod::OAuth(OAuthProvider::Microsoft)).then(|| Again {
+                    key,
+                    name: account.name,
+                    address: settings.address.clone(),
+                })
+            })
+            .collect()
+    }
+
+    /// One banner names the first account that must sign in again and counts the others; its
+    /// Sign in takes them one at a time.
+    fn update_sign_in_banner(&self) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        let waiting = self.sign_in_needed();
+        window.show_sign_in_banner(waiting.first().map(|first| SignInPrompt {
+            name: &first.name,
+            more: waiting.len() - 1,
+        }));
+    }
+
+    /// The banner's Sign in: the assistant at Microsoft sign-in for the first account it names.
+    fn sign_in_again(self: &Rc<Self>) {
+        let (Some(window), Some(again)) = (self.window(), self.sign_in_needed().into_iter().next())
+        else {
+            return;
+        };
+        setup::sign_in_again(&window, &self.engine, self.microsoft_available(), again);
+    }
+
     /// When the first window's first frame was painted.
     pub fn first_frame(&self) -> Option<Instant> {
         self.first_frame.get()
@@ -384,7 +455,19 @@ impl AppState {
             if let (Some(window), Some(list)) = (state.window(), state.list()) {
                 state.fill_sidebar(&window, &list);
             }
+            state.update_sign_in_banner();
         });
+        // The sidebar's account states follow whatever engine the link has: the one started
+        // below, or a self-test's scripted one.
+        let mailbox = Rc::downgrade(&self.mailbox);
+        let subscription = self.engine.subscribe(move |event| {
+            if let (Some(mailbox), Some((account, status))) =
+                (mailbox.upgrade(), engine::account_status(event))
+            {
+                mailbox.set_status(account, status);
+            }
+        });
+        self.engine_events.replace(Some(subscription));
         if let Some(options) = self.config.engine.clone() {
             let ready = self.mailbox.wait_ready();
             let weak = Rc::downgrade(self);
@@ -569,10 +652,12 @@ impl AppState {
         let Some(prefs) = self.preferences() else {
             return;
         };
-        if update.config_before.is_some()
-            && let Some(theme) = self.theme()
-        {
-            theme.set_options(prefs.config().appearance);
+        if update.config_before.is_some() {
+            if let Some(theme) = self.theme() {
+                theme.set_options(prefs.config().appearance);
+            }
+            // A client ID added or removed makes Microsoft sign-in available or not.
+            setup::refresh();
         }
         if update.keymap_changed {
             let keymap = prefs.keymap();
@@ -591,6 +676,7 @@ impl AppState {
         if update.accounts_changed {
             self.accounts_read.set(true);
             self.send_accounts();
+            self.update_sign_in_banner();
         }
         for problem in &update.problems {
             tracing::warn!("{problem}");
@@ -618,7 +704,13 @@ impl AppState {
             if let Some(state) = weak.upgrade()
                 && let Some(window) = state.window()
             {
-                setup::open(&window, &state.engine);
+                setup::open(&window, &state.engine, state.microsoft_available());
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.connect_sign_in(move || {
+            if let Some(state) = weak.upgrade() {
+                state.sign_in_again();
             }
         });
         let weak = Rc::downgrade(self);
@@ -729,15 +821,6 @@ impl AppState {
             }
         };
         self.engine.attach(engine.commands(), engine.events());
-        let mailbox = Rc::downgrade(&self.mailbox);
-        let subscription = self.engine.subscribe(move |event| {
-            if let (Some(mailbox), Some((account, status))) =
-                (mailbox.upgrade(), engine::account_status(event))
-            {
-                mailbox.set_status(account, status);
-            }
-        });
-        self.engine_events.replace(Some(subscription));
         self.engine_service.replace(Some(engine));
         tracing::info!("engine started");
         self.send_accounts();
@@ -934,6 +1017,7 @@ impl AppState {
         let window = Window::new(app.upcast_ref(), self.config.tiling);
         self.install_window(app, &window);
         self.window.replace(Some(window.clone()));
+        self.update_sign_in_banner();
         window
     }
 

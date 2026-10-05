@@ -1,0 +1,128 @@
+# Every way Microsoft sign-in (ML-032) can fail, on a scripted engine: a plain message that
+# says what to do next, on the step itself, whose button signs in again. A declined sign-in
+# names the admin approval a work account may need. Every address and link is fictional.
+# Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 61 target/debug/sealwax --self-test tests/selftest/setup-microsoft-failures.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+write-file $TMP/config/sealwax/config.toml "[oauth.microsoft]\nclient_id = \"fictional-client-id\"\n"
+wait-until assert-setup client-id set
+action win.add-account
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply progress preset
+engine-reply detected microsoft
+assert-setup step microsoft
+
+# Declined, by the user or by a work account's organization.
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test account=none
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=one
+engine-reply signed-in sign-in-declined
+assert-setup step microsoft
+assert-shown setup-alert true
+assert-label setup-alert-title "The sign-in was declined"
+assert-label setup-alert-body "Microsoft didn't let Sealwax in. Sign in again and approve Sealwax; for a work account, your organization's admin may have to approve it first."
+assert-shown setup-alert-link false
+assert-shown setup-waiting false
+assert-shown setup-open-again false
+assert-sensitive setup-microsoft-button true
+assert-label setup-microsoft-button "Sign in with Microsoft"
+assert-setup focus setup-microsoft-button
+assert-contrast setup-alert 4.5
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-microsoft-declined.png
+engine-expect none
+
+# Signing in again hides the notice while the browser works.
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+assert-setup step signing-in
+assert-shown setup-alert false
+engine-reply signed-in timeout
+assert-setup step microsoft
+assert-label setup-alert-title "The sign-in didn't finish in time"
+assert-label setup-alert-body "Sealwax stopped waiting for the browser or for Microsoft's servers. Check that you're online, then sign in again."
+assert-setup focus setup-microsoft-button
+
+# The server refused the token: sign in with the account the address belongs to.
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in smtp wrong-password
+assert-label setup-alert-title "The sign-in wasn't accepted for mail"
+assert-label setup-alert-body "The outgoing mail server (SMTP) refused the sign-in. Sign in again with the Microsoft account this address belongs to."
+
+# The server wants another kind of sign-in, or a work account doesn't allow mail apps.
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in imap oauth
+assert-label setup-alert-title "The server refused this sign-in"
+assert-text-contains setup-alert-body "The incoming mail server (IMAP) didn't take the sign-in from Microsoft."
+assert-text-contains setup-alert-body "which a work account's admin can change."
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in app-password
+assert-label setup-alert-title "The server refused this sign-in"
+
+# IMAP turned off.
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in imap-disabled
+assert-label setup-alert-title "IMAP is turned off for this account"
+assert-label setup-alert-body "Turn on IMAP in Outlook.com's settings, or ask your organization's admin, then sign in again."
+
+# Connection failures.
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in unreachable
+assert-label setup-alert-title "Couldn't reach Microsoft"
+assert-label setup-alert-body "Microsoft's servers didn't answer. Check that you're online, then sign in again."
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in smtp no-tls
+assert-label setup-alert-title "No secure connection"
+assert-text-contains setup-alert-body "The outgoing mail server (SMTP) offered no secure connection"
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in imap certificate
+assert-label setup-alert-title "The server's certificate isn't trusted"
+assert-text-contains setup-alert-body "try another network, then sign in again."
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in other
+assert-label setup-alert-title "The sign-in didn't work"
+assert-label setup-alert-body "The incoming mail server (IMAP) reported a problem Sealwax doesn't recognise. Sign in again, or try later."
+assert-setup focus setup-microsoft-button
+engine-expect none
+
+# The look in catppuccin-latte with rounded corners: the alert's text stays readable.
+theme catppuccin-latte
+corners 8
+assert-contrast setup-alert 4.5
+assert-radius setup-microsoft 8
+screenshot $DIR/../../.local/selftest/setup-microsoft-failed-latte.png
+theme matte-black
+corners 0
+
+# Back leaves the step and its notice; the address is looked up again.
+setup-click setup-back
+assert-setup step address
+assert-shown setup-alert false
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply detected microsoft
+assert-shown setup-alert false
+
+# After failures, a sign-in that works adds the account.
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+engine-reply signed-in ok kari@example.test
+engine-expect add-account address=kari@example.test username=kari@example.test auth=microsoft sign-in=last password=
+engine-reply added ok
+assert-setup open false
+engine-expect none

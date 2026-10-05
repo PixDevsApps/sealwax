@@ -132,6 +132,7 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
         exit_after: None,
         tiling,
         engine: None,
+        microsoft_client_id: None,
     };
     let app = SealwaxApplication::new(config, started);
     let outcome: Rc<Cell<Option<bool>>> = Rc::new(Cell::new(None));

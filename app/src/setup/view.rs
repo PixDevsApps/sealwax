@@ -111,6 +111,7 @@ impl StatusRow {
 
 /// The parts of the column the assistant shows, hides and reads.
 pub(super) struct Widgets {
+    caption: gtk::Label,
     pub(super) title: gtk::Label,
     pub(super) subtitle: gtk::Label,
     pub(super) alert: gtk::Box,
@@ -127,6 +128,11 @@ pub(super) struct Widgets {
     pub(super) found_lines: [gtk::Label; 4],
     pub(super) found_note: gtk::Label,
     pub(super) microsoft: gtk::Box,
+    pub(super) microsoft_button: gtk::Button,
+    microsoft_unavailable: gtk::Box,
+    waiting: gtk::Box,
+    pub(super) open_again: gtk::Button,
+    pub(super) cancel: gtk::Button,
     pub(super) username_field: gtk::Box,
     pub(super) username: gtk::Entry,
     pub(super) manual: gtk::Box,
@@ -255,7 +261,10 @@ fn link(name: &str) -> gtk::LinkButton {
 impl Widgets {
     /// The assistant's column and the dialog that holds it.
     pub(super) fn build() -> (Self, adw::Dialog) {
-        let caption = label("Add an account", &["sw-setup-caption"]);
+        let caption = named(
+            label("Add an account", &["sw-setup-caption"]),
+            "setup-caption",
+        );
         let title = named(label("", &["sw-setup-title"]), "setup-title");
         let subtitle = named(label("", &["sw-setup-subtitle"]), "setup-subtitle");
 
@@ -309,31 +318,80 @@ impl Widgets {
                 gtk::Button::builder()
                     .label("Sign in with Microsoft")
                     .halign(gtk::Align::Start)
-                    .sensitive(false)
-                    .tooltip_text("Not available in this build yet")
                     .build(),
                 &["sw-primary", "sw-setup-primary"],
             ),
             "setup-microsoft-button",
         );
-        let microsoft_note = named(
-            label(
-                "Microsoft sign-in isn't available in this build of Sealwax yet.",
-                &["sw-setup-note"],
-            ),
-            "setup-microsoft-note",
-        );
-        let microsoft = named(
+        let microsoft_card = named(
             column(&["sw-setup-card", "sw-setup-microsoft"]),
             "setup-microsoft",
         );
-        microsoft.append(&microsoft_title);
-        microsoft.append(&label(
+        microsoft_card.append(&microsoft_title);
+        microsoft_card.append(&label(
             "Your browser opens Microsoft's sign-in page. Sealwax never sees your password; it \
              keeps a sign-in token in your keyring.",
             &[],
         ));
-        microsoft.append(&microsoft_button);
+        microsoft_card.append(&microsoft_button);
+
+        // The mock's "Waiting for the browser…" box: Cancel goes back to the button, and the
+        // page opens again for a tab closed too soon.
+        let spinner = classed(adw::Spinner::new(), &["sw-setup-spinner"]);
+        spinner
+            .upcast_ref::<gtk::Widget>()
+            .update_property(&[gtk::accessible::Property::Label("Waiting")]);
+        let waiting_label = named(
+            label("Waiting for the browser…", &["sw-setup-hint"]),
+            "setup-waiting-label",
+        );
+        waiting_label.set_hexpand(true);
+        let cancel = named(
+            classed(
+                gtk::Button::builder()
+                    .label("Cancel")
+                    .valign(gtk::Align::Center)
+                    .build(),
+                &["sw-setup-chip"],
+            ),
+            "setup-cancel",
+        );
+        let waiting_row = classed(
+            gtk::Box::new(gtk::Orientation::Horizontal, 0),
+            &["sw-setup-waiting-row"],
+        );
+        waiting_row.append(&spinner);
+        waiting_row.append(&waiting_label);
+        waiting_row.append(&cancel);
+        let open_again = named(
+            classed(
+                gtk::Button::builder()
+                    .label("Open the sign-in page again")
+                    .halign(gtk::Align::Start)
+                    .build(),
+                &["sw-setup-link"],
+            ),
+            "setup-open-again",
+        );
+        let waiting = named(
+            column(&["sw-setup-note", "sw-setup-waiting"]),
+            "setup-waiting",
+        );
+        waiting.append(&waiting_row);
+        waiting.append(&open_again);
+
+        let microsoft_unavailable = named(
+            column(&["sw-setup-note", "sw-setup-unavailable"]),
+            "setup-microsoft-unavailable",
+        );
+        microsoft_unavailable.append(&named(
+            label(text::MICROSOFT_UNAVAILABLE, &[]),
+            "setup-microsoft-note",
+        ));
+        microsoft_unavailable.append(&named(
+            label(text::MICROSOFT_CLIENT_ID_HINT, &["sw-setup-hint"]),
+            "setup-microsoft-client-id",
+        ));
         let microsoft_footnote = named(
             label(
                 "Outlook.com and Microsoft 365 accept only Microsoft sign-in for mail apps.",
@@ -342,8 +400,9 @@ impl Widgets {
             "setup-microsoft-footnote",
         );
         let microsoft_box = column(&["sw-setup-section"]);
-        microsoft_box.append(&microsoft);
-        microsoft_box.append(&microsoft_note);
+        microsoft_box.append(&microsoft_card);
+        microsoft_box.append(&waiting);
+        microsoft_box.append(&microsoft_unavailable);
         microsoft_box.append(&microsoft_footnote);
 
         let username = entry("setup-username", "", &[]);
@@ -490,6 +549,7 @@ impl Widgets {
         );
 
         let widgets = Widgets {
+            caption,
             title,
             subtitle,
             alert,
@@ -506,6 +566,11 @@ impl Widgets {
             found_lines,
             found_note,
             microsoft: microsoft_box,
+            microsoft_button,
+            microsoft_unavailable,
+            waiting,
+            open_again,
+            cancel,
             username_field,
             username,
             manual,
@@ -530,24 +595,32 @@ impl Widgets {
     }
 
     /// Shows `state`: the sections of the screen on view, its texts, and whether its button
-    /// can be pressed (`problem`).
+    /// can be pressed (`problem`). `microsoft`: a client ID is in use, so Microsoft sign-in can
+    /// start.
     pub(super) fn draw(
         &self,
         state: &State,
         problem: Option<Problem>,
         drawn_sources: &RefCell<Option<Sources>>,
+        microsoft: bool,
     ) {
         let w = self;
         let step = state.step;
         let shown = state.shown();
         let busy = step.is_busy();
         let found = state.found();
+        let again = state.again.is_some();
         let domain = state
             .address
             .as_ref()
             .map(|address| address.domain.as_str())
             .unwrap_or_default();
 
+        w.caption.set_label(if again {
+            "Sign in again"
+        } else {
+            "Add an account"
+        });
         let (title, subtitle) = heading(state);
         w.title.set_label(&title);
         w.subtitle.set_label(subtitle);
@@ -611,6 +684,12 @@ impl Widgets {
             .set_visible(shown == Step::Password && state.asks_username());
 
         w.microsoft.set_visible(shown == Step::Microsoft);
+        w.microsoft_button
+            .set_tooltip_text((!microsoft).then_some("Not available in this build yet"));
+        w.microsoft_unavailable.set_visible(!microsoft);
+        w.waiting.set_visible(step == Step::SigningIn);
+        w.open_again
+            .set_visible(step == Step::SigningIn && state.sign_in_url.is_some());
 
         w.manual
             .set_visible(matches!(shown, Step::Manual | Step::Failed));
@@ -700,32 +779,44 @@ impl Widgets {
             step,
             Step::Address | Step::Detecting | Step::Password
         ));
-        w.back.set_visible(matches!(
-            step,
-            Step::Microsoft | Step::Blocked | Step::Manual | Step::Failed | Step::Checking
-        ));
-        // While it checks, the fields wait; the status row under them stays readable.
-        let frozen = matches!(step, Step::Checking | Step::Adding);
-        let fields: [&gtk::Widget; 8] = [
+        w.back.set_visible(match step {
+            Step::Microsoft => !again,
+            step => matches!(
+                step,
+                Step::Blocked | Step::Manual | Step::Failed | Step::Checking
+            ),
+        });
+        // While it checks or signs in, the fields and the sign-in button wait; the status row
+        // under them, the sign-in card's text and the waiting box with its Cancel stay
+        // readable.
+        let frozen = matches!(step, Step::Checking | Step::Adding | Step::SigningIn);
+        let fields: [&gtk::Widget; 7] = [
             w.address_field.upcast_ref(),
             w.name_field.upcast_ref(),
             w.sources.upcast_ref(),
             w.found.upcast_ref(),
-            w.microsoft.upcast_ref(),
             w.username_field.upcast_ref(),
             w.manual.upcast_ref(),
             w.password_field.upcast_ref(),
         ];
         // A text field that turns insensitive with the focus misses its focus-out (GTK warns
-        // when its cursor blinks next), so Back, the one way out while it checks, takes it first.
-        if frozen && w.password_field.is_sensitive() {
+        // when its cursor blinks next), so Back, the one way out while it checks, takes it
+        // first; while the browser signs in, Cancel does.
+        if step == Step::SigningIn {
+            if w.microsoft_button.is_sensitive() {
+                w.cancel.grab_focus();
+            }
+        } else if frozen && w.password_field.is_sensitive() {
             w.back.grab_focus();
         }
         for field in fields {
             field.set_sensitive(!frozen);
         }
+        w.microsoft_button.set_sensitive(microsoft && !frozen);
+        // An account signed in again keeps its address.
+        w.address_field.set_sensitive(!frozen && !again);
         w.primary
-            .set_visible(!matches!(step, Step::Microsoft | Step::Blocked));
+            .set_visible(!matches!(shown, Step::Microsoft | Step::Blocked));
         w.primary.set_label(match shown {
             Step::Address | Step::Detecting => "Next",
             Step::Password => "Sign in",
@@ -745,22 +836,29 @@ fn heading(state: &State) -> (String, &'static str) {
             "Checking your login with the server…",
         ),
         Step::Adding => (heading_for(state, state.shown()).0, "Saving the account…"),
+        Step::SigningIn => heading_for(state, Step::Microsoft),
         step => heading_for(state, step),
     }
 }
 
 fn heading_for(state: &State, step: Step) -> (String, &'static str) {
     match step {
-        Step::Microsoft => (
-            format!(
-                "{} account",
-                state
-                    .found()
-                    .and_then(|settings| settings.provider.as_deref())
-                    .unwrap_or("Microsoft")
+        Step::Microsoft => match &state.again {
+            Some(again) => (
+                again.name.clone(),
+                "Sealwax keeps your mail; nothing syncs until you sign in.",
             ),
-            "",
-        ),
+            None => (
+                format!(
+                    "{} account",
+                    state
+                        .found()
+                        .and_then(|settings| settings.provider.as_deref())
+                        .unwrap_or("Microsoft")
+                ),
+                "",
+            ),
+        },
         Step::Blocked => ("Can't add this address".to_owned(), ""),
         Step::Manual => (
             "Set up manually".to_owned(),

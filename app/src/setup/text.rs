@@ -103,7 +103,7 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
             "Only a browser sign-in works here",
             format!(
                 "{server} doesn't take passwords from mail apps. Sealwax offers browser sign-in \
-                 for Microsoft accounts only, and not in this build yet."
+                 for Microsoft accounts only."
             ),
         ),
         LoginFailure::SignInDeclined => Notice::problem(
@@ -145,6 +145,87 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
             ),
         ),
     }
+}
+
+/// Why a browser sign-in (ML-032) failed and what to do about it: each ends in signing in
+/// again, which the step's button does. `provider` names the account's provider
+/// ("Outlook.com") when detection knew it.
+pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
+    let server = server(error.protocol);
+    match error.failure {
+        LoginFailure::SignInDeclined => Notice::problem(
+            "The sign-in was declined",
+            "Microsoft didn't let Sealwax in. Sign in again and approve Sealwax; for a work \
+             account, your organization's admin may have to approve it first.",
+        ),
+        LoginFailure::Timeout => Notice::problem(
+            "The sign-in didn't finish in time",
+            "Sealwax stopped waiting for the browser or for Microsoft's servers. Check that \
+             you're online, then sign in again.",
+        ),
+        LoginFailure::WrongPassword => Notice::problem(
+            "The sign-in wasn't accepted for mail",
+            format!(
+                "{server} refused the sign-in. Sign in again with the Microsoft account this \
+                 address belongs to."
+            ),
+        ),
+        LoginFailure::OAuthRequired | LoginFailure::AppPasswordRequired => Notice::problem(
+            "The server refused this sign-in",
+            format!(
+                "{server} didn't take the sign-in from Microsoft. Sign in again; if it keeps \
+                 happening, the account may not allow mail apps, which a work account's admin \
+                 can change."
+            ),
+        ),
+        LoginFailure::ImapDisabled => Notice::problem(
+            "IMAP is turned off for this account",
+            format!(
+                "Turn on IMAP in {}'s settings, or ask your organization's admin, then sign in \
+                 again.",
+                provider.unwrap_or("Outlook.com")
+            ),
+        ),
+        LoginFailure::Unreachable => Notice::problem(
+            "Couldn't reach Microsoft",
+            "Microsoft's servers didn't answer. Check that you're online, then sign in again.",
+        ),
+        LoginFailure::NoTls => Notice::problem(
+            "No secure connection",
+            format!(
+                "{server} offered no secure connection, and Sealwax never signs in without one. \
+                 Check your network, then sign in again."
+            ),
+        ),
+        LoginFailure::Certificate => Notice::problem(
+            "The server's certificate isn't trusted",
+            format!(
+                "{server} showed a certificate Sealwax can't verify. A network that inspects \
+                 secure connections can cause this: try another network, then sign in again."
+            ),
+        ),
+        LoginFailure::Other => Notice::problem(
+            "The sign-in didn't work",
+            format!(
+                "{server} reported a problem Sealwax doesn't recognise. Sign in again, or try \
+                 later."
+            ),
+        ),
+    }
+}
+
+/// The note in the Microsoft step while no client ID is in use (ADR-008).
+pub const MICROSOFT_UNAVAILABLE: &str =
+    "Microsoft sign-in isn't available in this build of Sealwax yet.";
+
+/// How to make it available.
+pub const MICROSOFT_CLIENT_ID_HINT: &str = "It needs a Microsoft client ID: set client_id under \
+     [oauth.microsoft] in config.toml (Preferences opens it). docs/OAUTH-SETUP.md shows how to \
+     register one.";
+
+/// The toast after an account signed in again.
+pub fn signed_in_again(name: &str) -> String {
+    format!("{name} is signed in again")
 }
 
 /// What detection's dead ends say; `None` for settings that were found.
@@ -385,6 +466,48 @@ mod tests {
             "The outgoing mail server (SMTP) didn't accept them. Check both, then try again."
         );
         assert_eq!(wrong.link, None);
+    }
+
+    #[test]
+    fn every_sign_in_failure_ends_in_signing_in_again() {
+        let failures = [LoginFailure::SignInDeclined]
+            .into_iter()
+            .chain(FAILURES)
+            .collect::<Vec<_>>();
+        let mut titles = Vec::new();
+        for &failure in &failures {
+            let notice = sign_in_failure(
+                &LoginError {
+                    protocol: Protocol::Smtp,
+                    failure,
+                },
+                Some("Outlook.com"),
+            );
+            assert_eq!(notice.tone, Tone::Problem);
+            assert!(notice.body.ends_with('.'), "{failure:?}: {}", notice.body);
+            assert!(
+                notice.body.to_lowercase().contains("sign in again"),
+                "{failure:?}: {}",
+                notice.body
+            );
+            assert_eq!(notice.link, None);
+            titles.push(notice.title);
+        }
+        titles.sort();
+        titles.dedup();
+        assert_eq!(
+            titles.len(),
+            failures.len() - 1,
+            "one heading per failure; the server's two refusals share one"
+        );
+        let declined = sign_in_failure(
+            &LoginError {
+                protocol: Protocol::Imap,
+                failure: LoginFailure::SignInDeclined,
+            },
+            None,
+        );
+        assert!(declined.body.contains("admin may have to approve it"));
     }
 
     #[test]

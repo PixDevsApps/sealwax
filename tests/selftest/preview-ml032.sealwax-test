@@ -1,0 +1,100 @@
+# Preview screenshots of Microsoft sign-in in the app (ML-032): the assistant waiting for the
+# browser, a failed sign-in, the step without a client ID, the window's banner for accounts
+# that must sign in again, and the assistant it opens; at the mock's wide width, in matte-black
+# (dark, square corners as on stock Omarchy) and catppuccin-latte (light, corners rounded 8 as
+# on this desktop). A scripted engine answers; every name, address and link is fictional, and
+# no page is opened. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from
+# the repository root:
+#   tools/headless.sh 61 target/debug/sealwax --self-test tests/selftest/preview-ml032.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+write-file $TMP/config/sealwax/config.toml "[oauth.microsoft]\nclient_id = \"fictional-client-id\"\n"
+wait-until assert-setup client-id set
+
+# ---- the assistant, matte-black, square ----
+theme matte-black
+corners 0
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected microsoft
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=one
+assert-setup step signing-in
+assert-shown setup-open-again true
+screenshot $DIR/../../tools/progress/public/ml032-waiting-matte-black-square-2026-10-05.png
+engine-reply signed-in sign-in-declined
+assert-label setup-alert-title "The sign-in was declined"
+screenshot $DIR/../../tools/progress/public/ml032-failed-matte-black-square-2026-10-05.png
+write-file $TMP/config/sealwax/config.toml ""
+wait-until assert-shown setup-microsoft-unavailable true
+setup-click setup-back
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected microsoft
+assert-shown setup-alert false
+screenshot $DIR/../../tools/progress/public/ml032-no-client-id-matte-black-square-2026-10-05.png
+
+# ---- the assistant, catppuccin-latte, rounded ----
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/ml032-no-client-id-catppuccin-latte-rounded-2026-10-05.png
+write-file $TMP/config/sealwax/config.toml "[oauth.microsoft]\nclient_id = \"fictional-client-id\"\n"
+wait-until assert-sensitive setup-microsoft-button true
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=two
+assert-shown setup-open-again true
+screenshot $DIR/../../tools/progress/public/ml032-waiting-catppuccin-latte-rounded-2026-10-05.png
+engine-reply signed-in sign-in-declined
+assert-label setup-alert-title "The sign-in was declined"
+screenshot $DIR/../../tools/progress/public/ml032-failed-catppuccin-latte-rounded-2026-10-05.png
+
+# Kari and Anne are added with Microsoft sign-in; accounts.toml as the engine wrote it.
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in ok kari@example.test
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address anne@example.test
+setup-type setup-name "Anne Berg"
+setup-key enter
+engine-expect detect
+engine-reply detected microsoft
+setup-click setup-microsoft-button
+engine-expect sign-in
+engine-reply signed-in ok anne@example.test
+engine-expect add-account
+engine-reply added ok
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]\nhost = \"smtp.example.test\"\n\n[[account]]\nkey = \"anne\"\nname = \"Anne Berg\"\naddress = \"anne@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]\nhost = \"smtp.example.test\"\n"
+# The "Added" toasts go first.
+setup-dismiss-toasts
+
+# ---- the banner and the assistant it opens, catppuccin-latte, rounded ----
+engine-reply sync-failed kari@example.test wrong-password
+engine-reply sync-failed anne@example.test sign-in-declined
+wait-until assert-label sign-in-banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in. 1 more account needs it too."
+screenshot $DIR/../../tools/progress/public/ml032-banner-catppuccin-latte-rounded-2026-10-05.png
+setup-click sign-in-banner-button
+engine-expect sign-in account=kari
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=three
+assert-shown setup-open-again true
+screenshot $DIR/../../tools/progress/public/ml032-again-catppuccin-latte-rounded-2026-10-05.png
+
+# ---- the banner and the assistant it opens, matte-black, square ----
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/ml032-again-matte-black-square-2026-10-05.png
+setup-click setup-cancel
+engine-expect cancel-sign-in
+setup-key escape
+assert-setup open false
+screenshot $DIR/../../tools/progress/public/ml032-banner-matte-black-square-2026-10-05.png
