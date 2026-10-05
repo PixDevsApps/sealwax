@@ -1,0 +1,159 @@
+//! ADR-018's log-grep test for M2's code: the login check, the folder list and the first sync
+//! run on the testbed at trace level under the app's own subscriber, and the captured log holds
+//! no password, AUTH line, address, user name, folder name or subject. A control run without
+//! the protocol-crate caps shows the grep would catch async-imap's trace of the AUTHENTICATE
+//! line. Its own test binary, because it installs the global subscriber.
+//!
+//! bash tools/testbed/up.sh && bash tools/testbed/seed.sh
+//! cargo test -p sealwax-engine --test log_grep -- --ignored
+
+mod common;
+
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
+use common::*;
+use sealwax_domain::account::Security;
+use sealwax_engine::api::Password;
+use sealwax_engine::imap;
+use sealwax_engine::verify::verify;
+use sealwax_infrastructure::logging;
+use std::io::Write;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+use tracing_subscriber::{EnvFilter, Layer};
+
+#[derive(Clone, Default)]
+struct Capture(Arc<Mutex<Vec<u8>>>);
+
+impl Capture {
+    fn text(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().unwrap()).into_owned()
+    }
+}
+
+impl Write for Capture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+async fn flows() {
+    let trust = trust();
+    let right = Password::new(PASSWORD.to_owned());
+    let wrong = Password::new("wrong-password".to_owned());
+    for server in SERVERS {
+        for security in [Security::Tls, Security::StartTls] {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            let account = settings(imap(server, security), submission(security), "alice");
+            verify(&account, None, &right, &trust).await.unwrap();
+        }
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let account = settings(
+            imap(server, Security::Tls),
+            submission(Security::Tls),
+            "alice",
+        );
+        verify(&account, None, &wrong, &trust).await.unwrap_err();
+
+        let (_dir, store, account) = store();
+        let mut conn = login(server, Security::Tls, "alice").await;
+        let inbox = imap::sync_folders(&mut conn, &store, account)
+            .await
+            .unwrap()
+            .inbox
+            .unwrap();
+        imap::first_sync(&mut conn, &store, inbox, |_| {})
+            .await
+            .unwrap();
+        conn.logout().await;
+        store.close().unwrap();
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let account = settings(
+        imap(DOVECOT, Security::Tls),
+        submission(Security::Tls),
+        "nobody",
+    );
+    verify(&account, Some("alice"), &right, &trust)
+        .await
+        .unwrap_err();
+}
+
+#[test]
+#[ignore = "needs the testbed: tools/testbed/up.sh && tools/testbed/seed.sh"]
+fn trace_logs_hold_no_credentials_addresses_or_names() {
+    let capture = Capture::default();
+    let sink = capture.clone();
+    logging::subscriber(EnvFilter::new("trace"), move || sink.clone(), false)
+        .try_init()
+        .unwrap();
+    sealwax_engine::runtime().unwrap().block_on(flows());
+
+    let log = capture.text();
+    for event in ["imap connected", "folder list stored", "first sync done"] {
+        assert!(log.contains(event), "the capture holds {event}");
+    }
+    let plain = STANDARD.encode(format!("\0alice\0{PASSWORD}"));
+    let forbidden = [
+        PASSWORD,
+        "wrong-password",
+        plain.as_str(),
+        "alice",
+        "nobody",
+        "example.test",
+        "INBOX",
+        "Søppelpost",
+        "S&APg-ppelpost",
+        "Papirkurv",
+        "Sendt",
+        "Utkast",
+        "Arkiv",
+        "Kvitteringer",
+        "Prosjekter",
+        "Hilsen fra Bærum",
+        "Synthetic",
+        "AUTHENTICATE",
+        "LOGIN",
+        "async_imap",
+        "imap_proto",
+        "lettre",
+    ];
+    for needle in forbidden {
+        assert!(!log.contains(needle), "{needle} appears in the log");
+    }
+    println!(
+        "captured {} lines, {} bytes at trace level:\n{log}",
+        log.lines().count(),
+        log.len()
+    );
+
+    // The control: the same subscriber without the caps logs async-imap's AUTHENTICATE line.
+    let control = Capture::default();
+    let sink = control.clone();
+    let uncapped = tracing_subscriber::registry().with(
+        tracing_subscriber::fmt::layer()
+            .with_writer(move || sink.clone())
+            .with_ansi(false)
+            .with_filter(EnvFilter::new("trace")),
+    );
+    tracing::subscriber::with_default(uncapped, || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(async {
+                login(STALWART, Security::Tls, "alice").await.logout().await;
+            });
+    });
+    assert!(
+        control.text().contains(&plain),
+        "without the caps async-imap's trace carries the AUTHENTICATE PLAIN response"
+    );
+}

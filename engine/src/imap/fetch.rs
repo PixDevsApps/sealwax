@@ -3,6 +3,7 @@
 //! attachment clip, and the start of the text for the snippet.
 
 use async_imap::imap_proto::{AttributeValue, BodyStructure, MessageSection, SectionPath};
+use mail_parser::{MessageParser, MimeHeaders};
 use sealwax_domain::message;
 use sealwax_domain::model::{BodyKind, Flags, FolderId};
 use sealwax_infrastructure::store::{BodyState, NewMessage};
@@ -119,11 +120,15 @@ pub(crate) fn message(folder: FolderId, fetched: Fetched) -> NewMessage {
             b"\r\n\r\n"
         });
     }
+    let cut = fetched.preview.len() as u32 >= PREVIEW_BYTES;
     let preview = match fetched.preview.iter().rposition(|&byte| byte == b'\n') {
-        Some(end) if fetched.preview.len() as u32 >= PREVIEW_BYTES => &fetched.preview[..=end],
+        Some(end) if cut => &fetched.preview[..=end],
         _ => &fetched.preview[..],
     };
     raw.extend_from_slice(preview);
+    if cut {
+        close_multiparts(&mut raw);
+    }
     let parsed = message::parse(&raw);
     let (flags, keywords) = Flags::from_imap(fetched.flags.iter().map(String::as_str));
     NewMessage {
@@ -144,6 +149,26 @@ pub(crate) fn message(folder: FolderId, fetched: Fetched) -> NewMessage {
         },
         search_text: parsed.body_text,
         ..NewMessage::default()
+    }
+}
+
+/// Ends the multiparts a cut preview leaves open, innermost first. Without its closing
+/// boundary mail-parser keeps a text part only inside an alternative, so the start of a long
+/// first part of a mixed message would give no snippet.
+fn close_multiparts(raw: &mut Vec<u8>) {
+    let Some(parsed) = MessageParser::default().parse(raw.as_slice()) else {
+        return;
+    };
+    let boundaries: Vec<String> = parsed
+        .parts
+        .iter()
+        .filter_map(|part| part.content_type())
+        .filter(|kind| kind.ctype().eq_ignore_ascii_case("multipart"))
+        .filter_map(|kind| kind.attribute("boundary"))
+        .map(str::to_owned)
+        .collect();
+    for boundary in boundaries.iter().rev() {
+        raw.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
     }
 }
 
@@ -247,6 +272,33 @@ mod tests {
         assert_eq!(row.snippet, "Hei, blåbær til alle.");
         assert_eq!(row.body_kind, BodyKind::Both);
         assert_eq!(row.body_state, BodyState::Partial);
+    }
+
+    #[test]
+    fn a_long_first_part_of_a_mixed_message_still_gives_a_snippet() {
+        let header = "Subject: x\r\nMIME-Version: 1.0\r\n\
+                      Content-Type: multipart/mixed; boundary=\"b1\"\r\n\r\n";
+        let body = "alpha bravo charlie delta echo foxtrot golf hotel india\r\n".repeat(30);
+        let text = format!(
+            "--b1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n{body}\r\n--b1\r\n\
+             Content-Type: application/octet-stream\r\n\r\nAAAA\r\n--b1--\r\n"
+        );
+        let mut cut = fetched(header, "");
+        cut.preview = text.as_bytes()[..PREVIEW_BYTES as usize].to_vec();
+        let row = message(FolderId(1), cut);
+        assert!(row.snippet.starts_with("alpha bravo"), "{row:?}");
+
+        let nested = format!(
+            "--b1\r\nContent-Type: multipart/alternative;\r\n boundary=\"b2\"\r\n\r\n\
+             --b2\r\nContent-Type: text/plain; charset=utf-8\r\n\
+             Content-Transfer-Encoding: base64\r\n\r\n{}\r\n--b2--\r\n--b1--\r\n",
+            "YWxwaGEgYnJhdm8gY2hhcmxpZSBkZWx0YSBlY2hvIGZveHRyb3QgZ29sZiBob3RlbCBpbmRpYQ0K\r\n"
+                .repeat(30)
+        );
+        let mut cut = fetched(header, "");
+        cut.preview = nested.as_bytes()[..PREVIEW_BYTES as usize].to_vec();
+        let row = message(FolderId(1), cut);
+        assert!(row.snippet.starts_with("alpha bravo"), "{row:?}");
     }
 
     #[test]

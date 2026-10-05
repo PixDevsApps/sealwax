@@ -3233,6 +3233,7 @@ dependencies = [
  "futures-util",
  "hickory-resolver",
  "lettre",
+ "mail-parser",
  "oo7",
  "psl",
  "quick-xml",
