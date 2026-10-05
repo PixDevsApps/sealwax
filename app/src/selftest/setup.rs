@@ -21,6 +21,7 @@
 //! | `engine-reply password-updated ok`, `engine-reply password-updated [imap\|smtp] FAILURE` | `PasswordUpdated` for the last command (IMAP when no protocol is named) |
 //! | `desktop-network up\|down`, `desktop-resume` | What the network monitor and logind would report, through the app's own handler |
 //! | `engine-reply body-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `BodyFetched` for the first message of the last `fetch-bodies` taken (its fields: `messages`, `count`); storing the body is `bodies-store`'s (`bodies.rs`) |
+//! | `engine-reply older-loaded FETCHED complete\|more` | `OlderLoaded` for the folder of the last `load-older` taken (its field: `folder`; `folder-opened` has the same) (ML-043) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -52,7 +53,7 @@ use sealwax_domain::account::{
     HelpLink, LoginError, LoginFailure, OAuthProvider, Protocol, Security, UnsupportedReason,
     UsernameForm,
 };
-use sealwax_domain::model::{FolderRole, MessageId};
+use sealwax_domain::model::{FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
     AccountError, BodyError, Command, Event, Password, RequestId, SyncStatus,
 };
@@ -127,6 +128,8 @@ thread_local! {
     static OPENED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
     /// The messages of the last `FetchBodies` taken (ML-044).
     static REQUESTED: RefCell<Vec<MessageId>> = const { RefCell::new(Vec::new()) };
+    /// The folder of the last `LoadOlder` taken (ML-043).
+    static OLDER: Cell<Option<FolderId>> = const { Cell::new(None) };
 }
 
 /// The messages the last `FetchBodies` the script took asked for.
@@ -670,6 +673,9 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
     if let Command::FetchBodies { messages } = &command {
         REQUESTED.with(|requested| requested.replace(messages.clone()));
     }
+    if let Command::LoadOlder { folder } = &command {
+        OLDER.with(|older| older.set(Some(*folder)));
+    }
     let (kind, request, fields) = fields(&command, fake.last_sign_in.get());
     let shown: Vec<String> = fields
         .iter()
@@ -714,6 +720,9 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
         return send_event(harness, &fake, event).await;
     }
     if let Some(event) = body_event(args)? {
+        return send_event(harness, &fake, event).await;
+    }
+    if let Some(event) = older_event(args)? {
         return send_event(harness, &fake, event).await;
     }
     let last = fake
@@ -894,6 +903,30 @@ fn body_event(args: &[String]) -> Result<Option<Event>, String> {
         other => return Err(format!("no body outcome {other}")),
     };
     Ok(Some(Event::BodyFetched { message, result }))
+}
+
+/// `older-loaded FETCHED complete|more`: `OlderLoaded` for the folder of the last `LoadOlder`
+/// taken.
+fn older_event(args: &[String]) -> Result<Option<Event>, String> {
+    let ("older-loaded", [fetched, complete]) = (args[0].as_str(), &args[1..]) else {
+        return Ok(None);
+    };
+    let folder = OLDER
+        .with(Cell::get)
+        .ok_or("no load-older to answer; use engine-expect first")?;
+    let fetched = fetched
+        .parse()
+        .map_err(|_| format!("FETCHED is a count, not {fetched}"))?;
+    let complete = match complete.as_str() {
+        "complete" => true,
+        "more" => false,
+        other => return Err(format!("use complete or more, not {other}")),
+    };
+    Ok(Some(Event::OlderLoaded {
+        folder,
+        fetched,
+        complete,
+    }))
 }
 
 fn protocol_named(name: &str) -> Result<Protocol, String> {

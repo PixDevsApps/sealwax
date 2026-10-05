@@ -9,53 +9,30 @@
 //!   cargo test -p sealwax-engine --release --test sync_testbed -- --ignored --test-threads=1 --nocapture
 
 mod common;
+mod mutator;
 mod proxy;
 mod snapshot;
 mod testbed_client;
 
 use common::{DOVECOT, DOVECOT_REV1, PASSWORD, STALWART, Server};
+use mutator::{FOLDERS, append, client, mutate, reset_account, uidvalidity_reset, wire};
 use proxy::{Proxy, Rule};
 use sealwax_domain::account::{Endpoint, Security};
 use sealwax_domain::model::{AccountId, FolderId};
 use sealwax_domain::sync::Window;
 use sealwax_engine::imap::{
     self, ConnectOptions, Connection, Credentials, Elsewhere, FolderLocks, ImapError, Stats,
-    SyncError, SyncOptions, load_older, mutf7, sync_account, sync_folder,
+    SyncError, SyncOptions, load_older, sync_account, sync_folder,
 };
 use sealwax_infrastructure::store::Store;
 use snapshot::Rng;
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use testbed_client::{Client, Failure};
 use tokio::sync::watch;
 
 fn runtime() -> tokio::runtime::Runtime {
     sealwax_engine::runtime().unwrap()
-}
-
-/// Decoded names. INBOX takes the most traffic; `RESET` is deleted and created again once.
-const FOLDERS: [&str; 6] = [
-    "INBOX",
-    "Arkiv",
-    "Papirkurv",
-    "Søppelpost",
-    "Prosjekter/Høst 📬 2026",
-    RESET,
-];
-const RESET: &str = "Midlertidig";
-const FLAGS: [&str; 7] = [
-    "\\Seen",
-    "\\Flagged",
-    "\\Answered",
-    "\\Draft",
-    "\\Deleted",
-    "$Label1",
-    "Prioritert",
-];
-
-fn wire(name: &str) -> String {
-    mutf7::encode(name)
 }
 
 /// A server, with or without QRESYNC enabled (Dovecot without it is the CONDSTORE-only path).
@@ -94,187 +71,6 @@ async fn engine_connect(port: u16, user: &str, qresync: bool) -> Result<Connecti
         ConnectOptions { qresync },
     )
     .await
-}
-
-async fn client(port: u16, user: &str) -> Client {
-    Client::connect(port, &common::ca(), user)
-        .await
-        .unwrap_or_else(|error| panic!("test client on {port}: {error:?}"))
-}
-
-fn random_flags(rng: &mut Rng) -> String {
-    FLAGS
-        .iter()
-        .filter(|_| rng.chance(25))
-        .copied()
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-async fn append(
-    client: &mut Client,
-    name_raw: &str,
-    message_id: &str,
-    rng: &mut Rng,
-) -> Result<(), Failure> {
-    let flags = random_flags(rng);
-    let message = testbed_client::message(message_id, rng);
-    client.append(name_raw, &flags, &message).await
-}
-
-/// Empties every selectable mailbox of the account and makes sure the test folders exist.
-async fn reset_account(client: &mut Client, folders: &[&str]) -> Result<(), Failure> {
-    for folder in folders {
-        client.create(&wire(folder)).await?;
-    }
-    for (name, selectable) in client.list().await? {
-        if selectable {
-            client.empty(&name).await?;
-        }
-    }
-    client.select("INBOX").await?;
-    Ok(())
-}
-
-fn pick_folder(rng: &mut Rng) -> &'static str {
-    if rng.chance(40) {
-        FOLDERS[0]
-    } else {
-        FOLDERS[1 + rng.below(FOLDERS.len() - 1)]
-    }
-}
-
-fn other_folder(rng: &mut Rng, not: &str) -> String {
-    loop {
-        let target = wire(pick_folder(rng));
-        if target != not {
-            return target;
-        }
-    }
-}
-
-/// One change by the other client, S1's mix: append 20 %, flags 35 %, move 15 %, expunge 15 %,
-/// copy 8 %, a flag storm over INBOX 7 %.
-async fn mutate(
-    client: &mut Client,
-    rng: &mut Rng,
-    seed: u64,
-    n: usize,
-) -> Result<&'static str, Failure> {
-    let folder = wire(pick_folder(rng));
-    let roll = rng.below(100);
-    client.select(&folder).await?;
-    let existing = client.uids().await?;
-    if roll < 20 || existing.is_empty() {
-        append(
-            client,
-            &folder,
-            &format!("rand.{seed}.{n}@example.test"),
-            rng,
-        )
-        .await?;
-        return Ok("append");
-    }
-    let picks = |rng: &mut Rng| -> Vec<u32> {
-        let n = 1 + rng.below(3.min(existing.len()));
-        (0..n).map(|_| *rng.pick(&existing)).collect()
-    };
-    match roll {
-        20..55 => {
-            let uids = picks(rng);
-            let sign = if rng.chance(50) { "+" } else { "-" };
-            let mut flags = random_flags(rng);
-            if flags.is_empty() {
-                flags = (*rng.pick(&FLAGS)).to_owned();
-            }
-            client
-                .store(&uids, &format!("{sign}FLAGS ({flags})"))
-                .await?;
-            Ok("flags")
-        }
-        55..70 => {
-            let uid = *rng.pick(&existing);
-            let target = other_folder(rng, &folder);
-            if client.has("MOVE") {
-                client
-                    .run(&format!("UID MOVE {uid} {}", quote(&target)), |_| {})
-                    .await?;
-            } else {
-                client
-                    .run(&format!("UID COPY {uid} {}", quote(&target)), |_| {})
-                    .await?;
-                client.store(&[uid], "+FLAGS.SILENT (\\Deleted)").await?;
-                client.run("EXPUNGE", |_| {}).await?;
-            }
-            Ok("move")
-        }
-        70..85 => {
-            let uids = picks(rng);
-            client.store(&uids, "+FLAGS.SILENT (\\Deleted)").await?;
-            if client.has("UIDPLUS") {
-                let set: Vec<String> = uids.iter().map(u32::to_string).collect();
-                client
-                    .run(&format!("UID EXPUNGE {}", set.join(",")), |_| {})
-                    .await?;
-            } else {
-                client.run("EXPUNGE", |_| {}).await?;
-            }
-            Ok("expunge")
-        }
-        85..93 => {
-            let uid = *rng.pick(&existing);
-            let target = other_folder(rng, &folder);
-            client
-                .run(&format!("UID COPY {uid} {}", quote(&target)), |_| {})
-                .await?;
-            Ok("copy")
-        }
-        _ => {
-            client.select("INBOX").await?;
-            if client.uids().await?.is_empty() {
-                return Ok("storm-skipped");
-            }
-            let sign = if rng.chance(50) { "+" } else { "-" };
-            client
-                .run(&format!("UID STORE 1:* {sign}FLAGS (\\Flagged)"), |_| {})
-                .await?;
-            Ok("flag-storm")
-        }
-    }
-}
-
-fn quote(text: &str) -> String {
-    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-/// Deletes and creates `RESET` again, with three messages; returns the UIDVALIDITY before and
-/// after.
-async fn uidvalidity_reset(
-    client: &mut Client,
-    rng: &mut Rng,
-    seed: u64,
-) -> Result<(u32, u32), Failure> {
-    let name = wire(RESET);
-    let before = client.uidvalidity(&name).await?;
-    client.select("INBOX").await?;
-    client
-        .run(&format!("DELETE {}", quote(&name)), |_| {})
-        .await?;
-    client
-        .run(&format!("CREATE {}", quote(&name)), |_| {})
-        .await?;
-    for i in 0..3 {
-        append(
-            client,
-            &name,
-            &format!("rand.{seed}.reset{i}@example.test"),
-            rng,
-        )
-        .await?;
-    }
-    let after = client.uidvalidity(&name).await?;
-    client.select("INBOX").await?;
-    Ok((before, after))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

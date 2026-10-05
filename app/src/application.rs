@@ -22,7 +22,7 @@ use crate::setup::{self, Again, remove::Removable};
 use crate::shortcuts;
 use crate::status::{self, Waiting};
 use crate::theme::{self, ThemeController};
-use crate::window::{self, AccountStatus, Attention, BannerAction, Pane, Window};
+use crate::window::{self, Attention, BannerAction, Pane, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
@@ -34,6 +34,7 @@ use sealwax_domain::mailto::{self, Mailto};
 use sealwax_domain::model::MessageId;
 use sealwax_engine::api::{Command, Event};
 use sealwax_engine::service::Engine;
+use sealwax_infrastructure::store::ViewScope;
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::future::Future;
@@ -600,6 +601,15 @@ impl AppState {
                 state.keyring_missing.set(true);
                 state.update_banner();
             }
+            if let Event::OlderLoaded {
+                folder,
+                fetched,
+                complete,
+            } = event
+                && let Some(list) = state.list()
+            {
+                list.older_loaded(*folder, *fetched, *complete);
+            }
         });
         self.engine_events.replace(Some(subscription));
         if let Some(options) = self.config.engine.clone() {
@@ -912,9 +922,26 @@ impl AppState {
             }
         });
 
-        let mailbox = self.mailbox.clone();
+        // A folder (not All Inboxes) is synced now and kept current while it is shown (ML-042);
+        // at the end of its first-sync window the list asks for older mail (ML-043).
+        let (mailbox, engine) = (self.mailbox.clone(), self.engine.clone());
         let shown = list.clone();
-        window.connect_folder_selected(move |_, key| shown.show(mailbox.scope_for_key(key)));
+        window.connect_folder_selected(move |_, key| {
+            let scope = mailbox.scope_for_key(key);
+            if let Some(ViewScope::Folder(folder)) = scope {
+                let _ = engine.send(Command::FolderOpened { folder });
+            }
+            shown.show(scope);
+        });
+        let weak = Rc::downgrade(self);
+        list.connect_older_wanted(move |folder| {
+            if let Some(state) = weak.upgrade()
+                && state.engine.send(Command::LoadOlder { folder }).is_err()
+                && let Some(list) = state.list()
+            {
+                list.older_loaded(folder, 0, false);
+            }
+        });
         if self.mailbox.is_ready() {
             self.fill_sidebar(window, &list);
         }
@@ -1011,7 +1038,10 @@ impl AppState {
             .collect()
     }
 
-    /// Hands the accounts from `accounts.toml` to the engine this application started.
+    /// Hands the accounts from `accounts.toml` to the engine this application started. Their
+    /// states come from the engine: an account whose sync starts or restarts reports syncing,
+    /// and one already running keeps its state (M3: `Accounts` no longer syncs every account
+    /// again).
     fn send_accounts(&self) {
         if !self.accounts_read.get() || self.engine_service.borrow().is_none() {
             return;
@@ -1020,15 +1050,6 @@ impl AppState {
             return;
         };
         let accounts = prefs.accounts();
-        for account in self.mailbox.accounts() {
-            if account
-                .key
-                .as_ref()
-                .is_some_and(|key| accounts.iter().any(|listed| &listed.key == key))
-            {
-                self.mailbox.set_status(account.id, AccountStatus::Syncing);
-            }
-        }
         if self.engine.send(Command::Accounts { accounts }).is_err() {
             tracing::warn!("the engine stopped listening");
         }

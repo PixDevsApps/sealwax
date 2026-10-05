@@ -102,6 +102,20 @@ struct Handlers {
     opened: RefCell<Vec<IdHandler>>,
     cleared: RefCell<Vec<Handler>>,
     search: RefCell<Vec<SearchHandler>>,
+    older: RefCell<Vec<FolderHandler>>,
+}
+
+type FolderHandler = Rc<dyn Fn(FolderId)>;
+
+/// Older mail of a folder whose first sync kept only its newest messages (ML-043).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Older {
+    /// Asked for; "Loading older messages…" shows.
+    Asked,
+    /// Nothing came and more may be there (offline): asked again once the folder is shown again.
+    Paused,
+    /// The server has nothing older.
+    Complete,
 }
 
 #[derive(Clone)]
@@ -146,6 +160,9 @@ struct Inner {
     keys: RefCell<Option<ScopedShortcuts>>,
     first_rows: RefCell<Option<Rc<Latch>>>,
     day_check: RefCell<Option<glib::SourceId>>,
+    /// The quiet row under the list while older mail loads.
+    older_row: gtk::Label,
+    older: RefCell<std::collections::HashMap<FolderId, Older>>,
 }
 
 impl Drop for Inner {
@@ -275,6 +292,17 @@ impl MessageList {
         root.set_widget_name("message-list-pane");
         root.append(&head);
         root.append(&stack);
+        let older_row = gtk::Label::builder()
+            .label("Loading older messages…")
+            .visible(false)
+            .margin_top(6)
+            .margin_bottom(6)
+            .build();
+        older_row.add_css_class("dim-label");
+        older_row.add_css_class("caption");
+        older_row.add_css_class("sw-list-older");
+        older_row.set_widget_name("list-older");
+        root.append(&older_row);
 
         let list = Self {
             inner: Rc::new(Inner {
@@ -309,6 +337,8 @@ impl MessageList {
                 keys: RefCell::new(None),
                 first_rows: RefCell::new(None),
                 day_check: RefCell::new(None),
+                older_row,
+                older: RefCell::default(),
             }),
         };
         list.connect();
@@ -388,6 +418,11 @@ impl MessageList {
         let weak = self.downgrade();
         inner
             .scroller
+            .vadjustment()
+            .connect_changed(move |_| Self::with(&weak, |list| list.check_end()));
+        let weak = self.downgrade();
+        inner
+            .scroller
             .hadjustment()
             .connect_page_size_notify(move |adjustment| {
                 let width = adjustment.page_size();
@@ -454,6 +489,12 @@ impl MessageList {
     /// Shows a folder or the unified inbox (`None`: nothing). A search in progress ends.
     pub fn show(&self, scope: Option<ViewScope>) {
         self.inner.scope.set(scope);
+        if let Some(ViewScope::Folder(folder)) = scope {
+            let mut older = self.inner.older.borrow_mut();
+            if older.get(&folder) == Some(&Older::Paused) {
+                older.remove(&folder);
+            }
+        }
         if !self.inner.query.borrow().is_empty() {
             self.inner.query.borrow_mut().clear();
             self.inner.quiet.set(true);
@@ -667,6 +708,7 @@ impl MessageList {
             }
             if done.get() {
                 inner.growth.take();
+                MessageList { inner }.check_end();
                 return glib::ControlFlow::Break;
             }
             if !inner.model.grow() {
@@ -819,6 +861,7 @@ impl MessageList {
 
     fn scrolled(&self) {
         self.fetch_more_results();
+        self.check_end();
         if self.inner.speed.borrow().is_some() {
             return;
         }
@@ -872,6 +915,63 @@ impl MessageList {
         if page > 0.0 && adjustment.value() + 2.0 * page >= adjustment.upper() {
             self.inner.model.search_more();
         }
+    }
+
+    /// Within a screenful of the end of a folder (never All Inboxes or search results), once all
+    /// its rows are in: asks for older mail, unless it was asked for, the server has none, or an
+    /// answer brought nothing since the folder was shown (ML-043).
+    fn check_end(&self) {
+        let inner = &self.inner;
+        let Content::View(ViewSpec {
+            scope: ViewScope::Folder(folder),
+            ..
+        }) = inner.model.content()
+        else {
+            return;
+        };
+        if self.is_growing()
+            || inner.model.is_pending()
+            || inner.older.borrow().contains_key(&folder)
+        {
+            return;
+        }
+        let adjustment = inner.scroller.vadjustment();
+        let page = adjustment.page_size();
+        if page <= 0.0 || adjustment.value() + 2.0 * page < adjustment.upper() {
+            return;
+        }
+        inner.older.borrow_mut().insert(folder, Older::Asked);
+        inner.older_row.set_visible(true);
+        let handlers = inner.handlers.older.borrow().clone();
+        for handler in handlers {
+            handler(folder);
+        }
+    }
+
+    /// Runs `handler` when the list wants `folder`'s older mail (`Command::LoadOlder`).
+    pub fn connect_older_wanted(&self, handler: impl Fn(FolderId) + 'static) {
+        self.inner
+            .handlers
+            .older
+            .borrow_mut()
+            .push(Rc::new(handler));
+    }
+
+    /// The engine's answer (`Event::OlderLoaded`): the row goes; the stored mail arrives as
+    /// change events. Nothing more is asked once `complete`; after an answer with nothing, not
+    /// until the folder is shown again.
+    pub fn older_loaded(&self, folder: FolderId, fetched: u32, complete: bool) {
+        let mut older = self.inner.older.borrow_mut();
+        if complete {
+            older.insert(folder, Older::Complete);
+        } else if fetched > 0 {
+            older.remove(&folder);
+        } else {
+            older.insert(folder, Older::Paused);
+        }
+        let asking = older.values().any(|state| *state == Older::Asked);
+        drop(older);
+        self.inner.older_row.set_visible(asking);
     }
 
     /// Rows show their text again after a fast scroll.

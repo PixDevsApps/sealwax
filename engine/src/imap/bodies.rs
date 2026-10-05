@@ -8,11 +8,12 @@
 
 use super::connection::Connection;
 use super::error::ImapError;
-use super::raw::{self, quote};
+use super::raw;
+use super::sync::view;
 use crate::api::BodyError;
 use async_imap::imap_proto::{
     AttributeValue, BodyContentCommon, BodyStructure, ContentEncoding, MessageSection, Response,
-    ResponseCode, SectionPath, Status,
+    SectionPath,
 };
 use mail_parser::MessageParser;
 use sealwax_domain::bodies::WHOLE_LIMIT;
@@ -351,27 +352,9 @@ pub(crate) fn upgrade(
     }
 }
 
-/// EXAMINEs `name_raw` and returns its UIDVALIDITY.
+/// EXAMINEs `name_raw` (the sync's EXAMINE) and returns its UIDVALIDITY.
 async fn examine(conn: &mut Connection, name_raw: &str) -> Result<Option<u32>, ImapError> {
-    conn.selected = None;
-    let mut uidvalidity = None;
-    raw::run(
-        &mut conn.session,
-        &format!("EXAMINE {}", quote(name_raw)?),
-        |response| {
-            if let Response::Data {
-                status: Status::Ok,
-                outcome,
-            } = response
-                && let Some(ResponseCode::UidValidity(value)) = outcome.code
-            {
-                uidvalidity = Some(value);
-            }
-        },
-    )
-    .await?;
-    conn.selected = Some(name_raw.to_owned());
-    Ok(uidvalidity)
+    Ok(Some(view::examine(conn, name_raw).await?.uidvalidity))
 }
 
 /// A section path as this module names it: `HEADER`, `TEXT`, `2.1`, `2.1.MIME`.

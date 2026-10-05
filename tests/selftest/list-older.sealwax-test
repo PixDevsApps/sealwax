@@ -1,0 +1,64 @@
+# A folder's older mail (ML-042, ML-043), against the fake engine: picking a folder (never All
+# Inboxes) asks the engine to sync it now; at the end of its first-sync window the list asks for
+# older mail and shows a quiet "Loading older messages…" row until the engine answers. An answer
+# with nothing pauses the asking until the folder is shown again; once the server has nothing
+# older, nothing more is asked. Every message is fictional.
+# Run: tools/headless.sh 31 target/debug/sealwax --self-test tests/selftest/list-older.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+mail-account Older
+mail-add Older:archive today "Hytteplaner for høsten"
+mail-add Older:archive yesterday "Referat fra styremøtet"
+mail-add Older:archive 3d "Bilder fra turen"
+mail-add Older:sent today "Re: Middag på fredag"
+mail-add Older:sent yesterday "Kvittering"
+folder all-inboxes
+engine-expect none
+
+# The end of the folder is in view at once: the list asks for older mail.
+folder archive Older
+engine-expect folder-opened
+engine-expect load-older
+assert-list-count 3
+assert-shown list-older true
+assert-label list-older "Loading older messages…"
+screenshot $DIR/../../.local/selftest/list-older-asking.png
+
+# Nothing came: the row goes and the list doesn't ask again while the folder is shown.
+engine-reply older-loaded 0 more
+wait-until assert-shown list-older false
+list-scroll-end
+engine-expect none
+
+# A folder the server has nothing older in.
+folder sent Older
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+wait-until assert-shown list-older false
+
+# Shown again, the paused folder asks again; older mail arrives as the store's change events and
+# the list asks for the next batch until the server has none.
+folder archive Older
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 2 more
+mail-add Older:archive 120d "Gammelt nyhetsbrev"
+mail-add Older:archive 150d "Gammel kvittering"
+assert-list-count 5
+engine-expect load-older
+engine-reply older-loaded 0 complete
+wait-until assert-shown list-older false
+list-scroll-end
+engine-expect none
+
+# Complete stays complete; All Inboxes never asks.
+folder sent Older
+engine-expect folder-opened
+list-scroll-end
+engine-expect none
+folder all-inboxes
+list-scroll-end
+engine-expect none

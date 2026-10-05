@@ -18,7 +18,7 @@ use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{Command, Event, Password, RequestId, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::{self, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{Store, StoreOptions};
@@ -121,6 +121,7 @@ fn start(dirs: &SealwaxDirs, trust: Trust) -> Engine {
         detect: DetectOptions::default(),
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
+        sync: SyncConfig::default(),
     })
     .unwrap()
 }
@@ -210,14 +211,11 @@ async fn update(
     .await
 }
 
-/// Syncs every listed account again, as the app does after reading `accounts.toml`.
+/// Logs every account in again, as the banner's Retry does; the listed accounts stay as
+/// `accounts.toml` has them.
 async fn sync_again(engine: &Engine, dirs: &SealwaxDirs, account: AccountId) -> SyncStatus {
-    send(
-        engine,
-        Command::Accounts {
-            accounts: accounts::read(&dirs.accounts_file()).unwrap(),
-        },
-    );
+    assert!(!accounts::read(&dirs.accounts_file()).unwrap().is_empty());
+    send(engine, Command::Reconnect);
     settled(engine, account).await
 }
 

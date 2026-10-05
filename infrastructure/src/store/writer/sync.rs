@@ -13,7 +13,7 @@ use crate::store::sync_api::{FlagUpdate, FolderChanges, FolderSynced, FoldersRep
 use crate::store::{StoreError, codec, views};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::model::{AccountId, BlobKey, Flags, FolderId, MessageId, ThreadId};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
@@ -274,6 +274,29 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(ids) = unchanged(&tx, account, folders)? {
+            // The usual account pass: the same list. Only a new folder's STATUS counts may
+            // have moved, and nothing else is written or published.
+            let counted = server_counts(&tx, &ids, folders)?;
+            if counted.is_empty() {
+                tx.commit()?;
+                return Ok(FoldersReplaced {
+                    version: StoreVersion(self.state.version),
+                    ids,
+                    ..FoldersReplaced::default()
+                });
+            }
+            let event = ChangeEvent {
+                folders: folder_counts(&tx, &counted)?,
+                ..ChangeEvent::default()
+            };
+            let version = self.state.commit(tx, event)?;
+            return Ok(FoldersReplaced {
+                version,
+                ids,
+                ..FoldersReplaced::default()
+            });
+        }
         let (ids, counted) = upsert_rows(&tx, folders)?;
         let listed: HashSet<FolderId> = ids.iter().copied().collect();
         let gone: Vec<FolderId> = tx
@@ -375,6 +398,80 @@ impl Writer {
             orphaned_blobs,
         })
     }
+}
+
+/// The listed folders' ids in input order when `folders` is exactly what the store holds for
+/// `account` (names, delimiters, roles, attributes, selectability, and no other folder).
+fn unchanged(
+    tx: &rusqlite::Connection,
+    account: AccountId,
+    folders: &[FolderSpec],
+) -> rusqlite::Result<Option<Vec<FolderId>>> {
+    type Row = (FolderId, String, Option<String>, String, String, bool);
+    let stored: HashMap<String, Row> = tx
+        .prepare_cached(
+            "SELECT name_raw, id, name, delimiter, role, attributes, selectable \
+             FROM folders WHERE account_id = ?1",
+        )?
+        .query_map([account.0], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                (
+                    FolderId(row.get(1)?),
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                ),
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+    if stored.len() != folders.len() {
+        return Ok(None);
+    }
+    let mut ids = Vec::with_capacity(folders.len());
+    for folder in folders {
+        let Some((id, name, delimiter, role, attributes, selectable)) =
+            stored.get(&folder.name_raw)
+        else {
+            return Ok(None);
+        };
+        let same = folder.account == account
+            && *name == folder.name
+            && *delimiter == folder.delimiter.map(String::from)
+            && role == folder.role.as_str()
+            && *attributes == folder.attributes.join(" ")
+            && *selectable == folder.selectable;
+        if !same {
+            return Ok(None);
+        }
+        ids.push(*id);
+    }
+    Ok(Some(ids))
+}
+
+/// Writes the STATUS counts of folders still new and empty where they changed; returns those.
+fn server_counts(
+    tx: &rusqlite::Connection,
+    ids: &[FolderId],
+    folders: &[FolderSpec],
+) -> rusqlite::Result<BTreeSet<FolderId>> {
+    let mut counted = BTreeSet::new();
+    let mut update = tx.prepare_cached(
+        "UPDATE folders SET total_count = ?2, unread_count = ?3 \
+         WHERE id = ?1 AND sync_state = 'new' \
+           AND (total_count <> ?2 OR unread_count <> ?3) \
+           AND NOT EXISTS (SELECT 1 FROM messages WHERE folder_id = ?1)",
+    )?;
+    for (id, folder) in ids.iter().zip(folders) {
+        if let Some(server) = folder.server_counts.filter(|_| folder.selectable)
+            && update.execute(params![id.0, server.total, server.unread])? > 0
+        {
+            counted.insert(*id);
+        }
+    }
+    Ok(counted)
 }
 
 fn unread(flags: u32) -> i64 {

@@ -1,19 +1,19 @@
 //! The engine service (ADR-003): a thread of its own runs the engine's tokio runtime, takes the
 //! app's commands and sends events back. M2: autodetect, the login check, Microsoft sign-in
-//! (ML-032), adding and removing accounts, and for every account its folder list and first
-//! INBOX header sync; M3 grows it into the sync engine.
+//! (ML-032), adding and removing accounts. M3: one sync actor per account (`actor`), running
+//! side by side, with body downloads (`bodies`) beside it.
 //!
 //! Autodetect, login checks and sign-ins run side by side. Everything that touches
 //! `accounts.toml`, the keyring entries or an account's store rows runs in one lane, one job at
 //! a time, so an add never races a removal or a reconcile; a re-sign-in's refresh token and a
 //! new password (ML-048), each checked on the servers beside the lane, are stored there too.
 //! The only other keyring write is an account's sync storing a rotated refresh token, and the
-//! lane stops that sync before it removes the account or replaces its token.
+//! lane stops that actor before it removes the account or replaces its token.
 
 use crate::accounts::{Accounts, secret_label};
-use crate::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
+use crate::api::{AccountError, Command, Event, Password, RequestId};
 use crate::autoconfig::{self, DetectOptions};
-use crate::imap::{self, Credentials, ImapError, SyncError};
+use crate::imap::{self, Credentials, ImapError, Stop};
 use crate::net::Trust;
 use crate::oauth::{self, AccessToken, AccessTokens, Identity};
 use crate::secrets::{MemoryStore, SecretKind, SecretStore, Secrets};
@@ -25,7 +25,7 @@ use sealwax_domain::account::{
     Protocol,
 };
 use sealwax_domain::autoconfig::{address_domain, presets};
-use sealwax_domain::model::AccountId;
+use sealwax_domain::model::{AccountId, FolderId};
 use sealwax_infrastructure::accounts::{self as files, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::Store;
@@ -36,7 +36,10 @@ use std::time::{Duration, Instant};
 use tokio::sync::OnceCell;
 use zeroize::Zeroizing;
 
+mod actor;
 mod bodies;
+
+pub use actor::{SyncConfig, backoff_delay};
 
 /// How long stopping waits for tasks still writing files.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
@@ -68,6 +71,8 @@ pub struct EngineConfig {
     /// sign-in answers that it's unavailable and Microsoft accounts can't sync.
     pub microsoft_client_id: Option<String>,
     pub sign_in: SignInOptions,
+    /// The sync actors' schedule and patience.
+    pub sync: SyncConfig,
 }
 
 /// Where sign-ins go and how long they wait; tests point them at local servers.
@@ -184,8 +189,9 @@ struct Shared {
     sign_ins: Mutex<HashMap<RequestId, SignIn>>,
     access: AccessTokens,
     events: async_channel::Sender<Event>,
-    /// Each account's running sync.
-    syncs: Mutex<HashMap<AccountKey, tokio::task::JoinHandle<()>>>,
+    /// Each account's sync actor.
+    actors: Mutex<HashMap<AccountKey, actor::Handle>>,
+    sync: SyncConfig,
     /// Body downloads and the disk cap (ML-044).
     bodies: bodies::Bodies,
 }
@@ -209,7 +215,8 @@ impl Shared {
             sign_ins: Mutex::default(),
             access: AccessTokens::default(),
             events,
-            syncs: Mutex::default(),
+            actors: Mutex::default(),
+            sync: config.sync,
             bodies: bodies::Bodies::default(),
         }
     }
@@ -263,8 +270,27 @@ impl Shared {
         let _ = self.events.try_send(event);
     }
 
-    fn syncs(&self) -> MutexGuard<'_, HashMap<AccountKey, tokio::task::JoinHandle<()>>> {
-        self.syncs.lock().unwrap_or_else(PoisonError::into_inner)
+    fn actors(&self) -> MutexGuard<'_, HashMap<AccountKey, actor::Handle>> {
+        self.actors.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The settings of the account with store id `account`, from its running actor.
+    fn actor_settings(&self, account: AccountId) -> Option<AccountSettings> {
+        self.actors()
+            .values()
+            .find(|actor| actor.account() == Some(account))
+            .map(|actor| actor.settings.clone())
+    }
+
+    /// The reconnect signal of the account's actor, which body downloads follow too.
+    fn actor_signal(
+        &self,
+        account: AccountId,
+    ) -> Option<tokio::sync::watch::Receiver<actor::Signal>> {
+        self.actors()
+            .values()
+            .find(|actor| actor.account() == Some(account))
+            .map(|actor| actor.signal.subscribe())
     }
 
     fn sign_ins(&self) -> MutexGuard<'_, HashMap<RequestId, SignIn>> {
@@ -402,8 +428,19 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 bodies::set_storage(&shared, storage);
                 continue;
             }
-            Command::FolderOpened { .. } | Command::LoadOlder { .. } | Command::Reconnect => {
-                tracing::debug!("an M3 command arrived before M3 built it");
+            Command::FolderOpened { folder } => {
+                tokio::spawn(opened(shared.clone(), folder));
+                continue;
+            }
+            Command::LoadOlder { folder } => {
+                tokio::spawn(older(shared.clone(), folder));
+                continue;
+            }
+            Command::Reconnect => {
+                tracing::info!("reconnecting every account");
+                for actor in shared.actors().values() {
+                    actor.reconnect();
+                }
                 continue;
             }
         };
@@ -416,10 +453,88 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
             task.abort();
         }
     }
-    for (_, sync) in shared.syncs().drain() {
-        sync.abort();
-    }
     shared.bodies.stop();
+    let actors: Vec<actor::Handle> = shared.actors().drain().map(|(_, actor)| actor).collect();
+    stop_actors(actors, Stop::Logout(shared.sync.logout_wait)).await;
+}
+
+/// Stops actors together: each logs out within `stop`'s wait (and its IDLE connection with it);
+/// whatever is still running a moment after is aborted.
+async fn stop_actors(actors: Vec<actor::Handle>, stop: Stop) {
+    let wait = match stop {
+        Stop::Logout(wait) => wait * 4,
+        Stop::Drop => Duration::from_millis(100),
+    };
+    let tasks: Vec<_> = actors
+        .into_iter()
+        .map(|actor| {
+            actor.stop(stop);
+            let mut task = actor.task;
+            async move {
+                if tokio::time::timeout(wait, &mut task).await.is_err() {
+                    task.abort();
+                }
+                drop(actor.signal);
+            }
+        })
+        .collect();
+    futures_util::future::join_all(tasks).await;
+}
+
+/// The account whose folder this is, when its actor runs.
+async fn owner(shared: &Shared, folder: FolderId) -> Option<AccountId> {
+    shared
+        .store
+        .folder_sync(folder)
+        .recv()
+        .await
+        .ok()
+        .flatten()
+        .map(|state| state.account)
+}
+
+/// `FolderOpened`: the folder's actor syncs it now and keeps it current; the others forget
+/// the folder they had open.
+async fn opened(shared: Arc<Shared>, folder: FolderId) {
+    let owner = owner(&shared, folder).await;
+    for actor in shared.actors().values() {
+        let mine = owner.is_some() && actor.account() == owner;
+        let _ = actor
+            .control
+            .try_send(actor::Control::Opened(mine.then_some(folder)));
+    }
+}
+
+/// `LoadOlder`: the folder's actor loads it; without one, nothing older can come now.
+async fn older(shared: Arc<Shared>, folder: FolderId) {
+    let owner = owner(&shared, folder).await;
+    let sent = owner.is_some_and(|owner| {
+        shared
+            .actors()
+            .values()
+            .find(|actor| actor.account() == Some(owner))
+            .is_some_and(|actor| {
+                actor
+                    .control
+                    .try_send(actor::Control::Older(folder))
+                    .is_ok()
+            })
+    });
+    if !sent {
+        let complete = shared
+            .store
+            .folder_sync(folder)
+            .recv()
+            .await
+            .ok()
+            .flatten()
+            .is_some_and(|state| state.complete());
+        shared.send(Event::OlderLoaded {
+            folder,
+            fetched: 0,
+            complete,
+        });
+    }
 }
 
 async fn detect(shared: Arc<Shared>, request: RequestId, address: String) {
@@ -496,7 +611,7 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                 }
                 listed = list.iter().map(|account| account.key.clone()).collect();
                 for settings in list {
-                    start_sync(&shared, settings);
+                    start_sync(&shared, settings).await;
                 }
             }
             Job::Add {
@@ -519,7 +634,7 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                             result: Ok(id),
                         });
                         settings.key = key;
-                        start_sync(&shared, settings);
+                        start_sync(&shared, settings).await;
                     }
                     Err(error) => {
                         if let Some((sign_in, kept)) = sign_in {
@@ -550,7 +665,7 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                 stop_sync(&shared, &settings.key).await;
                 let result = store_sign_in(&shared, &accounts, &settings, *kept).await;
                 shared.send(Event::SignedIn { request, result });
-                start_sync(&shared, settings);
+                start_sync(&shared, settings).await;
             }
             Job::PasswordChecked {
                 request,
@@ -562,78 +677,35 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                 shared.send(Event::PasswordUpdated { request, result });
                 if stored {
                     stop_sync(&shared, &settings.key).await;
-                    start_sync(&shared, settings);
+                    start_sync(&shared, settings).await;
                 }
             }
         }
     }
 }
 
-/// Starts the account's folder list and first INBOX sync unless one is running.
-fn start_sync(shared: &Arc<Shared>, settings: AccountSettings) {
-    let mut syncs = shared.syncs();
-    if syncs
+/// Starts the account's sync actor, unless one runs with the same settings; one with other
+/// settings (a server changed in `accounts.toml`) is stopped first.
+async fn start_sync(shared: &Arc<Shared>, settings: AccountSettings) {
+    let running = shared
+        .actors()
         .get(&settings.key)
-        .is_some_and(|sync| !sync.is_finished())
-    {
-        return;
+        .map(|actor| (actor.settings == settings, actor.task.is_finished()));
+    match running {
+        Some((true, false)) => return,
+        Some(_) => stop_sync(shared, &settings.key).await,
+        None => {}
     }
-    let key = settings.key.clone();
-    syncs.insert(key, tokio::spawn(sync_account(shared.clone(), settings)));
+    let actor = actor::Handle::start(shared, settings);
+    shared.actors().insert(actor.settings.key.clone(), actor);
 }
 
-/// Stops the account's sync and waits until it has.
+/// Stops the account's actor (dropping its connections) and waits until it has.
 async fn stop_sync(shared: &Shared, key: &AccountKey) {
-    let sync = shared.syncs().remove(key);
-    if let Some(sync) = sync {
-        sync.abort();
-        let _ = sync.await;
+    let actor = shared.actors().remove(key);
+    if let Some(actor) = actor {
+        stop_actors(vec![actor], Stop::Drop).await;
     }
-}
-
-async fn sync_account(shared: Arc<Shared>, settings: AccountSettings) {
-    let account = match shared
-        .store
-        .account_by_key(settings.key.clone())
-        .recv()
-        .await
-    {
-        Ok(found) => match found.value {
-            Some(account) => account.id,
-            None => return,
-        },
-        Err(error) => {
-            tracing::warn!(%error, "the account's store row couldn't be read");
-            return;
-        }
-    };
-    shared.send(Event::AccountStatus {
-        account,
-        status: SyncStatus::Syncing,
-    });
-    let status = match sync_once(&shared, &settings, account).await {
-        Ok(()) => SyncStatus::Synced,
-        Err(failure) => {
-            tracing::info!(account = account.0, ?failure, "the account's sync stopped");
-            SyncStatus::from_failure(failure)
-        }
-    };
-    shared.send(Event::AccountStatus { account, status });
-}
-
-/// Logs in, stores the folder list, then the INBOX's headers newest first.
-async fn sync_once(
-    shared: &Shared,
-    settings: &AccountSettings,
-    account: AccountId,
-) -> Result<(), LoginFailure> {
-    let mut connection = match settings.auth {
-        AuthMethod::Password => log_in_with_password(shared, settings).await?,
-        AuthMethod::OAuth(_) => log_in_with_token(shared, settings).await?,
-    };
-    let synced = sync_folders_and_inbox(shared, &mut connection, account).await;
-    connection.logout().await;
-    synced.map_err(|error| error.failure())
 }
 
 fn tls(shared: &Shared) -> Result<Arc<ClientConfig>, LoginFailure> {
@@ -662,9 +734,14 @@ async fn log_in_with_password(
         username: &settings.username,
         password,
     };
-    imap::connect(&settings.imap, credentials, tls(shared)?)
-        .await
-        .map_err(|error| error.failure())
+    imap::connect_with(
+        &settings.imap,
+        credentials,
+        tls(shared)?,
+        shared.sync.connect,
+    )
+    .await
+    .map_err(|error| error.failure())
 }
 
 /// XOAUTH2 with the account's access token, refreshed when it is about to expire and once more
@@ -693,7 +770,14 @@ async fn log_in_with_token(
             username: &settings.username,
             token: &fetched.token,
         };
-        match imap::connect(&settings.imap, credentials, tls.clone()).await {
+        match imap::connect_with(
+            &settings.imap,
+            credentials,
+            tls.clone(),
+            shared.sync.connect,
+        )
+        .await
+        {
             Ok(connection) => return Ok(connection),
             Err(ImapError::Rejected(_)) if !fetched.refreshed => {
                 tracing::debug!("the server refused the access token; refreshing it");
@@ -705,43 +789,6 @@ async fn log_in_with_token(
             Err(error) => return Err(error.failure()),
         }
     }
-}
-
-async fn sync_folders_and_inbox(
-    shared: &Shared,
-    connection: &mut imap::Connection,
-    account: AccountId,
-) -> Result<(), SyncError> {
-    let folders = imap::sync_folders(connection, &shared.store, account).await?;
-    shared.send(Event::FoldersSynced {
-        account,
-        folders: folders.folders.len() as u32,
-    });
-    let Some(inbox) = folders.inbox else {
-        return Ok(());
-    };
-    let report = imap::first_sync(connection, &shared.store, inbox, |progress| {
-        shared.send(Event::SyncProgress {
-            account,
-            folder: inbox,
-            fetched: progress.fetched,
-            total: progress.total,
-        });
-    })
-    .await?;
-    if !report.orphaned_blobs.is_empty() {
-        let blobs = shared.blobs.clone();
-        let orphaned = report.orphaned_blobs;
-        let _ = tokio::task::spawn_blocking(move || {
-            for key in &orphaned {
-                if let Err(error) = blobs.remove(key) {
-                    tracing::warn!(%error, "a raw message the reset left couldn't be deleted");
-                }
-            }
-        })
-        .await;
-    }
-    Ok(())
 }
 
 fn imap_error(failure: LoginFailure) -> LoginError {

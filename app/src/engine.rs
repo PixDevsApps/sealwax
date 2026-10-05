@@ -8,7 +8,7 @@ use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{Event, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::Store;
@@ -64,6 +64,7 @@ pub fn start(
         detect: DetectOptions::default(),
         microsoft_client_id,
         sign_in: SignInOptions::default(),
+        sync: SyncConfig::default(),
     })
 }
 

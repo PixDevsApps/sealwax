@@ -1,9 +1,12 @@
 //! A fake IMAP server for the sync engine's tests, on 127.0.0.1 over TLS with a throwaway CA:
 //! mailboxes with UIDs, flags, keywords and mod-sequences; EXAMINE, UID SEARCH (ALL, UID,
 //! SINCE), UID FETCH of headers or flags with CHANGEDSINCE and VANISHED, LIST with SPECIAL-USE
-//! and STATUS, STATUS, UNSELECT, NOOP; EXISTS, EXPUNGE and VANISHED notices before each
-//! command's own responses. Three flavours: QRESYNC, CONDSTORE only, IMAP4rev1. Tests change
-//! its mailboxes between and during passes, and can cut a connection in the middle of a FETCH.
+//! and STATUS, STATUS, UNSELECT, NOOP, IDLE, whole messages for body downloads; EXISTS, EXPUNGE
+//! and VANISHED notices before each command's own responses and while idling. Three flavours:
+//! QRESYNC, CONDSTORE only (both with IDLE), IMAP4rev1. Tests change its mailboxes between and
+//! during passes, cut a connection in the middle of a FETCH, close every idling connection,
+//! refuse logins or connections, and turn the network into a black hole that leaves every open
+//! connection silently dead.
 //! Synthetic data only.
 
 #![allow(dead_code)]
@@ -20,8 +23,10 @@ use sealwax_engine::imap::{self, Connection, Credentials};
 use sealwax_engine::net::Trust;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
-use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use std::time::Instant;
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Flavor {
@@ -37,9 +42,9 @@ impl Flavor {
         match self {
             Flavor::Qresync => {
                 "IMAP4rev1 LITERAL+ ENABLE UNSELECT UIDPLUS CONDSTORE QRESYNC LIST-EXTENDED \
-                 LIST-STATUS SPECIAL-USE"
+                 LIST-STATUS SPECIAL-USE IDLE"
             }
-            Flavor::Condstore => "IMAP4rev1 LITERAL+ UNSELECT UIDPLUS CONDSTORE SPECIAL-USE",
+            Flavor::Condstore => "IMAP4rev1 LITERAL+ UNSELECT UIDPLUS CONDSTORE SPECIAL-USE IDLE",
             Flavor::Rev1 => "IMAP4rev1",
         }
     }
@@ -87,6 +92,21 @@ pub struct World {
     pub forget_vanished: bool,
     /// No EXISTS, EXPUNGE or VANISHED notices.
     pub quiet: bool,
+    /// Changes made before an IDLE starts are never announced to it (S1: Stalwart); NOOP still
+    /// reports them.
+    pub idle_misses_earlier: bool,
+    pub refuse_login: bool,
+    /// New connections are closed before TLS.
+    pub refuse_connections: bool,
+    /// When each connection arrived.
+    pub connections: Vec<Instant>,
+    /// Connections from before this epoch are silently dead.
+    dead_before: u64,
+    epoch: u64,
+    hole: bool,
+    /// Bumped to close every connection idling then, as a server restart would.
+    closings: u64,
+    changes: watch::Sender<u64>,
 }
 
 struct Cut {
@@ -110,7 +130,42 @@ impl World {
             cuts: 0,
             forget_vanished: false,
             quiet: false,
+            idle_misses_earlier: false,
+            refuse_login: false,
+            refuse_connections: false,
+            connections: Vec::new(),
+            dead_before: 0,
+            epoch: 0,
+            hole: false,
+            closings: 0,
+            changes: watch::channel(0).0,
         }
+    }
+
+    /// Wakes idling sessions to announce what changed.
+    fn changed(&self) {
+        self.changes.send_modify(|n| *n += 1);
+    }
+
+    /// While on, every connection, open or new, stops answering without closing; once off, new
+    /// connections work and the old ones stay dead (a suspend, or a network that went away).
+    pub fn black_hole(&mut self, on: bool) {
+        self.epoch += 1;
+        if on {
+            self.dead_before = self.epoch;
+        }
+        self.hole = on;
+        self.changed();
+    }
+
+    fn dead(&self, epoch: u64) -> bool {
+        epoch < self.dead_before
+    }
+
+    /// Closes every connection that is idling now, without a TLS close_notify.
+    pub fn close_idling(&mut self) {
+        self.closings += 1;
+        self.changed();
     }
 
     pub fn create(&mut self, name: &str, attributes: &[&str]) {
@@ -125,10 +180,12 @@ impl World {
                 ..Mailbox::default()
             },
         );
+        self.changed();
     }
 
     pub fn delete(&mut self, name: &str) {
         self.mailboxes.remove(name);
+        self.changed();
     }
 
     /// Deleted and created again: a new UIDVALIDITY, empty.
@@ -162,6 +219,7 @@ impl World {
                 message_id,
             },
         );
+        self.changed();
         uid
     }
 
@@ -178,6 +236,7 @@ impl World {
         let message = mailbox.messages.get_mut(&uid).expect("a stored UID");
         message.flags = flags.iter().map(|f| f.to_string()).collect();
         message.modseq = modseq;
+        self.changed();
     }
 
     pub fn expunge(&mut self, name: &str, uid: u32) {
@@ -187,6 +246,7 @@ impl World {
             let modseq = mailbox.modseq;
             mailbox.expunged.push((uid, modseq));
         }
+        self.changed();
     }
 
     pub fn uids(&self, name: &str) -> Vec<u32> {
@@ -258,11 +318,27 @@ impl Fake {
         tokio::spawn(async move {
             while let Ok((tcp, _)) = listener.accept().await {
                 let _ = tcp.set_nodelay(true);
-                let Ok(stream) = acceptor.accept(tcp).await else {
-                    continue;
+                let epoch = {
+                    let mut world = shared.lock().unwrap_or_else(|e| e.into_inner());
+                    world.connections.push(Instant::now());
+                    if world.refuse_connections {
+                        continue;
+                    }
+                    if world.hole {
+                        0
+                    } else {
+                        world.epoch.max(world.dead_before)
+                    }
                 };
-                let boxed: Box<dyn Io> = Box::new(stream);
-                tokio::spawn(session(BufReader::new(boxed), shared.clone()));
+                let acceptor = acceptor.clone();
+                let shared = shared.clone();
+                tokio::spawn(async move {
+                    let Ok(stream) = acceptor.accept(tcp).await else {
+                        return;
+                    };
+                    let boxed: Box<dyn Io> = Box::new(stream);
+                    session(BufReader::new(boxed), shared, epoch).await;
+                });
             }
         });
         Fake {
@@ -491,6 +567,16 @@ fn group(text: &str) -> (&str, &str) {
 
 /// EXISTS, EXPUNGE and VANISHED for what changed in the selected mailbox since the session last
 /// heard.
+/// The session's selected mailbox was deleted, or deleted and created again.
+fn selected_gone(world: &World, session: &Session) -> bool {
+    session.selected.as_ref().is_some_and(|(name, validity)| {
+        world
+            .mailboxes
+            .get(name)
+            .is_none_or(|mailbox| mailbox.uidvalidity != *validity)
+    })
+}
+
 fn notices(world: &World, session: &mut Session, out: &mut String) {
     let Some((name, validity)) = session.selected.clone() else {
         return;
@@ -779,6 +865,7 @@ fn uid_command(
             out.push_str(&format!("* VANISHED (EARLIER) {}\r\n", uid_set(&gone)));
         }
     }
+    let whole = items.to_ascii_uppercase().contains("BODY.PEEK[]");
     let headers = items.to_ascii_uppercase().contains("HEADER.FIELDS");
     let fields = items
         .find("HEADER.FIELDS (")
@@ -809,7 +896,13 @@ fn uid_command(
             continue;
         };
         let seq = seq + 1;
-        if headers {
+        if whole {
+            let full = format!("{}{TEXT}", header(message, *uid));
+            out.push_str(&format!(
+                "* {seq} FETCH (UID {uid} BODY[] {{{}}}\r\n{full})\r\n",
+                full.len()
+            ));
+        } else if headers {
             let full = header(message, *uid);
             let head = header_fields(&full, &fields);
             let size = full.len() + TEXT.len();
@@ -845,8 +938,126 @@ fn uid_command(
     Reply::Text(out)
 }
 
-async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>) {
-    let caps = world.lock().unwrap().flavor.caps();
+/// Logs a command and runs the actions waiting for it, before it is answered.
+fn arrived(world: &mut World, command: &str) {
+    world.commands.push(command.to_owned());
+    let due: Vec<usize> = world
+        .hooks
+        .iter()
+        .enumerate()
+        .filter(|(_, (needle, _))| command.contains(needle.as_str()))
+        .map(|(i, _)| i)
+        .collect();
+    for i in due.into_iter().rev() {
+        let (_, action) = world.hooks.remove(i);
+        action(world);
+    }
+}
+
+/// A dead connection: it reads and drops whatever comes until the client closes it.
+async fn silent(mut io: BufReader<Box<dyn Io>>) {
+    let mut sink = [0u8; 4096];
+    while io.read(&mut sink).await.unwrap_or(0) > 0 {}
+}
+
+/// How an IDLE ended on the server's side.
+enum Idle {
+    Done,
+    /// The connection went silent (a black hole).
+    Dead,
+    /// The server closed the connection.
+    Closed,
+}
+
+/// IDLE until DONE: announces changes as they happen.
+async fn idle(
+    io: &mut BufReader<Box<dyn Io>>,
+    world: &Arc<Mutex<World>>,
+    state: &mut Session,
+    changes: &mut watch::Receiver<u64>,
+    tag: &str,
+    epoch: u64,
+) -> Idle {
+    let (first, closings) = {
+        let world = world.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out = String::from("+ idling\r\n");
+        if world.idle_misses_earlier {
+            // Mark what changed before IDLE as told, without telling.
+            let mut ignored = String::new();
+            notices(&world, state, &mut ignored);
+        } else {
+            notices(&world, state, &mut out);
+        }
+        (out, world.closings)
+    };
+    if write(io, &first).await.is_err() {
+        return Idle::Dead;
+    }
+    changes.borrow_and_update();
+    loop {
+        let mut line = String::new();
+        tokio::select! {
+            read = io.read_line(&mut line) => {
+                if read.unwrap_or(0) == 0 {
+                    return Idle::Dead;
+                }
+                let out = {
+                    let mut world = world.lock().unwrap_or_else(|e| e.into_inner());
+                    if world.dead(epoch) {
+                        return Idle::Dead;
+                    }
+                    world.commands.push(line.trim_end().to_owned());
+                    let mut out = String::new();
+                    notices(&world, state, &mut out);
+                    out.push_str(&format!("{tag} OK idle done\r\n"));
+                    out
+                };
+                return if write(io, &out).await.is_ok() { Idle::Done } else { Idle::Dead };
+            }
+            changed = changes.changed() => {
+                if changed.is_err() {
+                    return Idle::Dead;
+                }
+                let (out, gone) = {
+                    let world = world.lock().unwrap_or_else(|e| e.into_inner());
+                    if world.dead(epoch) {
+                        return Idle::Dead;
+                    }
+                    if world.closings > closings {
+                        return Idle::Closed;
+                    }
+                    if selected_gone(&world, state) {
+                        // As Dovecot does when the selected mailbox is deleted.
+                        ("* BYE the selected mailbox was deleted\r\n".to_owned(), true)
+                    } else {
+                        let mut out = String::new();
+                        notices(&world, state, &mut out);
+                        (out, false)
+                    }
+                };
+                if !out.is_empty() && write(io, &out).await.is_err() {
+                    return Idle::Dead;
+                }
+                if gone {
+                    return Idle::Closed;
+                }
+            }
+        }
+    }
+}
+
+async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch: u64) {
+    let (caps, mut changes, dead) = {
+        let world = world.lock().unwrap_or_else(|e| e.into_inner());
+        (
+            world.flavor.caps(),
+            world.changes.subscribe(),
+            world.dead(epoch) || epoch == 0 && world.hole,
+        )
+    };
+    if dead {
+        return silent(io).await;
+    }
     let greeting = format!("* OK [CAPABILITY {caps} AUTH=PLAIN] fake ready\r\n");
     if write(&mut io, &greeting).await.is_err() {
         return;
@@ -857,6 +1068,9 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>) {
         match io.read_line(&mut line).await {
             Ok(0) | Err(_) => return,
             Ok(_) => {}
+        }
+        if world.lock().unwrap_or_else(|e| e.into_inner()).dead(epoch) {
+            return silent(io).await;
         }
         let line = line.trim_end_matches(['\r', '\n']).to_owned();
         let Some((tag, command)) = line.split_once(' ') else {
@@ -870,28 +1084,35 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>) {
             if io.read_line(&mut response).await.unwrap_or(0) == 0 {
                 return;
             }
-            if write(&mut io, &format!("{tag} OK authenticated\r\n"))
-                .await
-                .is_err()
-            {
+            let refused = {
+                let mut world = world.lock().unwrap_or_else(|e| e.into_inner());
+                world.commands.push("AUTHENTICATE PLAIN".into());
+                world.refuse_login
+            };
+            let reply = if refused {
+                format!("{tag} NO [AUTHENTICATIONFAILED] Authentication failed.\r\n")
+            } else {
+                format!("{tag} OK authenticated\r\n")
+            };
+            if write(&mut io, &reply).await.is_err() {
                 return;
             }
             continue;
         }
+        if command.eq_ignore_ascii_case("IDLE") && caps.contains("IDLE") {
+            arrived(
+                &mut world.lock().unwrap_or_else(|e| e.into_inner()),
+                command,
+            );
+            match idle(&mut io, &world, &mut state, &mut changes, tag, epoch).await {
+                Idle::Done => continue,
+                Idle::Dead => return silent(io).await,
+                Idle::Closed => return,
+            }
+        }
         let reply = {
             let mut world = world.lock().unwrap_or_else(|e| e.into_inner());
-            world.commands.push(command.to_owned());
-            let due: Vec<usize> = world
-                .hooks
-                .iter()
-                .enumerate()
-                .filter(|(_, (needle, _))| command.contains(needle.as_str()))
-                .map(|(i, _)| i)
-                .collect();
-            for i in due.into_iter().rev() {
-                let (_, action) = world.hooks.remove(i);
-                action(&mut world);
-            }
+            arrived(&mut world, command);
             answer(&mut world, &mut state, tag, command)
         };
         match reply {

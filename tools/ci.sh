@@ -1,21 +1,38 @@
 #!/usr/bin/env bash
-# Usage: tools/ci.sh [--ui]. --ui adds a headless smoke run of the app and the self-test scripts
-# in tests/selftest/ (except preview* and perf-*), on Broadway display $SEALWAX_CI_DISPLAY
-# (default 19).
+# Usage: tools/ci.sh [--ui] [--testbed]. --ui adds a headless smoke run of the app and the
+# self-test scripts in tests/selftest/ (except preview*, perf-*, live-* and testbed-*), on
+# Broadway display $SEALWAX_CI_DISPLAY (default 19). --testbed adds every testbed suite: each
+# test file with tests ignored as "needs the testbed", in release, one test at a time. When no
+# testbed container is running it starts and seeds the testbed first and stops it at the end
+# (keeping its volumes); a running testbed is used and left running.
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 ui=false
+testbed=false
 for arg in "$@"; do
     case $arg in
         --ui) ui=true ;;
+        --testbed) testbed=true ;;
         *)
-            echo "usage: tools/ci.sh [--ui]" >&2
+            echo "usage: tools/ci.sh [--ui] [--testbed]" >&2
             exit 2
             ;;
     esac
 done
 display=${SEALWAX_CI_DISPLAY:-19}
+
+smoke=
+stop_testbed=false
+cleanup() {
+    if [[ -n $smoke ]]; then
+        rm -rf -- "$smoke"
+    fi
+    if $stop_testbed; then
+        tools/testbed/down.sh --keep-volumes
+    fi
+}
+trap cleanup EXIT
 
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
@@ -27,7 +44,6 @@ if $ui; then
     log=.local/ci-smoke.log
     # Scratch config, state and cache, so the smoke run never reads or writes the user's files.
     smoke=$(mktemp -d)
-    trap 'rm -rf -- "$smoke"' EXIT
     tools/headless.sh "$display" env SEALWAX_EXIT_AFTER_MS=1500 XDG_CONFIG_HOME="$smoke/config" \
         XDG_STATE_HOME="$smoke/state" XDG_CACHE_HOME="$smoke/cache" XDG_DATA_HOME="$smoke/data" \
         target/debug/sealwax 2>&1 | tee "$log"
@@ -49,5 +65,44 @@ if $ui; then
             exit 1
         fi
         echo "self-test $name: $(grep '^# .* steps passed' "$log")"
+    done
+fi
+
+if $testbed; then
+    mkdir -p .local
+    services=$(cd tools/testbed && docker compose config --services | sort)
+    running=$(cd tools/testbed && docker compose ps --status running --services | sort)
+    if [[ -z $running ]]; then
+        tools/testbed/up.sh
+        stop_testbed=true
+        tools/testbed/seed.sh
+    elif [[ $running != "$services" ]]; then
+        echo "testbed: only some containers are running; start it with tools/testbed/up.sh" >&2
+        exit 1
+    fi
+    # The suites' proxies need the server certificate as well as the CA.
+    if [[ ! -f tools/testbed/certs/server.pem ]]; then
+        echo "testbed: tools/testbed/certs/ isn't in this checkout (a worktree?); link it to the" \
+            "certs/ of the checkout that started the testbed" >&2
+        exit 1
+    fi
+    export SEALWAX_TESTBED_CA=${SEALWAX_TESTBED_CA:-$PWD/tools/testbed/certs/ca.pem}
+    export MAIL_TESTBED_CA=${MAIL_TESTBED_CA:-$SEALWAX_TESTBED_CA}
+    # The suites share test users, so they run one file and one test at a time. The soak
+    # (ML-049) and the tests that need a Secret Service or the network are ignored for other
+    # reasons and stay out.
+    mapfile -t suites < <(grep -l 'ignore = "needs the testbed' -- */tests/*.rs spikes/*/tests/*.rs | sort -u)
+    for file in "${suites[@]}"; do
+        crate=${file%%/tests/*}
+        package=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$crate/Cargo.toml" | head -n 1)
+        name=$(basename -- "$file" .rs)
+        log=.local/testbed-$package-$name.log
+        if ! cargo test --release -p "$package" --test "$name" -- --ignored --test-threads=1 \
+            --nocapture >"$log" 2>&1; then
+            grep -E '^(test |thread |failures)|panicked' "$log" >&2 || true
+            echo "testbed suite $package/$name failed; see $log" >&2
+            exit 1
+        fi
+        echo "testbed suite $package/$name: $(grep '^test result' "$log" | tail -n 1)"
     done
 fi

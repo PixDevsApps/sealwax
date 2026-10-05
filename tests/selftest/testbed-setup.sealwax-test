@@ -2,7 +2,8 @@
 # the real engine adds two accounts through the setup assistant's manual settings, lists their
 # folders and syncs each INBOX's headers into the list. alice is on Dovecot, with Mailpit for the
 # SMTP login check (it accepts any login and nothing is sent); perf is on Stalwart with 10,000
-# messages. Then Remove Account deletes alice. Only the testbed CA is trusted, secrets stay in
+# messages, all older than the first-sync window's 90 days, so its INBOX keeps the newest 200
+# (ML-043). Then Remove Account deletes alice. Only the testbed CA is trusted, secrets stay in
 # memory, and nothing leaves 127.0.0.1.
 # Not in CI: it needs the testbed. Gate previews go to tools/progress/public/.
 # Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/testbed-setup.sealwax-test
@@ -58,8 +59,8 @@ setup-key escape
 setup-key escape
 wait-until assert-setup open false
 
-# perf on Stalwart: 10,000 headers, newest first, a third of them unread; then both inboxes
-# together.
+# perf on Stalwart: the newest 200 of its 10,000 headers (66 of them unread), the rest older
+# mail to load on scroll; then both inboxes together.
 action win.add-account
 setup-type setup-address perf@example.test
 setup-type setup-name Perf
@@ -73,17 +74,21 @@ setup-type setup-password testbed-password
 setup-key enter
 wait-until assert-setup open false
 wait-until assert-account-status perf@example.test synced
-wait-until assert-sidebar-count Perf:inbox 3333
+wait-until assert-sidebar-count Perf:inbox 66
 folder inbox Perf
-assert-list-count 10000
+assert-list-count 200
 folder all-inboxes
-assert-list-count 10030
+assert-list-count 230
+# Saving perf hands accounts.toml to the engine again: alice's sync keeps running, and stays
+# synced.
+wait-until assert-account-status alice@example.test synced
+wait-until assert-account-status perf@example.test synced
 screenshot $DIR/../../tools/progress/public/m2-testbed-all-inboxes-2026-10-05.png
 
 # Remove Account: the dialog asks which; alice goes with her local mail, perf stays.
 action win.remove-account
 assert-shown remove-account-choice true
 setup-respond remove-account remove
-wait-until assert-list-count 10000
-assert-sidebar-count Perf:inbox 3333
+wait-until assert-list-count 200
+assert-sidebar-count Perf:inbox 66
 assert-action-enabled win.remove-account true
