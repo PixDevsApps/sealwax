@@ -4,9 +4,9 @@
 //! diffs are computed inside the transaction.
 
 use super::api::{
-    ChangeEvent, FirstSyncStep, FolderCounts, FolderSpec, Ingested, NewAccount, NewMessage,
-    Positioned, StoreVersion, ThreadCount, ThreadMerge, Versioned, ViewChange, ViewDiff,
-    ViewFilter, ViewId, ViewScope, ViewSpec,
+    BodyUpgrade, ChangeEvent, Evicted, FirstSyncStep, FolderCounts, FolderSpec, Ingested,
+    NewAccount, NewMessage, Positioned, StoreVersion, ThreadCount, ThreadMerge, Upgraded,
+    Versioned, ViewChange, ViewDiff, ViewFilter, ViewId, ViewScope, ViewSpec,
 };
 use super::maintenance::Maintenance;
 use super::{Removed, RemovedAccount, Shared, StoreError, codec, fts, views};
@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod accounts;
+mod bodies;
 
 /// Messages per header transaction (S3: 500 held the writer for up to 258 ms with text).
 pub(crate) const MAX_BATCH: usize = 200;
@@ -91,6 +92,20 @@ pub(crate) enum WriteJob {
         folder: FolderId,
         uidvalidity: u32,
         reply: Sender<Removed>,
+    },
+    UpgradeBody {
+        upgrade: Box<BodyUpgrade>,
+        reply: Sender<Upgraded>,
+    },
+    TouchBody {
+        message: MessageId,
+        at: i64,
+        reply: Sender<()>,
+    },
+    EvictBodies {
+        limit: u64,
+        keep: Vec<MessageId>,
+        reply: Sender<Evicted>,
     },
 }
 
@@ -302,6 +317,15 @@ impl Writer {
                 reply,
             } => {
                 let _ = reply.try_send(self.reset_folder(folder, uidvalidity));
+            }
+            WriteJob::UpgradeBody { upgrade, reply } => {
+                let _ = reply.try_send(self.upgrade_body(&upgrade));
+            }
+            WriteJob::TouchBody { message, at, reply } => {
+                let _ = reply.try_send(self.touch_body(message, at));
+            }
+            WriteJob::EvictBodies { limit, keep, reply } => {
+                let _ = reply.try_send(self.evict_bodies(limit, &keep));
             }
             WriteJob::Ingest { .. } => unreachable!("ingest jobs are bulk"),
         }
@@ -552,9 +576,12 @@ impl Writer {
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         {
+            // A body downloaded between a batch's header commit and this one has indexed the
+            // whole message already.
             let mut insert = tx.prepare_cached(
                 "INSERT INTO message_fts(rowid, subject, sender, recipients, body) \
-                 SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM messages WHERE id = ?1)",
+                 SELECT ?1, ?2, ?3, ?4, ?5 WHERE EXISTS (SELECT 1 FROM messages WHERE id = ?1) \
+                   AND NOT EXISTS (SELECT 1 FROM message_fts WHERE rowid = ?1)",
             )?;
             for doc in docs {
                 insert.execute(params![

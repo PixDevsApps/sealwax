@@ -22,6 +22,9 @@ pub(crate) mod tests;
 #[cfg(test)]
 mod account_tests;
 
+#[cfg(test)]
+mod body_tests;
+
 pub use api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
 pub use views::ViewHandle;
@@ -417,6 +420,59 @@ impl Store {
     /// Removes messages (an EXPUNGE or VANISHED).
     pub fn remove(&self, ids: Vec<MessageId>) -> Reply<Removed> {
         self.write(|reply| WriteJob::Remove { ids, reply })
+    }
+
+    /// Where each of `ids` is on the server and what of it the store holds, for downloading
+    /// bodies (ML-044); ids the store doesn't hold are left out.
+    pub fn body_targets(&self, ids: Vec<MessageId>) -> Reply<Vec<BodyTarget>> {
+        self.read(|reply| ReadJob::BodyTargets { ids, reply })
+    }
+
+    /// Puts a downloaded body on its header-only row. Store the blob first: it must be durable
+    /// before the commit that refers to it. Deletes nothing from the blob store itself; the
+    /// reply lists what no row refers to any more.
+    pub fn upgrade_body(&self, upgrade: BodyUpgrade) -> Reply<Upgraded> {
+        self.write(|reply| WriteJob::UpgradeBody {
+            upgrade: Box::new(upgrade),
+            reply,
+        })
+    }
+
+    /// Marks the body of `message` used at `at` (Unix seconds), when the reader shows it.
+    pub fn touch_body(&self, message: MessageId, at: i64) -> Reply<()> {
+        self.write(|reply| WriteJob::TouchBody { message, at, reply })
+    }
+
+    /// One batch of the disk cap: bodies used longest ago go back to headers and preview until
+    /// the bodies take at most `limit` bytes, sparing those of `keep`. The caller deletes
+    /// `Evicted::blobs` from the blob store, and calls again while `Evicted::more`.
+    pub fn evict_bodies(&self, limit: u64, keep: Vec<MessageId>) -> Reply<Evicted> {
+        self.write(|reply| WriteJob::EvictBodies { limit, keep, reply })
+    }
+
+    /// What the downloaded bodies take.
+    pub fn body_usage(&self) -> Reply<BodyUsage> {
+        self.read(|reply| ReadJob::BodyUsage { reply })
+    }
+
+    /// Up to `limit` messages without a body that arrived since `since` in the Inboxes of
+    /// server accounts, newest first: the prefetch's candidates.
+    pub fn body_candidates(&self, since: i64, limit: u32) -> Reply<Vec<BodyCandidate>> {
+        self.read(|reply| ReadJob::BodyCandidates {
+            since,
+            limit,
+            reply,
+        })
+    }
+
+    /// Where the attachment at mail-parser index `part` of `message` is on the server, when the
+    /// store recorded its section.
+    pub fn part_source(&self, message: MessageId, part: u32) -> Reply<Option<PartSource>> {
+        self.read(|reply| ReadJob::PartSource {
+            message,
+            part,
+            reply,
+        })
     }
 
     /// Stops accepting requests, lets queued requests finish and waits for the threads. The
