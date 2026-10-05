@@ -202,17 +202,43 @@ async fn capabilities(session: &mut Session) -> Result<Caps, ImapError> {
     caps.ok_or(ImapError::Protocol("no CAPABILITY response"))
 }
 
+/// How a session is prepared after login.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ConnectOptions {
+    /// ENABLE QRESYNC where offered. Off, a CONDSTORE server is synced without VANISHED (a
+    /// quirk switch, and how the tests reach the CONDSTORE-only path on the testbed).
+    pub qresync: bool,
+}
+
+impl Default for ConnectOptions {
+    fn default() -> Self {
+        ConnectOptions { qresync: true }
+    }
+}
+
 /// Connects, logs in and prepares the session. `tls` comes from [`crate::net::Trust`].
 pub async fn connect(
     endpoint: &Endpoint,
     credentials: Credentials<'_>,
     tls: Arc<ClientConfig>,
 ) -> Result<Connection, ImapError> {
+    connect_with(endpoint, credentials, tls, ConnectOptions::default()).await
+}
+
+/// [`connect`] with `options`.
+pub async fn connect_with(
+    endpoint: &Endpoint,
+    credentials: Credentials<'_>,
+    tls: Arc<ClientConfig>,
+    options: ConnectOptions,
+) -> Result<Connection, ImapError> {
     let started = std::time::Instant::now();
-    let connection =
-        tokio::time::timeout(CONNECT_TIMEOUT, connect_inner(endpoint, credentials, tls))
-            .await
-            .map_err(|_| ImapError::Timeout)??;
+    let connection = tokio::time::timeout(
+        CONNECT_TIMEOUT,
+        connect_inner(endpoint, credentials, tls, options),
+    )
+    .await
+    .map_err(|_| ImapError::Timeout)??;
     tracing::debug!(
         mechanism = ?connection.mechanism,
         qresync = connection.qresync,
@@ -226,6 +252,7 @@ async fn connect_inner(
     endpoint: &Endpoint,
     credentials: Credentials<'_>,
     tls: Arc<ClientConfig>,
+    options: ConnectOptions,
 ) -> Result<Connection, ImapError> {
     let tcp = net::tcp(&endpoint.host, endpoint.port, CONNECT_TIMEOUT).await?;
     let (mut client, greeting_caps) = match endpoint.security {
@@ -275,7 +302,7 @@ async fn connect_inner(
         }
     }
     let mut qresync = false;
-    if caps.has("QRESYNC") && caps.has("ENABLE") {
+    if options.qresync && caps.has("QRESYNC") && caps.has("ENABLE") {
         raw::run(&mut session, "ENABLE QRESYNC", |response| {
             if let Response::Capabilities(enabled) = response {
                 qresync |= enabled.iter().any(

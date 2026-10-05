@@ -14,6 +14,10 @@ use sealwax_domain::model::{
 };
 use std::sync::Arc;
 
+mod sync;
+
+pub(crate) use sync::SyncRead;
+
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
 
 pub(crate) enum ReadJob {
@@ -58,6 +62,7 @@ pub(crate) enum ReadJob {
         folder: FolderId,
         reply: Sender<Option<FolderSync>>,
     },
+    Sync(SyncRead),
 }
 
 impl ReadJob {
@@ -73,6 +78,7 @@ impl ReadJob {
             ReadJob::Search { reply, .. } => reply.is_closed(),
             ReadJob::Check { reply } => reply.is_closed(),
             ReadJob::FolderSync { reply, .. } => reply.is_closed(),
+            ReadJob::Sync(read) => read.cancelled(),
         }
     }
 }
@@ -160,6 +166,7 @@ impl Reader {
             ReadJob::FolderSync { folder, reply } => {
                 let _ = reply.try_send(self.folder_sync(folder));
             }
+            ReadJob::Sync(read) => self.sync_read(read),
         }
     }
 
@@ -354,40 +361,45 @@ impl Reader {
     fn folder_sync(&self, folder: FolderId) -> Result<Option<FolderSync>, StoreError> {
         let row = self
             .conn
-            .prepare_cached(
-                "SELECT account_id, name_raw, delimiter, role, selectable, uidvalidity, uidnext, \
-                   highestmodseq, sync_state, initial_top, initial_modseq, sync_floor, \
-                   (SELECT count(*) FROM messages WHERE folder_id = f.id) \
-                 FROM folders f WHERE id = ?1",
-            )?
-            .query_row([folder.0], |row| {
-                let state = match row.get::<_, String>(8)?.as_str() {
-                    "initial" => SyncState::Initial {
-                        top: row.get::<_, Option<u32>>(9)?.unwrap_or(1),
-                        modseq: row.get::<_, Option<i64>>(10)?.unwrap_or(0) as u64,
-                        floor: row.get::<_, Option<u32>>(11)?.unwrap_or(1),
-                    },
-                    "ready" => SyncState::Ready,
-                    _ => SyncState::New,
-                };
-                Ok(FolderSync {
-                    folder,
-                    account: AccountId(row.get(0)?),
-                    name_raw: row.get(1)?,
-                    delimiter: row
-                        .get::<_, Option<String>>(2)?
-                        .and_then(|delimiter| delimiter.chars().next()),
-                    role: FolderRole::parse(&row.get::<_, String>(3)?),
-                    selectable: row.get(4)?,
-                    uidvalidity: row.get(5)?,
-                    uidnext: row.get(6)?,
-                    highestmodseq: row.get::<_, i64>(7)? as u64,
-                    state,
-                    floor: row.get(11)?,
-                    messages: row.get(12)?,
-                })
-            })
+            .prepare_cached(&format!(
+                "SELECT {FOLDER_SYNC} FROM folders f WHERE id = ?1"
+            ))?
+            .query_row([folder.0], folder_sync_row)
             .optional()?;
         Ok(row)
     }
+}
+
+/// The columns `folder_sync_row` reads.
+pub(super) const FOLDER_SYNC: &str = "id, account_id, name_raw, delimiter, role, selectable, \
+    uidvalidity, uidnext, highestmodseq, sync_state, initial_top, initial_modseq, sync_floor, \
+    below_floor, (SELECT count(*) FROM messages WHERE folder_id = f.id)";
+
+pub(super) fn folder_sync_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FolderSync> {
+    let state = match row.get::<_, String>(9)?.as_str() {
+        "initial" => SyncState::Initial {
+            top: row.get::<_, Option<u32>>(10)?.unwrap_or(1),
+            modseq: row.get::<_, Option<i64>>(11)?.unwrap_or(0) as u64,
+            floor: row.get::<_, Option<u32>>(12)?.unwrap_or(1),
+        },
+        "ready" => SyncState::Ready,
+        _ => SyncState::New,
+    };
+    Ok(FolderSync {
+        folder: FolderId(row.get(0)?),
+        account: AccountId(row.get(1)?),
+        name_raw: row.get(2)?,
+        delimiter: row
+            .get::<_, Option<String>>(3)?
+            .and_then(|delimiter| delimiter.chars().next()),
+        role: FolderRole::parse(&row.get::<_, String>(4)?),
+        selectable: row.get(5)?,
+        uidvalidity: row.get(6)?,
+        uidnext: row.get(7)?,
+        highestmodseq: row.get::<_, i64>(8)? as u64,
+        state,
+        floor: row.get(12)?,
+        below: row.get(13)?,
+        messages: row.get(14)?,
+    })
 }

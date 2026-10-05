@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod accounts;
+pub(crate) mod sync;
 
 /// Messages per header transaction (S3: 500 held the writer for up to 258 ms with text).
 pub(crate) const MAX_BATCH: usize = 200;
@@ -92,6 +93,7 @@ pub(crate) enum WriteJob {
         uidvalidity: u32,
         reply: Sender<Removed>,
     },
+    Sync(sync::SyncJob),
 }
 
 /// An ingest still running: the messages left and the result so far.
@@ -303,6 +305,7 @@ impl Writer {
             } => {
                 let _ = reply.try_send(self.reset_folder(folder, uidvalidity));
             }
+            WriteJob::Sync(job) => self.sync_job(job),
             WriteJob::Ingest { .. } => unreachable!("ingest jobs are bulk"),
         }
     }
@@ -343,43 +346,7 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut ids = Vec::with_capacity(folders.len());
-        let mut counted = BTreeSet::new();
-        {
-            let mut upsert = tx.prepare_cached(
-                "INSERT INTO folders(account_id, name, name_raw, delimiter, role, attributes, \
-                   selectable) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
-                 ON CONFLICT(account_id, name_raw) DO UPDATE SET \
-                   name = excluded.name, delimiter = excluded.delimiter, role = excluded.role, \
-                   attributes = excluded.attributes, selectable = excluded.selectable \
-                 RETURNING id",
-            )?;
-            let mut counts = tx.prepare_cached(
-                "UPDATE folders SET total_count = ?2, unread_count = ?3 \
-                 WHERE id = ?1 AND sync_state = 'new' \
-                   AND NOT EXISTS (SELECT 1 FROM messages WHERE folder_id = ?1)",
-            )?;
-            for folder in folders {
-                let id = FolderId(upsert.query_row(
-                    params![
-                        folder.account.0,
-                        folder.name,
-                        folder.name_raw,
-                        folder.delimiter.map(String::from),
-                        folder.role.as_str(),
-                        folder.attributes.join(" "),
-                        folder.selectable,
-                    ],
-                    |row| row.get(0),
-                )?);
-                if let Some(server) = folder.server_counts.filter(|_| folder.selectable)
-                    && counts.execute(params![id.0, server.total, server.unread])? > 0
-                {
-                    counted.insert(id);
-                }
-                ids.push(id);
-            }
-        }
+        let (ids, counted) = upsert_rows(&tx, folders)?;
         let shared = Arc::clone(&self.state.shared);
         let open = shared.registry.lock();
         let mut views = Vec::new();
@@ -426,7 +393,7 @@ impl Writer {
                 modseq,
             } => tx.execute(
                 "UPDATE folders SET uidvalidity = ?2, sync_state = 'initial', initial_top = ?3, \
-                   initial_modseq = ?4, sync_floor = ?3, \
+                   initial_modseq = ?4, sync_floor = ?3, below_floor = 0, \
                    total_count = (SELECT count(*) FROM messages WHERE folder_id = ?1), \
                    unread_count = (SELECT count(*) FROM messages \
                      WHERE folder_id = ?1 AND flags & 1 = 0) \
@@ -437,11 +404,12 @@ impl Writer {
                 "UPDATE folders SET sync_floor = ?2 WHERE id = ?1 AND sync_state = 'initial'",
                 params![folder.0, floor],
             )?,
-            FirstSyncStep::Finish => tx.execute(
+            FirstSyncStep::Finish { below } => tx.execute(
                 "UPDATE folders SET sync_state = 'ready', uidnext = initial_top, \
-                   highestmodseq = initial_modseq, initial_top = NULL, initial_modseq = NULL \
+                   highestmodseq = initial_modseq, initial_top = NULL, initial_modseq = NULL, \
+                   below_floor = ?2, sync_floor = CASE WHEN ?2 = 0 THEN 1 ELSE sync_floor END \
                  WHERE id = ?1 AND sync_state = 'initial'",
-                [folder.0],
+                params![folder.0, below],
             )?,
         };
         if changed == 0 {
@@ -472,7 +440,8 @@ impl Writer {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.execute(
             "UPDATE folders SET uidvalidity = ?2, sync_state = 'new', uidnext = 1, \
-               highestmodseq = 0, initial_top = NULL, initial_modseq = NULL, sync_floor = NULL \
+               highestmodseq = 0, initial_top = NULL, initial_modseq = NULL, sync_floor = NULL, \
+               below_floor = 0 \
              WHERE id = ?1",
             params![folder.0, uidvalidity],
         )?;
@@ -874,6 +843,50 @@ impl Writer {
             orphaned_blobs,
         })
     }
+}
+
+/// Upserts folders by `(account, name_raw)`; returns their ids in input order and the folders
+/// whose counts became the server's STATUS counts (those still new and empty).
+fn upsert_rows(
+    tx: &Connection,
+    folders: &[FolderSpec],
+) -> rusqlite::Result<(Vec<FolderId>, BTreeSet<FolderId>)> {
+    let mut ids = Vec::with_capacity(folders.len());
+    let mut counted = BTreeSet::new();
+    let mut upsert = tx.prepare_cached(
+        "INSERT INTO folders(account_id, name, name_raw, delimiter, role, attributes, \
+           selectable) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+         ON CONFLICT(account_id, name_raw) DO UPDATE SET \
+           name = excluded.name, delimiter = excluded.delimiter, role = excluded.role, \
+           attributes = excluded.attributes, selectable = excluded.selectable \
+         RETURNING id",
+    )?;
+    let mut counts = tx.prepare_cached(
+        "UPDATE folders SET total_count = ?2, unread_count = ?3 \
+         WHERE id = ?1 AND sync_state = 'new' \
+           AND NOT EXISTS (SELECT 1 FROM messages WHERE folder_id = ?1)",
+    )?;
+    for folder in folders {
+        let id = FolderId(upsert.query_row(
+            params![
+                folder.account.0,
+                folder.name,
+                folder.name_raw,
+                folder.delimiter.map(String::from),
+                folder.role.as_str(),
+                folder.attributes.join(" "),
+                folder.selectable,
+            ],
+            |row| row.get(0),
+        )?);
+        if let Some(server) = folder.server_counts.filter(|_| folder.selectable)
+            && counts.execute(params![id.0, server.total, server.unread])? > 0
+        {
+            counted.insert(id);
+        }
+        ids.push(id);
+    }
+    Ok((ids, counted))
 }
 
 /// The UID a new message gets, or `None` when the folder already holds it: the same UID, or,

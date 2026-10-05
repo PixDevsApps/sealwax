@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 2;
+pub const VERSION: i64 = 3;
 
-const MIGRATIONS: &[&str] = &[V1, V2];
+const MIGRATIONS: &[&str] = &[V1, V2, V3];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -130,6 +130,16 @@ const V2: &str = "
 ALTER TABLE accounts ADD COLUMN key TEXT;
 ALTER TABLE accounts ADD COLUMN detached INTEGER NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX accounts_key ON accounts(key);
+";
+
+/// M3's first-sync window (ML-043): a folder may hold only its newest messages, every UID from
+/// `sync_floor` up. `below_floor` counts the messages the server held under the floor when last
+/// counted, a hint for the count checks and the STATUS skip (a stale value costs a UID diff,
+/// never a wrong row). A floor of 1 means nothing older is left, which is true of every folder
+/// M2 synced completely.
+const V3: &str = "
+ALTER TABLE folders ADD COLUMN below_floor INTEGER NOT NULL DEFAULT 0;
+UPDATE folders SET sync_floor = 1 WHERE sync_state = 'ready';
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

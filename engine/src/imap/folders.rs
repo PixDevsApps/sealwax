@@ -1,6 +1,7 @@
 //! The folder list (ML-036): LIST with SPECIAL-USE and STATUS return options where offered,
-//! names decoded from modified UTF-7, roles by SPECIAL-USE and then the name table, and the
-//! server's MESSAGES and UNSEEN for folders the store hasn't synced yet.
+//! names decoded from modified UTF-7, roles by SPECIAL-USE and then the name table, the
+//! server's MESSAGES and UNSEEN for folders the store hasn't synced yet, and UIDNEXT,
+//! UIDVALIDITY and HIGHESTMODSEQ for the account pass's change check (ML-041).
 
 use super::connection::Connection;
 use super::error::{ImapError, SyncError};
@@ -23,6 +24,28 @@ pub struct ListedFolder {
     pub role: FolderRole,
     pub selectable: bool,
     pub counts: Option<ServerCounts>,
+    /// STATUS as listed; `None` for the connection's selected mailbox when it couldn't be
+    /// closed first, whose STATUS may be stale.
+    pub status: Option<FolderStatus>,
+}
+
+/// One folder's STATUS. HIGHESTMODSEQ only where the server has CONDSTORE.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FolderStatus {
+    pub messages: Option<u32>,
+    pub unseen: Option<u32>,
+    pub uidnext: Option<u32>,
+    pub uidvalidity: Option<u32>,
+    pub highestmodseq: Option<u64>,
+}
+
+impl FolderStatus {
+    fn counts(&self) -> Option<ServerCounts> {
+        Some(ServerCounts {
+            total: self.messages?,
+            unread: self.unseen?,
+        })
+    }
 }
 
 /// The stored folder list of an account.
@@ -62,7 +85,7 @@ struct Entry {
 #[derive(Default)]
 struct Found {
     entries: Vec<Entry>,
-    statuses: HashMap<String, ServerCounts>,
+    statuses: HashMap<String, FolderStatus>,
 }
 
 impl Found {
@@ -79,8 +102,16 @@ impl Found {
                     .collect(),
             }),
             Response::MailboxData(MailboxDatum::Status { mailbox, status }) => {
-                if let Some(counts) = counts(status) {
-                    self.statuses.insert(mailbox.to_string(), counts);
+                let found = self.statuses.entry(mailbox.to_string()).or_default();
+                for item in status {
+                    match item {
+                        StatusAttribute::Messages(n) => found.messages = Some(*n),
+                        StatusAttribute::Unseen(n) => found.unseen = Some(*n),
+                        StatusAttribute::UidNext(n) => found.uidnext = Some(*n),
+                        StatusAttribute::UidValidity(n) => found.uidvalidity = Some(*n),
+                        StatusAttribute::HighestModSeq(n) => found.highestmodseq = Some(*n),
+                        _ => {}
+                    }
                 }
             }
             _ => {}
@@ -88,34 +119,24 @@ impl Found {
     }
 }
 
-fn counts(status: &[StatusAttribute]) -> Option<ServerCounts> {
-    let mut total = None;
-    let mut unread = None;
-    for item in status {
-        match item {
-            StatusAttribute::Messages(n) => total = Some(*n),
-            StatusAttribute::Unseen(n) => unread = Some(*n),
-            _ => {}
-        }
-    }
-    Some(ServerCounts {
-        total: total?,
-        unread: unread?,
-    })
-}
-
-/// Lists every folder with its STATUS counts: in one round trip with LIST-STATUS, else LIST
-/// followed by pipelined STATUS commands. SPECIAL-USE attributes are asked for explicitly
+/// Lists every folder with its STATUS: in one round trip with LIST-STATUS, else LIST followed by
+/// pipelined STATUS commands. SPECIAL-USE attributes are asked for explicitly
 /// (`RETURN (SPECIAL-USE)`, RFC 6154) where the server offers it with LIST-EXTENDED.
 pub async fn list(conn: &mut Connection) -> Result<Vec<ListedFolder>, ImapError> {
     let special_use = conn.caps().has("SPECIAL-USE") && conn.caps().has("LIST-EXTENDED");
     let list_status = conn.caps().has("LIST-STATUS");
+    let items = if conn.condstore() {
+        "MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ"
+    } else {
+        "MESSAGES UNSEEN UIDNEXT UIDVALIDITY"
+    };
+    let status = format!("STATUS ({items})");
     let mut options = Vec::new();
     if special_use {
         options.push("SPECIAL-USE");
     }
     if list_status {
-        options.push("STATUS (MESSAGES UNSEEN)");
+        options.push(&status);
     }
     let list = if options.is_empty() {
         "LIST \"\" \"*\"".to_owned()
@@ -141,12 +162,7 @@ pub async fn list(conn: &mut Connection) -> Result<Vec<ListedFolder>, ImapError>
             .entries
             .iter()
             .filter(|entry| roles::selectable(&entry.attributes))
-            .map(|entry| {
-                Ok(format!(
-                    "STATUS {} (MESSAGES UNSEEN)",
-                    quote(&entry.name_raw)?
-                ))
-            })
+            .map(|entry| Ok(format!("STATUS {} ({items})", quote(&entry.name_raw)?)))
             .collect::<Result<Vec<_>, ImapError>>()?;
         if !commands.is_empty() {
             raw::run_pipelined(&mut conn.session, &commands, |r| found.take(r)).await?;
@@ -159,7 +175,7 @@ pub async fn list(conn: &mut Connection) -> Result<Vec<ListedFolder>, ImapError>
 }
 
 /// Decodes names and assigns roles.
-fn listed(entries: Vec<Entry>, statuses: &HashMap<String, ServerCounts>) -> Vec<ListedFolder> {
+fn listed(entries: Vec<Entry>, statuses: &HashMap<String, FolderStatus>) -> Vec<ListedFolder> {
     let names: Vec<String> = entries
         .iter()
         .map(|entry| mutf7::display_name(&entry.name_raw))
@@ -180,7 +196,8 @@ fn listed(entries: Vec<Entry>, statuses: &HashMap<String, ServerCounts>) -> Vec<
         .zip(assigned)
         .map(|((entry, name), role)| ListedFolder {
             selectable: roles::selectable(&entry.attributes),
-            counts: statuses.get(&entry.name_raw).copied(),
+            counts: statuses.get(&entry.name_raw).and_then(FolderStatus::counts),
+            status: statuses.get(&entry.name_raw).copied(),
             name_raw: entry.name_raw,
             name,
             delimiter: entry.delimiter,
@@ -190,27 +207,30 @@ fn listed(entries: Vec<Entry>, statuses: &HashMap<String, ServerCounts>) -> Vec<
         .collect()
 }
 
+/// The store's row for a listed folder.
+pub(crate) fn spec(account: AccountId, folder: &ListedFolder) -> FolderSpec {
+    FolderSpec {
+        account,
+        name: folder.name.clone(),
+        name_raw: folder.name_raw.clone(),
+        delimiter: folder.delimiter,
+        role: folder.role,
+        attributes: folder.attributes.clone(),
+        selectable: folder.selectable,
+        server_counts: folder.counts,
+    }
+}
+
 /// Lists the account's folders and writes them to the store in one commit. Folders that
-/// disappeared from the server stay in the store until M3's re-sync removes them.
+/// disappeared from the server stay in the store; the account pass (`sync_account`) removes
+/// them.
 pub async fn sync_folders(
     conn: &mut Connection,
     store: &Store,
     account: AccountId,
 ) -> Result<SyncedFolders, SyncError> {
     let listed = list(conn).await?;
-    let specs = listed
-        .iter()
-        .map(|folder| FolderSpec {
-            account,
-            name: folder.name.clone(),
-            name_raw: folder.name_raw.clone(),
-            delimiter: folder.delimiter,
-            role: folder.role,
-            attributes: folder.attributes.clone(),
-            selectable: folder.selectable,
-            server_counts: folder.counts,
-        })
-        .collect();
+    let specs = listed.iter().map(|folder| spec(account, folder)).collect();
     let ids = store.upsert_folders(specs).recv().await?.value;
     let inbox = ids
         .iter()
@@ -241,16 +261,27 @@ mod tests {
         let statuses = HashMap::from([
             (
                 "INBOX".to_owned(),
-                ServerCounts {
-                    total: 9,
-                    unread: 2,
+                FolderStatus {
+                    messages: Some(9),
+                    unseen: Some(2),
+                    uidnext: Some(40),
+                    uidvalidity: Some(7),
+                    highestmodseq: Some(77),
                 },
             ),
             (
                 "S&APg-ppelpost".to_owned(),
-                ServerCounts {
-                    total: 1,
-                    unread: 1,
+                FolderStatus {
+                    messages: Some(1),
+                    unseen: Some(1),
+                    ..FolderStatus::default()
+                },
+            ),
+            (
+                "Sendt".to_owned(),
+                FolderStatus {
+                    messages: Some(4),
+                    ..FolderStatus::default()
                 },
             ),
         ]);
@@ -273,6 +304,9 @@ mod tests {
                 unread: 2
             })
         );
+        assert_eq!(folders[0].status.and_then(|s| s.highestmodseq), Some(77));
+        assert_eq!(folders[2].counts, None, "MESSAGES without UNSEEN");
+        assert_eq!(folders[2].status.and_then(|s| s.messages), Some(4));
         assert_eq!(folders[1].name, "Søppelpost");
         assert_eq!(folders[1].role, FolderRole::Junk);
         assert_eq!(folders[2].role, FolderRole::Sent);

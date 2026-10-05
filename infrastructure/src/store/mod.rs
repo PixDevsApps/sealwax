@@ -11,9 +11,12 @@ pub mod fts;
 mod maintenance;
 mod reader;
 mod schema;
+mod sync_api;
 mod views;
 mod writer;
 
+#[cfg(test)]
+mod resync_tests;
 #[cfg(test)]
 mod sync_tests;
 #[cfg(test)]
@@ -24,6 +27,7 @@ mod account_tests;
 
 pub use api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
+pub use sync_api::*;
 pub use views::ViewHandle;
 
 use crate::blobs::BlobStore;

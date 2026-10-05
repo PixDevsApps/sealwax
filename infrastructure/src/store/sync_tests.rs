@@ -176,7 +176,7 @@ fn the_first_sync_resumes_from_its_floor_and_ends_ready() {
     assert_eq!(again.ids[0], None, "a refetched UID is skipped");
     floor(&store, 1).unwrap();
     store
-        .first_sync_step(inbox, FirstSyncStep::Finish)
+        .first_sync_step(inbox, FirstSyncStep::Finish { below: 0 })
         .recv_blocking()
         .unwrap();
     let state = store.folder_sync(inbox).recv_blocking().unwrap().unwrap();
