@@ -252,11 +252,17 @@ fn the_first_inbox_sync_on_every_server() {
         for server in SERVERS {
             let (_dir, store, account) = store();
             let mut conn = login(server, Security::Tls, "alice").await;
-            let inbox = imap::sync_folders(&mut conn, &store, account)
+            let listed = imap::sync_folders(&mut conn, &store, account)
                 .await
-                .unwrap()
-                .inbox
                 .unwrap();
+            let inbox = listed.inbox.unwrap();
+            // 31 after the seed; higher once a message was delivered and removed again, as on
+            // Stalwart since 2026-10-05 (UIDs are never reused).
+            let uidnext = listed
+                .folders
+                .iter()
+                .find(|(id, _)| *id == inbox)
+                .and_then(|(_, folder)| folder.status.as_ref()?.uidnext);
             let mut progress = Vec::new();
             let report = imap::first_sync(&mut conn, &store, inbox, |p| progress.push(p))
                 .await
@@ -315,7 +321,8 @@ fn the_first_inbox_sync_on_every_server() {
             );
             let state = store.folder_sync(inbox).recv().await.unwrap().unwrap();
             assert_eq!(state.state, SyncState::Ready, "{what}");
-            assert_eq!(state.uidnext, 31, "{what}");
+            assert_eq!(Some(state.uidnext), uidnext, "{what}: the server's UIDNEXT");
+            assert!(state.uidnext >= 31, "{what}");
             let counts = store.folders().recv().await.unwrap().value;
             let inbox_counts = counts.iter().find(|f| f.id == inbox).unwrap();
             assert_eq!(
