@@ -26,6 +26,7 @@ cargo build --workspace           # every crate
 cargo test --workspace
 bash tools/ci.sh                  # fmt, clippy -D warnings, tests, build
 SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run
+bash tools/ci.sh --testbed        # plus every testbed suite (see Mail testbed)
 tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/window.sealwax-test
 cargo run -p sealwax -- --version
 ```
@@ -79,6 +80,13 @@ tools/testbed/down.sh               # stop and remove; --keep-volumes keeps the 
 
 The users are alice, bob, perf, rand, fault, idle and spike, password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (the S1 harness takes an override path from `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
 
+`bash tools/ci.sh --testbed` (M3) runs, after the usual checks, every test file with tests ignored as "needs the testbed", in release and one test at a time, since the suites share test users; each file's output goes to `.local/testbed-<package>-<file>.log`. With no testbed container running it starts and seeds the testbed first and stops it at the end with `down.sh --keep-volumes`; a running testbed is used and left running, and a partly running one is refused. The sync soak (ML-049) is ignored for another reason and stays out; it runs by hand for as long as `SEALWAX_SOAK_MINUTES` says (30 unless set):
+
+```bash
+SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem SEALWAX_SOAK_MINUTES=1440 SEALWAX_SOAK_CHECK_MINUTES=60 \
+  cargo test -p sealwax-engine --release --test soak -- --ignored --nocapture
+```
+
 ## Accounts in development builds
 
 Development builds (`cfg!(debug_assertions)`) read two overrides that release builds ignore ([SECURITY.md](SECURITY.md#credentials)):
@@ -90,7 +98,7 @@ The testbed end to end through the real engine and the setup assistant (not in C
 
 ```bash
 tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/testbed-setup.sealwax-test
-cargo test -p sealwax-engine --release -- --ignored --test-threads=1
+bash tools/ci.sh --testbed
 ```
 
 **Sign in with Microsoft** needs the client ID in `config.toml` or at build time ([OAUTH-SETUP.md](OAUTH-SETUP.md#where-the-id-goes)). Two runners check it against a real account, which needs the user's authorization each time (AGENTS.md): `spikes/s5-oauth` (S5) and `cargo run -p sealwax-engine --example oauth_live -- <address> [--resign-in]` (ML-032), which uses scratch folders and a test app-id in the keyring and removes everything at the end. The user signs in in the browser, so tell them before starting a run.

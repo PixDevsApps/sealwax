@@ -22,7 +22,7 @@ use crate::setup::{self, Again, remove::Removable};
 use crate::shortcuts;
 use crate::status::{self, Waiting};
 use crate::theme::{self, ThemeController};
-use crate::window::{self, AccountStatus, Attention, BannerAction, Pane, Window};
+use crate::window::{self, Attention, BannerAction, Pane, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
@@ -1038,7 +1038,10 @@ impl AppState {
             .collect()
     }
 
-    /// Hands the accounts from `accounts.toml` to the engine this application started.
+    /// Hands the accounts from `accounts.toml` to the engine this application started. Their
+    /// states come from the engine: an account whose sync starts or restarts reports syncing,
+    /// and one already running keeps its state (M3: `Accounts` no longer syncs every account
+    /// again).
     fn send_accounts(&self) {
         if !self.accounts_read.get() || self.engine_service.borrow().is_none() {
             return;
@@ -1047,15 +1050,6 @@ impl AppState {
             return;
         };
         let accounts = prefs.accounts();
-        for account in self.mailbox.accounts() {
-            if account
-                .key
-                .as_ref()
-                .is_some_and(|key| accounts.iter().any(|listed| &listed.key == key))
-            {
-                self.mailbox.set_status(account.id, AccountStatus::Syncing);
-            }
-        }
         if self.engine.send(Command::Accounts { accounts }).is_err() {
             tracing::warn!("the engine stopped listening");
         }

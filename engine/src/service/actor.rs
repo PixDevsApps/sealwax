@@ -891,6 +891,10 @@ impl Idling<'_> {
                 Ok(Ok(report)) => {
                     let stored = report.stats.stored;
                     discard(self.shared, report.orphaned_blobs).await;
+                    // Progress showed the account syncing; the pass is over.
+                    if self.status.current() == Some(SyncStatus::Syncing) {
+                        self.status.set(SyncStatus::Synced);
+                    }
                     if stored > 0 {
                         bodies::prefetch(self.shared);
                     }

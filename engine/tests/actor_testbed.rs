@@ -8,6 +8,10 @@
 //!
 //! SEALWAX_TESTBED_CA=…/tools/testbed/certs/ca.pem \
 //!   cargo test -p sealwax-engine --release --test actor_testbed -- --ignored --test-threads=1 --nocapture
+//!
+//! The randomized runs pause between changes, 20 ms on average, so passes, IDLE wakes and an IDLE
+//! issued again interleave with them; `SEALWAX_RANDOM_PACE_MS=0` gives S1's bursts instead (the
+//! same changes in about 3 s).
 
 mod common;
 mod mutator;
@@ -76,6 +80,14 @@ fn layout(qresync: bool) -> SyncConfig {
         connect: ConnectOptions { qresync },
         ..SyncConfig::default()
     }
+}
+
+/// The mean pause between two changes of a randomized run, in milliseconds.
+fn pace() -> usize {
+    std::env::var("SEALWAX_RANDOM_PACE_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(20)
 }
 
 async fn stopped(stop: &mut watch::Receiver<bool>) {
@@ -206,6 +218,8 @@ async fn randomized(variant: Variant, seed: u64, ops: usize) -> Report {
 
     let mut report = Report::default();
     let reset_at = ops / 5 + rng.below(ops * 3 / 5 + 1);
+    let pace = pace();
+    let mut pauses = Rng(seed ^ 0x5eed);
     let started = Instant::now();
     for n in 0..ops {
         let kind = if n == reset_at {
@@ -221,8 +235,16 @@ async fn randomized(variant: Variant, seed: u64, ops: usize) -> Report {
                 .unwrap_or_else(|error| panic!("mutation {n}: {error:?}"))
         };
         *report.ops.entry(kind).or_default() += 1;
-        if rng.chance(10) {
-            tokio::time::sleep(Duration::from_millis(rng.below(5) as u64)).await;
+        // The bursts' short pauses draw from `rng` either way, so every pace makes the same
+        // changes.
+        let short = rng.chance(10).then(|| rng.below(5));
+        let pause = if pace > 0 {
+            pauses.below(2 * pace + 1)
+        } else {
+            short.unwrap_or(0)
+        };
+        if pause > 0 {
+            tokio::time::sleep(Duration::from_millis(pause as u64)).await;
         }
     }
     append(
@@ -307,8 +329,9 @@ fn randomized_suite(variant: Variant) {
         }
         quiescence.sort_by(f64::total_cmp);
         println!(
-            "{}: {} of 10 seeds converged; quiescence median {:.2} s, max {:.2} s",
+            "{} (pace {} ms): {} of 10 seeds converged; quiescence median {:.2} s, max {:.2} s",
             variant.name(),
+            pace(),
             quiescence.len(),
             quiescence
                 .get(quiescence.len() / 2)

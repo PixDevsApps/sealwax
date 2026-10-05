@@ -292,6 +292,46 @@ async fn new_mail_flags_and_expunges_arrive_through_idle() {
     );
 }
 
+/// INBOX recreated (a new UIDVALIDITY) while idling, which ends the server's session: the IDLE
+/// connection's next pass syncs INBOX afresh, and the account shows synced again when that pass
+/// ends, not at the next account pass.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_idle_pass_that_syncs_inbox_afresh_ends_synced() {
+    let fake = fake(Flavor::Qresync).await;
+    let mut run = running(&fake, config());
+    let account = run.add(&fake, 1, "afresh").await;
+    let inbox = run.folder(account, "INBOX").await;
+    within(WAIT, || async { fake.world().count("IDLE") >= 1 }).await;
+    {
+        let mut world = fake.world();
+        world.recreate("INBOX");
+        world.append_many("INBOX", 5, |_| 1);
+    }
+    run.event(WAIT, |event| {
+        matches!(
+            event,
+            Event::SyncProgress { account: id, folder, .. } if *id == account && *folder == inbox
+        )
+        .then_some(())
+    })
+    .await;
+    assert_eq!(
+        run.status(account).await,
+        SyncStatus::Synced,
+        "synced again after the IDLE connection's pass"
+    );
+    assert_eq!(run.count(inbox).await, 5);
+    assert_eq!(
+        fake.world()
+            .commands
+            .iter()
+            .filter(|c| c.starts_with("LIST"))
+            .count(),
+        1,
+        "no account pass was needed"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_change_before_idle_is_caught_by_noop_or_by_the_backstop() {
     let fake = fake(Flavor::Qresync).await;

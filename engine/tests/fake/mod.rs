@@ -567,6 +567,16 @@ fn group(text: &str) -> (&str, &str) {
 
 /// EXISTS, EXPUNGE and VANISHED for what changed in the selected mailbox since the session last
 /// heard.
+/// The session's selected mailbox was deleted, or deleted and created again.
+fn selected_gone(world: &World, session: &Session) -> bool {
+    session.selected.as_ref().is_some_and(|(name, validity)| {
+        world
+            .mailboxes
+            .get(name)
+            .is_none_or(|mailbox| mailbox.uidvalidity != *validity)
+    })
+}
+
 fn notices(world: &World, session: &mut Session, out: &mut String) {
     let Some((name, validity)) = session.selected.clone() else {
         return;
@@ -1008,7 +1018,7 @@ async fn idle(
                 if changed.is_err() {
                     return Idle::Dead;
                 }
-                let out = {
+                let (out, gone) = {
                     let world = world.lock().unwrap_or_else(|e| e.into_inner());
                     if world.dead(epoch) {
                         return Idle::Dead;
@@ -1016,12 +1026,20 @@ async fn idle(
                     if world.closings > closings {
                         return Idle::Closed;
                     }
-                    let mut out = String::new();
-                    notices(&world, state, &mut out);
-                    out
+                    if selected_gone(&world, state) {
+                        // As Dovecot does when the selected mailbox is deleted.
+                        ("* BYE the selected mailbox was deleted\r\n".to_owned(), true)
+                    } else {
+                        let mut out = String::new();
+                        notices(&world, state, &mut out);
+                        (out, false)
+                    }
                 };
                 if !out.is_empty() && write(io, &out).await.is_err() {
                     return Idle::Dead;
+                }
+                if gone {
+                    return Idle::Closed;
                 }
             }
         }
