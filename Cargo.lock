@@ -3063,6 +3063,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "sealwax-autodetect-measure"
+version = "0.0.1"
+dependencies = [
+ "sealwax-domain",
+ "sealwax-engine",
+ "tokio",
+]
+
+[[package]]
 name = "sealwax-domain"
 version = "0.0.1"
 dependencies = [
@@ -3070,6 +3079,8 @@ dependencies = [
  "insta",
  "mail-parser",
  "proptest",
+ "psl",
+ "quick-xml",
  "toml",
 ]
 

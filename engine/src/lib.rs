@@ -2,6 +2,7 @@
 //! The app talks to it only through plain `Send` messages; no tokio type leaves this crate.
 
 pub mod api;
+pub mod autoconfig;
 pub mod secrets;
 
 /// The engine's runtime: two worker threads, so sync never competes with the GTK thread.

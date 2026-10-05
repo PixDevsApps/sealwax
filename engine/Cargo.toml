@@ -25,3 +25,6 @@ reqwest.workspace = true
 hickory-resolver.workspace = true
 quick-xml.workspace = true
 psl.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["io-util", "test-util"] }

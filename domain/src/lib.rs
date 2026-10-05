@@ -2,6 +2,7 @@
 
 pub mod account;
 pub mod actions;
+pub mod autoconfig;
 pub mod config;
 pub mod keymap;
 pub mod mailto;

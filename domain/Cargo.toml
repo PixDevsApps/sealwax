@@ -9,6 +9,8 @@ publish.workspace = true
 [dependencies]
 html2text.workspace = true
 mail-parser.workspace = true
+psl.workspace = true
+quick-xml.workspace = true
 toml.workspace = true
 
 [dev-dependencies]
