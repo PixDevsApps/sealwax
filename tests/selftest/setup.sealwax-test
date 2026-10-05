@@ -1,0 +1,176 @@
+# The setup assistant (ML-033) on a scripted engine: Add Account from the welcome page, the
+# address and sender name, the sources as the engine reports them, the found settings, the
+# password, the login check and the saved account, which the sidebar then shows through the
+# store. Keyboard: the focus lands in each step's first field, Enter advances, Escape goes back
+# a step and closes on the first. The look in matte-black (square) and catppuccin-latte
+# (rounded). Every address, name and server is fictional. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# The welcome page's button opens the assistant, with the focus in the address.
+assert-shown welcome true
+assert-sensitive add-account true
+setup-click add-account
+assert-setup open true
+assert-setup step address
+assert-setup focus setup-address
+assert-label setup-title "Type your address"
+assert-label setup-subtitle "Sealwax finds the server settings for you."
+assert-shown setup-name true
+assert-shown setup-manual-link true
+assert-shown setup-back false
+assert-label setup-primary Next
+assert-sensitive setup-primary false
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-address.png
+# The command again shows the same assistant.
+action win.add-account
+assert-setup open true
+assert-setup focus setup-address
+
+# Next waits for an address; Enter on something else says what an address looks like.
+setup-type setup-address kari
+assert-sensitive setup-primary false
+assert-shown setup-validation false
+setup-key enter
+assert-setup step address
+assert-shown setup-validation true
+assert-label setup-validation "An email address looks like name@example.test."
+engine-expect none
+setup-type setup-address kari@example.test
+assert-shown setup-validation false
+assert-sensitive setup-primary true
+setup-type setup-name "Kari Nordmann"
+assert-setup focus setup-name
+
+# Enter in the name looks the address up; the sources appear as the engine starts them, in
+# the assistant's order.
+setup-key enter
+engine-expect detect address=kari@example.test
+assert-setup step detecting
+assert-label setup-subtitle "Looking up your provider…"
+assert-sensitive setup-primary false
+engine-reply progress preset
+engine-reply progress mx
+engine-reply progress autoconfig
+assert-setup sources "preset:checking…,autoconfig:checking…,mx:checking…"
+assert-shown setup-source:autoconfig true
+screenshot $DIR/../../.local/selftest/setup-detecting.png
+
+# A reply to a request the assistant didn't send changes nothing.
+engine-reply-stale detected fastmail
+assert-setup step detecting
+
+# Found: the settings as in the mock, then the password.
+engine-reply detected fjordpost
+assert-setup step password
+assert-setup sources "preset:no match,autoconfig:found,mx:not used"
+assert-label setup-found-provider Fjordpost
+assert-label setup-found-imap "IMAP mail.example.test · 993 · TLS"
+assert-label setup-found-smtp "SMTP mail.example.test · 465 · TLS"
+assert-label setup-found-username "Username: your full address"
+assert-shown setup-found-note false
+assert-shown setup-username false
+assert-shown setup-name false
+assert-label setup-password-label Password
+assert-shown setup-password-hint false
+assert-shown setup-check true
+assert-setup focus setup-password
+assert-label setup-primary "Sign in"
+assert-sensitive setup-primary false
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-password.png
+
+# The look against the applied theme: the window's surface, readable text on the card, the
+# theme's corners.
+assert-color setup background window
+assert-contrast setup-found 4.5
+assert-radius setup-found 0
+assert-radius setup-address 0
+assert-font setup-title chrome
+theme catppuccin-latte
+corners 8
+assert-color setup background window
+assert-contrast setup-found 4.5
+assert-radius setup-found 8
+assert-radius setup-address 8
+screenshot $DIR/../../.local/selftest/setup-password-latte.png
+theme matte-black
+corners 0
+
+# Escape goes back to the address and keeps it; Next looks it up again.
+setup-key escape
+assert-setup open true
+assert-setup step address
+assert-setup focus setup-address
+assert-shown setup-name true
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply detected fjordpost
+assert-setup step password
+# A changed address makes the settings stale: back to the first step.
+setup-type setup-address kari.nordmann@example.test
+assert-setup step address
+assert-shown setup-found false
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply detected fjordpost
+
+# Sign in: one check with the address, and the local part as the one more try (at most two
+# login attempts); the password goes to the engine as typed.
+setup-type setup-password fictional-password-1
+assert-sensitive setup-primary true
+setup-key enter
+engine-expect verify address=kari@example.test "name=Kari Nordmann" key=kari@example.test imap=mail.example.test:993:tls smtp=mail.example.test:465:tls username=kari@example.test second=kari password=fictional-password-1
+assert-setup step checking
+assert-label setup-subtitle "Checking your login with the server…"
+assert-sensitive setup-primary false
+assert-sensitive setup-password false
+assert-shown setup-check true
+screenshot $DIR/../../.local/selftest/setup-checking.png
+# Escape while it checks goes back, and the late answer is ignored.
+setup-key escape
+assert-setup step password
+engine-reply verified ok
+assert-setup step password
+engine-expect none
+setup-key enter
+engine-expect verify username=kari@example.test second=kari password=fictional-password-1
+
+# The engine logged in as the local part: that is the username saved.
+engine-reply verified ok kari
+engine-expect add-account address=kari@example.test "name=Kari Nordmann" username=kari imap=mail.example.test:993:tls password=fictional-password-1
+assert-setup step adding
+assert-label setup-subtitle "Saving the account…"
+# Saving can't be abandoned halfway.
+setup-key escape
+assert-setup step adding
+assert-sensitive setup-close false
+engine-reply added ok
+assert-setup open false
+wait-until assert-shown welcome false
+assert-label sidebar-summary "1 account · synced"
+screenshot $DIR/../../.local/selftest/setup-added.png
+
+# With an account, the command still opens the assistant; Escape on the first step closes it,
+# and nothing more goes to the engine.
+action win.add-account
+assert-setup open true
+assert-setup step address
+assert-setup focus setup-address
+setup-key escape
+assert-setup open false
+engine-expect none
+# The close button closes it from any step.
+action win.add-account
+setup-type setup-address ola@example.test
+setup-key enter
+engine-expect detect address=ola@example.test
+setup-click setup-close
+assert-setup open false

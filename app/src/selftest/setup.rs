@@ -16,6 +16,7 @@
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
 //! | `assert-setup open\|step\|sources\|focus VALUE` | The assistant's state |
 //! | `assert-text-contains NAME TEXT` | A label's text contains TEXT |
+//! | `assert-field NAME TEXT` | A text field's text or a choice's item (never the password's) |
 
 use super::{Harness, StepResult, WAIT_TIMEOUT, equal, with_timeout};
 use crate::setup::{self, sources};
@@ -37,7 +38,7 @@ use std::time::{Duration, Instant};
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("engine-attach", 0, 0),
     ("engine-detach", 0, 0),
-    ("engine-expect", 1, 8),
+    ("engine-expect", 1, 12),
     ("engine-reply", 2, 3),
     ("engine-reply-stale", 2, 3),
     ("setup-type", 2, 2),
@@ -46,6 +47,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("setup-key", 1, 1),
     ("assert-setup", 2, 2),
     ("assert-text-contains", 2, 2),
+    ("assert-field", 2, 2),
 ];
 
 pub fn handles(command: &str) -> bool {
@@ -53,7 +55,10 @@ pub fn handles(command: &str) -> bool {
 }
 
 pub fn checks(assertion: &str) -> bool {
-    matches!(assertion, "assert-setup" | "assert-text-contains")
+    matches!(
+        assertion,
+        "assert-setup" | "assert-text-contains" | "assert-field"
+    )
 }
 
 /// The last command the script took from the app, for the replies.
@@ -82,12 +87,6 @@ fn assistant() -> Result<setup::Assistant, String> {
     setup::current().ok_or_else(|| "the setup assistant isn't open".to_owned())
 }
 
-fn widget(name: &str) -> Result<gtk::Widget, String> {
-    assistant()?
-        .widget(name)
-        .ok_or_else(|| format!("the assistant has no widget named {name}"))
-}
-
 pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     match command {
         "engine-attach" => {
@@ -112,15 +111,17 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         "engine-reply" => reply(harness, args, false).await,
         "engine-reply-stale" => reply(harness, args, true).await,
         "setup-type" => {
-            let field = widget(&args[0])?;
+            let field = harness.widget(&args[0])?;
             let editable = field
                 .dynamic_cast_ref::<gtk::Editable>()
                 .ok_or_else(|| format!("{} is not a text field", args[0]))?;
+            // As a user would: into the field first, then the text.
+            field.grab_focus();
             editable.set_text(&args[1]);
             Ok(())
         }
         "setup-choose" => {
-            let field = widget(&args[0])?;
+            let field = harness.widget(&args[0])?;
             let dropdown = field
                 .downcast_ref::<gtk::DropDown>()
                 .ok_or_else(|| format!("{} is not a choice", args[0]))?;
@@ -132,7 +133,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             Ok(())
         }
         "setup-click" => {
-            let found = widget(&args[0])?;
+            let found = harness.widget(&args[0])?;
             if found.is::<gtk::LinkButton>() {
                 return Err(format!(
                     "{} opens a web page; the self-test never does",
@@ -168,7 +169,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
     }
 }
 
-pub fn check(assertion: &str, args: &[String]) -> StepResult {
+pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {
     match assertion {
         "assert-setup" => {
             let wanted = args[1].as_str();
@@ -190,7 +191,7 @@ pub fn check(assertion: &str, args: &[String]) -> StepResult {
             }
         }
         "assert-text-contains" => {
-            let found = widget(&args[0])?;
+            let found = harness.widget(&args[0])?;
             let text = if let Some(label) = found.downcast_ref::<gtk::Label>() {
                 label.label().to_string()
             } else if let Some(button) = found.downcast_ref::<gtk::Button>() {
@@ -209,6 +210,24 @@ pub fn check(assertion: &str, args: &[String]) -> StepResult {
                     args[0], args[1]
                 ))
             }
+        }
+        "assert-field" => {
+            let found = harness.widget(&args[0])?;
+            if found.is::<gtk::PasswordEntry>() {
+                return Err("the password is never read back".to_owned());
+            }
+            let value = if let Some(editable) = found.dynamic_cast_ref::<gtk::Editable>() {
+                editable.text().to_string()
+            } else if let Some(dropdown) = found.downcast_ref::<gtk::DropDown>() {
+                dropdown
+                    .selected_item()
+                    .and_downcast::<gtk::StringObject>()
+                    .map(|item| item.string().to_string())
+                    .unwrap_or_default()
+            } else {
+                return Err(format!("{} is not a field", args[0]));
+            };
+            equal(&args[0], value.as_str(), args[1].as_str())
         }
         other => Err(format!("unknown command {other}")),
     }

@@ -1023,7 +1023,7 @@ dropdown.sw-setup-security > button:hover {
   border-radius: var(--sw-radius);
 }
 
-/* Links: accent text, underlined on hover. */
+/* Links: accent text, underlined, as the mock's anchors. */
 button.sw-setup-link {
   min-height: 0;
   padding: 0;
@@ -1033,8 +1033,12 @@ button.sw-setup-link {
   color: var(--accent-color);
 }
 
-button.sw-setup-link:hover > label {
+button.sw-setup-link > label {
   text-decoration-line: underline;
+}
+
+button.sw-setup-link:hover {
+  background-image: image(var(--sw-hover-bg-color));
 }
 
 /* The footer: Set up manually, then Back and the step's button, 36 px as in the mock. */

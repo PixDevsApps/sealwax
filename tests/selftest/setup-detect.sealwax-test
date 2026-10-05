@@ -1,0 +1,238 @@
+# What the setup assistant (ML-033) does with each detection result, on a scripted engine:
+# settings to confirm (only the domain's mail host gave them), a username the provider assigns,
+# IMAP to turn on first, Microsoft sign-in (waiting for S5, so unavailable), providers and
+# domains that can't be added, and nothing found, which opens the manual settings. Then "Set up
+# manually" from each step, the manual fields' checks, and the app without an engine. Every
+# address and server is fictional. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-detect.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+action win.add-account
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect address=kari@example.test
+
+# Found only through the domain's mail host: the settings and the username to confirm.
+engine-reply progress preset
+engine-reply progress mx
+engine-reply detected confirm
+assert-setup step password
+assert-setup sources "preset:no match,mx:found"
+assert-label setup-found-provider Fjordhost
+assert-label setup-found-smtp "SMTP smtp.fjordhost.example.test · 587 · STARTTLS"
+assert-label setup-found-username "Username: the part before the @"
+assert-shown setup-found-note true
+assert-label setup-found-note "Found through Fjordhost, which handles this domain's mail. Check the username before you sign in."
+assert-shown setup-username true
+assert-field setup-username kari
+assert-setup focus setup-password
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-confirm.png
+# Confirmed as proposed, it keeps its one more try with the other form.
+setup-type setup-password fictional-password-5
+setup-key enter
+engine-expect verify username=kari second=kari@example.test imap=imap.fjordhost.example.test:993:tls smtp=smtp.fjordhost.example.test:587:starttls
+setup-key escape
+assert-setup step password
+# Changed, it is tried alone.
+setup-type setup-username k.nordmann
+setup-key enter
+engine-expect verify username=k.nordmann second=none
+setup-key escape
+setup-type setup-username ""
+assert-sensitive setup-primary false
+setup-key enter
+engine-expect none
+
+# A username the provider assigns: the field starts empty and has the focus.
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect
+engine-reply detected other-username
+assert-setup step password
+assert-label setup-found-username "Username: the one your provider gave you"
+assert-shown setup-username true
+assert-field setup-username ""
+assert-shown setup-found-note false
+assert-setup focus setup-username
+setup-type setup-password fictional-password-5
+assert-sensitive setup-primary false
+setup-type setup-username u12345
+assert-sensitive setup-primary true
+setup-key enter
+engine-expect verify username=u12345 second=none
+setup-key escape
+
+# IMAP to turn on first: the hint and the provider's page.
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect
+engine-reply detected imap-off
+assert-label setup-password-label Password
+assert-label setup-password-hint "Turn on IMAP in Fjordpost's settings first."
+assert-label setup-enable-imap-link "Open the IMAP settings"
+assert-shown setup-app-password-link false
+
+# Microsoft: the mock's sign-in step, unavailable in this build (S5), with Back only.
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected microsoft
+assert-setup step microsoft
+assert-label setup-title "Outlook.com account"
+assert-shown setup-microsoft true
+assert-sensitive setup-microsoft-button false
+assert-label setup-microsoft-note "Microsoft sign-in isn't available in this build of Sealwax yet."
+assert-label setup-microsoft-footnote "Outlook.com and Microsoft 365 accept only Microsoft sign-in for mail apps."
+assert-shown setup-password false
+assert-shown setup-primary false
+assert-shown setup-manual-link false
+assert-shown setup-back true
+assert-setup focus setup-back
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-microsoft.png
+setup-click setup-back
+assert-setup step address
+assert-setup focus setup-address
+
+# Providers and domains that can't be added say why, with Back only.
+setup-key enter
+engine-expect detect
+engine-reply detected bridge
+assert-setup step blocked
+assert-label setup-title "Can't add this address"
+assert-label setup-alert-title "Proton Mail works only through its Bridge"
+assert-text-contains setup-alert-body "only through Proton Mail Bridge, which this version of Sealwax can't use yet."
+assert-shown setup-primary false
+assert-shown setup-manual-link false
+assert-setup focus setup-back
+screenshot $DIR/../../.local/selftest/setup-bridge.png
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply detected no-imap
+assert-label setup-alert-title "Tuta doesn't work with mail apps"
+assert-text-contains setup-alert-body "Use Tuta's own app for this address."
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress mx
+engine-reply detected no-mail
+assert-setup step blocked
+assert-setup sources "preset:checked,mx:checked"
+assert-label setup-alert-title "example.test receives no mail"
+assert-label setup-alert-body "The domain says it doesn't receive mail. Check the address for typos."
+setup-key escape
+
+# Nothing found: the manual settings, with the standard ports, the address as the username and
+# the focus in the IMAP server.
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress probe
+engine-reply detected not-found
+assert-setup step manual
+assert-label setup-title "Set up manually"
+assert-label setup-alert-title "No settings found for example.test"
+assert-label setup-alert-body "Copy them from your provider's help pages."
+assert-shown setup-address true
+assert-shown setup-name true
+assert-shown setup-sources false
+assert-field setup-imap-host ""
+assert-field setup-imap-port 993
+assert-field setup-imap-security TLS
+assert-field setup-smtp-port 465
+assert-field setup-manual-username kari@example.test
+assert-setup focus setup-imap-host
+assert-label setup-primary "Check settings"
+assert-sensitive setup-primary false
+assert-shown setup-validation false
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-not-found.png
+
+# Host names and ports are checked before Check settings: the message names what to fix.
+setup-type setup-imap-host "imap example"
+assert-shown setup-validation true
+assert-text-contains setup-validation "The IMAP server is a name such as imap.example.test"
+assert-sensitive setup-primary false
+setup-type setup-imap-host imap.example.test
+setup-type setup-imap-port 0
+assert-label setup-validation "The IMAP port is a number from 1 to 65535."
+setup-type setup-imap-port 993
+setup-type setup-smtp-host smtp.example.test
+setup-choose setup-smtp-security starttls
+assert-field setup-smtp-port 587
+assert-shown setup-validation false
+assert-sensitive setup-primary false
+setup-type setup-password fictional-password-6
+assert-sensitive setup-primary true
+setup-key enter
+engine-expect verify address=kari@example.test name=kari@example.test imap=imap.example.test:993:tls smtp=smtp.example.test:587:starttls username=kari@example.test second=none password=fictional-password-6
+engine-reply verified ok
+engine-expect add-account smtp=smtp.example.test:587:starttls
+engine-reply added ok
+assert-setup open false
+wait-until assert-shown welcome false
+
+# Set up manually from the first step: nothing to fill from, Back returns.
+action win.add-account
+assert-setup step address
+setup-click setup-manual-link
+assert-setup step manual
+assert-label setup-subtitle "Copy the settings from your provider's help pages."
+assert-shown setup-alert false
+assert-field setup-imap-host ""
+assert-field setup-manual-username ""
+assert-setup focus setup-address
+setup-click setup-back
+assert-setup step address
+
+# From the found settings: the fields filled from them; Back returns to them.
+setup-type setup-address ola@example.test
+setup-key enter
+engine-expect detect address=ola@example.test
+engine-reply detected confirm
+setup-click setup-manual-link
+assert-setup step manual
+assert-field setup-imap-host imap.fjordhost.example.test
+assert-field setup-smtp-port 587
+assert-field setup-smtp-security STARTTLS
+assert-field setup-manual-username ola
+setup-key escape
+assert-setup step password
+
+# While it looks: the lookup is dropped, and its late answer is ignored.
+setup-key escape
+setup-key enter
+engine-expect detect address=ola@example.test
+setup-click setup-manual-link
+assert-setup step manual
+engine-reply detected fjordpost
+assert-setup step manual
+assert-field setup-imap-host ""
+
+# Without an engine every request says so plainly, and the assistant stays where it was.
+engine-detach
+setup-key escape
+assert-setup step address
+setup-key enter
+assert-setup step address
+assert-shown setup-alert true
+assert-label setup-alert-title "Not connected to the mail engine"
+assert-label setup-alert-body "This build of Sealwax has no mail engine attached yet, so it can't look up or check an account."
+screenshot $DIR/../../.local/selftest/setup-not-connected.png
+setup-click setup-manual-link
+setup-type setup-imap-host imap.example.test
+setup-type setup-smtp-host smtp.example.test
+setup-type setup-password fictional-password-7
+setup-key enter
+assert-setup step manual
+assert-label setup-alert-title "Not connected to the mail engine"
+setup-click setup-close
+assert-setup open false

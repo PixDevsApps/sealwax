@@ -1,0 +1,187 @@
+# The setup assistant's failures (ML-033, PRD A3) on a scripted engine: a plain message that
+# says what to do next for every way a login fails, with the provider's page where it helps;
+# the settings opened, filled with what was tried; the focus on what to fix; no login attempt
+# the user didn't ask for (each check is one Verify, at most two logins). Then the ways saving
+# can fail, and Gmail's app-password failure with the manual settings, as in the mock. Every
+# address and server is fictional. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-failures.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme catppuccin-latte
+corners 8
+engine-attach
+action win.add-account
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply progress preset
+engine-reply detected fastmail
+
+# A provider that wants an app password says so before the first try, with its page.
+assert-setup step password
+assert-setup sources preset:found
+assert-label setup-found-provider Fastmail
+assert-label setup-password-label "App password"
+assert-label setup-password-hint "Fastmail needs an app password, not your account password."
+assert-shown setup-app-password-link true
+assert-label setup-app-password-link "Create an app password"
+assert-shown setup-enable-imap-link false
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-app-password.png
+setup-type setup-password fictional-password-2
+setup-key enter
+engine-expect verify username=kari@example.test second=none password=fictional-password-2
+
+# Wrong password: what to do, the settings that were tried, the focus in the password.
+engine-reply verified imap wrong-password
+assert-setup step failed
+assert-label setup-title "Couldn't sign in"
+assert-shown setup-alert true
+assert-label setup-alert-title "Wrong username or password"
+assert-label setup-alert-body "The incoming mail server (IMAP) didn't accept them. Fastmail needs an app password here, not your account password."
+assert-label setup-alert-link "Create an app password"
+assert-setup focus setup-password
+assert-shown setup-manual true
+assert-shown setup-address false
+assert-field setup-imap-host imap.example.test
+assert-field setup-imap-port 993
+assert-field setup-imap-security TLS
+assert-field setup-smtp-host smtp.example.test
+assert-field setup-smtp-port 465
+assert-field setup-manual-username kari@example.test
+assert-label setup-primary "Check settings"
+assert-sensitive setup-primary true
+assert-shown setup-back true
+assert-contrast setup-alert 4.5
+assert-labelled
+engine-expect none
+screenshot $DIR/../../.local/selftest/setup-wrong-password.png
+
+# Every other failure, each from one press of Enter: one Verify each, no second username for
+# settings typed by hand.
+setup-type setup-password fictional-password-3
+setup-key enter
+engine-expect verify username=kari@example.test second=none password=fictional-password-3
+assert-setup step checking
+engine-reply verified imap app-password
+assert-setup step failed
+assert-label setup-alert-title "The server asked for an app password"
+assert-text-contains setup-alert-body "Fastmail lets mail apps in with an app password"
+assert-label setup-alert-link "Create an app password"
+assert-setup focus setup-password
+engine-expect none
+
+setup-key enter
+engine-expect verify
+engine-reply verified imap imap-disabled
+assert-label setup-alert-title "IMAP is turned off for this account"
+assert-label setup-alert-body "Turn on IMAP in Fastmail's web settings, then try again."
+assert-shown setup-alert-link false
+assert-setup focus setup-password
+
+setup-key enter
+engine-expect verify
+engine-reply verified smtp oauth
+assert-label setup-alert-title "Only a browser sign-in works here"
+assert-text-contains setup-alert-body "The outgoing mail server (SMTP) doesn't take passwords from mail apps."
+
+setup-key enter
+engine-expect verify
+engine-reply verified imap no-tls
+assert-label setup-alert-title "No secure connection"
+assert-text-contains setup-alert-body "imap.example.test offers neither TLS nor STARTTLS on port 993"
+assert-setup focus setup-imap-host
+# Fixing it: STARTTLS moves the standard port along.
+setup-choose setup-imap-security starttls
+assert-field setup-imap-port 143
+setup-type setup-imap-host mail.example.test
+setup-key enter
+engine-expect verify imap=mail.example.test:143:starttls smtp=smtp.example.test:465:tls second=none
+
+engine-reply verified smtp certificate
+assert-label setup-alert-title "The server's certificate isn't trusted"
+assert-text-contains setup-alert-body "smtp.example.test showed a certificate Sealwax can't verify."
+assert-setup focus setup-smtp-host
+
+setup-key enter
+engine-expect verify
+engine-reply verified imap unreachable
+assert-label setup-alert-title "Couldn't reach the server"
+assert-text-contains setup-alert-body "Nothing answers at mail.example.test on port 143."
+assert-setup focus setup-imap-host
+
+setup-key enter
+engine-expect verify
+engine-reply verified smtp timeout
+assert-label setup-alert-title "The server didn't answer in time"
+assert-text-contains setup-alert-body "smtp.example.test took too long to answer."
+
+setup-key enter
+engine-expect verify
+engine-reply verified imap other
+assert-label setup-alert-title "The server refused the sign-in"
+assert-text-contains setup-alert-body "The incoming mail server (IMAP) reported a problem"
+engine-expect none
+
+# A wrong port in the settings keeps Check settings insensitive and says why.
+setup-type setup-smtp-port 99999
+assert-sensitive setup-primary false
+assert-label setup-validation "The SMTP port is a number from 1 to 65535."
+setup-key enter
+engine-expect none
+setup-type setup-smtp-port 465
+
+# Back from the failure is the found settings again.
+setup-key escape
+assert-setup step password
+assert-shown setup-alert false
+assert-shown setup-found true
+assert-setup focus setup-password
+
+# Saving can fail too: the assistant says why and stays where the check started.
+setup-key enter
+engine-expect verify imap=imap.example.test:993:tls password=fictional-password-3
+engine-reply verified ok
+engine-expect add-account username=kari@example.test
+engine-reply added keyring
+assert-setup step password
+assert-label setup-alert-title "Couldn't save the password"
+assert-text-contains setup-alert-body "gnome-keyring"
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added settings-file
+assert-label setup-alert-title "Couldn't save the account"
+assert-text-contains setup-alert-body "accounts.toml"
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added exists
+assert-label setup-alert-title "This account is already set up"
+setup-click setup-close
+assert-setup open false
+
+# Gmail's app-password failure with the manual settings, as the mock's third card.
+action win.add-account
+setup-type setup-address kari.nordmann@example.test
+setup-key enter
+engine-expect detect address=kari.nordmann@example.test
+engine-reply detected gmail
+assert-label setup-password-hint "Gmail needs an app password, not your account password."
+assert-label setup-app-password-link "Open the Google account page"
+setup-type setup-password fictional-password-4
+setup-key enter
+engine-expect verify username=kari.nordmann@example.test second=none
+engine-reply verified imap app-password
+assert-label setup-title "Couldn't sign in"
+assert-label setup-alert-title "The server asked for an app password"
+assert-label setup-alert-body "Gmail lets mail apps in with an app password: turn on two-step verification in your account if it isn't on, then create an app password for Sealwax and type it here."
+assert-label setup-alert-link "Open the Google account page"
+assert-field setup-manual-username kari.nordmann@example.test
+assert-contrast setup-alert 4.5
+screenshot $DIR/../../.local/selftest/setup-gmail-app-password.png
+setup-click setup-close
+assert-setup open false

@@ -423,6 +423,10 @@ impl Assistant {
                 state.notice = Some(text::not_connected());
             }
         }
+        // A new lookup is a new attempt: no password typed for another one carries over.
+        if sent {
+            self.inner.widgets.password.set_text("");
+        }
         self.render();
         self.focus_first();
     }
@@ -883,7 +887,7 @@ impl Assistant {
             Step::Detecting | Step::Checking | Step::Adding => None,
         };
         if let Some(target) = target {
-            target.grab_focus();
+            focus(&target);
         }
     }
 
@@ -900,7 +904,7 @@ impl Assistant {
                 Protocol::Smtp => w.smtp.host.clone().upcast(),
             },
         };
-        target.grab_focus();
+        focus(&target);
     }
 
     fn field_widget(&self, field: Field) -> gtk::Widget {
@@ -919,6 +923,20 @@ impl Assistant {
                 }
             }
             Field::Password => w.password.clone().upcast(),
+        }
+    }
+}
+
+/// Moves the focus to `widget`. A text field gets the cursor at the end of its text, not GTK's
+/// select-all, which stays highlighted once the focus moves on; the password keeps it, so
+/// typing replaces a wrong one.
+fn focus(widget: &gtk::Widget) {
+    match widget.downcast_ref::<gtk::Entry>() {
+        Some(entry) => {
+            entry.grab_focus_without_selecting();
+        }
+        None => {
+            widget.grab_focus();
         }
     }
 }

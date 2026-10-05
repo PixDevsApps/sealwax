@@ -1,0 +1,207 @@
+# Preview screenshots of the M2 setup assistant (ML-033) for the gate: every step over the
+# window at the mock's wide width, the first step also at the rail and narrow widths, in
+# matte-black (dark, square corners as on stock Omarchy) and catppuccin-latte (light, corners
+# rounded 8 as on this desktop). A scripted engine answers; every name, address and server is
+# fictional. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the
+# repository root:
+#   tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/preview-m2-setup.sealwax-test
+
+desktop tiling
+engine-attach
+
+# ---- matte-black, square ----
+theme matte-black
+corners 0
+resize 800 900
+action win.add-account
+screenshot $DIR/../../tools/progress/public/m2-setup-address-narrow-matte-black-square-2026-10-05.png
+resize 1100 900
+screenshot $DIR/../../tools/progress/public/m2-setup-address-rail-matte-black-square-2026-10-05.png
+resize 1440 900
+screenshot $DIR/../../tools/progress/public/m2-setup-address-wide-matte-black-square-2026-10-05.png
+
+# Without an engine (this build until M2's phase B): the plain message.
+engine-detach
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+assert-label setup-alert-title "Not connected to the mail engine"
+screenshot $DIR/../../tools/progress/public/m2-setup-not-connected-wide-matte-black-square-2026-10-05.png
+engine-attach
+
+# Looking up the provider, the sources as they start.
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress autoconfig
+engine-reply progress mx
+assert-setup step detecting
+screenshot $DIR/../../tools/progress/public/m2-setup-detecting-wide-matte-black-square-2026-10-05.png
+
+# Found, with the password typed (the mock's first card).
+engine-reply detected fjordpost
+setup-type setup-password fictional-password
+assert-setup step password
+screenshot $DIR/../../tools/progress/public/m2-setup-password-wide-matte-black-square-2026-10-05.png
+
+# Checking the login.
+setup-key enter
+engine-expect verify
+assert-setup step checking
+screenshot $DIR/../../tools/progress/public/m2-setup-checking-wide-matte-black-square-2026-10-05.png
+setup-key escape
+
+# Settings to confirm, found only through the domain's mail host.
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress mx
+engine-reply detected confirm
+assert-setup step password
+screenshot $DIR/../../tools/progress/public/m2-setup-confirm-wide-matte-black-square-2026-10-05.png
+
+# Microsoft sign-in, unavailable until S5 (the mock's second card).
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected microsoft
+assert-setup step microsoft
+screenshot $DIR/../../tools/progress/public/m2-setup-microsoft-wide-matte-black-square-2026-10-05.png
+
+# A provider that can't be added.
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected bridge
+assert-setup step blocked
+screenshot $DIR/../../tools/progress/public/m2-setup-blocked-wide-matte-black-square-2026-10-05.png
+
+# Nothing found: the manual settings.
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress probe
+engine-reply detected not-found
+assert-setup step manual
+screenshot $DIR/../../tools/progress/public/m2-setup-manual-wide-matte-black-square-2026-10-05.png
+
+# Gmail: the app password asked for before the first try, then the failure with the manual
+# settings (the mock's third card).
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected gmail
+setup-type setup-password fictional-password
+assert-setup step password
+screenshot $DIR/../../tools/progress/public/m2-setup-app-password-wide-matte-black-square-2026-10-05.png
+setup-key enter
+engine-expect verify
+engine-reply verified imap app-password
+assert-setup step failed
+screenshot $DIR/../../tools/progress/public/m2-setup-failed-wide-matte-black-square-2026-10-05.png
+setup-click setup-close
+assert-setup open false
+
+# ---- catppuccin-latte, rounded ----
+theme catppuccin-latte
+corners 8
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+resize 800 900
+screenshot $DIR/../../tools/progress/public/m2-setup-address-narrow-catppuccin-latte-rounded-2026-10-05.png
+resize 1100 900
+screenshot $DIR/../../tools/progress/public/m2-setup-address-rail-catppuccin-latte-rounded-2026-10-05.png
+resize 1440 900
+screenshot $DIR/../../tools/progress/public/m2-setup-address-wide-catppuccin-latte-rounded-2026-10-05.png
+
+engine-detach
+setup-key enter
+assert-label setup-alert-title "Not connected to the mail engine"
+screenshot $DIR/../../tools/progress/public/m2-setup-not-connected-wide-catppuccin-latte-rounded-2026-10-05.png
+engine-attach
+
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress autoconfig
+engine-reply progress mx
+assert-setup step detecting
+screenshot $DIR/../../tools/progress/public/m2-setup-detecting-wide-catppuccin-latte-rounded-2026-10-05.png
+
+engine-reply detected fjordpost
+setup-type setup-password fictional-password
+assert-setup step password
+screenshot $DIR/../../tools/progress/public/m2-setup-password-wide-catppuccin-latte-rounded-2026-10-05.png
+
+setup-key enter
+engine-expect verify
+assert-setup step checking
+screenshot $DIR/../../tools/progress/public/m2-setup-checking-wide-catppuccin-latte-rounded-2026-10-05.png
+setup-key escape
+
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress mx
+engine-reply detected confirm
+assert-setup step password
+screenshot $DIR/../../tools/progress/public/m2-setup-confirm-wide-catppuccin-latte-rounded-2026-10-05.png
+
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected microsoft
+assert-setup step microsoft
+screenshot $DIR/../../tools/progress/public/m2-setup-microsoft-wide-catppuccin-latte-rounded-2026-10-05.png
+
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected bridge
+assert-setup step blocked
+screenshot $DIR/../../tools/progress/public/m2-setup-blocked-wide-catppuccin-latte-rounded-2026-10-05.png
+
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress probe
+engine-reply detected not-found
+assert-setup step manual
+screenshot $DIR/../../tools/progress/public/m2-setup-manual-wide-catppuccin-latte-rounded-2026-10-05.png
+
+setup-key escape
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply detected gmail
+setup-type setup-password fictional-password
+assert-setup step password
+screenshot $DIR/../../tools/progress/public/m2-setup-app-password-wide-catppuccin-latte-rounded-2026-10-05.png
+setup-key enter
+engine-expect verify
+engine-reply verified imap app-password
+assert-setup step failed
+screenshot $DIR/../../tools/progress/public/m2-setup-failed-wide-catppuccin-latte-rounded-2026-10-05.png
+
+# Done: the assistant closes, a toast says so, and the store shows the account; in both themes.
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+assert-setup open false
+wait-until assert-label sidebar-summary "1 account · synced"
+screenshot $DIR/../../tools/progress/public/m2-setup-added-wide-catppuccin-latte-rounded-2026-10-05.png
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m2-setup-added-wide-matte-black-square-2026-10-05.png

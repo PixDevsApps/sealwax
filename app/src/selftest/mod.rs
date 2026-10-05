@@ -685,7 +685,7 @@ impl Harness {
                 }
             }
             "assert-reader" => reader::check(self, args).await,
-            assertion if setup::checks(assertion) => setup::check(assertion, args),
+            assertion if setup::checks(assertion) => setup::check(self, assertion, args),
             other => Err(format!("unknown command {other}")),
         }
     }
