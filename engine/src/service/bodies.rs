@@ -76,8 +76,8 @@ fn answer(shared: &Shared, message: MessageId, result: Result<(), BodyError>) {
 }
 
 /// Queues the bodies of `messages`, the first most wanted, ahead of everything queued before.
-/// `announce` is false for the background prefetch, whose messages answer nothing; asking for
-/// one of them again announces it and moves it to the front.
+/// `announce` is false for the background prefetch, whose messages answer nothing and queue
+/// behind everything else; asking for one of them again announces it and moves it to the front.
 pub(super) fn request(shared: &Arc<Shared>, messages: Vec<MessageId>, announce: bool) {
     let fresh: Vec<MessageId> = {
         let mut state = shared.bodies.state();
@@ -130,7 +130,7 @@ pub(super) fn request(shared: &Arc<Shared>, messages: Vec<MessageId>, announce: 
             }
         }
         for (account, targets) in queued {
-            enqueue(&shared, account, targets);
+            enqueue(&shared, account, targets, announce);
         }
     });
 }
@@ -147,12 +147,20 @@ fn promote(state: &mut State, message: MessageId) {
     }
 }
 
-fn enqueue(shared: &Arc<Shared>, account: AccountId, targets: Vec<BodyTarget>) {
-    let mut state = shared.bodies.state();
-    let queue = state.queues.entry(account).or_default();
-    for target in targets.into_iter().rev() {
-        queue.push_front(target);
+/// Adds `targets` in their order: at the front when someone waits for them, else at the back.
+fn queue_in(queue: &mut VecDeque<BodyTarget>, targets: Vec<BodyTarget>, front: bool) {
+    if front {
+        for target in targets.into_iter().rev() {
+            queue.push_front(target);
+        }
+    } else {
+        queue.extend(targets);
     }
+}
+
+fn enqueue(shared: &Arc<Shared>, account: AccountId, targets: Vec<BodyTarget>, front: bool) {
+    let mut state = shared.bodies.state();
+    queue_in(state.queues.entry(account).or_default(), targets, front);
     let running = state
         .workers
         .get(&account)
@@ -163,18 +171,9 @@ fn enqueue(shared: &Arc<Shared>, account: AccountId, targets: Vec<BodyTarget>) {
     }
 }
 
-/// The next batch of `account`: its most wanted message and up to [`BATCH`] - 1 more of the
-/// same folder, in queue order. `None` ends the worker, under the same lock that `enqueue` takes,
-/// so a message queued meanwhile starts a new one.
-fn next_batch(shared: &Shared, account: AccountId) -> Option<(FolderId, Vec<BodyTarget>)> {
-    let mut state = shared.bodies.state();
-    let queue = state.queues.get_mut(&account)?;
-    let Some(first) = queue.front() else {
-        state.queues.remove(&account);
-        state.workers.remove(&account);
-        return None;
-    };
-    let folder = first.folder;
+/// The most wanted message and up to [`BATCH`] - 1 more of its folder, in queue order.
+fn take_batch(queue: &mut VecDeque<BodyTarget>) -> Option<(FolderId, Vec<BodyTarget>)> {
+    let folder = queue.front()?.folder;
     let mut batch = Vec::new();
     let mut index = 0;
     while index < queue.len() && batch.len() < BATCH {
@@ -185,6 +184,18 @@ fn next_batch(shared: &Shared, account: AccountId) -> Option<(FolderId, Vec<Body
         }
     }
     Some((folder, batch))
+}
+
+/// The next batch of `account`. `None` ends the worker, under the same lock that `enqueue`
+/// takes, so a message queued meanwhile starts a new one.
+fn next_batch(shared: &Shared, account: AccountId) -> Option<(FolderId, Vec<BodyTarget>)> {
+    let mut state = shared.bodies.state();
+    let batch = take_batch(state.queues.get_mut(&account)?);
+    if batch.is_none() {
+        state.queues.remove(&account);
+        state.workers.remove(&account);
+    }
+    batch
 }
 
 /// Answers everything `account` has queued with `error`, and ends its worker.
@@ -324,5 +335,69 @@ pub(super) fn set_storage(shared: &Arc<Shared>, storage: Storage) {
     if changed {
         let shared = shared.clone();
         tokio::spawn(async move { cap(&shared, &[]).await });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target(message: i64, folder: i64) -> BodyTarget {
+        BodyTarget {
+            message: MessageId(message),
+            account: AccountId(1),
+            folder: FolderId(folder),
+            uid: message as u32,
+            size: 100,
+            body_state: BodyState::Partial,
+            blob: None,
+        }
+    }
+
+    fn messages(queue: &VecDeque<BodyTarget>) -> Vec<i64> {
+        queue.iter().map(|target| target.message.0).collect()
+    }
+
+    #[test]
+    fn the_reader_goes_first_and_the_prefetch_last() {
+        let mut queue = VecDeque::new();
+        queue_in(&mut queue, vec![target(1, 1), target(2, 1)], false);
+        queue_in(&mut queue, vec![target(3, 1), target(4, 1)], true);
+        queue_in(&mut queue, vec![target(5, 1)], false);
+        queue_in(&mut queue, vec![target(6, 1)], true);
+        assert_eq!(messages(&queue), [6, 3, 4, 1, 2, 5]);
+        let mut state = State::default();
+        state.queues.insert(AccountId(1), queue);
+        promote(&mut state, MessageId(5));
+        assert_eq!(messages(&state.queues[&AccountId(1)]), [5, 6, 3, 4, 1, 2]);
+    }
+
+    #[test]
+    fn a_batch_is_the_first_message_and_more_of_its_folder() {
+        let mut queue: VecDeque<BodyTarget> = [(1, 7), (2, 8), (3, 7)]
+            .into_iter()
+            .map(|(message, folder)| target(message, folder))
+            .chain((10..40).map(|message| target(message, 7)))
+            .collect();
+        let (folder, batch) = take_batch(&mut queue).unwrap();
+        assert_eq!(folder, FolderId(7));
+        assert_eq!(batch.len(), BATCH);
+        assert_eq!(
+            batch
+                .iter()
+                .take(3)
+                .map(|t| t.message.0)
+                .collect::<Vec<_>>(),
+            [1, 3, 10]
+        );
+        assert_eq!(
+            queue.front().map(|t| t.message.0),
+            Some(2),
+            "the other folder waits"
+        );
+        let (folder, batch) = take_batch(&mut queue).unwrap();
+        assert_eq!((folder, batch.len()), (FolderId(8), 1));
+        assert_eq!(take_batch(&mut queue).unwrap().1.len(), 30 + 2 - BATCH);
+        assert!(take_batch(&mut queue).is_none());
     }
 }
