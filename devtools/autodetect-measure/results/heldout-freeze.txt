@@ -1,0 +1,9 @@
+Held-out freeze for ML-097: recorded before any pipeline, probe, DNS, autoconfig or ISPDB request from the measurement to these domains.
+file: devtools/autodetect-measure/data/heldout.tsv (header comment + the three research fragments, concatenated unchanged)
+utc: 2026-10-05T08:24:27Z
+sha256: ffa7f686fc88f19796bdf0760d75a2388557f6a7accb8650e10712f183837e1e
+fragments (sha256): 762b1d74083359078f39d10c69e67cc3f9363f1ab0ac354b31e531d4e850e834 heldout-nordic.tsv; fc825de5d4fdc1a5df09c697ac02c93b9e020d0b6ed7a079b85e2e4d90ee77c1 heldout-europe.tsv; 06649bcad3a05f1e3ce9df35031de2d47083676801d81f17561ed715f20bfbbc heldout-custom.tsv
+rows: 42 (nordic 13, europe 16, custom 13; 35 settings, 2 no-mail, 0 unsupported, 5 unknown)
+checks before the freeze, which read only the domain, group and expect columns: the parser accepts every row; no duplicate domain; none of the 79 domains of S4's list (with its 3 unscored ones) or S4b's held-out list.
+rules in force: results/rules-freeze.txt (commit f1a52ae)
+binary sha256 now: 2f896f51a5f21268ebbe43d1d93efe5e23faeb342eee2b21b8b4f3eac341a529

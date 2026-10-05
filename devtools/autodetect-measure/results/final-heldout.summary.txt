@@ -1,0 +1,41 @@
+== final-heldout: 42 domains (Heldout list), started 2026-10-05T08:24:40Z
+rules: own_host=true srv_conventional=true mx_hosts=true ispdb_before_srv=true verify_srv=true autodiscover=true
+options: resolver=1.1.1.1 order=preset>autoconfig>ispdb>srv>own-host>mx-preset>well-known>mx-autoconfig>mx-ispdb>probe>mx-probe cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms mx_autoconfig=1500ms connect=3000ms probe_delay=2000ms probe_budget=5000ms user_agent="mail-dev (automated)"
+correct, strict: 20/37
+correct, with the second login attempt (E1): 21/37
+correct, E1 plus verified aliases (E2): 22/37
+  E1 adds: ["free.fr"]
+  E2 adds: ["inet.fi"]
+truth unknown (not scored): ["bredband.net", "stofanet.dk", "internet.is", "eircom.net", "carlslid.se"]
+  custom: strict 5/12, E1 5/12, E1+E2 5/12
+  europe: strict 10/15, E1 11/15, E1+E2 11/15
+  nordic: strict 5/10, E1 5/10, E1+E2 6/10
+strict misses: [
+    "servetheworld.net: nothing found",
+    "loopia.se: IMAP imap.loopia.se:993 Tls not accepted",
+    "bahnhof.se: nothing found",
+    "inet.fi: IMAP imap.inet.fi:993 Tls not accepted",
+    "1984.is: SMTP mail.1984.is:475 Tls not accepted",
+    "free.fr: username LocalPart wrong",
+    "talktalk.net: IMAP imap.talktalk.net:993 Tls not accepted",
+    "telefonica.net: nothing found",
+    "telenet.be: SMTP smtp.telenet.be:465 Tls not accepted",
+    "sunrise.ch: SMTP mail.upcmail.net:587 StartTls not accepted",
+    "uni-paderborn.de: SMTP mail.uni-paderborn.de:587 StartTls not accepted",
+    "uiowa.edu: username Address wrong",
+    "uio.no: nothing found",
+    "port39.de: IMAP port39.de:993 Tls not accepted",
+    "schule-kemmental.ch: IMAP imap.hostpoint.ch:993 Tls not accepted",
+    "hoelderlin-heidelberg.de: nothing found",
+    "samfundet.no: username Address wrong",
+]
+TLS-only: 33/33 offered settings use TLS or STARTTLS (the contract has no plaintext mode)
+shown for confirmation: ["sunrise.ch", "gho-team.de", "schule-kemmental.ch", "carlslid.se"]
+final: n=42 p50=295 p95=5110 max=5318 ms
+first usable: n=34 p50=229 p95=5110 max=5318 ms
+hit the cap unsettled: []
+won by: {"-": 6, "autoconfig": 13, "ispdb": 4, "mx-preset": 4, "mx-probe": 3, "own-host": 4, "own-host+mx-autoconfig": 1, "own-host+probe": 2, "probe": 2, "srv": 2, "well-known": 1}
+requests: 1038 (dns 676, https 158, redirects followed 10, refused 4, tcp 190); scoring checks after detection: 20
+carrying the dummy address: 43 (42 to the row's own https://autoconfig.<domain>/)
+privacy violations: 0 []
+scoring checks carrying an address or using HTTPS: 0

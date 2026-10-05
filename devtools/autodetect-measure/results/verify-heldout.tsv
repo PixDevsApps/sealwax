@@ -1,0 +1,107 @@
+domain	protocol	endpoint	result
+runbox.com	Imap	mail.runbox.com:993 Tls	ok
+runbox.com	Smtp	mail.runbox.com:465 Tls	ok
+runbox.com	Smtp	mail.runbox.com:587 StartTls	ok
+wemail.no	Imap	mail.wemail.no:993 Tls	ok
+wemail.no	Smtp	smtp.wemail.no:465 Tls	ok
+inbox.com	Imap	mail.inbox.com:993 Tls	ok
+inbox.com	Imap	mail.inbox.com:143 StartTls	ok
+inbox.com	Smtp	smtp.inbox.com:465 Tls	ok
+inbox.com	Smtp	smtp.inbox.com:587 StartTls	ok
+servetheworld.net	Imap	imap.stw.no:993 Tls	ok
+servetheworld.net	Imap	servetheworld.net:993 Tls	Tls: invalid peer certificate: certificate not valid for name "servetheworld.net"; certificate is only valid for DnsName("plesk1.wp1.dynavee.net")
+servetheworld.net	Imap	mail.servetheworld.net:993 Tls	Dns: no addresses
+servetheworld.net	Smtp	smtp.stw.no:465 Tls	ok
+servetheworld.net	Smtp	smtp.stw.no:587 StartTls	ok
+servetheworld.net	Smtp	servetheworld.net:465 Tls	Tls: invalid peer certificate: certificate not valid for name "servetheworld.net"; certificate is only valid for DnsName("plesk1.wp1.dynavee.net")
+servetheworld.net	Smtp	mail.servetheworld.net:465 Tls	Dns: no addresses
+loopia.se	Imap	mailcluster.loopia.se:993 Tls	ok
+loopia.se	Imap	mailcluster.loopia.se:143 StartTls	ok
+loopia.se	Smtp	mailcluster.loopia.se:465 Tls	ok
+loopia.se	Smtp	mailcluster.loopia.se:587 StartTls	ok
+bahnhof.se	Imap	imap.privat.bahnhof.se:993 Tls	ok
+bahnhof.se	Smtp	mailout.privat.bahnhof.se:465 Tls	ok
+sol.dk	Imap	mail.sol.dk:993 Tls	ok
+sol.dk	Smtp	smtp.sol.dk:465 Tls	ok
+inet.fi	Imap	mail.inet.fi:993 Tls	ok
+inet.fi	Imap	mail.inet.fi:143 StartTls	ok
+inet.fi	Smtp	smtp.inet.fi:465 Tls	ok
+inet.fi	Smtp	smtp.inet.fi:587 StartTls	ok
+1984.is	Imap	mail.1984.is:993 Tls	ok
+1984.is	Smtp	mail.1984.is:465 Tls	Tls: received corrupt message of type InvalidContentType
+1984.is	Smtp	mail.1984.is:587 StartTls	ok
+free.fr	Imap	imap.free.fr:993 Tls	ok
+free.fr	Smtp	smtp.free.fr:587 StartTls	ok
+free.fr	Smtp	smtp.free.fr:465 Tls	ok
+sfr.fr	Imap	imap.sfr.fr:993 Tls	ok
+sfr.fr	Smtp	smtp.sfr.fr:465 Tls	ok
+vodafonemail.de	Imap	imap.vodafonemail.de:993 Tls	ok
+vodafonemail.de	Imap	imap.vodafonemail.de:143 StartTls	ok
+vodafonemail.de	Smtp	smtp.vodafonemail.de:465 Tls	ok
+vodafonemail.de	Smtp	smtp.vodafonemail.de:587 StartTls	ok
+vodafonemail.de	Smtp	smtp.vodafonemail.de:25 StartTls	Timeout: no answer within 8000 ms
+freenet.de	Imap	mx.freenet.de:993 Tls	ok
+freenet.de	Imap	mx.freenet.de:143 StartTls	ok
+freenet.de	Smtp	mx.freenet.de:587 StartTls	ok
+freenet.de	Smtp	mx.freenet.de:465 Tls	ok
+virginmedia.com	Imap	imap.virginmedia.com:993 Tls	ok
+virginmedia.com	Smtp	smtp.virginmedia.com:465 Tls	ok
+talktalk.net	Imap	mail.talktalk.net:993 Tls	ok
+talktalk.net	Smtp	smtp.talktalk.net:587 StartTls	ok
+libero.it	Imap	imapmail.libero.it:993 Tls	ok
+libero.it	Smtp	smtp.libero.it:465 Tls	ok
+telefonica.net	Imap	imap.telefonica.net:993 Tls	ok
+telefonica.net	Smtp	smtp.telefonica.net:25 StartTls	Connect: connect timed out
+ziggo.nl	Imap	imap.ziggo.nl:993 Tls	ok
+ziggo.nl	Smtp	smtp.ziggo.nl:587 StartTls	ok
+telenet.be	Imap	imap.telenet.be:993 Tls	ok
+telenet.be	Smtp	smtp.telenet.be:587 StartTls	ok
+wp.pl	Imap	imap.wp.pl:993 Tls	ok
+wp.pl	Smtp	smtp.wp.pl:465 Tls	ok
+onet.pl	Imap	imap.poczta.onet.pl:993 Tls	ok
+onet.pl	Smtp	smtp.poczta.onet.pl:465 Tls	ok
+seznam.cz	Imap	imap.seznam.cz:993 Tls	ok
+seznam.cz	Smtp	smtp.seznam.cz:465 Tls	ok
+seznam.cz	Smtp	smtp.seznam.cz:587 StartTls	ok
+sunrise.ch	Imap	imap.sunrise.ch:993 Tls	ok
+sunrise.ch	Smtp	smtp2.sunrise.ch:465 Tls	ok
+sapo.pt	Imap	imap.sapo.pt:993 Tls	ok
+sapo.pt	Smtp	smtp.sapo.pt:465 Tls	Tls: received fatal alert: HandshakeFailure
+sapo.pt	Smtp	smtp.sapo.pt:587 StartTls	ok
+uni-paderborn.de	Imap	mail.uni-paderborn.de:993 Tls	ok
+uni-paderborn.de	Smtp	mail.uni-paderborn.de:465 Tls	ok
+uiowa.edu	Imap	outlook.office365.com:993 Tls	ok
+uiowa.edu	Smtp	smtp.office365.com:587 StartTls	ok
+uio.no	Imap	outlook.office365.com:143 StartTls	ok
+uio.no	Imap	outlook.office365.com:993 Tls	ok
+uio.no	Imap	imap.uio.no:143 StartTls	Connect: Permission denied (os error 13)
+uio.no	Imap	imap.uio.no:993 Tls	Connect: Permission denied (os error 13)
+uio.no	Smtp	smtp.office365.com:587 StartTls	ok
+uio.no	Smtp	smtp.uio.no:587 StartTls	ok
+uio.no	Smtp	smtp.uio.no:465 Tls	ok
+fanarkh.no	Imap	imap.one.com:993 Tls	ok
+fanarkh.no	Smtp	send.one.com:25 StartTls	Timeout: no answer within 8000 ms
+fanarkh.no	Smtp	send.one.com:587 StartTls	ok
+fanarkh.no	Smtp	send.one.com:465 Tls	ok
+andrews.edu	Imap	imap.gmail.com:993 Tls	ok
+andrews.edu	Smtp	smtp.gmail.com:465 Tls	ok
+andrews.edu	Smtp	smtp.gmail.com:587 StartTls	ok
+unito.it	Imap	imap.gmail.com:993 Tls	ok
+unito.it	Smtp	smtp.gmail.com:465 Tls	ok
+unito.it	Smtp	smtp.gmail.com:587 StartTls	ok
+port39.de	Imap	mxe81b.netcup.net:993 Tls	ok
+port39.de	Smtp	mxe81b.netcup.net:465 Tls	ok
+gho-team.de	Imap	imap.ionos.de:993 Tls	ok
+gho-team.de	Imap	imap.ionos.de:143 StartTls	ok
+gho-team.de	Smtp	smtp.ionos.de:465 Tls	ok
+gho-team.de	Smtp	smtp.ionos.de:587 StartTls	ok
+schule-kemmental.ch	Imap	imap.mail.hostpoint.ch:993 Tls	ok
+schule-kemmental.ch	Imap	imap.mail.hostpoint.ch:143 StartTls	ok
+schule-kemmental.ch	Smtp	asmtp.mail.hostpoint.ch:465 Tls	ok
+schule-kemmental.ch	Smtp	asmtp.mail.hostpoint.ch:587 StartTls	ok
+hoelderlin-heidelberg.de	Imap	w01d857e.kasserver.com:993 Tls	ok
+hoelderlin-heidelberg.de	Smtp	w01d857e.kasserver.com:465 Tls	ok
+samfundet.no	Imap	imap.samfundet.no:993 Tls	ok
+samfundet.no	Smtp	smtp.samfundet.no:465 Tls	ok
+samfundet.no	Smtp	smtp.samfundet.no:25 StartTls	ok
+# 94 of 105 documented endpoints passed; 208 requests; 2026-10-05T08:28:01Z

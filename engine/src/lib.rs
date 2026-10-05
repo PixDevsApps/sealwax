@@ -3,6 +3,7 @@
 
 pub mod accounts;
 pub mod api;
+pub mod autoconfig;
 pub mod imap;
 pub mod net;
 pub mod secrets;

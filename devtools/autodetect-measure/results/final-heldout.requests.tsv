@@ -1,0 +1,1059 @@
+domain	phase	kind	target	carries_dummy_address
+runbox.com	detect	https	https://autoconfig.runbox.com/mail/config-v1.1.xml?emailaddress=…	true
+runbox.com	detect	dns	autoconfig.runbox.com A/AAAA	false
+runbox.com	detect	https	https://autoconfig.thunderbird.net/v1.1/runbox.com	false
+runbox.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+runbox.com	detect	dns	_submissions._tcp.runbox.com SRV	false
+runbox.com	detect	dns	_submission._tcp.runbox.com SRV	false
+runbox.com	detect	dns	_imaps._tcp.runbox.com SRV	false
+runbox.com	detect	dns	_imap._tcp.runbox.com SRV	false
+runbox.com	detect	dns	imap.runbox.com A/AAAA	false
+runbox.com	detect	https	https://runbox.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+runbox.com	detect	dns	runbox.com A/AAAA	false
+runbox.com	detect	dns	runbox.com MX	false
+runbox.com	detect	dns	autodiscover.runbox.com CNAME	false
+runbox.com	detect	tcp	imap.runbox.com:993	false
+wemail.no	detect	https	https://autoconfig.wemail.no/mail/config-v1.1.xml?emailaddress=…	true
+wemail.no	detect	dns	autoconfig.wemail.no A/AAAA	false
+wemail.no	detect	https	https://autoconfig.thunderbird.net/v1.1/wemail.no	false
+wemail.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+wemail.no	detect	dns	_submissions._tcp.wemail.no SRV	false
+wemail.no	detect	dns	_submission._tcp.wemail.no SRV	false
+wemail.no	detect	dns	_imaps._tcp.wemail.no SRV	false
+wemail.no	detect	dns	_imap._tcp.wemail.no SRV	false
+wemail.no	detect	dns	imap.wemail.no A/AAAA	false
+wemail.no	detect	https	https://wemail.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+wemail.no	detect	dns	wemail.no A/AAAA	false
+wemail.no	detect	dns	wemail.no MX	false
+wemail.no	detect	dns	autodiscover.wemail.no CNAME	false
+wemail.no	detect	https	https://autoconfig.mailcore.net/mail/config-v1.1.xml	false
+wemail.no	detect	dns	autoconfig.mailcore.net A/AAAA	false
+wemail.no	detect	https	https://autoconfig.thunderbird.net/v1.1/mailcore.net	false
+wemail.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+wemail.no	detect	dns	mail.wemail.no A/AAAA	false
+wemail.no	detect	dns	imap.wemail.no A/AAAA	false
+wemail.no	detect	dns	smtp.wemail.no A/AAAA	false
+wemail.no	detect	tcp	imap.wemail.no:993	false
+wemail.no	detect	tcp	smtp.wemail.no:465	false
+wemail.no	detect	dns	mail.wemail.no A/AAAA	false
+wemail.no	detect	tcp	mail.wemail.no:993	false
+inbox.com	detect	https	https://autoconfig.inbox.com/mail/config-v1.1.xml?emailaddress=…	true
+inbox.com	detect	dns	autoconfig.inbox.com A/AAAA	false
+inbox.com	detect	https	https://autoconfig.thunderbird.net/v1.1/inbox.com	false
+inbox.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+inbox.com	detect	dns	_submissions._tcp.inbox.com SRV	false
+inbox.com	detect	dns	_submission._tcp.inbox.com SRV	false
+inbox.com	detect	dns	_imaps._tcp.inbox.com SRV	false
+inbox.com	detect	dns	_imap._tcp.inbox.com SRV	false
+inbox.com	detect	dns	imap.inbox.com A/AAAA	false
+inbox.com	detect	https	https://inbox.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+inbox.com	detect	dns	inbox.com A/AAAA	false
+inbox.com	detect	dns	inbox.com MX	false
+inbox.com	detect	dns	autodiscover.inbox.com CNAME	false
+inbox.com	detect	https	https://autoconfig.mailcore.net/mail/config-v1.1.xml	false
+inbox.com	detect	dns	autoconfig.mailcore.net A/AAAA	false
+inbox.com	detect	https	https://autoconfig.thunderbird.net/v1.1/mailcore.net	false
+inbox.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+inbox.com	detect	dns	mail.inbox.com A/AAAA	false
+inbox.com	detect	dns	imap.inbox.com A/AAAA	false
+inbox.com	detect	dns	smtp.inbox.com A/AAAA	false
+inbox.com	detect	tcp	imap.inbox.com:993	false
+inbox.com	detect	tcp	smtp.inbox.com:465	false
+myopera.com	detect	https	https://autoconfig.myopera.com/mail/config-v1.1.xml?emailaddress=…	true
+myopera.com	detect	dns	autoconfig.myopera.com A/AAAA	false
+myopera.com	detect	https	https://autoconfig.thunderbird.net/v1.1/myopera.com	false
+myopera.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+myopera.com	detect	dns	_submissions._tcp.myopera.com SRV	false
+myopera.com	detect	dns	_submission._tcp.myopera.com SRV	false
+myopera.com	detect	dns	_imaps._tcp.myopera.com SRV	false
+myopera.com	detect	dns	_imap._tcp.myopera.com SRV	false
+myopera.com	detect	dns	imap.myopera.com A/AAAA	false
+myopera.com	detect	https	https://myopera.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+myopera.com	detect	dns	myopera.com A/AAAA	false
+myopera.com	detect	dns	myopera.com MX	false
+myopera.com	detect	dns	autodiscover.myopera.com CNAME	false
+myopera.com	detect	dns	mail.myopera.com A/AAAA	false
+myopera.com	detect	dns	myopera.com A/AAAA	false
+myopera.com	detect	tcp	myopera.com:993	false
+myopera.com	detect	dns	smtp.myopera.com A/AAAA	false
+myopera.com	detect	dns	mail.myopera.com A/AAAA	false
+myopera.com	detect	dns	myopera.com A/AAAA	false
+myopera.com	detect	tcp	myopera.com:465	false
+myopera.com	detect	dns	myopera.com A/AAAA	false
+myopera.com	detect	tcp	myopera.com:143	false
+myopera.com	detect	dns	myopera.com A/AAAA	false
+myopera.com	detect	tcp	myopera.com:587	false
+myopera.com	detect	tcp	mail.myopera.com:993	false
+myopera.com	detect	tcp	mail.myopera.com:465	false
+myopera.com	detect	dns	mail.myopera.com A/AAAA	false
+myopera.com	detect	tcp	mail.myopera.com:587	false
+myopera.com	detect	dns	mail.myopera.com A/AAAA	false
+myopera.com	detect	tcp	mail.myopera.com:143	false
+servetheworld.net	detect	https	https://autoconfig.servetheworld.net/mail/config-v1.1.xml?emailaddress=…	true
+servetheworld.net	detect	dns	autoconfig.servetheworld.net A/AAAA	false
+servetheworld.net	detect	https	https://autoconfig.thunderbird.net/v1.1/servetheworld.net	false
+servetheworld.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+servetheworld.net	detect	dns	_submissions._tcp.servetheworld.net SRV	false
+servetheworld.net	detect	dns	_submission._tcp.servetheworld.net SRV	false
+servetheworld.net	detect	dns	_imaps._tcp.servetheworld.net SRV	false
+servetheworld.net	detect	dns	_imap._tcp.servetheworld.net SRV	false
+servetheworld.net	detect	dns	imap.servetheworld.net A/AAAA	false
+servetheworld.net	detect	https	https://servetheworld.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+servetheworld.net	detect	dns	servetheworld.net A/AAAA	false
+servetheworld.net	detect	dns	servetheworld.net MX	false
+servetheworld.net	detect	dns	autodiscover.servetheworld.net CNAME	false
+servetheworld.net	detect	https	https://autoconfig.dynavee.net/mail/config-v1.1.xml	false
+servetheworld.net	detect	dns	autoconfig.dynavee.net A/AAAA	false
+servetheworld.net	detect	https	https://autoconfig.thunderbird.net/v1.1/dynavee.net	false
+servetheworld.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+servetheworld.net	detect	redirect-refused	https://stw.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+servetheworld.net	detect	dns	mail.servetheworld.net A/AAAA	false
+servetheworld.net	detect	dns	servetheworld.net A/AAAA	false
+servetheworld.net	detect	tcp	servetheworld.net:993	false
+servetheworld.net	detect	dns	imap.dynavee.net A/AAAA	false
+servetheworld.net	detect	dns	mail.dynavee.net A/AAAA	false
+servetheworld.net	detect	dns	smtp.servetheworld.net A/AAAA	false
+servetheworld.net	detect	dns	mail.servetheworld.net A/AAAA	false
+servetheworld.net	detect	dns	servetheworld.net A/AAAA	false
+servetheworld.net	detect	tcp	servetheworld.net:465	false
+servetheworld.net	detect	dns	smtp.dynavee.net A/AAAA	false
+servetheworld.net	detect	dns	mail.dynavee.net A/AAAA	false
+servetheworld.net	detect	dns	servetheworld.net A/AAAA	false
+servetheworld.net	detect	tcp	servetheworld.net:143	false
+servetheworld.net	detect	dns	servetheworld.net A/AAAA	false
+servetheworld.net	detect	tcp	servetheworld.net:587	false
+loopia.se	detect	https	https://autoconfig.loopia.se/mail/config-v1.1.xml?emailaddress=…	true
+loopia.se	detect	dns	autoconfig.loopia.se A/AAAA	false
+loopia.se	detect	https	https://autoconfig.thunderbird.net/v1.1/loopia.se	false
+loopia.se	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+loopia.se	detect	dns	_submissions._tcp.loopia.se SRV	false
+loopia.se	detect	dns	_submission._tcp.loopia.se SRV	false
+loopia.se	detect	dns	_imaps._tcp.loopia.se SRV	false
+loopia.se	detect	dns	_imap._tcp.loopia.se SRV	false
+loopia.se	detect	dns	imap.loopia.se A/AAAA	false
+loopia.se	detect	https	https://loopia.se/.well-known/autoconfig/mail/config-v1.1.xml	false
+loopia.se	detect	dns	loopia.se A/AAAA	false
+loopia.se	detect	dns	loopia.se MX	false
+loopia.se	detect	dns	autodiscover.loopia.se CNAME	false
+loopia.se	detect	tcp	imap.loopia.se:993	false
+loopia.se	detect	redirect-followed	https://www.loopia.se/.well-known/autoconfig/mail/config-v1.1.xml	false
+loopia.se	detect	dns	www.loopia.se A/AAAA	false
+loopia.se	detect	dns	smtp.loopia.se A/AAAA	false
+loopia.se	detect	dns	smtp.loopia.se A/AAAA	false
+loopia.se	detect	dns	mail.loopia.se A/AAAA	false
+loopia.se	detect	dns	loopia.se A/AAAA	false
+loopia.se	detect	tcp	loopia.se:993	false
+loopia.se	detect	dns	mail.loopia.se A/AAAA	false
+loopia.se	detect	dns	loopia.se A/AAAA	false
+loopia.se	detect	tcp	loopia.se:465	false
+loopia.se	detect	tcp	mail.loopia.se:993	false
+loopia.se	detect	tcp	mail.loopia.se:465	false
+loopia.se	detect	dns	loopia.se A/AAAA	false
+loopia.se	detect	tcp	loopia.se:143	false
+loopia.se	detect	dns	loopia.se A/AAAA	false
+loopia.se	detect	tcp	loopia.se:587	false
+loopia.se	detect	dns	mail.loopia.se A/AAAA	false
+loopia.se	detect	tcp	mail.loopia.se:587	false
+bahnhof.se	detect	https	https://autoconfig.bahnhof.se/mail/config-v1.1.xml?emailaddress=…	true
+bahnhof.se	detect	dns	autoconfig.bahnhof.se A/AAAA	false
+bahnhof.se	detect	https	https://autoconfig.thunderbird.net/v1.1/bahnhof.se	false
+bahnhof.se	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+bahnhof.se	detect	dns	_submissions._tcp.bahnhof.se SRV	false
+bahnhof.se	detect	dns	_submission._tcp.bahnhof.se SRV	false
+bahnhof.se	detect	dns	_imaps._tcp.bahnhof.se SRV	false
+bahnhof.se	detect	dns	_imap._tcp.bahnhof.se SRV	false
+bahnhof.se	detect	dns	imap.bahnhof.se A/AAAA	false
+bahnhof.se	detect	https	https://bahnhof.se/.well-known/autoconfig/mail/config-v1.1.xml	false
+bahnhof.se	detect	dns	bahnhof.se A/AAAA	false
+bahnhof.se	detect	dns	bahnhof.se MX	false
+bahnhof.se	detect	dns	autodiscover.bahnhof.se CNAME	false
+bahnhof.se	detect	tcp	imap.bahnhof.se:993	false
+bahnhof.se	detect	redirect-refused	http://privat.bahnhof.se/wb446044/mail/config-v1.1.xml?emailaddress=…	true
+bahnhof.se	detect	dns	imap.bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	imap.bahnhof.se:143	false
+bahnhof.se	detect	dns	mail.bahnhof.se A/AAAA	false
+bahnhof.se	detect	dns	bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	bahnhof.se:993	false
+bahnhof.se	detect	dns	smtp.bahnhof.se A/AAAA	false
+bahnhof.se	detect	dns	mail.bahnhof.se A/AAAA	false
+bahnhof.se	detect	dns	bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	bahnhof.se:465	false
+bahnhof.se	detect	tcp	mail.bahnhof.se:993	false
+bahnhof.se	detect	tcp	mail.bahnhof.se:465	false
+bahnhof.se	detect	tcp	smtp.bahnhof.se:465	false
+bahnhof.se	detect	dns	smtp.bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	smtp.bahnhof.se:587	false
+bahnhof.se	detect	dns	bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	bahnhof.se:587	false
+bahnhof.se	detect	dns	bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	bahnhof.se:143	false
+bahnhof.se	detect	dns	mail.bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	mail.bahnhof.se:143	false
+bahnhof.se	detect	dns	mail.bahnhof.se A/AAAA	false
+bahnhof.se	detect	tcp	mail.bahnhof.se:587	false
+bredband.net	detect	https	https://autoconfig.bredband.net/mail/config-v1.1.xml?emailaddress=…	true
+bredband.net	detect	dns	autoconfig.bredband.net A/AAAA	false
+bredband.net	detect	https	https://autoconfig.thunderbird.net/v1.1/bredband.net	false
+bredband.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+bredband.net	detect	dns	_submissions._tcp.bredband.net SRV	false
+bredband.net	detect	dns	_submission._tcp.bredband.net SRV	false
+bredband.net	detect	dns	_imaps._tcp.bredband.net SRV	false
+bredband.net	detect	dns	_imap._tcp.bredband.net SRV	false
+bredband.net	detect	dns	imap.bredband.net A/AAAA	false
+bredband.net	detect	https	https://bredband.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+bredband.net	detect	dns	bredband.net A/AAAA	false
+bredband.net	detect	dns	bredband.net MX	false
+bredband.net	detect	dns	autodiscover.bredband.net CNAME	false
+bredband.net	detect	dns	mail.bredband.net A/AAAA	false
+bredband.net	detect	dns	bredband.net A/AAAA	false
+bredband.net	detect	dns	smtp.bredband.net A/AAAA	false
+bredband.net	detect	dns	mail.bredband.net A/AAAA	false
+bredband.net	detect	dns	bredband.net A/AAAA	false
+stofanet.dk	detect	https	https://autoconfig.stofanet.dk/mail/config-v1.1.xml?emailaddress=…	true
+stofanet.dk	detect	dns	autoconfig.stofanet.dk A/AAAA	false
+stofanet.dk	detect	https	https://autoconfig.thunderbird.net/v1.1/stofanet.dk	false
+stofanet.dk	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+stofanet.dk	detect	dns	_submissions._tcp.stofanet.dk SRV	false
+stofanet.dk	detect	dns	_submission._tcp.stofanet.dk SRV	false
+stofanet.dk	detect	dns	_imaps._tcp.stofanet.dk SRV	false
+stofanet.dk	detect	dns	_imap._tcp.stofanet.dk SRV	false
+stofanet.dk	detect	dns	imap.stofanet.dk A/AAAA	false
+stofanet.dk	detect	https	https://stofanet.dk/.well-known/autoconfig/mail/config-v1.1.xml	false
+stofanet.dk	detect	dns	stofanet.dk A/AAAA	false
+stofanet.dk	detect	dns	stofanet.dk MX	false
+stofanet.dk	detect	dns	autodiscover.stofanet.dk CNAME	false
+stofanet.dk	detect	dns	mail.stofanet.dk A/AAAA	false
+stofanet.dk	detect	dns	stofanet.dk A/AAAA	false
+stofanet.dk	detect	dns	smtp.stofanet.dk A/AAAA	false
+stofanet.dk	detect	dns	mail.stofanet.dk A/AAAA	false
+stofanet.dk	detect	dns	stofanet.dk A/AAAA	false
+stofanet.dk	detect	tcp	smtp.stofanet.dk:465	false
+stofanet.dk	detect	tcp	mail.stofanet.dk:993	false
+stofanet.dk	detect	tcp	mail.stofanet.dk:465	false
+sol.dk	detect	https	https://autoconfig.sol.dk/mail/config-v1.1.xml?emailaddress=…	true
+sol.dk	detect	dns	autoconfig.sol.dk A/AAAA	false
+sol.dk	detect	https	https://autoconfig.thunderbird.net/v1.1/sol.dk	false
+sol.dk	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+sol.dk	detect	dns	_submissions._tcp.sol.dk SRV	false
+sol.dk	detect	dns	_submission._tcp.sol.dk SRV	false
+sol.dk	detect	dns	_imaps._tcp.sol.dk SRV	false
+sol.dk	detect	dns	_imap._tcp.sol.dk SRV	false
+sol.dk	detect	dns	imap.sol.dk A/AAAA	false
+sol.dk	detect	https	https://sol.dk/.well-known/autoconfig/mail/config-v1.1.xml	false
+sol.dk	detect	dns	sol.dk A/AAAA	false
+sol.dk	detect	dns	sol.dk MX	false
+sol.dk	detect	dns	autodiscover.sol.dk CNAME	false
+sol.dk	detect	https	https://autoconfig.mailcore.net/mail/config-v1.1.xml	false
+sol.dk	detect	dns	autoconfig.mailcore.net A/AAAA	false
+sol.dk	detect	https	https://autoconfig.thunderbird.net/v1.1/mailcore.net	false
+sol.dk	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+sol.dk	detect	dns	mail.sol.dk A/AAAA	false
+sol.dk	detect	dns	imap.sol.dk A/AAAA	false
+sol.dk	detect	dns	smtp.sol.dk A/AAAA	false
+sol.dk	detect	dns	mail.sol.dk A/AAAA	false
+sol.dk	detect	tcp	mail.sol.dk:993	false
+sol.dk	detect	tcp	smtp.sol.dk:465	false
+inet.fi	detect	https	https://autoconfig.inet.fi/mail/config-v1.1.xml?emailaddress=…	true
+inet.fi	detect	dns	autoconfig.inet.fi A/AAAA	false
+inet.fi	detect	https	https://autoconfig.thunderbird.net/v1.1/inet.fi	false
+inet.fi	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+inet.fi	detect	dns	_submissions._tcp.inet.fi SRV	false
+inet.fi	detect	dns	_submission._tcp.inet.fi SRV	false
+inet.fi	detect	dns	_imaps._tcp.inet.fi SRV	false
+inet.fi	detect	dns	_imap._tcp.inet.fi SRV	false
+inet.fi	detect	dns	imap.inet.fi A/AAAA	false
+inet.fi	detect	https	https://inet.fi/.well-known/autoconfig/mail/config-v1.1.xml	false
+inet.fi	detect	dns	inet.fi A/AAAA	false
+inet.fi	detect	dns	inet.fi MX	false
+inet.fi	detect	dns	autodiscover.inet.fi CNAME	false
+inet.fi	detect	https	https://autoconfig.telia.net/mail/config-v1.1.xml	false
+inet.fi	detect	dns	autoconfig.telia.net A/AAAA	false
+inet.fi	detect	https	https://autoconfig.thunderbird.net/v1.1/telia.net	false
+inet.fi	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+inet.fi	detect	tcp	imap.inet.fi:993	false
+inet.fi	detect	redirect-followed	https://www.inet.fi/.well-known/autoconfig/mail/config-v1.1.xml	false
+inet.fi	detect	dns	www.inet.fi A/AAAA	false
+inet.fi	detect	dns	smtp.inet.fi A/AAAA	false
+inet.fi	detect	tcp	smtp.inet.fi:465	false
+1984.is	detect	https	https://autoconfig.1984.is/mail/config-v1.1.xml?emailaddress=…	true
+1984.is	detect	dns	autoconfig.1984.is A/AAAA	false
+1984.is	detect	https	https://autoconfig.thunderbird.net/v1.1/1984.is	false
+1984.is	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+1984.is	detect	dns	_submissions._tcp.1984.is SRV	false
+1984.is	detect	dns	_submission._tcp.1984.is SRV	false
+1984.is	detect	dns	_imaps._tcp.1984.is SRV	false
+1984.is	detect	dns	_imap._tcp.1984.is SRV	false
+1984.is	detect	dns	imap.1984.is A/AAAA	false
+1984.is	detect	https	https://1984.is/.well-known/autoconfig/mail/config-v1.1.xml	false
+1984.is	detect	dns	1984.is A/AAAA	false
+1984.is	detect	dns	1984.is MX	false
+1984.is	detect	dns	autodiscover.1984.is CNAME	false
+1984.is	detect	tcp	imap.1984.is:993	false
+internet.is	detect	https	https://autoconfig.internet.is/mail/config-v1.1.xml?emailaddress=…	true
+internet.is	detect	dns	autoconfig.internet.is A/AAAA	false
+internet.is	detect	https	https://autoconfig.thunderbird.net/v1.1/internet.is	false
+internet.is	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+internet.is	detect	dns	_submissions._tcp.internet.is SRV	false
+internet.is	detect	dns	_submission._tcp.internet.is SRV	false
+internet.is	detect	dns	_imaps._tcp.internet.is SRV	false
+internet.is	detect	dns	_imap._tcp.internet.is SRV	false
+internet.is	detect	dns	imap.internet.is A/AAAA	false
+internet.is	detect	https	https://internet.is/.well-known/autoconfig/mail/config-v1.1.xml	false
+internet.is	detect	dns	internet.is A/AAAA	false
+internet.is	detect	dns	internet.is MX	false
+internet.is	detect	dns	autodiscover.internet.is CNAME	false
+internet.is	detect	tcp	imap.internet.is:993	false
+internet.is	detect	dns	smtp.internet.is A/AAAA	false
+internet.is	detect	dns	smtp.internet.is A/AAAA	false
+internet.is	detect	dns	mail.internet.is A/AAAA	false
+internet.is	detect	dns	internet.is A/AAAA	false
+internet.is	detect	tcp	internet.is:993	false
+internet.is	detect	dns	mail.internet.is A/AAAA	false
+internet.is	detect	dns	internet.is A/AAAA	false
+internet.is	detect	tcp	internet.is:465	false
+internet.is	detect	tcp	mail.internet.is:993	false
+internet.is	detect	tcp	mail.internet.is:465	false
+free.fr	detect	https	https://autoconfig.free.fr/mail/config-v1.1.xml?emailaddress=…	true
+free.fr	detect	dns	autoconfig.free.fr A/AAAA	false
+free.fr	detect	https	https://autoconfig.thunderbird.net/v1.1/free.fr	false
+free.fr	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+free.fr	detect	dns	_submissions._tcp.free.fr SRV	false
+free.fr	detect	dns	_submission._tcp.free.fr SRV	false
+free.fr	detect	dns	_imaps._tcp.free.fr SRV	false
+free.fr	detect	dns	_imap._tcp.free.fr SRV	false
+free.fr	detect	dns	imap.free.fr A/AAAA	false
+free.fr	detect	https	https://free.fr/.well-known/autoconfig/mail/config-v1.1.xml	false
+free.fr	detect	dns	free.fr A/AAAA	false
+free.fr	detect	dns	free.fr MX	false
+free.fr	detect	dns	autodiscover.free.fr CNAME	false
+free.fr	detect	tcp	imap.free.fr:993	false
+sfr.fr	detect	https	https://autoconfig.sfr.fr/mail/config-v1.1.xml?emailaddress=…	true
+sfr.fr	detect	dns	autoconfig.sfr.fr A/AAAA	false
+sfr.fr	detect	https	https://autoconfig.thunderbird.net/v1.1/sfr.fr	false
+sfr.fr	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+sfr.fr	detect	dns	_submissions._tcp.sfr.fr SRV	false
+sfr.fr	detect	dns	_submission._tcp.sfr.fr SRV	false
+sfr.fr	detect	dns	_imaps._tcp.sfr.fr SRV	false
+sfr.fr	detect	dns	_imap._tcp.sfr.fr SRV	false
+sfr.fr	detect	dns	imap.sfr.fr A/AAAA	false
+sfr.fr	detect	https	https://sfr.fr/.well-known/autoconfig/mail/config-v1.1.xml	false
+sfr.fr	detect	dns	sfr.fr A/AAAA	false
+sfr.fr	detect	dns	sfr.fr MX	false
+sfr.fr	detect	dns	autodiscover.sfr.fr CNAME	false
+sfr.fr	detect	tcp	imap.sfr.fr:993	false
+sfr.fr	detect	dns	smtp.sfr.fr A/AAAA	false
+sfr.fr	detect	redirect-followed	https://www.sfr.fr/.well-known/autoconfig/mail/config-v1.1.xml	false
+sfr.fr	detect	dns	www.sfr.fr A/AAAA	false
+sfr.fr	detect	tcp	smtp.sfr.fr:465	false
+vodafonemail.de	detect	https	https://autoconfig.vodafonemail.de/mail/config-v1.1.xml?emailaddress=…	true
+vodafonemail.de	detect	dns	autoconfig.vodafonemail.de A/AAAA	false
+vodafonemail.de	detect	https	https://autoconfig.thunderbird.net/v1.1/vodafonemail.de	false
+vodafonemail.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+vodafonemail.de	detect	dns	_submissions._tcp.vodafonemail.de SRV	false
+vodafonemail.de	detect	dns	_submission._tcp.vodafonemail.de SRV	false
+vodafonemail.de	detect	dns	_imaps._tcp.vodafonemail.de SRV	false
+vodafonemail.de	detect	dns	_imap._tcp.vodafonemail.de SRV	false
+vodafonemail.de	detect	dns	imap.vodafonemail.de A/AAAA	false
+vodafonemail.de	detect	https	https://vodafonemail.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+vodafonemail.de	detect	dns	vodafonemail.de A/AAAA	false
+vodafonemail.de	detect	dns	vodafonemail.de MX	false
+vodafonemail.de	detect	dns	autodiscover.vodafonemail.de CNAME	false
+vodafonemail.de	detect	tcp	imap.vodafonemail.de:993	false
+freenet.de	detect	https	https://autoconfig.freenet.de/mail/config-v1.1.xml?emailaddress=…	true
+freenet.de	detect	dns	autoconfig.freenet.de A/AAAA	false
+freenet.de	detect	https	https://autoconfig.thunderbird.net/v1.1/freenet.de	false
+freenet.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+freenet.de	detect	dns	_submissions._tcp.freenet.de SRV	false
+freenet.de	detect	dns	_submission._tcp.freenet.de SRV	false
+freenet.de	detect	dns	_imaps._tcp.freenet.de SRV	false
+freenet.de	detect	dns	_imap._tcp.freenet.de SRV	false
+freenet.de	detect	dns	imap.freenet.de A/AAAA	false
+freenet.de	detect	https	https://freenet.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+freenet.de	detect	dns	freenet.de A/AAAA	false
+freenet.de	detect	dns	freenet.de MX	false
+freenet.de	detect	dns	autodiscover.freenet.de CNAME	false
+freenet.de	detect	tcp	imap.freenet.de:993	false
+freenet.de	detect	dns	mx.freenet.de A/AAAA	false
+freenet.de	detect	dns	imap.freenet.de A/AAAA	false
+freenet.de	detect	dns	mx.freenet.de A/AAAA	false
+freenet.de	detect	dns	smtp.freenet.de A/AAAA	false
+freenet.de	detect	dns	mx.freenet.de A/AAAA	false
+freenet.de	detect	tcp	mx.freenet.de:587	false
+virginmedia.com	detect	https	https://autoconfig.virginmedia.com/mail/config-v1.1.xml?emailaddress=…	true
+virginmedia.com	detect	dns	autoconfig.virginmedia.com A/AAAA	false
+virginmedia.com	detect	https	https://autoconfig.thunderbird.net/v1.1/virginmedia.com	false
+virginmedia.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+virginmedia.com	detect	dns	_submissions._tcp.virginmedia.com SRV	false
+virginmedia.com	detect	dns	_submission._tcp.virginmedia.com SRV	false
+virginmedia.com	detect	dns	_imaps._tcp.virginmedia.com SRV	false
+virginmedia.com	detect	dns	_imap._tcp.virginmedia.com SRV	false
+virginmedia.com	detect	dns	imap.virginmedia.com A/AAAA	false
+virginmedia.com	detect	https	https://virginmedia.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+virginmedia.com	detect	dns	virginmedia.com A/AAAA	false
+virginmedia.com	detect	dns	virginmedia.com MX	false
+virginmedia.com	detect	dns	autodiscover.virginmedia.com CNAME	false
+virginmedia.com	detect	tcp	imap.virginmedia.com:993	false
+virginmedia.com	detect	https	https://autoconfig.atmailcloud.com/mail/config-v1.1.xml	false
+virginmedia.com	detect	dns	autoconfig.atmailcloud.com A/AAAA	false
+virginmedia.com	detect	https	https://autoconfig.thunderbird.net/v1.1/atmailcloud.com	false
+virginmedia.com	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+virginmedia.com	detect	dns	smtp.virginmedia.com A/AAAA	false
+virginmedia.com	detect	redirect-followed	https://www.virginmedia.com/.well-known/autoconfig/mail/config-v1.1.xml	false
+virginmedia.com	detect	dns	www.virginmedia.com A/AAAA	false
+virginmedia.com	detect	tcp	smtp.virginmedia.com:465	false
+talktalk.net	detect	https	https://autoconfig.talktalk.net/mail/config-v1.1.xml?emailaddress=…	true
+talktalk.net	detect	dns	autoconfig.talktalk.net A/AAAA	false
+talktalk.net	detect	https	https://autoconfig.thunderbird.net/v1.1/talktalk.net	false
+talktalk.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+talktalk.net	detect	dns	_submissions._tcp.talktalk.net SRV	false
+talktalk.net	detect	dns	_submission._tcp.talktalk.net SRV	false
+talktalk.net	detect	dns	_imaps._tcp.talktalk.net SRV	false
+talktalk.net	detect	dns	_imap._tcp.talktalk.net SRV	false
+talktalk.net	detect	dns	imap.talktalk.net A/AAAA	false
+talktalk.net	detect	https	https://talktalk.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+talktalk.net	detect	dns	talktalk.net A/AAAA	false
+talktalk.net	detect	dns	talktalk.net MX	false
+talktalk.net	detect	dns	autodiscover.talktalk.net CNAME	false
+talktalk.net	detect	https	https://autoconfig.oxcs.net/mail/config-v1.1.xml	false
+talktalk.net	detect	dns	autoconfig.oxcs.net A/AAAA	false
+talktalk.net	detect	https	https://autoconfig.thunderbird.net/v1.1/oxcs.net	false
+talktalk.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+talktalk.net	detect	tcp	imap.talktalk.net:993	false
+talktalk.net	detect	dns	smtp.talktalk.net A/AAAA	false
+talktalk.net	detect	tcp	smtp.talktalk.net:465	false
+libero.it	detect	https	https://autoconfig.libero.it/mail/config-v1.1.xml?emailaddress=…	true
+libero.it	detect	dns	autoconfig.libero.it A/AAAA	false
+libero.it	detect	https	https://autoconfig.thunderbird.net/v1.1/libero.it	false
+libero.it	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+libero.it	detect	dns	_submissions._tcp.libero.it SRV	false
+libero.it	detect	dns	_submission._tcp.libero.it SRV	false
+libero.it	detect	dns	_imaps._tcp.libero.it SRV	false
+libero.it	detect	dns	_imap._tcp.libero.it SRV	false
+libero.it	detect	dns	imap.libero.it A/AAAA	false
+libero.it	detect	https	https://libero.it/.well-known/autoconfig/mail/config-v1.1.xml	false
+libero.it	detect	dns	libero.it A/AAAA	false
+libero.it	detect	dns	libero.it MX	false
+libero.it	detect	dns	autodiscover.libero.it CNAME	false
+libero.it	detect	tcp	imap.libero.it:993	false
+libero.it	detect	dns	imapmail.libero.it A/AAAA	false
+libero.it	detect	dns	imap.libero.it A/AAAA	false
+libero.it	detect	dns	smtp.libero.it A/AAAA	false
+libero.it	detect	tcp	smtp.libero.it:465	false
+telefonica.net	detect	https	https://autoconfig.telefonica.net/mail/config-v1.1.xml?emailaddress=…	true
+telefonica.net	detect	dns	autoconfig.telefonica.net A/AAAA	false
+telefonica.net	detect	https	https://autoconfig.thunderbird.net/v1.1/telefonica.net	false
+telefonica.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+telefonica.net	detect	dns	_submissions._tcp.telefonica.net SRV	false
+telefonica.net	detect	dns	_submission._tcp.telefonica.net SRV	false
+telefonica.net	detect	dns	_imaps._tcp.telefonica.net SRV	false
+telefonica.net	detect	dns	_imap._tcp.telefonica.net SRV	false
+telefonica.net	detect	dns	imap.telefonica.net A/AAAA	false
+telefonica.net	detect	https	https://telefonica.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+telefonica.net	detect	dns	telefonica.net A/AAAA	false
+telefonica.net	detect	dns	telefonica.net MX	false
+telefonica.net	detect	dns	autodiscover.telefonica.net CNAME	false
+telefonica.net	detect	tcp	imap.telefonica.net:993	false
+telefonica.net	detect	dns	smtp.telefonica.net A/AAAA	false
+telefonica.net	detect	tcp	smtp.telefonica.net:465	false
+telefonica.net	detect	dns	smtp.telefonica.net A/AAAA	false
+telefonica.net	detect	tcp	smtp.telefonica.net:587	false
+telefonica.net	detect	dns	mail.telefonica.net A/AAAA	false
+telefonica.net	detect	dns	telefonica.net A/AAAA	false
+telefonica.net	detect	dns	mail.telefonica.net A/AAAA	false
+telefonica.net	detect	dns	telefonica.net A/AAAA	false
+ziggo.nl	detect	https	https://autoconfig.ziggo.nl/mail/config-v1.1.xml?emailaddress=…	true
+ziggo.nl	detect	dns	autoconfig.ziggo.nl A/AAAA	false
+ziggo.nl	detect	https	https://autoconfig.thunderbird.net/v1.1/ziggo.nl	false
+ziggo.nl	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+ziggo.nl	detect	dns	_submissions._tcp.ziggo.nl SRV	false
+ziggo.nl	detect	dns	_submission._tcp.ziggo.nl SRV	false
+ziggo.nl	detect	dns	_imaps._tcp.ziggo.nl SRV	false
+ziggo.nl	detect	dns	_imap._tcp.ziggo.nl SRV	false
+ziggo.nl	detect	dns	imap.ziggo.nl A/AAAA	false
+ziggo.nl	detect	https	https://ziggo.nl/.well-known/autoconfig/mail/config-v1.1.xml	false
+ziggo.nl	detect	dns	ziggo.nl A/AAAA	false
+ziggo.nl	detect	dns	ziggo.nl MX	false
+ziggo.nl	detect	dns	autodiscover.ziggo.nl CNAME	false
+ziggo.nl	detect	tcp	imap.ziggo.nl:993	false
+ziggo.nl	detect	dns	smtp.ziggo.nl A/AAAA	false
+ziggo.nl	detect	tcp	smtp.ziggo.nl:465	false
+ziggo.nl	detect	redirect-followed	https://www.ziggo.nl/.well-known/autoconfig/mail/config-v1.1.xml	false
+ziggo.nl	detect	dns	www.ziggo.nl A/AAAA	false
+telenet.be	detect	https	https://autoconfig.telenet.be/mail/config-v1.1.xml?emailaddress=…	true
+telenet.be	detect	dns	autoconfig.telenet.be A/AAAA	false
+telenet.be	detect	https	https://autoconfig.thunderbird.net/v1.1/telenet.be	false
+telenet.be	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+telenet.be	detect	dns	_submissions._tcp.telenet.be SRV	false
+telenet.be	detect	dns	_submission._tcp.telenet.be SRV	false
+telenet.be	detect	dns	_imaps._tcp.telenet.be SRV	false
+telenet.be	detect	dns	_imap._tcp.telenet.be SRV	false
+telenet.be	detect	dns	imap.telenet.be A/AAAA	false
+telenet.be	detect	https	https://telenet.be/.well-known/autoconfig/mail/config-v1.1.xml	false
+telenet.be	detect	dns	telenet.be A/AAAA	false
+telenet.be	detect	dns	telenet.be MX	false
+telenet.be	detect	dns	autodiscover.telenet.be CNAME	false
+telenet.be	detect	tcp	imap.telenet.be:993	false
+telenet.be	detect	https	https://autoconfig.telenet-ops.be/mail/config-v1.1.xml	false
+telenet.be	detect	dns	autoconfig.telenet-ops.be A/AAAA	false
+telenet.be	detect	https	https://autoconfig.thunderbird.net/v1.1/telenet-ops.be	false
+telenet.be	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+telenet.be	detect	dns	smtp.telenet.be A/AAAA	false
+telenet.be	detect	tcp	smtp.telenet.be:465	false
+wp.pl	detect	https	https://autoconfig.wp.pl/mail/config-v1.1.xml?emailaddress=…	true
+wp.pl	detect	dns	autoconfig.wp.pl A/AAAA	false
+wp.pl	detect	https	https://autoconfig.thunderbird.net/v1.1/wp.pl	false
+wp.pl	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+wp.pl	detect	dns	_submissions._tcp.wp.pl SRV	false
+wp.pl	detect	dns	_submission._tcp.wp.pl SRV	false
+wp.pl	detect	dns	_imaps._tcp.wp.pl SRV	false
+wp.pl	detect	dns	_imap._tcp.wp.pl SRV	false
+wp.pl	detect	dns	imap.wp.pl A/AAAA	false
+wp.pl	detect	https	https://wp.pl/.well-known/autoconfig/mail/config-v1.1.xml	false
+wp.pl	detect	dns	wp.pl A/AAAA	false
+wp.pl	detect	dns	wp.pl MX	false
+wp.pl	detect	dns	autodiscover.wp.pl CNAME	false
+wp.pl	detect	tcp	imap.wp.pl:993	false
+wp.pl	detect	dns	smtp.wp.pl A/AAAA	false
+wp.pl	detect	tcp	smtp.wp.pl:465	false
+wp.pl	detect	redirect-followed	https://www.wp.pl/.well-known/autoconfig/mail/config-v1.1.xml	false
+wp.pl	detect	dns	www.wp.pl A/AAAA	false
+wp.pl	detect	redirect-refused	http://www.wp.pl/?404&src01=99f53	false
+onet.pl	detect	https	https://autoconfig.onet.pl/mail/config-v1.1.xml?emailaddress=…	true
+onet.pl	detect	dns	autoconfig.onet.pl A/AAAA	false
+onet.pl	detect	https	https://autoconfig.thunderbird.net/v1.1/onet.pl	false
+onet.pl	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+onet.pl	detect	dns	_submissions._tcp.onet.pl SRV	false
+onet.pl	detect	dns	_submission._tcp.onet.pl SRV	false
+onet.pl	detect	dns	_imaps._tcp.onet.pl SRV	false
+onet.pl	detect	dns	_imap._tcp.onet.pl SRV	false
+onet.pl	detect	dns	imap.onet.pl A/AAAA	false
+onet.pl	detect	https	https://onet.pl/.well-known/autoconfig/mail/config-v1.1.xml	false
+onet.pl	detect	dns	onet.pl A/AAAA	false
+onet.pl	detect	dns	onet.pl MX	false
+onet.pl	detect	dns	autodiscover.onet.pl CNAME	false
+onet.pl	detect	dns	imap.poczta.onet.pl A/AAAA	false
+onet.pl	detect	tcp	imap.onet.pl:993	false
+onet.pl	detect	tcp	imap.poczta.onet.pl:143	false
+seznam.cz	detect	https	https://autoconfig.seznam.cz/mail/config-v1.1.xml?emailaddress=…	true
+seznam.cz	detect	dns	autoconfig.seznam.cz A/AAAA	false
+seznam.cz	detect	https	https://autoconfig.thunderbird.net/v1.1/seznam.cz	false
+seznam.cz	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+seznam.cz	detect	dns	_submissions._tcp.seznam.cz SRV	false
+seznam.cz	detect	dns	_submission._tcp.seznam.cz SRV	false
+seznam.cz	detect	dns	_imaps._tcp.seznam.cz SRV	false
+seznam.cz	detect	dns	_imap._tcp.seznam.cz SRV	false
+seznam.cz	detect	dns	imap.seznam.cz A/AAAA	false
+seznam.cz	detect	https	https://seznam.cz/.well-known/autoconfig/mail/config-v1.1.xml	false
+seznam.cz	detect	dns	seznam.cz A/AAAA	false
+seznam.cz	detect	dns	seznam.cz MX	false
+seznam.cz	detect	dns	autodiscover.seznam.cz CNAME	false
+seznam.cz	detect	tcp	imap.seznam.cz:993	false
+seznam.cz	detect	redirect-followed	https://www.seznam.cz/.well-known/autoconfig/mail/config-v1.1.xml	false
+seznam.cz	detect	dns	www.seznam.cz A/AAAA	false
+sunrise.ch	detect	https	https://autoconfig.sunrise.ch/mail/config-v1.1.xml?emailaddress=…	true
+sunrise.ch	detect	dns	autoconfig.sunrise.ch A/AAAA	false
+sunrise.ch	detect	https	https://autoconfig.thunderbird.net/v1.1/sunrise.ch	false
+sunrise.ch	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+sunrise.ch	detect	dns	_submissions._tcp.sunrise.ch SRV	false
+sunrise.ch	detect	dns	_submission._tcp.sunrise.ch SRV	false
+sunrise.ch	detect	dns	_imaps._tcp.sunrise.ch SRV	false
+sunrise.ch	detect	dns	_imap._tcp.sunrise.ch SRV	false
+sunrise.ch	detect	dns	imap.sunrise.ch A/AAAA	false
+sunrise.ch	detect	https	https://sunrise.ch/.well-known/autoconfig/mail/config-v1.1.xml	false
+sunrise.ch	detect	dns	sunrise.ch A/AAAA	false
+sunrise.ch	detect	dns	sunrise.ch MX	false
+sunrise.ch	detect	dns	autodiscover.sunrise.ch CNAME	false
+sunrise.ch	detect	tcp	imap.sunrise.ch:993	false
+sunrise.ch	detect	https	https://autoconfig.unified.services/mail/config-v1.1.xml	false
+sunrise.ch	detect	dns	autoconfig.unified.services A/AAAA	false
+sunrise.ch	detect	https	https://autoconfig.thunderbird.net/v1.1/unified.services	false
+sunrise.ch	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+sunrise.ch	detect	dns	smtp.sunrise.ch A/AAAA	false
+sunrise.ch	detect	redirect-followed	https://www.sunrise.ch/.well-known/autoconfig/mail/config-v1.1.xml	false
+sunrise.ch	detect	dns	www.sunrise.ch A/AAAA	false
+sunrise.ch	detect	tcp	smtp.sunrise.ch:465	false
+sunrise.ch	detect	dns	smtp.sunrise.ch A/AAAA	false
+sunrise.ch	detect	tcp	smtp.sunrise.ch:587	false
+sunrise.ch	detect	dns	mail.sunrise.ch A/AAAA	false
+sunrise.ch	detect	dns	sunrise.ch A/AAAA	false
+sunrise.ch	detect	tcp	sunrise.ch:993	false
+sunrise.ch	detect	dns	imap.unified.services A/AAAA	false
+sunrise.ch	detect	dns	mail.unified.services A/AAAA	false
+sunrise.ch	detect	dns	mail.sunrise.ch A/AAAA	false
+sunrise.ch	detect	dns	sunrise.ch A/AAAA	false
+sunrise.ch	detect	tcp	sunrise.ch:465	false
+sunrise.ch	detect	dns	smtp.unified.services A/AAAA	false
+sunrise.ch	detect	dns	mail.unified.services A/AAAA	false
+sunrise.ch	detect	tcp	mail.unified.services:993	false
+sunrise.ch	detect	tcp	mail.unified.services:465	false
+sunrise.ch	detect	tcp	mail.sunrise.ch:993	false
+sunrise.ch	detect	tcp	mail.sunrise.ch:465	false
+sunrise.ch	detect	dns	mail.unified.services A/AAAA	false
+sunrise.ch	detect	tcp	mail.unified.services:587	false
+sapo.pt	detect	https	https://autoconfig.sapo.pt/mail/config-v1.1.xml?emailaddress=…	true
+sapo.pt	detect	dns	autoconfig.sapo.pt A/AAAA	false
+sapo.pt	detect	https	https://autoconfig.thunderbird.net/v1.1/sapo.pt	false
+sapo.pt	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+sapo.pt	detect	dns	_submissions._tcp.sapo.pt SRV	false
+sapo.pt	detect	dns	_submission._tcp.sapo.pt SRV	false
+sapo.pt	detect	dns	_imaps._tcp.sapo.pt SRV	false
+sapo.pt	detect	dns	_imap._tcp.sapo.pt SRV	false
+sapo.pt	detect	dns	imap.sapo.pt A/AAAA	false
+sapo.pt	detect	https	https://sapo.pt/.well-known/autoconfig/mail/config-v1.1.xml	false
+sapo.pt	detect	dns	sapo.pt A/AAAA	false
+sapo.pt	detect	dns	sapo.pt MX	false
+sapo.pt	detect	dns	autodiscover.sapo.pt CNAME	false
+sapo.pt	detect	tcp	imap.sapo.pt:993	false
+sapo.pt	detect	dns	smtp.sapo.pt A/AAAA	false
+eircom.net	detect	https	https://autoconfig.eircom.net/mail/config-v1.1.xml?emailaddress=…	true
+eircom.net	detect	dns	autoconfig.eircom.net A/AAAA	false
+eircom.net	detect	https	https://autoconfig.thunderbird.net/v1.1/eircom.net	false
+eircom.net	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+eircom.net	detect	dns	_submissions._tcp.eircom.net SRV	false
+eircom.net	detect	dns	_submission._tcp.eircom.net SRV	false
+eircom.net	detect	dns	_imaps._tcp.eircom.net SRV	false
+eircom.net	detect	dns	_imap._tcp.eircom.net SRV	false
+eircom.net	detect	dns	imap.eircom.net A/AAAA	false
+eircom.net	detect	https	https://eircom.net/.well-known/autoconfig/mail/config-v1.1.xml	false
+eircom.net	detect	dns	eircom.net A/AAAA	false
+eircom.net	detect	dns	eircom.net MX	false
+eircom.net	detect	dns	autodiscover.eircom.net CNAME	false
+eircom.net	detect	https	https://autoconfig.cloudfilter.net/mail/config-v1.1.xml	false
+eircom.net	detect	dns	autoconfig.cloudfilter.net A/AAAA	false
+eircom.net	detect	https	https://autoconfig.thunderbird.net/v1.1/cloudfilter.net	false
+eircom.net	detect	dns	mail.eircom.net A/AAAA	false
+eircom.net	detect	dns	eircom.net A/AAAA	false
+eircom.net	detect	tcp	eircom.net:993	false
+eircom.net	detect	dns	imap.cloudfilter.net A/AAAA	false
+eircom.net	detect	dns	mail.cloudfilter.net A/AAAA	false
+eircom.net	detect	dns	smtp.eircom.net A/AAAA	false
+eircom.net	detect	dns	mail.eircom.net A/AAAA	false
+eircom.net	detect	dns	eircom.net A/AAAA	false
+eircom.net	detect	tcp	eircom.net:465	false
+eircom.net	detect	dns	smtp.cloudfilter.net A/AAAA	false
+eircom.net	detect	dns	mail.cloudfilter.net A/AAAA	false
+eircom.net	detect	tcp	smtp.eircom.net:465	false
+eircom.net	detect	tcp	mail.eircom.net:993	false
+eircom.net	detect	tcp	mail.eircom.net:465	false
+eircom.net	detect	dns	mail.eircom.net A/AAAA	false
+eircom.net	detect	tcp	mail.eircom.net:143	false
+eircom.net	detect	dns	eircom.net A/AAAA	false
+eircom.net	detect	tcp	eircom.net:143	false
+eircom.net	detect	dns	eircom.net A/AAAA	false
+eircom.net	detect	tcp	eircom.net:587	false
+eircom.net	detect	dns	smtp.eircom.net A/AAAA	false
+eircom.net	detect	tcp	smtp.eircom.net:587	false
+eircom.net	detect	dns	mail.eircom.net A/AAAA	false
+eircom.net	detect	tcp	mail.eircom.net:587	false
+uni-paderborn.de	detect	https	https://autoconfig.uni-paderborn.de/mail/config-v1.1.xml?emailaddress=…	true
+uni-paderborn.de	detect	dns	autoconfig.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	https	https://autoconfig.thunderbird.net/v1.1/uni-paderborn.de	false
+uni-paderborn.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+uni-paderborn.de	detect	dns	_submissions._tcp.uni-paderborn.de SRV	false
+uni-paderborn.de	detect	dns	_submission._tcp.uni-paderborn.de SRV	false
+uni-paderborn.de	detect	dns	_imaps._tcp.uni-paderborn.de SRV	false
+uni-paderborn.de	detect	dns	_imap._tcp.uni-paderborn.de SRV	false
+uni-paderborn.de	detect	dns	imap.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	https	https://uni-paderborn.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+uni-paderborn.de	detect	dns	uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	dns	uni-paderborn.de MX	false
+uni-paderborn.de	detect	dns	autodiscover.uni-paderborn.de CNAME	false
+uni-paderborn.de	detect	tcp	imap.uni-paderborn.de:993	false
+uni-paderborn.de	detect	dns	mail.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	dns	imap.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	dns	mail.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	dns	smtp.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	dns	mail.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	tcp	mail.uni-paderborn.de:993	false
+uni-paderborn.de	detect	dns	mail.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	tcp	mail.uni-paderborn.de:587	false
+uni-paderborn.de	detect	dns	uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	tcp	uni-paderborn.de:993	false
+uni-paderborn.de	detect	dns	smtp.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	tcp	smtp.uni-paderborn.de:465	false
+uni-paderborn.de	detect	dns	mail.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	tcp	mail.uni-paderborn.de:465	false
+uni-paderborn.de	detect	dns	uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	tcp	uni-paderborn.de:465	false
+uni-paderborn.de	detect	dns	imap.uni-paderborn.de A/AAAA	false
+uni-paderborn.de	detect	tcp	imap.uni-paderborn.de:143	false
+uiowa.edu	detect	https	https://autoconfig.uiowa.edu/mail/config-v1.1.xml?emailaddress=…	true
+uiowa.edu	detect	dns	autoconfig.uiowa.edu A/AAAA	false
+uiowa.edu	detect	https	https://autoconfig.thunderbird.net/v1.1/uiowa.edu	false
+uiowa.edu	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+uiowa.edu	detect	dns	_submissions._tcp.uiowa.edu SRV	false
+uiowa.edu	detect	dns	_submission._tcp.uiowa.edu SRV	false
+uiowa.edu	detect	dns	_imaps._tcp.uiowa.edu SRV	false
+uiowa.edu	detect	dns	_imap._tcp.uiowa.edu SRV	false
+uiowa.edu	detect	dns	imap.uiowa.edu A/AAAA	false
+uiowa.edu	detect	https	https://uiowa.edu/.well-known/autoconfig/mail/config-v1.1.xml	false
+uiowa.edu	detect	dns	uiowa.edu A/AAAA	false
+uiowa.edu	detect	dns	uiowa.edu MX	false
+uiowa.edu	detect	dns	autodiscover.uiowa.edu CNAME	false
+uiowa.edu	detect	dns	mail.uiowa.edu A/AAAA	false
+uiowa.edu	detect	dns	uiowa.edu A/AAAA	false
+uiowa.edu	detect	tcp	uiowa.edu:993	false
+uiowa.edu	detect	dns	smtp.uiowa.edu A/AAAA	false
+uiowa.edu	detect	dns	mail.uiowa.edu A/AAAA	false
+uiowa.edu	detect	dns	uiowa.edu A/AAAA	false
+uiowa.edu	detect	tcp	uiowa.edu:465	false
+uio.no	detect	https	https://autoconfig.uio.no/mail/config-v1.1.xml?emailaddress=…	true
+uio.no	detect	dns	autoconfig.uio.no A/AAAA	false
+uio.no	detect	https	https://autoconfig.thunderbird.net/v1.1/uio.no	false
+uio.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+uio.no	detect	dns	_submissions._tcp.uio.no SRV	false
+uio.no	detect	dns	_submission._tcp.uio.no SRV	false
+uio.no	detect	dns	_imaps._tcp.uio.no SRV	false
+uio.no	detect	dns	_imap._tcp.uio.no SRV	false
+uio.no	detect	dns	imap.uio.no A/AAAA	false
+uio.no	detect	https	https://uio.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+uio.no	detect	dns	uio.no A/AAAA	false
+uio.no	detect	dns	uio.no MX	false
+uio.no	detect	dns	autodiscover.uio.no CNAME	false
+uio.no	detect	tcp	imap.uio.no:993	false
+uio.no	detect	redirect-followed	https://www.uio.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+uio.no	detect	dns	www.uio.no A/AAAA	false
+uio.no	detect	dns	imap.uio.no A/AAAA	false
+uio.no	detect	tcp	imap.uio.no:143	false
+uio.no	detect	dns	mail.uio.no A/AAAA	false
+uio.no	detect	dns	uio.no A/AAAA	false
+uio.no	detect	tcp	uio.no:993	false
+uio.no	detect	dns	smtp.uio.no A/AAAA	false
+uio.no	detect	dns	mail.uio.no A/AAAA	false
+uio.no	detect	dns	uio.no A/AAAA	false
+uio.no	detect	tcp	uio.no:465	false
+uio.no	detect	tcp	mail.uio.no:993	false
+uio.no	detect	tcp	mail.uio.no:465	false
+uio.no	detect	tcp	smtp.uio.no:465	false
+uio.no	detect	dns	mail.uio.no A/AAAA	false
+uio.no	detect	tcp	mail.uio.no:143	false
+uio.no	detect	dns	uio.no A/AAAA	false
+uio.no	detect	tcp	uio.no:143	false
+uio.no	detect	dns	uio.no A/AAAA	false
+uio.no	detect	tcp	uio.no:587	false
+uio.no	detect	dns	mail.uio.no A/AAAA	false
+uio.no	detect	tcp	mail.uio.no:587	false
+fanarkh.no	detect	https	https://autoconfig.fanarkh.no/mail/config-v1.1.xml?emailaddress=…	true
+fanarkh.no	detect	dns	autoconfig.fanarkh.no A/AAAA	false
+fanarkh.no	detect	https	https://autoconfig.thunderbird.net/v1.1/fanarkh.no	false
+fanarkh.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+fanarkh.no	detect	dns	_submissions._tcp.fanarkh.no SRV	false
+fanarkh.no	detect	dns	_submission._tcp.fanarkh.no SRV	false
+fanarkh.no	detect	dns	_imaps._tcp.fanarkh.no SRV	false
+fanarkh.no	detect	dns	_imap._tcp.fanarkh.no SRV	false
+fanarkh.no	detect	dns	imap.fanarkh.no A/AAAA	false
+fanarkh.no	detect	https	https://fanarkh.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+fanarkh.no	detect	dns	fanarkh.no A/AAAA	false
+fanarkh.no	detect	dns	fanarkh.no MX	false
+fanarkh.no	detect	dns	autodiscover.fanarkh.no CNAME	false
+fanarkh.no	detect	https	https://autoconfig.one.com/mail/config-v1.1.xml	false
+fanarkh.no	detect	dns	autoconfig.one.com A/AAAA	false
+fanarkh.no	detect	https	https://autoconfig.thunderbird.net/v1.1/one.com	false
+fanarkh.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+fanarkh.no	detect	tcp	imap.fanarkh.no:993	false
+andrews.edu	detect	https	https://autoconfig.andrews.edu/mail/config-v1.1.xml?emailaddress=…	true
+andrews.edu	detect	dns	autoconfig.andrews.edu A/AAAA	false
+andrews.edu	detect	https	https://autoconfig.thunderbird.net/v1.1/andrews.edu	false
+andrews.edu	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+andrews.edu	detect	dns	_submissions._tcp.andrews.edu SRV	false
+andrews.edu	detect	dns	_submission._tcp.andrews.edu SRV	false
+andrews.edu	detect	dns	_imaps._tcp.andrews.edu SRV	false
+andrews.edu	detect	dns	_imap._tcp.andrews.edu SRV	false
+andrews.edu	detect	dns	imap.andrews.edu A/AAAA	false
+andrews.edu	detect	https	https://andrews.edu/.well-known/autoconfig/mail/config-v1.1.xml	false
+andrews.edu	detect	dns	andrews.edu A/AAAA	false
+andrews.edu	detect	dns	andrews.edu MX	false
+andrews.edu	detect	dns	autodiscover.andrews.edu CNAME	false
+unito.it	detect	https	https://autoconfig.unito.it/mail/config-v1.1.xml?emailaddress=…	true
+unito.it	detect	dns	autoconfig.unito.it A/AAAA	false
+unito.it	detect	https	https://autoconfig.thunderbird.net/v1.1/unito.it	false
+unito.it	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+unito.it	detect	dns	_submissions._tcp.unito.it SRV	false
+unito.it	detect	dns	_submission._tcp.unito.it SRV	false
+unito.it	detect	dns	_imaps._tcp.unito.it SRV	false
+unito.it	detect	dns	_imap._tcp.unito.it SRV	false
+unito.it	detect	dns	imap.unito.it A/AAAA	false
+unito.it	detect	https	https://unito.it/.well-known/autoconfig/mail/config-v1.1.xml	false
+unito.it	detect	dns	unito.it A/AAAA	false
+unito.it	detect	dns	unito.it MX	false
+unito.it	detect	dns	autodiscover.unito.it CNAME	false
+unito.it	detect	redirect-refused	http://www.unito.it/.well-known/autoconfig/mail/config-v1.1.xml	false
+port39.de	detect	https	https://autoconfig.port39.de/mail/config-v1.1.xml?emailaddress=…	true
+port39.de	detect	dns	autoconfig.port39.de A/AAAA	false
+port39.de	detect	https	https://autoconfig.thunderbird.net/v1.1/port39.de	false
+port39.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+port39.de	detect	dns	_submissions._tcp.port39.de SRV	false
+port39.de	detect	dns	_submission._tcp.port39.de SRV	false
+port39.de	detect	dns	_imaps._tcp.port39.de SRV	false
+port39.de	detect	dns	_imap._tcp.port39.de SRV	false
+port39.de	detect	dns	imap.port39.de A/AAAA	false
+port39.de	detect	https	https://port39.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+port39.de	detect	dns	port39.de A/AAAA	false
+port39.de	detect	dns	port39.de MX	false
+port39.de	detect	dns	autodiscover.port39.de CNAME	false
+port39.de	detect	tcp	imap.port39.de:993	false
+port39.de	detect	https	https://autoconfig.netcup.net/mail/config-v1.1.xml	false
+port39.de	detect	dns	autoconfig.netcup.net A/AAAA	false
+port39.de	detect	https	https://autoconfig.thunderbird.net/v1.1/netcup.net	false
+port39.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+port39.de	detect	dns	imap.port39.de A/AAAA	false
+port39.de	detect	tcp	imap.port39.de:143	false
+port39.de	detect	dns	mail.port39.de A/AAAA	false
+port39.de	detect	dns	port39.de A/AAAA	false
+port39.de	detect	tcp	port39.de:993	false
+port39.de	detect	dns	imap.netcup.net A/AAAA	false
+port39.de	detect	dns	mail.netcup.net A/AAAA	false
+port39.de	detect	dns	smtp.port39.de A/AAAA	false
+port39.de	detect	dns	mail.port39.de A/AAAA	false
+port39.de	detect	dns	port39.de A/AAAA	false
+port39.de	detect	tcp	port39.de:465	false
+port39.de	detect	dns	smtp.netcup.net A/AAAA	false
+port39.de	detect	dns	mail.netcup.net A/AAAA	false
+port39.de	detect	tcp	smtp.netcup.net:465	false
+port39.de	detect	tcp	mail.netcup.net:993	false
+port39.de	detect	tcp	mail.netcup.net:465	false
+port39.de	detect	tcp	smtp.port39.de:465	false
+port39.de	detect	tcp	mail.port39.de:993	false
+port39.de	detect	tcp	mail.port39.de:465	false
+port39.de	detect	dns	mail.port39.de A/AAAA	false
+port39.de	detect	tcp	mail.port39.de:143	false
+port39.de	detect	dns	mail.port39.de A/AAAA	false
+port39.de	detect	tcp	mail.port39.de:587	false
+port39.de	detect	dns	port39.de A/AAAA	false
+port39.de	detect	tcp	port39.de:143	false
+port39.de	detect	dns	port39.de A/AAAA	false
+port39.de	detect	tcp	port39.de:587	false
+port39.de	detect	dns	smtp.port39.de A/AAAA	false
+port39.de	detect	tcp	smtp.port39.de:587	false
+gho-team.de	detect	https	https://autoconfig.gho-team.de/mail/config-v1.1.xml?emailaddress=…	true
+gho-team.de	detect	dns	autoconfig.gho-team.de A/AAAA	false
+gho-team.de	detect	https	https://autoconfig.thunderbird.net/v1.1/gho-team.de	false
+gho-team.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+gho-team.de	detect	dns	_submissions._tcp.gho-team.de SRV	false
+gho-team.de	detect	dns	_submission._tcp.gho-team.de SRV	false
+gho-team.de	detect	dns	_imaps._tcp.gho-team.de SRV	false
+gho-team.de	detect	dns	_imap._tcp.gho-team.de SRV	false
+gho-team.de	detect	dns	imap.gho-team.de A/AAAA	false
+gho-team.de	detect	https	https://gho-team.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+gho-team.de	detect	dns	gho-team.de A/AAAA	false
+gho-team.de	detect	dns	gho-team.de MX	false
+gho-team.de	detect	dns	autodiscover.gho-team.de CNAME	false
+gho-team.de	detect	https	https://autoconfig.ionos.de/mail/config-v1.1.xml	false
+gho-team.de	detect	dns	autoconfig.ionos.de A/AAAA	false
+gho-team.de	detect	https	https://autoconfig.thunderbird.net/v1.1/ionos.de	false
+gho-team.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+gho-team.de	detect	dns	mail.gho-team.de A/AAAA	false
+gho-team.de	detect	dns	gho-team.de A/AAAA	false
+gho-team.de	detect	tcp	gho-team.de:993	false
+gho-team.de	detect	dns	imap.ionos.de A/AAAA	false
+gho-team.de	detect	dns	mail.ionos.de A/AAAA	false
+gho-team.de	detect	dns	smtp.gho-team.de A/AAAA	false
+gho-team.de	detect	dns	mail.gho-team.de A/AAAA	false
+gho-team.de	detect	dns	gho-team.de A/AAAA	false
+gho-team.de	detect	tcp	gho-team.de:465	false
+gho-team.de	detect	dns	smtp.ionos.de A/AAAA	false
+gho-team.de	detect	dns	mail.ionos.de A/AAAA	false
+gho-team.de	detect	tcp	imap.ionos.de:993	false
+gho-team.de	detect	tcp	smtp.ionos.de:465	false
+gho-team.de	detect	tcp	mail.ionos.de:993	false
+gho-team.de	detect	tcp	mail.ionos.de:465	false
+gho-team.de	detect	dns	mail.ionos.de A/AAAA	false
+gho-team.de	detect	tcp	mail.ionos.de:143	false
+gho-team.de	detect	dns	mail.ionos.de A/AAAA	false
+gho-team.de	detect	tcp	mail.ionos.de:587	false
+gho-team.de	detect	dns	gho-team.de A/AAAA	false
+gho-team.de	detect	tcp	gho-team.de:143	false
+gho-team.de	detect	dns	gho-team.de A/AAAA	false
+gho-team.de	detect	tcp	gho-team.de:587	false
+schule-kemmental.ch	detect	https	https://autoconfig.schule-kemmental.ch/mail/config-v1.1.xml?emailaddress=…	true
+schule-kemmental.ch	detect	dns	autoconfig.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	https	https://autoconfig.thunderbird.net/v1.1/schule-kemmental.ch	false
+schule-kemmental.ch	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+schule-kemmental.ch	detect	dns	_submissions._tcp.schule-kemmental.ch SRV	false
+schule-kemmental.ch	detect	dns	_submission._tcp.schule-kemmental.ch SRV	false
+schule-kemmental.ch	detect	dns	_imaps._tcp.schule-kemmental.ch SRV	false
+schule-kemmental.ch	detect	dns	_imap._tcp.schule-kemmental.ch SRV	false
+schule-kemmental.ch	detect	dns	imap.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	https	https://schule-kemmental.ch/.well-known/autoconfig/mail/config-v1.1.xml	false
+schule-kemmental.ch	detect	dns	schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	schule-kemmental.ch MX	false
+schule-kemmental.ch	detect	dns	autodiscover.schule-kemmental.ch CNAME	false
+schule-kemmental.ch	detect	https	https://autoconfig.hostpoint.ch/mail/config-v1.1.xml	false
+schule-kemmental.ch	detect	dns	autoconfig.hostpoint.ch A/AAAA	false
+schule-kemmental.ch	detect	https	https://autoconfig.thunderbird.net/v1.1/hostpoint.ch	false
+schule-kemmental.ch	detect	dns	mail.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	imap.hostpoint.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	mail.hostpoint.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	smtp.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	mail.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	smtp.hostpoint.ch A/AAAA	false
+schule-kemmental.ch	detect	dns	mail.hostpoint.ch A/AAAA	false
+schule-kemmental.ch	detect	tcp	mail.hostpoint.ch:993	false
+schule-kemmental.ch	detect	tcp	mail.hostpoint.ch:465	false
+schule-kemmental.ch	detect	tcp	smtp.hostpoint.ch:465	false
+schule-kemmental.ch	detect	tcp	imap.hostpoint.ch:993	false
+schule-kemmental.ch	detect	tcp	schule-kemmental.ch:993	false
+schule-kemmental.ch	detect	tcp	schule-kemmental.ch:465	false
+schule-kemmental.ch	detect	tcp	imap.schule-kemmental.ch:993	false
+schule-kemmental.ch	detect	dns	imap.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	tcp	imap.schule-kemmental.ch:143	false
+schule-kemmental.ch	detect	tcp	mail.schule-kemmental.ch:993	false
+schule-kemmental.ch	detect	tcp	mail.schule-kemmental.ch:465	false
+schule-kemmental.ch	detect	tcp	smtp.schule-kemmental.ch:465	false
+schule-kemmental.ch	detect	dns	mail.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	tcp	mail.schule-kemmental.ch:143	false
+schule-kemmental.ch	detect	dns	mail.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	tcp	mail.schule-kemmental.ch:587	false
+schule-kemmental.ch	detect	dns	smtp.schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	tcp	smtp.schule-kemmental.ch:587	false
+schule-kemmental.ch	detect	dns	schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	tcp	schule-kemmental.ch:143	false
+schule-kemmental.ch	detect	dns	schule-kemmental.ch A/AAAA	false
+schule-kemmental.ch	detect	tcp	schule-kemmental.ch:587	false
+posta.istruzione.it	detect	https	https://autoconfig.posta.istruzione.it/mail/config-v1.1.xml?emailaddress=…	true
+posta.istruzione.it	detect	dns	autoconfig.posta.istruzione.it A/AAAA	false
+posta.istruzione.it	detect	https	https://autoconfig.thunderbird.net/v1.1/posta.istruzione.it	false
+posta.istruzione.it	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+posta.istruzione.it	detect	dns	_submissions._tcp.posta.istruzione.it SRV	false
+posta.istruzione.it	detect	dns	_submission._tcp.posta.istruzione.it SRV	false
+posta.istruzione.it	detect	dns	_imaps._tcp.posta.istruzione.it SRV	false
+posta.istruzione.it	detect	dns	_imap._tcp.posta.istruzione.it SRV	false
+posta.istruzione.it	detect	dns	imap.posta.istruzione.it A/AAAA	false
+posta.istruzione.it	detect	https	https://posta.istruzione.it/.well-known/autoconfig/mail/config-v1.1.xml	false
+posta.istruzione.it	detect	dns	posta.istruzione.it A/AAAA	false
+posta.istruzione.it	detect	dns	posta.istruzione.it MX	false
+posta.istruzione.it	detect	dns	autodiscover.posta.istruzione.it CNAME	false
+hoelderlin-heidelberg.de	detect	https	https://autoconfig.hoelderlin-heidelberg.de/mail/config-v1.1.xml?emailaddress=…	true
+hoelderlin-heidelberg.de	detect	dns	autoconfig.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	https	https://autoconfig.thunderbird.net/v1.1/hoelderlin-heidelberg.de	false
+hoelderlin-heidelberg.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	_submissions._tcp.hoelderlin-heidelberg.de SRV	false
+hoelderlin-heidelberg.de	detect	dns	_submission._tcp.hoelderlin-heidelberg.de SRV	false
+hoelderlin-heidelberg.de	detect	dns	_imaps._tcp.hoelderlin-heidelberg.de SRV	false
+hoelderlin-heidelberg.de	detect	dns	_imap._tcp.hoelderlin-heidelberg.de SRV	false
+hoelderlin-heidelberg.de	detect	dns	imap.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	https	https://hoelderlin-heidelberg.de/.well-known/autoconfig/mail/config-v1.1.xml	false
+hoelderlin-heidelberg.de	detect	dns	hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	hoelderlin-heidelberg.de MX	false
+hoelderlin-heidelberg.de	detect	dns	autodiscover.hoelderlin-heidelberg.de CNAME	false
+hoelderlin-heidelberg.de	detect	tcp	imap.hoelderlin-heidelberg.de:993	false
+hoelderlin-heidelberg.de	detect	https	https://autoconfig.w01d857e.kasserver.com/mail/config-v1.1.xml	false
+hoelderlin-heidelberg.de	detect	dns	autoconfig.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	https	https://autoconfig.thunderbird.net/v1.1/w01d857e.kasserver.com	false
+hoelderlin-heidelberg.de	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	imap.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	imap.hoelderlin-heidelberg.de:143	false
+hoelderlin-heidelberg.de	detect	dns	mail.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	hoelderlin-heidelberg.de:993	false
+hoelderlin-heidelberg.de	detect	dns	imap.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	mail.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	smtp.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	mail.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	hoelderlin-heidelberg.de:465	false
+hoelderlin-heidelberg.de	detect	dns	smtp.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	dns	mail.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	smtp.hoelderlin-heidelberg.de:465	false
+hoelderlin-heidelberg.de	detect	tcp	mail.hoelderlin-heidelberg.de:993	false
+hoelderlin-heidelberg.de	detect	tcp	mail.hoelderlin-heidelberg.de:465	false
+hoelderlin-heidelberg.de	detect	tcp	imap.w01d857e.kasserver.com:993	false
+hoelderlin-heidelberg.de	detect	tcp	smtp.w01d857e.kasserver.com:465	false
+hoelderlin-heidelberg.de	detect	tcp	mail.w01d857e.kasserver.com:993	false
+hoelderlin-heidelberg.de	detect	tcp	mail.w01d857e.kasserver.com:465	false
+hoelderlin-heidelberg.de	detect	dns	hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	hoelderlin-heidelberg.de:143	false
+hoelderlin-heidelberg.de	detect	dns	mail.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	mail.hoelderlin-heidelberg.de:143	false
+hoelderlin-heidelberg.de	detect	dns	imap.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	imap.w01d857e.kasserver.com:143	false
+hoelderlin-heidelberg.de	detect	dns	mail.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	mail.w01d857e.kasserver.com:143	false
+hoelderlin-heidelberg.de	detect	dns	mail.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	mail.w01d857e.kasserver.com:587	false
+hoelderlin-heidelberg.de	detect	dns	smtp.w01d857e.kasserver.com A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	smtp.w01d857e.kasserver.com:587	false
+hoelderlin-heidelberg.de	detect	dns	smtp.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	smtp.hoelderlin-heidelberg.de:587	false
+hoelderlin-heidelberg.de	detect	dns	mail.hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	mail.hoelderlin-heidelberg.de:587	false
+hoelderlin-heidelberg.de	detect	dns	hoelderlin-heidelberg.de A/AAAA	false
+hoelderlin-heidelberg.de	detect	tcp	hoelderlin-heidelberg.de:587	false
+samfundet.no	detect	https	https://autoconfig.samfundet.no/mail/config-v1.1.xml?emailaddress=…	true
+samfundet.no	detect	dns	autoconfig.samfundet.no A/AAAA	false
+samfundet.no	detect	https	https://autoconfig.thunderbird.net/v1.1/samfundet.no	false
+samfundet.no	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+samfundet.no	detect	dns	_submissions._tcp.samfundet.no SRV	false
+samfundet.no	detect	dns	_submission._tcp.samfundet.no SRV	false
+samfundet.no	detect	dns	_imaps._tcp.samfundet.no SRV	false
+samfundet.no	detect	dns	_imap._tcp.samfundet.no SRV	false
+samfundet.no	detect	dns	imap.samfundet.no A/AAAA	false
+samfundet.no	detect	https	https://samfundet.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+samfundet.no	detect	dns	samfundet.no A/AAAA	false
+samfundet.no	detect	dns	samfundet.no MX	false
+samfundet.no	detect	dns	autodiscover.samfundet.no CNAME	false
+samfundet.no	detect	tcp	imap.samfundet.no:993	false
+samfundet.no	detect	redirect-followed	https://www.samfundet.no/.well-known/autoconfig/mail/config-v1.1.xml	false
+samfundet.no	detect	dns	www.samfundet.no A/AAAA	false
+samfundet.no	detect	dns	smtp.samfundet.no A/AAAA	false
+samfundet.no	detect	tcp	smtp.samfundet.no:465	false
+carlslid.se	detect	https	https://autoconfig.carlslid.se/mail/config-v1.1.xml?emailaddress=…	true
+carlslid.se	detect	dns	autoconfig.carlslid.se A/AAAA	false
+carlslid.se	detect	https	https://autoconfig.thunderbird.net/v1.1/carlslid.se	false
+carlslid.se	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+carlslid.se	detect	dns	_submissions._tcp.carlslid.se SRV	false
+carlslid.se	detect	dns	_submission._tcp.carlslid.se SRV	false
+carlslid.se	detect	dns	_imaps._tcp.carlslid.se SRV	false
+carlslid.se	detect	dns	_imap._tcp.carlslid.se SRV	false
+carlslid.se	detect	dns	imap.carlslid.se A/AAAA	false
+carlslid.se	detect	https	https://carlslid.se/.well-known/autoconfig/mail/config-v1.1.xml	false
+carlslid.se	detect	dns	carlslid.se A/AAAA	false
+carlslid.se	detect	dns	carlslid.se MX	false
+carlslid.se	detect	dns	autodiscover.carlslid.se CNAME	false
+carlslid.se	detect	https	https://autoconfig.broadview.se/mail/config-v1.1.xml	false
+carlslid.se	detect	dns	autoconfig.broadview.se A/AAAA	false
+carlslid.se	detect	https	https://autoconfig.thunderbird.net/v1.1/broadview.se	false
+carlslid.se	detect	dns	autoconfig.thunderbird.net A/AAAA	false
+carlslid.se	detect	dns	mail.carlslid.se A/AAAA	false
+carlslid.se	detect	dns	carlslid.se A/AAAA	false
+carlslid.se	detect	tcp	carlslid.se:993	false
+carlslid.se	detect	dns	imap.broadview.se A/AAAA	false
+carlslid.se	detect	dns	mail.broadview.se A/AAAA	false
+carlslid.se	detect	dns	smtp.carlslid.se A/AAAA	false
+carlslid.se	detect	dns	mail.carlslid.se A/AAAA	false
+carlslid.se	detect	dns	carlslid.se A/AAAA	false
+carlslid.se	detect	tcp	carlslid.se:465	false
+carlslid.se	detect	dns	smtp.broadview.se A/AAAA	false
+carlslid.se	detect	dns	mail.broadview.se A/AAAA	false
+carlslid.se	detect	dns	carlslid.se A/AAAA	false
+carlslid.se	detect	tcp	carlslid.se:143	false
+carlslid.se	detect	dns	carlslid.se A/AAAA	false
+carlslid.se	detect	tcp	carlslid.se:587	false
+carlslid.se	detect	tcp	mail.broadview.se:993	false
+carlslid.se	detect	tcp	mail.broadview.se:465	false
+carlslid.se	detect	tcp	smtp.broadview.se:465	false
+carlslid.se	detect	dns	mail.broadview.se A/AAAA	false
+carlslid.se	detect	tcp	mail.broadview.se:587	false
+carlslid.se	detect	tcp	imap.broadview.se:993	false
+-	scoring	dns	imap.loopia.se A/AAAA	false
+-	scoring	dns	mailcluster.loopia.se A/AAAA	false
+-	scoring	dns	mail.loopia.se A/AAAA	false
+-	scoring	dns	mailcluster.loopia.se A/AAAA	false
+-	scoring	dns	imap.inet.fi A/AAAA	false
+-	scoring	dns	mail.inet.fi A/AAAA	false
+-	scoring	dns	imap.inet.fi A/AAAA	false
+-	scoring	tcp	imap.inet.fi:993	false
+-	scoring	dns	imap.talktalk.net A/AAAA	false
+-	scoring	dns	mail.talktalk.net A/AAAA	false
+-	scoring	dns	imap.talktalk.net A/AAAA	false
+-	scoring	tcp	imap.talktalk.net:993	false
+-	scoring	dns	port39.de A/AAAA	false
+-	scoring	dns	mxe81b.netcup.net A/AAAA	false
+-	scoring	dns	port39.de A/AAAA	false
+-	scoring	dns	mxe81b.netcup.net A/AAAA	false
+-	scoring	dns	imap.hostpoint.ch A/AAAA	false
+-	scoring	dns	imap.mail.hostpoint.ch A/AAAA	false
+-	scoring	dns	smtp.hostpoint.ch A/AAAA	false
+-	scoring	dns	asmtp.mail.hostpoint.ch A/AAAA	false

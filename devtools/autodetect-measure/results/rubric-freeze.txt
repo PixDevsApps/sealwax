@@ -1,0 +1,5 @@
+Rubric freeze for ML-097, recorded before the held-out list was read and before any request to its domains.
+file: docs/m2/autoconfig.md (committed in f1a52ae)
+utc: 2026-10-05T08:22:16Z
+sha256: ee8770493a891ee0746021365df6b03be59a33af36c7b7a2edc44012f1deeae5
+rubric section sha256 (from '## Rubric' to the end of the file at that moment): fcb862ccaea4f34296656ce48c79e34377f07d5737098ba3870152cf86aef61b

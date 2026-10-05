@@ -1,0 +1,21 @@
+== dev-2-cyrusimap (run as "scratch", renamed): 1 domains (S4 list), started 2026-10-05T08:17:08Z
+rules: own_host=true srv_conventional=true mx_hosts=true ispdb_before_srv=true verify_srv=true autodiscover=true
+options: resolver=1.1.1.1 order=preset>autoconfig>ispdb>srv>own-host>mx-preset>well-known>mx-autoconfig>mx-ispdb>probe>mx-probe cap=10000ms http=4000ms dns=2000ms source=4500ms well_known=1500ms mx_autoconfig=1500ms connect=3000ms probe_delay=2000ms probe_budget=5000ms user_agent="mail-dev (automated)"
+correct, strict: 1/1
+correct, with the second login attempt (E1): 1/1
+correct, E1 plus verified aliases (E2): 1/1
+  E1 adds: []
+  E2 adds: []
+truth unknown (not scored): []
+  fastmail: strict 1/1, E1 1/1, E1+E2 1/1
+strict misses: []
+TLS-only: 1/1 offered settings use TLS or STARTTLS (the contract has no plaintext mode)
+shown for confirmation: []
+final: n=1 p50=716 p95=716 max=716 ms
+first usable: n=1 p50=118 p95=118 max=118 ms
+hit the cap unsettled: []
+won by: {"srv": 1}
+requests: 20 (dns 13, https 3, redirects followed 1, refused 0, tcp 3); scoring checks after detection: 0
+carrying the dummy address: 1 (1 to the row's own https://autoconfig.<domain>/)
+privacy violations: 0 []
+scoring checks carrying an address or using HTTPS: 0

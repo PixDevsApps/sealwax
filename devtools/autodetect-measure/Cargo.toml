@@ -1,0 +1,16 @@
+[package]
+name = "sealwax-autodetect-measure"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "sealwax-autodetect-measure"
+path = "src/main.rs"
+
+[dependencies]
+sealwax-domain.workspace = true
+sealwax-engine.workspace = true
+tokio.workspace = true
