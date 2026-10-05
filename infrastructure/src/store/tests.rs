@@ -456,14 +456,14 @@ fn threads_join_late_parents_merge_and_count_each_message_id_once() {
 }
 
 /// A list model as the GTK side would keep it, fed only by change events.
-struct Model {
-    view: ViewHandle,
-    rows: Vec<MessageSummary>,
-    version: StoreVersion,
+pub(crate) struct Model {
+    pub(crate) view: ViewHandle,
+    pub(crate) rows: Vec<MessageSummary>,
+    pub(crate) version: StoreVersion,
 }
 
 impl Model {
-    fn apply(&mut self, store: &Store, event: &ChangeEvent) {
+    pub(crate) fn apply(&mut self, store: &Store, event: &ChangeEvent) {
         assert_eq!(
             event.version.0,
             self.version.0 + 1,
