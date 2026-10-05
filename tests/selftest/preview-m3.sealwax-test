@@ -1,0 +1,65 @@
+# Previews for the M3 gate (ML-043, ML-044): the reader downloading a body, the body in place,
+# a download that failed with Retry, and the list asking for a folder's older mail, in a dark and
+# a light stock theme (matte-black with square corners, catppuccin-latte rounded). On a scripted
+# engine; every message is fictional. ML-048's previews are preview-m3-status.sealwax-test's.
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 35 target/debug/sealwax --self-test tests/selftest/preview-m3.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+mail-account Bodies
+bodies-add plain simple remote newsletter
+assert-list-count 4
+
+list-select 0
+engine-expect fetch-bodies count=1
+wait-until assert-body downloading
+screenshot $DIR/../../tools/progress/public/m3-reader-downloading-matte-black-square-2026-10-05.png
+bodies-store plain
+wait-until assert-body plain
+engine-reply body-fetched ok
+screenshot $DIR/../../tools/progress/public/m3-reader-downloaded-matte-black-square-2026-10-05.png
+
+list-select 1
+engine-expect fetch-bodies count=1
+wait-until assert-body downloading
+engine-reply body-fetched offline
+wait-until assert-body download-failed
+assert-shown reader-retry true
+screenshot $DIR/../../tools/progress/public/m3-reader-offline-matte-black-square-2026-10-05.png
+
+theme catppuccin-latte
+corners 8
+setup-click reader-retry
+engine-expect fetch-bodies count=1
+wait-until assert-body downloading
+screenshot $DIR/../../tools/progress/public/m3-reader-downloading-catppuccin-latte-rounded-2026-10-05.png
+engine-reply body-fetched needs-sign-in
+wait-until assert-body download-failed
+screenshot $DIR/../../tools/progress/public/m3-reader-sign-in-catppuccin-latte-rounded-2026-10-05.png
+bodies-store simple
+engine-reply body-fetched ok
+list-select 1
+engine-expect none
+wait-until assert-body html-themed
+screenshot $DIR/../../tools/progress/public/m3-reader-downloaded-catppuccin-latte-rounded-2026-10-05.png
+
+mail-account Older
+mail-add Older:archive today "Hytteplaner for høsten"
+mail-add Older:archive yesterday "Referat fra styremøtet"
+mail-add Older:archive 3d "Bilder fra turen"
+folder archive Older
+engine-expect folder-opened
+engine-expect load-older
+assert-shown list-older true
+assert-label list-older "Loading older messages…"
+screenshot $DIR/../../tools/progress/public/m3-list-older-catppuccin-latte-rounded-2026-10-05.png
+theme matte-black
+corners 0
+assert-shown list-older true
+screenshot $DIR/../../tools/progress/public/m3-list-older-matte-black-square-2026-10-05.png
+engine-reply older-loaded 0 complete
+wait-until assert-shown list-older false

@@ -61,6 +61,23 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M3 integrated: sync core, the per-account actor, account status, threading — 2026-10-05
+
+On `main` after every M3 merge (`9629271`), development machine (Ryzen 9 5900X, Omarchy, Linux 7.2.5-3-omarchy, rustc 1.98.1), the Docker testbed up since the lead seeded it. Reports: [sync](m3/sync.md), [actor](m3/actor.md), [status](m3/status.md), [threading](m3/threading.md), [bodies](m3/bodies.md).
+
+| Check | Result |
+| --- | --- |
+| `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui --testbed`, 18:30–19:01 | 774 passed, 0 failed, 40 ignored; all 25 self-test scripts; every testbed suite passed: `actor_testbed` 9 (1,241 s), `sync_testbed` 9, `testbed` 5, `bodies_testbed` 1, `password` 1, `log_grep` 1, S1's spike suites 8 |
+| Randomized two-client test, seeds 1–10 × 1,000 changes, one UIDVALIDITY change per seed (the agents' runs and each `--testbed` run) | Sync core with a polling driver: 0 divergences in 40 of 40 runs. Through the engine's actor (IDLE, account passes, the STATUS backstop): 0 in 80 of 80 (bursts and paced), then 40 of 40 paced in each of four `--testbed` runs. Dovecot, Dovecot without QRESYNC, IMAP4rev1 Dovecot, Stalwart. The control that leaves INBOX unsynced diverges (103–129 differences) |
+| New mail ≤ 5 s through IDLE (APPEND's OK → in the store, 20 samples a run) | Dovecot p50 500–501 ms, max 512 ms (its own notification delay); Stalwart p50 6 ms |
+| Faults through the proxy | Cuts mid-FETCH (first sync, flag fetch, new mail) and while idling, and a 5 s black hole lifted with `Reconnect` (everything stored 17–24 ms after it): nothing lost or duplicated |
+| No-change account pass, `perf` (10,000 messages), release | p50 5.9–7.3 ms on Dovecot, 0.3–0.7 ms on Stalwart, 8.8–35.1 ms with IMAP4rev1's full flag scans (worst 41.3 ms); S1's bars 200 ms and 2 s |
+| Soak harness, 30 minutes (the actor's agent) | Four accounts, 2,548 changes, six faults (a cut, black holes with and without `Reconnect`, two suspends): four checks equal to the servers, the store's check clean. The 6-hour run waits for the user (PLAN.md) |
+| Account status (ML-048) | `status-banners` 257/257, `status-password` 182/182, `status-offline` 118/118; engine `password.rs` and `keyring_fallback.rs`; `UpdatePassword` on the testbed as `bob` |
+| Threading and All Inboxes (ML-046, ML-047), release measurements on 3–5 fixture accounts of 90,000–100,000 messages | Property test 64 cases a CI run, 5,000 once (passed); All Inboxes opens ≤ 32.3 ms cold; one new message's diff p99 ≤ 5.2 ms (one maximum 24.9 ms on a cold cache under load); deep filtered pages 0.3–1.7 ms warm, ≤ 17.7 ms cold |
+| Gate previews | `preview-m3-status` 180/180 (28 images), `preview-m3` 54/54 (8 images): `tools/progress/public/m3-*-2026-10-05.png` |
+| Not verified | Real providers and real accounts (the user's manual test once the app is finished); a real suspend and a real network change; slow or lossy links; mailboxes far beyond 10,000; Thread-Index on real Outlook mail; the live session |
+
 ### M3 bodies (ML-044) — 2026-10-05
 
 Debug builds unless noted; [report](m3/bodies.md).

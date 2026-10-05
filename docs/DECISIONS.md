@@ -138,6 +138,15 @@ Built in M2 (`engine::service`, `engine::autoconfig`; reports [m2/imap.md](m2/im
 
 Built in M3 ([report](m3/status.md)). The app watches logind's `PrepareForSleep` (a read-only subscription on the system bus, connected asynchronously) and GIO's network monitor, both only for the engine it starts, and sends `Command::Reconnect` after a resume and when the network comes back. GIO picked `GNetworkMonitorNM` here, which connects to the system bus synchronously, so the monitor is first created on a thread of its own; GIO keeps it as the process's default and emits its signals on the main context. The engine acts on `Reconnect` from M3's phase B.
 
+### ADR-003 amendment — the engine's actors (M3 phase B, 2026-10-05)
+
+Built in M3 ([report](m3/actor.md)).
+- **Tasks:** the runtime keeps its 2 workers. Each account is one task (the command connection's loop) with its IDLE task and, while downloading, a body task.
+- **Commands and stop:** commands reach an account's actor over a channel; `Reconnect` and stop arrive through a `watch`, so every network wait is abandoned at once.
+- **Events:** statuses are sent only when they change, and `SyncProgress` at most 10 a second per account, always with the last batch's numbers. The store's change events stay exact, as before; a pass that changes nothing publishes nothing. This is how ML-040's "coalesced to ≤ 10/s" was read, a proposal for the user.
+- **Stopping:** `Engine::stop` LOGOUTs within 300 ms per connection and aborts after 1.2 s.
+- **Reconnecting:** on resume and when the network comes back the app sends `Reconnect`, which drops every connection of every account and connects again at once (S6).
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
@@ -291,6 +300,29 @@ Built in M3 ([sync](m3/sync.md), [bodies](m3/bodies.md)) on S1's model and M2's 
   - mid-FETCH cuts of a first sync, a flag fetch and new mail lose and duplicate nothing;
   - a no-change account pass of the 10,000-message `perf` account took p50 5.9–7.3 ms on Dovecot, 0.3–0.7 ms on Stalwart and 8.8–35.1 ms with IMAP4rev1's full flag scans (worst 41.3 ms), within S1's bars;
   - 1 KB, 5 MB and 12 MB body fixtures stored within 82–109 ms of connecting on each server, the 12 MB one as 810 bytes, with nothing marked `\Seen`.
+
+### ADR-006 amendment — the per-account actor as built (M3 phase B, 2026-10-05)
+
+Built in M3 ([report](m3/actor.md)).
+- **At most three connections per account:**
+  - the command connection: account passes, the opened folder, older mail, and INBOX where the server lacks IDLE;
+  - the IDLE connection on INBOX;
+  - a body connection, made on demand and closed after 60 s without work.
+
+  Passes over one folder never overlap.
+- **IDLE:** a pass, then NOOP (another pass on a change), then IDLE until a notice, 25 minutes or a reconnect; a pass on every wake. IDLE and DONE have 30 s timeouts; the end of the stream is a lost connection, made again at once.
+- **Schedule** (proposals for the user): an account pass every 2 minutes, with INBOX's STATUS as the backstop; the opened folder at once and every 30 s; INBOX every 60 s without IDLE.
+- **Resilience:**
+  - NOOP (10 s timeout) before reusing a connection unused for 30 s;
+  - reconnect at once after a drop, then a backoff from 1 s doubling to 5 minutes, jittered ×½–1;
+  - `offline` only when connecting fails;
+  - a refused login or a changed certificate stops the retries until `Reconnect`, a new password or a sign-in.
+- **Verified on the testbed:**
+  - new mail in the store p50 500 ms after APPEND on Dovecot (its own notification delay) and 6 ms on Stalwart;
+  - cuts while idling and mid-FETCH, and a black hole lifted with `Reconnect` (all stored within 24 ms), lose and duplicate nothing;
+  - 0 divergences in 80 of 80 randomized runs through the engine (four server variants, bursts and paced changes);
+  - a 30-minute soak (four accounts, 2,548 changes, six faults) matched the servers at every check.
+- **Not built:** a limit on IDLE's silence. A silently dead IDLE connection without `Reconnect` lasts until TCP keepalive ends it (about two minutes on a real network), meanwhile the 2-minute STATUS backstop keeps INBOX current.
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
