@@ -285,7 +285,7 @@ pub(crate) fn part_sections(raw: &[u8]) -> HashMap<u32, String> {
 }
 
 /// The store's upgrade for a raw (or rebuilt) message. A rebuilt one's attachments take their
-/// size from the structure: base64 counted as decoded, the rest as sent.
+/// size from the structure: base64 as decoded from 76-character lines, the rest as sent.
 pub(crate) fn upgrade(
     target: &BodyTarget,
     key: BlobKey,
@@ -313,7 +313,7 @@ pub(crate) fn upgrade(
             .and_then(|section| leaves.get(section))
         {
             attachment.size = if *base64 {
-                u64::from(*octets) / 4 * 3
+                u64::from(*octets) * 57 / 78
             } else {
                 u64::from(*octets)
             };

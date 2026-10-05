@@ -372,8 +372,8 @@ async fn a_large_message_comes_as_its_text_parts_and_its_attachment_on_demand() 
     assert_eq!(attachment.name.as_deref(), Some("stor.pdf"));
     assert_eq!(attachment.mime_type, "application/pdf");
     assert_eq!(
-        attachment.size, 9_000_000,
-        "decoded from the structure's octets"
+        attachment.size, 8_769_230,
+        "12,000,000 base64 octets in 78-byte lines, decoded"
     );
     assert!(detail.summary.has_attachments);
     let source = scratch
