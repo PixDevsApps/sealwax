@@ -769,6 +769,30 @@ separator.sw-toolbar-separator {
   background: var(--sw-warning-soft-bg-color);
 }
 
+/* The window's banner (ML-032): a strip across the top of the window, over every pane, as the
+   mock's offline banner, with its "needs attention" content: the key in the error colour, the
+   account in bold, Sign in at 32 px. Its text keeps the text colour on the error tint. */
+.sw-banner.sw-window-banner {
+  border-radius: 0;
+  border-bottom: var(--sw-control-border-width) solid var(--border-color);
+}
+
+.sw-banner-icon {
+  color: var(--error-color);
+}
+
+.sw-banner-title {
+  font-weight: bold;
+}
+
+.sw-banner-text {
+  border-spacing: var(--sw-space-xxs);
+}
+
+button.sw-primary.sw-banner-button {
+  min-height: var(--sw-size-icon-button);
+}
+
 /* Empty states: no accounts, no message, empty folder, no search results. */
 .sw-empty-state {
   padding: var(--sw-space-huge);
@@ -1016,11 +1040,43 @@ dropdown.sw-setup-security > button:hover {
   border-spacing: var(--sw-space-md);
 }
 
-/* The note in the mock's dashed box (Microsoft sign-in waits for S5). */
+/* The mock's dashed box: Microsoft sign-in without a client ID, and the browser sign-in under
+   way (ML-032). */
 .sw-setup-note {
   padding: var(--sw-space-xxl) var(--sw-space-xxxl);
   border: var(--sw-control-border-width) dashed var(--border-color);
   border-radius: var(--sw-radius);
+}
+
+.sw-setup-waiting,
+.sw-setup-unavailable {
+  border-spacing: var(--sw-space-lg);
+}
+
+.sw-setup-waiting-row {
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-setup-spinner {
+  color: var(--accent-color);
+}
+
+/* The waiting box's Cancel: the mock's 26 px chip with the small radius. */
+button.sw-setup-chip {
+  min-height: calc(var(--sw-size-chip) - 2 * var(--sw-control-border-width));
+  padding: 0 var(--sw-space-xl);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+}
+
+button.sw-setup-chip:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-setup-chip:active {
+  background: var(--sw-pressed-bg-color);
 }
 
 /* Links: accent text, underlined, as the mock's anchors. */

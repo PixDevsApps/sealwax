@@ -30,6 +30,7 @@ fn role(theme: &Theme, name: &str) -> Result<Rgb, String> {
         "unread" => theme.mail.unread,
         "warning" => theme.ui.warning,
         "error" => theme.ui.error,
+        "error-soft" => theme.ui.error_soft,
         other => return Err(format!("no colour role {other}")),
     })
 }

@@ -9,11 +9,13 @@
 //! `nav.pane` (`folders`, `list` or `reader`: the page shown when one pane fits) and `nav.more`
 //! (opens or closes an account's "More" folders).
 
+pub mod banner;
 pub mod empty;
 pub mod panes;
 pub mod sidebar;
 pub mod tooltips;
 
+use banner::SignInBanner;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
@@ -27,6 +29,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use tooltips::Tooltips;
 
+pub use banner::SignInPrompt;
 pub use panes::READER_COLUMN;
 pub use sidebar::{
     ALL_INBOXES, AccountStatus, FolderRole, SidebarAccount, SidebarFolder, SidebarModel,
@@ -131,6 +134,8 @@ struct Inner {
     welcome: adw::ToolbarView,
     /// "or press Ctrl+Shift+P / F1 for every command", with the keys in use.
     welcome_hint: gtk::Label,
+    /// An account that must sign in again (ML-032), over every pane.
+    banner: SignInBanner,
     toasts: adw::ToastOverlay,
     folder: gio::SimpleAction,
     pane: gio::SimpleAction,
@@ -266,8 +271,13 @@ impl Window {
             .max_sidebar_width(SIDEBAR_WIDTH)
             .show_content(true)
             .build();
+        let banner = SignInBanner::new();
+        panes.set_vexpand(true);
+        let stacked = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        stacked.append(&banner.root);
+        stacked.append(&panes);
         let toasts = adw::ToastOverlay::new();
-        toasts.set_child(Some(&panes));
+        toasts.set_child(Some(&stacked));
         let window = adw::ApplicationWindow::builder()
             .application(app)
             .title("Sealwax")
@@ -376,6 +386,7 @@ impl Window {
                 column,
                 welcome,
                 welcome_hint,
+                banner,
                 toasts,
                 folder,
                 pane,
@@ -612,6 +623,20 @@ impl Window {
     /// (ML-027) and the list's own buttons (ML-026).
     pub fn add_shortcut_tooltip(&self, widget: &impl IsA<gtk::Widget>, label: &str, id: ActionId) {
         self.inner.tooltips.add(widget, label, id);
+    }
+
+    /// Shows the banner for an account that must sign in again (ML-032), or hides it.
+    pub fn show_sign_in_banner(&self, prompt: Option<SignInPrompt<'_>>) {
+        self.inner.banner.show(prompt);
+    }
+
+    pub fn shows_sign_in_banner(&self) -> bool {
+        self.inner.banner.is_shown()
+    }
+
+    /// Runs `handler` when the banner's Sign in is clicked.
+    pub fn connect_sign_in(&self, handler: impl Fn() + 'static) {
+        self.inner.banner.button.connect_clicked(move |_| handler());
     }
 
     pub fn add_toast(&self, toast: adw::Toast) {

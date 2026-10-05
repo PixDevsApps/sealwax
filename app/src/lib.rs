@@ -12,6 +12,7 @@ pub mod list;
 pub mod mailbox;
 pub mod menu;
 pub mod monitor;
+pub mod oauth;
 pub mod palette;
 pub mod preferences;
 pub mod reader;

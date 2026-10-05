@@ -1,0 +1,179 @@
+# Microsoft sign-in in the setup assistant (ML-032) on a scripted engine. Without a client ID
+# the step says how to set one and sends nothing; with one in config.toml, "Sign in with
+# Microsoft" sends SignIn, the page the engine names goes to the browser opener (recorded,
+# never opened), it opens again on request, Cancel and Escape stop the sign-in, and the
+# username the sign-in belongs to is saved with the sign-in's token. Every address, name and
+# link is fictional. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 61 target/debug/sealwax --self-test tests/selftest/setup-microsoft.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# No client ID (self-tests run without the build's): the step says how to set one, Back has
+# the focus, and nothing goes to the engine.
+assert-setup client-id none
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply progress preset
+engine-reply detected microsoft
+assert-setup step microsoft
+assert-label setup-caption "Add an account"
+assert-label setup-title "Outlook.com account"
+assert-sensitive setup-microsoft-button false
+assert-tooltip setup-microsoft-button "Not available in this build yet"
+assert-shown setup-microsoft-unavailable true
+assert-label setup-microsoft-note "Microsoft sign-in isn't available in this build of Sealwax yet."
+assert-text-contains setup-microsoft-client-id "set client_id under [oauth.microsoft] in config.toml"
+assert-text-contains setup-microsoft-client-id "docs/OAUTH-SETUP.md shows how to register one."
+assert-shown setup-waiting false
+assert-setup focus setup-back
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-microsoft-no-client-id.png
+engine-expect none
+
+# A client ID put in config.toml makes the step available while it is open.
+write-file $TMP/config/sealwax/config.toml "[oauth.microsoft]\nclient_id = \"fictional-client-id\"\n"
+wait-until assert-setup client-id set
+wait-until assert-sensitive setup-microsoft-button true
+assert-shown setup-microsoft-unavailable false
+assert-shown setup-primary false
+assert-shown setup-manual-link false
+assert-shown setup-back true
+assert-labelled
+# Opened afresh, the step puts the focus on its button.
+setup-click setup-back
+assert-setup step address
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply detected microsoft
+assert-setup step microsoft
+assert-setup focus setup-microsoft-button
+assert-shown setup-alert false
+
+# Sign in with Microsoft: SignIn for the typed address (it never goes into the page's address;
+# the engine's part). The fields wait and the waiting box's Cancel takes the focus.
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test provider=microsoft account=none
+assert-setup step signing-in
+assert-label setup-title "Outlook.com account"
+assert-shown setup-waiting true
+assert-label setup-waiting-label "Waiting for the browser…"
+assert-shown setup-open-again false
+assert-sensitive setup-microsoft-button false
+assert-sensitive setup-address false
+assert-shown setup-back false
+assert-shown setup-primary false
+assert-sensitive setup-close true
+assert-setup focus setup-cancel
+assert-opened count 0
+# The engine names the page: it goes to the browser opener once.
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=one
+assert-opened last https://login.example.test/authorize?client_id=fictional&state=one
+assert-opened count 1
+assert-shown setup-open-again true
+assert-label setup-open-again "Open the sign-in page again"
+assert-setup focus setup-cancel
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-microsoft-waiting.png
+# The tab was closed too soon: the same page opens again, as often as asked.
+setup-click setup-open-again
+assert-opened count 2
+assert-opened last https://login.example.test/authorize?client_id=fictional&state=one
+setup-click setup-open-again
+assert-opened count 3
+# A reply to a request the assistant didn't send changes nothing.
+engine-reply-stale signed-in ok kari@example.test
+engine-reply-stale sign-in-open https://login.example.test/authorize?client_id=fictional&state=stale
+assert-setup step signing-in
+assert-opened count 3
+engine-expect none
+
+# Cancel: CancelSignIn for that sign-in, and the button again; late answers are ignored.
+setup-click setup-cancel
+engine-expect cancel-sign-in sign-in=last
+assert-setup step microsoft
+assert-shown setup-waiting false
+assert-sensitive setup-microsoft-button true
+assert-sensitive setup-address true
+assert-setup focus setup-microsoft-button
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=late
+engine-reply signed-in ok kari@example.test
+assert-setup step microsoft
+assert-opened count 3
+engine-expect none
+
+# Escape while the browser signs in cancels too, and stays on the step.
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test account=none
+setup-key escape
+engine-expect cancel-sign-in sign-in=last
+assert-setup step microsoft
+assert-setup open true
+# So does the close button, which closes the assistant.
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+setup-click setup-close
+engine-expect cancel-sign-in sign-in=last
+assert-setup open false
+engine-expect none
+
+# Without an engine the button says so.
+engine-detach
+action win.add-account
+setup-type setup-address kari@example.test
+setup-key enter
+engine-attach
+setup-key enter
+engine-expect detect
+engine-reply detected microsoft
+engine-detach
+setup-click setup-microsoft-button
+assert-setup step microsoft
+assert-label setup-alert-title "Not connected to the mail engine"
+engine-attach
+setup-click setup-close
+
+# Signed in: the username is the sign-in's own (here not the typed address), saved with the
+# sign-in's token and an empty password; then the account is added as with a password.
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect
+engine-reply detected microsoft
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=two
+assert-opened last https://login.example.test/authorize?client_id=fictional&state=two
+engine-reply signed-in ok kari.nordmann@example.test
+engine-expect add-account address=kari@example.test "name=Kari Nordmann" key= username=kari.nordmann@example.test auth=microsoft imap=imap.example.test:993:tls smtp=smtp.example.test:465:tls sign-in=last password=
+assert-setup step adding
+assert-label setup-title "Outlook.com account"
+assert-label setup-subtitle "Saving the account…"
+assert-shown setup-waiting false
+assert-shown setup-check true
+assert-sensitive setup-close false
+# Saving can't be abandoned halfway.
+setup-key escape
+assert-setup step adding
+engine-expect none
+# A failed save says why on the step; signing in again is the way on.
+engine-reply added exists
+assert-setup step microsoft
+assert-label setup-alert-title "This account is already set up"
+assert-setup focus setup-microsoft-button
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+engine-reply signed-in ok kari.nordmann@example.test
+engine-expect add-account username=kari.nordmann@example.test auth=microsoft sign-in=last password=
+engine-reply added ok
+assert-setup open false
+wait-until assert-shown welcome false
+assert-label sidebar-summary "1 account · synced"
+engine-expect none

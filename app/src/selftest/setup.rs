@@ -4,20 +4,27 @@
 //!
 //! | Command | What it does |
 //! | --- | --- |
-//! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one |
+//! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one; links the assistant opens are recorded from then on, never opened |
 //! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
-//! | `engine-expect detect\|verify\|add-account [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` and `smtp` (`host:port:tls\|starttls`), `username`, `second` (`none`), `password` (compared, never printed) |
+//! | `engine-expect detect\|verify\|add-account\|sign-in\|cancel-sign-in [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` and `smtp` (`host:port:tls\|starttls`), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
 //! | `engine-expect none` | The app sent nothing more |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
 //! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `gmail`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
-//! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
+//! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
+//! | `engine-reply sign-in-open URL` | `SignInOpen` for the last command |
+//! | `engine-reply signed-in ok USERNAME`, `engine-reply signed-in [imap\|smtp] FAILURE` | `SignedIn` (IMAP when no protocol is named) |
 //! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would |
 //! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
+//! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `SyncFailed` or `SyncFinished` for the store's account with ADDRESS |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
 //! | `setup-respond NAME RESPONSE` | Answers the alert dialog named NAME (Remove Account's `remove-account`) as its button would |
+//! | `setup-dismiss-toasts` | Closes the toasts shown and queued, as their × would (for previews) |
 //! | `assert-setup open\|step\|sources\|focus VALUE` | The assistant's state |
+//! | `assert-setup client-id set\|none` | Whether a Microsoft client ID is in use (`config.toml`; self-tests have no built-in one) |
+//! | `assert-setup sign-in-needed KEY,…\|none` | The accounts the window's banner asks to sign in again, in order |
+//! | `assert-opened last URL\|none`, `assert-opened count N` | The last link handed to the browser opener, and how many were |
 //! | `assert-text-contains NAME TEXT` | A label's text contains TEXT |
 //! | `assert-field NAME TEXT` | A text field's text or a choice's item (never the password's) |
 //! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in` | The sidebar's state of the account with ADDRESS |
@@ -40,7 +47,7 @@ use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId};
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
 use sealwax_infrastructure::store::{FolderSpec, NewAccount};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -57,10 +64,12 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("setup-click", 1, 1),
     ("setup-key", 1, 1),
     ("setup-respond", 2, 2),
+    ("setup-dismiss-toasts", 0, 0),
     ("assert-setup", 2, 2),
     ("assert-text-contains", 2, 2),
     ("assert-field", 2, 2),
     ("assert-account-status", 2, 2),
+    ("assert-opened", 2, 2),
 ];
 
 pub fn handles(command: &str) -> bool {
@@ -70,7 +79,11 @@ pub fn handles(command: &str) -> bool {
 pub fn checks(assertion: &str) -> bool {
     matches!(
         assertion,
-        "assert-setup" | "assert-text-contains" | "assert-field" | "assert-account-status"
+        "assert-setup"
+            | "assert-text-contains"
+            | "assert-field"
+            | "assert-account-status"
+            | "assert-opened"
     )
 }
 
@@ -86,10 +99,21 @@ struct Fake {
     commands: async_channel::Receiver<Command>,
     events: async_channel::Sender<Event>,
     last: RefCell<Option<Last>>,
+    /// The request of the last `SignIn` taken, which `CancelSignIn` and `AddAccount` name.
+    last_sign_in: Cell<Option<RequestId>>,
 }
 
 thread_local! {
     static FAKE: RefCell<Option<Rc<Fake>>> = const { RefCell::new(None) };
+    /// The links the assistant handed to the browser opener, oldest first.
+    static OPENED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The assistant's links go to the record instead of a browser.
+fn record_links() {
+    setup::browser::set_opener(|_, uri| {
+        OPENED.with(|opened| opened.borrow_mut().push(uri.to_owned()));
+    });
 }
 
 fn fake() -> Result<Rc<Fake>, String> {
@@ -112,8 +136,10 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                     commands: from_app,
                     events: to_app,
                     last: RefCell::new(None),
+                    last_sign_in: Cell::new(None),
                 })))
             });
+            record_links();
             Ok(())
         }
         "engine-detach" => {
@@ -123,6 +149,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "engine-start" => {
             FAKE.with(|fake| fake.take());
+            record_links();
             harness.state.start_engine(&EngineOptions {
                 trust: Trust::Roots(args[0].clone().into()),
                 secrets: SecretBackend::Memory,
@@ -146,6 +173,30 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             dialog.force_close();
             harness.wait_until_settled().await;
             Ok(())
+        }
+        "setup-dismiss-toasts" => {
+            let toast =
+                glib::Type::from_name("AdwToastWidget").ok_or("libadwaita has no toast widget")?;
+            for _ in 0..10 {
+                let window = harness.window()?;
+                let mut close = None;
+                super::collect(window.window().upcast_ref(), &mut |widget| {
+                    if close.is_none()
+                        && widget.is_mapped()
+                        && widget.has_css_class("circular")
+                        && widget.ancestor(toast).is_some()
+                    {
+                        close = widget.downcast_ref::<gtk::Button>().cloned();
+                    }
+                });
+                let Some(close) = close else {
+                    return Ok(());
+                };
+                close.emit_clicked();
+                harness.wait_until_settled().await;
+                glib::timeout_future(Duration::from_millis(20)).await;
+            }
+            Err("toasts kept coming".to_owned())
         }
         "engine-reply" => reply(harness, args, false).await,
         "engine-reply-stale" => reply(harness, args, true).await,
@@ -251,9 +302,49 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
                     assistant()?.focused().as_deref().unwrap_or("nothing"),
                     wanted,
                 ),
+                "client-id" => equal(
+                    "Microsoft client ID",
+                    if harness.state.microsoft_client_id().is_some() {
+                        "set"
+                    } else {
+                        "none"
+                    },
+                    wanted,
+                ),
+                "sign-in-needed" => {
+                    let keys: Vec<String> = harness
+                        .state
+                        .sign_in_needed()
+                        .into_iter()
+                        .map(|again| again.key.to_string())
+                        .collect();
+                    let keys = if keys.is_empty() {
+                        "none".to_owned()
+                    } else {
+                        keys.join(",")
+                    };
+                    equal("accounts to sign in again", keys.as_str(), wanted)
+                }
                 other => Err(format!(
-                    "assert-setup checks open, step, sources or focus, not {other}"
+                    "assert-setup checks open, step, sources, focus, client-id or \
+                     sign-in-needed, not {other}"
                 )),
+            }
+        }
+        "assert-opened" => {
+            let opened = OPENED.with(|opened| opened.borrow().clone());
+            match args[0].as_str() {
+                "last" => equal(
+                    "last link opened",
+                    opened.last().map_or("none", String::as_str),
+                    args[1].as_str(),
+                ),
+                "count" => equal(
+                    "links opened",
+                    opened.len().to_string().as_str(),
+                    args[1].as_str(),
+                ),
+                other => Err(format!("assert-opened checks last or count, not {other}")),
             }
         }
         "assert-text-contains" => {
@@ -307,8 +398,19 @@ fn endpoint_text(endpoint: &Endpoint) -> String {
     format!("{}:{}:{security}", endpoint.host, endpoint.port)
 }
 
-/// A command's kind, its request and its fields as `KEY=VALUE` pairs; never the password.
-fn fields(command: &Command) -> (&'static str, Option<RequestId>, Vec<(&'static str, String)>) {
+fn auth_text(auth: AuthMethod) -> &'static str {
+    match auth {
+        AuthMethod::Password => "password",
+        AuthMethod::OAuth(OAuthProvider::Microsoft) => "microsoft",
+    }
+}
+
+/// A command's kind, its request and its fields as `KEY=VALUE` pairs; never the password. A
+/// request that is `last_sign_in` reads `last`.
+fn fields(
+    command: &Command,
+    last_sign_in: Option<RequestId>,
+) -> (&'static str, Option<RequestId>, Vec<(&'static str, String)>) {
     let settings_fields = |settings: &AccountSettings| {
         vec![
             ("address", settings.address.clone()),
@@ -317,7 +419,13 @@ fn fields(command: &Command) -> (&'static str, Option<RequestId>, Vec<(&'static 
             ("imap", endpoint_text(&settings.imap)),
             ("smtp", endpoint_text(&settings.smtp)),
             ("username", settings.username.clone()),
+            ("auth", auth_text(settings.auth).to_owned()),
         ]
+    };
+    let sign_in = |request: Option<RequestId>| match request {
+        None => "none".to_owned(),
+        Some(request) if Some(request) == last_sign_in => "last".to_owned(),
+        Some(request) => request.to_string(),
     };
     match command {
         Command::Detect { request, address } => {
@@ -337,21 +445,47 @@ fn fields(command: &Command) -> (&'static str, Option<RequestId>, Vec<(&'static 
             ("verify", Some(*request), fields)
         }
         Command::AddAccount {
-            request, settings, ..
-        } => ("add-account", Some(*request), settings_fields(settings)),
+            request,
+            settings,
+            sign_in: signed_in,
+            ..
+        } => {
+            let mut fields = settings_fields(settings);
+            fields.push(("sign-in", sign_in(*signed_in)));
+            ("add-account", Some(*request), fields)
+        }
         Command::RemoveAccount { request, key } => (
             "remove-account",
             Some(*request),
             vec![("key", key.to_string())],
         ),
         Command::SignIn {
-            request, address, ..
+            request,
+            provider,
+            address,
+            account,
         } => (
             "sign-in",
             Some(*request),
-            vec![("address", address.clone())],
+            vec![
+                ("address", address.clone()),
+                (
+                    "provider",
+                    auth_text(AuthMethod::OAuth(*provider)).to_owned(),
+                ),
+                (
+                    "account",
+                    account
+                        .as_ref()
+                        .map_or_else(|| "none".to_owned(), ToString::to_string),
+                ),
+            ],
         ),
-        Command::CancelSignIn { request } => ("cancel-sign-in", Some(*request), Vec::new()),
+        Command::CancelSignIn { request } => (
+            "cancel-sign-in",
+            Some(*request),
+            vec![("sign-in", sign_in(Some(*request)))],
+        ),
         Command::Accounts { accounts } => (
             "accounts",
             None,
@@ -381,7 +515,7 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
     if args[0] == "none" {
         harness.wait_until_settled().await;
         return match fake.commands.try_recv() {
-            Ok(command) => Err(format!("the app sent {}", fields(&command).0)),
+            Ok(command) => Err(format!("the app sent {}", fields(&command, None).0)),
             Err(_) => Ok(()),
         };
     }
@@ -389,7 +523,10 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
         .await
         .ok_or_else(|| format!("no {} came from the app", args[0]))?
         .map_err(|_| "the app closed the engine's channel".to_owned())?;
-    let (kind, request, fields) = fields(&command);
+    if let Command::SignIn { request, .. } = &command {
+        fake.last_sign_in.set(Some(*request));
+    }
+    let (kind, request, fields) = fields(&command, fake.last_sign_in.get());
     let shown: Vec<String> = fields
         .iter()
         .map(|(key, value)| format!("{key}={value}"))
@@ -429,6 +566,9 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
 /// sent.
 async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
     let fake = fake()?;
+    if let Some(event) = sync_event(harness, args)? {
+        return send_event(harness, &fake, event).await;
+    }
     let last = fake
         .last
         .borrow()
@@ -463,11 +603,7 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
         ("verified", [protocol, failure]) => Event::Verified {
             request,
             result: Err(LoginError {
-                protocol: match protocol.as_str() {
-                    "imap" => Protocol::Imap,
-                    "smtp" => Protocol::Smtp,
-                    other => return Err(format!("use imap or smtp, not {other}")),
-                },
+                protocol: protocol_named(protocol)?,
                 failure: login_failure(failure)?,
             }),
         },
@@ -485,8 +621,34 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 other => Err(account_error(other)?),
             },
         },
+        ("sign-in-open", [url]) => Event::SignInOpen {
+            request,
+            url: url.clone(),
+        },
+        ("signed-in", [ok, username]) if ok == "ok" => Event::SignedIn {
+            request,
+            result: Ok(username.clone()),
+        },
+        ("signed-in", [failure]) => Event::SignedIn {
+            request,
+            result: Err(LoginError {
+                protocol: Protocol::Imap,
+                failure: login_failure(failure)?,
+            }),
+        },
+        ("signed-in", [protocol, failure]) => Event::SignedIn {
+            request,
+            result: Err(LoginError {
+                protocol: protocol_named(protocol)?,
+                failure: login_failure(failure)?,
+            }),
+        },
         _ => return Err(format!("no reply {}", args.join(" "))),
     };
+    send_event(harness, &fake, event).await
+}
+
+async fn send_event(harness: &Harness, fake: &Fake, event: Event) -> StepResult {
     fake.events
         .send(event)
         .await
@@ -495,6 +657,39 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
     glib::timeout_future(Duration::from_millis(10)).await;
     harness.wait_until_settled().await;
     Ok(())
+}
+
+/// `sync-failed ADDRESS FAILURE` and `sync-finished ADDRESS`: what the engine reports about an
+/// account's sync, for the store's account with that address.
+fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, String> {
+    let account = |address: &str| {
+        harness
+            .state
+            .mailbox()
+            .accounts()
+            .into_iter()
+            .find(|account| account.address == address)
+            .map(|account| account.id)
+            .ok_or_else(|| format!("no account has the address {address}"))
+    };
+    Ok(match (args[0].as_str(), &args[1..]) {
+        ("sync-failed", [address, failure]) => Some(Event::SyncFailed {
+            account: account(address)?,
+            failure: login_failure(failure)?,
+        }),
+        ("sync-finished", [address]) => Some(Event::SyncFinished {
+            account: account(address)?,
+        }),
+        _ => None,
+    })
+}
+
+fn protocol_named(name: &str) -> Result<Protocol, String> {
+    match name {
+        "imap" => Ok(Protocol::Imap),
+        "smtp" => Ok(Protocol::Smtp),
+        other => Err(format!("use imap or smtp, not {other}")),
+    }
 }
 
 /// The key the fake engine gives an added account: its address's local part.
@@ -597,6 +792,7 @@ fn login_failure(name: &str) -> Result<LoginFailure, String> {
         "app-password" => LoginFailure::AppPasswordRequired,
         "imap-disabled" => LoginFailure::ImapDisabled,
         "oauth" => LoginFailure::OAuthRequired,
+        "sign-in-declined" => LoginFailure::SignInDeclined,
         "no-tls" => LoginFailure::NoTls,
         "certificate" => LoginFailure::Certificate,
         "unreachable" => LoginFailure::Unreachable,
