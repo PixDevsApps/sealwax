@@ -12,7 +12,9 @@ theme matte-black
 corners 0
 engine-attach
 
-# The welcome page's button opens the assistant, with the focus in the address.
+# Add Account is enabled, so the palette lists it and the main menu shows it; the welcome
+# page's button opens the assistant, with the focus in the address.
+assert-action-enabled win.add-account true
 assert-shown welcome true
 assert-sensitive add-account true
 setup-click add-account
