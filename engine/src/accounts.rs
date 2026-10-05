@@ -9,9 +9,10 @@
 //!   undoes the earlier steps. After a crash, `recover` deletes the secret of a journalled key
 //!   that `accounts.toml` doesn't list, and `reconcile` creates a missing store row, so no
 //!   half-added account is left.
-//! - **Remove:** journal `remove <key>`, then the entry, the store rows (one transaction), the
-//!   blobs no other account refers to, the secrets, then clear the journal. Every step can run
-//!   again, so a failure or crash leaves the removal journalled and `recover` finishes it.
+//! - **Remove:** journal `remove <key>`, then the entry (the commit point: when it fails,
+//!   nothing changed and the journal is cleared), the store rows (one transaction), the blobs no
+//!   other account refers to, the secrets, then clear the journal. Every step can run again, so
+//!   a later failure or a crash leaves the removal journalled and `recover` finishes it.
 //!
 //! The journal holds keys only. Nothing here logs an address or a secret.
 
@@ -201,16 +202,27 @@ impl<S: SecretStore> Accounts<'_, S> {
             return Err(AccountError::Missing);
         }
         self.journal(Some(PendingOp::Remove), key).await?;
+        // Until the entry is out of the file nothing has changed: a failure there ends the
+        // removal instead of leaving it journalled for a later start.
+        if let Err(error) = self.remove_entry(key).await {
+            let _ = self.journal(None, key).await;
+            return Err(error);
+        }
         self.finish_removal(key).await
     }
 
-    async fn finish_removal(&self, key: &AccountKey) -> Result<(), AccountError> {
+    async fn remove_entry(&self, key: &AccountKey) -> Result<(), AccountError> {
         let path = self.paths.settings.clone();
         let entry = key.clone();
         blocking(move || files::remove(&path, &entry))
             .await?
-            .map_err(file_error)?;
+            .map(|_| ())
+            .map_err(file_error)
+    }
 
+    /// The removal from the entry on; every step can run again.
+    async fn finish_removal(&self, key: &AccountKey) -> Result<(), AccountError> {
+        self.remove_entry(key).await?;
         let account = self
             .store
             .account_by_key(key.clone())
@@ -519,6 +531,25 @@ mod tests {
         assert_eq!(bench.blobs.disk_usage().unwrap().files, 0);
         assert!(bench.journal().is_empty());
         assert_eq!(run(accounts.remove(&key)), Err(AccountError::Missing));
+    }
+
+    #[test]
+    fn a_removal_that_cant_edit_the_file_changes_nothing() {
+        let bench = Bench::new();
+        let accounts = bench.accounts();
+        let (key, _) = run(accounts.add(settings("ada@example.test"), &password())).unwrap();
+        let good = bench.file();
+        fs::write(&bench.paths.settings, format!("{good}[[account]\n")).unwrap();
+        assert_eq!(run(accounts.remove(&key)), Err(AccountError::SettingsFile));
+        assert!(
+            bench.journal().is_empty(),
+            "nothing is left to finish later"
+        );
+        assert!(bench.in_store(&key));
+        assert!(run(bench.secrets.has(&key)));
+        fs::write(&bench.paths.settings, &good).unwrap();
+        run(accounts.remove(&key)).unwrap();
+        assert!(!bench.in_store(&key));
     }
 
     #[test]
