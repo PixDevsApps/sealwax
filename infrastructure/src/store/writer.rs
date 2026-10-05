@@ -29,6 +29,9 @@ pub(crate) const MAX_BATCH: usize = 200;
 const MAX_SPLICE: usize = 64;
 /// New rows after which the maintenance thread refreshes the planner's statistics.
 const OPTIMIZE_AFTER: u64 = 50_000;
+/// The start of a `Thread-Index` conversation's alias. The space keeps it apart from every
+/// Message-ID, which holds no whitespace once normalized.
+pub(crate) const THREAD_INDEX_ALIAS: &str = "thread-index ";
 
 thread_local! {
     /// Frames in the WAL after this thread's last commit, set by the writer's WAL hook.
@@ -905,19 +908,24 @@ fn free_uid(tx: &Connection, message: &NewMessage) -> rusqlite::Result<Option<i6
 }
 
 /// The message's conversation through the alias table (ADR-016): every Message-ID,
-/// In-Reply-To and References entry maps to a thread, so a parent that arrives after its reply
-/// still joins it; a message that links several threads merges them into the largest.
+/// In-Reply-To and References entry, and the conversation of an Outlook `Thread-Index`, maps
+/// to a thread, so a parent that arrives after its reply still joins it; a message that links
+/// several threads merges them into the largest.
 fn resolve_thread(
     tx: &Connection,
     account: AccountId,
     message: &NewMessage,
 ) -> rusqlite::Result<(ThreadId, Vec<ThreadId>)> {
     let headers = &message.headers;
+    let thread_index = headers
+        .thread_index
+        .map(|index| format!("{THREAD_INDEX_ALIAS}{}", index.to_hex()));
     let mut keys: Vec<&str> = headers
         .message_id
         .iter()
         .chain(&headers.in_reply_to)
         .chain(&headers.references)
+        .chain(&thread_index)
         .map(String::as_str)
         .collect();
     keys.sort_unstable();
@@ -1017,9 +1025,9 @@ fn insert_message(
             "INSERT INTO messages(folder_id, uid, thread_id, message_id, in_reply_to, refs, \
                date, sent_date, from_name, from_addr, to_addrs, cc_addrs, reply_to, subject, \
                snippet, list_id, flags, keywords, has_attachments, body_kind, size, body_state, \
-               blob_key) \
+               blob_key, thread_index) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-               ?18, ?19, ?20, ?21, ?22, ?23) RETURNING id",
+               ?18, ?19, ?20, ?21, ?22, ?23, ?24) RETURNING id",
         )?
         .query_row(
             params![
@@ -1046,6 +1054,10 @@ fn insert_message(
                 message.size as i64,
                 message.body_state.code(),
                 message.blob.as_ref().map(|key| key.0.as_slice()),
+                headers
+                    .thread_index
+                    .as_ref()
+                    .map(|index| index.0.as_slice()),
             ],
             |row| row.get(0),
         )?,

@@ -315,6 +315,8 @@ pub struct Headers {
     pub references: Vec<String>,
     /// The List-Id identifier, without angle brackets.
     pub list_id: Option<String>,
+    /// The conversation Outlook's `Thread-Index` names.
+    pub thread_index: Option<ThreadIndex>,
 }
 
 /// A non-body MIME part. `part` indexes mail-parser's part list of the raw message.
@@ -346,13 +348,7 @@ pub struct BlobKey(pub [u8; 32]);
 
 impl BlobKey {
     pub fn to_hex(&self) -> String {
-        const DIGITS: &[u8; 16] = b"0123456789abcdef";
-        let mut text = String::with_capacity(64);
-        for byte in self.0 {
-            text.push(char::from(DIGITS[usize::from(byte >> 4)]));
-            text.push(char::from(DIGITS[usize::from(byte & 15)]));
-        }
-        text
+        hex(&self.0)
     }
 
     pub fn from_hex(text: &str) -> Option<BlobKey> {
@@ -381,6 +377,38 @@ impl fmt::Debug for BlobKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "BlobKey({})", self.to_hex())
     }
+}
+
+/// The conversation part of Outlook's `Thread-Index` header: the 22-byte header block (a
+/// reserved byte, a time and a GUID) that every reply in the conversation repeats before its
+/// own 5-byte blocks ([MS-OXOMSG] 2.2.1.3).
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ThreadIndex(pub [u8; 22]);
+
+impl ThreadIndex {
+    pub fn to_hex(&self) -> String {
+        hex(&self.0)
+    }
+
+    pub fn from_slice(bytes: &[u8]) -> Option<ThreadIndex> {
+        <[u8; 22]>::try_from(bytes).ok().map(ThreadIndex)
+    }
+}
+
+impl fmt::Debug for ThreadIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "ThreadIndex({})", self.to_hex())
+    }
+}
+
+fn hex(bytes: &[u8]) -> String {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut text = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        text.push(char::from(DIGITS[usize::from(byte >> 4)]));
+        text.push(char::from(DIGITS[usize::from(byte & 15)]));
+    }
+    text
 }
 
 /// Everything the reader shows about one message except its body.
