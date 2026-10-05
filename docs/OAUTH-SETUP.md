@@ -56,25 +56,19 @@ The development registration "Sealwax (dev)" was made on 2026-10-05 in the owner
 - **Unverified publisher:** the portal warns "End users cannot grant consent to newly registered multitenant apps without verified publishers". Per Microsoft's [publisher verification overview](https://learn.microsoft.com/en-us/entra/identity-platform/publisher-verification-overview) (updated 2026-06-15), when risk-based step-up consent is on, users in tenants other than the app's can't consent to an unverified multitenant app registered after November 2020 that asks for more than sign-in and profile. Verification needs a Microsoft AI Cloud Partner Program account and a publisher domain that isn't `*.onmicrosoft.com`. Personal Outlook.com accounts aren't another organization's tenant; S5 confirms their consent. Work accounts in other organizations may need their admin's consent until the publisher is verified (PLAN.md follow-up).
 - The Application (client) ID is on the app's Overview page; it isn't recorded in this repository (below).
 
-## Where the IDs go
+## Where the ID goes
 
-For development builds, either export them before building:
-
-```bash
-export SEALWAX_GOOGLE_CLIENT_ID="…apps.googleusercontent.com"
-export SEALWAX_GOOGLE_CLIENT_SECRET="…"
-export SEALWAX_MICROSOFT_CLIENT_ID="00000000-0000-0000-0000-000000000000"
-```
-
-or put them in the app's `config.toml` (the section names are final once M2 builds them):
+As built in ML-032 (2026-10-05). Put the Microsoft client ID in `~/.config/sealwax/config.toml`; Sealwax applies it when you save the file, and it wins over one built in:
 
 ```toml
-[oauth.google]
-client_id = "…apps.googleusercontent.com"
-client_secret = "…"
-
 [oauth.microsoft]
 client_id = "00000000-0000-0000-0000-000000000000"
 ```
 
-Never commit them to the repository. When the IDs exist, tell the agent; S5 moves from Blocked to Ready.
+Or build it in by exporting it before `cargo build`:
+
+```bash
+export SEALWAX_MICROSOFT_CLIENT_ID="00000000-0000-0000-0000-000000000000"
+```
+
+Never commit it to the repository. `config.toml` has no Google section: Sign in with Google is deferred to 1.x, and no settings file holds a client secret ([ADR-009 amendment](DECISIONS.md#adr-009-amendment--configtoml-and-keystoml-as-built-in-m1-2026-10-04)).

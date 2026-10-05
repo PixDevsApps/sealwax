@@ -104,7 +104,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - **Remove Account** (ML-038, built by the lead): a confirmation that names the account and what goes (its local mail, its keyring password and its `accounts.toml` entry; the mail on the server stays), with a choice when there are several accounts; a toast reports the result. In the palette and the main menu while `accounts.toml` lists an account; no default key. The mock has no such dialog.
 - The `sw-setup-*` classes are listed in [m2/setup.md](m2/setup.md#classes-appsrcstylecss).
 
-*Microsoft sign-in as built (ML-032, 2026-10-05, [report](m2/oauth-app.md)); each difference from the mock is a choice for the user:*
+*Microsoft sign-in as built (ML-032, 2026-10-05, [report](m2/oauth-app.md)); the user kept every difference from the mock ("Keep them as built", 2026-10-05):*
 - "Sign in with Microsoft" opens the page in the default browser and shows the mock's "Waiting for the browser…" box with Cancel, plus **"Open the sign-in page again"** (the mock has only Cancel; S5's first attempt stopped because the tab was closed). While the browser works, the card's button and the address are insensitive and Back is hidden; Cancel and Escape go back.
 - Without a client ID the M2 note stays, with a line on setting `client_id` in `config.toml`.
 - Failures show on the step as the M2 alert, and its button signs in again (the mock draws no Microsoft failure).

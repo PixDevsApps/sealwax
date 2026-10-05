@@ -4,7 +4,7 @@ A fast, beautiful, minimal email client for [Omarchy](https://omarchy.org) — n
 
 ![Sealwax in the matte-black theme, showing fictional mail](tools/progress/public/m1-gate-wide-matte-black-square-2026-10-04.png)
 
-**Status:** M1, the themed shell on a local store, was approved on 2026-10-05: the message list, the reader and the live theme work over a local store of fictional mail. Next is M2, accounts and first sync. Not usable for real mail yet.
+**Status:** M2, accounts and first sync, was approved on 2026-10-05. Accounts are added without typing server settings (autodetect, passwords and app passwords, or Sign in with Microsoft), and Sealwax lists their folders and downloads each INBOX's headers. Next is M3, the sync engine: until then new mail after the first sync and message bodies don't arrive, so it isn't ready for daily use.
 
 - Product requirements: [docs/PRD.md](docs/PRD.md)
 - Plan and current state: [docs/PLAN.md](docs/PLAN.md)
