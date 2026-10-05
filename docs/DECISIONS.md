@@ -134,6 +134,10 @@ Built in M2 (`engine::service`, `engine::autoconfig`; reports [m2/imap.md](m2/im
 - **Self-tests** start no engine unless a script asks (`engine-start`), so the setup scripts keep their fake one.
 - **Autodetect:** its lookups live in `engine::autoconfig` behind a `Network` trait (MX, SRV, CNAME, addresses, an HTTPS GET, the TLS check); its rules, presets and parser are pure code in `domain::autoconfig`. One detection is one future over all sources, so dropping it cancels every lookup. A preset answers without building any network. Tests drive the pipeline with a scripted `Network` on paused tokio time; real lookups run only in `devtools/autodetect-measure` and one ignored test.
 
+### ADR-003 amendment — resume and network as built (ML-048, M3, 2026-10-05)
+
+Built in M3 ([report](m3/status.md)). The app watches logind's `PrepareForSleep` (a read-only subscription on the system bus, connected asynchronously) and GIO's network monitor, both only for the engine it starts, and sends `Command::Reconnect` after a resume and when the network comes back. GIO picked `GNetworkMonitorNM` here, which connects to the system bus synchronously, so the monitor is first created on a thread of its own; GIO keeps it as the process's default and emits its signals on the main context. The engine acts on `Reconnect` from M3's phase B.
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
@@ -222,6 +226,17 @@ Built in M2 ([m2/accounts.md](m2/accounts.md)).
 - `remove_account` deletes an account and everything it owns in one transaction, deleting its full-text rows in rowid order (at 100k: 17.2 s in date order, 0.23 s sorted), and reports the raw messages no other account refers to.
 - At 100,000 messages the transaction takes 3.8–4.0 s from a cold cache, while readers keep their p99 under 1 ms (under 5.4 ms with a warm cache). The writer is busy for the whole removal; batching it is possible if that hurts sync in M3.
 
+### ADR-005 amendment — schema v3 to v5, All Inboxes pages and downloaded bodies (M3, 2026-10-05)
+
+Built in M3's phase A by three agents, renumbered at the lead's merge ([sync](m3/sync.md), [bodies](m3/bodies.md), [threading](m3/threading.md)).
+- **v3** adds `messages.thread_index`: the 22-byte conversation block of an Outlook `Thread-Index` (ADR-016). Rows from before it have none.
+- **v4** adds `folders.below_floor`, the server's messages under a folder's floor when last counted. It is a hint for the count check and the STATUS skip, recounted by the UID diff, never a reason to store or drop a row. A floor of 1 means nothing older is left; v4 sets it for every folder M2 synced completely.
+- **v5** adds `bodies(blob_key, size, used)` with an index on `(used, blob_key)`, a trigger that drops a body with the last message that refers to it, and `message_parts.section` (the IMAP section of an attachment fetched on demand).
+- **Sync writes:** a pass's changes go to the store by UID in one transaction with one exact change event (`sync_changes`); an account's folder list is replaced in one transaction, and folders gone from the server leave with their messages (`replace_folders`).
+- **Body upgrade:** a downloaded body upgrades its header-only row in one transaction after its blob is durable. The row keeps its id and place and gets the blob key, `body_state` `Full` or `Text` (a large message rebuilt from its text parts), the parts with their sections, the snippet and a full-text row with the whole text; one change event lists it as changed. A full-text batch skips a message whose body already indexed it.
+- **Disk cap:** the bodies used longest ago are evicted back to headers and preview (rows, snippets and full text stay), 200 per transaction, without a change event; their blobs are deleted after the commit.
+- **All Inboxes pages:** a view over several folders merges the folders' index walks in one compound SELECT (no sort; only `offset + limit` rows read) for every filter. An unfiltered view whose folders hold at least half the store's messages walks the global date index instead. On 3–5 fixture accounts with 90,000–100,000 messages, deep filtered pages went from 0.7–5.4 ms warm (up to 50 ms cold) to 0.3–1.7 ms warm (≤ 17.7 ms cold). Opening All Inboxes took ≤ 32.3 ms cold, and one new message's diff p99 ≤ 5.2 ms.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -256,6 +271,26 @@ Built in M2 ([m2/imap.md](m2/imap.md)) on S1's raw-command layer.
 - **Errors carry no server text:** refused logins are classified into `LoginFailure` (RFC 5530 codes, then provider texts, most of them unverified until test accounts exist) and the text is dropped.
 - **Folder list:** `RETURN (SPECIAL-USE STATUS (MESSAGES UNSEEN))` where LIST-STATUS is offered, else LIST plus pipelined STATUS; roles by SPECIAL-USE, then the nb/nn/en name table.
 - **First sync:** batches of 200 UIDs newest first: header fields and the first 1,024 bytes of the text (no ENVELOPE), parsed by mail-parser like whole messages, one store transaction per batch, then the floor; the next batch is fetched during the commit. 1,000 headers in 84–229 ms on the testbed.
+
+### ADR-006 amendment — the sync core and body downloads as built (M3 phase A, 2026-10-05)
+
+Built in M3 ([sync](m3/sync.md), [bodies](m3/bodies.md)) on S1's model and M2's connection, first sync and store.
+- **Folder pass:** EXAMINE (CONDSTORE, or QRESYNC enabled), with a view kept current from every EXISTS, EXPUNGE and VANISHED; a UIDVALIDITY change resets the folder; an unfinished first sync continues. Then:
+  - the one-round-trip fast path;
+  - new UIDs (`UID FETCH n:*`, or SEARCH and batches of 200);
+  - flags and keywords over the folder's window (`CHANGEDSINCE m VANISHED`, `CHANGEDSINCE m`, or a full scan);
+  - the count check against EXISTS, with a UID diff as the fallback.
+
+  Each step is one store transaction. VANISHED UIDs are matched against stored ones only.
+- **Account pass:** UNSELECT pipelined with `LIST … RETURN (SPECIAL-USE STATUS (MESSAGES UNSEEN UIDNEXT UIDVALIDITY HIGHESTMODSEQ))`, else LIST and pipelined STATUS. The store's folder list is replaced by the server's; a folder pass runs only where STATUS differs from the store; a NO skips the folder until the next LIST. INBOX on the IDLE connection keeps a STATUS backstop. Passes over one folder are serialized by a per-folder async lock shared by an account's connections.
+- **Which folders sync** (a proposal for the user): INBOX and the role folders, and any folder synced before (opened once); other folders show STATUS counts; `\All` never syncs by itself.
+- **The first-sync window** (a proposal for the user): the messages of the last 90 days, at most 5,000 and at least 200, UID-contiguous from a floor; older mail loads 200 at a time below it.
+- **Body downloads:** EXAMINE and a UIDVALIDITY check, then only `BODY.PEEK`. Up to 10 MiB by RFC822.SIZE the whole message, several per FETCH (≤ 50, ≤ 16 MiB). Larger ones by BODYSTRUCTURE: the header, every part's MIME header and the text/plain and text/html parts, rebuilt in the message's own MIME structure with attachments empty and their sections recorded for on-demand fetches. A missing UID or a new UIDVALIDITY answers `Gone`.
+- **Verified on the testbed:**
+  - 0 divergences in 40 of 40 randomized runs (Dovecot with and without QRESYNC, IMAP4rev1 Dovecot, Stalwart; polling only, the IDLE connection is phase B's);
+  - mid-FETCH cuts of a first sync, a flag fetch and new mail lose and duplicate nothing;
+  - a no-change account pass of the 10,000-message `perf` account took p50 5.9–7.3 ms on Dovecot, 0.3–0.7 ms on Stalwart and 8.8–35.1 ms with IMAP4rev1's full flag scans (worst 41.3 ms), within S1's bars;
+  - 1 KB, 5 MB and 12 MB body fixtures stored within 82–109 ms of connecting on each server, the 12 MB one as 810 bytes, with nothing marked `\Seen`.
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
@@ -343,6 +378,12 @@ Built in M2 ([m2/accounts.md](m2/accounts.md)).
 - Adding an account stores the secret before the entry is written (the commit point); removing one deletes the secrets last. A journal of keys (`$XDG_STATE_HOME/sealwax/accounts-pending`) lets the engine delete the secret of an add that crashed before its commit point, and finish a removal that crashed or failed after its own.
 - The engine opens the keyring on first use, never on the startup path. Self-tests keep secrets in memory; development builds can too, with `SEALWAX_SECRETS=memory` ([SECURITY.md](SECURITY.md#credentials)).
 
+### ADR-008 amendment — the no-keyring banner and a password typed again (ML-048, M3, 2026-10-05)
+
+Built in M3 ([report](m3/status.md)).
+- **No keyring:** when the Secret Service doesn't answer, the engine keeps secrets in memory, as before, and tells the app once (`KeyringUnavailable`). The window's banner says passwords and sign-ins stay in memory until Sealwax quits, until dismissed for the session. The memory backend that self-tests and `SEALWAX_SECRETS=memory` choose is not a fallback and isn't reported.
+- **A password typed again** (`UpdatePassword`) is checked on IMAP and then SMTP with the account's username before the account lane stores it under the account key; a refused one is never stored. The account's sync restarts after it is stored.
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
@@ -370,6 +411,10 @@ Built in M2 ([m2/accounts.md](m2/accounts.md)).
 - **Writing:** a new entry is appended after the file's unchanged text; an entry is removed with `toml_edit`, keeping the user's comments and layout; nothing is added to a file with mistakes. Writes are atomic (0600 in a 0700 folder), follow a symbolic link to its target, and start over when the file changed during the write.
 - **Hand removal detaches:** an entry removed by hand stops its account's sync and hides it from the sidebar and All Inboxes; its mail and secret stay until the entry returns or the Remove command deletes it. A hand edit never deletes data.
 - **The grep test** this ADR asked for is `engine/tests/no_secret_in_files.rs`.
+
+### ADR-009 amendment — `[storage]` in config.toml (ML-044, M3, 2026-10-05)
+
+Built in M3 ([report](m3/bodies.md)): `cache_size` (a size such as `"2 GiB"` or `"500 MB"`, at least 100 MiB, or `"unlimited"`) and `prefetch_days` (0–365; 0 turns prefetching off). The defaults, 2 GiB and 14 days, are proposals for the user. The section is read like the rest of the file and sent to the engine with `Command::Storage`; a file with a mistake at startup sends the defaults.
 
 ## ADR-010 — Name and app-id (2026-10-04)
 
@@ -575,6 +620,15 @@ S1 (2026-10-04) confirmed the inputs on the testbed: Message-ID, In-Reply-To and
 ### ADR-016 amendment — threading as built (M1, 2026-10-04)
 
 Built in M1 ([m1/store.md](m1/store.md)): union-find over `thread_aliases` (every Message-ID, In-Reply-To and References entry, per account); merges go into the largest thread and are reported in change events; a thread's size counts each Message-ID once. Not built yet: Outlook's `Thread-Index`, the Gmail thread-ID hint, collapsing threads over 100 messages, and per-folder conversation rows.
+
+### ADR-016 amendment — Outlook's Thread-Index and the property tests (M3, 2026-10-05)
+
+Built in M3 ([report](m3/threading.md)).
+- **Thread-Index honoured:** the 22-byte header block of a valid `Thread-Index` (base64; reserved byte 0x01, a time, a non-zero GUID, whole 5-byte reply blocks) is filed per account as one more alias beside Message-ID, In-Reply-To and References, so Outlook replies without References join their conversation. Malformed values are ignored. Stored in `messages.thread_index` (schema v3). Unverified against real Outlook and Exchange mail.
+- **Gmail's X-GM-THRID isn't used,** by the user's decision of 2026-10-04 (no Gmail-specific work). Gmail mail threads by its headers.
+- **Removals never split a conversation:** its aliases stay until its last message goes, so a moved message rejoins it and a merge outlives the message that caused it.
+- **Checked:** a property test (64 cases per CI run; 5,000 passed once) ingests random corpora over three accounts in any order and batch size, with resends, expunges and moves, and compares the conversations and their sizes with the connected components of the alias graph. `Store::check` verifies that every threading key of every message aliases its conversation.
+- Still not built: collapsing threads over 100 messages and per-folder conversation rows (ML-057).
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 

@@ -34,7 +34,8 @@ Sealwax handles hostile content (every incoming message), long-lived credentials
 - Passwords and refresh tokens are stored only in the Secret Service keyring (oo7). Access tokens stay in memory.
 - `config.toml`, `keys.toml`, `accounts.toml`, the database, the blob store and the logs never contain a secret: `engine/tests/no_secret_in_files.rs` adds accounts with a known dummy password and searches every file and trace-level log line for it.
 - Removing an account deletes its secrets, database rows and blobs, in that order after its `accounts.toml` entry; a removal that fails or crashes after the entry is gone is journalled and finished at the next start. An entry deleted by hand only detaches the account: its data and secret stay until it is removed in Sealwax.
-- Without a keyring, secrets are kept in memory for the session and a banner says so (the banner isn't built yet; M2 logs it).
+- Without a keyring, secrets are kept in memory for the session and a banner says so (ML-048: the window's banner, until dismissed for the session).
+- A password typed again is checked on IMAP and SMTP before it replaces the stored one; a refused one is never stored.
 - **Development builds only** (`cfg!(debug_assertions)`; release builds never read them): `SEALWAX_TEST_CA=<file>` replaces the system's trust with exactly that CA (the mail testbed's), and `SEALWAX_SECRETS=memory` keeps secrets out of the keyring. Self-tests that start the real engine (`engine-start`) use both.
 
 ### Message rendering
