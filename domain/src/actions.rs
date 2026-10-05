@@ -210,6 +210,7 @@ pub enum ActionId {
     ToggleSidebar,
     CommandPalette,
     AddAccount,
+    RemoveAccount,
     KeyboardShortcuts,
     Preferences,
     CustomizeShortcuts,
@@ -217,7 +218,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 31] = [
+    pub const ALL: [Self; 32] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::OpenMessage,
@@ -245,6 +246,7 @@ impl ActionId {
         Self::ToggleSidebar,
         Self::CommandPalette,
         Self::AddAccount,
+        Self::RemoveAccount,
         Self::KeyboardShortcuts,
         Self::Preferences,
         Self::CustomizeShortcuts,
@@ -376,6 +378,18 @@ impl ActionId {
             Self::AddAccount => ActionSpec {
                 menu: Some(MenuSection::Settings),
                 ..command("add-account", "Add Account", General, Scope::Window, &[])
+            },
+            // ML-038: asks which account and whether, then the engine deletes it. Available
+            // while `accounts.toml` lists an account.
+            Self::RemoveAccount => ActionSpec {
+                menu: Some(MenuSection::Settings),
+                ..command(
+                    "remove-account",
+                    "Remove Account",
+                    General,
+                    Scope::Window,
+                    &[],
+                )
             },
             // `app.shortcuts` with Ctrl+? is libadwaita's convention. `?` needs Shift on both
             // layouts, so `h` is the unshifted alternative.
@@ -567,6 +581,7 @@ mod tests {
                 ActionId::ToggleSidebar,
                 ActionId::CommandPalette,
                 ActionId::AddAccount,
+                ActionId::RemoveAccount,
                 ActionId::KeyboardShortcuts,
                 ActionId::Preferences,
                 ActionId::CustomizeShortcuts,

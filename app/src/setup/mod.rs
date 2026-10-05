@@ -12,6 +12,7 @@
 //! focus in its first field that needs typing.
 
 pub mod form;
+pub mod remove;
 pub mod sources;
 pub mod text;
 mod view;

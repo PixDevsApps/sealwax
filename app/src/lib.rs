@@ -6,6 +6,7 @@ pub mod activation;
 pub mod application;
 pub mod cli;
 pub mod config;
+pub mod engine;
 pub mod engine_link;
 pub mod list;
 pub mod mailbox;

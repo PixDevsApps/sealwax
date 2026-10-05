@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-Synced: 2026-10-04
+Synced: 2026-10-05
 
 The repository docs are the canonical project memory ([ADR-012](#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Dated entries describe the state at that date; newer entries and amendments take precedence. ADRs written before the naming decision call the app "Mail", its working name; it is **Sealwax** ([ADR-010](#adr-010-accepted--sealwax-2026-10-04)).
 
@@ -8,17 +8,17 @@ The repository docs are the canonical project memory ([ADR-012](#adr-012--reposi
 
 Use this page for decisions with meaningful long-term cost. Keep each entry short, dated and explicit about alternatives. Change an accepted decision with a dated `###` amendment under it; do not rewrite history. Status moves Proposed → Accepted when the user decides or a spike provides the evidence; say which. Library facts below were checked against crates.io and the crate sources on 2026-10-04 ([RESEARCH.md](RESEARCH.md#library-verification-2026-10-04)).
 
-| ADR | Title | Status (2026-10-04) |
+| ADR | Title | Status (2026-10-05) |
 | --- | --- | --- |
 | 001 | Standalone native application | Accepted (user request) |
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
-| 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6, the application shell built in M1 |
+| 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6, the application shell built in M1, the engine service and autodetect built in M2 |
 | 004 | Follow the live Omarchy theme | Accepted (user request); built in M1 |
-| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1 |
-| 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery |
-| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending) |
-| 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism proposed; S5 is go/no-go |
-| 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1 |
+| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2 |
+| 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2 |
+| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending); the SMTP login check built in M2 |
+| 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism proposed; S5 is go/no-go; secrets keyed by the account key in M2 |
+| 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1 |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
@@ -27,7 +27,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules) |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user |
-| 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs) |
+| 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 
 ## ADR-001 — Standalone native application (2026-10-04)
@@ -120,6 +120,20 @@ Built as [m1/list.md](m1/list.md) records.
 
   So the list notes its place before a reset, drops the focus for a same-view reload, and restores the place in the layout phase and the focus two frames later.
 
+### ADR-003 amendment — the engine service and autodetect (M2, 2026-10-05)
+
+Built in M2 (`engine::service`, `engine::autoconfig`; reports [m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md), [m2/accounts.md](m2/accounts.md)).
+
+- **The service:** one thread (`sealwax-service`) runs the engine's two-worker runtime and the command loop. The app starts it once the first frame is painted, so neither the engine nor the keyring delays it, attaches its `EngineLink` to the engine's channels, and stops it before the store closes. Stopping takes under 1 ms when nothing is in flight.
+- **One store:** the app holds the store in an `Arc` and lends it to the engine, which writes what it syncs; the app closes it at shutdown, after the engine has stopped.
+- **Order of work:**
+  - autodetect and login checks run side by side;
+  - adding, removing and reconciling accounts run in one lane, one job at a time, after `recover()` has finished what a crash interrupted;
+  - each account has one sync task (connect, folder list, first INBOX sync), which is aborted and awaited before the account is removed.
+- **Accounts:** the app sends `Command::Accounts` after every read of `accounts.toml` without mistakes. A faulty file sends nothing, so a typo never detaches an account. In M2 a sync runs once per start and once per added account; re-sync, IDLE and retries are M3's.
+- **Self-tests** start no engine unless a script asks (`engine-start`), so the setup scripts keep their fake one.
+- **Autodetect:** its lookups live in `engine::autoconfig` behind a `Network` trait (MX, SRV, CNAME, addresses, an HTTPS GET, the TLS check); its rules, presets and parser are pure code in `domain::autoconfig`. One detection is one future over all sources, so dropping it cancels every lookup. A preset answers without building any network. Tests drive the pipeline with a scripted `Network` on paused tokio time; real lookups run only in `devtools/autodetect-measure` and one ignored test.
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
@@ -194,6 +208,20 @@ Built as [m1/store.md](m1/store.md) records.
 
 **At 100k:** 19,986 headers/s, 7,487 full-text messages/s, 2,695 messages/s end to end. The store needs SQLite ≥ 3.43 (FTS5 with `contentless_delete`); the package depends on `sqlite>=3.43`.
 
+### ADR-005 amendment — folder sync state and server counts (M2, 2026-10-05)
+
+Built in M2 ([m2/imap.md](m2/imap.md)); no migration, since schema v1 already holds the attributes, `selectable` and the sync state.
+- A folder list is upserted in one commit.
+- A new folder without messages shows the server's STATUS counts; the first sync's start replaces them with the store's own, and the recount check skips exactly the new, empty folders.
+- The first sync records `Start`, `Floor` (after each batch's ingest has replied) and `Finish` as separate small commits. A UIDVALIDITY change resets the folder through `Store::remove`.
+
+### ADR-005 amendment — schema v2: the account key (M2, 2026-10-05)
+
+Built in M2 ([m2/accounts.md](m2/accounts.md)).
+- Migration v2 adds `accounts.key` (unique; NULL for local accounts that no settings file lists: fixtures, self-tests, M1 stores) and `accounts.detached`.
+- `remove_account` deletes an account and everything it owns in one transaction, deleting its full-text rows in rowid order (at 100k: 17.2 s in date order, 0.23 s sorted), and reports the raw messages no other account refers to.
+- At 100,000 messages the transaction takes 3.8–4.0 s from a cold cache, while readers keep their p99 under 1 ms (under 5.4 ms with a warm cache). The writer is busy for the whole removal; batching it is possible if that hurts sync in M3.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -221,6 +249,14 @@ Built as [m1/store.md](m1/store.md) records.
 
 Not yet verified: real providers (Gmail labels, XOAUTH2), the LOGIN fallback (every server offered PLAIN), COMPRESS, lossy links, long IDLE across suspend and resume, mailboxes far beyond 10k.
 
+### ADR-006 amendment — the IMAP connection layer as built (M2, 2026-10-05)
+
+Built in M2 ([m2/imap.md](m2/imap.md)) on S1's raw-command layer.
+- **Connect:** TLS from the first byte, or STARTTLS sent whatever the plaintext capabilities say; a NO, BAD, failed handshake or PREAUTH greeting ends the attempt, and capabilities are read again over TLS. AUTHENTICATE PLAIN; LOGIN only without PLAIN and without LOGINDISABLED; XOAUTH2 with a token from the caller. `ID ("name" "Sealwax" "version" …)` where offered; ENABLE QRESYNC where offered. TCP keepalive and a timeout on every read; 30 s for connect and login together.
+- **Errors carry no server text:** refused logins are classified into `LoginFailure` (RFC 5530 codes, then provider texts, most of them unverified until test accounts exist) and the text is dropped.
+- **Folder list:** `RETURN (SPECIAL-USE STATUS (MESSAGES UNSEEN))` where LIST-STATUS is offered, else LIST plus pipelined STATUS; roles by SPECIAL-USE, then the nb/nn/en name table.
+- **First sync:** batches of 200 UIDs newest first: header fields and the first 1,024 bytes of the text (no ENVELOPE), parsed by mail-parser like whole messages, one store transaction per batch, then the floor; the next batch is fetched during the commit. 1,000 headers in 84–229 ms on the testbed.
+
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
 **Status:** Proposed. S7 confirms the output in Gmail web, Outlook web and Thunderbird.
@@ -245,6 +281,13 @@ S7 confirms the MIME side ([report](spikes/S7-composer.md)): 12 messages round-t
 - `Date:` stays in UTC (mail-builder's choice), which also keeps the sender's time zone private.
 
 Interop in Gmail web, Outlook web and Thunderbird is still pending test accounts and sending approval; the samples are in `spikes/s7-composer/fixtures/`.
+
+### ADR-007 amendment — the SMTP login check (M2, 2026-10-05)
+
+Built in M2 ([m2/imap.md](m2/imap.md)).
+- lettre speaks SMTP over a socket from `engine::net` (keepalive; DNS and connect failures told apart). Implicit TLS uses the same rustls configuration as IMAP and is handed to `connect_with_transport`; STARTTLS uses lettre's `TlsParameters` from the same trust (the platform verifier, or exactly the testbed CA with `CertificateStore::None`).
+- `hello_name` is `ClientId::Ipv4(127.0.0.1)`, sent as `EHLO [127.0.0.1]` (the RFC 5321 address literal).
+- A refused login drops the connection rather than lettre's `abort()`, which waits for QUIT's reply without a timeout; QUIT after success waits 2 s at most. lettre's error displays include server replies, so they are never logged.
 
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
@@ -273,6 +316,13 @@ Interop in Gmail web, Outlook web and Thunderbird is still pending test accounts
 
 **Consequence:** S5 (ML-013) and ML-032 cover Microsoft only, and the user registers only the Microsoft Entra client. The Google section of OAUTH-SETUP.md is kept for 1.x; S5's code keeps its Google flow as history.
 
+### ADR-008 amendment — secrets keyed by the account key (M2, 2026-10-05)
+
+Built in M2 ([m2/accounts.md](m2/accounts.md)).
+- Keyring items are keyed by the account key from `accounts.toml`.
+- Adding an account stores the secret before the entry is written (the commit point); removing one deletes the secrets last. A journal of keys (`$XDG_STATE_HOME/sealwax/accounts-pending`) lets the engine delete the secret of an add that crashed before its commit point, and finish a removal that crashed or failed after its own.
+- The engine opens the keyring on first use, never on the startup path. Self-tests keep secrets in memory; development builds can too, with `SEALWAX_SECRETS=memory` ([SECURITY.md](SECURITY.md#credentials)).
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
@@ -290,6 +340,16 @@ Built in M1 ([report](m1/actions.md)): `config.toml` holds `[appearance]` (`corn
 - applied whole or not at all;
 - reread 150 ms after a change seen on their folder and its parent;
 - created with every default commented out when the palette opens a missing one.
+
+### ADR-009 amendment — accounts.toml as built (M2, 2026-10-05)
+
+Built in M2 ([m2/accounts.md](m2/accounts.md)).
+- **Format:** `[[account]]` tables with `key`, `name`, `address`, `username` (the address by default) and `auth` (`"password"` by default, or `"microsoft"`), and `[account.imap]` and `[account.smtp]` with `host`, `port` (by protocol and security when left out) and `security` (`"tls"` by default, or `"starttls"`).
+- **Reading:** as `config.toml`: line and column for every mistake, "did you mean", applied whole or not at all. A field named like a password, secret or token is a mistake anywhere in the file; keys and addresses are unique; values are never quoted in messages, because the app logs them.
+- **The key** is the account's stable name: 12 random lowercase base32 characters, which the engine generates when it adds an account, or a word typed by hand. It names the keyring items and the store row, so a deleted store finds its accounts again.
+- **Writing:** a new entry is appended after the file's unchanged text; an entry is removed with `toml_edit`, keeping the user's comments and layout; nothing is added to a file with mistakes. Writes are atomic (0600 in a 0700 folder), follow a symbolic link to its target, and start over when the file changed during the write.
+- **Hand removal detaches:** an entry removed by hand stops its account's sync and hides it from the sidebar and All Inboxes; its mail and secret stay until the entry returns or the Remove command deletes it. A hand edit never deletes data.
+- **The grep test** this ADR asked for is `engine/tests/no_secret_in_files.rs`.
 
 ## ADR-010 — Name and app-id (2026-10-04)
 
@@ -530,6 +590,12 @@ Built in M1 ([m1/store.md](m1/store.md)): union-find over `thread_aliases` (ever
 ### ADR-018 amendment — third-party trace logs (2026-10-04)
 
 S1 found that async-imap's trace logging prints the LOGIN password. The engine therefore caps the log level of third-party protocol crates (`async_imap`, `imap_proto`, `lettre`, `rustls`, `hickory`, `reqwest`, `zbus`) at `warn` whatever `RUST_LOG` asks for, and the log-grep test runs the testbed suites at trace level to prove no credential, token, address or folder name appears.
+
+### ADR-018 amendment — the caps and autodetect's requests as built (M2, 2026-10-05)
+
+Built in M2 ([m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md)).
+- **Caps:** `infrastructure::logging` holds `async_imap`, `imap_proto`, `lettre`, `rustls`, `tokio_rustls`, `hickory`, `reqwest` and `zbus` at `warn` with a `Targets` filter beside `RUST_LOG`'s, so no directive lifts them; they weren't capped before M2. The log-grep test (`engine/tests/log_grep.rs`) runs M2's testbed flows at trace level, with a control that proves async-imap's AUTHENTICATE line reaches the log without the caps.
+- **Autodetect's requests:** the full address goes only to `https://autoconfig.<domain>/` as the `emailaddress` parameter; the ISPDB, MX, SRV, CNAME and the MX operator's autoconfig carry the domain only. HTTPS only. Redirects are followed at most three times, to the same host or inside the requested domain, and never when the target would carry the address to a host other than the one first asked (checked after percent-decoding). One hickory resolver serves DNS, HTTPS and the TLS checks, and a host with a non-public address is neither fetched nor probed; environment proxies aren't used, so that check always applies. The User-Agent is generic. The TLS check sends only CAPABILITY, STARTTLS and `EHLO [127.0.0.1]`. Error texts that might quote a URL are dropped, and logs carry only the winning source's name and the time. Measured 2026-10-05: 2,711 requests in five runs, 0 violations.
 
 ## ADR-019 — Corner radius follows Hyprland (2026-10-04)
 

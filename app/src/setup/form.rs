@@ -83,12 +83,6 @@ pub fn security_name(security: Security) -> &'static str {
     }
 }
 
-/// The account's stable name in `accounts.toml` and the keyring: its address in lower case,
-/// which no other account can have.
-pub fn account_key(address: &Address) -> AccountKey {
-    AccountKey(address.text.to_lowercase())
-}
-
 /// The username to log in with and the one more to try (S4b: at most two attempts). A
 /// username the user typed is tried alone, unless it is the one detection proposed.
 pub fn usernames(
@@ -122,7 +116,8 @@ pub fn settings(
 ) -> AccountSettings {
     let name = name.trim();
     AccountSettings {
-        key: account_key(address),
+        // The engine gives a new account its random key (ML-034).
+        key: AccountKey(String::new()),
         name: if name.is_empty() {
             address.text.clone()
         } else {
@@ -381,7 +376,7 @@ mod tests {
             "kari".to_owned(),
         );
         assert_eq!(settings.name, "Kari@Example.test");
-        assert_eq!(settings.key, AccountKey("kari@example.test".to_owned()));
+        assert_eq!(settings.key, AccountKey(String::new()));
         assert_eq!(settings.auth, AuthMethod::Password);
         assert_eq!(
             super::settings(

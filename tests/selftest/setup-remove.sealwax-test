@@ -1,0 +1,80 @@
+# Remove Account (ML-038) on a scripted engine: unavailable without an account that accounts.toml
+# lists, then a confirmation that names the account and what goes; Cancel sends nothing, Remove
+# sends the account's key, and the sidebar lets the account go. With two accounts the dialog asks
+# which. Every address and name is fictional.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-remove.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# Nothing to remove yet: the command is hidden from the menu and the palette.
+assert-action-enabled win.remove-account false
+
+# One account through the manual settings.
+setup-click add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-click setup-manual-link
+setup-type setup-imap-host imap.example.test
+setup-type setup-smtp-host smtp.example.test
+setup-type setup-password fictional-password-9
+setup-key enter
+engine-expect verify address=kari@example.test
+engine-reply verified ok
+engine-expect add-account address=kari@example.test
+engine-reply added ok
+wait-until assert-setup open false
+wait-until assert-shown welcome false
+assert-action-enabled win.remove-account true
+
+# The confirmation names the account; Cancel sends nothing.
+action win.remove-account
+assert-shown remove-account true
+assert-labelled
+screenshot $DIR/../../.local/selftest/remove-account.png
+setup-respond remove-account cancel
+engine-expect none
+assert-shown welcome false
+
+# Remove sends the account's key; the account leaves the sidebar and the welcome page returns.
+action win.remove-account
+setup-respond remove-account remove
+engine-expect remove-account key=kari
+engine-reply removed ok
+wait-until assert-shown welcome true
+assert-action-enabled win.remove-account false
+
+# Two accounts: the dialog asks which, with a choice.
+setup-click add-account
+setup-type setup-address ola@example.test
+setup-click setup-manual-link
+setup-type setup-imap-host imap.example.test
+setup-type setup-smtp-host smtp.example.test
+setup-type setup-password fictional-password-10
+setup-key enter
+engine-expect verify address=ola@example.test
+engine-reply verified ok
+engine-expect add-account address=ola@example.test
+engine-reply added ok
+wait-until assert-setup open false
+action win.add-account
+setup-type setup-address per@example.test
+setup-click setup-manual-link
+setup-type setup-imap-host imap.example.test
+setup-type setup-smtp-host smtp.example.test
+setup-type setup-password fictional-password-11
+setup-key enter
+engine-expect verify address=per@example.test
+engine-reply verified ok
+engine-expect add-account address=per@example.test
+engine-reply added ok
+wait-until assert-setup open false
+action win.remove-account
+assert-shown remove-account-choice true
+setup-respond remove-account remove
+engine-expect remove-account key=ola
+engine-reply removed ok
+assert-action-enabled win.remove-account true

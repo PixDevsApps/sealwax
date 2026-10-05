@@ -10,7 +10,7 @@ use crate::window::{
     ALL_INBOXES, AccountStatus, FolderRole, SidebarAccount, SidebarFolder, SidebarModel,
 };
 use gtk4::glib;
-use sealwax_domain::model::{Account, Folder, FolderId, FolderRole as StoreRole};
+use sealwax_domain::model::{Account, AccountId, Folder, FolderId, FolderRole as StoreRole};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{
     ChangeEvent, FolderCounts, OpenView, Store, StoreOptions, StoreVersion, Versioned, ViewFilter,
@@ -18,6 +18,7 @@ use sealwax_infrastructure::store::{
 };
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, Ref, RefCell};
+use std::collections::HashMap;
 use std::future::Future;
 use std::path::Path;
 use std::rc::{Rc, Weak};
@@ -47,9 +48,13 @@ fn sidebar_role(role: StoreRole) -> Option<FolderRole> {
 }
 
 /// Accounts and folders as the sidebar shows them: role folders with their unread counts (drafts
-/// for Drafts), other folders under "More". Every account is local until sync exists (M3), so
-/// each shows as synced.
-pub fn sidebar_model(accounts: &[Account], folders: &[Folder]) -> SidebarModel {
+/// for Drafts), other folders under "More". An account the engine hasn't reported on shows as
+/// synced.
+pub fn sidebar_model(
+    accounts: &[Account],
+    folders: &[Folder],
+    statuses: &HashMap<AccountId, AccountStatus>,
+) -> SidebarModel {
     SidebarModel {
         accounts: accounts
             .iter()
@@ -77,7 +82,10 @@ pub fn sidebar_model(accounts: &[Account], folders: &[Folder]) -> SidebarModel {
                 SidebarAccount {
                     key: account_key(account),
                     name: account.name.clone(),
-                    status: AccountStatus::Synced,
+                    status: statuses
+                        .get(&account.id)
+                        .copied()
+                        .unwrap_or(AccountStatus::Synced),
                     folders: role_folders,
                     more,
                 }
@@ -206,7 +214,7 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         .folders()
         .recv_blocking()
         .map_err(|error| error.to_string())?;
-    let scope = sidebar_model(&accounts.value, &folders.value)
+    let scope = sidebar_model(&accounts.value, &folders.value, &HashMap::new())
         .default_selection()
         .and_then(|key| scope_for_key(&key, &folders.value));
     let thresholds = glib::DateTime::now_local()
@@ -248,8 +256,10 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
 #[derive(Default)]
 pub struct Mailbox {
     phase: RefCell<Phase>,
-    store: RefCell<Option<Store>>,
+    store: RefCell<Option<Arc<Store>>>,
     blobs: RefCell<Option<BlobStore>>,
+    /// What the engine last reported for each account.
+    statuses: RefCell<HashMap<AccountId, AccountStatus>>,
     accounts: RefCell<Vec<Account>>,
     folders: RefCell<Vec<Folder>>,
     /// The version the folder list was read at; change events up to it are already in it.
@@ -328,7 +338,7 @@ impl Mailbox {
             first_view = first.is_some(),
             "store opened"
         );
-        self.store.replace(Some(store));
+        self.store.replace(Some(Arc::new(store)));
         self.blobs.replace(Some(blobs));
         self.folders_version.set(folders.version);
         self.accounts.replace(accounts.value);
@@ -388,7 +398,12 @@ impl Mailbox {
     /// The open store, for requests. Requests only send: hold the borrow for the call, never
     /// across an `await`.
     pub fn store(&self) -> Option<Ref<'_, Store>> {
-        Ref::filter_map(self.store.borrow(), Option::as_ref).ok()
+        Ref::filter_map(self.store.borrow(), |store| store.as_deref()).ok()
+    }
+
+    /// The open store for the engine, which writes what it syncs.
+    pub fn shared_store(&self) -> Option<Arc<Store>> {
+        self.store.borrow().clone()
     }
 
     pub fn blobs(&self) -> Option<BlobStore> {
@@ -412,7 +427,18 @@ impl Mailbox {
     }
 
     pub fn sidebar_model(&self) -> SidebarModel {
-        sidebar_model(&self.accounts.borrow(), &self.folders.borrow())
+        sidebar_model(
+            &self.accounts.borrow(),
+            &self.folders.borrow(),
+            &self.statuses.borrow(),
+        )
+    }
+
+    /// Shows what the engine reported for `account` in the sidebar.
+    pub fn set_status(self: &Rc<Self>, account: AccountId, status: AccountStatus) {
+        if self.statuses.borrow_mut().insert(account, status) != Some(status) {
+            self.queue_sidebar();
+        }
     }
 
     pub fn scope_for_key(&self, key: &str) -> Option<ViewScope> {
@@ -535,6 +561,10 @@ impl Mailbox {
         let Some(store) = self.store.borrow_mut().take() else {
             return;
         };
+        let Ok(store) = Arc::try_unwrap(store) else {
+            tracing::warn!("the store is still in use; it closes without waiting for its writes");
+            return;
+        };
         let started = Instant::now();
         match store.close() {
             Ok(()) => tracing::info!(
@@ -550,7 +580,6 @@ impl Mailbox {
 mod tests {
     use super::*;
     use sealwax_domain::account::AccountKey;
-    use sealwax_domain::model::AccountId;
 
     fn folder(id: i64, account: i64, name: &str, role: StoreRole, unread: u32) -> Folder {
         Folder {
@@ -586,7 +615,7 @@ mod tests {
             folder(4, 2, "INBOX", StoreRole::Inbox, 4),
             folder(5, 2, "All Mail", StoreRole::All, 9),
         ];
-        let model = sidebar_model(&accounts, &folders);
+        let model = sidebar_model(&accounts, &folders, &HashMap::new());
         assert_eq!(model.accounts.len(), 2);
         let personal = &model.accounts[0];
         assert_eq!(personal.key, "account-1");

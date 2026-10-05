@@ -131,6 +131,7 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
         dirs,
         exit_after: None,
         tiling,
+        engine: None,
     };
     let app = SealwaxApplication::new(config, started);
     let outcome: Rc<Cell<Option<bool>>> = Rc::new(Cell::new(None));
@@ -812,14 +813,18 @@ fn collect(widget: &gtk::Widget, visit: &mut impl FnMut(&gtk::Widget)) {
 
 /// Controls that a screen reader can't name, and icon-only buttons without a tooltip
 /// (DESIGN.md "Accessibility"). GTK's own parts of a menu button and of the window controls are
-/// left to GTK.
+/// left to GTK, and a toast's to libadwaita. Only controls on screen count: libadwaita keeps
+/// unused buttons hidden (an alert dialog's other layout, a toast without an action).
 fn unlabelled(root: &gtk::Widget) -> Vec<String> {
     let mut problems = Vec::new();
+    let toast = glib::Type::from_name("AdwToastWidget");
     collect(root, &mut |widget| {
-        if widget.ancestor(gtk::MenuButton::static_type()).is_some()
+        if !widget.is_mapped()
+            || widget.ancestor(gtk::MenuButton::static_type()).is_some()
             || widget
                 .ancestor(gtk::WindowControls::static_type())
                 .is_some()
+            || toast.is_some_and(|toast| widget.ancestor(toast).is_some())
         {
             return;
         }

@@ -1,6 +1,6 @@
 # Testing & Acceptance
 
-Synced: 2026-10-04
+Synced: 2026-10-05
 
 Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actually run, with date, command, machine and caveats. "Not verified" is an acceptable result; a guessed number is not.
 
@@ -11,8 +11,8 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 | Unit | Pure logic: threading, query parser, autoconfig XML, reply/forward building, format=flowed, mailto, palette and CSS (22 stock themes, contrast rules), the action registry and keymap audit (US and Norwegian), `config.toml` and `keys.toml` | `domain/` (`cargo test`), insta snapshots, proptest | Yes |
 | Store | Migrations, writer/reader split, overlays, crash consistency (a SIGKILLed child mid-ingest), change events kept exact against a model | `infrastructure/` (scratch stores under `target/scratch`) | Yes |
 | Protocol (scripted) | IMAP, SMTP and POP3 against scripted mock servers: capabilities, auth, fallbacks, faults | `engine/` tests | Yes |
-| Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; randomized two-client and fault-injection suites | `tools/testbed/` + `spikes/s1-imap/tests/testbed.rs` (`engine/` from M3) | Not yet: `tools/testbed/up.sh && tools/testbed/seed.sh`, then `CARGO_TARGET_DIR=target/s1 cargo test -p email-spike-s1 --release -- --ignored --test-threads=1` |
-| UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, take screenshots, and load fixture stores (`store-dir`, `fixtures`); `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*` and `perf-*`) |
+| Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; the login check, folder list and first sync (M2), the log grep at trace level; S1's randomized two-client and fault-injection suites | `tools/testbed/`, `engine/tests/testbed.rs` and `engine/tests/log_grep.rs` (M2), `spikes/s1-imap/tests/testbed.rs` | No (ignored without the testbed): `tools/testbed/up.sh && tools/testbed/seed.sh`, then `cargo test -p sealwax-engine --release -- --ignored --test-threads=1` |
+| UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, take screenshots, and load fixture stores (`store-dir`, `fixtures`); `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*`, `perf-*`, `live-*` and `testbed-*`) |
 | Security | Hostile-HTML suite against a local HTTP canary; secret grep over config, database and logs; outgoing-mail checks (no Bcc, no hostname) | `app/` and `engine/` tests | Yes |
 | Live | Real Wayland session (NVIDIA rendering, notifications, activation, fcitx5) and real test accounts | Manual or agent with authorization | No |
 
@@ -23,6 +23,7 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 - Parallel agents use different display numbers; CI uses `SEALWAX_CI_DISPLAY` (default 19).
 - `sealwax --self-test <script>` (ported from Stet) runs the real app on Broadway and a `.sealwax-test` script against it, printing TAP; the commands are in [m1/shell.md](m1/shell.md#self-test-commands-sealwax-test). `tools/ci.sh --ui` runs every `tests/selftest/*.sealwax-test` except `preview*`, which write the gate's screenshots into `tools/progress/public/`. The harness attaches a stand-in Broadway client reporting a 2560×1600 screen (without one Broadway clamps windows to 1024×768), switches `GTK_A11Y=none` to `test` so accessible labels can be checked, turns animations off and waits for a painted frame after every step.
 - Self-tests read a scratch Omarchy state (`SEALWAX_OMARCHY_STATE` under the run's scratch root), never the desktop's: the built-in palette until a script runs `theme NAME` (a stock palette from `tests/theme/`, swapped in as `omarchy-theme-set` does); `corners auto|PX` sets the corner radius. Look assertions compare what GTK draws with the applied theme: `assert-color`, `assert-contrast`, `assert-radius`, `assert-font`, `assert-height`, `assert-tooltip` ([m1/polish.md](m1/polish.md)).
+- The setup assistant runs against a fake engine on the app's `EngineLink` (`engine-attach`, `engine-expect`, `engine-reply`; `app/src/selftest/setup.rs`): scripted detection results, login failures and save and removal results; `setup-type`, `setup-click`, `setup-key enter|escape` and `setup-respond` drive it as a user, and `assert-setup`, `assert-field`, `assert-text-contains` and `assert-account-status` check it. The password is compared, never printed. `engine-start CA` starts the real engine instead, trusting only that CA and keeping secrets in memory: `testbed-setup.sealwax-test` uses it against the Docker testbed and is run by hand (M2).
 - `app/examples/theme_switch.rs` swaps a scratch Omarchy theme (`SEALWAX_OMARCHY_STATE`) as `omarchy-theme-set` does and checks colours, sizes and fonts after each switch; `app/examples/palette.rs` checks the actions, palette, scoped shortcuts, menu, shortcuts dialog and live settings.
 - WebKitGTK renders under `tools/headless.sh` in software (GTK has no GL there, so WebKit turns acceleration off). Security checks, heights, `cid:` loads and snapshots work headless. Without a Broadway client attached GTK paints about once per second, so frame timing, open-to-paint latency and scrolling are measured on the live session; headless WebView tests wait for events and allocations, never fixed delays (S2).
 
@@ -56,6 +57,47 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### M2 integrated: the engine service, the app and the testbed end to end — 2026-10-05
+
+Lead, after merging the four phase-A branches; debug builds, headless on Broadway. Reports: [imap](m2/imap.md), [autoconfig](m2/autoconfig.md), [accounts](m2/accounts.md), [setup](m2/setup.md).
+
+| Check | Result |
+| --- | --- |
+| Engine service offline (`cargo test -p sealwax-engine --test service`) | 2/2: a preset address is detected with no network request; an account whose server refuses connections is added, reports `SyncFailed { Unreachable }`, and is removed with its `accounts.toml` entry |
+| End to end on the testbed (`tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/testbed-setup.sealwax-test`, 10:55 local; Dovecot 2.4.5, Mailpit 1.31.4 for SMTP, Stalwart 0.16.24; 127.0.0.1 only, the testbed CA, secrets in memory) | 68/68 steps. alice added through the manual settings, its first sync 30 headers in 13.6 ms (engine log); role folders with the server's counts (INBOX 10 unread, Sent 1); a wrong password refused with "Wrong username or password" before anything was saved; perf added and 10,000 headers in 2,580.5 ms (a debug build; 2,167.1 ms in the run before); All Inboxes 10,030 rows; Remove Account deleted alice (10 folders, 30 messages) and left perf's 10,000. Previews: `tools/progress/public/m2-testbed-*-2026-10-05.png` |
+| Remove Account on a scripted engine (`setup-remove`, in CI) | 64/64: unavailable without a listed account; Cancel sends nothing; Remove sends the key; with two accounts the dialog asks which |
+| `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` (10:56) | 664 passed, 0 failed, 18 ignored; all 17 self-test scripts pass. Smoke run: first frame 100.0 ms, the engine started 32 ms later and stopped in 0.33 ms at quit; on the wrapper's private bus no keyring answers, and the engine fell back to memory 8 ms after it started |
+
+### M2 IMAP, login check, folders and first sync (ML-035, ML-036, ML-037) — 2026-10-05
+
+Release builds; AMD Ryzen 9 5900X, Docker 29.7.2; the testbed's pinned images; [report](m2/imap.md#measurements).
+
+| Check | Result |
+| --- | --- |
+| Testbed suites (`cargo test -p sealwax-engine --release --test testbed -- --ignored --test-threads=1`) | 5 groups pass on both Dovecots and Stalwart over TLS and STARTTLS; an interrupted 10,000-message first sync resumes to exactly 10,000 on every server |
+| 1,000 headers ≤ 5 s | **Pass**: 84.1–228.6 ms after the start of connect, 27 runs in three sessions; all 10,000 in 0.70–1.25 s |
+| Log grep at trace level (`engine/tests/log_grep.rs`) | No password, AUTH line, address, username or folder name; the control without the caps catches async-imap's AUTHENTICATE line |
+| Not verified | Real providers (no test accounts yet); LOGIN and XOAUTH2 against real servers (scripted only); the provider texts behind `AppPasswordRequired`, `ImapDisabled` and `OAuthRequired` |
+
+### M2 accounts (ML-034, ML-038) — 2026-10-05
+
+Debug builds; `tools/headless.sh 52`; [report](m2/accounts.md). `accounts_file` 14 tests, `infrastructure::accounts` 5, `store::account_tests` 3, `engine::accounts` 7, `preferences` 1 new, and the no-secret test: the dummy password is in no file (store and WAL included) and no trace-level log line, and no address is in the logs; a planted copy is found. Removal at scale (`sealwax-fixtures remove-account`, release, a 110k-message store): 100k messages in 3.8–4.0 s from a cold cache, readers' p99 under 0.61 ms cold. Not verified: the real keyring (only the in-memory store), a crash at each step (simulated through the journal).
+
+### M2 setup assistant (ML-033) — 2026-10-05
+
+Debug builds; `tools/headless.sh 51`; a scripted engine, no network; [report](m2/setup.md#tests-and-self-tests-run). Self-tests setup 140/140, setup-failures 156/156, setup-detect 205/205 in CI; `preview-m2-setup` 165/165 wrote 28 previews (`tools/progress/public/m2-setup-*-2026-10-05.png`). The app's own log lines from those runs hold none of the typed passwords, addresses or names. Not verified: real key presses, the live session, screen-reader output, the bottom-sheet layout of a small window.
+
+### M2 autodetect (ML-030, ML-031, ML-097) — 2026-10-05
+
+Release build of `devtools/autodetect-measure`, dummy addresses only, cold DNS to 1.1.1.1; [report](m2/autoconfig.md).
+
+| Check | Result |
+| --- | --- |
+| S4's list | 44/50 strict, 45/50 with the second login attempt (as S4b); p50 59 ms, p95 4,599 ms, max 6,508 ms |
+| ML-097: a fresh held-out list, 42 domains (37 with documented truth), frozen 08:24:27 UTC (sha256 `ffa7f686…7e1e`), measured once | **20/37 strict (54 %), 21/37 with the second attempt (57 %), 22/37 with verified aliases (59 %)**; S4b's held-out list: 13/26 strict (50 %), 16/26 extended (62 %). p50 295 ms, p95 5,110 ms, max 5,318 ms |
+| Privacy | 2,711 requests in five runs, 0 violations; one redirect that would have carried the address to plain HTTP on another host was refused |
+| Tests | 59 domain, 27 engine (scripted network, paused time) and 11 harness tests; `cargo test` makes no network request |
 
 ### M1 live checks — 2026-10-04
 

@@ -71,6 +71,7 @@ mod tests {
                 vec!["win.refresh", "win.toggle-sidebar", "win.command-palette"],
                 vec![
                     "win.add-account",
+                    "win.remove-account",
                     "app.shortcuts",
                     "app.preferences",
                     "app.customize-shortcuts"
@@ -84,7 +85,7 @@ mod tests {
             Some("Add Account")
         );
         assert_eq!(
-            attribute(&settings, 2, "label").as_deref(),
+            attribute(&settings, 3, "label").as_deref(),
             Some("Preferences (config.toml)")
         );
         assert_eq!(
@@ -107,7 +108,7 @@ mod tests {
         let menu = primary_menu(&keymap);
         let settings = menu.item_link(1, "section").unwrap();
         assert_eq!(
-            attribute(&settings, 1, "accel").as_deref(),
+            attribute(&settings, 2, "accel").as_deref(),
             Some("question")
         );
     }

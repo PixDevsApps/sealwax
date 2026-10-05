@@ -129,7 +129,7 @@ engine-reply detected fjordpost
 setup-type setup-password fictional-password-1
 assert-sensitive setup-primary true
 setup-key enter
-engine-expect verify address=kari@example.test "name=Kari Nordmann" key=kari@example.test imap=mail.example.test:993:tls smtp=mail.example.test:465:tls username=kari@example.test second=kari password=fictional-password-1
+engine-expect verify address=kari@example.test "name=Kari Nordmann" key= imap=mail.example.test:993:tls smtp=mail.example.test:465:tls username=kari@example.test second=kari password=fictional-password-1
 assert-setup step checking
 assert-label setup-subtitle "Checking your login with the server…"
 assert-sensitive setup-primary false

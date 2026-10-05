@@ -8,17 +8,18 @@
 use crate::actions::{self, ActionSet};
 use crate::cli;
 use crate::config;
-use crate::engine_link::EngineLink;
+use crate::engine::{self, EngineOptions};
+use crate::engine_link::{EngineLink, Subscription};
 use crate::list::MessageList;
 use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{MessageSource, Position, Reader};
-use crate::setup;
+use crate::setup::{self, remove::Removable};
 use crate::shortcuts;
 use crate::theme::{self, ThemeController};
-use crate::window::{self, Pane, Window};
+use crate::window::{self, AccountStatus, Pane, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
@@ -27,6 +28,8 @@ use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
 use sealwax_domain::model::MessageId;
+use sealwax_engine::api::Command;
+use sealwax_engine::service::Engine;
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::future::Future;
@@ -60,6 +63,8 @@ pub struct AppConfig {
     pub exit_after: Option<Duration>,
     /// No title bar and no window controls ([`window::tiling_desktop`]).
     pub tiling: bool,
+    /// Starts the engine after the first frame; self-tests start it from their script.
+    pub engine: Option<EngineOptions>,
 }
 
 impl AppConfig {
@@ -69,6 +74,7 @@ impl AppConfig {
             dirs: SealwaxDirs::from_env(),
             exit_after,
             tiling: window::tiling_desktop(),
+            engine: Some(EngineOptions::from_env()),
         }
     }
 }
@@ -108,6 +114,7 @@ mod imp {
         }
 
         fn shutdown(&self) {
+            self.state().stop_engine();
             self.state().mailbox.close();
             self.parent_shutdown();
         }
@@ -178,6 +185,9 @@ impl SealwaxApplication {
             reader: RefCell::new(None),
             reader_shows: Cell::new(None),
             engine: EngineLink::new(),
+            engine_service: RefCell::new(None),
+            engine_events: RefCell::new(None),
+            accounts_read: Cell::new(false),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -233,6 +243,11 @@ pub struct AppState {
     reader_shows: Cell<Option<MessageId>>,
     /// The engine's commands and events (ADR-003); not connected until an engine is attached.
     engine: EngineLink,
+    /// The engine this application started; the setup self-tests attach a fake one instead.
+    engine_service: RefCell<Option<Engine>>,
+    engine_events: RefCell<Option<Subscription>>,
+    /// `accounts.toml` has been read without mistakes at least once.
+    accounts_read: Cell<bool>,
 }
 
 impl AppState {
@@ -357,12 +372,34 @@ impl AppState {
         self.start_settings(app);
         let weak = Rc::downgrade(self);
         self.mailbox.connect_folders_changed(move || {
-            if let Some(state) = weak.upgrade()
-                && let (Some(window), Some(list)) = (state.window(), state.list())
-            {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if let Some(actions) = state.win_actions.borrow().as_ref() {
+                actions.set_available(
+                    ActionId::RemoveAccount,
+                    !state.removable_accounts().is_empty(),
+                );
+            }
+            if let (Some(window), Some(list)) = (state.window(), state.list()) {
                 state.fill_sidebar(&window, &list);
             }
         });
+        if let Some(options) = self.config.engine.clone() {
+            let ready = self.mailbox.wait_ready();
+            let weak = Rc::downgrade(self);
+            glib::spawn_future_local(async move {
+                ready.await;
+                if let Some(state) = weak.upgrade() {
+                    let started = Rc::downgrade(&state);
+                    state.run_after_first_frame(move || {
+                        if let Some(state) = started.upgrade() {
+                            state.start_engine(&options);
+                        }
+                    });
+                }
+            });
+        }
         let ready = self.mailbox.wait_ready();
         let first_rows = self.first_rows.wait();
         self.hold_first_window(async move {
@@ -551,6 +588,10 @@ impl AppState {
                 reader.update_keys(&keymap);
             }
         }
+        if update.accounts_changed {
+            self.accounts_read.set(true);
+            self.send_accounts();
+        }
         for problem in &update.problems {
             tracing::warn!("{problem}");
             if let Some(window) = self.window() {
@@ -580,6 +621,18 @@ impl AppState {
                 setup::open(&window, &state.engine);
             }
         });
+        let weak = Rc::downgrade(self);
+        win_actions.connect(ActionId::RemoveAccount, move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(window) = state.window()
+            {
+                setup::remove::confirm(&window, &state.engine, state.removable_accounts());
+            }
+        });
+        win_actions.set_available(
+            ActionId::RemoveAccount,
+            !self.removable_accounts().is_empty(),
+        );
         window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
         window.set_keymap(&keymap);
         actions::apply_accels(app, &keymap);
@@ -650,6 +703,98 @@ impl AppState {
             }
         });
         self.list.replace(Some(list));
+    }
+
+    /// Starts the engine on the open store and attaches it to the app's link. Once
+    /// `accounts.toml` has been read, the engine gets its accounts and syncs them.
+    pub fn start_engine(self: &Rc<Self>, options: &EngineOptions) {
+        if self.engine_service.borrow().is_some() || self.quitting.get() {
+            return;
+        }
+        let (Some(store), Some(blobs)) = (self.mailbox.shared_store(), self.mailbox.blobs()) else {
+            tracing::warn!("the engine needs the store, which isn't open");
+            return;
+        };
+        let engine = match engine::start(
+            &self.config.app_id,
+            &self.config.dirs,
+            store,
+            blobs,
+            options,
+        ) {
+            Ok(engine) => engine,
+            Err(error) => {
+                tracing::error!("the engine could not start: {error}");
+                return;
+            }
+        };
+        self.engine.attach(engine.commands(), engine.events());
+        let mailbox = Rc::downgrade(&self.mailbox);
+        let subscription = self.engine.subscribe(move |event| {
+            if let (Some(mailbox), Some((account, status))) =
+                (mailbox.upgrade(), engine::account_status(event))
+            {
+                mailbox.set_status(account, status);
+            }
+        });
+        self.engine_events.replace(Some(subscription));
+        self.engine_service.replace(Some(engine));
+        tracing::info!("engine started");
+        self.send_accounts();
+    }
+
+    /// The accounts Remove Account offers: those `accounts.toml` lists, so not the local
+    /// accounts of fixtures and self-tests.
+    fn removable_accounts(&self) -> Vec<Removable> {
+        self.mailbox
+            .accounts()
+            .into_iter()
+            .filter_map(|account| {
+                Some(Removable {
+                    key: account.key?,
+                    name: account.name,
+                    address: account.address,
+                })
+            })
+            .collect()
+    }
+
+    /// Hands the accounts from `accounts.toml` to the engine this application started.
+    fn send_accounts(&self) {
+        if !self.accounts_read.get() || self.engine_service.borrow().is_none() {
+            return;
+        }
+        let Some(prefs) = self.preferences() else {
+            return;
+        };
+        let accounts = prefs.accounts();
+        for account in self.mailbox.accounts() {
+            if account
+                .key
+                .as_ref()
+                .is_some_and(|key| accounts.iter().any(|listed| &listed.key == key))
+            {
+                self.mailbox.set_status(account.id, AccountStatus::Syncing);
+            }
+        }
+        if self.engine.send(Command::Accounts { accounts }).is_err() {
+            tracing::warn!("the engine stopped listening");
+        }
+    }
+
+    /// Stops the engine before the store closes: its connections end and its writes finish.
+    fn stop_engine(&self) {
+        self.engine_events.take();
+        let Some(engine) = self.engine_service.take() else {
+            return;
+        };
+        self.engine.detach();
+        let started = Instant::now();
+        engine.stop();
+        tracing::info!(
+            ms = started.elapsed().as_secs_f64() * 1000.0,
+            "engine stopped"
+        );
     }
 
     /// Runs `hook` once the first window's first frame is painted, or at once if it already is.

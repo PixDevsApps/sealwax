@@ -38,9 +38,10 @@ if $ui; then
     for script in tests/selftest/*.sealwax-test; do
         name=$(basename -- "$script" .sealwax-test)
         # The preview scripts write screenshots into tools/progress/ for a milestone's gate, and
-        # the perf-* scripts need a release build and large fixture stores, and the live-* scripts
-        # are meant for the live session; run them by hand.
-        [[ $name == preview* || $name == perf-* || $name == live-* ]] && continue
+        # the perf-* scripts need a release build and large fixture stores, the live-* scripts
+        # are meant for the live session, and the testbed-* scripts need the Docker mail
+        # testbed; run them by hand.
+        [[ $name == preview* || $name == perf-* || $name == live-* || $name == testbed-* ]] && continue
         log=.local/selftest-$name.log
         if ! tools/headless.sh "$display" target/debug/sealwax --self-test "$script" >"$log" 2>&1; then
             grep -v '^ok ' "$log" >&2 || true

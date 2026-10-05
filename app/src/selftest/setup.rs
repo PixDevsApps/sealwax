@@ -5,30 +5,40 @@
 //! | Command | What it does |
 //! | --- | --- |
 //! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one |
+//! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
 //! | `engine-expect detect\|verify\|add-account [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` and `smtp` (`host:port:tls\|starttls`), `username`, `second` (`none`), `password` (compared, never printed) |
 //! | `engine-expect none` | The app sent nothing more |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
 //! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `gmail`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
 //! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
-//! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account and its role folders to the app's store, as the engine would |
+//! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would |
+//! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
+//! | `setup-respond NAME RESPONSE` | Answers the alert dialog named NAME (Remove Account's `remove-account`) as its button would |
 //! | `assert-setup open\|step\|sources\|focus VALUE` | The assistant's state |
 //! | `assert-text-contains NAME TEXT` | A label's text contains TEXT |
 //! | `assert-field NAME TEXT` | A text field's text or a choice's item (never the password's) |
+//! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in` | The sidebar's state of the account with ADDRESS |
 
 use super::{Harness, StepResult, WAIT_TIMEOUT, equal, with_timeout};
+use crate::engine::EngineOptions;
 use crate::setup::{self, sources};
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use sealwax_domain::account::{
-    AccountSettings, AuthMethod, DetectSource, DetectedSettings, Detection, Endpoint, HelpLink,
-    LoginError, LoginFailure, OAuthProvider, Protocol, Security, UnsupportedReason, UsernameForm,
+    AccountKey, AccountSettings, AuthMethod, DetectSource, DetectedSettings, Detection, Endpoint,
+    HelpLink, LoginError, LoginFailure, OAuthProvider, Protocol, Security, UnsupportedReason,
+    UsernameForm,
 };
 use sealwax_domain::model::FolderRole;
 use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId};
+use sealwax_engine::net::Trust;
+use sealwax_engine::service::SecretBackend;
 use sealwax_infrastructure::store::{FolderSpec, NewAccount};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -38,6 +48,7 @@ use std::time::{Duration, Instant};
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("engine-attach", 0, 0),
     ("engine-detach", 0, 0),
+    ("engine-start", 1, 1),
     ("engine-expect", 1, 12),
     ("engine-reply", 2, 3),
     ("engine-reply-stale", 2, 3),
@@ -45,9 +56,11 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("setup-choose", 2, 2),
     ("setup-click", 1, 1),
     ("setup-key", 1, 1),
+    ("setup-respond", 2, 2),
     ("assert-setup", 2, 2),
     ("assert-text-contains", 2, 2),
     ("assert-field", 2, 2),
+    ("assert-account-status", 2, 2),
 ];
 
 pub fn handles(command: &str) -> bool {
@@ -57,7 +70,7 @@ pub fn handles(command: &str) -> bool {
 pub fn checks(assertion: &str) -> bool {
     matches!(
         assertion,
-        "assert-setup" | "assert-text-contains" | "assert-field"
+        "assert-setup" | "assert-text-contains" | "assert-field" | "assert-account-status"
     )
 }
 
@@ -66,6 +79,7 @@ pub fn checks(assertion: &str) -> bool {
 struct Last {
     request: RequestId,
     settings: Option<AccountSettings>,
+    key: Option<AccountKey>,
 }
 
 struct Fake {
@@ -107,7 +121,32 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             FAKE.with(|fake| fake.take());
             Ok(())
         }
+        "engine-start" => {
+            FAKE.with(|fake| fake.take());
+            harness.state.start_engine(&EngineOptions {
+                trust: Trust::Roots(args[0].clone().into()),
+                secrets: SecretBackend::Memory,
+            });
+            if harness.state.engine().is_connected() {
+                Ok(())
+            } else {
+                Err("the engine didn't start".to_owned())
+            }
+        }
         "engine-expect" => expect(harness, args).await,
+        "setup-respond" => {
+            let found = harness.widget(&args[0])?;
+            let dialog = found
+                .downcast_ref::<adw::AlertDialog>()
+                .ok_or_else(|| format!("{} is not an alert dialog", args[0]))?;
+            if !dialog.has_response(&args[1]) {
+                return Err(format!("{} has no response {}", args[0], args[1]));
+            }
+            dialog.emit_by_name::<()>("response", &[&args[1]]);
+            dialog.force_close();
+            harness.wait_until_settled().await;
+            Ok(())
+        }
         "engine-reply" => reply(harness, args, false).await,
         "engine-reply-stale" => reply(harness, args, true).await,
         "setup-type" => {
@@ -171,6 +210,33 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
 
 pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {
     match assertion {
+        "assert-account-status" => {
+            let mailbox = harness.state.mailbox();
+            let account = mailbox
+                .accounts()
+                .into_iter()
+                .find(|account| account.address == args[0])
+                .ok_or_else(|| format!("no account has the address {}", args[0]))?;
+            let model = mailbox.sidebar_model();
+            let status = model
+                .accounts
+                .iter()
+                .find(|shown| shown.name == account.name)
+                .map(|shown| shown.status.label())
+                .ok_or_else(|| format!("the sidebar doesn't show {}", args[0]))?;
+            let wanted = match args[1].as_str() {
+                "synced" => "synced",
+                "syncing" => "syncing…",
+                "offline" => "offline",
+                "needs-sign-in" => "needs sign-in",
+                other => {
+                    return Err(format!(
+                        "use synced, syncing, offline or needs-sign-in, not {other}"
+                    ));
+                }
+            };
+            equal("account status", status, wanted)
+        }
         "assert-setup" => {
             let wanted = args[1].as_str();
             match args[0].as_str() {
@@ -273,7 +339,16 @@ fn fields(command: &Command) -> (&'static str, Option<RequestId>, Vec<(&'static 
         Command::AddAccount {
             request, settings, ..
         } => ("add-account", Some(*request), settings_fields(settings)),
-        Command::RemoveAccount { request, .. } => ("remove-account", Some(*request), Vec::new()),
+        Command::RemoveAccount { request, key } => (
+            "remove-account",
+            Some(*request),
+            vec![("key", key.to_string())],
+        ),
+        Command::Accounts { accounts } => (
+            "accounts",
+            None,
+            vec![("count", accounts.len().to_string())],
+        ),
         Command::Shutdown => ("shutdown", None, Vec::new()),
     }
 }
@@ -315,6 +390,10 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
     fake.last.replace(Some(Last {
         request: request.unwrap_or_default(),
         settings: settings(&command).cloned(),
+        key: match &command {
+            Command::RemoveAccount { key, .. } => Some(key.clone()),
+            _ => None,
+        },
     }));
     equal("command", kind, args[0].as_str())?;
     for pair in &args[1..] {
@@ -391,6 +470,13 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 other => Err(account_error(other)?),
             },
         },
+        ("removed", [outcome]) => Event::AccountRemoved {
+            request,
+            result: match outcome.as_str() {
+                "ok" => Ok(remove_from_store(harness, &last).await?),
+                other => Err(account_error(other)?),
+            },
+        },
         _ => return Err(format!("no reply {}", args.join(" "))),
     };
     fake.events
@@ -400,6 +486,54 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
     // The link hands events over on the main loop; let it run once more.
     glib::timeout_future(Duration::from_millis(10)).await;
     harness.wait_until_settled().await;
+    Ok(())
+}
+
+/// The key the fake engine gives an added account: its address's local part.
+fn fake_key(settings: &AccountSettings) -> AccountKey {
+    AccountKey(
+        settings
+            .address
+            .split('@')
+            .next()
+            .unwrap_or("account")
+            .to_owned(),
+    )
+}
+
+/// What the engine does on `RemoveAccount`, for the store: the account and its rows go.
+async fn remove_from_store(harness: &Harness, last: &Last) -> Result<(), String> {
+    let key = last
+        .key
+        .clone()
+        .ok_or("the last command named no account")?;
+    let mailbox = harness.state.mailbox();
+    let reply = mailbox
+        .store()
+        .ok_or("the store is not open")?
+        .account_by_key(key);
+    let account = reply
+        .recv()
+        .await
+        .map_err(|error| error.to_string())?
+        .value
+        .ok_or("the store has no account with that key")?;
+    let reply = mailbox
+        .store()
+        .ok_or("the store is not open")?
+        .remove_account(account.id);
+    reply.recv().await.map_err(|error| error.to_string())?;
+    let started = Instant::now();
+    while mailbox
+        .accounts()
+        .iter()
+        .any(|known| known.id == account.id)
+    {
+        if started.elapsed() > WAIT_TIMEOUT {
+            return Err("the sidebar still lists the removed account".to_owned());
+        }
+        glib::timeout_future(Duration::from_millis(10)).await;
+    }
     Ok(())
 }
 
@@ -417,10 +551,13 @@ async fn add_to_store(
     let reply = mailbox
         .store()
         .ok_or("the store is not open")?
-        .add_account(NewAccount {
-            name: settings.name.clone(),
-            address: settings.address.clone(),
-        });
+        .ensure_account(
+            fake_key(settings),
+            NewAccount {
+                name: settings.name.clone(),
+                address: settings.address.clone(),
+            },
+        );
     let account = reply.recv().await.map_err(|error| error.to_string())?.value;
     for (role, folder) in [
         (FolderRole::Inbox, "INBOX"),

@@ -52,6 +52,9 @@ pub enum Command {
     },
     /// Delete the account's settings, secrets, rows and blobs (ML-038).
     RemoveAccount { request: RequestId, key: AccountKey },
+    /// The accounts `accounts.toml` lists, after every read without mistakes: the store follows
+    /// them, and every listed account gets its folder list and first INBOX sync.
+    Accounts { accounts: Vec<AccountSettings> },
     /// Stop every connection and the runtime.
     Shutdown,
 }
@@ -89,6 +92,8 @@ pub enum Event {
         fetched: u32,
         total: u32,
     },
+    /// The account's folder list and first INBOX sync are done.
+    SyncFinished { account: AccountId },
     /// An account's connection failed; the sidebar shows its state.
     SyncFailed {
         account: AccountId,
