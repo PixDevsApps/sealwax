@@ -2,8 +2,9 @@
 # on a scripted engine. It appears when the engine reports that an account accounts.toml signs
 # in with Microsoft needs a sign-in, names the first such account and counts the others, and
 # its Sign in opens the assistant straight at Microsoft sign-in for that account. The banner
-# goes once the account syncs. A password account that needs a sign-in keeps the sidebar's
-# state only. Every address, name and link is fictional. Screenshots go to .local/selftest/.
+# goes once the account syncs. A password account that needs a sign-in gets the same banner
+# with "Type the password again" (ML-048; status-password.sealwax-test covers that flow). Every
+# address, name and link is fictional. Screenshots go to .local/selftest/.
 # Run: tools/headless.sh 61 target/debug/sealwax --self-test tests/selftest/setup-microsoft-banner.sealwax-test
 
 desktop tiling
@@ -13,7 +14,7 @@ corners 0
 engine-attach
 write-file $TMP/config/sealwax/config.toml "[oauth.microsoft]\nclient_id = \"fictional-client-id\"\n"
 wait-until assert-setup client-id set
-assert-shown sign-in-banner false
+assert-shown banner false
 
 # Three accounts, as the assistant adds them: Kari and Anne sign in with Microsoft, Ola with a
 # password. The scripted engine keys them by the address's local part.
@@ -56,54 +57,59 @@ assert-setup open false
 wait-until assert-label sidebar-summary "3 accounts · all synced"
 # accounts.toml, as the engine wrote it.
 write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]\nhost = \"smtp.example.test\"\n\n[[account]]\nkey = \"ola\"\nname = \"Ola Hansen\"\naddress = \"ola@example.test\"\n\n[account.imap]\nhost = \"mail.example.test\"\n\n[account.smtp]\nhost = \"mail.example.test\"\n\n[[account]]\nkey = \"anne\"\nname = \"Anne Berg\"\naddress = \"anne@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]\nhost = \"smtp.example.test\"\n"
-assert-shown sign-in-banner false
+assert-shown banner false
 
-# A password account that needs its sign-in shows it in the sidebar only (ML-048 later).
+# A password account that needs its sign-in gets the banner, with its password (ML-048).
 engine-reply sync-failed ola@example.test wrong-password
 assert-account-status ola@example.test needs-sign-in
 wait-until assert-label sidebar-summary "3 accounts · sign-in needed"
+wait-until assert-setup sign-in-needed ola
+wait-until assert-shown banner true
+assert-label banner-title "Ola Hansen needs you to sign in again"
+assert-label banner-primary "Type the password again"
+engine-reply sync-finished ola@example.test
+wait-until assert-shown banner false
 assert-setup sign-in-needed none
-assert-shown sign-in-banner false
 
 # Kari's sign-in ended: the banner names her, with Sign in.
 engine-reply sync-failed kari@example.test wrong-password
-wait-until assert-shown sign-in-banner true
+wait-until assert-shown banner true
 assert-setup sign-in-needed kari
-assert-label sign-in-banner-title "Kari Nordmann needs you to sign in again"
-assert-label sign-in-banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
-assert-label sign-in-banner-button "Sign in"
-assert-sensitive sign-in-banner-button true
+assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
+assert-label banner-primary "Sign in"
+assert-sensitive banner-primary true
 # Anne's too: still one banner, naming the first and counting the other.
 engine-reply sync-failed anne@example.test sign-in-declined
 assert-setup sign-in-needed kari,anne
-assert-label sign-in-banner-title "Kari Nordmann needs you to sign in again"
-assert-label sign-in-banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in. 1 more account needs it too."
+assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in. 1 more account needs it too."
 # The look: across the window's top, the error tint with the text colour, the theme's fonts.
-assert-color sign-in-banner-strip background error-soft
-assert-color sign-in-banner-title text foreground
-assert-color sign-in-banner-body text foreground
-assert-contrast sign-in-banner-strip 4.5
-assert-font sign-in-banner-title chrome
-assert-width sign-in-banner 1440
+assert-color banner-strip background error-soft
+assert-color banner-title text foreground
+assert-color banner-body text foreground
+assert-contrast banner-strip 4.5
+assert-font banner-title chrome
+assert-width banner 1440
 assert-labelled
 screenshot $DIR/../../.local/selftest/setup-banner.png
 theme catppuccin-latte
 corners 8
-assert-color sign-in-banner-strip background error-soft
-assert-contrast sign-in-banner-strip 4.5
-assert-radius sign-in-banner-strip 0
+assert-color banner-strip background error-soft
+assert-contrast banner-strip 4.5
+assert-radius banner-strip 0
 screenshot $DIR/../../.local/selftest/setup-banner-latte.png
 theme matte-black
 corners 0
 # In every layout.
 resize 1100 900
-assert-shown sign-in-banner true
+assert-shown banner true
 resize 800 900
-assert-shown sign-in-banner true
+assert-shown banner true
 resize 1440 900
 
 # Sign in: the assistant opens at Microsoft sign-in for Kari and starts it at once.
-setup-click sign-in-banner-button
+setup-click banner-primary
 assert-setup open true
 engine-expect sign-in address=kari@example.test provider=microsoft account=kari
 assert-setup step signing-in
@@ -122,7 +128,7 @@ assert-opened last https://login.example.test/authorize?client_id=fictional&stat
 assert-labelled
 screenshot $DIR/../../.local/selftest/setup-again.png
 # Its Sign in again shows the open assistant.
-setup-click sign-in-banner-button
+setup-click banner-primary
 engine-expect none
 assert-setup step signing-in
 # Cancel: back to the button, which signs in again; a failure says why.
@@ -142,17 +148,17 @@ engine-expect sign-in address=kari@example.test account=kari
 engine-reply signed-in ok kari@example.test
 assert-setup open false
 engine-expect none
-assert-shown sign-in-banner true
-assert-label sign-in-banner-title "Kari Nordmann needs you to sign in again"
+assert-shown banner true
+assert-label banner-title "Kari Nordmann needs you to sign in again"
 # Kari syncs: the banner moves on to Anne.
 engine-reply sync-finished kari@example.test
 assert-account-status kari@example.test synced
-wait-until assert-label sign-in-banner-title "Anne Berg needs you to sign in again"
-assert-label sign-in-banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
+wait-until assert-label banner-title "Anne Berg needs you to sign in again"
+assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
 assert-setup sign-in-needed anne
 
 # Escape cancels Anne's sign-in, then closes the assistant: her banner stays.
-setup-click sign-in-banner-button
+setup-click banner-primary
 engine-expect sign-in address=anne@example.test account=anne
 setup-key escape
 engine-expect cancel-sign-in sign-in=last
@@ -160,14 +166,14 @@ assert-setup step microsoft
 setup-key escape
 assert-setup open false
 engine-expect none
-assert-shown sign-in-banner true
+assert-shown banner true
 # The banner's Sign in while the assistant adds another account: that one closes, and the
 # sign-in starts.
 action win.add-account
 setup-type setup-address per@example.test
 setup-key enter
 engine-expect detect address=per@example.test
-setup-click sign-in-banner-button
+setup-click banner-primary
 engine-expect sign-in address=anne@example.test account=anne
 assert-label setup-caption "Sign in again"
 setup-click setup-close
@@ -177,7 +183,7 @@ assert-setup open false
 # Without a client ID the assistant says how to set one and sends nothing.
 write-file $TMP/config/sealwax/config.toml ""
 wait-until assert-setup client-id none
-setup-click sign-in-banner-button
+setup-click banner-primary
 assert-setup step microsoft
 assert-shown setup-microsoft-unavailable true
 assert-sensitive setup-microsoft-button false
@@ -186,13 +192,13 @@ engine-expect none
 setup-key escape
 assert-setup open false
 
-# Anne syncs: the banner goes; Ola keeps the sidebar's state.
+# Anne syncs: the banner goes.
 engine-reply sync-finished anne@example.test
-wait-until assert-shown sign-in-banner false
+wait-until assert-shown banner false
 assert-setup sign-in-needed none
-assert-account-status ola@example.test needs-sign-in
-assert-label sidebar-summary "3 accounts · sign-in needed"
-# An account accounts.toml signs in with a password never shows the banner, whatever failed.
+assert-label sidebar-summary "3 accounts · all synced"
+# An account accounts.toml signs in with a password is asked for its password, whatever failed.
 engine-reply sync-failed ola@example.test sign-in-declined
-assert-shown sign-in-banner false
+wait-until assert-shown banner true
+assert-label banner-primary "Type the password again"
 engine-expect none

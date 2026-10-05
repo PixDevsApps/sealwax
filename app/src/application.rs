@@ -8,6 +8,7 @@
 use crate::actions::{self, ActionSet};
 use crate::cli;
 use crate::config;
+use crate::desktop::{self, DesktopEvent, DesktopWatch};
 use crate::engine::{self, EngineOptions};
 use crate::engine_link::{EngineLink, Subscription};
 use crate::list::MessageList;
@@ -19,18 +20,19 @@ use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{MessageSource, Position, Reader};
 use crate::setup::{self, Again, remove::Removable};
 use crate::shortcuts;
+use crate::status::{self, Waiting};
 use crate::theme::{self, ThemeController};
-use crate::window::{self, AccountStatus, Pane, SignInPrompt, Window};
+use crate::window::{self, AccountStatus, Attention, BannerAction, Pane, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use libadwaita::subclass::prelude::*;
-use sealwax_domain::account::{AuthMethod, OAuthProvider};
+use sealwax_domain::account::AccountKey;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
 use sealwax_domain::model::MessageId;
-use sealwax_engine::api::Command;
+use sealwax_engine::api::{Command, Event};
 use sealwax_engine::service::Engine;
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
@@ -194,6 +196,10 @@ impl SealwaxApplication {
             engine_service: RefCell::new(None),
             engine_events: RefCell::new(None),
             accounts_read: Cell::new(false),
+            keyring_missing: Cell::new(false),
+            keyring_dismissed: Cell::new(false),
+            network: Cell::new(true),
+            desktop: RefCell::new(None),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -254,6 +260,14 @@ pub struct AppState {
     engine_events: RefCell<Option<Subscription>>,
     /// `accounts.toml` has been read without mistakes at least once.
     accounts_read: Cell<bool>,
+    /// The engine keeps secrets in memory: no Secret Service answered (ML-048).
+    keyring_missing: Cell<bool>,
+    /// The no-keyring banner was dismissed for this session.
+    keyring_dismissed: Cell<bool>,
+    /// The desktop reports a network; true until it says otherwise.
+    network: Cell<bool>,
+    /// logind and the network monitor, watched once this application's engine starts.
+    desktop: RefCell<Option<Rc<DesktopWatch>>>,
 }
 
 impl AppState {
@@ -327,50 +341,164 @@ impl AppState {
         })
     }
 
-    /// The accounts that must sign in again with Microsoft (ML-032), in the sidebar's order:
-    /// those the engine reported as needing it that `accounts.toml` signs in with Microsoft.
-    /// Password accounts keep the sidebar's state.
-    pub fn sign_in_needed(&self) -> Vec<Again> {
-        let Some(prefs) = self.preferences() else {
-            return Vec::new();
-        };
-        let listed = prefs.accounts();
-        self.mailbox
-            .accounts()
-            .into_iter()
-            .filter(|account| self.mailbox.status(account.id) == AccountStatus::NeedsSignIn)
+    /// What the window's banner shows (ML-048), most important first: the keyring, then the
+    /// accounts `accounts.toml` lists by the state the engine reported, then the network.
+    pub fn waiting(&self) -> Vec<Waiting> {
+        let listed = self
+            .preferences()
+            .map(|prefs| prefs.accounts())
+            .unwrap_or_default();
+        let known = self.mailbox.accounts();
+        let accounts: Vec<status::Account<'_>> = known
+            .iter()
             .filter_map(|account| {
-                let key = account.key?;
-                let settings = listed.iter().find(|settings| settings.key == key)?;
-                (settings.auth == AuthMethod::OAuth(OAuthProvider::Microsoft)).then(|| Again {
-                    key,
-                    name: account.name,
-                    address: settings.address.clone(),
+                let key = account.key.as_ref()?;
+                Some(status::Account {
+                    name: &account.name,
+                    status: self.mailbox.status(account.id),
+                    settings: listed.iter().find(|settings| &settings.key == key)?,
                 })
             })
+            .collect();
+        status::queue(
+            &accounts,
+            self.keyring_missing.get() && !self.keyring_dismissed.get(),
+            self.network.get(),
+        )
+    }
+
+    /// The accounts that must sign in again, in the sidebar's order: with Microsoft in the
+    /// browser (ML-032) or with their password typed again (ML-048).
+    pub fn sign_in_needed(&self) -> Vec<Again> {
+        self.waiting()
+            .into_iter()
+            .filter(|waiting| matches!(waiting.attention, Attention::SignIn { .. }))
+            .filter_map(|waiting| self.again(waiting.account.as_ref()?))
             .collect()
     }
 
-    /// One banner names the first account that must sign in again and counts the others; its
-    /// Sign in takes them one at a time.
-    fn update_sign_in_banner(&self) {
+    /// The account `key` as the setup assistant and the certificate's details need it.
+    fn again(&self, key: &AccountKey) -> Option<Again> {
+        let settings = self
+            .preferences()?
+            .accounts()
+            .into_iter()
+            .find(|settings| &settings.key == key)?;
+        let account = self
+            .mailbox
+            .accounts()
+            .into_iter()
+            .find(|account| account.key.as_ref() == Some(key))?;
+        Some(Again {
+            key: key.clone(),
+            name: account.name,
+            address: settings.address,
+            imap: settings.imap,
+            smtp: settings.smtp,
+        })
+    }
+
+    /// One banner shows the most important state and counts the others.
+    fn update_banner(&self) {
         let Some(window) = self.window() else {
             return;
         };
-        let waiting = self.sign_in_needed();
-        window.show_sign_in_banner(waiting.first().map(|first| SignInPrompt {
-            name: &first.name,
-            more: waiting.len() - 1,
-        }));
+        let queue: Vec<Attention> = self
+            .waiting()
+            .into_iter()
+            .map(|waiting| waiting.attention)
+            .collect();
+        window.show_banner(&queue);
     }
 
-    /// The banner's Sign in: the assistant at Microsoft sign-in for the first account it names.
-    fn sign_in_again(self: &Rc<Self>) {
-        let (Some(window), Some(again)) = (self.window(), self.sign_in_needed().into_iter().next())
-        else {
+    /// A banner button, for the state the banner shows.
+    fn banner_action(self: &Rc<Self>, action: BannerAction) {
+        let Some(window) = self.window() else {
             return;
         };
-        setup::sign_in_again(&window, &self.engine, self.microsoft_available(), again);
+        let again = self
+            .waiting()
+            .into_iter()
+            .next()
+            .and_then(|first| self.again(first.account.as_ref()?));
+        match (action, again) {
+            (BannerAction::SignIn, Some(again)) => {
+                setup::sign_in_again(&window, &self.engine, self.microsoft_available(), again);
+            }
+            (BannerAction::TypePassword, Some(again)) => {
+                setup::type_password_again(
+                    &window,
+                    &self.engine,
+                    self.microsoft_available(),
+                    again,
+                );
+            }
+            (BannerAction::Details, Some(again)) => {
+                let weak = Rc::downgrade(self);
+                status::certificate_details(&window, &again, move || {
+                    if let Some(state) = weak.upgrade() {
+                        state.retry();
+                    }
+                });
+            }
+            (BannerAction::Retry, _) => self.retry(),
+            (BannerAction::Dismiss, _) => {
+                self.keyring_dismissed.set(true);
+                self.update_banner();
+            }
+            (BannerAction::SignIn | BannerAction::TypePassword | BannerAction::Details, None) => {
+                tracing::warn!("a banner button for an account accounts.toml doesn't list");
+            }
+        }
+    }
+
+    /// Retry: reconnect now, and say so.
+    fn retry(&self) {
+        self.reconnect("retry");
+        if let Some(window) = self.window() {
+            window.add_toast(adw::Toast::new("Connecting again…"));
+        }
+    }
+
+    /// Drops every connection and makes it again (ADR-003 amendment, S6), without waiting for
+    /// a socket to fail.
+    fn reconnect(&self, why: &'static str) {
+        match self.engine.send(Command::Reconnect) {
+            Ok(()) => tracing::info!(why, "reconnecting"),
+            Err(_) => tracing::debug!(why, "no engine to reconnect"),
+        }
+    }
+
+    /// The machine resumed, or the desktop's network came or went (ML-048): reconnect when
+    /// it is back, and show whether it is.
+    pub fn desktop_event(&self, event: DesktopEvent) {
+        match event {
+            DesktopEvent::Resumed => self.reconnect("resumed"),
+            DesktopEvent::Network(available) => {
+                let was = self.network.replace(available);
+                if available && !was {
+                    self.reconnect("network back");
+                }
+                if available != was {
+                    tracing::info!(available, "the desktop's network changed");
+                    self.update_banner();
+                }
+            }
+        }
+    }
+
+    /// logind's resume and the network monitor, for the engine this application started.
+    fn watch_desktop(self: &Rc<Self>) {
+        if self.desktop.borrow().is_some() {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let watch = desktop::watch(move |event| {
+            if let Some(state) = weak.upgrade() {
+                state.desktop_event(event);
+            }
+        });
+        self.desktop.replace(Some(watch));
     }
 
     /// When the first window's first frame was painted.
@@ -455,16 +583,22 @@ impl AppState {
             if let (Some(window), Some(list)) = (state.window(), state.list()) {
                 state.fill_sidebar(&window, &list);
             }
-            state.update_sign_in_banner();
+            state.update_banner();
         });
-        // The sidebar's account states follow whatever engine the link has: the one started
-        // below, or a self-test's scripted one.
-        let mailbox = Rc::downgrade(&self.mailbox);
+        // The sidebar's account states and the banner follow whatever engine the link has: the
+        // one started below, or a self-test's scripted one.
+        let weak = Rc::downgrade(self);
         let subscription = self.engine.subscribe(move |event| {
-            if let (Some(mailbox), Some((account, status))) =
-                (mailbox.upgrade(), engine::account_status(event))
-            {
-                mailbox.set_status(account, status);
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if let Some((account, status)) = engine::account_status(event) {
+                state.mailbox.set_status(account, status);
+            }
+            if let Event::KeyringUnavailable = event {
+                tracing::info!("secrets stay in memory: no keyring answered");
+                state.keyring_missing.set(true);
+                state.update_banner();
             }
         });
         self.engine_events.replace(Some(subscription));
@@ -478,6 +612,7 @@ impl AppState {
                     state.run_after_first_frame(move || {
                         if let Some(state) = started.upgrade() {
                             state.start_engine(&options);
+                            state.watch_desktop();
                         }
                     });
                 }
@@ -677,7 +812,7 @@ impl AppState {
         if update.accounts_changed {
             self.accounts_read.set(true);
             self.send_accounts();
-            self.update_sign_in_banner();
+            self.update_banner();
         }
         for problem in &update.problems {
             tracing::warn!("{problem}");
@@ -709,9 +844,9 @@ impl AppState {
             }
         });
         let weak = Rc::downgrade(self);
-        window.connect_sign_in(move || {
+        window.connect_banner(move |action| {
             if let Some(state) = weak.upgrade() {
-                state.sign_in_again();
+                state.banner_action(action);
             }
         });
         let weak = Rc::downgrade(self);
@@ -1034,7 +1169,7 @@ impl AppState {
         let window = Window::new(app.upcast_ref(), self.config.tiling);
         self.install_window(app, &window);
         self.window.replace(Some(window.clone()));
-        self.update_sign_in_banner();
+        self.update_banner();
         window
     }
 

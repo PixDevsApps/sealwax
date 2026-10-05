@@ -648,6 +648,7 @@ impl Widgets {
                 | Step::Microsoft
                 | Step::Blocked
                 | Step::Manual
+                | Step::PasswordAgain
         ));
         w.name_field
             .set_visible(matches!(shown, Step::Address | Step::Manual));
@@ -695,11 +696,12 @@ impl Widgets {
             .set_visible(matches!(shown, Step::Manual | Step::Failed));
         w.password_field.set_visible(matches!(
             shown,
-            Step::Password | Step::Manual | Step::Failed
+            Step::Password | Step::Manual | Step::Failed | Step::PasswordAgain
         ));
-        let app_password = found.and_then(|settings| settings.app_password.as_ref());
-        let enable_imap = found.and_then(|settings| settings.enable_imap.as_ref());
-        let provider = found.and_then(|settings| settings.provider.as_deref());
+        let app_password = state.app_password();
+        let enable_imap = state.enable_imap();
+        let provider = state.provider();
+        let typed_here = matches!(shown, Step::Password | Step::PasswordAgain);
         w.password_label.set_label(if app_password.is_some() {
             "App password"
         } else {
@@ -716,21 +718,15 @@ impl Widgets {
         .into_iter()
         .flatten()
         .collect();
-        let hinted = shown == Step::Password && !hints.is_empty();
+        let hinted = typed_here && !hints.is_empty();
         w.password_hint.set_visible(hinted);
         w.password_hint.set_label(&hints.join(" "));
-        show_link(
-            &w.app_password_link,
-            app_password.filter(|_| shown == Step::Password),
-        );
-        show_link(
-            &w.enable_imap_link,
-            enable_imap.filter(|_| shown == Step::Password),
-        );
+        show_link(&w.app_password_link, app_password.filter(|_| typed_here));
+        show_link(&w.enable_imap_link, enable_imap.filter(|_| typed_here));
 
         w.check
             .root
-            .set_visible(shown == Step::Password || matches!(step, Step::Checking | Step::Adding));
+            .set_visible(typed_here || matches!(step, Step::Checking | Step::Adding));
         match step {
             Step::Checking => {
                 w.check.mark.set_visible_child_name("spinner");
@@ -780,7 +776,7 @@ impl Widgets {
             Step::Address | Step::Detecting | Step::Password
         ));
         w.back.set_visible(match step {
-            Step::Microsoft => !again,
+            Step::Microsoft | Step::PasswordAgain => !again,
             step => matches!(
                 step,
                 Step::Blocked | Step::Manual | Step::Failed | Step::Checking
@@ -819,7 +815,7 @@ impl Widgets {
             .set_visible(!matches!(shown, Step::Microsoft | Step::Blocked));
         w.primary.set_label(match shown {
             Step::Address | Step::Detecting => "Next",
-            Step::Password => "Sign in",
+            Step::Password | Step::PasswordAgain => "Sign in",
             _ => "Check settings",
         });
         w.primary.set_sensitive(!busy && problem.is_none());
@@ -859,6 +855,15 @@ fn heading_for(state: &State, step: Step) -> (String, &'static str) {
                 "",
             ),
         },
+        Step::PasswordAgain => (
+            state
+                .again
+                .as_ref()
+                .map(|again| again.name.clone())
+                .unwrap_or_default(),
+            "The server stopped accepting the password Sealwax has. Type it again; nothing \
+             syncs until you do.",
+        ),
         Step::Blocked => ("Can't add this address".to_owned(), ""),
         Step::Manual => (
             "Set up manually".to_owned(),

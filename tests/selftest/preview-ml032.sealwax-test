@@ -81,9 +81,9 @@ setup-dismiss-toasts
 # ---- the banner and the assistant it opens, catppuccin-latte, rounded ----
 engine-reply sync-failed kari@example.test wrong-password
 engine-reply sync-failed anne@example.test sign-in-declined
-wait-until assert-label sign-in-banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in. 1 more account needs it too."
+wait-until assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in. 1 more account needs it too."
 screenshot $DIR/../../tools/progress/public/ml032-banner-catppuccin-latte-rounded-2026-10-05.png
-setup-click sign-in-banner-button
+setup-click banner-primary
 engine-expect sign-in account=kari
 engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=three
 assert-shown setup-open-again true

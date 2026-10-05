@@ -6,7 +6,7 @@
 //! | --- | --- |
 //! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one; links the assistant opens are recorded from then on, never opened |
 //! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
-//! | `engine-expect detect\|verify\|add-account\|sign-in\|cancel-sign-in [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` and `smtp` (`host:port:tls\|starttls`), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
+//! | `engine-expect detect\|verify\|add-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` and `smtp` (`host:port:tls\|starttls`), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
 //! | `engine-expect none` | The app sent nothing more |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
 //! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `gmail`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
@@ -16,6 +16,10 @@
 //! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would |
 //! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
 //! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `AccountStatus` for the store's account with ADDRESS: the failure's state, or `Synced` |
+//! | `engine-reply status ADDRESS STATE` | `AccountStatus` for that account: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`, `quota` (ML-048) |
+//! | `engine-reply keyring-unavailable` | `KeyringUnavailable` |
+//! | `engine-reply password-updated ok`, `engine-reply password-updated [imap\|smtp] FAILURE` | `PasswordUpdated` for the last command (IMAP when no protocol is named) |
+//! | `desktop-network up\|down`, `desktop-resume` | What the network monitor and logind would report, through the app's own handler |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -24,14 +28,19 @@
 //! | `assert-setup open\|step\|sources\|focus VALUE` | The assistant's state |
 //! | `assert-setup client-id set\|none` | Whether a Microsoft client ID is in use (`config.toml`; self-tests have no built-in one) |
 //! | `assert-setup sign-in-needed KEY,…\|none` | The accounts the window's banner asks to sign in again, in order |
+//! | `assert-setup banner-queue ENTRY,…\|none` | Everything the banner has, in order: `keyring`, `certificate:KEY`, `sign-in:KEY`, `password:KEY`, `quota:KEY`, `offline`, `unreachable` |
 //! | `assert-opened last URL\|none`, `assert-opened count N` | The last link handed to the browser opener, and how many were |
+//! | `assert-toast TEXT` | The toast on screen says TEXT (`setup-dismiss-toasts` clears earlier ones) |
 //! | `assert-text-contains NAME TEXT` | A label's text contains TEXT |
 //! | `assert-field NAME TEXT` | A text field's text or a choice's item (never the password's) |
-//! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in` | The sidebar's state of the account with ADDRESS |
+//! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in\|certificate\|quota` | The sidebar's state of the account with ADDRESS |
 
 use super::{Harness, StepResult, WAIT_TIMEOUT, equal, with_timeout};
+use crate::desktop::DesktopEvent;
 use crate::engine::EngineOptions;
 use crate::setup::{self, sources};
+use crate::status::Waiting;
+use crate::window::Attention;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -57,7 +66,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("engine-detach", 0, 0),
     ("engine-start", 1, 1),
     ("engine-expect", 1, 12),
-    ("engine-reply", 2, 3),
+    ("engine-reply", 1, 3),
     ("engine-reply-stale", 2, 3),
     ("setup-type", 2, 2),
     ("setup-choose", 2, 2),
@@ -70,10 +79,15 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-field", 2, 2),
     ("assert-account-status", 2, 2),
     ("assert-opened", 2, 2),
+    ("assert-toast", 1, 1),
+    ("desktop-network", 1, 1),
+    ("desktop-resume", 0, 0),
 ];
 
 pub fn handles(command: &str) -> bool {
-    command.starts_with("engine-") || command.starts_with("setup-")
+    command.starts_with("engine-")
+        || command.starts_with("setup-")
+        || command.starts_with("desktop-")
 }
 
 pub fn checks(assertion: &str) -> bool {
@@ -84,6 +98,7 @@ pub fn checks(assertion: &str) -> bool {
             | "assert-field"
             | "assert-account-status"
             | "assert-opened"
+            | "assert-toast"
     )
 }
 
@@ -244,6 +259,23 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             button.emit_clicked();
             Ok(())
         }
+        "desktop-network" => {
+            let available = match args[0].as_str() {
+                "up" => true,
+                "down" => false,
+                other => return Err(format!("use up or down, not {other}")),
+            };
+            harness
+                .state
+                .desktop_event(DesktopEvent::Network(available));
+            harness.wait_until_settled().await;
+            Ok(())
+        }
+        "desktop-resume" => {
+            harness.state.desktop_event(DesktopEvent::Resumed);
+            harness.wait_until_settled().await;
+            Ok(())
+        }
         "setup-key" => {
             let assistant = assistant()?;
             match args[0].as_str() {
@@ -280,9 +312,12 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
                 "syncing" => "syncing…",
                 "offline" => "offline",
                 "needs-sign-in" => "needs sign-in",
+                "certificate" => "bad certificate",
+                "quota" => "mailbox full",
                 other => {
                     return Err(format!(
-                        "use synced, syncing, offline or needs-sign-in, not {other}"
+                        "use synced, syncing, offline, needs-sign-in, certificate or quota, \
+                         not {other}"
                     ));
                 }
             };
@@ -325,10 +360,38 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
                     };
                     equal("accounts to sign in again", keys.as_str(), wanted)
                 }
+                "banner-queue" => {
+                    let queue: Vec<String> =
+                        harness.state.waiting().iter().map(waiting_name).collect();
+                    let queue = if queue.is_empty() {
+                        "none".to_owned()
+                    } else {
+                        queue.join(",")
+                    };
+                    equal("the banner's queue", queue.as_str(), wanted)
+                }
                 other => Err(format!(
-                    "assert-setup checks open, step, sources, focus, client-id or \
-                     sign-in-needed, not {other}"
+                    "assert-setup checks open, step, sources, focus, client-id, sign-in-needed \
+                     or banner-queue, not {other}"
                 )),
+            }
+        }
+        "assert-toast" => {
+            let toast =
+                glib::Type::from_name("AdwToastWidget").ok_or("libadwaita has no toast widget")?;
+            let mut shown = Vec::new();
+            super::collect(harness.window()?.window().upcast_ref(), &mut |widget| {
+                if let Some(label) = widget.downcast_ref::<gtk::Label>()
+                    && label.is_mapped()
+                    && label.ancestor(toast).is_some()
+                {
+                    shown.push(label.label().to_string());
+                }
+            });
+            if shown.iter().any(|text| *text == args[0]) {
+                Ok(())
+            } else {
+                Err(format!("the toast on screen says {shown:?}"))
             }
         }
         "assert-opened" => {
@@ -387,6 +450,25 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
             equal(&args[0], value.as_str(), args[1].as_str())
         }
         other => Err(format!("unknown command {other}")),
+    }
+}
+
+/// A banner entry as `assert-setup banner-queue` names it: `keyring`, `certificate:KEY`,
+/// `sign-in:KEY` (Microsoft), `password:KEY`, `quota:KEY`, `offline` (no network) or
+/// `unreachable` (no server answers).
+fn waiting_name(waiting: &Waiting) -> String {
+    let kind = match &waiting.attention {
+        Attention::NoKeyring => "keyring",
+        Attention::CertificateChanged { .. } => "certificate",
+        Attention::SignIn { browser: true, .. } => "sign-in",
+        Attention::SignIn { browser: false, .. } => "password",
+        Attention::QuotaFull { .. } => "quota",
+        Attention::Offline { network: true, .. } => "offline",
+        Attention::Offline { .. } => "unreachable",
+    };
+    match &waiting.account {
+        Some(key) => format!("{kind}:{key}"),
+        None => kind.to_owned(),
     }
 }
 
@@ -528,7 +610,9 @@ fn fields(
 
 fn password(command: &Command) -> Option<&Password> {
     match command {
-        Command::Verify { password, .. } | Command::AddAccount { password, .. } => Some(password),
+        Command::Verify { password, .. }
+        | Command::AddAccount { password, .. }
+        | Command::UpdatePassword { password, .. } => Some(password),
         _ => None,
     }
 }
@@ -674,6 +758,24 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 failure: login_failure(failure)?,
             }),
         },
+        ("password-updated", [ok]) if ok == "ok" => Event::PasswordUpdated {
+            request,
+            result: Ok(()),
+        },
+        ("password-updated", [failure]) => Event::PasswordUpdated {
+            request,
+            result: Err(LoginError {
+                protocol: Protocol::Imap,
+                failure: login_failure(failure)?,
+            }),
+        },
+        ("password-updated", [protocol, failure]) => Event::PasswordUpdated {
+            request,
+            result: Err(LoginError {
+                protocol: protocol_named(protocol)?,
+                failure: login_failure(failure)?,
+            }),
+        },
         _ => return Err(format!("no reply {}", args.join(" "))),
     };
     send_event(harness, &fake, event).await
@@ -690,8 +792,9 @@ async fn send_event(harness: &Harness, fake: &Fake, event: Event) -> StepResult 
     Ok(())
 }
 
-/// `sync-failed ADDRESS FAILURE` and `sync-finished ADDRESS`: what the engine reports about an
-/// account's sync, for the store's account with that address.
+/// Events no command asked for: `sync-failed ADDRESS FAILURE`, `sync-finished ADDRESS` and
+/// `status ADDRESS STATE`, what the engine reports about the sync of the store's account with
+/// that address; and `keyring-unavailable`.
 fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, String> {
     let account = |address: &str| {
         harness
@@ -712,7 +815,30 @@ fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, Strin
             account: account(address)?,
             status: SyncStatus::Synced,
         }),
+        ("status", [address, state]) => Some(Event::AccountStatus {
+            account: account(address)?,
+            status: sync_status(state)?,
+        }),
+        ("keyring-unavailable", []) => Some(Event::KeyringUnavailable),
         _ => None,
+    })
+}
+
+/// A `SyncStatus` by name: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`,
+/// `quota`.
+fn sync_status(name: &str) -> Result<SyncStatus, String> {
+    Ok(match name {
+        "syncing" => SyncStatus::Syncing,
+        "synced" => SyncStatus::Synced,
+        "offline" => SyncStatus::Offline(LoginFailure::Unreachable),
+        "needs-sign-in" => SyncStatus::NeedsSignIn(LoginFailure::WrongPassword),
+        "certificate" => SyncStatus::CertificateChanged,
+        "quota" => SyncStatus::QuotaFull,
+        other => {
+            return Err(format!(
+                "use syncing, synced, offline, needs-sign-in, certificate or quota, not {other}"
+            ));
+        }
     })
 }
 

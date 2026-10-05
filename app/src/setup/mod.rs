@@ -16,6 +16,11 @@
 //! sign-in belongs to is the one saved. The window's banner opens the assistant straight at that
 //! step for an account that must sign in again. Neither the page's address nor the username
 //! is logged.
+//!
+//! A password account the server refused (ML-048) gets the password step on its own: the
+//! banner opens the assistant with the account's address read only, the engine checks the
+//! password on IMAP and SMTP before it keeps it, and a refusal says why as the login check's
+//! failures do.
 
 pub mod browser;
 pub mod form;
@@ -33,9 +38,10 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, AuthMethod, DetectedSettings, Detection, LoginError, LoginFailure,
-    OAuthProvider, Protocol, Security,
+    AccountKey, AccountSettings, AuthMethod, DetectedSettings, Detection, Endpoint, HelpLink,
+    LoginError, LoginFailure, OAuthProvider, Protocol, Security,
 };
+use sealwax_domain::autoconfig::{Finding, Hints, address_domain, presets};
 use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId};
 use sources::Sources;
@@ -64,6 +70,8 @@ pub enum Step {
     Microsoft,
     /// Waiting for `SignedIn` while the browser signs in.
     SigningIn,
+    /// A password account the server refused (ML-048): its password, typed again.
+    PasswordAgain,
     /// Nothing to sign in to: a provider without IMAP, Bridge only, or a domain without mail.
     Blocked,
     /// Host, port, security and username for IMAP and SMTP, and the password.
@@ -84,6 +92,7 @@ impl Step {
             Self::Password => "password",
             Self::Microsoft => "microsoft",
             Self::SigningIn => "signing-in",
+            Self::PasswordAgain => "password-again",
             Self::Blocked => "blocked",
             Self::Manual => "manual",
             Self::Checking => "checking",
@@ -96,7 +105,12 @@ impl Step {
     fn is_screen(self) -> bool {
         matches!(
             self,
-            Self::Address | Self::Password | Self::Microsoft | Self::Blocked | Self::Manual
+            Self::Address
+                | Self::Password
+                | Self::Microsoft
+                | Self::Blocked
+                | Self::Manual
+                | Self::PasswordAgain
         )
     }
 
@@ -115,15 +129,19 @@ enum Pending {
     Verify(RequestId),
     SignIn(RequestId),
     Add(RequestId),
+    Update(RequestId),
 }
 
-/// An account that must sign in again (the window's banner): what `SignIn` names, and what the
-/// assistant shows.
+/// An account that must sign in again (the window's banner): what `SignIn` and
+/// `UpdatePassword` name, and what the assistant shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Again {
     pub key: AccountKey,
     pub name: String,
     pub address: String,
+    /// The account's servers, which a refused password's message names.
+    pub imap: Endpoint,
+    pub smtp: Endpoint,
 }
 
 /// Whether Microsoft sign-in can start: a client ID is in use
@@ -154,6 +172,8 @@ struct State {
     sign_in_url: Option<String>,
     /// The account this assistant signs in again, when the banner opened it.
     again: Option<Again>,
+    /// What the presets know of that account's provider: its name and app-password page.
+    known: Option<Hints>,
 }
 
 impl State {
@@ -170,6 +190,31 @@ impl State {
         match &self.detection {
             Some(Detection::Found(settings)) => Some(settings),
             _ => None,
+        }
+    }
+
+    /// The provider's name, from detection or, for an account typing its password again, the
+    /// presets.
+    fn provider(&self) -> Option<&str> {
+        match self.found() {
+            Some(settings) => settings.provider.as_deref(),
+            None => self.known.as_ref()?.provider.as_deref(),
+        }
+    }
+
+    /// The provider's app-password page, when it wants one.
+    fn app_password(&self) -> Option<&HelpLink> {
+        match self.found() {
+            Some(settings) => settings.app_password.as_ref(),
+            None => self.known.as_ref()?.app_password.as_ref(),
+        }
+    }
+
+    /// Where IMAP is turned on, when the user must do it first.
+    fn enable_imap(&self) -> Option<&HelpLink> {
+        match self.found() {
+            Some(settings) => settings.enable_imap.as_ref(),
+            None => self.known.as_ref()?.enable_imap.as_ref(),
         }
     }
 
@@ -306,6 +351,54 @@ pub fn sign_in_again(
     assistant.focus_first();
     assistant.sign_in();
     assistant
+}
+
+/// The banner's "Type the password again" (ML-048): opens the assistant over `window` at the
+/// password for `again`, a password account the server refused, or shows the one already open
+/// for it (or saving an account). The password goes to the engine with `UpdatePassword`.
+pub fn type_password_again(
+    window: &Window,
+    engine: &EngineLink,
+    microsoft: MicrosoftAvailable,
+    again: Again,
+) -> Assistant {
+    let parent = window.window();
+    if let Some(open) = current() {
+        let state = open.inner.state.borrow();
+        let keep = state.step == Step::Adding
+            || state
+                .again
+                .as_ref()
+                .is_some_and(|open| open.key == again.key);
+        drop(state);
+        if keep && open.is_over(window) {
+            open.inner.dialog.present(Some(parent));
+            return open;
+        }
+        open.close();
+    }
+    let assistant = Assistant::new(engine, window.toasts(), microsoft);
+    assistant.inner.widgets.address.set_text(&again.address);
+    {
+        let mut state = assistant.inner.state.borrow_mut();
+        state.known = known_provider(&again.address);
+        state.again = Some(again);
+        state.step = Step::PasswordAgain;
+    }
+    CURRENT.with(|current| current.replace(Some(assistant.clone())));
+    assistant.inner.dialog.present(Some(parent));
+    assistant.render();
+    assistant.focus_first();
+    assistant
+}
+
+/// What the presets say about the provider of `address`, without any lookup.
+fn known_provider(address: &str) -> Option<Hints> {
+    let preset = presets::by_domain(&address_domain(address)?)?;
+    match preset.finding() {
+        Finding::Servers { hints, .. } => Some(hints),
+        _ => None,
+    }
 }
 
 /// Draws the open assistant again, as after a change to `config.toml`'s client ID.
@@ -527,7 +620,86 @@ impl Assistant {
             Step::Address => self.detect(),
             Step::Password => self.verify_found(),
             Step::Manual | Step::Failed => self.verify_manual(),
+            Step::PasswordAgain => self.update_password(),
             _ => {}
+        }
+    }
+
+    /// `UpdatePassword` for the account the banner named: the engine checks the password on
+    /// IMAP and SMTP and keeps it only if both take it.
+    fn update_password(&self) {
+        let Some(key) = self
+            .inner
+            .state
+            .borrow()
+            .again
+            .as_ref()
+            .map(|again| again.key.clone())
+        else {
+            return;
+        };
+        let password = Password::new(self.inner.widgets.password.text().to_string());
+        let request = self.inner.engine.next_request();
+        let sent = self.engine_send(Command::UpdatePassword {
+            request,
+            key,
+            password,
+        });
+        {
+            let mut state = self.inner.state.borrow_mut();
+            if sent {
+                tracing::info!(request, "setup: checking a new password");
+                state.notice = None;
+                state.pending = Some(Pending::Update(request));
+                state.from = Some(Step::PasswordAgain);
+                state.step = Step::Checking;
+            } else {
+                state.notice = Some(text::not_connected());
+            }
+        }
+        self.render();
+    }
+
+    /// `PasswordUpdated`: a password both servers took closes the assistant with a toast; a
+    /// refused one says why, and the password can be typed again.
+    fn password_updated(&self, result: Result<(), LoginError>) {
+        let again = {
+            let mut state = self.inner.state.borrow_mut();
+            state.pending = None;
+            state.from = None;
+            state.step = Step::PasswordAgain;
+            state.again.clone()
+        };
+        let Some(again) = again else {
+            return;
+        };
+        match result {
+            Ok(()) => {
+                tracing::info!("setup: the new password works");
+                if let Some(toasts) = self.inner.toasts.upgrade() {
+                    toasts.add_toast(adw::Toast::new(&text::password_accepted(&again.name)));
+                }
+                self.inner.dialog.force_close();
+            }
+            Err(error) => {
+                tracing::info!(failure = ?error.failure, "setup: the new password was refused");
+                {
+                    let mut state = self.inner.state.borrow_mut();
+                    let notice = text::password_again_failure(
+                        &error,
+                        &text::Context {
+                            provider: state.provider(),
+                            imap: &again.imap,
+                            smtp: &again.smtp,
+                            app_password: state.app_password(),
+                            enable_imap: state.enable_imap(),
+                        },
+                    );
+                    state.notice = Some(notice);
+                }
+                self.render();
+                focus(self.inner.widgets.password.upcast_ref());
+            }
         }
     }
 
@@ -1033,6 +1205,12 @@ impl Assistant {
                 drop(state);
                 self.signed_in(*request, result.clone());
             }
+            Event::PasswordUpdated { request, result }
+                if state.is_pending(Pending::Update(*request)) =>
+            {
+                drop(state);
+                self.password_updated(result.clone());
+            }
             _ => {}
         }
     }
@@ -1160,6 +1338,7 @@ impl Assistant {
             Step::Manual | Step::Failed => form::check_manual(&self.manual_fields().form())
                 .err()
                 .or(password_empty.then_some(Problem::Empty(Field::Password))),
+            Step::PasswordAgain => password_empty.then_some(Problem::Empty(Field::Password)),
             _ => None,
         }
     }
@@ -1191,6 +1370,7 @@ impl Assistant {
                 Some(problem) => self.field_widget(problem.field()),
                 None => w.imap.host.clone().upcast(),
             }),
+            Step::PasswordAgain => Some(w.password.clone().upcast()),
             Step::Microsoft if (self.inner.microsoft)() => {
                 Some(w.microsoft_button.clone().upcast())
             }

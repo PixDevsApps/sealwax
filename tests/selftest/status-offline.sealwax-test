@@ -1,0 +1,147 @@
+# Offline and reconnecting (ML-048, ADR-003's S6 amendment), on a scripted engine: the desktop's
+# network going and coming back (as GIO's network monitor reports it) and a resume (logind's
+# PrepareForSleep(false)), through the app's own handler. The banner says "You're offline" while
+# the network is gone, and "Can't reach your mail servers" when every account's server is out of
+# reach with the network up; a single unreachable account shows only in the sidebar. The
+# network coming back and a resume send Reconnect. The no-keyring banner's tint is checked in a
+# light theme too. Every address, name and host is fictional.
+# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/status-offline.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# With no account yet: the offline banner over the welcome page.
+desktop-network down
+wait-until assert-shown banner true
+assert-shown welcome true
+assert-setup banner-queue offline
+assert-label banner-title "You're offline"
+assert-label banner-body "Sealwax shows the mail it has and syncs again when the network is back."
+assert-shown banner-primary false
+assert-shown banner-secondary false
+assert-color banner-strip background warning-soft
+assert-color banner-icon text foreground
+assert-contrast banner-strip 4.5
+assert-labelled
+screenshot $DIR/../../.local/selftest/status-offline-welcome.png
+# Going down asks for nothing; neither does a second "down".
+engine-expect none
+desktop-network down
+engine-expect none
+# Back: Reconnect at once, and the banner goes.
+desktop-network up
+engine-expect reconnect
+wait-until assert-shown banner false
+# A second "up" isn't a change.
+desktop-network up
+engine-expect none
+# A resume reconnects whatever the network says.
+desktop-resume
+engine-expect reconnect
+desktop-network down
+desktop-resume
+engine-expect reconnect
+desktop-network up
+engine-expect reconnect
+
+# Two accounts.
+action win.add-account
+setup-type setup-address ola@example.test
+setup-type setup-name "Ola Hansen"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-1
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address anne@example.test
+setup-type setup-name "Anne Berg"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-2
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+assert-setup open false
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"ola\"\nname = \"Ola Hansen\"\naddress = \"ola@example.test\"\n\n[account.imap]\nhost = \"imap.ola.example.test\"\n\n[account.smtp]\nhost = \"smtp.ola.example.test\"\n\n[[account]]\nkey = \"anne\"\nname = \"Anne Berg\"\naddress = \"anne@example.test\"\n\n[account.imap]\nhost = \"imap.anne.example.test\"\n\n[account.smtp]\nhost = \"smtp.anne.example.test\"\n"
+wait-until assert-label sidebar-summary "2 accounts · all synced"
+setup-dismiss-toasts
+
+# One account out of reach: only the sidebar says so.
+engine-reply status ola@example.test offline
+assert-account-status ola@example.test offline
+wait-until assert-label sidebar-summary "2 accounts · offline"
+assert-setup banner-queue none
+assert-shown banner false
+# Every account out of reach while the network is up: the servers can't be reached.
+engine-reply status anne@example.test offline
+wait-until assert-shown banner true
+assert-setup banner-queue unreachable
+assert-label banner-title "Can't reach your mail servers"
+assert-label banner-body "Sealwax shows the mail it has and tries again by itself. Check your connection, or try another network."
+assert-color banner-strip background warning-soft
+assert-contrast banner-strip 4.5
+screenshot $DIR/../../.local/selftest/status-unreachable.png
+# The network goes: the banner says the user is offline instead.
+desktop-network down
+wait-until assert-label banner-title "You're offline"
+assert-setup banner-queue offline
+# It comes back: Reconnect, and the servers' state again until the engine reports.
+desktop-network up
+engine-expect reconnect
+wait-until assert-label banner-title "Can't reach your mail servers"
+engine-reply status ola@example.test syncing
+wait-until assert-shown banner false
+engine-reply status ola@example.test synced
+engine-reply status anne@example.test synced
+assert-label sidebar-summary "2 accounts · all synced"
+
+# An account that needs its password isn't out of reach: only once both are does the banner
+# say the servers can't be reached.
+engine-reply status anne@example.test needs-sign-in
+engine-reply status ola@example.test offline
+wait-until assert-setup banner-queue password:anne
+engine-reply status anne@example.test offline
+wait-until assert-setup banner-queue unreachable
+engine-reply status anne@example.test synced
+engine-reply status ola@example.test synced
+wait-until assert-shown banner false
+
+# No keyring, in a light theme: the card's tint keeps the text readable, the lock in the accent.
+theme catppuccin-latte
+corners 8
+engine-reply keyring-unavailable
+wait-until assert-label banner-title "No keyring found"
+assert-color banner-strip background card
+assert-color banner-icon text accent
+assert-contrast banner-strip 4.5
+assert-radius banner-strip 0
+assert-label banner-secondary "Dismiss"
+setup-click banner-secondary
+wait-until assert-shown banner false
+engine-reply keyring-unavailable
+assert-shown banner false
+desktop-network down
+wait-until assert-label banner-title "You're offline"
+assert-color banner-strip background warning-soft
+assert-contrast banner-strip 4.5
+desktop-network up
+engine-expect reconnect
+wait-until assert-shown banner false
+
+# Without an engine, a resume or the network coming back asks nothing of anyone.
+engine-detach
+desktop-resume
+desktop-network down
+desktop-network up
+assert-shown banner false

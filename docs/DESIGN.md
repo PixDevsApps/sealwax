@@ -52,6 +52,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Account status as a small round dot: accent synced, plain syncing, warning offline, error needs sign-in; account headings are upper-cased, letter-spaced captions.
 - A footer with the accounts' summary and `config.toml`. The main menu sits at the end of the list's bar (the welcome page's while there is no account): in the footer it cut off the summary (M1, a change from the mock; kept by the user at the M1 gate, 2026-10-05).
 - **Rail** (900–1279 px): compose, All Inboxes (an addition to the mock, kept by the user at the M1 gate, 2026-10-05), the shown account's role folders with an accent badge at the top-right of those with unread mail, the other accounts as initial and unread count (a dot only when offline or signed out), `config.toml` at the bottom.
+- *As built in M3 (ML-048, [report](m3/status.md)); proposed, for the user at the M3 gate:* every state the engine reports has a dot and words. Accent "synced", plain "syncing…", warning "offline" and "mailbox full" (Sealwax keeps trying, or still syncs), error "needs sign-in" and "bad certificate" (Sealwax stopped until the user acts). The rail marks every state but synced and syncing on the other accounts, and its tooltip and accessible label say the state in words. The footer's summary names the most important state in the banner's order.
 
 **Message list**
 - Search field and filter chips on top, then sections (Today, Yesterday, This week, This month, Older).
@@ -114,6 +115,16 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Toasts for Undo (archive, delete, move, send) and transient results.
 - Banners for persistent states: offline, needs sign-in, certificate changed, quota full, no keyring.
 - Empty states: no accounts (starts the assistant), empty folder, no search results.
+
+*As built in M3 (ML-048, [report](m3/status.md)); the order, the tints and the texts are proposals for the M3 gate:*
+- **One banner** across the window's top (ML-032's strip, generalised) shows the most important state and counts the rest: "1 more account needs it too" when the others are the same kind, else "2 more problems wait after this one". Resolving or dismissing the one shown brings the next.
+- **Order:** no keyring; each account whose certificate no longer verifies; each that needs a sign-in; each whose mailbox is full (accounts in the sidebar's order); offline.
+- **No keyring** (the card's tint, the lock in the accent, as the mock): "No keyring found", passwords and sign-ins stay in memory until Sealwax quits; Dismiss hides it for the session.
+- **Certificate** (the error tint; the mock tints it like a warning): "Sealwax stopped connecting to <account>", what the certificate did and what to do; Details (why, and the account's servers) and Retry (reconnect). There is no way to trust the certificate: pinning is 1.x.
+- **Needs sign-in** (the error tint): Microsoft accounts keep ML-032's banner and Sign in; password accounts get "Type the password again", which opens the setup assistant at the password with the address read only ("SIGN IN AGAIN"). The engine checks the password on IMAP and SMTP before it keeps it; a refusal shows why on the step, and success closes it with a toast ("Password accepted for <account>").
+- **Mailbox full** (the warning tint): what bounces and what to do; no button.
+- **Offline** (the warning tint, as the mock): "You're offline" while the desktop has no network; "Can't reach your mail server(s)" when every account's server is out of reach with the network up. A single unreachable account shows only in the sidebar.
+- **Reconnecting:** when the network comes back and after a resume (logind's `PrepareForSleep(false)`), the app sends `Reconnect`; Retry does too, with a toast ("Connecting again…").
 
 ## Theme tokens
 

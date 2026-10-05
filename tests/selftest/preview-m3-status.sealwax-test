@@ -1,0 +1,203 @@
+# Previews for the M3 gate (ML-048): account status in the sidebar and the rail, every banner,
+# typing a password again and the certificate's details, each in a dark and a light stock theme
+# (matte-black with square corners, catppuccin-latte rounded). On a scripted engine; every
+# address, name and host is fictional. Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/preview-m3-status.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# Six accounts: Kari signs in with Microsoft, the others with passwords.
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-1
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address ola@example.test
+setup-type setup-name "Ola Hansen"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-2
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address anne@example.test
+setup-type setup-name "Anne Berg"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-3
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address per@example.test
+setup-type setup-name "Per Lie"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-4
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address siri@example.test
+setup-type setup-name "Siri Dahl"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-5
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address tor@example.test
+setup-type setup-name "Tor Moe"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-6
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+assert-setup open false
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.kari.example.test\"\n\n[account.smtp]\nhost = \"smtp.kari.example.test\"\n\n[[account]]\nkey = \"ola\"\nname = \"Ola Hansen\"\naddress = \"ola@example.test\"\n\n[account.imap]\nhost = \"imap.ola.example.test\"\n\n[account.smtp]\nhost = \"smtp.ola.example.test\"\n\n[[account]]\nkey = \"anne\"\nname = \"Anne Berg\"\naddress = \"anne@example.test\"\n\n[account.imap]\nhost = \"imap.anne.example.test\"\n\n[account.smtp]\nhost = \"smtp.anne.example.test\"\nport = 587\nsecurity = \"starttls\"\n\n[[account]]\nkey = \"per\"\nname = \"Per Lie\"\naddress = \"per@example.test\"\n\n[account.imap]\nhost = \"imap.per.example.test\"\n\n[account.smtp]\nhost = \"smtp.per.example.test\"\n\n[[account]]\nkey = \"siri\"\nname = \"Siri Dahl\"\naddress = \"siri@example.test\"\n\n[account.imap]\nhost = \"imap.siri.example.test\"\n\n[account.smtp]\nhost = \"smtp.siri.example.test\"\n\n[[account]]\nkey = \"tor\"\nname = \"Tor Moe\"\naddress = \"tor@example.test\"\n\n[account.imap]\nhost = \"imap.tor.example.test\"\n\n[account.smtp]\nhost = \"smtp.tor.example.test\"\n"
+wait-until assert-label sidebar-summary "6 accounts · all synced"
+setup-dismiss-toasts
+
+# Everything at once: no keyring, a certificate, two sign-ins, a full mailbox, an account out
+# of reach, one syncing, and no network.
+engine-reply status kari@example.test needs-sign-in
+engine-reply status ola@example.test needs-sign-in
+engine-reply status anne@example.test certificate
+engine-reply status per@example.test quota
+engine-reply status siri@example.test offline
+engine-reply status tor@example.test syncing
+engine-reply keyring-unavailable
+desktop-network down
+wait-until assert-setup banner-queue keyring,certificate:anne,sign-in:kari,password:ola,quota:per,offline
+assert-text-contains banner-body " 5 more problems wait after this one."
+
+# ---- the window, the sidebar and the rail ----
+screenshot $DIR/../../tools/progress/public/m3-status-window-matte-black-square-2026-10-05.png
+screenshot $DIR/../../tools/progress/public/m3-status-banner-keyring-matte-black-square-2026-10-05.png banner-strip
+resize 1440 1500
+screenshot $DIR/../../tools/progress/public/m3-status-sidebar-matte-black-square-2026-10-05.png sidebar
+resize 1100 900
+assert-layout rail
+screenshot $DIR/../../tools/progress/public/m3-status-rail-matte-black-square-2026-10-05.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m3-status-rail-catppuccin-latte-rounded-2026-10-05.png
+resize 1440 1500
+screenshot $DIR/../../tools/progress/public/m3-status-sidebar-catppuccin-latte-rounded-2026-10-05.png sidebar
+resize 1440 900
+screenshot $DIR/../../tools/progress/public/m3-status-window-catppuccin-latte-rounded-2026-10-05.png
+screenshot $DIR/../../tools/progress/public/m3-status-banner-keyring-catppuccin-latte-rounded-2026-10-05.png banner-strip
+
+# ---- the certificate, and its details ----
+setup-click banner-secondary
+wait-until assert-label banner-title "Sealwax stopped connecting to Anne Berg"
+screenshot $DIR/../../tools/progress/public/m3-status-banner-certificate-catppuccin-latte-rounded-2026-10-05.png banner-strip
+setup-click banner-secondary
+wait-until assert-shown certificate-details true
+screenshot $DIR/../../tools/progress/public/m3-status-certificate-details-catppuccin-latte-rounded-2026-10-05.png
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m3-status-certificate-details-matte-black-square-2026-10-05.png
+setup-respond certificate-details close
+screenshot $DIR/../../tools/progress/public/m3-status-banner-certificate-matte-black-square-2026-10-05.png banner-strip
+
+# ---- Microsoft sign-in ----
+engine-reply status anne@example.test synced
+wait-until assert-label banner-title "Kari Nordmann needs you to sign in again"
+screenshot $DIR/../../tools/progress/public/m3-status-banner-sign-in-matte-black-square-2026-10-05.png banner-strip
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m3-status-banner-sign-in-catppuccin-latte-rounded-2026-10-05.png banner-strip
+
+# ---- a password typed again ----
+engine-reply status kari@example.test synced
+wait-until assert-label banner-title "Ola Hansen needs you to sign in again"
+screenshot $DIR/../../tools/progress/public/m3-status-banner-password-catppuccin-latte-rounded-2026-10-05.png banner-strip
+setup-click banner-primary
+assert-setup step password-again
+screenshot $DIR/../../tools/progress/public/m3-status-password-again-catppuccin-latte-rounded-2026-10-05.png
+setup-type setup-password fictional-wrong-password
+setup-key enter
+engine-expect update-password key=ola
+engine-reply password-updated wrong-password
+assert-label setup-alert-title "Wrong password"
+screenshot $DIR/../../tools/progress/public/m3-status-password-refused-catppuccin-latte-rounded-2026-10-05.png
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m3-status-password-refused-matte-black-square-2026-10-05.png
+setup-key escape
+assert-setup open false
+screenshot $DIR/../../tools/progress/public/m3-status-banner-password-matte-black-square-2026-10-05.png banner-strip
+setup-click banner-primary
+assert-setup step password-again
+screenshot $DIR/../../tools/progress/public/m3-status-password-again-matte-black-square-2026-10-05.png
+setup-type setup-password fictional-new-password
+setup-key enter
+engine-expect update-password key=ola
+engine-reply password-updated ok
+assert-setup open false
+engine-reply status ola@example.test synced
+wait-until assert-toast "Password accepted for Ola Hansen"
+screenshot $DIR/../../tools/progress/public/m3-status-password-accepted-matte-black-square-2026-10-05.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m3-status-password-accepted-catppuccin-latte-rounded-2026-10-05.png
+setup-dismiss-toasts
+
+# ---- a full mailbox ----
+wait-until assert-label banner-title "Per Lie's mailbox is full"
+screenshot $DIR/../../tools/progress/public/m3-status-banner-quota-catppuccin-latte-rounded-2026-10-05.png banner-strip
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m3-status-banner-quota-matte-black-square-2026-10-05.png banner-strip
+
+# ---- offline, and no server answering ----
+engine-reply status per@example.test synced
+wait-until assert-label banner-title "You're offline"
+screenshot $DIR/../../tools/progress/public/m3-status-banner-offline-matte-black-square-2026-10-05.png banner-strip
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m3-status-banner-offline-catppuccin-latte-rounded-2026-10-05.png banner-strip
+desktop-network up
+engine-expect reconnect
+engine-reply status kari@example.test offline
+engine-reply status ola@example.test offline
+engine-reply status anne@example.test offline
+engine-reply status per@example.test offline
+engine-reply status tor@example.test offline
+wait-until assert-label banner-title "Can't reach your mail servers"
+screenshot $DIR/../../tools/progress/public/m3-status-banner-unreachable-catppuccin-latte-rounded-2026-10-05.png banner-strip
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m3-status-banner-unreachable-matte-black-square-2026-10-05.png banner-strip
+engine-expect none

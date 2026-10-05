@@ -228,6 +228,81 @@ pub fn signed_in_again(name: &str) -> String {
     format!("{name} is signed in again")
 }
 
+/// Why a password typed again (ML-048) was refused and what to do next. Only the password can
+/// be changed on this step, so nothing points at the server settings.
+pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
+    let endpoint = match error.protocol {
+        Protocol::Imap => context.imap,
+        Protocol::Smtp => context.smtp,
+    };
+    let (host, port) = (&endpoint.host, endpoint.port);
+    let server = server(error.protocol);
+    let provider = context.provider.unwrap_or("This provider");
+    match error.failure {
+        LoginFailure::WrongPassword => match context.app_password {
+            Some(link) => Notice::problem(
+                "Wrong password",
+                format!(
+                    "{server} didn't accept it. {provider} needs an app password here, not your \
+                     account password."
+                ),
+            )
+            .with_link(Some(link)),
+            None => Notice::problem(
+                "Wrong password",
+                format!(
+                    "{server} didn't accept it. Check it and try again; if you changed it at \
+                     your provider, type the new one."
+                ),
+            ),
+        },
+        LoginFailure::OAuthRequired => Notice::problem(
+            "Only a browser sign-in works here",
+            format!(
+                "{server} no longer takes passwords from mail apps. Sealwax offers browser \
+                 sign-in for Microsoft accounts only."
+            ),
+        ),
+        LoginFailure::NoTls => Notice::problem(
+            "No secure connection",
+            format!(
+                "{host} offered no secure connection on port {port}, and Sealwax never sends a \
+                 password without one. Check your network, then try again."
+            ),
+        ),
+        LoginFailure::Certificate => Notice::problem(
+            "The server's certificate isn't trusted",
+            format!(
+                "{host} showed a certificate Sealwax can't verify. A network that inspects \
+                 secure connections can cause this: try another network, then try again."
+            ),
+        ),
+        LoginFailure::Unreachable => Notice::problem(
+            "Couldn't reach the server",
+            format!(
+                "Nothing answers at {host} on port {port}. Check that you're online, then try \
+                 again."
+            ),
+        ),
+        LoginFailure::Other => Notice::problem(
+            "The password wasn't saved",
+            format!(
+                "{server} or the keyring reported a problem Sealwax doesn't recognise. Try \
+                 again, or try later."
+            ),
+        ),
+        LoginFailure::AppPasswordRequired
+        | LoginFailure::ImapDisabled
+        | LoginFailure::SignInDeclined
+        | LoginFailure::Timeout => login_failure(error, context),
+    }
+}
+
+/// The toast after a password typed again worked.
+pub fn password_accepted(name: &str) -> String {
+    format!("Password accepted for {name}")
+}
+
 /// What detection's dead ends say; `None` for settings that were found.
 pub fn detection(detection: &Detection, domain: &str) -> Option<Notice> {
     Some(match detection {
@@ -512,6 +587,65 @@ mod tests {
             None,
         );
         assert!(declined.body.contains("admin may have to approve it"));
+    }
+
+    #[test]
+    fn a_password_typed_again_is_refused_without_pointing_at_settings() {
+        let (imap, smtp) = (
+            endpoint("imap.example.test", 993),
+            endpoint("smtp.example.test", 465),
+        );
+        let link = HelpLink {
+            label: "Create an app password".to_owned(),
+            url: "https://example.test/app-passwords".to_owned(),
+        };
+        let context = Context {
+            provider: Some("Gmail"),
+            imap: &imap,
+            smtp: &smtp,
+            app_password: Some(&link),
+            enable_imap: None,
+        };
+        let mut titles = Vec::new();
+        for failure in FAILURES {
+            for protocol in [Protocol::Imap, Protocol::Smtp] {
+                let notice = password_again_failure(&LoginError { protocol, failure }, &context);
+                assert_eq!(notice.tone, Tone::Problem);
+                assert!(notice.body.ends_with('.'), "{failure:?}: {}", notice.body);
+                for settings in ["below", "Check both", "server name"] {
+                    assert!(
+                        !notice.body.contains(settings),
+                        "{failure:?}: {}",
+                        notice.body
+                    );
+                }
+                titles.push(notice.title);
+            }
+        }
+        titles.dedup();
+        assert_eq!(titles.len(), FAILURES.len(), "one heading per failure");
+        let wrong = |context: &Context| {
+            password_again_failure(
+                &LoginError {
+                    protocol: Protocol::Imap,
+                    failure: LoginFailure::WrongPassword,
+                },
+                context,
+            )
+        };
+        assert_eq!(wrong(&context).link.as_ref(), Some(&link));
+        assert!(wrong(&context).body.contains("Gmail needs an app password"));
+        let plain = wrong(&Context {
+            provider: None,
+            app_password: None,
+            ..context
+        });
+        assert_eq!(
+            plain.body,
+            "The incoming mail server (IMAP) didn't accept it. Check it and try again; if you \
+             changed it at your provider, type the new one."
+        );
+        assert_eq!(password_accepted("Ola"), "Password accepted for Ola");
     }
 
     #[test]
