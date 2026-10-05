@@ -113,7 +113,6 @@ impl StatusRow {
 pub(super) struct Widgets {
     pub(super) title: gtk::Label,
     pub(super) subtitle: gtk::Label,
-    pub(super) column: gtk::Box,
     pub(super) alert: gtk::Box,
     pub(super) alert_icon: gtk::Image,
     pub(super) alert_title: gtk::Label,
@@ -493,7 +492,6 @@ impl Widgets {
         let widgets = Widgets {
             title,
             subtitle,
-            column: content,
             alert,
             alert_icon,
             alert_title,
@@ -698,8 +696,6 @@ impl Widgets {
             })]);
         }
 
-        w.column
-            .set_sensitive(!matches!(step, Step::Checking | Step::Adding));
         w.manual_link.set_visible(matches!(
             step,
             Step::Address | Step::Detecting | Step::Password
@@ -708,6 +704,26 @@ impl Widgets {
             step,
             Step::Microsoft | Step::Blocked | Step::Manual | Step::Failed | Step::Checking
         ));
+        // While it checks, the fields wait; the status row under them stays readable.
+        let frozen = matches!(step, Step::Checking | Step::Adding);
+        let fields: [&gtk::Widget; 8] = [
+            w.address_field.upcast_ref(),
+            w.name_field.upcast_ref(),
+            w.sources.upcast_ref(),
+            w.found.upcast_ref(),
+            w.microsoft.upcast_ref(),
+            w.username_field.upcast_ref(),
+            w.manual.upcast_ref(),
+            w.password_field.upcast_ref(),
+        ];
+        // A text field that turns insensitive with the focus misses its focus-out (GTK warns
+        // when its cursor blinks next), so Back, the one way out while it checks, takes it first.
+        if frozen && w.password_field.is_sensitive() {
+            w.back.grab_focus();
+        }
+        for field in fields {
+            field.set_sensitive(!frozen);
+        }
         w.primary
             .set_visible(!matches!(step, Step::Microsoft | Step::Blocked));
         w.primary.set_label(match shown {
