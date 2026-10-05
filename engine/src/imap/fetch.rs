@@ -302,6 +302,20 @@ mod tests {
     }
 
     #[test]
+    fn the_first_sync_brings_outlooks_thread_index() {
+        let header = "Subject: SV: x\r\nThread-Index: Adk8WhAiEBESExQVFhcYGRobHB0eHwAAEjRW\r\n\r\n";
+        assert!(items().contains("THREAD-INDEX"));
+        let row = message(FolderId(1), fetched(header, ""));
+        assert_eq!(
+            row.headers
+                .thread_index
+                .map(|index| index.to_hex())
+                .as_deref(),
+            Some("01d93c5a1022101112131415161718191a1b1c1d1e1f")
+        );
+    }
+
+    #[test]
     fn a_cut_preview_drops_its_last_partial_line() {
         let header = "Subject: x\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n";
         let mut cut = fetched(header, "");
