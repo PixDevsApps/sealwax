@@ -96,7 +96,7 @@ fn ingest(store: &Store, messages: Vec<NewMessage>) -> Vec<MessageId> {
         .collect()
 }
 
-fn whole(store: &Store, spec: ViewSpec) -> Page {
+pub(super) fn whole(store: &Store, spec: ViewSpec) -> Page {
     store.page(spec, 0, u32::MAX).recv_blocking().unwrap()
 }
 
@@ -105,7 +105,7 @@ fn ids(rows: &[MessageSummary]) -> Vec<MessageId> {
 }
 
 /// SplitMix64.
-struct Rng(u64);
+pub(super) struct Rng(pub(super) u64);
 
 impl Rng {
     fn next(&mut self) -> u64 {
@@ -116,7 +116,7 @@ impl Rng {
         z ^ (z >> 31)
     }
 
-    fn below(&mut self, n: u64) -> u64 {
+    pub(super) fn below(&mut self, n: u64) -> u64 {
         self.next() % n.max(1)
     }
 }

@@ -1,6 +1,7 @@
-//! ADR-018's log-grep test for M2's code: the login check, the folder list and the first sync
-//! run on the testbed at trace level under the app's own subscriber, and the captured log holds
-//! no password, AUTH line, address, user name, folder name or subject. A control run without
+//! ADR-018's log-grep test for M2's and M3's code: the login check, the folder list, the first
+//! sync, account passes over the windowed folders of the rand account and older mail run on the
+//! testbed at trace level under the app's own subscriber, and the captured log holds no
+//! password, AUTH line, address, user name, folder name or subject. A control run without
 //! the protocol-crate caps shows the grep would catch async-imap's trace of the AUTHENTICATE
 //! line. Its own test binary, because it installs the global subscriber.
 //!
@@ -13,8 +14,9 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use common::*;
 use sealwax_domain::account::Security;
+use sealwax_domain::sync::Window;
 use sealwax_engine::api::Password;
-use sealwax_engine::imap;
+use sealwax_engine::imap::{self, FolderLocks, SyncOptions};
 use sealwax_engine::verify::verify;
 use sealwax_infrastructure::logging;
 use std::io::Write;
@@ -75,6 +77,36 @@ async fn flows() {
         conn.logout().await;
         store.close().unwrap();
     }
+    for server in SERVERS {
+        let (_dir, store, account) = store();
+        let mut conn = login(server, Security::Tls, "rand").await;
+        let options = SyncOptions {
+            window: Window {
+                days: 90,
+                max: 30,
+                min: 10,
+            },
+            older: 10,
+            ..SyncOptions::default()
+        };
+        let locks = FolderLocks::default();
+        for _ in 0..2 {
+            imap::sync_account(&mut conn, &store, account, &options, &locks, |_, _| {})
+                .await
+                .unwrap();
+        }
+        let folders = store.account_folders(account).recv().await.unwrap();
+        for state in folders.iter().filter(|state| state.selectable) {
+            imap::sync_folder(&mut conn, &store, state.folder, &options, &locks, |_| {})
+                .await
+                .unwrap();
+            imap::load_older(&mut conn, &store, state.folder, &options, &locks)
+                .await
+                .unwrap();
+        }
+        conn.logout().await;
+        store.close().unwrap();
+    }
     tokio::time::sleep(Duration::from_millis(300)).await;
     let account = settings(
         imap(DOVECOT, Security::Tls),
@@ -97,7 +129,14 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
     sealwax_engine::runtime().unwrap().block_on(flows());
 
     let log = capture.text();
-    for event in ["imap connected", "folder list stored", "first sync done"] {
+    for event in [
+        "imap connected",
+        "folder list stored",
+        "first sync done",
+        "account pass done",
+        "folder pass done",
+        "older mail loaded",
+    ] {
         assert!(log.contains(event), "the capture holds {event}");
     }
     let plain = STANDARD.encode(format!("\0alice\0{PASSWORD}"));
@@ -106,6 +145,7 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "wrong-password",
         plain.as_str(),
         "alice",
+        "rand",
         "nobody",
         "example.test",
         "INBOX",
@@ -117,6 +157,7 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "Arkiv",
         "Kvitteringer",
         "Prosjekter",
+        "Midlertidig",
         "Hilsen fra Bærum",
         "Synthetic",
         "AUTHENTICATE",

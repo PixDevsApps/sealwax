@@ -1,6 +1,8 @@
 //! M2's testbed suites: the login check, the folder list and the first INBOX header sync on
-//! Dovecot (full and IMAP4rev1-only) and Stalwart, plus the 1,000-headers speed bar. They need
-//! the Docker testbed running and seeded, and are skipped otherwise:
+//! Dovecot (full and IMAP4rev1-only) and Stalwart, plus the 1,000-headers speed bar. The perf
+//! account's suites sync the whole folder (`Window::ALL`); M3's first-sync window has its own
+//! suites (`sync_testbed.rs`). They need the Docker testbed running and seeded, and are skipped
+//! otherwise:
 //!
 //! bash tools/testbed/up.sh && bash tools/testbed/seed.sh
 //! cargo test -p sealwax-engine --release --test testbed -- --ignored --test-threads=1 --nocapture
@@ -10,8 +12,9 @@ mod common;
 use common::*;
 use sealwax_domain::account::{AccountSettings, LoginError, LoginFailure, Protocol, Security};
 use sealwax_domain::model::{FolderId, FolderRole};
+use sealwax_domain::sync::Window;
 use sealwax_engine::api::Password;
-use sealwax_engine::imap::{self, Progress};
+use sealwax_engine::imap::{self, Progress, SyncOptions};
 use sealwax_engine::net::Trust;
 use sealwax_engine::verify::verify;
 use sealwax_infrastructure::store::{OpenView, ServerCounts, Store, SyncState, ViewSpec};
@@ -24,6 +27,13 @@ fn runtime() -> tokio::runtime::Runtime {
 
 fn password(text: &str) -> Password {
     Password::new(text.to_owned())
+}
+
+fn whole_folder() -> SyncOptions {
+    SyncOptions {
+        window: Window::ALL,
+        ..SyncOptions::default()
+    }
 }
 
 /// `verify`, paced: Stalwart's submission listener drops the sixth connection that arrives
@@ -342,8 +352,9 @@ fn an_interrupted_first_sync_resumes_and_a_new_uidvalidity_starts_over() {
                 .unwrap();
             let cut = Arc::new(tokio::sync::Notify::new());
             let signal = cut.clone();
+            let whole = whole_folder();
             tokio::select! {
-                _ = imap::first_sync(&mut conn, &store, inbox, |p| {
+                _ = imap::first_sync_with(&mut conn, &store, inbox, &whole, |p| {
                     if p.fetched >= 1_000 {
                         signal.notify_one();
                     }
@@ -360,7 +371,7 @@ fn an_interrupted_first_sync_resumes_and_a_new_uidvalidity_starts_over() {
             assert!(state.messages >= 1_000, "{what}");
 
             let mut conn = login(server, Security::Tls, "perf").await;
-            let report = imap::first_sync(&mut conn, &store, inbox, |_| {})
+            let report = imap::first_sync_with(&mut conn, &store, inbox, &whole_folder(), |_| {})
                 .await
                 .unwrap();
             assert!(report.resumed, "{what}");
@@ -373,7 +384,7 @@ fn an_interrupted_first_sync_resumes_and_a_new_uidvalidity_starts_over() {
             assert_eq!(report.total, 10_000, "{what}");
 
             store.reset_folder(inbox, 1).recv().await.unwrap();
-            let report = imap::first_sync(&mut conn, &store, inbox, |_| {})
+            let report = imap::first_sync_with(&mut conn, &store, inbox, &whole_folder(), |_| {})
                 .await
                 .unwrap();
             assert!(report.reset && !report.resumed, "{what}");
@@ -403,13 +414,14 @@ fn first_sync_speed() {
                     .unwrap();
                 let listed = started.elapsed();
                 let mut first_thousand = None;
-                let report = imap::first_sync(&mut conn, &store, inbox, |p| {
-                    if p.fetched >= 1_000 && first_thousand.is_none() {
-                        first_thousand = Some((started.elapsed(), p.fetched));
-                    }
-                })
-                .await
-                .unwrap();
+                let report =
+                    imap::first_sync_with(&mut conn, &store, inbox, &whole_folder(), |p| {
+                        if p.fetched >= 1_000 && first_thousand.is_none() {
+                            first_thousand = Some((started.elapsed(), p.fetched));
+                        }
+                    })
+                    .await
+                    .unwrap();
                 let total = started.elapsed();
                 let (thousand, at) = first_thousand.unwrap();
                 println!(

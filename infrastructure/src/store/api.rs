@@ -155,7 +155,8 @@ pub enum SyncState {
     /// The first sync is under way: every UID from `floor` up to `top` (the UIDNEXT when it
     /// started, exclusive) is stored, so an interrupted sync continues below `floor`.
     Initial { top: u32, modseq: u64, floor: u32 },
-    /// The first sync is done; every UID below `uidnext` that the sync reached is stored.
+    /// The first sync is done: every UID from the floor up to `uidnext` (exclusive) that the
+    /// server holds is stored.
     Ready,
 }
 
@@ -172,10 +173,21 @@ pub struct FolderSync {
     pub uidnext: u32,
     pub highestmodseq: u64,
     pub state: SyncState,
-    /// The lowest UID the first sync reached, once it started.
+    /// The lowest UID the first sync reached, once it started: every UID the server holds from
+    /// it up is stored. 1 once nothing older is left on the server.
     pub floor: Option<u32>,
+    /// Messages the server held below the floor when last counted: a hint, since other clients
+    /// can delete them unseen.
+    pub below: u32,
     /// Messages the store holds for the folder.
     pub messages: u32,
+}
+
+impl FolderSync {
+    /// Nothing older than the floor is left on the server (ML-043).
+    pub fn complete(&self) -> bool {
+        self.floor.is_some_and(|floor| floor <= 1)
+    }
 }
 
 /// One step of a folder's first sync, each committed on its own.
@@ -193,8 +205,9 @@ pub enum FirstSyncStep {
     /// messages' ingest has replied.
     Floor(u32),
     /// Done: the folder becomes `Ready` with the UIDNEXT and HIGHESTMODSEQ from the start, so
-    /// the next re-sync catches whatever changed while the first sync ran.
-    Finish,
+    /// the next re-sync catches whatever changed while the first sync ran. `below` messages are
+    /// left under the floor (ML-043's window); with none, the floor drops to 1.
+    Finish { below: u32 },
 }
 
 /// How much of a message the store holds.
