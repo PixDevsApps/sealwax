@@ -8,9 +8,10 @@
 //! It shows a plain-data [`SidebarModel`], which the store fills (ML-023). Picking a folder
 //! activates `nav.folder` with the folder's key; the window answers with
 //! [`Sidebar::set_selected`]. For the self-test, rows are named `folder:<key>` (their counts
-//! `count:<key>`), account headings `heading:<account>` (their dots `status:<account>`), rail
-//! buttons `rail:<key>` (their badges `badge:<key>`) and `rail-account:<account>`, and the
-//! `config.toml` buttons `config` and `rail-config`.
+//! `count:<key>`), account headings `heading:<account>` (their dots `status:<account>`, their
+//! words `status-text:<account>`), rail buttons `rail:<key>` (their badges `badge:<key>`) and
+//! `rail-account:<account>` (their dots `rail-status:<account>`), and the `config.toml` buttons
+//! `config` and `rail-config`.
 
 use super::panes::{PaneBar, classed, icon, icon_button, named};
 use super::tooltips::Tooltips;
@@ -85,6 +86,10 @@ pub enum AccountStatus {
     Syncing,
     Offline,
     NeedsSignIn,
+    /// The server's certificate no longer verifies; Sealwax stopped connecting (ML-048).
+    CertificateChanged,
+    /// The server says the mailbox is full; reading still syncs (ML-048).
+    QuotaFull,
 }
 
 impl AccountStatus {
@@ -94,24 +99,29 @@ impl AccountStatus {
             Self::Syncing => "syncing…",
             Self::Offline => "offline",
             Self::NeedsSignIn => "needs sign-in",
+            Self::CertificateChanged => "bad certificate",
+            Self::QuotaFull => "mailbox full",
         }
     }
 
-    /// The status dot's colour (`style.css`): accent, warning or error; syncing is the plain,
-    /// secondary dot.
+    /// The status dot's colour (`style.css`): accent when synced, plain while syncing, warning
+    /// while Sealwax keeps trying or still syncs (offline, mailbox full), error when it stopped
+    /// until the user acts (sign-in, certificate).
     fn class(self) -> Option<&'static str> {
         match self {
             Self::Synced => Some("sw-synced"),
             Self::Syncing => None,
             Self::Offline => Some("sw-offline"),
             Self::NeedsSignIn => Some("sw-attention"),
+            Self::CertificateChanged => Some("sw-certificate"),
+            Self::QuotaFull => Some("sw-quota"),
         }
     }
 
     /// The states the rail marks on an account: the mock's rail shows none for synced or
     /// syncing accounts.
     fn needs_attention(self) -> bool {
-        matches!(self, Self::Offline | Self::NeedsSignIn)
+        !matches!(self, Self::Synced | Self::Syncing)
     }
 }
 
@@ -246,8 +256,12 @@ impl SidebarModel {
             count => format!("{count} accounts"),
         };
         let has = |status| self.accounts.iter().any(|account| account.status == status);
-        let state = if has(AccountStatus::NeedsSignIn) {
+        let state = if has(AccountStatus::CertificateChanged) {
+            "bad certificate"
+        } else if has(AccountStatus::NeedsSignIn) {
             "sign-in needed"
+        } else if has(AccountStatus::QuotaFull) {
+            "mailbox full"
         } else if has(AccountStatus::Offline) {
             "offline"
         } else if has(AccountStatus::Syncing) {
@@ -786,9 +800,12 @@ fn header_row(account: &SidebarAccount) -> Row {
             .build(),
         &["sw-account-name"],
     ));
-    content.append(&classed(
-        gtk::Label::new(Some(account.status.label())),
-        &["sw-account-status"],
+    content.append(&named(
+        classed(
+            gtk::Label::new(Some(account.status.label())),
+            &["sw-account-status"],
+        ),
+        &format!("status-text:{}", account.key),
     ));
     let widget = named(
         classed(
@@ -924,7 +941,10 @@ fn rail_account(account: &SidebarAccount) -> gtk::Button {
     }
     let overlay = gtk::Overlay::builder().child(&content).build();
     if account.status.needs_attention() {
-        let dot = status_dot(account.status);
+        let dot = named(
+            status_dot(account.status),
+            &format!("rail-status:{}", account.key),
+        );
         dot.set_halign(gtk::Align::End);
         dot.set_valign(gtk::Align::End);
         overlay.add_overlay(&dot);
@@ -1060,10 +1080,47 @@ mod tests {
         model.accounts[0].status = AccountStatus::NeedsSignIn;
         model.accounts[1].status = AccountStatus::Offline;
         assert_eq!(model.summary(), "2 accounts · sign-in needed");
+        model.accounts[1].status = AccountStatus::CertificateChanged;
+        assert_eq!(model.summary(), "2 accounts · bad certificate");
+        model.accounts[0].status = AccountStatus::Offline;
+        model.accounts[1].status = AccountStatus::QuotaFull;
+        assert_eq!(model.summary(), "2 accounts · mailbox full");
         model.accounts.truncate(1);
         model.accounts[0].status = AccountStatus::Synced;
         assert_eq!(model.summary(), "1 account · synced");
         assert_eq!(SidebarModel::default().summary(), "No accounts");
+    }
+
+    #[test]
+    fn every_state_has_words_and_the_rail_marks_those_that_need_the_user() {
+        let states = [
+            (AccountStatus::Synced, "synced", Some("sw-synced"), false),
+            (AccountStatus::Syncing, "syncing…", None, false),
+            (AccountStatus::Offline, "offline", Some("sw-offline"), true),
+            (
+                AccountStatus::NeedsSignIn,
+                "needs sign-in",
+                Some("sw-attention"),
+                true,
+            ),
+            (
+                AccountStatus::CertificateChanged,
+                "bad certificate",
+                Some("sw-certificate"),
+                true,
+            ),
+            (
+                AccountStatus::QuotaFull,
+                "mailbox full",
+                Some("sw-quota"),
+                true,
+            ),
+        ];
+        for (status, words, class, marked) in states {
+            assert_eq!(status.label(), words);
+            assert_eq!(status.class(), class);
+            assert_eq!(status.needs_attention(), marked, "{words}");
+        }
     }
 
     #[test]

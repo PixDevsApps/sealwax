@@ -81,9 +81,11 @@ pub fn account_status(event: &Event) -> Option<(AccountId, AccountStatus)> {
 fn sidebar_status(status: SyncStatus) -> AccountStatus {
     match status {
         SyncStatus::Syncing => AccountStatus::Syncing,
-        SyncStatus::Synced | SyncStatus::QuotaFull => AccountStatus::Synced,
+        SyncStatus::Synced => AccountStatus::Synced,
+        SyncStatus::QuotaFull => AccountStatus::QuotaFull,
         SyncStatus::NeedsSignIn(_) => AccountStatus::NeedsSignIn,
-        SyncStatus::Offline(_) | SyncStatus::CertificateChanged => AccountStatus::Offline,
+        SyncStatus::Offline(_) => AccountStatus::Offline,
+        SyncStatus::CertificateChanged => AccountStatus::CertificateChanged,
     }
 }
 
@@ -119,6 +121,14 @@ mod tests {
         assert_eq!(
             failed(LoginFailure::Unreachable),
             Some((account, AccountStatus::Offline))
+        );
+        assert_eq!(
+            failed(LoginFailure::Certificate),
+            Some((account, AccountStatus::CertificateChanged))
+        );
+        assert_eq!(
+            status(SyncStatus::QuotaFull),
+            Some((account, AccountStatus::QuotaFull))
         );
     }
 }

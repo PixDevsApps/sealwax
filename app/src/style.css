@@ -355,11 +355,15 @@ list.sw-folder-list {
   background: var(--sw-unread-color);
 }
 
-.sw-status-dot.sw-offline {
+/* Warning while Sealwax keeps trying or still syncs; error when it stopped until the user acts
+   (ML-048). */
+.sw-status-dot.sw-offline,
+.sw-status-dot.sw-quota {
   background: var(--warning-color);
 }
 
-.sw-status-dot.sw-attention {
+.sw-status-dot.sw-attention,
+.sw-status-dot.sw-certificate {
   background: var(--error-color);
 }
 
@@ -769,16 +773,26 @@ separator.sw-toolbar-separator {
   background: var(--sw-warning-soft-bg-color);
 }
 
-/* The window's banner (ML-032): a strip across the top of the window, over every pane, as the
-   mock's offline banner, with its "needs attention" content: the key in the error colour, the
-   account in bold, Sign in at 32 px. Its text keeps the text colour on the error tint. */
+/* The window's banner (ML-032, ML-048): a strip across the top of the window, over every pane,
+   as the mock's offline banner, with its "needs attention" content: the icon, the state in
+   bold, its buttons at 32 px. Its text keeps the text colour on every tint. The icon is the
+   error colour on the error tint, the text colour on the warning tint (the mock's offline and
+   certificate strips) and the accent on the card (its keyring and quota strips). */
 .sw-banner.sw-window-banner {
   border-radius: 0;
   border-bottom: var(--sw-control-border-width) solid var(--border-color);
 }
 
 .sw-banner-icon {
+  color: var(--accent-color);
+}
+
+.sw-banner.sw-error .sw-banner-icon {
   color: var(--error-color);
+}
+
+.sw-banner.sw-warning .sw-banner-icon {
+  color: var(--window-fg-color);
 }
 
 .sw-banner-title {
@@ -791,6 +805,25 @@ separator.sw-toolbar-separator {
 
 button.sw-primary.sw-banner-button {
   min-height: var(--sw-size-icon-button);
+}
+
+/* The mock's Details chip: a 1 px border on the strip's tint, the text colour. */
+button.sw-banner-secondary {
+  min-height: calc(var(--sw-size-icon-button) - 2 * var(--sw-control-border-width));
+  padding: 0 var(--sw-space-xxl);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: none;
+  box-shadow: none;
+  color: var(--window-fg-color);
+}
+
+button.sw-banner-secondary:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-banner-secondary:active {
+  background: var(--sw-pressed-bg-color);
 }
 
 /* Empty states: no accounts, no message, empty folder, no search results. */

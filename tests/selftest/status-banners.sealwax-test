@@ -1,0 +1,289 @@
+# Account status (ML-048; DESIGN.md "Components" and "Feedback"), on a scripted engine: every
+# state's dot and words in the sidebar and the rail, every banner alone with its tint, text and
+# buttons, the order the banner takes them in, and how it counts the rest. Kari signs in with
+# Microsoft (accounts.toml says so); Ola, Anne and Per with passwords. Every address, name and
+# host is fictional. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/status-banners.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+assert-shown banner false
+assert-setup banner-queue none
+
+# Four accounts, as the assistant adds them; the scripted engine keys them by the local part.
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-1
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address ola@example.test
+setup-type setup-name "Ola Hansen"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-2
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address anne@example.test
+setup-type setup-name "Anne Berg"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-3
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+action win.add-account
+setup-type setup-address per@example.test
+setup-type setup-name "Per Lie"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-4
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+assert-setup open false
+# accounts.toml, as the engine wrote it; Kari's says Microsoft.
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.kari.example.test\"\n\n[account.smtp]\nhost = \"smtp.kari.example.test\"\n\n[[account]]\nkey = \"ola\"\nname = \"Ola Hansen\"\naddress = \"ola@example.test\"\n\n[account.imap]\nhost = \"imap.ola.example.test\"\n\n[account.smtp]\nhost = \"smtp.ola.example.test\"\n\n[[account]]\nkey = \"anne\"\nname = \"Anne Berg\"\naddress = \"anne@example.test\"\n\n[account.imap]\nhost = \"imap.anne.example.test\"\n\n[account.smtp]\nhost = \"smtp.anne.example.test\"\n\n[[account]]\nkey = \"per\"\nname = \"Per Lie\"\naddress = \"per@example.test\"\n\n[account.imap]\nhost = \"imap.per.example.test\"\n\n[account.smtp]\nhost = \"smtp.per.example.test\"\n"
+wait-until assert-label sidebar-summary "4 accounts · all synced"
+setup-dismiss-toasts
+
+# ---- every state's dot and words, in the sidebar ----
+assert-label status-text:account-2 "synced"
+assert-color status:account-2 background unread
+engine-reply status ola@example.test syncing
+assert-account-status ola@example.test syncing
+assert-label status-text:account-2 "syncing…"
+assert-color status:account-2 background secondary
+assert-label sidebar-summary "4 accounts · syncing…"
+engine-reply status ola@example.test offline
+assert-label status-text:account-2 "offline"
+assert-color status:account-2 background warning
+assert-label sidebar-summary "4 accounts · offline"
+engine-reply status ola@example.test quota
+assert-account-status ola@example.test quota
+assert-label status-text:account-2 "mailbox full"
+assert-color status:account-2 background warning
+assert-label sidebar-summary "4 accounts · mailbox full"
+engine-reply status ola@example.test needs-sign-in
+assert-label status-text:account-2 "needs sign-in"
+assert-color status:account-2 background error
+assert-label sidebar-summary "4 accounts · sign-in needed"
+engine-reply status ola@example.test certificate
+assert-account-status ola@example.test certificate
+assert-label status-text:account-2 "bad certificate"
+assert-color status:account-2 background error
+assert-label sidebar-summary "4 accounts · bad certificate"
+assert-labelled
+
+# ---- and in the rail: a dot only when the account needs the user, its state in words ----
+resize 1100 900
+assert-layout rail
+assert-shown rail-status:account-2 true
+assert-color rail-status:account-2 background error
+assert-tooltip rail-account:account-2 "Ola Hansen, bad certificate"
+engine-reply status ola@example.test quota
+assert-color rail-status:account-2 background warning
+assert-tooltip rail-account:account-2 "Ola Hansen, mailbox full"
+engine-reply status ola@example.test offline
+assert-tooltip rail-account:account-2 "Ola Hansen, offline"
+engine-reply status ola@example.test needs-sign-in
+assert-color rail-status:account-2 background error
+assert-tooltip rail-account:account-2 "Ola Hansen, needs sign-in"
+engine-reply status ola@example.test syncing
+assert-shown rail-status:account-2 false
+assert-tooltip rail-account:account-2 "Ola Hansen, syncing…"
+engine-reply status ola@example.test synced
+assert-shown rail-status:account-2 false
+assert-tooltip rail-account:account-2 "Ola Hansen, synced"
+assert-labelled
+resize 1440 900
+wait-until assert-shown banner false
+
+# ---- each banner alone ----
+# A password account the server refused: Type the password again, on the error tint.
+engine-reply status ola@example.test needs-sign-in
+wait-until assert-shown banner true
+assert-setup banner-queue password:ola
+assert-label banner-title "Ola Hansen needs you to sign in again"
+assert-label banner-body "The server stopped accepting the password Sealwax has. Sealwax keeps your mail; nothing syncs until you type it again."
+assert-label banner-primary "Type the password again"
+assert-shown banner-secondary false
+assert-color banner-strip background error-soft
+assert-color banner-icon text error
+assert-color banner-title text foreground
+assert-contrast banner-strip 4.5
+assert-font banner-title chrome
+assert-width banner 1440
+assert-labelled
+screenshot $DIR/../../.local/selftest/status-password.png
+# A Microsoft account: Sign in.
+engine-reply status ola@example.test synced
+engine-reply status kari@example.test needs-sign-in
+wait-until assert-setup banner-queue sign-in:kari
+assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
+assert-label banner-primary "Sign in"
+engine-reply status kari@example.test synced
+wait-until assert-shown banner false
+
+# The certificate: why Sealwax stopped, Retry and Details; no way to trust it.
+engine-reply status anne@example.test certificate
+wait-until assert-shown banner true
+assert-setup banner-queue certificate:anne
+assert-label banner-title "Sealwax stopped connecting to Anne Berg"
+assert-label banner-body "imap.anne.example.test shows a certificate that no longer verifies, and Sealwax never signs in to a server it can't verify. A network that inspects secure connections can cause this: try another network, then Retry."
+assert-label banner-secondary "Details"
+assert-label banner-primary "Retry"
+assert-color banner-strip background error-soft
+assert-color banner-secondary text foreground
+assert-contrast banner-strip 4.5
+assert-labelled
+screenshot $DIR/../../.local/selftest/status-certificate.png
+setup-click banner-primary
+engine-expect reconnect
+wait-until assert-toast "Connecting again…"
+setup-dismiss-toasts
+setup-click banner-secondary
+wait-until assert-shown certificate-details true
+screenshot $DIR/../../.local/selftest/status-certificate-details.png
+setup-respond certificate-details close
+engine-expect none
+setup-click banner-secondary
+wait-until assert-shown certificate-details true
+setup-respond certificate-details retry
+engine-expect reconnect
+setup-dismiss-toasts
+engine-reply status anne@example.test synced
+wait-until assert-shown banner false
+
+# A full mailbox: no button, the warning tint.
+engine-reply status per@example.test quota
+wait-until assert-shown banner true
+assert-setup banner-queue quota:per
+assert-label banner-title "Per Lie's mailbox is full"
+assert-label banner-body "The server has no room for more mail: new messages may bounce, and changes can't be saved. Delete mail you don't need, or ask your provider for more space."
+assert-shown banner-primary false
+assert-shown banner-secondary false
+assert-color banner-strip background warning-soft
+assert-color banner-icon text foreground
+assert-contrast banner-strip 4.5
+screenshot $DIR/../../.local/selftest/status-quota.png
+engine-reply status per@example.test synced
+wait-until assert-shown banner false
+
+# ---- the order, and the count of the rest ----
+# Everything at once: no keyring, a certificate, two sign-ins, a full mailbox, no network.
+engine-reply status per@example.test quota
+engine-reply status kari@example.test needs-sign-in
+engine-reply status ola@example.test needs-sign-in
+engine-reply status anne@example.test certificate
+engine-reply keyring-unavailable
+desktop-network down
+wait-until assert-setup banner-queue keyring,certificate:anne,sign-in:kari,password:ola,quota:per,offline
+assert-label banner-title "No keyring found"
+assert-label banner-body "Passwords and sign-ins stay in memory until Sealwax quits, so you'll type them again next time. Start a Secret Service such as gnome-keyring to keep them. 5 more problems wait after this one."
+assert-label banner-secondary "Dismiss"
+assert-shown banner-primary false
+assert-color banner-strip background card
+assert-color banner-icon text accent
+assert-contrast banner-strip 4.5
+assert-labelled
+screenshot $DIR/../../.local/selftest/status-keyring.png
+# Dismissed for the session: the certificate is next.
+setup-click banner-secondary
+wait-until assert-label banner-title "Sealwax stopped connecting to Anne Berg"
+assert-setup banner-queue certificate:anne,sign-in:kari,password:ola,quota:per,offline
+assert-text-contains banner-body " 4 more problems wait after this one."
+engine-reply keyring-unavailable
+assert-label banner-title "Sealwax stopped connecting to Anne Berg"
+engine-reply status anne@example.test synced
+wait-until assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-text-contains banner-body " 3 more problems wait after this one."
+engine-reply status kari@example.test synced
+wait-until assert-label banner-title "Ola Hansen needs you to sign in again"
+assert-text-contains banner-body " 2 more problems wait after this one."
+engine-reply status ola@example.test synced
+wait-until assert-label banner-title "Per Lie's mailbox is full"
+assert-text-contains banner-body " 1 more problem waits after this one."
+engine-reply status per@example.test synced
+wait-until assert-label banner-title "You're offline"
+assert-label banner-body "Sealwax shows the mail it has and syncs again when the network is back."
+desktop-network up
+engine-expect reconnect
+wait-until assert-shown banner false
+assert-setup banner-queue none
+
+# Accounts that share a state: the banner names the first, in the sidebar's order.
+engine-reply status per@example.test certificate
+engine-reply status anne@example.test certificate
+wait-until assert-label banner-title "Sealwax stopped connecting to Anne Berg"
+assert-text-contains banner-body " 1 more account has the same problem."
+engine-reply status ola@example.test quota
+assert-text-contains banner-body " 2 more problems wait after this one."
+engine-reply status anne@example.test synced
+engine-reply status ola@example.test synced
+wait-until assert-label banner-title "Sealwax stopped connecting to Per Lie"
+engine-reply status per@example.test synced
+engine-reply status kari@example.test needs-sign-in
+engine-reply status per@example.test needs-sign-in
+engine-reply status ola@example.test needs-sign-in
+wait-until assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-text-contains banner-body " 2 more accounts need it too."
+assert-setup sign-in-needed kari,ola,per
+
+# In every layout, over every pane.
+resize 1100 900
+assert-shown banner true
+assert-width banner 1100
+resize 800 900
+assert-shown banner true
+assert-width banner 800
+resize 1440 900
+
+# In a light theme with rounded corners: each tint keeps its text readable, the strip square.
+theme catppuccin-latte
+corners 8
+assert-color banner-strip background error-soft
+assert-contrast banner-strip 4.5
+assert-radius banner-strip 0
+engine-reply status kari@example.test synced
+engine-reply status per@example.test synced
+engine-reply status ola@example.test quota
+wait-until assert-label banner-title "Ola Hansen's mailbox is full"
+assert-color banner-strip background warning-soft
+assert-contrast banner-strip 4.5
+engine-reply status ola@example.test synced
+desktop-network down
+wait-until assert-label banner-title "You're offline"
+assert-color banner-strip background warning-soft
+assert-contrast banner-strip 4.5
+desktop-network up
+engine-expect reconnect
+engine-reply status anne@example.test certificate
+wait-until assert-label banner-title "Sealwax stopped connecting to Anne Berg"
+assert-contrast banner-strip 4.5
+assert-color status:account-3 background error
+engine-reply status anne@example.test synced
+wait-until assert-shown banner false
+engine-expect none
