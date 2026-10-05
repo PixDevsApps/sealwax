@@ -325,6 +325,17 @@ Built in M2 ([m2/imap.md](m2/imap.md)).
 - **Refresh tokens rotate** on every refresh; each new one replaces the stored one.
 - **The redirect** is `http://localhost:<port>` without a path; the port is ignored when matching.
 
+### ADR-008 amendment — Microsoft sign-in in the app (ML-032, 2026-10-05)
+
+Built on S5's code ([engine report](m2/oauth-engine.md), [app report](m2/oauth-app.md)); checked live on the S5 account on 2026-10-05 ([TESTING.md](TESTING.md#ml-032-microsoft-sign-in-in-the-app--2026-10-05)).
+- **Flow:** our own PKCE (S256) authorization-code flow in the system browser, at Microsoft's `common` endpoints. The redirect is `http://localhost:<port>`, with listeners on 127.0.0.1 and ::1 that ignore requests without the right state. `prompt=select_account` and no `login_hint`; 5 minutes for the browser. Scopes: `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access openid profile`.
+- **The XOAUTH2 username is the ID token's `preferred_username`**, for the sign-in's checks, `accounts.toml` and every sync. The ID token comes from the token endpoint over HTTPS with the platform verifier, which stands in for its signature (OpenID Connect Core 3.1.3.7). The engine checks its issuer against its own tenant, its audience, its expiry, and that it names a user. `tid` picks Outlook.com's or Microsoft 365's servers for a new account.
+- **A sign-in checks IMAP and SMTP** with the new token before it answers, and keeps its tokens in memory for 30 minutes for the one add that names it.
+- **Tokens:** refresh tokens only in the Secret Service, replaced on every rotation and on a re-sign-in. Access tokens only in memory, refreshed with 5 minutes left or once after a server refuses one. A refused refresh means "sign in again" (`OAuthRequired`); a re-sign-in must be the account's own user.
+- **Errors** keep only Microsoft's AADSTS number. Consent not given (`access_denied`, `consent_required`, AADSTS 65001, 65004, 90094, 90095) is `SignInDeclined`.
+- **The client ID:** `config.toml`'s, else the build's `SEALWAX_MICROSOFT_CLIENT_ID`. The engine gets it at start and through `Command::MicrosoftClient` after every change to `config.toml`; without one, sign-in is unavailable.
+- **The app** opens the page with `gtk::UriLauncher`, can open it again while waiting, and cancels with `CancelSignIn`. A banner asks an account whose refresh was refused to sign in again.
+
 ### ADR-008 amendment — secrets keyed by the account key (M2, 2026-10-05)
 
 Built in M2 ([m2/accounts.md](m2/accounts.md)).

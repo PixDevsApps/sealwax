@@ -58,6 +58,18 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### ML-032 Microsoft sign-in in the app — 2026-10-05
+
+Debug builds; [engine report](m2/oauth-engine.md), [app report](m2/oauth-app.md).
+
+| Check | Result |
+| --- | --- |
+| Engine, offline (a fake Microsoft, a simulated browser, scripted IMAP and SMTP servers) | 15 OAuth unit tests, 7 service tests in `engine/tests/sign_in.rs`, a trace-level no-secret test (no code, verifier, token or ID token in any file or log line; no username, address or sign-in URL in the logs) |
+| App, headless with a scripted engine | `setup-microsoft` 147/147, `setup-microsoft-failures` 104/104, `setup-microsoft-banner` 164/164 in CI; `preview-ml032` 80/80 wrote 10 previews (`tools/progress/public/ml032-*-2026-10-05.png`) |
+| `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` after integration | 691 passed, 0 failed, 18 ignored; all 20 self-test scripts pass |
+| **Live**, on the S5 account (authorized): `cargo run -p sealwax-engine --example oauth_live -- <address> --resign-in`, 13:32–13:33 CEST (a run at 13:18 timed out unanswered; the owner missed the tab) | Signed in after 33.9 s, the owner's sign-in included; IMAP and SMTP took the token as the ID token's user, which differs from the address typed. Added; first sync: 12 folders, 0 INBOX headers (the INBOX is empty). After a restart: a refresh from the keyring, synced again, and the rotated refresh token replaced the stored one. Re-sign-in after 11.6 s replaced the refresh token and synced. Removed (12 folders); 0 keyring items under the test app-id; scratch folders deleted |
+| Not verified | The app's own sign-in on the live session (UI covered headless only); a revoked token live (scripted only); a Microsoft 365 work account; header sync of real messages on Outlook.com (the INBOX was empty) |
+
 ### S5 OAuth and secrets, Microsoft (ML-013) — 2026-10-05
 
 Debug build of `spikes/s5-oauth` on the development machine, against the owner's unused Outlook.com account (authorized 2026-10-05); [report](spikes/S5-oauth.md).

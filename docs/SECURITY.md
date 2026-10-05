@@ -72,6 +72,7 @@ The composer view uses the same layers as the reader, without `https:` for image
 
 ### Privacy
 
+- Microsoft sign-in: the address never goes into the sign-in URL (no `login_hint`); the sign-in URL, code, tokens and the username are never logged (ML-032).
 - Autodetect: the full address goes only to the domain's own HTTPS autoconfig; ISPDB, MX and SRV lookups use the domain. Plain-HTTP autoconfig is never used. A redirect that would carry the address to any other host is refused: S4b found `autoconfig.msn.com` redirecting to `www.msn.com` with the address kept, which S4's audit had missed. Hosts that resolve to non-public addresses are neither fetched nor probed.
 - No avatars, favicons, BIMI or Gravatar lookups; no read receipts; no telemetry.
 - Development and spikes never put the user's address or personal data in network requests ([ADR-018](DECISIONS.md#adr-018--logging-and-privacy-2026-10-04)).
