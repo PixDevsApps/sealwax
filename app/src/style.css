@@ -850,3 +850,215 @@ textview.sw-reader-plain > text {
 .sw-reader-notice {
   padding: var(--sw-space-sm) 0;
 }
+
+/* The setup assistant (ML-033): the mock's card, one column on the window's surface with the
+   theme's border; 28 px around it and 16 px between its parts. Text on the card, alert and
+   note surfaces is the text colour: the quiet greys fall under 4.5:1 there on light themes. */
+dialog.sw-setup sheet {
+  background-color: var(--window-bg-color);
+  color: var(--window-fg-color);
+}
+
+.sw-setup-sheet {
+  padding: calc(2 * var(--sw-space-xxxl));
+  border-spacing: calc(2 * var(--sw-space-lg));
+}
+
+.sw-setup-close {
+  margin: var(--sw-space-xl);
+}
+
+.sw-setup-caption {
+  font-size: var(--sw-text-caption);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-setup-title {
+  font-size: var(--sw-text-heading);
+  font-weight: bold;
+}
+
+.sw-setup-subtitle,
+.sw-setup-label,
+.sw-setup-hint,
+.sw-setup-footnote,
+.sw-setup-status {
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-setup-column,
+.sw-setup-section {
+  border-spacing: calc(2 * var(--sw-space-lg));
+}
+
+.sw-setup-section {
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-setup-field {
+  border-spacing: var(--sw-space-md);
+}
+
+.sw-setup-grid-row {
+  border-spacing: var(--sw-space-lg);
+}
+
+/* Fields: the mock's 36 px inputs on the sidebar surface, 32 px in the manual settings; the
+   accent border marks the focus. */
+entry.sw-setup-entry {
+  min-height: calc(var(--sw-size-compose) + var(--sw-space-xxs) - 2 * var(--sw-control-border-width));
+  padding: 0 var(--sw-space-xxl);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: var(--sidebar-bg-color);
+  box-shadow: none;
+}
+
+entry.sw-setup-entry.sw-setup-small {
+  min-height: calc(var(--sw-size-search) - 2 * var(--sw-control-border-width));
+  padding: 0 var(--sw-space-xl);
+  border-radius: var(--sw-radius-small);
+}
+
+entry.sw-setup-entry:focus-within {
+  border-color: var(--accent-bg-color);
+}
+
+entry.sw-setup-entry.sw-setup-invalid {
+  border-color: var(--error-color);
+}
+
+dropdown.sw-setup-security > button {
+  min-height: calc(var(--sw-size-search) - 2 * var(--sw-control-border-width));
+  padding: 0 var(--sw-space-md);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  background: var(--sidebar-bg-color);
+  box-shadow: none;
+}
+
+dropdown.sw-setup-security > button:hover {
+  background-image: image(var(--sw-hover-bg-color));
+}
+
+/* Sources and the server check: a mark, the name, what came of it. */
+.sw-setup-sources {
+  border-spacing: var(--sw-space-lg);
+}
+
+.sw-setup-row {
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-setup-mark {
+  min-width: var(--sw-space-xxxl);
+  color: var(--sw-secondary-fg-color);
+}
+
+.sw-setup-glyph.sw-setup-ok {
+  color: var(--success-color);
+}
+
+.sw-setup-status.sw-setup-found {
+  color: var(--window-fg-color);
+}
+
+/* The found settings and the Microsoft sign-in on the card surface. */
+.sw-setup-card {
+  padding: var(--sw-space-xxl) var(--sw-space-xxxl);
+  border-radius: var(--sw-radius);
+  background: var(--card-bg-color);
+  color: var(--card-fg-color);
+  border-spacing: var(--sw-space-sm);
+}
+
+.sw-setup-card.sw-setup-microsoft {
+  padding: calc(2 * var(--sw-space-lg));
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-setup-provider,
+.sw-setup-alert-title {
+  font-weight: bold;
+}
+
+.sw-setup-card-note {
+  padding-top: var(--sw-space-sm);
+}
+
+/* What stops the way, with what to do next: the error tint, the error colour on the icon. */
+.sw-setup-alert {
+  padding: var(--sw-space-xxl) var(--sw-space-xxxl);
+  border-radius: var(--sw-radius);
+  background: var(--sw-error-soft-bg-color);
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-setup-alert.sw-setup-info {
+  background: var(--card-bg-color);
+}
+
+.sw-setup-alert-text {
+  border-spacing: var(--sw-space-md);
+}
+
+.sw-setup-alert-icon {
+  color: var(--error-color);
+}
+
+.sw-setup-info .sw-setup-alert-icon {
+  color: var(--accent-color);
+}
+
+.sw-setup-validation {
+  border-spacing: var(--sw-space-md);
+}
+
+/* The note in the mock's dashed box (Microsoft sign-in waits for S5). */
+.sw-setup-note {
+  padding: var(--sw-space-xxl) var(--sw-space-xxxl);
+  border: var(--sw-control-border-width) dashed var(--border-color);
+  border-radius: var(--sw-radius);
+}
+
+/* Links: accent text, underlined on hover. */
+button.sw-setup-link {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--accent-color);
+}
+
+button.sw-setup-link:hover > label {
+  text-decoration-line: underline;
+}
+
+/* The footer: Set up manually, then Back and the step's button, 36 px as in the mock. */
+.sw-setup-footer {
+  border-spacing: var(--sw-space-xl);
+}
+
+button.sw-setup-primary {
+  min-height: calc(var(--sw-size-compose) + var(--sw-space-xxs));
+}
+
+button.sw-setup-secondary {
+  min-height: calc(var(--sw-size-compose) + var(--sw-space-xxs) - 2 * var(--sw-control-border-width));
+  padding: 0 var(--sw-space-xxxl);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: none;
+  box-shadow: none;
+}
+
+button.sw-setup-secondary:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-setup-secondary:active {
+  background: var(--sw-pressed-bg-color);
+}

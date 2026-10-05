@@ -9,8 +9,8 @@ use gtk4::prelude::*;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::{Binding, Keymap};
 
-/// "No accounts yet", with "Add an account" (insensitive until the setup assistant exists, M2)
-/// and a hint with the command palette's keys.
+/// "No accounts yet", with "Add an account" (the setup assistant, `win.add-account`) and a
+/// hint with the command palette's keys.
 pub struct NoAccount {
     pub page: gtk::Widget,
     pub add: gtk::Button,
@@ -22,8 +22,7 @@ pub fn no_account() -> NoAccount {
         gtk::Button::builder()
             .label("Add an account")
             .halign(gtk::Align::Center)
-            .sensitive(false)
-            .tooltip_text("Account setup is not available yet")
+            .action_name(super::ADD_ACCOUNT_ACTION)
             .build(),
         &["sw-primary", "sw-add-account"],
     );

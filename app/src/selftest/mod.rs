@@ -15,6 +15,7 @@ mod reader;
 mod sample;
 mod screenshot;
 mod script;
+mod setup;
 mod theme;
 
 use crate::application::{APP_ID_ENV, AppConfig, AppState, SealwaxApplication};
@@ -253,9 +254,11 @@ impl Harness {
             .ok_or_else(|| "there is no window".to_owned())
     }
 
+    /// A named widget of the window, or of the setup assistant over it.
     fn widget(&self, name: &str) -> Result<gtk::Widget, String> {
         self.window()?
             .widget(name)
+            .or_else(|| crate::setup::current().and_then(|open| open.widget(name)))
             .ok_or_else(|| format!("no widget named {name}"))
     }
 
@@ -391,6 +394,7 @@ impl Harness {
             "test-bus-signal" => self.test_bus_signal(arg(0)).await,
             "test-bus-stop" => self.stop_test_bus().await,
             command if reader::handles(command) => reader::step(self, command, args).await,
+            command if setup::handles(command) => setup::step(self, command, args).await,
             command => self.check(command, args).await,
         }
     }
@@ -529,9 +533,9 @@ impl Harness {
                 )
             }
             "assert-shown" => {
-                let shown = match self.window()?.widget(arg(0)) {
-                    Some(widget) => self.shown(&widget)?,
-                    None => false,
+                let shown = match self.widget(arg(0)) {
+                    Ok(widget) => self.shown(&widget)?,
+                    Err(_) => false,
                 };
                 equal(&format!("{} shown", arg(0)), shown, boolean(arg(1))?)
             }
@@ -681,6 +685,7 @@ impl Harness {
                 }
             }
             "assert-reader" => reader::check(self, args).await,
+            assertion if setup::checks(assertion) => setup::check(assertion, args),
             other => Err(format!("unknown command {other}")),
         }
     }

@@ -8,12 +8,14 @@
 use crate::actions::{self, ActionSet};
 use crate::cli;
 use crate::config;
+use crate::engine_link::EngineLink;
 use crate::list::MessageList;
 use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{MessageSource, Position, Reader};
+use crate::setup;
 use crate::shortcuts;
 use crate::theme::{self, ThemeController};
 use crate::window::{self, Pane, Window};
@@ -175,6 +177,7 @@ impl SealwaxApplication {
             store_warned: Cell::new(false),
             reader: RefCell::new(None),
             reader_shows: Cell::new(None),
+            engine: EngineLink::new(),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -228,6 +231,8 @@ pub struct AppState {
     reader: RefCell<Option<Reader>>,
     /// The message the reader shows; `None` while the window shows "No message selected".
     reader_shows: Cell<Option<MessageId>>,
+    /// The engine's commands and events (ADR-003); not connected until an engine is attached.
+    engine: EngineLink,
 }
 
 impl AppState {
@@ -275,6 +280,11 @@ impl AppState {
     /// The reader (ML-027), once the first window exists.
     pub fn reader(&self) -> Option<Reader> {
         self.reader.borrow().clone()
+    }
+
+    /// The link to the engine; `EngineLink::attach` connects it.
+    pub fn engine(&self) -> EngineLink {
+        self.engine.clone()
     }
 
     /// When the first window's first frame was painted.
@@ -560,6 +570,14 @@ impl AppState {
         win_actions.connect(ActionId::CommandPalette, move || {
             if let Some(window) = target.upgrade() {
                 palette::present(&window, &prefs.keymap());
+            }
+        });
+        let weak = Rc::downgrade(self);
+        win_actions.connect(ActionId::AddAccount, move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(window) = state.window()
+            {
+                setup::open(&window, &state.engine);
             }
         });
         window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));

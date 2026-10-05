@@ -70,6 +70,7 @@ mod tests {
             [
                 vec!["win.refresh", "win.toggle-sidebar", "win.command-palette"],
                 vec![
+                    "win.add-account",
                     "app.shortcuts",
                     "app.preferences",
                     "app.customize-shortcuts"
@@ -79,7 +80,11 @@ mod tests {
         );
         let settings = menu.item_link(1, "section").unwrap();
         assert_eq!(
-            attribute(&settings, 1, "label").as_deref(),
+            attribute(&settings, 0, "label").as_deref(),
+            Some("Add Account")
+        );
+        assert_eq!(
+            attribute(&settings, 2, "label").as_deref(),
             Some("Preferences (config.toml)")
         );
         assert_eq!(
@@ -87,7 +92,7 @@ mod tests {
             Some("action-disabled")
         );
         // Accelerators show by themselves; nothing here sets an accel attribute.
-        assert_eq!(attribute(&settings, 0, "accel"), None);
+        assert_eq!(attribute(&settings, 1, "accel"), None);
     }
 
     #[test]
@@ -102,7 +107,7 @@ mod tests {
         let menu = primary_menu(&keymap);
         let settings = menu.item_link(1, "section").unwrap();
         assert_eq!(
-            attribute(&settings, 0, "accel").as_deref(),
+            attribute(&settings, 1, "accel").as_deref(),
             Some("question")
         );
     }
