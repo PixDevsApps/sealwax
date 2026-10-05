@@ -2,7 +2,9 @@
 //! `store_version` it saw. A reader takes every queued request and serves the newest first, so a
 //! fast scroll isn't stuck behind stale pages; a request whose reply was dropped is skipped.
 
-use super::api::{OpenView, Page, StoreVersion, Versioned, ViewOpened, ViewSpec};
+use super::api::{
+    FolderSync, OpenView, Page, StoreVersion, SyncState, Versioned, ViewOpened, ViewSpec,
+};
 use super::{Shared, StoreError, check, codec, fts, views};
 use rusqlite::{Connection, OptionalExtension};
 use sealwax_domain::model::{
@@ -47,6 +49,10 @@ pub(crate) enum ReadJob {
     Check {
         reply: Sender<Vec<String>>,
     },
+    FolderSync {
+        folder: FolderId,
+        reply: Sender<Option<FolderSync>>,
+    },
 }
 
 impl ReadJob {
@@ -60,6 +66,7 @@ impl ReadJob {
             ReadJob::Raw { reply, .. } => reply.is_closed(),
             ReadJob::Search { reply, .. } => reply.is_closed(),
             ReadJob::Check { reply } => reply.is_closed(),
+            ReadJob::FolderSync { reply, .. } => reply.is_closed(),
         }
     }
 }
@@ -131,6 +138,9 @@ impl Reader {
             }
             ReadJob::Check { reply } => {
                 let _ = reply.try_send(check::run(&self.conn).map_err(StoreError::from));
+            }
+            ReadJob::FolderSync { folder, reply } => {
+                let _ = reply.try_send(self.folder_sync(folder));
             }
         }
     }
@@ -313,5 +323,45 @@ impl Reader {
             None => Vec::new(),
         };
         Ok(Versioned { version, value })
+    }
+
+    fn folder_sync(&self, folder: FolderId) -> Result<Option<FolderSync>, StoreError> {
+        let row = self
+            .conn
+            .prepare_cached(
+                "SELECT account_id, name_raw, delimiter, role, selectable, uidvalidity, uidnext, \
+                   highestmodseq, sync_state, initial_top, initial_modseq, sync_floor, \
+                   (SELECT count(*) FROM messages WHERE folder_id = f.id) \
+                 FROM folders f WHERE id = ?1",
+            )?
+            .query_row([folder.0], |row| {
+                let state = match row.get::<_, String>(8)?.as_str() {
+                    "initial" => SyncState::Initial {
+                        top: row.get::<_, Option<u32>>(9)?.unwrap_or(1),
+                        modseq: row.get::<_, Option<i64>>(10)?.unwrap_or(0) as u64,
+                        floor: row.get::<_, Option<u32>>(11)?.unwrap_or(1),
+                    },
+                    "ready" => SyncState::Ready,
+                    _ => SyncState::New,
+                };
+                Ok(FolderSync {
+                    folder,
+                    account: AccountId(row.get(0)?),
+                    name_raw: row.get(1)?,
+                    delimiter: row
+                        .get::<_, Option<String>>(2)?
+                        .and_then(|delimiter| delimiter.chars().next()),
+                    role: FolderRole::parse(&row.get::<_, String>(3)?),
+                    selectable: row.get(4)?,
+                    uidvalidity: row.get(5)?,
+                    uidnext: row.get(6)?,
+                    highestmodseq: row.get::<_, i64>(7)? as u64,
+                    state,
+                    floor: row.get(11)?,
+                    messages: row.get(12)?,
+                })
+            })
+            .optional()?;
+        Ok(row)
     }
 }

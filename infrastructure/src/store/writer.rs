@@ -4,9 +4,9 @@
 //! diffs are computed inside the transaction.
 
 use super::api::{
-    ChangeEvent, FolderCounts, FolderSpec, Ingested, NewAccount, NewMessage, Positioned,
-    StoreVersion, ThreadCount, ThreadMerge, Versioned, ViewChange, ViewDiff, ViewFilter, ViewId,
-    ViewScope, ViewSpec,
+    ChangeEvent, FirstSyncStep, FolderCounts, FolderSpec, Ingested, NewAccount, NewMessage,
+    Positioned, StoreVersion, ThreadCount, ThreadMerge, Versioned, ViewChange, ViewDiff,
+    ViewFilter, ViewId, ViewScope, ViewSpec,
 };
 use super::maintenance::Maintenance;
 use super::{Removed, Shared, StoreError, codec, fts, views};
@@ -60,6 +60,20 @@ pub(crate) enum WriteJob {
     },
     Remove {
         ids: Vec<MessageId>,
+        reply: Sender<Removed>,
+    },
+    UpsertFolders {
+        folders: Vec<FolderSpec>,
+        reply: Sender<Versioned<Vec<FolderId>>>,
+    },
+    FirstSync {
+        folder: FolderId,
+        step: FirstSyncStep,
+        reply: Sender<StoreVersion>,
+    },
+    ResetFolder {
+        folder: FolderId,
+        uidvalidity: u32,
         reply: Sender<Removed>,
     },
 }
@@ -238,6 +252,23 @@ impl Writer {
             WriteJob::Remove { ids, reply } => {
                 let _ = reply.try_send(self.remove(&ids));
             }
+            WriteJob::UpsertFolders { folders, reply } => {
+                let _ = reply.try_send(self.upsert_folders(&folders));
+            }
+            WriteJob::FirstSync {
+                folder,
+                step,
+                reply,
+            } => {
+                let _ = reply.try_send(self.first_sync_step(folder, step));
+            }
+            WriteJob::ResetFolder {
+                folder,
+                uidvalidity,
+                reply,
+            } => {
+                let _ = reply.try_send(self.reset_folder(folder, uidvalidity));
+            }
             WriteJob::Ingest { .. } => unreachable!("ingest jobs are bulk"),
         }
     }
@@ -262,24 +293,59 @@ impl Writer {
     }
 
     fn upsert_folder(&mut self, folder: &FolderSpec) -> Result<Versioned<FolderId>, StoreError> {
+        let Versioned { version, value } = self.upsert_folders(std::slice::from_ref(folder))?;
+        Ok(Versioned {
+            version,
+            value: value[0],
+        })
+    }
+
+    /// Upserts folders by `(account, name_raw)` in one transaction. STATUS counts replace the
+    /// counts only of folders still new and empty (see `check`).
+    fn upsert_folders(
+        &mut self,
+        folders: &[FolderSpec],
+    ) -> Result<Versioned<Vec<FolderId>>, StoreError> {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let id = FolderId(tx.query_row(
-            "INSERT INTO folders(account_id, name, name_raw, delimiter, role) \
-             VALUES (?1, ?2, ?3, ?4, ?5) \
-             ON CONFLICT(account_id, name_raw) DO UPDATE SET \
-               name = excluded.name, delimiter = excluded.delimiter, role = excluded.role \
-             RETURNING id",
-            params![
-                folder.account.0,
-                folder.name,
-                folder.name_raw,
-                folder.delimiter.map(String::from),
-                folder.role.as_str()
-            ],
-            |row| row.get(0),
-        )?);
+        let mut ids = Vec::with_capacity(folders.len());
+        let mut counted = BTreeSet::new();
+        {
+            let mut upsert = tx.prepare_cached(
+                "INSERT INTO folders(account_id, name, name_raw, delimiter, role, attributes, \
+                   selectable) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7) \
+                 ON CONFLICT(account_id, name_raw) DO UPDATE SET \
+                   name = excluded.name, delimiter = excluded.delimiter, role = excluded.role, \
+                   attributes = excluded.attributes, selectable = excluded.selectable \
+                 RETURNING id",
+            )?;
+            let mut counts = tx.prepare_cached(
+                "UPDATE folders SET total_count = ?2, unread_count = ?3 \
+                 WHERE id = ?1 AND sync_state = 'new' \
+                   AND NOT EXISTS (SELECT 1 FROM messages WHERE folder_id = ?1)",
+            )?;
+            for folder in folders {
+                let id = FolderId(upsert.query_row(
+                    params![
+                        folder.account.0,
+                        folder.name,
+                        folder.name_raw,
+                        folder.delimiter.map(String::from),
+                        folder.role.as_str(),
+                        folder.attributes.join(" "),
+                        folder.selectable,
+                    ],
+                    |row| row.get(0),
+                )?);
+                if let Some(server) = folder.server_counts.filter(|_| folder.selectable)
+                    && counts.execute(params![id.0, server.total, server.unread])? > 0
+                {
+                    counted.insert(id);
+                }
+                ids.push(id);
+            }
+        }
         let shared = Arc::clone(&self.state.shared);
         let open = shared.registry.lock();
         let mut views = Vec::new();
@@ -294,17 +360,91 @@ impl Writer {
                 });
             }
         }
-        let version = self.state.commit(
-            tx,
-            ChangeEvent {
-                folders_changed: true,
-                views,
-                ..ChangeEvent::default()
-            },
-        )?;
+        let event = ChangeEvent {
+            folders: folder_counts(&tx, &counted)?,
+            folders_changed: true,
+            views,
+            ..ChangeEvent::default()
+        };
+        let version = self.state.commit(tx, event)?;
         drop(open);
-        self.state.accounts.insert(id, folder.account);
-        Ok(Versioned { version, value: id })
+        for (id, folder) in ids.iter().zip(folders) {
+            self.state.accounts.insert(*id, folder.account);
+        }
+        Ok(Versioned {
+            version,
+            value: ids,
+        })
+    }
+
+    fn first_sync_step(
+        &mut self,
+        folder: FolderId,
+        step: FirstSyncStep,
+    ) -> Result<StoreVersion, StoreError> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let changed = match step {
+            FirstSyncStep::Start {
+                uidvalidity,
+                top,
+                modseq,
+            } => tx.execute(
+                "UPDATE folders SET uidvalidity = ?2, sync_state = 'initial', initial_top = ?3, \
+                   initial_modseq = ?4, sync_floor = ?3, \
+                   total_count = (SELECT count(*) FROM messages WHERE folder_id = ?1), \
+                   unread_count = (SELECT count(*) FROM messages \
+                     WHERE folder_id = ?1 AND flags & 1 = 0) \
+                 WHERE id = ?1 AND sync_state = 'new'",
+                params![folder.0, uidvalidity, top, modseq as i64],
+            )?,
+            FirstSyncStep::Floor(floor) => tx.execute(
+                "UPDATE folders SET sync_floor = ?2 WHERE id = ?1 AND sync_state = 'initial'",
+                params![folder.0, floor],
+            )?,
+            FirstSyncStep::Finish => tx.execute(
+                "UPDATE folders SET sync_state = 'ready', uidnext = initial_top, \
+                   highestmodseq = initial_modseq, initial_top = NULL, initial_modseq = NULL \
+                 WHERE id = ?1 AND sync_state = 'initial'",
+                [folder.0],
+            )?,
+        };
+        if changed == 0 {
+            return Err(StoreError::SyncState(folder));
+        }
+        if !matches!(step, FirstSyncStep::Start { .. }) {
+            tx.commit()?;
+            self.state.after_commit();
+            return Ok(StoreVersion(self.state.version));
+        }
+        let event = ChangeEvent {
+            folders: folder_counts(&tx, &BTreeSet::from([folder]))?,
+            ..ChangeEvent::default()
+        };
+        self.state.commit(tx, event)
+    }
+
+    fn reset_folder(&mut self, folder: FolderId, uidvalidity: u32) -> Result<Removed, StoreError> {
+        self.state.account(folder)?;
+        let ids = self
+            .conn
+            .prepare_cached("SELECT id FROM messages WHERE folder_id = ?1")?
+            .query_map([folder.0], |row| Ok(MessageId(row.get(0)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let removed = self.remove(&ids)?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "UPDATE folders SET uidvalidity = ?2, sync_state = 'new', uidnext = 1, \
+               highestmodseq = 0, initial_top = NULL, initial_modseq = NULL, sync_floor = NULL \
+             WHERE id = ?1",
+            params![folder.0, uidvalidity],
+        )?;
+        tx.commit()?;
+        self.state.after_commit();
+        Ok(removed)
     }
 
     /// Commits the next batch of headers; returns the batch's full-text work.

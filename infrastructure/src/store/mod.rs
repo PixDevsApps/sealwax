@@ -15,6 +15,8 @@ mod views;
 mod writer;
 
 #[cfg(test)]
+mod sync_tests;
+#[cfg(test)]
 pub(crate) mod tests;
 
 pub use api::*;
@@ -48,6 +50,8 @@ pub enum StoreError {
     Io(#[from] io::Error),
     #[error("unknown folder {0}")]
     UnknownFolder(FolderId),
+    #[error("folder {0} is not in the sync state this step needs")]
+    SyncState(FolderId),
     #[error("the store is closed")]
     Closed,
 }
@@ -309,6 +313,36 @@ impl Store {
 
     pub fn upsert_folder(&self, folder: FolderSpec) -> Reply<Versioned<FolderId>> {
         self.write(|reply| WriteJob::UpsertFolder { folder, reply })
+    }
+
+    /// Upserts a whole folder list in one transaction; the ids come back in input order.
+    pub fn upsert_folders(&self, folders: Vec<FolderSpec>) -> Reply<Versioned<Vec<FolderId>>> {
+        self.write(|reply| WriteJob::UpsertFolders { folders, reply })
+    }
+
+    /// A folder's wire name and sync state, for the sync engine.
+    pub fn folder_sync(&self, folder: FolderId) -> Reply<Option<FolderSync>> {
+        self.read(|reply| ReadJob::FolderSync { folder, reply })
+    }
+
+    /// Records a step of a folder's first sync. `Start` needs a new folder and `Floor` and
+    /// `Finish` one in its first sync; otherwise the reply is [`StoreError::SyncState`].
+    pub fn first_sync_step(&self, folder: FolderId, step: FirstSyncStep) -> Reply<StoreVersion> {
+        self.write(|reply| WriteJob::FirstSync {
+            folder,
+            step,
+            reply,
+        })
+    }
+
+    /// Removes every message of a folder whose UIDVALIDITY changed and makes it new again,
+    /// under the new UIDVALIDITY.
+    pub fn reset_folder(&self, folder: FolderId, uidvalidity: u32) -> Reply<Removed> {
+        self.write(|reply| WriteJob::ResetFolder {
+            folder,
+            uidvalidity,
+            reply,
+        })
     }
 
     /// Stores messages in transactions of at most 200, each followed by its own full-text

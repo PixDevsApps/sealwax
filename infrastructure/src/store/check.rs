@@ -1,6 +1,7 @@
 //! Recounts what the writer maintains and lists disagreements: folder counts, conversation
 //! sizes (each Message-ID once) and dates, aliases, empty conversations, foreign keys and
-//! full-text rows without a message.
+//! full-text rows without a message. A new folder without messages may show the server's
+//! STATUS counts instead (`FolderSpec::server_counts`), so its counts aren't recounted.
 
 use rusqlite::Connection;
 
@@ -10,7 +11,8 @@ const CHECKS: [(&str, &str); 7] = [
         "SELECT count(*) FROM folders f LEFT JOIN \
            (SELECT folder_id, count(*) AS n, sum(flags & 1 = 0) AS u FROM messages GROUP BY folder_id) c \
            ON c.folder_id = f.id \
-         WHERE f.total_count <> coalesce(c.n, 0) OR f.unread_count <> coalesce(c.u, 0)",
+         WHERE (f.total_count <> coalesce(c.n, 0) OR f.unread_count <> coalesce(c.u, 0)) \
+           AND NOT (f.sync_state = 'new' AND c.n IS NULL)",
     ),
     (
         "conversation sizes and dates",
