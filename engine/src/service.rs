@@ -5,10 +5,10 @@
 //!
 //! Autodetect, login checks and sign-ins run side by side. Everything that touches
 //! `accounts.toml`, the keyring entries or an account's store rows runs in one lane, one job at
-//! a time, so an add never races a removal or a reconcile; a re-sign-in's refresh token is
-//! stored there too. The only other keyring write is an account's sync storing a rotated
-//! refresh token, and the lane stops that sync before it removes the account or replaces its
-//! token.
+//! a time, so an add never races a removal or a reconcile; a re-sign-in's refresh token and a
+//! new password (ML-048), each checked on the servers beside the lane, are stored there too.
+//! The only other keyring write is an account's sync storing a rotated refresh token, and the
+//! lane stops that sync before it removes the account or replaces its token.
 
 use crate::accounts::{Accounts, secret_label};
 use crate::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
@@ -209,12 +209,19 @@ impl Shared {
         }
     }
 
-    /// The keyring, opened on first use so it never delays a lookup or the first frame.
+    /// The keyring, opened on first use so it never delays a lookup or the first frame. When
+    /// no Secret Service answers, secrets stay in memory and the app hears it once (ML-048).
     async fn secrets(&self) -> &Secrets {
         self.secrets
             .get_or_init(|| async {
                 match self.backend {
-                    SecretBackend::Keyring => Secrets::open(&self.application).await,
+                    SecretBackend::Keyring => {
+                        let secrets = Secrets::open(&self.application).await;
+                        if !secrets.is_persistent() {
+                            self.send(Event::KeyringUnavailable);
+                        }
+                        secrets
+                    }
                     SecretBackend::Memory => Secrets::Memory(MemoryStore::default()),
                 }
             })
@@ -303,6 +310,12 @@ enum Job {
         settings: AccountSettings,
         kept: Box<Kept>,
     },
+    /// A new password that IMAP and SMTP took, for the account in `settings`.
+    PasswordChecked {
+        request: RequestId,
+        settings: AccountSettings,
+        password: Password,
+    },
 }
 
 async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
@@ -362,11 +375,24 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 continue;
             }
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
+            Command::UpdatePassword {
+                request,
+                key,
+                password,
+            } => {
+                tokio::spawn(check_password(
+                    shared.clone(),
+                    jobs.clone(),
+                    request,
+                    key,
+                    password,
+                ));
+                continue;
+            }
             Command::FolderOpened { .. }
             | Command::LoadOlder { .. }
             | Command::FetchBodies { .. }
-            | Command::Reconnect
-            | Command::UpdatePassword { .. } => {
+            | Command::Reconnect => {
                 tracing::debug!("an M3 command arrived before M3 built it");
                 continue;
             }
@@ -514,6 +540,19 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                 let result = store_sign_in(&shared, &accounts, &settings, *kept).await;
                 shared.send(Event::SignedIn { request, result });
                 start_sync(&shared, settings);
+            }
+            Job::PasswordChecked {
+                request,
+                settings,
+                password,
+            } => {
+                let result = store_password(&shared, &accounts, &settings, &password).await;
+                let stored = result.is_ok();
+                shared.send(Event::PasswordUpdated { request, result });
+                if stored {
+                    stop_sync(&shared, &settings.key).await;
+                    start_sync(&shared, settings);
+                }
             }
         }
     }
@@ -879,15 +918,20 @@ async fn signed_in(
     Ok((kept, target))
 }
 
-/// The Microsoft account `key` from `accounts.toml`, for a re-sign-in.
-async fn listed_account(shared: &Shared, key: &AccountKey) -> Result<AccountSettings, LoginError> {
+/// The accounts `accounts.toml` lists now; none when it can't be read.
+async fn listed(shared: &Shared) -> Vec<AccountSettings> {
     let path = shared.paths.settings.clone();
-    let listed = tokio::task::spawn_blocking(move || files::read(&path))
+    tokio::task::spawn_blocking(move || files::read(&path))
         .await
         .ok()
         .and_then(Result::ok)
-        .unwrap_or_default();
-    listed
+        .unwrap_or_default()
+}
+
+/// The Microsoft account `key` from `accounts.toml`, for a re-sign-in.
+async fn listed_account(shared: &Shared, key: &AccountKey) -> Result<AccountSettings, LoginError> {
+    listed(shared)
+        .await
         .into_iter()
         .find(|account| &account.key == key && matches!(account.auth, AuthMethod::OAuth(_)))
         .ok_or_else(|| {
@@ -945,13 +989,11 @@ async fn store_sign_in(
     settings: &AccountSettings,
     kept: Kept,
 ) -> Result<String, LoginError> {
-    let path = shared.paths.settings.clone();
-    let listed = tokio::task::spawn_blocking(move || files::read(&path))
+    if !listed(shared)
         .await
-        .ok()
-        .and_then(Result::ok)
-        .unwrap_or_default();
-    if !listed.iter().any(|account| account.key == settings.key) {
+        .iter()
+        .any(|account| account.key == settings.key)
+    {
         tracing::info!("the account was removed during its sign-in");
         return Err(imap_error(LoginFailure::Other));
     }
@@ -971,6 +1013,81 @@ async fn store_sign_in(
     shared.access.seed(&settings.key, kept.access);
     tracing::info!("signed in again; the new refresh token replaced the old one");
     Ok(kept.username)
+}
+
+/// `UpdatePassword`'s check, beside the lane (ML-048): the account from `accounts.toml`, then
+/// IMAP and SMTP with the new password as the account's username. A password both took goes
+/// to the lane to be stored; anything else is answered here, and nothing is stored.
+async fn check_password(
+    shared: Arc<Shared>,
+    jobs: async_channel::Sender<Job>,
+    request: RequestId,
+    key: AccountKey,
+    password: Password,
+) {
+    let checked = match listed(&shared)
+        .await
+        .into_iter()
+        .find(|account| account.key == key)
+    {
+        Some(settings) => verify(&settings, None, &password, &shared.trust)
+            .await
+            .map(|_| settings),
+        None => {
+            tracing::info!(request, "no such account for a new password");
+            Err(imap_error(LoginFailure::Other))
+        }
+    };
+    match checked {
+        Ok(settings) => {
+            let job = Job::PasswordChecked {
+                request,
+                settings,
+                password,
+            };
+            let _ = jobs.send(job).await;
+        }
+        Err(error) => {
+            tracing::info!(request, failure = ?error.failure, "the new password was refused");
+            shared.send(Event::PasswordUpdated {
+                request,
+                result: Err(error),
+            });
+        }
+    }
+}
+
+/// A checked password replaces the account's in the keyring, unless the account was removed
+/// while it was checked.
+async fn store_password(
+    shared: &Shared,
+    accounts: &Accounts<'_, Secrets>,
+    settings: &AccountSettings,
+    password: &Password,
+) -> Result<(), LoginError> {
+    if !listed(shared)
+        .await
+        .iter()
+        .any(|account| account.key == settings.key)
+    {
+        tracing::info!("the account was removed while its new password was checked");
+        return Err(imap_error(LoginFailure::Other));
+    }
+    accounts
+        .secrets
+        .store(
+            &settings.key.0,
+            SecretKind::Password,
+            &secret_label(&settings.address),
+            password.expose().as_bytes(),
+        )
+        .await
+        .map_err(|error| {
+            tracing::warn!(%error, "the keyring refused the new password");
+            imap_error(LoginFailure::Other)
+        })?;
+    tracing::info!("the new password replaced the old one");
+    Ok(())
 }
 
 #[cfg(test)]
