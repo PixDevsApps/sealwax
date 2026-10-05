@@ -836,7 +836,7 @@ enum Kept {
 
 /// What the IDLE connection's loop works with.
 struct Idling<'a> {
-    shared: &'a Shared,
+    shared: &'a Arc<Shared>,
     config: &'a SyncConfig,
     account: AccountId,
     status: &'a Arc<Status>,
@@ -877,7 +877,13 @@ impl Idling<'_> {
             )
             .await;
             match passed {
-                Ok(Ok(report)) => discard(self.shared, report.orphaned_blobs).await,
+                Ok(Ok(report)) => {
+                    let stored = report.stats.stored;
+                    discard(self.shared, report.orphaned_blobs).await;
+                    if stored > 0 {
+                        bodies::prefetch(self.shared);
+                    }
+                }
                 Ok(Err(error)) => {
                     tracing::info!(account = self.account.0, %error, "the IDLE connection's pass failed");
                     return Kept::Lost;
