@@ -24,6 +24,7 @@ pub use toolbar::Position;
 pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
 
 use crate::actions::{self, ScopedShortcuts};
+use crate::engine_link::{EngineLink, Subscription};
 use crate::theme::{ListenerId, ThemeController};
 use engine::{Engine, InlineParts};
 use gtk4 as gtk;
@@ -35,6 +36,7 @@ use sealwax_domain::actions::Scope;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{Account, MessageDetail, MessageId};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
+use sealwax_engine::api::{BodyError, Command, Event};
 use sealwax_infrastructure::store::{Reply, Store, Versioned};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -77,7 +79,12 @@ pub enum ShownBody {
     /// free view, or the web process ended).
     TextFallback,
     Empty,
+    /// The body isn't stored and nothing can download it (no engine).
     NotDownloaded,
+    /// The engine is downloading the body (ML-044); the snippet shows meanwhile.
+    Downloading,
+    /// The download failed; the reader says why and offers Retry.
+    DownloadFailed(BodyError),
     /// The store no longer has the message, or couldn't read it.
     Missing,
 }
@@ -104,6 +111,10 @@ type EventListener = Rc<dyn Fn(MessageId, &ViewEvent)>;
 pub trait MessageSource {
     /// The reads one message needs, sent together; `None` while no store is open.
     fn read(&self, id: MessageId) -> Option<Reads>;
+
+    /// The reader showed the body of `id` at `at` (Unix seconds): the disk cap keeps the bodies
+    /// opened last (ML-044).
+    fn opened(&self, _id: MessageId, _at: i64) {}
 }
 
 /// The replies to [`MessageSource::read`].
@@ -121,6 +132,10 @@ impl MessageSource for Store {
             raw: self.raw_message(id),
         })
     }
+
+    fn opened(&self, id: MessageId, at: i64) {
+        let _ = self.touch_body(id, at);
+    }
 }
 
 impl MessageSource for crate::mailbox::Mailbox {
@@ -128,9 +143,17 @@ impl MessageSource for crate::mailbox::Mailbox {
         self.store()
             .and_then(|store| MessageSource::read(&*store, id))
     }
+
+    fn opened(&self, id: MessageId, at: i64) {
+        if let Some(store) = self.store() {
+            MessageSource::opened(&*store, id, at);
+        }
+    }
 }
 type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
 type LinkCheck = Rc<dyn Fn(&Link) -> bool>;
+/// Asks for the bodies of messages; `false` when nothing can download them.
+type Fetcher = Rc<dyn Fn(&[MessageId]) -> bool>;
 
 #[derive(Clone)]
 pub struct Reader {
@@ -188,6 +211,15 @@ struct Inner {
     hidden_timer: RefCell<Option<glib::SourceId>>,
     /// The window whose focus the reader follows, and the handler.
     focus_window: RefCell<Option<(glib::WeakRef<gtk::Window>, glib::SignalHandlerId)>>,
+    /// Downloads bodies the store doesn't hold (ML-044); without one they are "not downloaded".
+    fetcher: RefCell<Option<Fetcher>>,
+    /// Bodies asked for and not answered yet.
+    fetching: RefCell<HashSet<MessageId>>,
+    /// The engine's answer for the message about to be shown again, read by its next load.
+    answers: RefCell<HashMap<MessageId, Result<(), BodyError>>>,
+    /// The message the newest `show` is for.
+    target: Cell<Option<MessageId>>,
+    engine_events: RefCell<Option<Subscription>>,
 }
 
 impl Reader {
@@ -227,6 +259,11 @@ impl Reader {
             on_event: RefCell::new(Vec::new()),
             hidden_timer: RefCell::new(None),
             focus_window: RefCell::new(None),
+            fetcher: RefCell::new(None),
+            fetching: RefCell::new(HashSet::new()),
+            answers: RefCell::new(HashMap::new()),
+            target: Cell::new(None),
+            engine_events: RefCell::new(None),
         });
         let weak = Rc::downgrade(&inner);
         let id = inner.theme.connect_changed(move |theme| {
@@ -263,13 +300,78 @@ impl Reader {
     /// Shows the message `id`. Returns at once; the page replaces the shown one when it is
     /// ready. A newer `show` or [`Reader::clear`] cancels it.
     pub fn show(&self, id: MessageId) {
+        self.inner.target.set(Some(id));
+        self.inner.answers.borrow_mut().remove(&id);
         let generation = self.inner.next_generation();
         let inner = self.inner.clone();
         glib::spawn_future_local(async move { inner.load(id, generation, Instant::now()).await });
     }
 
+    /// Downloads the bodies the store doesn't hold through `fetch` (ML-044): the reader asks
+    /// for the shown message's body, shows "Downloading…" meanwhile, and the message once
+    /// [`Reader::messages_changed`] or [`Reader::body_fetched`] says it is there. `fetch`
+    /// returns `false` when nothing can download it.
+    pub fn set_body_fetcher(&self, fetch: impl Fn(&[MessageId]) -> bool + 'static) {
+        self.inner.fetcher.replace(Some(Rc::new(fetch)));
+    }
+
+    /// Asks `engine` for bodies and takes its answers.
+    pub fn connect_engine(&self, engine: &EngineLink) {
+        let link = engine.clone();
+        self.set_body_fetcher(move |messages| {
+            link.send(Command::FetchBodies {
+                messages: messages.to_vec(),
+            })
+            .is_ok()
+        });
+        let weak = Rc::downgrade(&self.inner);
+        let subscription = engine.subscribe(move |event| {
+            if let Event::BodyFetched { message, result } = event
+                && let Some(inner) = weak.upgrade()
+            {
+                Reader { inner }.body_fetched(*message, *result);
+            }
+        });
+        self.inner.engine_events.replace(Some(subscription));
+    }
+
+    /// The engine's answer to a download: a failure is shown with Retry, a success shows the
+    /// message unless the store's change event already did.
+    pub fn body_fetched(&self, id: MessageId, result: Result<(), BodyError>) {
+        self.inner.fetching.borrow_mut().remove(&id);
+        if self.inner.target.get() != Some(id) {
+            return;
+        }
+        let waiting = self
+            .inner
+            .shown
+            .borrow()
+            .as_ref()
+            .is_none_or(|page| page.id != id || matches!(page.body, ShownBody::Downloading));
+        if waiting {
+            self.inner.answers.borrow_mut().insert(id, result);
+            self.inner.reshow(id);
+        }
+    }
+
+    /// Messages a store commit changed: one waiting for its body is shown again.
+    pub fn messages_changed(&self, ids: &[MessageId]) {
+        let waiting = self.inner.shown.borrow().as_ref().is_some_and(|page| {
+            ids.contains(&page.id)
+                && self.inner.target.get() == Some(page.id)
+                && matches!(
+                    page.body,
+                    ShownBody::Downloading | ShownBody::DownloadFailed(_)
+                )
+        });
+        if let (true, Some(id)) = (waiting, self.inner.target.get()) {
+            self.inner.reshow(id);
+        }
+    }
+
     /// Shows nothing and gives every view back.
     pub fn clear(&self) {
+        self.inner.target.set(None);
         self.inner.next_generation();
         self.inner.stage.unstage();
         self.inner.stage.show(None::<&gtk::Widget>, None);
@@ -435,6 +537,21 @@ fn now() -> i64 {
     glib::real_time() / 1_000_000
 }
 
+/// Why a body couldn't be downloaded, in plain words.
+fn download_failure(error: BodyError) -> &'static str {
+    match error {
+        BodyError::Offline => {
+            "This message couldn't be downloaded: the mail server can't be reached."
+        }
+        BodyError::NeedsSignIn => {
+            "This message couldn't be downloaded: the account needs you to sign in again."
+        }
+        BodyError::Gone => "This message is no longer on the server.",
+        BodyError::Store => "This message couldn't be saved on this computer.",
+        BodyError::Other => "This message couldn't be downloaded.",
+    }
+}
+
 impl Inner {
     fn next_generation(&self) -> u64 {
         let generation = self.generation.get() + 1;
@@ -478,6 +595,14 @@ impl Inner {
             })
             .unwrap_or_default();
         let fetched = started.elapsed();
+        let answer = self.answers.borrow_mut().remove(&id);
+        let download = match &raw {
+            None => self.download(id, answer),
+            Some(_) => {
+                self.store.opened(id, now());
+                None
+            }
+        };
         let for_worker = detail.clone();
         let prepared = gio::spawn_blocking(move || prepare::prepare(&for_worker, raw.as_deref()))
             .await
@@ -514,6 +639,11 @@ impl Inner {
             attachments,
             released: false,
         };
+        if let Some(state) = download {
+            self.download_page(&mut page, &detail, state);
+            self.present(page, started, fetched, prepared_at);
+            return;
+        }
         match prepared.body {
             Body::Html {
                 html,
@@ -572,6 +702,70 @@ impl Inner {
             }
         }
         self.present(page, started, fetched, prepared_at);
+    }
+
+    /// What a message whose body isn't stored shows (ML-044): `None` without a fetcher (M1's
+    /// "not downloaded yet"), else the engine's failure, "Downloading…" while a request is out,
+    /// or a new request.
+    fn download(&self, id: MessageId, answer: Option<Result<(), BodyError>>) -> Option<ShownBody> {
+        let fetch = self.fetcher.borrow().clone()?;
+        match answer {
+            Some(Err(error)) => return Some(ShownBody::DownloadFailed(error)),
+            // Answered, and still no body: asking again would only loop.
+            Some(Ok(())) => return Some(ShownBody::DownloadFailed(BodyError::Other)),
+            None => {}
+        }
+        if self.fetching.borrow().contains(&id) {
+            return Some(ShownBody::Downloading);
+        }
+        if fetch(&[id]) {
+            self.fetching.borrow_mut().insert(id);
+            Some(ShownBody::Downloading)
+        } else {
+            Some(ShownBody::DownloadFailed(BodyError::Other))
+        }
+    }
+
+    /// The snippet under a quiet "Downloading…", or under why the download failed with Retry.
+    fn download_page(self: &Rc<Self>, page: &mut Page, detail: &MessageDetail, state: ShownBody) {
+        let id = page.id;
+        if let ShownBody::DownloadFailed(error) = &state {
+            let row = gtk::Box::builder().spacing(12).build();
+            let notice = page::notice(download_failure(*error));
+            notice.set_hexpand(true);
+            row.append(&notice);
+            let retry = gtk::Button::builder()
+                .label("Retry")
+                .valign(gtk::Align::Center)
+                .css_classes(["sw-control"])
+                .build();
+            retry.set_widget_name("reader-retry");
+            let weak = Rc::downgrade(self);
+            retry.connect_clicked(move |_| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.retry(id);
+                }
+            });
+            row.append(&retry);
+            page.widgets.body.append(&row);
+        } else {
+            page.widgets.body.append(&page::notice("Downloading…"));
+        }
+        let snippet = &detail.summary.snippet;
+        if !snippet.is_empty() {
+            let snippet = page::plain_text(snippet);
+            page.widgets.body.append(&snippet);
+            page.widgets.focus = Some(snippet.upcast());
+        }
+        page.body = state;
+    }
+
+    /// Retry: the shown message asks for its body again.
+    fn retry(self: &Rc<Self>, id: MessageId) {
+        if self.target.get() == Some(id) {
+            self.answers.borrow_mut().remove(&id);
+            self.reshow(id);
+        }
     }
 
     /// Lays an HTML body out unseen in a pooled view until it has its width, its height and

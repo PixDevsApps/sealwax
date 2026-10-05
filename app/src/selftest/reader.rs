@@ -200,7 +200,7 @@ async fn show_images() -> StepResult {
     Ok(())
 }
 
-fn body_name(body: Option<&ShownBody>) -> &'static str {
+pub(super) fn body_name(body: Option<&ShownBody>) -> &'static str {
     match body {
         None => "none",
         Some(ShownBody::Html {
@@ -212,6 +212,8 @@ fn body_name(body: Option<&ShownBody>) -> &'static str {
         Some(ShownBody::TextFallback) => "text-fallback",
         Some(ShownBody::Empty) => "empty",
         Some(ShownBody::NotDownloaded) => "not-downloaded",
+        Some(ShownBody::Downloading) => "downloading",
+        Some(ShownBody::DownloadFailed(_)) => "download-failed",
         Some(ShownBody::Missing) => "missing",
     }
 }
@@ -387,7 +389,7 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
 }
 
 /// The shown plain-text body's text.
-fn plain_text(reader: &Reader) -> String {
+pub(super) fn plain_text(reader: &Reader) -> String {
     use gtk4::prelude::*;
     plain_view(reader)
         .map(|view| {

@@ -16,6 +16,7 @@
 //! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would |
 //! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
 //! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `AccountStatus` for the store's account with ADDRESS: the failure's state, or `Synced` |
+//! | `engine-reply body-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `BodyFetched` for the first message of the last `fetch-bodies` taken (its fields: `messages`, `count`); storing the body is `bodies-store`'s (`bodies.rs`) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -42,8 +43,10 @@ use sealwax_domain::account::{
     HelpLink, LoginError, LoginFailure, OAuthProvider, Protocol, Security, UnsupportedReason,
     UsernameForm,
 };
-use sealwax_domain::model::FolderRole;
-use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
+use sealwax_domain::model::{FolderRole, MessageId};
+use sealwax_engine::api::{
+    AccountError, BodyError, Command, Event, Password, RequestId, SyncStatus,
+};
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
 use sealwax_infrastructure::store::{FolderSpec, NewAccount};
@@ -107,6 +110,13 @@ thread_local! {
     static FAKE: RefCell<Option<Rc<Fake>>> = const { RefCell::new(None) };
     /// The links the assistant handed to the browser opener, oldest first.
     static OPENED: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// The messages of the last `FetchBodies` taken (ML-044).
+    static REQUESTED: RefCell<Vec<MessageId>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The messages the last `FetchBodies` the script took asked for.
+pub(super) fn last_requested() -> Vec<MessageId> {
+    REQUESTED.with(|requested| requested.borrow().clone())
 }
 
 /// The assistant's links go to the record instead of a browser.
@@ -573,6 +583,9 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
     if let Command::SignIn { request, .. } = &command {
         fake.last_sign_in.set(Some(*request));
     }
+    if let Command::FetchBodies { messages } = &command {
+        REQUESTED.with(|requested| requested.replace(messages.clone()));
+    }
     let (kind, request, fields) = fields(&command, fake.last_sign_in.get());
     let shown: Vec<String> = fields
         .iter()
@@ -614,6 +627,9 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
 async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
     let fake = fake()?;
     if let Some(event) = sync_event(harness, args)? {
+        return send_event(harness, &fake, event).await;
+    }
+    if let Some(event) = body_event(args)? {
         return send_event(harness, &fake, event).await;
     }
     let last = fake
@@ -730,6 +746,28 @@ fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, Strin
         }),
         _ => None,
     })
+}
+
+/// `body-fetched ok|offline|needs-sign-in|gone|store|other`: `BodyFetched` for the first
+/// message of the last `FetchBodies` taken.
+fn body_event(args: &[String]) -> Result<Option<Event>, String> {
+    let ("body-fetched", [outcome]) = (args[0].as_str(), &args[1..]) else {
+        return Ok(None);
+    };
+    let message = last_requested()
+        .first()
+        .copied()
+        .ok_or("no fetch-bodies to answer; use engine-expect first")?;
+    let result = match outcome.as_str() {
+        "ok" => Ok(()),
+        "offline" => Err(BodyError::Offline),
+        "needs-sign-in" => Err(BodyError::NeedsSignIn),
+        "gone" => Err(BodyError::Gone),
+        "store" => Err(BodyError::Store),
+        "other" => Err(BodyError::Other),
+        other => return Err(format!("no body outcome {other}")),
+    };
+    Ok(Some(Event::BodyFetched { message, result }))
 }
 
 fn protocol_named(name: &str) -> Result<Protocol, String> {

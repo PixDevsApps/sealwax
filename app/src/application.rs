@@ -659,6 +659,7 @@ impl AppState {
             // A client ID added or removed makes Microsoft sign-in available or not.
             setup::refresh();
             self.send_microsoft_client();
+            self.send_storage();
         }
         if update.keymap_changed {
             let keymap = prefs.keymap();
@@ -825,7 +826,23 @@ impl AppState {
         self.engine.attach(engine.commands(), engine.events());
         self.engine_service.replace(Some(engine));
         tracing::info!("engine started");
+        self.send_storage();
         self.send_accounts();
+    }
+
+    /// Hands `config.toml`'s `[storage]` to the engine this application started, once the file
+    /// has been read: the disk cap is enforced as soon as it arrives.
+    fn send_storage(&self) {
+        let Some(prefs) = self.preferences().filter(|prefs| prefs.is_loaded()) else {
+            return;
+        };
+        if self.engine_service.borrow().is_none() {
+            return;
+        }
+        let storage = prefs.config().storage;
+        if self.engine.send(Command::Storage { storage }).is_err() {
+            tracing::warn!("the engine stopped listening");
+        }
     }
 
     /// Hands the Microsoft client ID in use to the engine this application started.
@@ -915,6 +932,7 @@ impl AppState {
         };
         let source: Rc<dyn MessageSource> = self.mailbox.clone();
         let reader = Reader::new(source, theme, keymap, &self.config.dirs.cache);
+        reader.connect_engine(&self.engine);
         window.set_reader_toolbar(&reader.toolbar());
 
         let weak = Rc::downgrade(self);
@@ -956,9 +974,12 @@ impl AppState {
         let next = list.clone();
         reader.connect_next(move || next.select_next());
         let weak = Rc::downgrade(self);
-        self.mailbox.connect_event(move |_| {
+        self.mailbox.connect_event(move |event| {
             if let Some(state) = weak.upgrade() {
                 state.update_position();
+                if let Some(reader) = state.reader() {
+                    reader.messages_changed(&event.changed);
+                }
             }
         });
         self.reader.replace(Some(reader));
