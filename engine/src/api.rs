@@ -2,7 +2,7 @@
 //! (ADR-003). M2 covers account setup and the first sync; M3 grows it into the sync engine's API.
 
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure,
+    AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure, OAuthProvider,
 };
 use sealwax_domain::model::{AccountId, FolderId};
 use std::fmt;
@@ -43,13 +43,31 @@ pub enum Command {
         second_username: Option<String>,
         password: Password,
     },
-    /// Save a verified account: the password to the keyring, the settings to `accounts.toml`,
-    /// the account to the store; then list its folders and sync its INBOX headers.
+    /// Save a verified account: the password (or the sign-in's refresh token) to the keyring,
+    /// the settings to `accounts.toml`, the account to the store; then list its folders and
+    /// sync its INBOX headers. An OAuth account names the `SignIn` request whose token it keeps
+    /// in `sign_in` and sends an empty password.
     AddAccount {
         request: RequestId,
         settings: AccountSettings,
         password: Password,
+        sign_in: Option<RequestId>,
     },
+    /// A browser sign-in (ML-032): the engine binds its loopback redirect and sends
+    /// `SignInOpen` with the page to open, waits for the browser, takes the username from the
+    /// sign-in (the identity the token belongs to, which SMTP insists on: S5), checks IMAP and
+    /// SMTP with the token, and answers `SignedIn`. With `account`, it signs an existing account
+    /// in again: the new refresh token replaces the stored one and the account syncs again.
+    SignIn {
+        request: RequestId,
+        provider: OAuthProvider,
+        /// The address typed into the assistant, for the IMAP and SMTP endpoints' sake; never
+        /// put into the sign-in URL.
+        address: String,
+        account: Option<AccountKey>,
+    },
+    /// Stops waiting for the browser; nothing is answered.
+    CancelSignIn { request: RequestId },
     /// Delete the account's settings, secrets, rows and blobs (ML-038).
     RemoveAccount { request: RequestId, key: AccountKey },
     /// The accounts `accounts.toml` lists, after every read without mistakes: the store follows
@@ -72,6 +90,13 @@ pub enum Event {
     },
     /// `Ok` carries the username that logged in.
     Verified {
+        request: RequestId,
+        result: Result<String, LoginError>,
+    },
+    /// Open `url` in the browser for the sign-in; it can be opened again while the engine waits.
+    SignInOpen { request: RequestId, url: String },
+    /// `Ok` carries the username the sign-in belongs to, which IMAP and SMTP accepted.
+    SignedIn {
         request: RequestId,
         result: Result<String, LoginError>,
     },

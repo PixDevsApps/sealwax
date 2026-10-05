@@ -129,6 +129,7 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
             request: 1,
             settings,
             password: Password::new("fictional-service-password".into()),
+            sign_in: None,
         })
         .unwrap();
     let account = next(&engine, |event| match event {

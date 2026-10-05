@@ -14,7 +14,9 @@ use crate::imap::{self, Credentials, SyncError};
 use crate::net::Trust;
 use crate::secrets::{MemoryStore, SecretKind, SecretStore, Secrets};
 use crate::verify::verify;
-use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, LoginFailure};
+use sealwax_domain::account::{
+    AccountKey, AccountSettings, AuthMethod, LoginError, LoginFailure, Protocol,
+};
 use sealwax_domain::model::AccountId;
 use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
@@ -200,11 +202,24 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 request,
                 settings,
                 password,
+                sign_in: _,
             } => Job::Add {
                 request,
                 settings,
                 password,
             },
+            // ML-032 builds the browser sign-in; until then it answers as unavailable.
+            Command::SignIn { request, .. } => {
+                shared.send(Event::SignedIn {
+                    request,
+                    result: Err(LoginError {
+                        protocol: Protocol::Imap,
+                        failure: LoginFailure::OAuthRequired,
+                    }),
+                });
+                continue;
+            }
+            Command::CancelSignIn { .. } => continue,
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
         };
         let _ = jobs.send(job).await;

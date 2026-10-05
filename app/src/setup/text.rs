@@ -106,6 +106,12 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
                  for Microsoft accounts only, and not in this build yet."
             ),
         ),
+        LoginFailure::SignInDeclined => Notice::problem(
+            "The sign-in was declined",
+            "Microsoft didn't let Sealwax in. Sign in again and approve Sealwax; for a work \
+             account, your organization's admin may have to approve it first."
+                .to_owned(),
+        ),
         LoginFailure::NoTls => Notice::problem(
             "No secure connection",
             format!(

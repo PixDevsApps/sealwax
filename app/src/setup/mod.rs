@@ -617,6 +617,7 @@ impl Assistant {
                     request,
                     settings,
                     password,
+                    sign_in: None,
                 });
                 let mut state = self.inner.state.borrow_mut();
                 if sent {

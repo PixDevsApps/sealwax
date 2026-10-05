@@ -164,6 +164,8 @@ pub enum LoginFailure {
     ImapDisabled,
     /// The server accepts only a browser sign-in.
     OAuthRequired,
+    /// The browser sign-in was declined: by the user, or by their organization's consent policy.
+    SignInDeclined,
     /// The server offers neither TLS nor STARTTLS, or STARTTLS failed.
     NoTls,
     /// The server's certificate didn't verify.

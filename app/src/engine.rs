@@ -82,7 +82,8 @@ fn failure_status(failure: LoginFailure) -> AccountStatus {
         LoginFailure::WrongPassword
         | LoginFailure::AppPasswordRequired
         | LoginFailure::ImapDisabled
-        | LoginFailure::OAuthRequired => AccountStatus::NeedsSignIn,
+        | LoginFailure::OAuthRequired
+        | LoginFailure::SignInDeclined => AccountStatus::NeedsSignIn,
         LoginFailure::NoTls
         | LoginFailure::Certificate
         | LoginFailure::Unreachable

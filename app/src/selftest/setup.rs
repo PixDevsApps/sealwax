@@ -344,6 +344,14 @@ fn fields(command: &Command) -> (&'static str, Option<RequestId>, Vec<(&'static 
             Some(*request),
             vec![("key", key.to_string())],
         ),
+        Command::SignIn {
+            request, address, ..
+        } => (
+            "sign-in",
+            Some(*request),
+            vec![("address", address.clone())],
+        ),
+        Command::CancelSignIn { request } => ("cancel-sign-in", Some(*request), Vec::new()),
         Command::Accounts { accounts } => (
             "accounts",
             None,
