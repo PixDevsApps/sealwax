@@ -13,7 +13,7 @@ use sealwax_domain::account::{
 use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::{self, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{Store, StoreOptions};
@@ -73,6 +73,7 @@ impl Setup {
                 servers: Some((self.imap.endpoint(), self.smtp.endpoint())),
                 wait: Duration::from_secs(10),
             },
+            sync: SyncConfig::default(),
         })
         .unwrap()
     }
@@ -220,7 +221,8 @@ async fn synced(engine: &Engine, account: AccountId) -> Result<(), LoginFailure>
     .await
 }
 
-/// Syncs every listed account again, as the app does after reading `accounts.toml`.
+/// Logs every account in again (a reconnect, as after resume or the banner's Retry), with the
+/// listed accounts as `accounts.toml` has them.
 async fn sync_again(
     engine: &Engine,
     setup: &Setup,
@@ -232,6 +234,7 @@ async fn sync_again(
             accounts: setup.listed(),
         },
     );
+    send(engine, Command::Reconnect);
     synced(engine, account).await
 }
 

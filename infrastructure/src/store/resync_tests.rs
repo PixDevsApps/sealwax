@@ -523,3 +523,57 @@ fn a_v2_store_migrates_and_complete_folders_get_floor_one() {
     assert!(folders[0].complete() && !folders[1].complete());
     store.close().unwrap();
 }
+
+#[test]
+fn the_same_folder_list_again_publishes_nothing_but_new_counts() {
+    let (_dir, store, account) = open();
+    let mut list = vec![
+        listed(account, "INBOX", FolderRole::Inbox),
+        listed(account, "Arkiv", FolderRole::Archive),
+    ];
+    list[1].server_counts = Some(ServerCounts {
+        total: 4,
+        unread: 1,
+    });
+    let first = store
+        .replace_folders(account, list.clone())
+        .recv_blocking()
+        .unwrap();
+    let events = store.subscribe();
+    let unified = model(&store, ViewSpec::unified_inbox());
+    let again = store
+        .replace_folders(account, list.clone())
+        .recv_blocking()
+        .unwrap();
+    assert_eq!((again.version, &again.ids), (first.version, &first.ids));
+    assert!(events.try_recv().is_err(), "no event for the same list");
+    list[1].server_counts = Some(ServerCounts {
+        total: 5,
+        unread: 2,
+    });
+    let counted = store
+        .replace_folders(account, list.clone())
+        .recv_blocking()
+        .unwrap();
+    let event = events.recv_blocking().unwrap();
+    assert_eq!(event.version, counted.version);
+    assert!(!event.folders_changed && event.views.is_empty());
+    assert_eq!(
+        event.folders,
+        vec![FolderCounts {
+            folder: first.ids[1],
+            total: 5,
+            unread: 2
+        }]
+    );
+    list[1].attributes.push("\\Archive".into());
+    store
+        .replace_folders(account, list)
+        .recv_blocking()
+        .unwrap();
+    let event = events.recv_blocking().unwrap();
+    assert!(event.folders_changed, "a changed attribute is a new list");
+    assert_eq!(event.views.len(), 1, "All Inboxes reloads");
+    drop(unified);
+    store.close().unwrap();
+}

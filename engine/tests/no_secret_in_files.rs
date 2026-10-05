@@ -18,7 +18,7 @@ use sealwax_engine::accounts::Accounts;
 use sealwax_engine::api::{AccountError, Command, Event, Password, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::secrets::{MemoryStore, SecretKind, SecretStore};
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::{self, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::ingest::{RawMessage, ingest_raw};
@@ -334,6 +334,7 @@ async fn no_token_reaches_a_file_or_a_log() {
             servers: Some((imap.endpoint(), smtp.endpoint())),
             wait: Duration::from_secs(10),
         },
+        sync: SyncConfig::default(),
     })
     .unwrap();
 
@@ -362,13 +363,11 @@ async fn no_token_reaches_a_file_or_a_log() {
     .await;
     assert_eq!(synced(&engine).await, Ok(()));
     let listed = accounts::read(&dirs.accounts_file()).unwrap();
-    let again = || Command::Accounts {
-        accounts: listed.clone(),
-    };
-    engine.commands().try_send(again()).unwrap();
+    // A reconnect logs in again, which refreshes the short-lived token.
+    engine.commands().try_send(Command::Reconnect).unwrap();
     assert_eq!(synced(&engine).await, Ok(()));
     microsoft.state().refresh.clear();
-    engine.commands().try_send(again()).unwrap();
+    engine.commands().try_send(Command::Reconnect).unwrap();
     assert_eq!(synced(&engine).await, Err(LoginFailure::OAuthRequired));
     urls.push(sign_in(&engine, 3, Some(listed[0].key.clone())).await);
     assert_eq!(synced(&engine).await, Ok(()));

@@ -11,7 +11,7 @@ use sealwax_domain::config::Storage;
 use sealwax_domain::model::{FolderRole, MessageId};
 use sealwax_engine::api::{BodyError, Command, Event, Password};
 use sealwax_engine::autoconfig::DetectOptions;
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{BodyState, NewMessage, Store, StoreOptions};
@@ -113,6 +113,9 @@ async fn serve(tls: &mock::Tls, state: Arc<Mutex<Server>>) -> u16 {
                         )
                     } else if upper.starts_with("UID SEARCH") {
                         format!("* SEARCH\r\n{tag} OK done\r\n")
+                    } else if upper.starts_with("UID FETCH ") && upper.ends_with("(UID FLAGS)") {
+                        // The sync actor's flag scan of the empty INBOX.
+                        format!("{tag} OK done\r\n")
                     } else if let Some(fetch) = upper.strip_prefix("UID FETCH ") {
                         let (set, items) = fetch.split_once(' ').unwrap();
                         assert_eq!(items, "(UID BODY.PEEK[])");
@@ -214,6 +217,7 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         detect: DetectOptions::default(),
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
+        sync: SyncConfig::default(),
     })
     .unwrap();
     let endpoint = Endpoint {
@@ -363,7 +367,9 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         (BodyState::Partial, None)
     );
 
+    // The download connection stays open a while; a reconnect makes the next batch log in again.
     server.lock().unwrap().refuse = true;
+    commands.send_blocking(Command::Reconnect).unwrap();
     commands
         .send_blocking(Command::FetchBodies {
             messages: vec![ids[3]],

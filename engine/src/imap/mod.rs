@@ -9,6 +9,7 @@ mod error;
 mod fetch;
 mod first_sync;
 mod folders;
+mod idle;
 pub mod mutf7;
 mod raw;
 pub mod roles;
@@ -22,6 +23,7 @@ pub use error::{ImapError, ServerText, SyncError};
 pub use fetch::PREVIEW_BYTES;
 pub use first_sync::{BATCH, FirstSyncReport, Progress, first_sync, first_sync_with};
 pub use folders::{FolderStatus, ListedFolder, SyncedFolders, list, sync_folders};
+pub use idle::{IDLE_COMMAND_TIMEOUT, Idled, Stop, Wake};
 pub use raw::READ_TIMEOUT;
 pub use sync::{
     Elsewhere, FolderLocks, Older, Stats, SyncOptions, SyncReport, load_older, sync_account,

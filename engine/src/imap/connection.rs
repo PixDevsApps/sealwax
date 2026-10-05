@@ -110,13 +110,59 @@ impl Connection {
     }
 
     /// Ends the session politely; errors don't matter any more.
-    pub async fn logout(mut self) {
-        let _ = tokio::time::timeout(
-            Duration::from_secs(2),
-            raw::run(&mut self.session, "LOGOUT", |_| {}),
-        )
-        .await;
+    pub async fn logout(self) {
+        self.logout_within(Duration::from_secs(2)).await;
     }
+
+    /// LOGOUT, waiting at most `wait` for the server's answer.
+    pub async fn logout_within(mut self, wait: Duration) {
+        let _ = tokio::time::timeout(wait, raw::run(&mut self.session, "LOGOUT", |_| {})).await;
+    }
+
+    /// The session, apart from what the connection knows about it (for IDLE, which takes the
+    /// session and gives it back).
+    pub(crate) fn into_parts(self) -> (Session, Parts) {
+        let Connection {
+            session,
+            caps,
+            qresync,
+            mechanism,
+            selected,
+        } = self;
+        (
+            session,
+            Parts {
+                caps,
+                qresync,
+                mechanism,
+                selected,
+            },
+        )
+    }
+
+    pub(crate) fn from_parts(session: Session, parts: Parts) -> Connection {
+        let Parts {
+            caps,
+            qresync,
+            mechanism,
+            selected,
+        } = parts;
+        Connection {
+            session,
+            caps,
+            qresync,
+            mechanism,
+            selected,
+        }
+    }
+}
+
+/// What a [`Connection`] knows besides its session.
+pub(crate) struct Parts {
+    caps: Caps,
+    qresync: bool,
+    mechanism: Mechanism,
+    selected: Option<String>,
 }
 
 /// The SASL PLAIN response: no authorization identity.

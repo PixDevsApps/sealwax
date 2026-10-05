@@ -1,23 +1,26 @@
 //! Body downloads for the app (ML-044): `Command::FetchBodies` answered with one
 //! `Event::BodyFetched` per message. A message already queued or in flight isn't asked for twice;
-//! each account has one worker that logs in with the account's stored secret, takes the most
-//! wanted messages first, a folder at a time, and logs out once its queue is empty. The disk cap
-//! is enforced when `Command::Storage` arrives and after every batch. Phase B moves the fetches
-//! onto the account actor's connection.
+//! each account has one worker with a connection of its own beside the account's sync actor
+//! (whose settings it uses and whose reconnects it follows), taking the most wanted messages
+//! first, a folder at a time. Its connection stays open `body_linger` after the queue empties,
+//! and gets a NOOP before it is used again after sitting idle. The disk cap is enforced when
+//! `Command::Storage` arrives and after every batch; after a pass that stored new mail the
+//! actor queues the background prefetch behind the reader's requests.
 
+use super::actor::Signal;
 use super::{Shared, log_in_with_password, log_in_with_token};
 use crate::api::{BodyError, Event, SyncStatus};
-use crate::bodies::enforce_cap;
-use crate::imap::bodies::{Sink, fetch_bodies};
-use crate::imap::{self, Connection};
+use crate::bodies::{enforce_cap, prefetch_ids};
+use crate::imap::bodies::{BodyFetchError, Sink, fetch_bodies};
+use crate::imap::{Connection, ImapError};
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
 use sealwax_domain::config::Storage;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
-use sealwax_infrastructure::accounts as files;
 use sealwax_infrastructure::store::{BodyState, BodyTarget};
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use tokio::sync::{Notify, watch};
 
 /// Messages of one folder fetched per batch.
 const BATCH: usize = 20;
@@ -30,6 +33,8 @@ struct State {
     /// Per account, the messages waiting, most wanted first.
     queues: HashMap<AccountId, VecDeque<BodyTarget>>,
     workers: HashMap<AccountId, tokio::task::AbortHandle>,
+    /// Wakes a worker that waits for more work with its connection open.
+    wakers: HashMap<AccountId, Arc<Notify>>,
     storage: Option<Storage>,
 }
 
@@ -165,7 +170,9 @@ fn enqueue(shared: &Arc<Shared>, account: AccountId, targets: Vec<BodyTarget>, f
         .workers
         .get(&account)
         .is_some_and(|worker| !worker.is_finished());
-    if !running {
+    if running {
+        state.wakers.entry(account).or_default().notify_one();
+    } else {
         let task = tokio::spawn(worker(shared.clone(), account));
         state.workers.insert(account, task.abort_handle());
     }
@@ -186,16 +193,50 @@ fn take_batch(queue: &mut VecDeque<BodyTarget>) -> Option<(FolderId, Vec<BodyTar
     Some((folder, batch))
 }
 
-/// The next batch of `account`. `None` ends the worker, under the same lock that `enqueue`
-/// takes, so a message queued meanwhile starts a new one.
+/// The next batch of `account`, if any.
 fn next_batch(shared: &Shared, account: AccountId) -> Option<(FolderId, Vec<BodyTarget>)> {
+    take_batch(shared.bodies.state().queues.get_mut(&account)?)
+}
+
+/// Ends the worker if its queue is still empty, under the same lock that `enqueue` takes, so a
+/// message queued meanwhile either finds it waiting or starts a new one.
+fn retire(shared: &Shared, account: AccountId) -> bool {
     let mut state = shared.bodies.state();
-    let batch = take_batch(state.queues.get_mut(&account)?);
-    if batch.is_none() {
-        state.queues.remove(&account);
-        state.workers.remove(&account);
+    if state
+        .queues
+        .get(&account)
+        .is_some_and(|queue| !queue.is_empty())
+    {
+        return false;
     }
-    batch
+    state.queues.remove(&account);
+    state.workers.remove(&account);
+    state.wakers.remove(&account);
+    true
+}
+
+/// The account's waker, for a worker waiting with its connection open.
+fn waker(shared: &Shared, account: AccountId) -> Arc<Notify> {
+    shared
+        .bodies
+        .state()
+        .wakers
+        .entry(account)
+        .or_default()
+        .clone()
+}
+
+/// Resolves once the actor asks for a reconnect after `seen`, or goes away.
+async fn reconnected(mut signals: watch::Receiver<Signal>, seen: u64) {
+    loop {
+        let signal = *signals.borrow_and_update();
+        if signal.reconnects != seen || signal.stop.is_some() {
+            return;
+        }
+        if signals.changed().await.is_err() {
+            return;
+        }
+    }
 }
 
 /// Answers everything `account` has queued with `error`, and ends its worker.
@@ -223,22 +264,6 @@ fn login_error(failure: LoginFailure) -> BodyError {
     }
 }
 
-/// The account's settings from `accounts.toml`, through its key in the store; `None` for a
-/// local account or one the file no longer lists.
-async fn settings(shared: &Shared, account: AccountId) -> Option<AccountSettings> {
-    let accounts = shared.store.accounts().recv().await.ok()?.value;
-    let key = accounts
-        .into_iter()
-        .find(|known| known.id == account)?
-        .key?;
-    let path = shared.paths.settings.clone();
-    let listed = tokio::task::spawn_blocking(move || files::read(&path))
-        .await
-        .ok()?
-        .ok()?;
-    listed.into_iter().find(|settings| settings.key == key)
-}
-
 async fn log_in(shared: &Shared, settings: &AccountSettings) -> Result<Connection, BodyError> {
     let connection = match settings.auth {
         AuthMethod::Password => log_in_with_password(shared, settings).await,
@@ -250,9 +275,9 @@ async fn log_in(shared: &Shared, settings: &AccountSettings) -> Result<Connectio
     })
 }
 
-/// One account's downloads, until its queue is empty.
+/// One account's downloads, until its queue has been empty for `body_linger`.
 async fn worker(shared: Arc<Shared>, account: AccountId) {
-    let Some(settings) = settings(&shared, account).await else {
+    let Some(settings) = shared.actor_settings(account) else {
         tracing::info!(
             account = account.0,
             "bodies asked for an account with no server"
@@ -260,8 +285,37 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
         fail_all(&shared, account, BodyError::Other);
         return;
     };
+    let signals = shared.actor_signal(account);
+    let mut seen = signals
+        .as_ref()
+        .map_or(0, |signals| signals.borrow().reconnects);
     let mut connection: Option<Connection> = None;
-    while let Some((folder, batch)) = next_batch(&shared, account) {
+    let mut used = Instant::now();
+    loop {
+        let Some((folder, batch)) = next_batch(&shared, account) else {
+            let woken =
+                tokio::time::timeout(shared.sync.body_linger, waker(&shared, account).notified())
+                    .await;
+            if woken.is_err() && retire(&shared, account) {
+                break;
+            }
+            continue;
+        };
+        if let Some(signals) = &signals {
+            let now = signals.borrow().reconnects;
+            if now != seen {
+                connection = None;
+                seen = now;
+            }
+        }
+        if let Some(conn) = connection.as_mut()
+            && used.elapsed() >= shared.sync.reuse_check
+        {
+            let alive = tokio::time::timeout(shared.sync.noop_timeout, conn.noop()).await;
+            if !matches!(alive, Ok(Ok(_))) {
+                connection = None;
+            }
+        }
         let Some(sync) = shared.store.folder_sync(folder).recv().await.ok().flatten() else {
             for target in &batch {
                 answer(&shared, target.message, Err(BodyError::Gone));
@@ -287,17 +341,29 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
                 },
             };
             let mut answered = Vec::new();
-            let fetched = fetch_bodies(conn, sink(&shared), &sync, &left, now(), |id, result| {
+            let fetch = fetch_bodies(conn, sink(&shared), &sync, &left, now(), |id, result| {
                 answered.push(id);
                 answer(&shared, id, result);
-            })
-            .await;
+            });
+            // A reconnect (resume, network back) abandons a fetch on a connection that may be
+            // dead; the batch is tried once more on a new one.
+            let fetched = match &signals {
+                Some(signals) => tokio::select! {
+                    fetched = fetch => fetched,
+                    () = reconnected(signals.clone(), seen) => {
+                        seen = signals.borrow().reconnects;
+                        Err(BodyFetchError::Imap(ImapError::ConnectionLost))
+                    }
+                },
+                None => fetch.await,
+            };
+            used = Instant::now();
             left.retain(|target| !answered.contains(&target.message));
             let Err(error) = fetched else {
                 continue;
             };
-            let connection_lost = matches!(&error, imap::bodies::BodyFetchError::Imap(failure)
-                if failure.is_connection());
+            let connection_lost =
+                matches!(&error, BodyFetchError::Imap(failure) if failure.is_connection());
             if connection_lost {
                 connection = None;
             }
@@ -327,6 +393,22 @@ async fn cap(shared: &Shared, keep: &[MessageId]) {
     {
         tracing::warn!(%error, "the disk cap couldn't be enforced");
     }
+}
+
+/// Queues the background prefetch (recent Inbox mail) behind the reader's requests, once the
+/// `[storage]` settings are known.
+pub(super) fn prefetch(shared: &Arc<Shared>) {
+    let Some(storage) = shared.bodies.state().storage else {
+        return;
+    };
+    let shared = shared.clone();
+    tokio::spawn(async move {
+        match prefetch_ids(&shared.store, &storage, now()).await {
+            Ok(ids) if !ids.is_empty() => request(&shared, ids, false),
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "the prefetch couldn't be planned"),
+        }
+    });
 }
 
 /// New `[storage]` settings: the cap is enforced at once.

@@ -35,7 +35,9 @@ use sealwax_engine::api::{Command, Event, Password, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
 use sealwax_engine::secrets::{KeyringStore, Secret, SecretKind, SecretStore};
-use sealwax_engine::service::{Engine, EngineConfig, SIGN_IN_WAIT, SecretBackend, SignInOptions};
+use sealwax_engine::service::{
+    Engine, EngineConfig, SIGN_IN_WAIT, SecretBackend, SignInOptions, SyncConfig,
+};
 use sealwax_infrastructure::accounts::{self, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{Store, StoreOptions};
@@ -125,6 +127,7 @@ fn start(dirs: &SealwaxDirs, client_id: &str) -> Result<Running, Error> {
         detect: DetectOptions::default(),
         microsoft_client_id: Some(client_id.to_owned()),
         sign_in: SignInOptions::default(),
+        sync: SyncConfig::default(),
     })?;
     Ok(Running { engine, store })
 }

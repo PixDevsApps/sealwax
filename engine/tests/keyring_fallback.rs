@@ -6,7 +6,7 @@ use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint,
 use sealwax_engine::api::{Command, Event, Password};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
-use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions};
+use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{Store, StoreOptions};
@@ -66,6 +66,7 @@ fn without_a_keyring_secrets_stay_in_memory_and_the_app_hears_it_once() {
         detect: DetectOptions::default(),
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
+        sync: SyncConfig::default(),
     })
     .unwrap();
     let seen = events(&engine, WAIT, |event| {
