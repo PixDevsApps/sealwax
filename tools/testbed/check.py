@@ -4,7 +4,7 @@
 - Mailpit: SMTP with STARTTLS (testbed CA verified) on 17025, then the message is found
   through the HTTP API on 17080 and deleted again.
 - Stalwart: submission with STARTTLS on 16587 (bob -> alice), then the message is found in
-  alice's INBOX over IMAP; the JMAP session resource answers on 16080.
+  alice's INBOX over IMAP and removed again; the JMAP session resource answers on 16080.
 Synthetic content only. Exits non-zero on the first failure.
 """
 
@@ -79,6 +79,10 @@ def check_stalwart():
         hits = imap.command(b'UID SEARCH SUBJECT "' + subject.encode() + b'"', want=b"SEARCH")
         if hits and len(hits[0].split()) > 2:
             print("stalwart: submission (587, STARTTLS, AUTH PLAIN) delivered to alice's INBOX")
+            # alice's INBOX is a fixture the test suites count, so the check removes its message.
+            uids = b",".join(hits[0].split()[2:])
+            imap.command(b"UID STORE " + uids + b" +FLAGS.SILENT (\\Deleted)")
+            imap.command(b"UID EXPUNGE " + uids)
             break
         time.sleep(0.25)
     else:
