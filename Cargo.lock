@@ -787,13 +787,17 @@ version = "0.0.1"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
+ "lettre",
  "reqwest",
+ "rustls-pki-types",
+ "sealwax-domain",
  "sealwax-engine",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-rustls",
  "url",
  "zeroize",
 ]

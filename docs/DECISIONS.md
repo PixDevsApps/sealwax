@@ -17,7 +17,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2 |
 | 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2 |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending); the SMTP login check built in M2 |
-| 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism proposed; S5 is go/no-go; secrets keyed by the account key in M2 |
+| 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism accepted on S5's evidence (GO, 2026-10-05); secrets keyed by the account key in M2 |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1 |
@@ -315,6 +315,15 @@ Built in M2 ([m2/imap.md](m2/imap.md)).
 **Reason:** Google classes the `https://mail.google.com/` scope as restricted: a public release needs app verification with a security assessment, and in testing status refresh tokens expire after 7 days. Microsoft's registration has neither.
 
 **Consequence:** S5 (ML-013) and ML-032 cover Microsoft only, and the user registers only the Microsoft Entra client. The Google section of OAUTH-SETUP.md is kept for 1.x; S5's code keeps its Google flow as history.
+
+### ADR-008 amendment — S5 results: GO for Microsoft (2026-10-05)
+
+**Status:** the mechanism is accepted on S5's evidence ([report](spikes/S5-oauth.md)): our own PKCE loopback code on reqwest completes Microsoft's sign-in in the system browser, IMAP and SMTP accept XOAUTH2 on Outlook.com, and the refresh token survives a restart in the Secret Service. Outlook.com and Microsoft 365 stay in 1.0.
+
+- **No API permissions** are configured for the delegated flow: the Outlook scopes are requested, and consented, at sign-in.
+- **The XOAUTH2 username is the identity the token was issued to.** SMTP refused an alias and the mailbox's generated primary address of a Microsoft account first created with an external address, and accepted only its sign-in name; IMAP accepted the alias as well. ML-032 takes the username from the sign-in, not from the address typed into the assistant.
+- **Refresh tokens rotate** on every refresh; each new one replaces the stored one.
+- **The redirect** is `http://localhost:<port>` without a path; the port is ignored when matching.
 
 ### ADR-008 amendment — secrets keyed by the account key (M2, 2026-10-05)
 

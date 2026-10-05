@@ -58,6 +58,18 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### S5 OAuth and secrets, Microsoft (ML-013) — 2026-10-05
+
+Debug build of `spikes/s5-oauth` on the development machine, against the owner's unused Outlook.com account (authorized 2026-10-05); [report](spikes/S5-oauth.md).
+
+| Check | Result |
+| --- | --- |
+| PKCE loopback sign-in in the system browser | Completed in 26.6 s, the owner's sign-in included; access token 3,599 s and a refresh token; no `login_hint` |
+| IMAP XOAUTH2 (`outlook.office365.com:993`) | Login 629 and 640 ms in two processes; 12 folders listed |
+| SMTP XOAUTH2 (`smtp-mail.outlook.com:587`, `smtp.office365.com:587`) | `235 2.7.0` with the account's sign-in name as `user=`; `535 5.7.3` with an alias or the generated primary address, in both AUTH forms |
+| Refresh after a forced expiry, and after a restart | Six refreshes in new processes from the keyring's refresh token, each rotating it; the test token deleted afterwards (`secret-tool` finds none) |
+| No keyring | Memory fallback confirmed in the CI smoke run; the banner isn't built (ML-048) |
+
 ### M2 integrated: the engine service, the app and the testbed end to end — 2026-10-05
 
 Lead, after merging the four phase-A branches; debug builds, headless on Broadway. Reports: [imap](m2/imap.md), [autoconfig](m2/autoconfig.md), [accounts](m2/accounts.md), [setup](m2/setup.md).

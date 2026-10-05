@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 sealwax-engine.workspace = true
+sealwax-domain.workspace = true
 tokio = { workspace = true, features = ["io-util"] }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "query"] }
 serde = { version = "1", features = ["derive"] }
@@ -18,3 +19,6 @@ getrandom = "0.3"
 url = "2"
 thiserror.workspace = true
 zeroize = "1"
+tokio-rustls.workspace = true
+rustls-pki-types.workspace = true
+lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "tokio1-rustls", "rustls-platform-verifier", "ring"] }

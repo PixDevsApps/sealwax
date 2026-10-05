@@ -111,7 +111,9 @@ impl Loopback {
         let port = listener.local_addr()?.port();
         Ok(Self {
             listener,
-            redirect_uri: format!("http://{host}:{port}/"),
+            // No trailing slash: the registered `http://localhost` has no path (Microsoft ignores
+            // only the port of a localhost redirect).
+            redirect_uri: format!("http://{host}:{port}"),
         })
     }
 
@@ -211,6 +213,7 @@ struct TokenResponse {
     access_token: String,
     expires_in: Option<u64>,
     refresh_token: Option<String>,
+    scope: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -223,6 +226,8 @@ pub struct Tokens {
     pub access: Zeroizing<String>,
     pub refresh: Option<Zeroizing<String>>,
     pub expires_in: Option<Duration>,
+    /// The scopes the server granted, which may be fewer than those asked for.
+    pub scope: Option<String>,
 }
 
 impl std::fmt::Debug for Tokens {
@@ -270,6 +275,7 @@ async fn token_request(
         access: Zeroizing::new(parsed.access_token),
         refresh: parsed.refresh_token.map(Zeroizing::new),
         expires_in: parsed.expires_in.map(Duration::from_secs),
+        scope: parsed.scope,
     })
 }
 
