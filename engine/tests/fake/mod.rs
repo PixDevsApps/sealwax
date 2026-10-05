@@ -4,8 +4,9 @@
 //! and STATUS, STATUS, UNSELECT, NOOP, IDLE, whole messages for body downloads; EXISTS, EXPUNGE
 //! and VANISHED notices before each command's own responses and while idling. Three flavours:
 //! QRESYNC, CONDSTORE only (both with IDLE), IMAP4rev1. Tests change its mailboxes between and
-//! during passes, cut a connection in the middle of a FETCH, refuse logins or connections, and
-//! turn the network into a black hole that leaves every open connection silently dead.
+//! during passes, cut a connection in the middle of a FETCH, close every idling connection,
+//! refuse logins or connections, and turn the network into a black hole that leaves every open
+//! connection silently dead.
 //! Synthetic data only.
 
 #![allow(dead_code)]
@@ -103,6 +104,8 @@ pub struct World {
     dead_before: u64,
     epoch: u64,
     hole: bool,
+    /// Bumped to close every connection idling then, as a server restart would.
+    closings: u64,
     changes: watch::Sender<u64>,
 }
 
@@ -134,6 +137,7 @@ impl World {
             dead_before: 0,
             epoch: 0,
             hole: false,
+            closings: 0,
             changes: watch::channel(0).0,
         }
     }
@@ -156,6 +160,12 @@ impl World {
 
     fn dead(&self, epoch: u64) -> bool {
         epoch < self.dead_before
+    }
+
+    /// Closes every connection that is idling now, without a TLS close_notify.
+    pub fn close_idling(&mut self) {
+        self.closings += 1;
+        self.changed();
     }
 
     pub fn create(&mut self, name: &str, attributes: &[&str]) {
@@ -940,6 +950,15 @@ async fn silent(mut io: BufReader<Box<dyn Io>>) {
     while io.read(&mut sink).await.unwrap_or(0) > 0 {}
 }
 
+/// How an IDLE ended on the server's side.
+enum Idle {
+    Done,
+    /// The connection went silent (a black hole).
+    Dead,
+    /// The server closed the connection.
+    Closed,
+}
+
 /// IDLE until DONE: announces changes as they happen.
 async fn idle(
     io: &mut BufReader<Box<dyn Io>>,
@@ -948,8 +967,8 @@ async fn idle(
     changes: &mut watch::Receiver<u64>,
     tag: &str,
     epoch: u64,
-) -> bool {
-    let first = {
+) -> Idle {
+    let (first, closings) = {
         let world = world.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = String::from("+ idling\r\n");
         if world.idle_misses_earlier {
@@ -959,10 +978,10 @@ async fn idle(
         } else {
             notices(&world, state, &mut out);
         }
-        out
+        (out, world.closings)
     };
     if write(io, &first).await.is_err() {
-        return false;
+        return Idle::Dead;
     }
     changes.borrow_and_update();
     loop {
@@ -970,12 +989,12 @@ async fn idle(
         tokio::select! {
             read = io.read_line(&mut line) => {
                 if read.unwrap_or(0) == 0 {
-                    return false;
+                    return Idle::Dead;
                 }
                 let out = {
                     let mut world = world.lock().unwrap_or_else(|e| e.into_inner());
                     if world.dead(epoch) {
-                        return false;
+                        return Idle::Dead;
                     }
                     world.commands.push(line.trim_end().to_owned());
                     let mut out = String::new();
@@ -983,23 +1002,26 @@ async fn idle(
                     out.push_str(&format!("{tag} OK idle done\r\n"));
                     out
                 };
-                return write(io, &out).await.is_ok();
+                return if write(io, &out).await.is_ok() { Idle::Done } else { Idle::Dead };
             }
             changed = changes.changed() => {
                 if changed.is_err() {
-                    return false;
+                    return Idle::Dead;
                 }
                 let out = {
                     let world = world.lock().unwrap_or_else(|e| e.into_inner());
                     if world.dead(epoch) {
-                        return false;
+                        return Idle::Dead;
+                    }
+                    if world.closings > closings {
+                        return Idle::Closed;
                     }
                     let mut out = String::new();
                     notices(&world, state, &mut out);
                     out
                 };
                 if !out.is_empty() && write(io, &out).await.is_err() {
-                    return false;
+                    return Idle::Dead;
                 }
             }
         }
@@ -1064,10 +1086,11 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
                 &mut world.lock().unwrap_or_else(|e| e.into_inner()),
                 command,
             );
-            if !idle(&mut io, &world, &mut state, &mut changes, tag, epoch).await {
-                return silent(io).await;
+            match idle(&mut io, &world, &mut state, &mut changes, tag, epoch).await {
+                Idle::Done => continue,
+                Idle::Dead => return silent(io).await,
+                Idle::Closed => return,
             }
-            continue;
         }
         let reply = {
             let mut world = world.lock().unwrap_or_else(|e| e.into_inner());

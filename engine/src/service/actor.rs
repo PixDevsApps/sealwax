@@ -18,8 +18,8 @@
 use super::{Shared, bodies, log_in_with_password, log_in_with_token};
 use crate::api::{Event, SyncStatus};
 use crate::imap::{
-    self, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop, SyncError, SyncOptions,
-    SyncReport,
+    self, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop, SyncError,
+    SyncOptions, SyncReport,
 };
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
 use sealwax_domain::model::{AccountId, BlobKey, FolderId, FolderRole};
@@ -54,6 +54,9 @@ pub struct SyncConfig {
     pub body_linger: Duration,
     /// How long LOGOUT may take when the engine stops.
     pub logout_wait: Duration,
+    /// How every sync and body connection is prepared (QRESYNC off reaches the CONDSTORE-only
+    /// path on servers that offer both).
+    pub connect: ConnectOptions,
 }
 
 impl Default for SyncConfig {
@@ -71,6 +74,7 @@ impl Default for SyncConfig {
             progress_every: Duration::from_millis(100),
             body_linger: Duration::from_secs(60),
             logout_wait: Duration::from_millis(300),
+            connect: ConnectOptions::default(),
         }
     }
 }
@@ -469,14 +473,22 @@ impl Poller {
         self.retry_at = Instant::now() + backoff_delay(self.config(), self.failures, unit);
     }
 
-    /// A pass ended with an error: a lost connection is reconnected (at once the first time);
-    /// anything else waits for the next pass.
+    /// The connection broke: it is made again at once the first time, after the backoff when
+    /// that fails too. The status says offline only once connecting fails.
+    fn lost(&mut self) {
+        self.conn = None;
+        self.failures += 1;
+        let unit = self.jitter.unit();
+        self.retry_at = Instant::now() + backoff_delay(self.config(), self.failures, unit);
+    }
+
+    /// A pass ended with an error: a lost connection is made again; anything else waits for
+    /// the next pass.
     fn pass_failed(&mut self, error: &SyncError) {
         match error {
             SyncError::Imap(imap) if imap.is_connection() => {
                 tracing::info!(account = self.account.0, %error, "the command connection was lost");
-                self.conn = None;
-                self.failed(imap.failure());
+                self.lost();
             }
             _ => tracing::warn!(account = self.account.0, %error, "a pass failed"),
         }
@@ -562,8 +574,7 @@ impl Poller {
                     account = self.account.0,
                     "a quiet connection didn't answer NOOP"
                 );
-                self.conn = None;
-                self.failed(LoginFailure::Timeout);
+                self.lost();
                 return Ok(());
             }
         }
@@ -778,16 +789,16 @@ async fn idle(
     let mut jitter = Jitter::new(account);
     let mut failures = 0u32;
     loop {
-        let seen = signals.borrow().reconnects;
         if failures > 0 {
+            let seen = signals.borrow().reconnects;
             let delay = backoff_delay(&config, failures, jitter.unit());
             match race(&signals, seen, tokio::time::sleep(delay)).await {
                 Ok(()) => {}
                 Err(Interrupt::Reconnect) => failures = 0,
                 Err(Interrupt::Stop(_)) => return,
             }
-            continue;
         }
+        let seen = signals.borrow().reconnects;
         let conn = match race(&signals, seen, log_in(&shared, &settings)).await {
             Ok(Ok(conn)) => conn,
             Ok(Err(failure)) => {

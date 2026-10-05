@@ -48,6 +48,7 @@ fn config() -> SyncConfig {
         progress_every: Duration::from_millis(100),
         body_linger: Duration::from_secs(2),
         logout_wait: Duration::from_millis(300),
+        ..SyncConfig::default()
     }
 }
 
@@ -459,6 +460,53 @@ async fn reconnect_replaces_silently_dead_connections() {
     assert!(converged.is_some(), "converged after Reconnect");
     println!("Reconnect: converged after {:?}", asked.elapsed());
     assert!(asked.elapsed() < Duration::from_secs(2));
+}
+
+/// The server closes the IDLE connection (a restart, a cut): a new one at once, new mail
+/// arrives through it, and the account never shows offline.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_closed_idle_connection_is_made_again_at_once() {
+    let fake = fake(Flavor::Qresync).await;
+    let mut run = running(&fake, config());
+    let account = run.add(&fake, 1, "closed").await;
+    let inbox = run.folder(account, "INBOX").await;
+    within(WAIT, || async { fake.world().count("IDLE") >= 1 }).await;
+    let connections = fake.world().connections.len();
+    let closed = Instant::now();
+    fake.world().close_idling();
+    let idling_again = within(Duration::from_secs(5), || async {
+        fake.world().count("IDLE") >= 2
+    })
+    .await;
+    assert!(idling_again.is_some(), "a new IDLE within 5 s");
+    println!(
+        "a closed IDLE connection idles again after {:?}",
+        closed.elapsed()
+    );
+    fake.world().append("INBOX", 0, &[]);
+    assert!(
+        within(Duration::from_secs(5), || async {
+            run.count(inbox).await == 21
+        })
+        .await
+        .is_some(),
+        "new mail through the new IDLE connection"
+    );
+    assert_eq!(
+        fake.world().connections.len(),
+        connections + 1,
+        "only the IDLE connection was made again"
+    );
+    while let Ok(event) = run.events.try_recv() {
+        run.seen.push(event);
+    }
+    assert!(
+        !run.seen.iter().any(|event| matches!(
+            event,
+            Event::AccountStatus { account: id, status: SyncStatus::Offline(_) } if *id == account
+        )),
+        "no offline for a connection made again at once"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

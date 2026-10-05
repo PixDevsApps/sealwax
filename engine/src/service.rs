@@ -734,9 +734,14 @@ async fn log_in_with_password(
         username: &settings.username,
         password,
     };
-    imap::connect(&settings.imap, credentials, tls(shared)?)
-        .await
-        .map_err(|error| error.failure())
+    imap::connect_with(
+        &settings.imap,
+        credentials,
+        tls(shared)?,
+        shared.sync.connect,
+    )
+    .await
+    .map_err(|error| error.failure())
 }
 
 /// XOAUTH2 with the account's access token, refreshed when it is about to expire and once more
@@ -765,7 +770,14 @@ async fn log_in_with_token(
             username: &settings.username,
             token: &fetched.token,
         };
-        match imap::connect(&settings.imap, credentials, tls.clone()).await {
+        match imap::connect_with(
+            &settings.imap,
+            credentials,
+            tls.clone(),
+            shared.sync.connect,
+        )
+        .await
+        {
             Ok(connection) => return Ok(connection),
             Err(ImapError::Rejected(_)) if !fetched.refreshed => {
                 tracing::debug!("the server refused the access token; refreshing it");
