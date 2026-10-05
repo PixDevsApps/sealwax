@@ -42,7 +42,7 @@ const SEARCHES: [(&str, &str, bool); 11] = [
     ("word, INBOX only", "faktura", true),
 ];
 
-fn evict(store: &std::path::Path) -> Result<()> {
+pub(crate) fn evict(store: &std::path::Path) -> Result<()> {
     for file in store_files(store) {
         let Ok(handle) = File::open(&file) else {
             continue;
@@ -57,7 +57,7 @@ fn evict(store: &std::path::Path) -> Result<()> {
     Ok(())
 }
 
-fn open(options: &Options, blobs: &BlobStore) -> Result<Store> {
+pub(crate) fn open(options: &Options, blobs: &BlobStore) -> Result<Store> {
     Ok(Store::open(
         &options.store,
         StoreOptions {
@@ -68,7 +68,7 @@ fn open(options: &Options, blobs: &BlobStore) -> Result<Store> {
 }
 
 /// Today, yesterday, a week and a month back, at UTC midnight.
-fn section_starts(now: i64) -> Vec<i64> {
+pub(crate) fn section_starts(now: i64) -> Vec<i64> {
     let today = now - now.rem_euclid(86_400);
     vec![
         today,
@@ -91,7 +91,7 @@ fn open_view(store: &Store, spec: ViewSpec, now: i64) -> Result<(Duration, u32)>
 }
 
 /// Stamps each change event with its arrival time.
-fn listen(store: &Store) -> mpsc::Receiver<(Arc<ChangeEvent>, Instant)> {
+pub(crate) fn listen(store: &Store) -> mpsc::Receiver<(Arc<ChangeEvent>, Instant)> {
     let events = store.subscribe();
     let (sender, receiver) = mpsc::channel();
     std::thread::spawn(move || {
@@ -104,7 +104,7 @@ fn listen(store: &Store) -> mpsc::Receiver<(Arc<ChangeEvent>, Instant)> {
     receiver
 }
 
-fn wait_for(
+pub(crate) fn wait_for(
     events: &mpsc::Receiver<(Arc<ChangeEvent>, Instant)>,
     version: StoreVersion,
 ) -> Result<(Arc<ChangeEvent>, Instant)> {

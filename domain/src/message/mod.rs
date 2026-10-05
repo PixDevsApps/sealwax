@@ -4,8 +4,9 @@
 
 mod html;
 
-use crate::model::{Address, Attachment, BodyKind, Headers};
+use crate::model::{Address, Attachment, BodyKind, Headers, ThreadIndex};
 use crate::snippet::{self, SNIPPET_CHARS};
+use mail_parser::decoders::base64::base64_decode;
 use mail_parser::{HeaderValue, Message, MessageParser, MimeHeaders, PartType};
 
 pub use html::html_to_text;
@@ -158,6 +159,7 @@ fn headers(message: &Message<'_>) -> Headers {
         in_reply_to: ids(message.in_reply_to()),
         references: limit_references(ids(message.references())),
         list_id: list_id(message.list_id()),
+        thread_index: message.header_raw("Thread-Index").and_then(thread_index),
     }
 }
 
@@ -203,6 +205,18 @@ fn ids(value: &HeaderValue<'_>) -> Vec<String> {
         _ => {}
     }
     out
+}
+
+/// The conversation of an Outlook `Thread-Index` value: base64 of a 22-byte header block
+/// (reserved byte 0x01, a time, a GUID) and a 5-byte block per reply. Anything else, or a GUID
+/// of zeros, is ignored.
+pub fn thread_index(value: &str) -> Option<ThreadIndex> {
+    let bytes = base64_decode(value.trim().as_bytes())?;
+    let (head, replies) = bytes.split_at_checked(22)?;
+    if head[0] != 1 || replies.len() % 5 != 0 || head[6..].iter().all(|byte| *byte == 0) {
+        return None;
+    }
+    ThreadIndex::from_slice(head)
 }
 
 fn limit_references(mut references: Vec<String>) -> Vec<String> {

@@ -13,7 +13,7 @@ pub const PREVIEW_BYTES: u32 = 1024;
 
 /// The header fields mail-parser reads into `Headers`, plus what decoding the preview needs.
 const FIELDS: &str = "DATE FROM SENDER TO CC REPLY-TO SUBJECT MESSAGE-ID IN-REPLY-TO \
-    REFERENCES LIST-ID MIME-VERSION CONTENT-TYPE CONTENT-TRANSFER-ENCODING";
+    REFERENCES THREAD-INDEX LIST-ID MIME-VERSION CONTENT-TYPE CONTENT-TRANSFER-ENCODING";
 
 /// The FETCH items of the first sync.
 pub(crate) fn items() -> String {

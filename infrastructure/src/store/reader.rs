@@ -10,7 +10,7 @@ use rusqlite::{Connection, OptionalExtension};
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{
     Account, AccountId, Attachment, BlobKey, BodyKind, Folder, FolderId, FolderRole, Headers,
-    MessageDetail, MessageId, MessageSummary,
+    MessageDetail, MessageId, MessageSummary, ThreadIndex,
 };
 use std::sync::Arc;
 
@@ -260,7 +260,7 @@ impl Reader {
         let mut detail = tx
             .prepare_cached(
                 "SELECT to_addrs, cc_addrs, reply_to, sent_date, message_id, in_reply_to, refs, \
-                   list_id, keywords, body_kind, size, blob_key \
+                   list_id, keywords, body_kind, size, blob_key, thread_index \
                  FROM messages WHERE id = ?1",
             )?
             .query_row([id.0], |row| {
@@ -279,6 +279,9 @@ impl Reader {
                         in_reply_to: codec::decode_words(&row.get::<_, String>(5)?),
                         references: codec::decode_words(&row.get::<_, String>(6)?),
                         list_id: row.get(7)?,
+                        thread_index: row
+                            .get::<_, Option<Vec<u8>>>(12)?
+                            .and_then(|index| ThreadIndex::from_slice(&index)),
                     },
                     keywords: codec::decode_words(&row.get::<_, String>(8)?),
                     body_kind: BodyKind::from_code(row.get(9)?),

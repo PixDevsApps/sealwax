@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 2;
+pub const VERSION: i64 = 3;
 
-const MIGRATIONS: &[&str] = &[V1, V2];
+const MIGRATIONS: &[&str] = &[V1, V2, V3];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -130,6 +130,13 @@ const V2: &str = "
 ALTER TABLE accounts ADD COLUMN key TEXT;
 ALTER TABLE accounts ADD COLUMN detached INTEGER NOT NULL DEFAULT 0;
 CREATE UNIQUE INDEX accounts_key ON accounts(key);
+";
+
+/// M3's Outlook conversations (ML-046): the 22-byte conversation block of a message's
+/// `Thread-Index`, which the writer also files as a threading alias. Messages stored before it
+/// have none.
+const V3: &str = "
+ALTER TABLE messages ADD COLUMN thread_index BLOB;
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

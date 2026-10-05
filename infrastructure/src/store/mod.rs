@@ -21,6 +21,10 @@ pub(crate) mod tests;
 
 #[cfg(test)]
 mod account_tests;
+#[cfg(test)]
+mod thread_tests;
+#[cfg(test)]
+mod unified_tests;
 
 pub use api::*;
 pub use schema::VERSION as SCHEMA_VERSION;

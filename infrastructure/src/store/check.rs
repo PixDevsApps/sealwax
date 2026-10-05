@@ -3,9 +3,31 @@
 //! full-text rows without a message. A new folder without messages may show the server's
 //! STATUS counts instead (`FolderSpec::server_counts`), so its counts aren't recounted.
 
+use super::writer::THREAD_INDEX_ALIAS;
 use rusqlite::Connection;
 
-const CHECKS: [(&str, &str); 7] = [
+/// Messages whose threading keys (Message-ID, In-Reply-To and References entries, the
+/// `Thread-Index` conversation) don't all alias the message's own conversation.
+const ALIASES: &str = "
+WITH RECURSIVE words(account, thread, rest, word) AS (
+    SELECT f.account_id, m.thread_id, m.in_reply_to || ' ' || m.refs || ' ', m.message_id
+    FROM messages m JOIN folders f ON f.id = m.folder_id
+    UNION ALL
+    SELECT account, thread, substr(rest, instr(rest, ' ') + 1),
+           substr(rest, 1, instr(rest, ' ') - 1)
+    FROM words WHERE rest <> ''
+),
+keys(account, thread, key) AS (
+    SELECT account, thread, word FROM words WHERE word <> ''
+    UNION ALL
+    SELECT f.account_id, m.thread_id, ?1 || lower(hex(m.thread_index))
+    FROM messages m JOIN folders f ON f.id = m.folder_id WHERE m.thread_index IS NOT NULL
+)
+SELECT count(*) FROM keys k
+LEFT JOIN thread_aliases a ON a.account_id = k.account AND a.message_id = k.key
+WHERE a.thread_id IS NOT k.thread";
+
+const CHECKS: [(&str, &str); 6] = [
     (
         "folder counts",
         "SELECT count(*) FROM folders f LEFT JOIN \
@@ -34,12 +56,6 @@ const CHECKS: [(&str, &str); 7] = [
          WHERE NOT EXISTS (SELECT 1 FROM threads WHERE id = m.thread_id)",
     ),
     (
-        "message-id aliases",
-        "SELECT count(*) FROM messages m JOIN folders f ON f.id = m.folder_id \
-         JOIN thread_aliases a ON a.account_id = f.account_id AND a.message_id = m.message_id \
-         WHERE a.thread_id <> m.thread_id",
-    ),
-    (
         "conversations across accounts",
         "SELECT count(*) FROM messages m JOIN folders f ON f.id = m.folder_id \
          JOIN threads t ON t.id = m.thread_id WHERE t.account_id <> f.account_id",
@@ -59,6 +75,10 @@ pub(crate) fn run(conn: &Connection) -> rusqlite::Result<Vec<String>> {
         if bad != 0 {
             problems.push(format!("{name}: {bad} disagree"));
         }
+    }
+    let bad: i64 = tx.query_row(ALIASES, [THREAD_INDEX_ALIAS], |row| row.get(0))?;
+    if bad != 0 {
+        problems.push(format!("threading aliases: {bad} disagree"));
     }
     let violations = tx
         .prepare("PRAGMA foreign_key_check")?

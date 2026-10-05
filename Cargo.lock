@@ -3292,6 +3292,7 @@ version = "0.0.1"
 dependencies = [
  "async-channel 2.5.0",
  "getrandom 0.4.3",
+ "proptest",
  "rusqlite",
  "sealwax-domain",
  "sha2 0.10.9",

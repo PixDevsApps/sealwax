@@ -9,6 +9,7 @@ mod mime;
 mod remove;
 mod rng;
 mod stats;
+mod unified;
 mod words;
 
 use anyhow::{Context, Result, bail};
@@ -24,11 +25,13 @@ const USAGE: &str = "usage:
   sealwax-fixtures import --store PATH [--blobs DIR] (--dir DIR | --count N [--seed S] [--now UNIX|now] [--years Y])
                           [--folders single|spread] [--account NAME] [--chunk N] [--workers N]
   sealwax-fixtures bench --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
+  sealwax-fixtures bench-unified --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
   sealwax-fixtures check --store PATH
   sealwax-fixtures remove-account --store PATH [--blobs DIR] [--account NAME]
 
 The blob store defaults to `blobs` next to the store file. Messages are numbered newest first,
-the order of a first sync.";
+the order of a first sync. `bench-unified` measures All Inboxes over several accounts, each
+imported with its own --account.";
 
 struct Args {
     command: String,
@@ -91,6 +94,18 @@ impl Args {
             now: self.now()?,
             years: self.number("years", 5.0)?,
         }))
+    }
+
+    fn bench(&self) -> Result<bench::Options> {
+        let store = self.path("store")?;
+        Ok(bench::Options {
+            blobs: self.blobs(&store)?,
+            store,
+            cold: self.number("cold", 10)?,
+            warm: self.number("warm", 30)?,
+            inserts: self.number("inserts", 400)?,
+            now: self.now()?,
+        })
     }
 
     fn blobs(&self, store: &Path) -> Result<PathBuf> {
@@ -213,17 +228,8 @@ fn main() -> Result<()> {
     match args.command.as_str() {
         "generate" => generate(&args),
         "import" => import(&args),
-        "bench" => {
-            let store = args.path("store")?;
-            bench::run(&bench::Options {
-                blobs: args.blobs(&store)?,
-                store,
-                cold: args.number("cold", 10)?,
-                warm: args.number("warm", 30)?,
-                inserts: args.number("inserts", 400)?,
-                now: args.now()?,
-            })
-        }
+        "bench" => bench::run(&args.bench()?),
+        "bench-unified" => unified::run(&args.bench()?),
         "check" => check(&args),
         "remove-account" => {
             let store = args.path("store")?;

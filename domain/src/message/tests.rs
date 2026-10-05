@@ -261,6 +261,47 @@ fn keeps_the_root_and_the_newest_references() {
 }
 
 #[test]
+fn reads_the_conversation_of_outlooks_thread_index() {
+    let conversation = thread_index("Adk8WhAiEBESExQVFhcYGRobHB0eHw==").unwrap();
+    assert_eq!(
+        conversation.to_hex(),
+        "01d93c5a1022101112131415161718191a1b1c1d1e1f"
+    );
+    for reply in [
+        "Adk8WhAiEBESExQVFhcYGRobHB0eHwAAEjRW",
+        "Adk8WhAiEBESExQVFhcYGRobHB0eHwAAEjRWAAECAwQ=",
+        " Adk8WhAiEBESExQVFhcYGRobHB0eHwAA\r\n EjRW\r\n",
+    ] {
+        assert_eq!(thread_index(reply), Some(conversation), "{reply}");
+    }
+    for malformed in [
+        "",
+        "not base64!",
+        "Adk8WhAiEBESExQVFhcYGRobHB0e",
+        "Adk8WhAiEBESExQVFhcYGRobHB0eHwEC",
+        "Atk8WhAiEBESExQVFhcYGRobHB0eHw==",
+        "Adk8WhAiAAAAAAAAAAAAAAAAAAAAAA==",
+    ] {
+        assert_eq!(thread_index(malformed), None, "{malformed}");
+    }
+    let folded = crlf(
+        "From: a@example.test\nSubject: RE: x\nthread-index: Adk8WhAiEBESExQVFhcYGRobHB0eHwAA\n EjRW\n\
+         Thread-Topic: x\n\nbody\n",
+    );
+    assert_eq!(parse(&folded).headers.thread_index, Some(conversation));
+    let header_fields =
+        b"Subject: SV: x\r\nThread-Index: Adk8WhAiEBESExQVFhcYGRobHB0eHwAAEjRW\r\n\r\n";
+    assert_eq!(
+        parse(header_fields).headers.thread_index,
+        Some(conversation),
+        "a first sync's HEADER.FIELDS"
+    );
+    let garbage = crlf("From: a@example.test\nThread-Index: Ådk8\n\nbody\n");
+    assert_eq!(parse(&garbage).headers.thread_index, None);
+    assert_eq!(parse(&crlf(PLAIN)).headers.thread_index, None);
+}
+
+#[test]
 fn subjects_lose_reply_prefixes() {
     assert_eq!(base_subject("Re: SV: Fwd: Møte"), "Møte");
     assert_eq!(base_subject("RE[2]: budget"), "budget");

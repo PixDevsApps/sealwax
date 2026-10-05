@@ -140,7 +140,7 @@ fn a_v1_store_migrates_and_keeps_its_accounts_keyless() {
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 2);
+    assert_eq!(version, SCHEMA_VERSION);
 }
 
 #[test]
