@@ -80,6 +80,12 @@ if $testbed; then
         echo "testbed: only some containers are running; start it with tools/testbed/up.sh" >&2
         exit 1
     fi
+    # The suites' proxies need the server certificate as well as the CA.
+    if [[ ! -f tools/testbed/certs/server.pem ]]; then
+        echo "testbed: tools/testbed/certs/ isn't in this checkout (a worktree?); link it to the" \
+            "certs/ of the checkout that started the testbed" >&2
+        exit 1
+    fi
     export SEALWAX_TESTBED_CA=${SEALWAX_TESTBED_CA:-$PWD/tools/testbed/certs/ca.pem}
     export MAIL_TESTBED_CA=${MAIL_TESTBED_CA:-$SEALWAX_TESTBED_CA}
     # The suites share test users, so they run one file and one test at a time. The soak
