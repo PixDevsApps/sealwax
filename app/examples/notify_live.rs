@@ -51,6 +51,8 @@ const LIVE_DEADLINE: Duration = Duration::from_secs(300);
 const LIVE_WAIT: Duration = Duration::from_secs(90);
 /// How long the stand-in waits before it clicks.
 const DRY_CLICK_AFTER: Duration = Duration::from_millis(300);
+/// The dry run's keep-alive tick for Broadway's main loop.
+const DRY_TICK: Duration = Duration::from_millis(4);
 
 /// The scratch mailbox: one account, its Inbox with a few fictional messages, an Archive.
 struct Mailbox {
@@ -470,6 +472,18 @@ fn main() -> glib::ExitCode {
             }
         }
     };
+    // Headless, a stand-in Broadway client, without which GDK paints once a second.
+    let _client = if live {
+        None
+    } else {
+        match support::broadway::connect() {
+            Ok(client) => Some(client),
+            Err(error) => {
+                eprintln!("notify_live: the Broadway daemon: {error}");
+                return glib::ExitCode::FAILURE;
+            }
+        }
+    };
     let config = AppConfig {
         app_id: APP_ID.into(),
         dirs,
@@ -497,6 +511,11 @@ fn main() -> glib::ExitCode {
             let (commands, kept) = async_channel::unbounded::<Command>();
             let (events, received) = async_channel::unbounded::<Event>();
             app.state().engine().attach(commands, received);
+            if !live {
+                // Broadway paints about once a second while nothing else wakes the main loop
+                // (seen in this dry run: 1.4 s to a painted message without it, 41 ms with it).
+                glib::timeout_add_local(DRY_TICK, || glib::ControlFlow::Continue);
+            }
             let invoked = watch_invoked(&app);
             let run = Run {
                 app: app.clone(),

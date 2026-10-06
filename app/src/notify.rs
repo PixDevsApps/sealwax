@@ -37,12 +37,10 @@ use sealwax_engine::api::Event;
 use sealwax_infrastructure::store::{ChangeEvent, ViewFilter, ViewScope};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
-use std::rc::{Rc, Weak};
+use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-/// The product's name: the notification's `app_name` (GLib sends the program's name).
-pub const APP_NAME: &str = "Sealwax";
 /// The actions a notification invokes, on the application, with a message id (`x`).
 pub const OPEN_ACTION: &str = "open-message";
 pub const ARCHIVE_ACTION: &str = "archive-message";
@@ -68,6 +66,9 @@ const PAINT_WAIT: Duration = Duration::from_secs(10);
 const REMEMBERED: usize = 500;
 /// The count's notification id.
 const COUNT_ID: &str = "new-mail";
+/// What [`sent`] and [`clicks`] keep at most, newest last.
+const KEPT_SENT: usize = 1_000;
+const KEPT_CLICKS: usize = 100;
 
 /// What a notification stands for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -121,7 +122,6 @@ pub enum Sent {
 
 #[derive(Default)]
 struct Notifier {
-    state: RefCell<Weak<AppState>>,
     events: RefCell<Option<Subscription>>,
     settings: Cell<Notifications>,
     /// The messages notified about and not withdrawn, oldest first.
@@ -151,7 +151,6 @@ fn app() -> Option<SealwaxApplication> {
 /// Follows the engine's new mail and `[notifications]`, once at startup.
 pub fn install(state: &Rc<AppState>) {
     let notifier = shared();
-    notifier.state.replace(Rc::downgrade(state));
     if let Some(prefs) = state.preferences() {
         notifier.settings.set(prefs.config().notifications);
         let weak = Rc::downgrade(&prefs);
@@ -213,12 +212,12 @@ pub fn settings() -> Notifications {
     shared().settings.get()
 }
 
-/// What was sent and withdrawn so far, oldest first (the self-tests).
+/// What was sent and withdrawn lately, oldest first (the self-tests).
 pub fn sent() -> Vec<Sent> {
     shared().sent.borrow().clone()
 }
 
-/// The clicks so far, oldest first.
+/// The latest clicks, oldest first.
 pub fn clicks() -> Vec<Click> {
     shared().clicks.borrow().clone()
 }
@@ -267,10 +266,16 @@ fn withdraw(key: &str) {
     if let Some(app) = app() {
         app.withdraw_notification(key);
     }
-    shared()
-        .sent
-        .borrow_mut()
-        .push(Sent::Withdrawn(key.to_owned()));
+    record(Sent::Withdrawn(key.to_owned()));
+}
+
+fn record(sent: Sent) {
+    let notifier = shared();
+    let mut log = notifier.sent.borrow_mut();
+    log.push(sent);
+    if log.len() > KEPT_SENT {
+        log.remove(0);
+    }
 }
 
 /// Stops tracking `id` and withdraws what shows it: its own notification, or the count once
@@ -443,7 +448,7 @@ fn show(mut messages: Vec<MessageSummary>, markup: bool) {
                 Some(&message_key(message.id)),
                 &message_notification(message, markup),
             );
-            notifier.sent.borrow_mut().push(Sent::Message(message.id));
+            record(Sent::Message(message.id));
             remember(message, Shown::Alone(now));
         }
         tracing::debug!(messages = messages.len(), "new mail notified, one each");
@@ -458,10 +463,7 @@ fn show(mut messages: Vec<MessageSummary>, markup: bool) {
         let mut notified = notifier.notified.borrow_mut();
         for n in notified.iter_mut().filter(|n| live(n.shown)) {
             app.withdraw_notification(&message_key(n.id));
-            notifier
-                .sent
-                .borrow_mut()
-                .push(Sent::Withdrawn(message_key(n.id)));
+            record(Sent::Withdrawn(message_key(n.id)));
             n.shown = Shown::Counted;
         }
     }
@@ -492,7 +494,7 @@ fn show(mut messages: Vec<MessageSummary>, markup: bool) {
     };
     app.send_notification(Some(COUNT_ID), &notification);
     notifier.count_sent.set(Some(now));
-    notifier.sent.borrow_mut().push(Sent::Count(counted.len()));
+    record(Sent::Count(counted.len()));
     tracing::debug!(messages = counted.len(), "new mail notified as a count");
 }
 
@@ -760,8 +762,8 @@ fn open(state: &Rc<AppState>, id: MessageId) {
         return;
     };
     app.activate();
-    let notifier = shared();
-    let index = {
+    {
+        let notifier = shared();
         let mut clicks = notifier.clicks.borrow_mut();
         clicks.push(Click {
             message: id,
@@ -770,8 +772,10 @@ fn open(state: &Rc<AppState>, id: MessageId) {
             selected: None,
             painted: None,
         });
-        clicks.len() - 1
-    };
+        if clicks.len() > KEPT_CLICKS {
+            clicks.remove(0);
+        }
+    }
     tracing::info!(had_window, "a notification was clicked");
     let Some(reply) = state.mailbox().store().map(|store| store.message(id)) else {
         return;
@@ -795,10 +799,19 @@ fn open(state: &Rc<AppState>, id: MessageId) {
         if !select(&state, &summary).await {
             return;
         }
-        shared().clicks.borrow_mut()[index].selected = Some(Instant::now());
+        update_click(action, |click| click.selected = Some(Instant::now()));
         let painted = painted(&state, id).await;
-        shared().clicks.borrow_mut()[index].painted = painted;
+        update_click(action, |click| click.painted = painted);
     });
+}
+
+/// Fills in the click made at `action`, while it is kept.
+fn update_click(action: Instant, update: impl FnOnce(&mut Click)) {
+    let notifier = shared();
+    let mut clicks = notifier.clicks.borrow_mut();
+    if let Some(click) = clicks.iter_mut().rev().find(|click| click.action == action) {
+        update(click);
+    }
 }
 
 /// Shows `message` in the list: its folder unless All Inboxes shows it, no search, a filter
