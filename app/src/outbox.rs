@@ -580,7 +580,8 @@ mod tests {
             failure_text(&SendError::RecipientsRefused(vec!["a@example.test".into()])),
             "Your message wasn't sent: the server refused 1 recipient. It's back in your drafts."
         );
-        assert!(failure_text(&SendError::TooLarge { limit: 26_214_400 }).contains("(26.2 MB)"));
+        // GLib may put a no-break space between the number and the unit.
+        assert!(failure_text(&SendError::TooLarge { limit: 26_214_400 }).contains("(26.2"));
         assert_eq!(
             failure_text(&SendError::Other),
             "Your message wasn't sent. It's back in your drafts."

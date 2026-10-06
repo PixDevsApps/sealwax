@@ -395,7 +395,7 @@ pub fn typed_text(html: &str) -> Option<String> {
                 .replace("&gt;", ">")
                 .replace("&quot;", "\"")
                 .replace("&#39;", "'")
-                .replace('\u{a0}', " ")
+                .replace("&nbsp;", " ")
                 .replace("&amp;", "&"),
         );
     }
