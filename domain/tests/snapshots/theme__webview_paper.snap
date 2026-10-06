@@ -3,5 +3,5 @@ source: domain/tests/theme.rs
 expression: "theme(\"matte-black\").webview_css(BodyStyle::Paper)"
 ---
 html,body{height:max-content!important;min-height:0!important;max-height:none!important}
-:root{color-scheme:light}
-html{background-color:#ffffff;color:#1f1f1f}
+:root{color-scheme:light!important}
+html{color:#1f1f1f}

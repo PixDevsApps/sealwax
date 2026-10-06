@@ -48,7 +48,12 @@ pub struct WebViewFonts {
 }
 
 impl Theme {
-    /// The user stylesheet for one HTML body. Author styles in the message win over it.
+    /// The user stylesheet for one HTML body. Author styles in the message win over it, except
+    /// that themed links take the accent and paper stays in the light scheme: WebKit would
+    /// paint a dark canvas behind a light design that declares `color-scheme: light dark`.
+    /// Paper paints no background of its own, so a message's body background reaches the
+    /// canvas as in a browser (a dark-mode design fills the card), and the view's white shows
+    /// where the message paints none.
     pub fn webview_css(&self, style: BodyStyle) -> String {
         let mut css = String::with_capacity(1024);
         css.push_str(MEASURE_CSS);
@@ -58,8 +63,8 @@ impl Theme {
             BodyStyle::Paper => {
                 let _ = write!(
                     css,
-                    ":root{{color-scheme:light}}\n\
-                     html{{background-color:{PAPER};color:{PAPER_TEXT}}}\n"
+                    ":root{{color-scheme:light!important}}\n\
+                     html{{color:{PAPER_TEXT}}}\n"
                 );
             }
         }
@@ -174,8 +179,12 @@ mod tests {
         let theme = theme(Mode::Dark, ReadingFont::Sans);
         let css = theme.webview_css(BodyStyle::Paper);
         assert!(css.starts_with(MEASURE_CSS));
-        assert!(css.contains(":root{color-scheme:light}"));
-        assert!(css.contains("background-color:#ffffff;color:#1f1f1f"));
+        assert!(css.contains(":root{color-scheme:light!important}"));
+        assert!(css.contains("html{color:#1f1f1f}"));
+        assert!(
+            !css.contains("background"),
+            "the message's own body background reaches the canvas"
+        );
         assert!(!css.contains(&theme.palette.foreground.to_string()));
         assert_eq!(theme.webview_background(BodyStyle::Paper), PAPER);
     }
