@@ -175,14 +175,22 @@ pub const OPERATORS: &[Operator] = &[
 ];
 
 /// What the user typed, as a [`Query`]. Never fails: anything not understood is searched as
-/// text, and an operator still being typed (`is:un`, `before:2026-1`) is left out until it reads
+/// text, and an operator still being typed (`is:un`, `before:2026-`) is left out until it reads
 /// as one. Operator names and their fixed values are case-insensitive; `-` before a word, a
 /// phrase, `has:` or `is:` negates it, and `-before:` reads as `after:` (and the reverse).
 /// Dates are `2026-10-01`, `2026/10/01`, `1.10.2026`, `2026-10` (its first day) or `2026` (1
 /// January). Repeated conditions narrow: the latest `after:` and the earliest `before:` hold,
 /// and a later `is:` or `has:` replaces an earlier one of the same kind.
 pub fn parse(text: &str) -> Query {
-    parser::parse(text)
+    parser::parse(text, false)
+}
+
+/// [`parse`] for text still being typed, as the search field sends it on every key: when the
+/// text doesn't end in whitespace, its last word is the start of a word (`budsjett kon` finds
+/// "kontrakt"), in the text and under `from:`, `to:` and `subject:`. A phrase in quotes and an
+/// excluded word (`-utkast`) stay whole.
+pub fn parse_typed(text: &str) -> Query {
+    parser::parse(text, true)
 }
 
 #[cfg(test)]

@@ -435,7 +435,7 @@ impl Reader {
         folder: Option<FolderId>,
         limit: u32,
     ) -> Result<Versioned<Vec<MessageSummary>>, StoreError> {
-        let query = sealwax_domain::search::parse(text);
+        let query = sealwax_domain::search::parse_typed(text);
         let tx = self.conn.unchecked_transaction()?;
         let version = version(&tx)?;
         let value = if query.is_empty() {

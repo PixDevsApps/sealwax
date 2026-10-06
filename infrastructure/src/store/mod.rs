@@ -367,8 +367,8 @@ impl Store {
     }
 
     /// The newest `limit` messages that what the user typed finds (the query language of
-    /// [`sealwax_domain::search::parse`]), in one folder or in every folder but Trash and Junk
-    /// of the attached accounts.
+    /// [`sealwax_domain::search::parse_typed`]: a last word with nothing after it is the start
+    /// of a word), in one folder or in every folder but Trash and Junk of the attached accounts.
     pub fn search(
         &self,
         text: &str,

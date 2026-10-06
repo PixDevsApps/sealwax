@@ -2,7 +2,9 @@
 
 use super::{Date, Query, Term};
 
-pub(super) fn parse(text: &str) -> Query {
+/// `typing`: the last word, when nothing follows it, is the start of a word (see
+/// [`super::parse_typed`]).
+pub(super) fn parse(text: &str, typing: bool) -> Query {
     let mut query = Query::default();
     let mut rest = text;
     loop {
@@ -12,7 +14,41 @@ pub(super) fn parse(text: &str) -> Query {
         }
         let (token, after) = Token::next(rest);
         rest = after;
+        let lengths = query.lengths();
+        let open = typing && rest.is_empty() && !token.quoted && !token.negated;
         token.apply(&mut query);
+        if open {
+            query.open_last(lengths);
+        }
+    }
+}
+
+impl Query {
+    fn lengths(&self) -> [usize; 4] {
+        [
+            self.text.len(),
+            self.from.len(),
+            self.to.len(),
+            self.subject.len(),
+        ]
+    }
+
+    /// The word the last token added to the text or an operator's column, made a prefix.
+    fn open_last(&mut self, before: [usize; 4]) {
+        let columns = [
+            &mut self.text,
+            &mut self.from,
+            &mut self.to,
+            &mut self.subject,
+        ];
+        for (terms, before) in columns.into_iter().zip(before) {
+            if terms.len() > before
+                && let Some(term) = terms.last_mut()
+                && let Term::Word(word) = term
+            {
+                *term = Term::Prefix(std::mem::take(word));
+            }
+        }
     }
 }
 
@@ -204,7 +240,7 @@ fn date(value: &str) -> Option<Date> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::parse;
+    use super::super::{parse, parse_typed};
     use super::*;
     use proptest::prelude::*;
 
@@ -318,6 +354,34 @@ mod tests {
     }
 
     #[test]
+    fn the_last_word_typed_is_the_start_of_a_word() {
+        let prefix = |text: &str| Term::Prefix(text.into());
+        let query = parse_typed("budsjett kon");
+        assert_eq!(query.text, [word("budsjett"), prefix("kon")]);
+        assert_eq!(
+            parse_typed("budsjett kon ").text,
+            [word("budsjett"), word("kon")]
+        );
+        assert_eq!(parse_typed("from:ann").from, [prefix("ann")]);
+        assert_eq!(parse_typed("plan to:kari").to, [prefix("kari")]);
+        assert_eq!(parse_typed("subject:fak").subject, [prefix("fak")]);
+        assert_eq!(parse_typed("re:hel").text, [prefix("re:hel")]);
+        assert_eq!(parse_typed("budsj*").text, [prefix("budsj")]);
+        let query = parse_typed("plan \"project upd");
+        assert_eq!(
+            query.text,
+            [word("plan"), Term::Phrase("project upd".into())]
+        );
+        let query = parse_typed("plan -utk");
+        assert_eq!(query.text, [word("plan")]);
+        assert_eq!(query.exclude, [word("utk")], "an excluded word stays whole");
+        let query = parse_typed("kon is:unread");
+        assert_eq!((query.text, query.unread), (vec![word("kon")], Some(true)));
+        assert_eq!(parse("budsjett kon").text, [word("budsjett"), word("kon")]);
+        assert!(parse_typed("").is_empty());
+    }
+
+    #[test]
     fn exclusions() {
         let query = parse("faktura -purring -\"siste varsel\" - --x");
         assert_eq!(query.text, [word("faktura"), word("--x")]);
@@ -350,6 +414,18 @@ mod tests {
         #[test]
         fn never_panics_on_syntax(text in "[a-zæø会 \"*:\\-./0-9]{0,40}") {
             check(&parse(&text))?;
+            check(&parse_typed(&text))?;
+        }
+
+        #[test]
+        fn typing_opens_only_the_last_word(words in prop::collection::vec(plain_word(), 1..8)) {
+            let text = words.join(" ");
+            let mut expected: Vec<Term> = words.iter().map(|text| word(text)).collect();
+            if let Some(Term::Word(last)) = expected.pop() {
+                expected.push(Term::Prefix(last));
+            }
+            prop_assert_eq!(parse_typed(&text).text, expected);
+            prop_assert_eq!(parse_typed(&format!("{text} ")), parse(&text));
         }
 
         #[test]

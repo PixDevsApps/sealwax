@@ -187,6 +187,32 @@ fn ingest_raws(fx: &Fx, messages: Vec<RawMessage>) -> Vec<MessageId> {
 }
 
 #[test]
+fn the_last_word_typed_finds_the_words_it_starts() {
+    let fx = fixture();
+    let mut m0 = mail(fx.inbox, 0, T0);
+    m0.headers.from = vec![person("Annabelle Lie")];
+    m0.search_text = "budsjett og kontrakt".into();
+    let mut m1 = mail(fx.inbox, 1, T0 + 60);
+    m1.headers.from = vec![person("Kon Tiki")];
+    m1.search_text = "budsjett kon".into();
+    let ids = ingest(&fx.store, vec![m0, m1]);
+    let none = Vec::<MessageId>::new();
+    for (text, expected) in [
+        ("budsjett kon", vec![ids[1], ids[0]]),
+        ("budsjett kon ", vec![ids[1]]),
+        ("budsjett kontr", vec![ids[0]]),
+        ("from:anna", vec![ids[0]]),
+        ("from:anna ", none.clone()),
+        ("\"budsjett ko\"", none.clone()),
+        ("budsjett -kon", vec![ids[0]]),
+        ("k", none.clone()),
+        ("ko", vec![ids[1], ids[0]]),
+    ] {
+        assert_eq!(fx.find(text, None), expected, "{text:?}");
+    }
+}
+
+#[test]
 fn operators_search_their_columns() {
     let fx = fixture();
     let mut m0 = mail(fx.inbox, 0, T0);
@@ -711,7 +737,7 @@ fn plans_agree_with_a_scan() {
             parts.push(format!("before:{}", day(rng.below(400))));
         }
         let text = parts.join(" ");
-        let query = search::parse(&text);
+        let query = search::parse_typed(&text);
         let folder = (rng.below(3) == 0).then(|| folders[rng.below(4) as usize]);
         let limit = [10, 50, 1_000][round % 3];
         let mut expected: Vec<&Modelled> = model
@@ -884,7 +910,7 @@ fn a_rebuild_reindexes_in_place() {
         [previews[0]],
         "from the snippet"
     );
-    assert_eq!(fx.find("ord7", None), [whole[7]]);
+    assert_eq!(fx.find("ord7 ", None), [whole[7]]);
     assert_eq!(
         fx.store.check().recv_blocking().unwrap(),
         Vec::<String>::new()

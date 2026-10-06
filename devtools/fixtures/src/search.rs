@@ -25,11 +25,16 @@ pub struct Options {
     pub rebuild: bool,
 }
 
-/// The shapes measured: a name, the query, and whether it runs in the INBOX only.
-const SHAPES: [(&str, &str, bool); 35] = [
+/// The shapes measured: a name, the query, and whether it runs in the INBOX only. As in the
+/// search field, a last word with nothing after it is the start of a word; a space after it
+/// makes it whole.
+const SHAPES: [(&str, &str, bool); 38] = [
     ("common Norwegian word", "møte", false),
+    ("the same, whole (a space after)", "møte ", false),
     ("very common English word", "the", false),
+    ("the same, whole", "the ", false),
     ("rare word with æøå", "blåbærsyltetøy", false),
+    ("the same, whole", "blåbærsyltetøy ", false),
     ("the same typed without æøå", "blabaersyltetoy", false),
     ("a word in 60 subjects", "subject:quokka", false),
     ("no match", "zzqxv", false),
@@ -78,6 +83,25 @@ const SHAPES: [(&str, &str, bool); 35] = [
         true,
     ),
     ("prefix", "prosjekt*", true),
+];
+
+/// What the search field sends as "budsjett faktura" is typed.
+const TYPED: [&str; 15] = [
+    "b",
+    "bu",
+    "bud",
+    "buds",
+    "budsj",
+    "budsje",
+    "budsjet",
+    "budsjett",
+    "budsjett ",
+    "budsjett f",
+    "budsjett fa",
+    "budsjett fak",
+    "budsjett fakt",
+    "budsjett faktu",
+    "budsjett faktura",
 ];
 
 /// Shapes timed again after a rebuild, which leaves the index in more pieces until merged.
@@ -271,6 +295,24 @@ pub fn run(options: &Options) -> Result<()> {
         );
     }
     println!("- worst p95: cold {worst_cold:.2} ms, warm {worst_warm:.2} ms");
+
+    println!("\n## Typing, a key at a time (every folder, first 50, warm)");
+    println!("| text | rows | p50 / p95 / max ms |");
+    println!("| --- | --- | --- |");
+    for typed in TYPED {
+        let mut warm = Vec::new();
+        let mut rows = 0;
+        for _ in 0..bench.warm {
+            let started = Instant::now();
+            rows = store.search(typed, None, 50).recv_blocking()?.value.len();
+            warm.push(started.elapsed());
+        }
+        let warm = summary(&warm);
+        println!(
+            "| `{typed}` | {rows} | {:.2} / {:.2} / {:.2} |",
+            warm.p50, warm.p95, warm.max
+        );
+    }
 
     let ((), flags, searches) = probed(&store, &ids, || {
         std::thread::sleep(Duration::from_secs(3));
