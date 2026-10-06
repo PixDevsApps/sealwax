@@ -115,11 +115,12 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("composer-identity", 3, 3),
     ("composer-from", 1, 1),
     ("composer-close", 0, 0),
+    ("composer-save-all", 0, 0),
     ("composer-edit-for", 2, 2),
     ("composer-measure-attach", 1, 1),
     ("composer-typing", 1, 1),
     ("composer-screenshot", 1, 1),
-    ("assert-composer", 1, 3),
+    ("assert-composer", 1, 4),
 ];
 
 const WAIT: Duration = Duration::from_secs(15);
@@ -162,6 +163,11 @@ fn composer() -> Result<Composer, String> {
 
 fn stand_in() -> Result<Rc<composer::backend::StandIn>, String> {
     composer::stand_in().ok_or_else(|| "the stand-in backend isn't in use".to_owned())
+}
+
+fn setup_stand_in(harness: &Harness) -> Result<Rc<composer::backend::StandIn>, String> {
+    composer::ensure_stand_in(&harness.app)
+        .ok_or_else(|| "the stand-in backend isn't in use".to_owned())
 }
 
 pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
@@ -248,7 +254,9 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             Ok(())
         }
         "composer-focus" => {
-            focus_target(&composer()?, arg(0))?.grab_focus();
+            let composer = composer()?;
+            composer.window().present();
+            focus_target(&composer, arg(0))?.grab_focus();
             settle(harness).await;
             Ok(())
         }
@@ -342,6 +350,9 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             let path = scratch(harness, arg(0))?;
             let size = number(arg(1))?;
             let bytes: Vec<u8> = (0..size).map(|index| (index * 31 % 251) as u8).collect();
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
             std::fs::write(&path, bytes).map_err(|error| error.to_string())
         }
         "composer-attach" => {
@@ -419,11 +430,11 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 "none" => None,
                 bytes => Some(number(bytes)? as u64),
             };
-            stand_in()?.set_limit(limit);
+            setup_stand_in(harness)?.set_limit(limit);
             Ok(())
         }
         "composer-identity" => {
-            stand_in()?.add_identity(arg(0), arg(1), arg(2));
+            setup_stand_in(harness)?.add_identity(arg(0), arg(1), arg(2));
             Ok(())
         }
         "composer-from" => {
@@ -433,6 +444,11 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "composer-close" => {
             composer()?.window().close();
+            settle(harness).await;
+            Ok(())
+        }
+        "composer-save-all" => {
+            composer::save_all().await;
             settle(harness).await;
             Ok(())
         }
@@ -459,7 +475,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             println!("  # {}", super::normalise(path).display());
             Ok(())
         }
-        "assert-composer" => check(args).await,
+        "assert-composer" => check(harness, args).await,
         other => Err(format!("unknown command {other}")),
     }
 }
@@ -807,7 +823,7 @@ async fn typing(harness: &Harness, count: usize) -> StepResult {
     Ok(())
 }
 
-async fn check(args: &[String]) -> StepResult {
+async fn check(harness: &Harness, args: &[String]) -> StepResult {
     let arg = |index: usize| args.get(index).map(String::as_str).unwrap_or_default();
     let what = arg(0);
     if what == "count" {
@@ -819,7 +835,7 @@ async fn check(args: &[String]) -> StepResult {
     }
     if matches!(
         what,
-        "sent" | "discarded" | "closed" | "saves" | "save-lag" | "last-sent"
+        "sent" | "discarded" | "closed" | "saves" | "save-lag" | "last-sent" | "stored"
     ) {
         return check_backend(what, &args[1..]);
     }
@@ -829,10 +845,39 @@ async fn check(args: &[String]) -> StepResult {
     let composer = composer()?;
     match what {
         "loaded" => equal("loaded", composer.is_loaded(), boolean(arg(1))?),
+        "theme" => {
+            let theme = harness
+                .state
+                .theme()
+                .ok_or("the theme follower isn't running")?
+                .theme();
+            let background =
+                webkit6::prelude::WebViewExt::background_color(composer.editor().view());
+            let wanted = theme.palette.background;
+            let got = (
+                (background.red() * 255.0).round() as u8,
+                (background.green() * 255.0).round() as u8,
+                (background.blue() * 255.0).round() as u8,
+            );
+            println!("  # the body's background {got:?}, the theme's {wanted}");
+            equal("the body's background", got, (wanted.r, wanted.g, wanted.b))?;
+            let page = composer
+                .editor()
+                .eval("getComputedStyle(document.documentElement).backgroundColor")
+                .await?
+                .to_str()
+                .to_string();
+            let css = format!("rgb({}, {}, {})", wanted.r, wanted.g, wanted.b);
+            equal("the page's background", page.as_str(), css.as_str())
+        }
         "spell" => {
             let languages = composer.editor().engine().spell_languages();
             println!("  # spell-checking languages WebKit accepted: {languages:?}");
             equal("spell checking", !languages.is_empty(), boolean(arg(1))?)
+        }
+        "eval" => {
+            let value = composer.editor().eval(arg(1)).await?;
+            equal(arg(1), value.to_str().as_str(), arg(2))
         }
         "title" => equal(
             "title",
@@ -858,7 +903,7 @@ async fn check(args: &[String]) -> StepResult {
         "chips" => {
             let field = composer.field(arg(1)).ok_or("no such field")?;
             let emails: Vec<String> = field
-                .addresses()
+                .chip_addresses()
                 .into_iter()
                 .map(|address| address.email)
                 .collect();
@@ -1102,16 +1147,25 @@ fn check_backend(what: &str, args: &[String]) -> StepResult {
                 Err(format!("an edit waited {} ms", worst.as_millis()))
             }
         }
-        "last-sent" => {
-            let sent = stand_in.sent();
-            let (_, draft) = sent.last().ok_or("nothing was sent")?;
+        "last-sent" | "stored" => {
+            let (field, wanted, draft) = if what == "stored" {
+                let id = DraftId(number(arg(0))? as i64);
+                let draft = stand_in
+                    .draft(id)
+                    .ok_or_else(|| format!("the stand-in keeps no draft {}", id.0))?;
+                (arg(1), arg(2), draft)
+            } else {
+                let sent = stand_in.sent();
+                let (_, draft) = sent.last().cloned().ok_or("nothing was sent")?;
+                (arg(0), arg(1), draft)
+            };
             let join = |list: &[sealwax_domain::model::Address]| {
                 list.iter()
                     .map(|address| address.email.clone())
                     .collect::<Vec<_>>()
                     .join(",")
             };
-            let value = match arg(0) {
+            let value = match field {
                 "to" => join(&draft.to),
                 "cc" => join(&draft.cc),
                 "bcc" => join(&draft.bcc),
@@ -1121,15 +1175,10 @@ fn check_backend(what: &str, args: &[String]) -> StepResult {
                 "parts" => draft.parts.len().to_string(),
                 other => return Err(format!("no field {other}")),
             };
-            if value.contains(arg(1)) {
+            if value.contains(wanted) {
                 Ok(())
             } else {
-                Err(format!(
-                    "{}: {:?} lacks {:?}",
-                    arg(0),
-                    short(&value),
-                    arg(1)
-                ))
+                Err(format!("{field}: {:?} lacks {wanted:?}", short(&value)))
             }
         }
         _ => Err(format!("unknown composer check {what}")),

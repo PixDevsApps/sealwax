@@ -200,6 +200,8 @@ struct Inner {
     theme_listener: Cell<Option<ListenerId>>,
     /// Images taken from the clipboard or a drop, by the helper's token, not yet stored.
     adopting: RefCell<HashSet<String>>,
+    /// The window's resources are let go (`finish`).
+    released: Cell<bool>,
 }
 
 impl Composer {
@@ -272,6 +274,7 @@ impl Composer {
             ran: RefCell::new(Vec::new()),
             theme_listener: Cell::new(None),
             adopting: RefCell::new(HashSet::new()),
+            released: Cell::new(false),
         });
         if let Some(controller) = theme_controller {
             let weak = Rc::downgrade(&inner);
@@ -337,6 +340,9 @@ impl Composer {
     }
 
     pub fn select_sender(&self, index: usize) {
+        if let Some(popover) = self.inner.widgets.from.popover() {
+            popover.popdown();
+        }
         self.inner.choose_sender(index);
     }
 
@@ -1604,7 +1610,7 @@ impl Inner {
         match self.backend.send(id, draft).await {
             Ok(()) => {
                 self.ending.set(Ending::Sent);
-                self.window.destroy();
+                self.finish();
             }
             Err(Refusal(reason)) => self.toast(&reason),
         }
@@ -1612,7 +1618,7 @@ impl Inner {
 
     async fn discard(self: Rc<Self>) {
         let Some(id) = self.id.get() else {
-            self.window.destroy();
+            self.finish();
             return;
         };
         let empty = self.editor.is_empty().await
@@ -1643,7 +1649,7 @@ impl Inner {
             return;
         }
         self.ending.set(Ending::Discarded);
-        self.window.destroy();
+        self.finish();
     }
 
     fn link_dialog(self: &Rc<Self>) {
@@ -1751,13 +1757,22 @@ impl Inner {
                 inner.backend.close(id);
             }
             inner.ending.set(Ending::Closed);
-            inner.window.destroy();
+            inner.finish();
             drop(hold);
         });
         glib::Propagation::Stop
     }
 
+    /// Lets the window go: its draft was sent, discarded or saved and closed.
+    fn finish(&self) {
+        self.destroyed();
+        self.window.destroy();
+    }
+
     fn destroyed(&self) {
+        if self.released.replace(true) {
+            return;
+        }
         self.cancel_timer();
         if self.ending.get() == Ending::Open {
             self.ending.set(Ending::Closed);

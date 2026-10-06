@@ -1,0 +1,97 @@
+# The composer's attachments and inline images (M6: ML-072, C4): Attach File… (the chooser
+# answered with scratch files), files dropped on the window, the footer's cards with type,
+# safe name and size, removing one, the encoded size against the submission limit with a
+# warning and Send refused with the reason, and a 25 MB file attached while the GTK thread
+# keeps turning. Images pasted, dropped in the page or dropped over the body become inline
+# parts served to the editor through its cid: scheme from the blob store. The stand-in backend;
+# every file is made here.
+# Run: tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/composer-attachments.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Work
+composer-make-file $TMP/files/Kvartalsrapport.pdf 212000
+composer-make-file $TMP/files/notater.txt 1200
+composer-make-file "$TMP/files/../files/.hidden name.csv" 300
+composer-make-file $TMP/files/big.bin 25000000
+composer-make-file $TMP/files/photo.png 70
+composer-open new
+composer-wait
+assert-composer attachments 0
+assert-composer warning none
+
+# Attach File…: cards with the type, the name and the size.
+composer-attach $TMP/files/Kvartalsrapport.pdf $TMP/files/notater.txt
+wait-until assert-composer attachment 1 size=1200
+assert-composer attachments 2
+assert-composer attachment 0 name=Kvartalsrapport.pdf
+assert-composer attachment 0 size=212000
+assert-composer attachment 0 type=application/pdf
+assert-composer attachment 1 type=text/plain
+assert-labelled
+
+# A name that starts with a dot loses it (domain::attachment's rules).
+composer-attach "$TMP/files/.hidden name.csv"
+wait-until assert-composer attachments 3
+wait-until assert-composer attachment 2 "name=hidden name.csv"
+
+# Removing a card.
+composer-remove-attachment 1
+assert-composer attachments 2
+assert-composer attachment 1 "name=hidden name.csv"
+
+# Dropped files: elsewhere on the window they are attached, over the body an image goes inline.
+composer-drop window $TMP/files/notater.txt
+wait-until assert-composer attachments 3
+composer-focus body
+composer-insert "Bilde: "
+composer-drop body $TMP/files/photo.png
+wait-until assert-composer parts 1
+wait-until assert-composer cid-served 1
+assert-composer html-has "<img src=\"cid:"
+assert-composer attachments 3
+
+# An image dropped inside the page (the helper's drop path) and a pasted image: inline parts.
+composer-caret end
+composer-drop-image skisse.png
+wait-until assert-composer parts 2
+composer-caret end
+composer-clipboard image
+composer-key <Control>v
+wait-until assert-composer parts 3
+wait-until assert-composer cid-served 3
+assert-composer html-lacks "data:image"
+assert-composer html-lacks "blob:"
+
+# Undo the pasted image: the draft drops its part.
+composer-key <Control>z
+wait-until assert-composer parts 2
+
+# 25 MB: attached off the GTK thread; over the stand-in limit, a warning, and Send refused.
+composer-focus to
+composer-type "ola@example.org,"
+composer-measure-attach $TMP/files/big.bin
+assert-composer attachments 4
+assert-composer warning "Too large to send"
+composer-action send
+assert-composer sent 0
+assert-composer toast "Not sent"
+composer-remove-attachment 3
+wait-until assert-composer warning none
+
+# A lower limit (the server's SIZE): the warning follows when the limit is known.
+composer-limit 290000
+composer-close
+wait-until assert-composer count 0
+composer-open draft 1
+composer-wait
+assert-composer attachments 3
+assert-composer parts 2
+wait-until assert-composer warning "takes at most 290.0 kB"
+composer-limit none
+composer-open draft 1
+composer-wait
+assert-composer warning none
+composer-action send
+wait-until assert-composer sent 1
+assert-composer last-sent parts 5

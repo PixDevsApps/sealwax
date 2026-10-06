@@ -108,6 +108,13 @@ pub fn stand_in() -> Option<Rc<StandIn>> {
     STAND_IN.with(|stand_in| stand_in.borrow().clone())
 }
 
+/// The stand-in, made the backend now if no backend is set yet (self-tests set it up before
+/// the first composer opens).
+pub fn ensure_stand_in(app: &SealwaxApplication) -> Option<Rc<StandIn>> {
+    backend(app);
+    stand_in()
+}
+
 fn backend(app: &SealwaxApplication) -> Rc<dyn Backend> {
     if let Some(backend) = BACKEND.with(|current| current.borrow().clone()) {
         return backend;

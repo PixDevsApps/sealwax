@@ -1,0 +1,134 @@
+# The composer's From, To, Cc and Bcc (M6: ML-067, ML-070's identities): typed and pasted lists
+# become chips at a comma, a semicolon, Enter or leaving the field; Backspace in the empty entry
+# removes the last chip; an invalid address stays as an error chip and stops Send with the
+# reason; the suggestions popover answers Up, Down, Enter, Escape and the pointer; Cc and Bcc
+# appear with "Cc · Bcc" or the command; the From chip switches the sender. The stand-in
+# backend's contacts and identities; every name and address is fictional.
+# Run: tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/composer-recipients.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Work
+composer-identity Support "Work Support" support@example.test
+composer-open new
+composer-wait
+assert-composer focus to
+assert-composer from work@example.test
+assert-composer shown composer-cc false
+assert-composer shown composer-bcc false
+assert-labelled
+
+# Typed addresses: a comma and a semicolon commit; Enter commits; leaving the field commits.
+composer-type "kari@example.com,"
+assert-composer chips to kari@example.com
+assert-composer entry to ""
+composer-type "\"Nordmann, Ola\" <ola@example.org>;"
+assert-composer chips to kari@example.com,ola@example.org
+composer-key Escape
+composer-type "bjorn@example.net"
+composer-key Escape
+composer-key Return
+assert-composer chips to kari@example.com,ola@example.org,bjorn@example.net
+composer-type "grace@example.test"
+composer-focus subject
+assert-composer chips to kari@example.com,ola@example.org,bjorn@example.net,grace@example.test
+
+# Backspace in the empty entry removes the last chip; × removes a chip.
+composer-focus to
+composer-key BackSpace
+assert-composer chips to kari@example.com,ola@example.org,bjorn@example.net
+composer-click composer-to-chip-1-remove
+assert-composer chips to kari@example.com,bjorn@example.net
+
+# A pasted list: every complete address becomes a chip at once; an invalid one is an error chip.
+composer-clipboard text "adrian.berg@example.com; not-an-address, \"Øystein Åsen\" <oystein@example.org>, last@example.net"
+composer-key <Control>v
+assert-composer chips to kari@example.com,bjorn@example.net,adrian.berg@example.com,oystein@example.org
+assert-composer invalid to 1
+assert-composer entry to "last@example.net"
+composer-key Escape
+composer-key Return
+assert-composer chips to kari@example.com,bjorn@example.net,adrian.berg@example.com,oystein@example.org,last@example.net
+assert-composer invalid to 1
+
+# Send refuses while an address is invalid, and says why.
+composer-action send
+assert-composer sent 0
+assert-composer toast "Fix or remove the address marked in red"
+composer-click composer-to-chip-5-remove
+assert-composer invalid to 0
+
+# Suggestions: typing shows the contacts that match, the typed part in bold; Up, Down, Enter,
+# Escape, and the pointer.
+composer-type "gr"
+wait-until assert-composer suggestions 1
+assert-composer selected 0
+composer-key Return
+assert-composer chips to kari@example.com,bjorn@example.net,adrian.berg@example.com,oystein@example.org,last@example.net,grace@example.test
+composer-type "ad"
+wait-until assert-composer suggestions 1
+composer-key BackSpace
+composer-key BackSpace
+composer-type "a"
+wait-until assert-composer suggestions 2
+assert-composer selected 0
+composer-key Down
+assert-composer selected 1
+composer-key Down
+assert-composer selected 1
+composer-key Up
+assert-composer selected 0
+composer-key Escape
+assert-composer suggestions 0
+assert-composer entry to "a"
+composer-type "d"
+wait-until assert-composer suggestions 1
+composer-suggestion 0
+assert-composer chips to kari@example.com,bjorn@example.net,adrian.berg@example.com,oystein@example.org,last@example.net,grace@example.test,ada@example.test
+assert-composer entry to ""
+
+# Cc and Bcc appear with "Cc · Bcc" (and the command, Add Cc and Bcc).
+composer-click composer-ccbcc
+assert-composer shown composer-cc true
+assert-composer shown composer-bcc true
+assert-composer shown composer-ccbcc false
+assert-composer focus cc
+composer-type "ole@example.org,"
+assert-composer chips cc ole@example.org
+composer-focus bcc
+composer-type "Blind Kopi <blind@example.net>;"
+assert-composer chips bcc blind@example.net
+assert-labelled
+
+# The From chip lists the account's address and its identities and switches the sender.
+composer-click composer-from
+assert-composer shown composer-from-1 true
+composer-from 1
+assert-composer from support@example.test
+composer-focus subject
+composer-type "Kvartalstall"
+composer-action send
+wait-until assert-composer sent 1
+assert-composer last-sent from support@example.test
+assert-composer last-sent cc ole@example.org
+assert-composer last-sent bcc blind@example.net
+assert-composer last-sent subject Kvartalstall
+wait-until assert-composer count 0
+
+# Send with no recipient says what is missing.
+composer-open new
+composer-wait
+composer-action send
+assert-composer toast "Add a recipient first"
+assert-composer sent 1
+assert-composer focus to
+
+# Opening a mailto: link fills the fields (its safe fields only).
+composer-open mailto "mailto:kari@example.com?cc=ola@example.org&subject=M%C3%B8te%20i%20morgen&body=Hei%20%C3%A6%C3%B8%C3%A5"
+composer-wait
+assert-composer chips to kari@example.com
+assert-composer chips cc ola@example.org
+assert-composer shown composer-cc true
+assert-composer subject "Møte i morgen"
+assert-composer html-has "Hei æøå"
+assert-composer count 2

@@ -131,6 +131,8 @@ pub struct RecipientField {
     suggestions: RefCell<Vec<Suggestion>>,
     query: RefCell<Option<Query>>,
     serial: Cell<u64>,
+    /// Chips made so far, for their widget names.
+    made: Cell<u64>,
     /// Text being replaced by the field itself, which `changed` ignores.
     updating: Cell<bool>,
     listener: RefCell<Option<Listener>>,
@@ -217,6 +219,7 @@ impl RecipientField {
             suggestions: RefCell::new(Vec::new()),
             query: RefCell::new(None),
             serial: Cell::new(0),
+            made: Cell::new(0),
             updating: Cell::new(false),
             listener: RefCell::new(None),
             name: name.to_owned(),
@@ -265,6 +268,16 @@ impl RecipientField {
         self.all()
             .into_iter()
             .filter_map(|(address, valid)| valid.then_some(address))
+            .collect()
+    }
+
+    /// The valid chips' addresses, without the entry's text.
+    pub fn chip_addresses(&self) -> Vec<Address> {
+        self.chips
+            .borrow()
+            .iter()
+            .filter(|chip| chip.valid)
+            .map(|chip| chip.address.clone())
             .collect()
     }
 
@@ -391,8 +404,9 @@ impl RecipientField {
     }
 
     fn add_chip(self: &Rc<Self>, address: Address, valid: bool) {
-        let index = self.chips.borrow().len();
-        let widget = chip(&address, valid, &format!("{}-chip-{index}", self.name));
+        let made = self.made.get();
+        self.made.set(made + 1);
+        let widget = chip(&address, valid, &format!("{}-chip-{made}", self.name));
         let remove = widget
             .last_child()
             .and_downcast::<gtk::Button>()
@@ -659,14 +673,17 @@ fn chip(address: &Address, valid: bool, name: &str) -> gtk::Box {
             .build(),
         &["sw-composer-chip-name"],
     );
-    let remove = classed(
-        gtk::Button::builder()
-            .icon_name("window-close-symbolic")
-            .tooltip_text(format!("Remove {shown}"))
-            .valign(gtk::Align::Center)
-            .can_focus(false)
-            .build(),
-        &["sw-composer-chip-remove"],
+    let remove = named(
+        classed(
+            gtk::Button::builder()
+                .icon_name("window-close-symbolic")
+                .tooltip_text(format!("Remove {shown}"))
+                .valign(gtk::Align::Center)
+                .can_focus(false)
+                .build(),
+            &["sw-composer-chip-remove"],
+        ),
+        &format!("{name}-remove"),
     );
     remove.update_property(&[gtk::accessible::Property::Label(&format!("Remove {shown}"))]);
     let chip = named(
