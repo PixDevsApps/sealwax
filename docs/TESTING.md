@@ -61,6 +61,24 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M4 phase A: the op store, the IMAP writes, the app's triage — 2026-10-06
+
+Development machine (Ryzen 9 5900X, Omarchy, Linux 7.2.5-3-omarchy), debug builds for CI and the self-tests, release for measurements and the testbed suites, the Docker testbed up since the lead seeded it. Reports: [op store](m4/ops-store.md), [IMAP writes](m4/imap-writes.md), [app](m4/triage-app.md).
+
+| Check | Result |
+| --- | --- |
+| `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` on `main` after the last merge (`d367fcf`) | 864 passed, 0 failed, 49 ignored; all 31 self-test scripts (new: `triage-actions` 164, `triage-select` 152, `triage-undo` 82, `triage-read` 61, `triage-keys` 221, `triage-frames` 16 steps) |
+| `bash tools/ci.sh --testbed` on `main` with the store merged (`43be1f7`) | 824 passed, 0 failed, 40 ignored; every testbed suite passed: `actor_testbed` 9 (1,265 s), `sync_testbed` 9, `testbed` 5, `bodies_testbed` 1, `password` 1, `log_grep` 1, S1's 8 |
+| `write_testbed` on `main` after the writes' merge (`f54a032`), release | 9 passed (19.0 s) |
+| Store: triage → change event, release (the store's agent) | One message p99 ≤ 3.85 ms at 100,000 messages, ≤ 0.67 ms at 10,000 (target 6.9 ms, a frame at 144 Hz); 50 adjacent messages p99 3.1 ms; Undo about the same. Up to 64 messages spread across a 100,000-message folder: 41–107 ms (M3's per-row position diff; open issue) |
+| Store: S3's bars at 100,000 with schema v7 | Folder open ≤ 12.8 ms cold; one-insert diff p99 4.66 ms; pages as on `7988289`; flag changes p99 1.69 → 2.13 ms; the migration about 1 s, the file about 7 MiB larger |
+| Store: property test (queue, undo, server changes, UIDVALIDITY resets, outcomes, reopening, against a model) | 32 cases a CI run; 5,000 once (255.5 s), passed |
+| Writes: S1's lost replies and cuts through the proxy, three servers | 250 runs (20 seeds per lost reply of MOVE, COPY, the `\Deleted` STORE and UID EXPUNGE, 10 per cut on send), 2,325 messages moved: 0 duplicates, 0 lost, nothing left in the source or `\Deleted` in the target. The blind-replay control duplicated 5 of 5 on both Dovecots |
+| Writes: timings on the testbed, release (p50, 500 messages) | Flags 12.3 ms (Dovecot), 11.9 ms (IMAP4rev1 Dovecot), 14.0 ms (Stalwart); moves 60.9 ms (UID MOVE), 68.4 ms (the COPY path), 32.1 ms (Stalwart) |
+| App: the same-frame measurement (`triage-frames`, headless, display 23) | The list changed 0.26–0.92 ms (p50) after the command's handler with the phase A stand-in backend; the slowest step's p95 5.3 ms; no p95 over 16.7 ms in any run (one archive once took 20.4 ms on a loaded machine) |
+| Gate previews | `preview-m4` 93/93: 17 images in `tools/progress/public/m4-*-2026-10-06.png`, dark and light |
+| Not verified | The op runner and the queue end to end (phase B); real clicks on buttons through Broadway (the scripts activate them); the live session and the US and Norwegian layouts live; real providers |
+
 ### M3 gate: the server's counts for windowed folders — 2026-10-06
 
 Development machine, debug builds for CI and the self-test, release for the testbed suites, the Docker testbed up; [report](m3/counts.md).
