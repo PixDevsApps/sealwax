@@ -767,6 +767,7 @@ async fn insert_measured(harness: &Harness, count: usize) -> StepResult {
             text: "A new message for the insert measurement.".to_owned(),
             attachment: false,
             reply_to: None,
+            html: false,
         };
         let raw = RawMessage {
             folder,

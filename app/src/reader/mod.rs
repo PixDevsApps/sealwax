@@ -52,8 +52,9 @@ const READY_TIMEOUT: Duration = Duration::from_secs(3);
 /// A reader hidden this long gives its view back (ADR-011: views of hidden bodies are released
 /// and re-rendered on return).
 const RELEASE_HIDDEN_AFTER: Duration = Duration::from_secs(3);
-/// Keys WebKitGTK keeps from the Reader scope with an HTML body focused (seen headless, 2.52).
-const KEPT_BY_WEBKIT: [gdk::Key; 1] = [gdk::Key::Delete];
+/// Keys a focused message body keeps from the Reader scope: WebKitGTK 2.52 and the plain-text
+/// view take Delete (seen headless).
+const KEPT_KEYS: [gdk::Key; 1] = [gdk::Key::Delete];
 
 /// What [`Reader::show`] showed, for listeners such as the self-test and measurements.
 #[derive(Debug, Clone, PartialEq)]
@@ -1114,12 +1115,10 @@ impl Inner {
         }
     }
 
-    /// Releases the view of a reader hidden for [`RELEASE_HIDDEN_AFTER`], and shows its
-    /// message again when it comes back.
-    /// WebKitGTK keeps Delete although a message has no use for it, so with an HTML body
-    /// focused the Reader scope's Delete would never run (M4's keyboard pass): the scope sees
-    /// the keys of [`KEPT_BY_WEBKIT`] before the view does. A text field inside a message loses
-    /// them.
+    /// WebKitGTK and the plain-text view keep Delete although a read-only message has no use
+    /// for it, so with a body focused the Reader scope's Delete would never run (M4's keyboard
+    /// pass): the scope sees the keys of [`KEPT_KEYS`] before the body does. A text field
+    /// inside an HTML message loses them.
     fn take_kept_keys(inner: &Rc<Inner>) {
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -1135,11 +1134,14 @@ impl Inner {
                 .is_some_and(|focus| {
                     focus.is::<webkit6::WebView>()
                         || focus.ancestor(webkit6::WebView::static_type()).is_some()
+                        || focus
+                            .downcast_ref::<gtk::TextView>()
+                            .is_some_and(|view| !view.is_editable())
                 });
             let (Some(event), true) = (controller.current_event(), in_view) else {
                 return glib::Propagation::Proceed;
             };
-            if !KEPT_BY_WEBKIT.contains(&key) || !state.is_empty() {
+            if !KEPT_KEYS.contains(&key) || !state.is_empty() {
                 return glib::Propagation::Proceed;
             }
             let model = inner.keys.model();
@@ -1168,6 +1170,8 @@ impl Inner {
         inner.stage.add_controller(keys);
     }
 
+    /// Releases the view of a reader hidden for [`RELEASE_HIDDEN_AFTER`], and shows its
+    /// message again when it comes back.
     fn follow_visibility(inner: &Rc<Inner>) {
         let weak = Rc::downgrade(inner);
         inner.stage.connect_unmap(glib::clone!(

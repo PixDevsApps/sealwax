@@ -169,9 +169,10 @@ assert-action-log none
 key Escape
 assert-move-to open false
 
-# The reader: the same keys while the message has the focus, a plain-text body first, then the
-# fixtures' HTML bodies in a WebView, which hands back the keys it doesn't use (so the log is
-# waited for).
+# The reader: the same keys while the message's body has the focus, a plain-text body (a text
+# view) and an HTML body (a WebView, which hands back the keys it doesn't use, so the log is
+# waited for). Both keep Delete from the reader's keys unless the reader takes it first.
+mail-add inbox 2m "HTML-melding" html "from=Marius Dahl" "text=Et avsnitt i HTML for tastaturet."
 mail-add inbox now "Tastaturtest" "from=Leah Kim" "text=Ren tekst for tastaturet."
 list-select 0
 wait-until assert-body plain
@@ -192,6 +193,18 @@ key s
 key <Shift>u
 key <Shift>i
 wait-until assert-action-log win.star,win.mark-unread,win.mark-read
+key Delete
+wait-until assert-action-log win.delete
+assert-list-row 0 subject HTML-melding
+wait-until assert-body html-themed
+focus reader
+assert-focus reader
+key s
+wait-until assert-action-log win.star
+key Delete
+wait-until assert-action-log win.delete
+wait-until assert-reader-page message
+focus reader
 key e
 wait-until assert-action-log win.archive
 focus reader
@@ -199,11 +212,10 @@ key y
 key numbersign
 wait-until assert-action-log win.archive,win.delete
 focus reader
-key Delete
 key exclam
 focus reader
 key <Control>j
-wait-until assert-action-log win.delete,win.junk,win.junk
+wait-until assert-action-log win.junk,win.junk
 focus reader
 key z
 key <Control>z

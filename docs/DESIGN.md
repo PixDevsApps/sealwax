@@ -53,6 +53,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Account status as a small round dot: accent synced, plain syncing, warning offline, error needs sign-in; account headings are upper-cased, letter-spaced captions.
 - A footer with the accounts' summary and `config.toml`. The main menu sits at the end of the list's bar (the welcome page's while there is no account): in the footer it cut off the summary (M1, a change from the mock; kept by the user at the M1 gate, 2026-10-05).
 - **Rail** (900–1279 px): compose, All Inboxes (an addition to the mock, kept by the user at the M1 gate, 2026-10-05), the shown account's role folders with an accent badge at the top-right of those with unread mail, the other accounts as initial and unread count (a dot only when offline or signed out), `config.toml` at the bottom.
+- *As built in M4 (ML-052, [report](m4/triage-app.md)):* a right click on a folder, or Menu or Shift+F10 on a focused one, opens a menu with **Mark Folder as Read**, insensitive when nothing there is unread; on All Inboxes it marks every Inbox. The palette's Mark Folder as Read marks the folder the list shows, not while it shows search results.
 - *As built in M3 (ML-048, [report](m3/status.md)); kept by the user at the M3 gate, 2026-10-06 ("keep the banners"):* every state the engine reports has a dot and words. Accent "synced", plain "syncing…", warning "offline" and "mailbox full" (Sealwax keeps trying, or still syncs), error "needs sign-in" and "bad certificate" (Sealwax stopped until the user acts). The rail marks every state but synced and syncing on the other accounts, and its tooltip and accessible label say the state in words. The footer's summary names the most important state in the banner's order.
 
 **Message list**
@@ -75,6 +76,12 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   - **After a folder, chip or search change** the list starts at the top, with 40 rows in the first frame and 40 more each frame. A reload of the same view keeps the place, the selection and the focus.
   - **Search** replaces the list's title with "Search" and a count ("12 results", "50+ results", "No results"). The chips filter the results, and Escape ends the search. In a folder it searches that folder; in All Inboxes it searches every folder.
   - **Keys:** `j`/`k` and Down/Up move the selection, Enter/`o` open it, and `/` or Ctrl+F go to the search field.
+- *As built in M4 (ML-052, ML-054, [report](m4/triage-app.md)); proposals for the user at the M4 gate:*
+  - **Batch selection:** Ctrl+click toggles a row, Shift+click selects from the row last clicked; Shift with Down/Up or with `j`/`k` extends from the keyboard. Two messages or more, or Select (`x`, Space), put the list in a **select mode**: each row's avatar becomes a checkbox of the same size (so the text doesn't move), `j`/`k` and Down/Up move a cursor without changing the selection, `x`/Space toggle the row under it, a click on a checkbox toggles that row, and a plain click or Escape leaves with one message selected (Escape keeps the one under the cursor). GtkListView's own Ctrl+A selects nothing.
+  - **Every action applies to every selected message.** Star stars them all unless all are starred, then unstars them. Archive, Delete, Junk and Move to… apply to the messages they can; the toast counts any left as they were.
+  - **After the selected messages leave the list** (archive, delete, junk, move, or a filter they no longer pass) the message that took the first one's place is selected, or the last when they were at the end, as Gmail does.
+  - **Quick actions:** hovering a row shows archive, delete and star in the time's place, acting on that row alone; not in the select mode.
+  - **A message the reader shows is marked read** (no toast, not undoable from the toast); in the Unread view once the selection leaves it, and in one pane at a time once the reader is on screen. Behind `triage::MARK_READ_ON_OPEN`, on in this build.
 
 **Reader**
 - Toolbar: archive, delete, junk, move, mark unread, star, more; position "n of N" with previous and next.
@@ -87,6 +94,11 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   - **Details:** the toggle shows From, Reply-To, To, Cc, the full date and the list.
   - **Not built yet:** "Always for this sender" is shown insensitive until M5; attachment cards show type, name and size only.
   - **Keys:** they work while a message has the focus. WebKitGTK passes back the keys a message doesn't use, and a text field inside a message keeps its letters.
+- *As built in M4 (ML-052, ML-054, [report](m4/triage-app.md)):*
+  - **Toolbar:** each command is sensitive where it applies to the selected messages, and its tooltip names its keys and, when it doesn't apply, why ("Archive (e, y) — already archived", "the account has no Junk folder", "the messages are in more than one account"). In a Junk folder Move to Junk is **Not Junk**, back to the Inbox (title, tooltip, icon and the palette's entry); Star or Unstar is "Unstar" when every selected message is starred.
+  - **Several messages selected:** the reader shows a quiet page, "3 messages selected", "Every action here applies to all of them. Escape leaves the select mode.", with Archive, Delete, Junk, Move to…, Star, Mark as Read and Mark as Unread as buttons bound to the same commands. The reader's keys work there too.
+  - **Keys:** WebKitGTK keeps Delete with an HTML body focused, so the reader takes Delete before the view does; a text field inside a message loses Delete.
+  - **Move to…** (`v`, Ctrl+Shift+V): a picker over the window like the command palette, "Move 3 messages to…", listing the account's folders that take messages except the one they are in, role folders first under their role's name (the server's own name beside it). Typing filters, Up/Down move, Enter moves, Escape closes. Insensitive, saying why, when the selection spans accounts (1.0 doesn't move between accounts).
 
 **Composer**
 - From (identity), To / Cc / Bcc as chips with autocomplete, Subject.
@@ -126,6 +138,12 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - **Mailbox full** (the warning tint): what bounces and what to do; no button.
 - **Offline** (the warning tint, as the mock): "You're offline" while the desktop has no network; "Can't reach your mail server(s)" when every account's server is out of reach with the network up. A single unreachable account shows only in the sidebar.
 - **Reconnecting:** when the network comes back and after a resume (logind's `PrepareForSleep(false)`), the app sends `Reconnect`; Retry does too, with a toast ("Connecting again…").
+
+*As built in M4 (ML-053, [report](m4/triage-app.md)); proposals for the user at the M4 gate:*
+- **The Undo toast** follows an action that moves messages (archive, delete, junk, move) or changes several (star, read, unread, Mark Folder as Read): "Archived 3 messages", "Moved 2 messages to the Trash", "Deleted 1 message for good", "Moved 1 message to the Inbox as not junk", "Starred 3 messages", "Marked 12 messages in Inbox as read", with **Undo**. It shows for the undo window, **7 s** (ADR-015's 5–10 s). A new action replaces it, since only the last action is undoable from the toast; `z` and Ctrl+Z undo the last action while it can be undone, also after the toast is gone. After an Undo: "Undone".
+- **A single message's read or star change** has no toast and doesn't replace the last action: it shows in place, and its key changes it back.
+- **Deleting for good** (Delete in the Trash, or where an account has no Trash) can be undone only inside the window; the toast's Undo after it says "1 message was deleted for good and can't be brought back".
+- **A change the server refused** (`Event::OpsRefused`) shows a toast for 10 s that says what didn't happen and that the messages are back: "The server didn't move 3 messages; they're back where they were", with the account's name first when there are several.
 
 ## Theme tokens
 
@@ -209,6 +227,8 @@ Draft keymap ([ADR-017](DECISIONS.md#adr-017--keymap-scoped-one-key-shortcuts-un
 Every entry is audited for US and Norwegian layouts (no AltGr; `#`, `/`, `!` and `?` have unshifted alternatives), nothing uses SUPER, and every F-key has an alternative.
 
 As built in M1 ([ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keymap-as-built-in-m1-2026-10-04)): keys with Ctrl or Alt, and F-keys, of window and application commands work anywhere; every key of the message commands, and every one-key shortcut, works only while the list or the reader has the focus, so text fields keep their letters, Delete and Ctrl+Z. `g` waits 1.5 s for its second key. **Proposed, waiting for the user:** `h` for Keyboard Shortcuts (`?` and Ctrl+? need Shift), Ctrl+, Preferences, Ctrl+Q Quit, Ctrl+Alt+R and F5 Refresh, Ctrl+Shift+S and F9 Toggle Sidebar.
+
+As built in M4 (ML-055, [report](m4/triage-app.md)): the message commands' keys act (archive, delete, junk, move to, star, read, unread, select, undo). No key was added to the registry; the list's own keys beside it, proposals for this table: **Shift with Next and Previous Message's keys** (Shift+`j`/`k`, as Shift+Down/Up) extends the selection; **Escape** leaves the select mode; **Menu** and **Shift+F10** open a sidebar folder's menu. Mark Folder as Read has no default key.
 
 ## Accessibility
 
