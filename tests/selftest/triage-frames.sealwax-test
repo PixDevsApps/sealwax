@@ -1,8 +1,10 @@
-# The same-frame bar for actions (PRD: "Actions: local result in the same frame"), with phase
-# A's backend on a fixture store: each key is pressed through Broadway and timed from the
-# command's handler to the list's change (rows removed, or the row's flags) and to the first
-# frame painted after it. Each step fails when the change's p95 is over a 60 Hz frame
-# (16.7 ms). Broadway paints without vsync, so its frame counts are printed, not judged.
+# The same-frame bar for actions (PRD: "Actions: local result in the same frame"), through the
+# store's op queue: each key is pressed through Broadway and timed from the command's handler to
+# the list's change (rows removed, or the row's flags) and to the first frame painted after it.
+# Each step fails when the change's p95 is over a 60 Hz frame (16.7 ms). Broadway paints without
+# vsync, so its frame counts are printed, not judged. First a 400-message fixture store, a local
+# account whose ops apply in the queueing transaction; then an account with a key, whose ops
+# only write their overlay and wait for a server (no engine runs them here).
 # Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-frames.sealwax-test
 
 desktop tiling
@@ -21,3 +23,28 @@ measure-triage s 10
 measure-triage <Shift>u 1
 measure-triage <Shift>i 1
 measure-triage e 5
+
+# A server account: the overlay hides moved rows and flips flags until the server has them.
+triage-account Work work
+mail-add Work:inbox 1m "Kvartalsrapport" "from=Ingrid Solberg"
+mail-add Work:inbox 2m "Styremøte torsdag" "from=Marius Dahl"
+mail-add Work:inbox 3m "Kvittering" "from=Leah Kim"
+mail-add Work:inbox 4m "Hyttetur i oktober" "from=Ingrid Solberg"
+mail-add Work:inbox 5m "Nyhetsbrev uke 41" "from=Marius Dahl"
+mail-add Work:inbox 6m "Lunsj fredag" "from=Leah Kim"
+mail-add Work:inbox 7m "Budsjett 2027" "from=Ingrid Solberg"
+mail-add Work:inbox 8m "Prosjektplan" "from=Marius Dahl"
+mail-add Work:inbox 9m "Referat fra møtet" "from=Leah Kim"
+mail-add Work:inbox 10m "Velkommen" "from=Ingrid Solberg"
+mail-add Work:inbox 11m "Ny kunde i Bergen" "from=Marius Dahl"
+mail-add Work:inbox 12m "Husk felles frokost" "from=Leah Kim"
+mail-add Work:inbox 13m "Reiseregning" "from=Ingrid Solberg"
+mail-add Work:inbox 14m "Sommerfest" "from=Marius Dahl"
+mail-add Work:inbox 15m "Oppdatering" "from=Leah Kim"
+mail-add Work:inbox 16m "Påminnelse" "from=Ingrid Solberg"
+folder inbox Work
+focus list
+list-select 0
+measure-triage s 10
+measure-triage e 10
+measure-triage numbersign 4

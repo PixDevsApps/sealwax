@@ -68,6 +68,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-select-mode", 1, 1),
     ("assert-reader-page", 1, 1),
     ("assert-undoable", 1, 1),
+    ("assert-pending", 1, 1),
     ("assert-toasts", 1, 1),
     ("assert-row-check", 2, 2),
     ("assert-row-quick", 2, 2),
@@ -272,6 +273,11 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             "reader page",
             harness.window()?.reader_page().as_str(),
             arg(0),
+        ),
+        "assert-pending" => equal(
+            "ops waiting for a server",
+            harness.state.pending_ops(),
+            number(arg(0))? as u32,
         ),
         "assert-undoable" => equal(
             "undoable",

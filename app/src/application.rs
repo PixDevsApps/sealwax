@@ -70,6 +70,9 @@ const FIRST_ROWS_WAIT: Duration = Duration::from_millis(300);
 /// of them is one count.
 const PENDING_COUNT_DELAY: Duration = Duration::from_millis(200);
 
+/// How often the pending-op count is read again while ops wait.
+const PENDING_RECHECK: Duration = Duration::from_secs(3);
+
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub app_id: String,
@@ -218,6 +221,7 @@ impl SealwaxApplication {
             triage_started: Cell::new(None),
             pending_ops: Cell::new(0),
             pending_queued: Cell::new(false),
+            pending_recheck: Cell::new(false),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -303,6 +307,7 @@ pub struct AppState {
     /// The ops waiting for a server, for the offline banner.
     pending_ops: Cell<u32>,
     pending_queued: Cell<bool>,
+    pending_recheck: Cell<bool>,
 }
 
 impl AppState {
@@ -1141,6 +1146,16 @@ impl AppState {
                 state.queue_pending_count();
             }
         });
+        // Mark Folder as Read follows the folder shown, also when no selection changes with it.
+        let weak = Rc::downgrade(self);
+        window.connect_folder_selected(move |_, _| {
+            let weak = weak.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade() {
+                    state.refresh_commands();
+                }
+            });
+        });
         self.triage.replace(Some(controller));
         self.queue_pending_count();
     }
@@ -1175,10 +1190,22 @@ impl AppState {
                 for count in counts {
                     total += count.await.unwrap_or(0);
                 }
-                if let Some(state) = weak.upgrade()
-                    && state.pending_ops.replace(total) != total
-                {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                if state.pending_ops.replace(total) != total {
                     state.update_banner();
+                }
+                // An op the server carried out without changing what is shown (a flag the
+                // overlay showed already) makes no change event: count again while any wait.
+                if total > 0 && !state.pending_recheck.replace(true) {
+                    let weak = Rc::downgrade(&state);
+                    glib::timeout_add_local_once(PENDING_RECHECK, move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.pending_recheck.set(false);
+                            state.queue_pending_count();
+                        }
+                    });
                 }
             });
         });

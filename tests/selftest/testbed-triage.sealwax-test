@@ -1,0 +1,273 @@
+# End to end on the Docker mail testbed (M4 phase B): the app's triage through the store's op
+# queue and the engine's op runner, for the user `triage` on Dovecot and then on Stalwart. Each
+# account is added through the setup assistant's manual settings; then star, mark read and
+# unread, archive, delete to the Trash, Move to…, an Undo inside the undo window (nothing reaches
+# the server), an Undo after the archive ran (the inverse brings it back), deleting for good and
+# Mark Folder as Read; then the account is removed and added again, so the store is read afresh
+# from the server, and the result is checked there. The undo window is 2 s here.
+#
+# Not in CI: it needs the testbed up and seeded, and the user's mailbox prepared first:
+#   SEALWAX_TESTBED_CA=…/tools/testbed/certs/ca.pem python3 tools/testbed/triage_mailbox.py fill dovecot stalwart
+#   tools/headless.sh 24 target/debug/sealwax --self-test tests/selftest/testbed-triage.sealwax-test
+#   SEALWAX_TESTBED_CA=… python3 tools/testbed/triage_mailbox.py show dovecot stalwart
+# The prepared INBOX holds "Triage 1" to "Triage 8" (the newest last; 1 to 5 unread), every other
+# folder empty, Prosjekter among them. Only the testbed CA is trusted, secrets stay in memory, and
+# nothing leaves 127.0.0.1. Every message is synthetic.
+
+desktop tiling
+resize 1440 900
+engine-start $DIR/../../tools/testbed/certs/ca.pem
+triage-mark-read-on-open false
+
+# ---- Dovecot ----
+setup-click add-account
+setup-type setup-address triage@example.test
+setup-type setup-name Triage
+setup-click setup-manual-link
+setup-type setup-imap-host 127.0.0.1
+setup-type setup-imap-port 14993
+setup-type setup-smtp-host 127.0.0.1
+setup-choose setup-smtp-security starttls
+setup-type setup-smtp-port 17025
+setup-type setup-manual-username triage
+setup-type setup-password testbed-password
+setup-key enter
+wait-until assert-setup open false
+wait-until assert-account-status triage@example.test synced
+triage-undo-window 2001
+wait-until assert-sidebar-count Triage:inbox 5
+folder inbox Triage
+wait-until assert-list-count 8
+assert-list-row 0 subject "Triage 8"
+assert-list-row 7 subject "Triage 1"
+focus list
+
+# Flags: star Triage 8, read Triage 5, unread Triage 7.
+list-select 0
+key s
+assert-list-row 0 starred true
+list-select 3
+key <Shift>i
+assert-list-row 3 unread false
+list-select 1
+key <Shift>u
+assert-list-row 1 unread true
+assert-sidebar-count Triage:inbox 5
+
+# Archive Triage 6, delete Triage 4 to the Trash, move Triage 3 to Prosjekter.
+list-select 2
+key e
+assert-toast "Archived 1 message"
+assert-list-count 7
+list-select 3
+assert-list-row 3 subject "Triage 4"
+key numbersign
+assert-toast "Moved 1 message to the Trash"
+list-select 3
+assert-list-row 3 subject "Triage 3"
+key v
+type prosj
+key Return
+assert-toast "Moved 1 message to Prosjekter"
+assert-list-count 5
+
+# Undo inside the window: Triage 2 comes back and its move never reaches the server.
+list-select 3
+assert-list-row 3 subject "Triage 2"
+key e
+assert-list-count 4
+key z
+assert-toast Undone
+assert-list-count 5
+assert-list-row 3 subject "Triage 2"
+
+# The runner carries the rest out once the window is over.
+sleep 2500
+wait-until assert-pending 0
+
+# Undo after the archive of Triage 1 ran: the inverse moves it back.
+list-select 4
+assert-list-row 4 subject "Triage 1"
+key e
+assert-list-count 4
+sleep 2500
+wait-until assert-pending 0
+key z
+assert-toast Undone
+wait-until assert-list-count 5
+wait-until assert-pending 0
+assert-list-row 4 subject "Triage 1"
+
+# Deleting Triage 4 for good from the Trash, once the server holds it there.
+folder trash Triage
+wait-until assert-list-count 1
+assert-list-row 0 subject "Triage 4"
+focus list
+list-select 0
+key Delete
+assert-toast "Deleted 1 message for good"
+assert-list-count 0
+sleep 2500
+wait-until assert-pending 0
+
+# Mark Folder as Read on the Inbox: Triage 7, 2 and 1 were unread.
+folder inbox Triage
+assert-sidebar-count Triage:inbox 3
+wait-until assert-action-enabled win.mark-folder-read true
+action win.mark-folder-read
+assert-toast "Marked 3 messages in Inbox as read"
+assert-sidebar-count Triage:inbox 0
+sleep 2500
+wait-until assert-pending 0
+
+# Read afresh from the server: the account removed with its local mail, then added again.
+action win.remove-account
+setup-respond remove-account remove
+wait-until assert-shown add-account true
+setup-click add-account
+setup-type setup-address triage@example.test
+setup-type setup-name Triage
+setup-click setup-manual-link
+setup-type setup-imap-host 127.0.0.1
+setup-type setup-imap-port 14993
+setup-type setup-smtp-host 127.0.0.1
+setup-choose setup-smtp-security starttls
+setup-type setup-smtp-port 17025
+setup-type setup-manual-username triage
+setup-type setup-password testbed-password
+setup-key enter
+wait-until assert-setup open false
+wait-until assert-account-status triage@example.test synced
+folder inbox Triage
+wait-until assert-list-count 5
+assert-sidebar-count Triage:inbox 0
+assert-list-row 0 subject "Triage 8"
+assert-list-row 0 starred true
+assert-list-row 1 subject "Triage 7"
+assert-list-row 2 subject "Triage 5"
+assert-list-row 3 subject "Triage 2"
+assert-list-row 4 subject "Triage 1"
+assert-list-row 4 starred false
+folder archive Triage
+wait-until assert-list-count 1
+assert-list-row 0 subject "Triage 6"
+folder trash Triage
+wait-until assert-list-count 0
+action win.remove-account
+setup-respond remove-account remove
+wait-until assert-shown add-account true
+
+# ---- Stalwart: the same, its own SPECIAL-USE Trash and Junk ----
+setup-click add-account
+setup-type setup-address triage@example.test
+setup-type setup-name Triage
+setup-click setup-manual-link
+setup-type setup-imap-host 127.0.0.1
+setup-type setup-imap-port 16993
+setup-type setup-smtp-host 127.0.0.1
+setup-type setup-smtp-port 16465
+setup-type setup-manual-username triage
+setup-type setup-password testbed-password
+setup-key enter
+wait-until assert-setup open false
+wait-until assert-account-status triage@example.test synced
+wait-until assert-sidebar-count Triage:inbox 5
+folder inbox Triage
+wait-until assert-list-count 8
+assert-list-row 0 subject "Triage 8"
+focus list
+
+list-select 0
+key s
+assert-list-row 0 starred true
+list-select 3
+key <Shift>i
+assert-list-row 3 unread false
+list-select 1
+key <Shift>u
+assert-list-row 1 unread true
+
+list-select 2
+key e
+assert-toast "Archived 1 message"
+list-select 3
+assert-list-row 3 subject "Triage 4"
+key numbersign
+list-select 3
+assert-list-row 3 subject "Triage 3"
+key v
+type prosj
+key Return
+assert-toast "Moved 1 message to Prosjekter"
+assert-list-count 5
+
+list-select 3
+assert-list-row 3 subject "Triage 2"
+key e
+assert-list-count 4
+key z
+assert-toast Undone
+assert-list-count 5
+
+sleep 2500
+wait-until assert-pending 0
+
+list-select 4
+assert-list-row 4 subject "Triage 1"
+key e
+assert-list-count 4
+sleep 2500
+wait-until assert-pending 0
+key z
+assert-toast Undone
+wait-until assert-list-count 5
+wait-until assert-pending 0
+assert-list-row 4 subject "Triage 1"
+
+folder trash Triage
+wait-until assert-list-count 1
+assert-list-row 0 subject "Triage 4"
+focus list
+list-select 0
+key Delete
+assert-toast "Deleted 1 message for good"
+sleep 2500
+wait-until assert-pending 0
+
+folder inbox Triage
+assert-sidebar-count Triage:inbox 3
+wait-until assert-action-enabled win.mark-folder-read true
+action win.mark-folder-read
+assert-toast "Marked 3 messages in Inbox as read"
+assert-sidebar-count Triage:inbox 0
+sleep 2500
+wait-until assert-pending 0
+
+action win.remove-account
+setup-respond remove-account remove
+wait-until assert-shown add-account true
+setup-click add-account
+setup-type setup-address triage@example.test
+setup-type setup-name Triage
+setup-click setup-manual-link
+setup-type setup-imap-host 127.0.0.1
+setup-type setup-imap-port 16993
+setup-type setup-smtp-host 127.0.0.1
+setup-type setup-smtp-port 16465
+setup-type setup-manual-username triage
+setup-type setup-password testbed-password
+setup-key enter
+wait-until assert-setup open false
+wait-until assert-account-status triage@example.test synced
+folder inbox Triage
+wait-until assert-list-count 5
+assert-sidebar-count Triage:inbox 0
+assert-list-row 0 subject "Triage 8"
+assert-list-row 0 starred true
+assert-list-row 3 subject "Triage 2"
+assert-list-row 4 subject "Triage 1"
+folder archive Triage
+wait-until assert-list-count 1
+assert-list-row 0 subject "Triage 6"
+folder trash Triage
+wait-until assert-list-count 0
