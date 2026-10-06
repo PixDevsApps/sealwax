@@ -2,8 +2,8 @@
 # toast with Undo for the undo window; a new one replaces it, so only the last action is
 # undoable from the toast; z and Ctrl+Z undo the last action while it can be undone, also after
 # the toast is gone; a single message's read or star change has no toast and leaves the last
-# action alone; deleting for good can be undone only inside the window, and the toast says so
-# after it. Every message is fictional.
+# action alone; a local account deletes for good at once, without Undo, and on a server the
+# store says what Undo brought back. Every message is fictional.
 # Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-undo.sealwax-test
 
 desktop tiling
@@ -84,18 +84,34 @@ key z
 assert-toast Undone
 assert-list-row 3 starred false
 
-# Deleting for good can't be undone once the window is over; the toast's Undo says so.
-# A window just over two seconds keeps its toast up for three, a margin for a loaded machine.
-triage-undo-window 2001
+# Deleting for good in a local account happens at once, so its toast offers no Undo.
 mail-add Personal:trash 15m "Gammelt utkast" "from=Ingrid Solberg"
 folder trash Personal
 focus list
 list-select 0
 key Delete
 assert-toast "Deleted 1 message for good"
-assert-undoable true
-sleep 2250
+assert-list-count 0
 assert-undoable false
 assert-action-enabled win.undo false
-toast-undo
-assert-toast "1 message was deleted for good and can't be brought back"
+
+# On a server it waits for the undo window, hidden. Undo asks the store, which puts back what
+# hasn't reached the server: here, with no op runner, also after the window and the toast.
+# A window just over two seconds keeps its toast up for three, a margin for a loaded machine.
+triage-undo-window 2001
+triage-account Work work
+mail-add Work:trash 25m "Gammel faktura" "from=Marius Dahl"
+folder trash Work
+focus list
+list-select 0
+key Delete
+assert-toast "Deleted 1 message for good"
+assert-list-count 0
+assert-undoable true
+sleep 3300
+assert-toasts 0
+assert-undoable true
+key z
+assert-toast Undone
+assert-list-count 1
+assert-list-row 0 subject "Gammel faktura"

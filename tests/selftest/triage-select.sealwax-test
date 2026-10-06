@@ -120,7 +120,7 @@ assert-list-row 0 unread true
 assert-list-row 2 unread true
 assert-undoable false
 # The batch page's buttons are the same commands.
-setup-click batch-mark-read
+click batch-mark-read
 assert-toast "Marked 3 messages as read"
 assert-label batch-mark-read "Mark as Read"
 assert-sensitive batch-mark-read false
@@ -148,7 +148,7 @@ wait-until assert-reader-page message
 # The batch page's Delete deletes every selected message.
 click-row 1
 click-row 2 ctrl
-setup-click batch-delete
+click batch-delete
 assert-toast "Moved 2 messages to the Trash"
 assert-list-count 3
 assert-list-selection 1

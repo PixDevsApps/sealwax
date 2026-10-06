@@ -249,7 +249,7 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
             Err(error) => Err(error),
         },
         command
-            if command.starts_with("assert-list-")
+            if (command.starts_with("assert-list-") && !super::triage::handles(command))
                 || command == "assert-sidebar-count"
                 || command == "assert-selection-reported"
                 || command == "assert-action-enabled" =>
@@ -1024,8 +1024,15 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             equal("rows", model.total(), wanted)
         }
         "assert-sidebar-count" => {
-            let folder = find_folder(harness, arg(0))?;
             let model = harness.state.mailbox().sidebar_model();
+            if arg(0) == ALL_INBOXES {
+                return equal(
+                    "All Inboxes' count",
+                    model.all_inboxes_unread(),
+                    number(arg(1))? as u32,
+                );
+            }
+            let folder = find_folder(harness, arg(0))?;
             let key = folder_key(folder.id);
             let count = model
                 .find(&key)

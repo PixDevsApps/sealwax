@@ -2,28 +2,28 @@
 //! with `domain::triage`, handed to a [`Backend`] that queues them, and reported back as
 //! notices for the Undo toast (ADR-015: only the last action is undoable from the toast).
 //!
-//! The backend is the seam phase B plugs the store's op queue into: queue an action on
+//! The backend is the seam to the store's op queue (ML-051, ADR-015): queue an action on
 //! messages that may span folders and accounts with the undo window's end, mark a folder read,
-//! undo a batch, count an account's pending ops. [`StoreBackend`] is phase A's, over the
-//! store's existing `set_flags` and `remove`: flags change, and moved or deleted messages
-//! leave the store, so a move can't be undone there. After queuing, accounts with a server
-//! get `Command::OpsQueued`.
+//! undo a batch, count an account's pending ops. [`OpsBackend`] is the store's; each request is
+//! one writer transaction with one change event, so the list, the sidebar and the reader follow
+//! it as they follow sync. The accounts each answer names get `Command::OpsQueued`.
 
 use crate::engine_link::EngineLink;
 use crate::mailbox::Mailbox;
-use gtk4::{gio, glib};
+use gtk4::glib;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::model::{Account, AccountId, Flags, Folder, FolderId, FolderRole, MessageId};
 use sealwax_domain::triage::{self, FolderInfo, Plan, Triage, Unavailable};
 use sealwax_engine::api::{Command, Refused};
-use sealwax_infrastructure::store::{ViewFilter, ViewScope, ViewSpec};
+pub use sealwax_infrastructure::store::{BatchId, Lost, NotApplied, Queued, Undone};
+use sealwax_infrastructure::store::{QueueTriage, Reply};
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::time::{Duration, Instant, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// How long archive, delete and move wait before they run, and the Undo toast shows (ADR-015:
 /// 5–10 s; a proposal for the user).
@@ -42,68 +42,6 @@ pub struct Target {
     pub flags: Flags,
 }
 
-/// One queued user action, which Undo names.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct BatchId(pub i64);
-
-/// Why an action left messages alone.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum NotApplied {
-    /// The account has no folder for it, or the folder named takes no messages.
-    NoTarget,
-    /// The messages are already where the action would put them.
-    AlreadyThere,
-    /// Not in the store any more, or about to be deleted for good.
-    Gone,
-}
-
-/// What the backend did with an action.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Queued {
-    /// What Undo takes; `None` when no message changed.
-    pub batch: Option<BatchId>,
-    /// Messages the action applies to, those already as it asks included.
-    pub applied: u32,
-    /// Messages left alone, by reason.
-    pub not_applied: Vec<(NotApplied, u32)>,
-    /// Accounts with a server that have new ops: each gets `Command::OpsQueued`.
-    pub accounts: Vec<AccountId>,
-}
-
-impl Queued {
-    /// Messages left alone, for whatever reason.
-    pub fn skipped(&self) -> u32 {
-        self.not_applied.iter().map(|(_, count)| count).sum()
-    }
-}
-
-/// What an Undo brought back.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Undone {
-    /// Messages put back before their change reached a server.
-    pub restored: u32,
-    /// Messages whose change reached the server, or may have, with the inverse queued.
-    pub reverted: u32,
-    /// Messages that can't come back, by reason.
-    pub lost: Vec<(Lost, u32)>,
-    /// Accounts with a server that have new ops: each gets `Command::OpsQueued`.
-    pub accounts: Vec<AccountId>,
-}
-
-/// Why messages can't come back.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Lost {
-    /// Deleted for good.
-    Deleted,
-    /// The store no longer knows where the message is.
-    Unknown,
-    /// A folder's unread messages on the server below its floor were marked read; which ones
-    /// isn't known.
-    ReadBelow,
-    /// Phase A's backend took them out of the store and can't put them back.
-    NotBuilt,
-}
-
 /// The store couldn't take the change. It carries no store text, which could quote a path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BackendError;
@@ -116,16 +54,16 @@ impl fmt::Display for BackendError {
 
 pub type Pending<T> = Pin<Box<dyn Future<Output = Result<T, BackendError>>>>;
 
-/// Where actions are queued, shaped like the store's op queue (`queue_triage`,
-/// `mark_folder_read`, `undo`, `pending_ops`). Each method sends its requests before it
-/// returns, so the store takes them in the frame the key was pressed in; the future reports
-/// the outcome.
+/// Where actions are queued: the store's op queue (`queue_triage`, `mark_folder_read`, `undo`,
+/// `pending_ops`), or the unit tests' recording one. Each method sends its request before it
+/// returns, so the store takes it in the frame the key was pressed in; the future reports the
+/// outcome.
 pub trait Backend {
-    /// Queues `action` on `targets` (they may span folders and accounts); moves and deletes
-    /// wait for `not_before`, until which [`Backend::undo`] cancels them.
+    /// Queues `action` on `targets` (they may span folders and accounts); their ops wait for
+    /// `not_before`, until which [`Backend::undo`] cancels them.
     fn queue(&self, action: Triage, targets: &[Target], not_before: SystemTime) -> Pending<Queued>;
 
-    /// Marks every message of `folder` read.
+    /// Marks every message of `folder` read, the server's unread below its floor included.
     fn mark_folder_read(&self, folder: FolderId, not_before: SystemTime) -> Pending<Queued>;
 
     /// Cancels what of `batch` hasn't run, or queues the inverse.
@@ -405,13 +343,7 @@ fn were(count: u32) -> &'static str {
 /// What a queued action did, in the toast's words.
 pub fn done_text(action: Triage, queued: &Queued, plans: &[Plan], folders: &[Folder]) -> String {
     let n = messages(queued.applied);
-    let to = |id: FolderId| {
-        folders
-            .iter()
-            .find(|folder| folder.id == id)
-            .map(folder_title)
-            .unwrap_or_else(|| "another folder".to_owned())
-    };
+    let to = |id: FolderId| folder_name(id, folders);
     let all_expunge = !plans.is_empty() && plans.iter().all(|plan| *plan == Plan::Expunge);
     let text = match action {
         Triage::Read(true) => format!("Marked {n} as read"),
@@ -436,15 +368,54 @@ pub fn done_text(action: Triage, queued: &Queued, plans: &[Plan], folders: &[Fol
         },
         Triage::MoveTo(folder) => format!("Moved {n} to {}", to(folder)),
     };
-    match queued.skipped() {
-        0 => text,
-        skipped => format!(
-            "{text}. {} {} left as {}",
-            messages(skipped),
-            were(skipped),
-            { if skipped == 1 { "it was" } else { "they were" } }
-        ),
+    match left_summary(action, queued, folders) {
+        Some(left) => format!("{text}. {left}"),
+        None => text,
     }
+}
+
+fn folder_name(id: FolderId, folders: &[Folder]) -> String {
+    folders
+        .iter()
+        .find(|folder| folder.id == id)
+        .map(folder_title)
+        .unwrap_or_else(|| "another folder".to_owned())
+}
+
+/// What an action left alone, and why, in the toast's words; `None` when it left nothing.
+pub fn left_summary(action: Triage, queued: &Queued, folders: &[Folder]) -> Option<String> {
+    let parts: Vec<String> = queued
+        .not_applied
+        .iter()
+        .filter(|(_, count)| *count > 0)
+        .map(|&(why, count)| {
+            let (n, was) = (messages(count), were(count));
+            let it_was = if count == 1 { "it was" } else { "they were" };
+            let text = match (why, action) {
+                (NotApplied::AlreadyThere, Triage::Archive) => {
+                    format!("{n} {was} already archived")
+                }
+                (NotApplied::AlreadyThere, Triage::Junk) => format!("{n} {was} already in Junk"),
+                (NotApplied::AlreadyThere, Triage::MoveTo(folder)) => {
+                    format!("{n} {was} already in {}", folder_name(folder, folders))
+                }
+                (NotApplied::NoTarget, Triage::Archive) => {
+                    format!("{n} {was} left where {it_was}: no Archive folder")
+                }
+                (NotApplied::NoTarget, Triage::Junk) => {
+                    format!("{n} {was} left where {it_was}: no Junk folder")
+                }
+                (NotApplied::NoTarget, Triage::MoveTo(folder)) => format!(
+                    "{n} {was} left where {it_was}: {} takes no messages",
+                    folder_name(folder, folders)
+                ),
+                (NotApplied::Gone, _) => format!("{n} {was} already gone"),
+                _ => format!("{n} {was} left as {it_was}"),
+            };
+            capitalised(&text)
+        })
+        .collect();
+    (!parts.is_empty()).then(|| parts.join(". "))
 }
 
 /// Marking a folder read, in the toast's words.
@@ -470,7 +441,6 @@ pub fn undone_text(undone: &Undone) -> String {
                 ),
                 Lost::Unknown => format!("{n} couldn't be found to bring back"),
                 Lost::ReadBelow => format!("{n} further back on the server stay read"),
-                Lost::NotBuilt => format!("can't bring back {n} yet"),
             }
         })
         .collect();
@@ -540,23 +510,14 @@ pub struct Notice {
 }
 
 impl Notice {
-    fn plain(text: String) -> Self {
+    /// A notice without Undo, shown for a few seconds.
+    pub fn plain(text: String) -> Self {
         Self {
             text,
             undo: None,
             shown: Duration::from_secs(4),
         }
     }
-}
-
-/// The last undoable action.
-#[derive(Clone, Copy, Debug)]
-struct Last {
-    batch: BatchId,
-    /// Deleting for good can be undone only inside the window.
-    until: Option<Instant>,
-    /// Messages it applied to.
-    count: u32,
 }
 
 type NoticeHandler = Rc<dyn Fn(&Notice)>;
@@ -572,9 +533,11 @@ struct Inner {
     backend: Rc<dyn Backend>,
     directory: Rc<dyn Directory>,
     engine: EngineLink,
-    last: Cell<Option<Last>>,
+    /// The last undoable action.
+    last: Cell<Option<BatchId>>,
     notices: RefCell<Vec<NoticeHandler>>,
     changed: RefCell<Vec<Listener>>,
+    answered: RefCell<Vec<Listener>>,
     /// Actions queued so far, for the self-test and measurements.
     queued: Cell<u64>,
     /// Actions waiting for the backend's answer.
@@ -593,11 +556,17 @@ impl Controller {
                 last: Cell::new(None),
                 notices: RefCell::new(Vec::new()),
                 changed: RefCell::new(Vec::new()),
+                answered: RefCell::new(Vec::new()),
                 queued: Cell::new(0),
                 in_flight: Cell::new(0),
                 window: Cell::new(UNDO_WINDOW),
             }),
         }
+    }
+
+    /// The backend behind it, for the pending-op counts.
+    pub fn backend(&self) -> Rc<dyn Backend> {
+        self.inner.backend.clone()
     }
 
     /// The undo window: how long moves wait and the toast shows.
@@ -635,25 +604,27 @@ impl Controller {
         self.inner.changed.borrow_mut().push(Rc::new(listener));
     }
 
+    /// Runs `listener` whenever the backend has answered a request: the pending ops changed.
+    pub fn connect_answered(&self, listener: impl Fn() + 'static) {
+        self.inner.answered.borrow_mut().push(Rc::new(listener));
+    }
+
     /// Actions handed to the backend so far.
     pub fn queued(&self) -> u64 {
         self.inner.queued.get()
     }
 
-    /// Whether Undo has something to undo: the last action, while it can be undone.
+    /// Whether Undo has something to undo: the last action. The store says what came back.
     pub fn can_undo(&self) -> bool {
-        self.inner
-            .last
-            .get()
-            .is_some_and(|last| last.until.is_none_or(|until| Instant::now() < until))
+        self.inner.last.get().is_some()
     }
 
     /// The batch Undo would undo.
     pub fn last_batch(&self) -> Option<BatchId> {
-        self.inner.last.get().map(|last| last.batch)
+        self.inner.last.get()
     }
 
-    fn set_last(&self, last: Option<Last>) {
+    fn set_last(&self, last: Option<BatchId>) {
         self.inner.last.set(last);
         let listeners = self.inner.changed.borrow().clone();
         for listener in listeners {
@@ -713,14 +684,24 @@ impl Controller {
         // A single message's read or star change shows in place and toggles back with its
         // key; it gets no toast and leaves the last action as it was.
         let notable = origin == Origin::User && (leaves || targets.len() > 1);
-        let expunge = !plans.is_empty() && plans.iter().all(|plan| *plan == Plan::Expunge);
+        // A local account has no server and deletes for good at once: nothing to undo.
+        let accounts = self.inner.directory.accounts();
+        let deleted_now = !plans.is_empty()
+            && plans.iter().all(|plan| *plan == Plan::Expunge)
+            && targets.iter().all(|target| {
+                folders
+                    .iter()
+                    .find(|folder| folder.id == target.folder)
+                    .and_then(|folder| accounts.iter().find(|known| known.id == folder.account))
+                    .is_some_and(|account| account.key.is_none())
+            });
         Some(Started {
             pending,
             action,
             plans,
             folders,
             notable,
-            expunge,
+            deleted_now,
         })
     }
 
@@ -731,9 +712,11 @@ impl Controller {
             plans,
             folders,
             notable,
-            expunge,
+            deleted_now,
         } = started;
-        let queued = match pending.await {
+        let queued = pending.await;
+        self.answered();
+        let queued = match queued {
             Ok(queued) => queued,
             Err(error) => {
                 tracing::warn!("a mail action wasn't queued: {error}");
@@ -747,49 +730,45 @@ impl Controller {
             return None;
         }
         if queued.applied == 0 {
-            return Some(Notice::plain("Nothing to change".to_owned()));
+            let text = left_summary(action, &queued, &folders)
+                .unwrap_or_else(|| "Nothing to change".to_owned());
+            return Some(Notice::plain(text));
         }
         // No batch: nothing changed, and the last action stays as it was.
-        if let Some(batch) = queued.batch {
-            self.set_last(Some(Last {
-                batch,
-                until: expunge.then(|| Instant::now() + self.window()),
-                count: queued.applied,
-            }));
-            if expunge {
-                // Once the window ends Undo can't run any more: say so to the listeners.
-                let this = self.clone();
-                glib::timeout_add_local_once(self.window(), move || {
-                    if this.last_batch() == Some(batch) {
-                        let listeners = this.inner.changed.borrow().clone();
-                        for listener in listeners {
-                            listener();
-                        }
-                    }
-                });
-            }
+        let undo = queued.batch.filter(|_| !deleted_now);
+        if let Some(batch) = undo {
+            self.set_last(Some(batch));
         }
         Some(Notice {
             text: done_text(action, &queued, &plans, &folders),
-            undo: queued.batch,
+            undo,
             shown: self.window(),
         })
     }
 
+    fn answered(&self) {
+        let listeners = self.inner.answered.borrow().clone();
+        for listener in listeners {
+            listener();
+        }
+    }
+
     /// Marks the messages of `folders` read: the folder the list shows, or every Inbox for
-    /// All Inboxes. `name` names it in the toast.
+    /// All Inboxes. `name` names it in the toast. It waits for the undo window, since the
+    /// server's unread below a windowed folder's floor can't be put back once it has run.
     pub fn mark_folders_read(&self, folders: Vec<FolderId>, name: String) {
         let this = self.clone();
-        let now = SystemTime::now();
+        let not_before = SystemTime::now() + self.window();
         let pending: Vec<Pending<Queued>> = folders
             .iter()
-            .map(|folder| self.inner.backend.mark_folder_read(*folder, now))
+            .map(|folder| self.inner.backend.mark_folder_read(*folder, not_before))
             .collect();
         self.inner.queued.set(self.inner.queued.get() + 1);
         self.spawn(async move {
             let mut applied = 0;
             let mut batches = Vec::new();
             let mut accounts = BTreeSet::new();
+            let mut failed = false;
             for pending in pending {
                 match pending.await {
                     Ok(queued) => {
@@ -799,14 +778,18 @@ impl Controller {
                     }
                     Err(error) => {
                         tracing::warn!("a folder wasn't marked read: {error}");
-                        this.notify(&Notice::plain(
-                            "The change couldn't be saved in the mail store".into(),
-                        ));
-                        return;
+                        failed = true;
                     }
                 }
             }
+            this.answered();
             this.wake(&accounts.into_iter().collect::<Vec<_>>());
+            if failed {
+                this.notify(&Notice::plain(
+                    "The change couldn't be saved in the mail store".into(),
+                ));
+                return;
+            }
             // Several Inboxes are several batches; Undo takes back the last one alone, so the
             // toast offers it only for one folder.
             let batch = match batches.as_slice() {
@@ -814,11 +797,7 @@ impl Controller {
                 _ => None,
             };
             if let Some(batch) = batch {
-                this.set_last(Some(Last {
-                    batch,
-                    until: None,
-                    count: applied,
-                }));
+                this.set_last(Some(batch));
             }
             this.notify(&Notice {
                 text: folder_read_text(applied, &name),
@@ -833,22 +812,16 @@ impl Controller {
         let Some(last) = self.inner.last.get() else {
             return;
         };
-        if batch.is_some_and(|batch| batch != last.batch) {
-            return;
-        }
-        if last.until.is_some_and(|until| Instant::now() >= until) {
-            self.set_last(None);
-            self.notify(&Notice::plain(undone_text(&Undone {
-                lost: vec![(Lost::Deleted, last.count)],
-                ..Undone::default()
-            })));
+        if batch.is_some_and(|batch| batch != last) {
             return;
         }
         self.set_last(None);
-        let pending = self.inner.backend.undo(last.batch);
+        let pending = self.inner.backend.undo(last);
         let this = self.clone();
         self.spawn(async move {
-            match pending.await {
+            let undone = pending.await;
+            this.answered();
+            match undone {
                 Ok(undone) => {
                     this.wake(&undone.accounts);
                     this.notify(&Notice::plain(undone_text(&undone)));
@@ -898,274 +871,70 @@ struct Started {
     folders: Vec<Folder>,
     /// It gets a toast and becomes the last action.
     notable: bool,
-    expunge: bool,
+    /// Deleted for good in local accounts, at once: no Undo to offer.
+    deleted_now: bool,
 }
 
-/// What phase A's backend did with a batch, so Undo can reverse it.
-enum Applied {
-    /// Flags added to and removed from these messages, with the flags each had before.
-    Flags {
-        changes: Vec<(MessageId, Flags)>,
-        add: Flags,
-        remove: Flags,
-    },
-    /// Messages taken out of the store.
-    Removed(u32),
+/// Unix milliseconds, the store's time.
+fn unix_ms(time: SystemTime) -> i64 {
+    time.duration_since(UNIX_EPOCH).map_or(0, |since| {
+        i64::try_from(since.as_millis()).unwrap_or(i64::MAX)
+    })
 }
 
-/// A batch phase A's backend keeps for Undo.
-struct Batch {
-    applied: Vec<Applied>,
-    /// The accounts with a server it touched.
-    accounts: Vec<AccountId>,
-}
-
-/// Phase A's backend, over the store's `set_flags` and `remove`: actions take effect at once,
-/// moved and deleted messages leave the store, and only flag changes can be undone.
-pub struct StoreBackend {
+/// The store's op queue (ML-051): each request is one writer transaction with its overlay and
+/// one change event; the reply is awaited on the main loop, so the GTK thread runs no SQL.
+pub struct OpsBackend {
     mailbox: Rc<Mailbox>,
-    batches: Rc<RefCell<HashMap<BatchId, Batch>>>,
-    next: Cell<i64>,
 }
 
-impl StoreBackend {
+impl OpsBackend {
     pub fn new(mailbox: Rc<Mailbox>) -> Self {
-        Self {
-            mailbox,
-            batches: Rc::default(),
-            next: Cell::new(0),
-        }
-    }
-
-    fn batch(&self) -> BatchId {
-        self.next.set(self.next.get() + 1);
-        BatchId(self.next.get())
+        Self { mailbox }
     }
 }
 
-fn failed<T: 'static>() -> Pending<T> {
-    Box::pin(async { Err(BackendError) })
+fn answer<T: 'static>(reply: Option<Reply<T>>) -> Pending<T> {
+    Box::pin(async move {
+        match reply {
+            Some(reply) => reply.recv().await.map_err(|error| {
+                tracing::warn!("the store refused a mail action: {error}");
+                BackendError
+            }),
+            None => Err(BackendError),
+        }
+    })
 }
 
-impl Backend for StoreBackend {
-    fn queue(
-        &self,
-        action: Triage,
-        targets: &[Target],
-        _not_before: SystemTime,
-    ) -> Pending<Queued> {
-        let folders = self.mailbox.folders();
-        let mut flag_groups: Vec<((Flags, Flags), Vec<Target>)> = Vec::new();
-        let mut removed = Vec::new();
-        let mut planned = Vec::new();
-        let (mut no_target, mut already_there) = (0, 0);
-        for target in targets {
-            match plan_for(action, target.folder, &folders) {
-                Ok(Plan::Flags { add, remove }) => {
-                    match flag_groups
-                        .iter_mut()
-                        .find(|(key, _)| *key == (add, remove))
-                    {
-                        Some((_, group)) => group.push(*target),
-                        None => flag_groups.push(((add, remove), vec![*target])),
-                    }
-                    planned.push(target.folder);
-                }
-                Ok(Plan::Move { .. } | Plan::Expunge) => {
-                    removed.push(target.id);
-                    planned.push(target.folder);
-                }
-                Err(Unavailable::NoTarget) => no_target += 1,
-                Err(Unavailable::AlreadyThere) => already_there += 1,
-            }
-        }
-        let not_applied: Vec<(NotApplied, u32)> = [
-            (NotApplied::NoTarget, no_target),
-            (NotApplied::AlreadyThere, already_there),
-        ]
-        .into_iter()
-        .filter(|(_, count)| *count > 0)
-        .collect();
-        let accounts = server_accounts(planned, &folders, &self.mailbox.accounts());
-        if flag_groups.is_empty() && removed.is_empty() {
-            return Box::pin(async move {
-                Ok(Queued {
-                    not_applied,
-                    ..Queued::default()
-                })
-            });
-        }
-        let Some(store) = self.mailbox.store() else {
-            return failed();
+impl Backend for OpsBackend {
+    fn queue(&self, action: Triage, targets: &[Target], not_before: SystemTime) -> Pending<Queued> {
+        let request = QueueTriage {
+            action,
+            messages: targets.iter().map(|target| target.id).collect(),
+            not_before: unix_ms(not_before),
         };
-        let flag_replies: Vec<_> = flag_groups
-            .iter()
-            .map(|((add, remove), group)| {
-                store.set_flags(
-                    group.iter().map(|target| target.id).collect(),
-                    *add,
-                    *remove,
-                )
-            })
-            .collect();
-        let removal = (!removed.is_empty()).then(|| store.remove(removed.clone()));
-        drop(store);
-        let batch = self.batch();
-        let mut applied: Vec<Applied> = flag_groups
-            .into_iter()
-            .map(|((add, remove), group)| Applied::Flags {
-                changes: group
-                    .iter()
-                    .map(|target| (target.id, target.flags))
-                    .collect(),
-                add,
-                remove,
-            })
-            .collect();
-        if !removed.is_empty() {
-            applied.push(Applied::Removed(removed.len() as u32));
-        }
-        self.batches.borrow_mut().insert(
-            batch,
-            Batch {
-                applied,
-                accounts: accounts.clone(),
-            },
-        );
-        let blobs = self.mailbox.blobs();
-        let total = targets.len() as u32;
-        Box::pin(async move {
-            for reply in flag_replies {
-                reply.recv().await.map_err(|_| BackendError)?;
-            }
-            if let Some(removal) = removal {
-                let removed = removal.recv().await.map_err(|_| BackendError)?;
-                if let Some(blobs) = blobs
-                    && !removed.orphaned_blobs.is_empty()
-                {
-                    // The files go on GIO's thread pool; nothing waits for them.
-                    let orphans = removed.orphaned_blobs;
-                    drop(gio::spawn_blocking(move || {
-                        for key in orphans {
-                            let _ = blobs.remove(&key);
-                        }
-                    }));
-                }
-            }
-            Ok(Queued {
-                batch: Some(batch),
-                applied: total - no_target - already_there,
-                not_applied,
-                accounts,
-            })
-        })
-    }
-
-    fn mark_folder_read(&self, folder: FolderId, _not_before: SystemTime) -> Pending<Queued> {
-        let spec = ViewSpec {
-            scope: ViewScope::Folder(folder),
-            filter: ViewFilter::Unread,
-        };
-        let Some(reply) = self
-            .mailbox
-            .store()
-            .map(|store| store.page(spec, 0, 100_000))
-        else {
-            return failed();
-        };
-        let accounts = server_accounts([folder], &self.mailbox.folders(), &self.mailbox.accounts());
-        let mailbox = self.mailbox.clone();
-        let batch = self.batch();
-        let batches = self.batches.clone();
-        Box::pin(async move {
-            let page = reply.recv().await.map_err(|_| BackendError)?;
-            let ids: Vec<MessageId> = page.rows.iter().map(|row| row.id).collect();
-            if ids.is_empty() {
-                return Ok(Queued::default());
-            }
-            let reply = mailbox
+        answer(
+            self.mailbox
                 .store()
-                .map(|store| store.set_flags(ids.clone(), Flags::SEEN, Flags::NONE))
-                .ok_or(BackendError)?;
-            reply.recv().await.map_err(|_| BackendError)?;
-            let changes = page.rows.iter().map(|row| (row.id, row.flags)).collect();
-            batches.borrow_mut().insert(
-                batch,
-                Batch {
-                    applied: vec![Applied::Flags {
-                        changes,
-                        add: Flags::SEEN,
-                        remove: Flags::NONE,
-                    }],
-                    accounts: accounts.clone(),
-                },
-            );
-            Ok(Queued {
-                batch: Some(batch),
-                applied: ids.len() as u32,
-                not_applied: Vec::new(),
-                accounts,
-            })
-        })
+                .map(|store| store.queue_triage(request)),
+        )
+    }
+
+    fn mark_folder_read(&self, folder: FolderId, not_before: SystemTime) -> Pending<Queued> {
+        let not_before = unix_ms(not_before);
+        answer(
+            self.mailbox
+                .store()
+                .map(|store| store.mark_folder_read(folder, not_before)),
+        )
     }
 
     fn undo(&self, batch: BatchId) -> Pending<Undone> {
-        let Some(Batch { applied, accounts }) = self.batches.borrow_mut().remove(&batch) else {
-            return Box::pin(async { Ok(Undone::default()) });
-        };
-        let Some(store) = self.mailbox.store() else {
-            return failed();
-        };
-        let mut replies = Vec::new();
-        let (mut restored, mut lost) = (0, 0);
-        for part in applied {
-            match part {
-                Applied::Flags {
-                    changes,
-                    add,
-                    remove,
-                } => {
-                    let added: Vec<MessageId> = changes
-                        .iter()
-                        .filter(|(_, before)| !before.contains(add))
-                        .map(|(id, _)| *id)
-                        .collect();
-                    let cleared: Vec<MessageId> = changes
-                        .iter()
-                        .filter(|(_, before)| before.difference(remove) != *before)
-                        .map(|(id, _)| *id)
-                        .collect();
-                    restored += changes.len() as u32;
-                    if add != Flags::NONE && !added.is_empty() {
-                        replies.push(store.set_flags(added, Flags::NONE, add));
-                    }
-                    if remove != Flags::NONE && !cleared.is_empty() {
-                        replies.push(store.set_flags(cleared, remove, Flags::NONE));
-                    }
-                }
-                Applied::Removed(count) => lost += count,
-            }
-        }
-        drop(store);
-        Box::pin(async move {
-            for reply in replies {
-                reply.recv().await.map_err(|_| BackendError)?;
-            }
-            Ok(Undone {
-                restored,
-                reverted: 0,
-                lost: if lost > 0 {
-                    vec![(Lost::NotBuilt, lost)]
-                } else {
-                    Vec::new()
-                },
-                accounts,
-            })
-        })
+        answer(self.mailbox.store().map(|store| store.undo(batch)))
     }
 
-    fn pending(&self, _account: AccountId) -> Pending<u32> {
-        Box::pin(async { Ok(0) })
+    fn pending(&self, account: AccountId) -> Pending<u32> {
+        answer(self.mailbox.store().map(|store| store.pending_ops(account)))
     }
 }
 
@@ -1173,6 +942,7 @@ impl Backend for StoreBackend {
 mod tests {
     use super::*;
     use sealwax_domain::account::AccountKey;
+    use std::collections::HashMap;
 
     fn folder(id: i64, account: i64, role: FolderRole, name: &str) -> Folder {
         Folder {
@@ -1320,7 +1090,13 @@ mod tests {
             batch: Some(BatchId(1)),
             applied,
             not_applied: vec![(NotApplied::NoTarget, skipped)],
-            accounts: Vec::new(),
+            ..Queued::default()
+        };
+        let left = |applied, not_applied: &[(NotApplied, u32)]| Queued {
+            batch: Some(BatchId(1)),
+            applied,
+            not_applied: not_applied.to_vec(),
+            ..Queued::default()
         };
         let to = |id| Plan::Move {
             to: FolderId(id),
@@ -1359,8 +1135,36 @@ mod tests {
         );
         assert_eq!(
             done_text(Triage::Junk, &queued(2, 1), &[to(3); 2], &all),
-            "Moved 2 messages to Junk. 1 message was left as it was"
+            "Moved 2 messages to Junk. 1 message was left where it was: no Junk folder"
         );
+        assert_eq!(
+            done_text(
+                Triage::Archive,
+                &left(1, &[(NotApplied::AlreadyThere, 2), (NotApplied::Gone, 1)]),
+                &[to(2)],
+                &all
+            ),
+            "Archived 1 message. 2 messages were already archived. 1 message was already gone"
+        );
+        assert_eq!(
+            done_text(
+                Triage::Archive,
+                &left(2, &[(NotApplied::NoTarget, 3)]),
+                &[to(2); 2],
+                &all
+            ),
+            "Archived 2 messages. 3 messages were left where they were: no Archive folder"
+        );
+        assert_eq!(
+            left_summary(
+                Triage::MoveTo(FolderId(5)),
+                &left(0, &[(NotApplied::AlreadyThere, 1)]),
+                &all
+            )
+            .as_deref(),
+            Some("1 message was already in Prosjekter")
+        );
+        assert_eq!(left_summary(Triage::Archive, &left(1, &[]), &all), None);
         assert_eq!(
             done_text(Triage::Star(false), &queued(4, 0), &[], &all),
             "Unstarred 4 messages"
@@ -1378,7 +1182,7 @@ mod tests {
             restored,
             reverted,
             lost: lost.to_vec(),
-            accounts: Vec::new(),
+            ..Undone::default()
         };
         assert_eq!(undone_text(&undone(3, 0, &[])), "Undone");
         assert_eq!(undone_text(&undone(1, 2, &[(Lost::Deleted, 0)])), "Undone");
@@ -1391,8 +1195,8 @@ mod tests {
             "Undone. 3 messages were deleted for good and can't be brought back"
         );
         assert_eq!(
-            undone_text(&undone(0, 0, &[(Lost::NotBuilt, 2)])),
-            "Can't bring back 2 messages yet"
+            undone_text(&undone(0, 0, &[(Lost::Unknown, 2)])),
+            "2 messages couldn't be found to bring back"
         );
         assert_eq!(
             undone_text(&undone(0, 4, &[(Lost::Unknown, 1), (Lost::ReadBelow, 40)])),
@@ -1443,8 +1247,8 @@ mod tests {
             Queued {
                 batch: Some(batch),
                 applied,
-                not_applied: Vec::new(),
                 accounts,
+                ..Queued::default()
             }
         }
     }
@@ -1467,8 +1271,11 @@ mod tests {
             Box::pin(async move { Ok(queued) })
         }
 
-        fn mark_folder_read(&self, folder: FolderId, _not_before: SystemTime) -> Pending<Queued> {
-            self.calls.borrow_mut().push(format!("read {}", folder.0));
+        fn mark_folder_read(&self, folder: FolderId, not_before: SystemTime) -> Pending<Queued> {
+            let waits = not_before > SystemTime::now() + Duration::from_secs(1);
+            self.calls
+                .borrow_mut()
+                .push(format!("read {} waits {waits}", folder.0));
             let queued = self.batch(2, [folder]);
             Box::pin(async move { Ok(queued) })
         }
@@ -1609,7 +1416,7 @@ mod tests {
     }
 
     #[test]
-    fn only_the_last_action_is_undone_and_deleting_for_good_only_in_the_window() {
+    fn only_the_last_action_is_undone_and_local_deletes_offer_no_undo() {
         let context = glib::MainContext::new();
         context
             .with_thread_default(|| {
@@ -1636,23 +1443,63 @@ mod tests {
                 assert_eq!(notices.borrow().last().unwrap().text, "Undone");
                 // The undo wakes the server account the batch touched.
                 assert_eq!(woken(&engine), [2]);
-                // Deleting for good from the Trash: undoable only inside the window.
-                controller.set_window(Duration::from_millis(20));
-                context.block_on(controller.run(
-                    Triage::Delete,
-                    vec![target(3, 4, Flags::NONE), target(4, 4, Flags::NONE)],
-                    Origin::User,
-                ));
-                assert!(controller.can_undo());
-                std::thread::sleep(Duration::from_millis(30));
+                // Deleting for good in a local account happens at once: no Undo to offer.
+                let notice = context
+                    .block_on(controller.run(
+                        Triage::Delete,
+                        vec![target(3, 4, Flags::NONE), target(4, 4, Flags::NONE)],
+                        Origin::User,
+                    ))
+                    .expect("a toast");
+                assert_eq!(notice.text, "Deleted 2 messages for good");
+                assert_eq!(notice.undo, None);
                 assert!(!controller.can_undo());
-                controller.undo(Some(BatchId(3)));
-                drain(&context);
+                // On a server it waits for the window, and the store says what Undo brought
+                // back.
+                let notice = context
+                    .block_on(controller.run(
+                        Triage::Delete,
+                        vec![target(5, 13, Flags::NONE)],
+                        Origin::User,
+                    ))
+                    .expect("a toast");
+                assert_eq!(notice.text, "Deleted 1 message for good");
+                assert_eq!(notice.undo, Some(BatchId(4)));
                 assert_eq!(
-                    notices.borrow().last().unwrap().text,
-                    "2 messages were deleted for good and can't be brought back"
+                    backend.calls.borrow().last().unwrap(),
+                    "Delete x1 waits true"
                 );
-                assert_ne!(backend.calls.borrow().last().unwrap(), "undo 3");
+                controller.undo(Some(BatchId(4)));
+                drain(&context);
+                assert_eq!(backend.calls.borrow().last().unwrap(), "undo 4");
+                assert_eq!(notices.borrow().last().unwrap().text, "Undone");
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn every_answer_says_the_pending_ops_changed() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let (controller, _backend, _engine, _events) = controller();
+                let answers = Rc::new(Cell::new(0));
+                let count = answers.clone();
+                controller.connect_answered(move || count.set(count.get() + 1));
+                context.block_on(controller.run(
+                    Triage::Star(true),
+                    vec![target(1, 11, Flags::NONE)],
+                    Origin::Opened,
+                ));
+                controller.mark_folders_read(vec![FolderId(11)], "Inbox".into());
+                drain(&context);
+                controller.undo(None);
+                drain(&context);
+                assert_eq!(answers.get(), 3);
+                assert_eq!(
+                    context.block_on(controller.backend().pending(AccountId(2))),
+                    Ok(0)
+                );
             })
             .unwrap();
     }
@@ -1677,7 +1524,14 @@ mod tests {
                 let last = notices.borrow().last().cloned().unwrap();
                 assert_eq!(last.text, "Marked 4 messages in All Inboxes as read");
                 assert_eq!(last.undo, None);
-                assert_eq!(backend.calls.borrow().len(), 3);
+                assert_eq!(
+                    *backend.calls.borrow(),
+                    [
+                        "read 11 waits true",
+                        "read 1 waits true",
+                        "read 11 waits true"
+                    ]
+                );
             })
             .unwrap();
     }

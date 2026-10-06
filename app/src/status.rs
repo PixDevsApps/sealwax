@@ -31,8 +31,14 @@ pub struct Waiting {
 }
 
 /// Everything waiting, most important first. `keyring_missing`: the engine fell back to memory
-/// and the banner wasn't dismissed; `network`: the desktop reports a network.
-pub fn queue(accounts: &[Account<'_>], keyring_missing: bool, network: bool) -> Vec<Waiting> {
+/// and the banner wasn't dismissed; `network`: the desktop reports a network; `pending`: the
+/// changes waiting for a server, which the offline entry counts.
+pub fn queue(
+    accounts: &[Account<'_>],
+    keyring_missing: bool,
+    network: bool,
+    pending: u32,
+) -> Vec<Waiting> {
     let mut waiting = Vec::new();
     if keyring_missing {
         waiting.push(Waiting {
@@ -74,6 +80,7 @@ pub fn queue(accounts: &[Account<'_>], keyring_missing: bool, network: bool) -> 
             attention: Attention::Offline {
                 network: !network,
                 accounts: accounts.len(),
+                waiting: pending,
             },
             account: None,
         });
@@ -197,7 +204,7 @@ mod tests {
             })
             .collect();
         assert_eq!(
-            shown(&queue(&accounts, true, false)),
+            shown(&queue(&accounts, true, false, 0)),
             [
                 "keyring",
                 "certificate:per",
@@ -208,7 +215,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            shown(&queue(&accounts, false, true)),
+            shown(&queue(&accounts, false, true, 0)),
             [
                 "certificate:per",
                 "sign-in:kari",
@@ -218,7 +225,7 @@ mod tests {
             "one unreachable account shows only in the sidebar"
         );
         assert_eq!(
-            queue(&accounts, false, true)[0].attention,
+            queue(&accounts, false, true, 0)[0].attention,
             Attention::CertificateChanged {
                 name: "per".to_owned(),
                 host: "imap.per.example.test".to_owned(),
@@ -244,21 +251,33 @@ mod tests {
                 .collect()
         };
         let offline = accounts([AccountStatus::Offline, AccountStatus::Offline]);
-        assert_eq!(shown(&queue(&offline, false, true)), ["unreachable"]);
+        assert_eq!(shown(&queue(&offline, false, true, 0)), ["unreachable"]);
         assert_eq!(
-            queue(&offline, false, true)[0].attention,
+            queue(&offline, false, true, 0)[0].attention,
             Attention::Offline {
                 network: false,
                 accounts: 2,
+                waiting: 0,
             }
         );
-        assert_eq!(shown(&queue(&offline, false, false)), ["offline"]);
+        assert_eq!(shown(&queue(&offline, false, false, 0)), ["offline"]);
+        assert_eq!(
+            queue(&offline, false, false, 3)[0].attention,
+            Attention::Offline {
+                network: true,
+                accounts: 2,
+                waiting: 3,
+            }
+        );
         let synced = accounts([AccountStatus::Synced, AccountStatus::Syncing]);
-        assert!(queue(&synced, false, true).is_empty());
-        assert_eq!(shown(&queue(&synced, false, false)), ["offline"]);
-        assert_eq!(shown(&queue(&[], false, false)), ["offline"]);
-        assert!(queue(&[], false, true).is_empty(), "no account, no server");
-        assert_eq!(shown(&queue(&[], true, true)), ["keyring"]);
+        assert!(queue(&synced, false, true, 0).is_empty());
+        assert_eq!(shown(&queue(&synced, false, false, 0)), ["offline"]);
+        assert_eq!(shown(&queue(&[], false, false, 0)), ["offline"]);
+        assert!(
+            queue(&[], false, true, 0).is_empty(),
+            "no account, no server"
+        );
+        assert_eq!(shown(&queue(&[], true, true, 0)), ["keyring"]);
     }
 
     #[test]
