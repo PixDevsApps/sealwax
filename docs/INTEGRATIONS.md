@@ -59,6 +59,13 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 - `mailto:` URIs are parsed per RFC 6068; `attach` / `attachment` parameters are ignored. Only `to`, `cc`, `bcc`, `subject`, `body` and `in-reply-to` are kept, and control characters are stripped from header values (S6).
 - **Forwarding (S6):** a second process forwards a `mailto:` to the running instance in ~51 ms, 49 of them loading libraries; a D-Bus `org.freedesktop.Application.Open` call, which launchers use for a `DBusActivatable` app, takes 0.5 ms. The desktop file keeps `DBusActivatable=true`, and the app handles both `open` and `command-line` (built in M1). With no instance running, a command line first asks the bus to start the installed service (Stet's pattern), so `xdg-open mailto:…` from a browser starts a Sealwax that doesn't belong to the browser; verified headlessly with a private bus, `xdg-open` on the live desktop not yet.
 
+## Files, attachments and printing (M5)
+
+- **Opening an attachment** copies it into a private folder under `$XDG_RUNTIME_DIR/io.github.pixdevsapps.Sealwax/attachments` (`.Devel` for debug builds) and hands it to `gtk::FileLauncher`, which goes through the OpenURI portal where one runs and otherwise opens the file with the default application from the MIME database (`xdg-mime query default <type>`). Programs, launchers, scripts and installers are never opened ([SECURITY.md](SECURITY.md#attachments)).
+- **Save, Download all and Save as .eml** use `gtk::FileDialog`: the FileChooser portal where one runs, else GTK's own dialog. On this machine `/usr/share/xdg-desktop-portal/hyprland-portals.conf` prefers `hyprland;gtk`, and only `gtk.portal` (xdg-desktop-portal-gtk) offers FileChooser, AppChooser and Print (read from the files, not seen live).
+- **Print** opens GTK's print dialog over the window (WebKit's `PrintOperation`); printers come from CUPS through GTK's print backends.
+- **Not verified on the live session yet** (P1 follow-up): which portal answers on Omarchy, the default application chosen for common types, and printing to a real printer. Headless runs never launch an application or open a portal: tests answer through hooks.
+
 ## Network and sleep
 
 - GIO's network monitor uses NetworkManager here (`GNetworkMonitorNM`); logind's `PrepareForSleep` signal is on the system bus (read-only subscription).
