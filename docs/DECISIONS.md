@@ -24,9 +24,9 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
-| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules); the store side and the IMAP writes built in M4's phase A, the runner in phase B |
+| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send waits for M6 |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1 |
-| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user |
+| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate) |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 
@@ -716,6 +716,12 @@ Built in M4 ([report](m4/triage-app.md)). The app queues every triage action wit
 - **The offline banner counts the pending ops** ("3 waiting"), read on the store's reader after each action, Undo or change event and every 3 s while ops wait.
 - **Same frame:** the store's change event arrives within the frame on fixture stores (handler → list changed p50 0.33–0.76 ms, one message's p95 ≤ 4.86 ms, headless), so the list applies the store's events and predicts nothing.
 
+### ADR-015 amendment — M4 gate decisions (2026-10-06)
+
+**Status:** accepted for triage by the user at the M4 gate ("Accept all", 2026-10-06); the at-most-once send stays M6's.
+- **The defaults as built:** the undo window 7 s; no toast for one message's read or star change; a message marked read when it opens; the next message selected after an action; deleting from the Trash asks nothing and can be undone only while it hasn't reached the server; Mark Folder as Read waits for the window too; done ops kept for Undo from the newest 50 actions; 5 attempts, then a change is refused; moves and deletions retried while the mailbox is full; the offline banner counts the changes waiting.
+- **Not built:** Undo of a folder marked read after its window (a proposal, P2 in PLAN.md).
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.
@@ -765,6 +771,10 @@ Built in M3 ([report](m3/threading.md)).
   - Ctrl+Alt+R and F5 for Refresh;
   - Ctrl+Shift+S and F9 for Toggle Sidebar.
 - **Accepted** (user decision at the M1 gate, 2026-10-05, "Accept as proposed"): the proposed keys, and the scoped Ctrl alternatives of the message commands.
+
+### ADR-017 amendment — the list's own keys accepted (M4 gate, 2026-10-06)
+
+Accepted by the user at the M4 gate ("Keep all four", 2026-10-06). Beside the registry, as the message list's own keys (no `keys.toml` name, like GtkListView's Down and Up): Shift+`j` and Shift+`k` extend the selection as Shift+Down and Shift+Up do; Escape leaves the select mode; Menu and Shift+F10 open a sidebar folder's menu. GtkListView's Ctrl+A is swallowed (rows not loaded have no ids). The keyboard pass on the US and Norwegian layouts was approved headless (`triage-keys` and M1's audit); the live pass stays a P1 follow-up.
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 
