@@ -26,7 +26,7 @@ use sealwax_domain::compose::Draft;
 use sealwax_domain::model::{AccountId, BlobKey, DraftId, FolderId, MessageId};
 
 /// How long a draft that changed must stay unchanged before its Drafts-folder copy is replaced
-/// while its window is open (a proposal for the gate).
+/// while its window is open (accepted at the M6 gate).
 pub const DRAFT_QUIET_MS: i64 = 30_000;
 /// The same for a draft with no window open: a closed composer's draft goes up shortly after
 /// its last save, and the quick reply, which keeps its draft closed while the user types, goes

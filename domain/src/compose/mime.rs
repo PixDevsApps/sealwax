@@ -10,7 +10,7 @@
 //!
 //! The Message-ID is the draft's own, on the sender's domain; `Date:` is UTC; the plain part is
 //! the HTML through html2text at 78 columns. No host name anywhere, and no User-Agent or
-//! X-Mailer field (a proposal). Everything is 7-bit with CRLF line ends. Part bytes come from
+//! X-Mailer field (accepted at the M6 gate). Everything is 7-bit with CRLF line ends. Part bytes come from
 //! the caller (the blob store); nothing here does I/O.
 
 use super::address;

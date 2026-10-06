@@ -30,7 +30,7 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::time::Duration;
 
-/// The undo window before a queued message goes (triage's 7 s; a proposal for the gate).
+/// The undo window before a queued message goes (triage's 7 s; accepted at the M6 gate).
 pub const UNDO_SEND_MS: i64 = 7_000;
 /// How long a reply waits for the engine to download the message it answers.
 pub const DOWNLOAD_WAIT: Duration = Duration::from_secs(30);

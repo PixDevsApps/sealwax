@@ -1,5 +1,5 @@
 //! The addresses an account sends from and their signatures (ML-070, PRD A6). Signatures are
-//! plain text in 1.0 (a proposal): the composer shows them below the body after a `-- ` line,
+//! plain text in 1.0 (accepted at the M6 gate): the composer shows them below the body after a `-- ` line,
 //! inside a `div` of class [`SIGNATURE_CLASS`] so it can swap them when the sender changes.
 
 use super::address;

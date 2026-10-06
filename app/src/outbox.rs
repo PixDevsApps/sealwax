@@ -36,7 +36,7 @@ pub const FAILED_SHOWN: Duration = Duration::from_secs(10);
 /// How long "Message sent" shows.
 pub const SENT_SHOWN: Duration = Duration::from_secs(4);
 
-/// The queued toast's text (a proposal for the gate).
+/// The queued toast's text (accepted at the M6 gate).
 pub const QUEUED_TEXT: &str = "Message queued";
 pub const SENT_TEXT: &str = "Message sent";
 pub const UNDONE_TEXT: &str = "Sending undone";
