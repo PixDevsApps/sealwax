@@ -6,6 +6,8 @@
 //! M7's contract: the types and the operator list. [`parse`] understands only words, phrases
 //! and prefixes until the search agent's parser replaces it (phase A).
 
+pub mod hints;
+
 use std::fmt;
 
 /// A day as typed (`before:2026-10-01`). The store places it in the local time zone.

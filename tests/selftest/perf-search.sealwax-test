@@ -1,0 +1,125 @@
+# Instant search at 100,000 messages (M7, ML-082): keys typed into the search field through
+# Broadway, each timed from its press to the first painted frame with the results for the text so
+# far, at search delays of 0, 50, 100 and 150 ms, from the Inbox and from All Inboxes; then words
+# typed at 120 ms a key, timed from the last key to the final results, with the searches run.
+# perf-list's store (target/perf-list/data, imported once) is reused.
+#
+# Not part of tools/ci.sh (perf-*): it needs a release build and the 100,000-message store:
+#   cargo build --release -p sealwax -p sealwax-fixtures
+#   tools/headless.sh 53 target/release/sealwax --self-test tests/selftest/perf-search.sealwax-test
+# Headless numbers are a dry run: Broadway paints in software, so painting costs more than on the
+# live session; the search's own time (search-changed → painted) is the store's plus one frame.
+
+desktop tiling
+store-dir $DIR/../../target/perf-list/data
+fixtures --count 100000 --seed 1
+resize 1440 900
+list-wait
+assert-list-count 100000
+focus search
+
+search-delay 0
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+measure-search blåbærsyltetøy
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, delay 0"
+
+search-delay 50
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+measure-search blåbærsyltetøy
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, delay 50"
+
+search-delay 100
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+measure-search blåbærsyltetøy
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, delay 100"
+
+search-delay 150
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+measure-search blåbærsyltetøy
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, delay 150"
+
+# Typing at 120 ms a key.
+search-delay 0
+measure-search-burst "the website redesign" 120
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, 120 ms a key, delay 0, last key"
+search-delay 100
+measure-search-burst "the website redesign" 120
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, 120 ms a key, delay 100, last key"
+search-delay 150
+measure-search-burst "the website redesign" 120
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, 120 ms a key, delay 150, last key"
+
+# All Inboxes: every folder.
+key Escape
+folder all-inboxes
+list-wait
+focus search
+search-delay 0
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+search-report "All Inboxes, delay 0"
+search-delay 150
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+search-report "All Inboxes, delay 150"

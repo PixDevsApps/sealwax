@@ -1,0 +1,92 @@
+# Instant search timed (M7, ML-082): keys typed into the search field through Broadway, each timed
+# from its press to the first painted frame with the results for the text so far, at search
+# delays of 0 (Sealwax's since M7), 50, 100 and 150 ms (GtkSearchEntry's search-delay; GTK's
+# default and M1's), on the 1,500-message fixture store the list's self-tests use, from All Inboxes
+# (every folder) and from an Inbox. Then words typed at 120 ms a key: the last key to the final
+# results, and how many searches ran. It prints the numbers and checks no bar: Broadway paints in
+# software and this is a debug build (perf-search.sealwax-test measures 100,000 messages in a
+# release build). Every message is fictional.
+# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/search-timing.sealwax-test
+
+desktop tiling
+fixtures --count 1500 --seed 3 --folders spread
+resize 1440 900
+list-wait
+folder all-inboxes
+list-wait
+focus search
+
+search-delay 0
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+search-report "All Inboxes, delay 0"
+
+search-delay 50
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+search-report "All Inboxes, delay 50"
+
+search-delay 100
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+search-report "All Inboxes, delay 100"
+
+search-delay 150
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+measure-search Hansen
+key <Control>a
+key BackSpace
+search-wait
+search-report "All Inboxes, delay 150"
+
+# Typing at 120 ms a key: the last key to the final results, and the searches run.
+search-delay 0
+measure-search-burst "the website redesign" 120
+key <Control>a
+key BackSpace
+search-wait
+search-delay 150
+measure-search-burst "the website redesign" 120
+key <Control>a
+key BackSpace
+search-wait
+search-report "All Inboxes, 120 ms a key, last key"
+
+# One folder.
+key Escape
+folder inbox
+list-wait
+focus search
+search-delay 0
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, delay 0"
+search-delay 150
+measure-search "budget review"
+key <Control>a
+key BackSpace
+search-wait
+search-report "Inbox, delay 150"
