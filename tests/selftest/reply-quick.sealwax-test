@@ -77,6 +77,7 @@ key <Control><Shift>e
 assert-compose-requests 1
 assert-compose-last quick-reply trip-6 "Bringing the waffle iron."
 assert-quick-reply text ""
+composer-close
 # A click on the hint does the same.
 focus quick-reply-text
 type "And cards."
@@ -84,6 +85,7 @@ click quick-reply-expand
 assert-compose-requests 2
 assert-compose-last quick-reply trip-6 "And cards."
 assert-quick-reply text ""
+composer-close
 
 # Escape leaves the quick reply for the message it answers.
 focus quick-reply-text

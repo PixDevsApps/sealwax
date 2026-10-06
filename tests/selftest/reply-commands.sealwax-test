@@ -5,6 +5,7 @@
 # the user is on (the focused card, else the one n or p reached); they don't apply to several
 # messages or to a draft. Compose writes from the account the list shows. `mailto:` links reach
 # the composer through the application's open path. Every name and message is fictional.
+# A composer that opens takes the focus, so each check closes it again (`composer-close`).
 # Run: tools/headless.sh 43 target/debug/sealwax --self-test tests/selftest/reply-commands.sealwax-test
 
 desktop tiling
@@ -27,22 +28,30 @@ assert-action-enabled win.forward true
 assert-action-enabled win.edit-draft false
 key r
 assert-compose-last reply trip-6 reply
+composer-close
 key a
 assert-compose-last reply trip-6 reply-all
+composer-close
 key f
 assert-compose-last reply trip-6 forward
+composer-close
 key <Control>r
 assert-compose-last reply trip-6 reply
+composer-close
 key <Control><Shift>r
 assert-compose-last reply trip-6 reply-all
+composer-close
 key <Control>l
 assert-compose-last reply trip-6 forward
+composer-close
 assert-compose-requests 6
 # Compose (c, Ctrl+N) writes from the account whose folder the list shows.
 key c
 assert-compose-last new Personal
+composer-close
 key <Control>n
 assert-compose-last new Personal
+composer-close
 assert-compose-requests 8
 
 # The reader: n and p move to a message, and the commands act on it.
@@ -50,16 +59,20 @@ key p
 wait-until assert-conversation top-of trip-5
 key r
 assert-compose-last reply trip-5 reply
+composer-close
 key p
 wait-until assert-conversation top-of trip-4
 key f
 assert-compose-last reply trip-4 forward
+composer-close
 # The focus in a card: its message (`focus reader` puts it in the first plain-text body, trip-5's).
 focus reader
 key a
 assert-compose-last reply trip-5 reply-all
+composer-close
 key c
 assert-compose-last new Personal
+composer-close
 assert-compose-requests 12
 
 # Each card's buttons act on that card's message.
@@ -67,10 +80,13 @@ action win.expand-all
 wait-until assert-conversation cards 6
 reply-click-card trip-1 reply
 assert-compose-last reply trip-1 reply
+composer-close
 reply-click-card trip-3 reply-all
 assert-compose-last reply trip-3 reply-all
+composer-close
 reply-click-card trip-5 forward
 assert-compose-last reply trip-5 forward
+composer-close
 assert-tooltip reader-card-reply "Reply (r, Ctrl+R)"
 assert-tooltip reader-card-reply-all "Reply all (a, Ctrl+Shift+R)"
 assert-tooltip reader-card-forward "Forward (f, Ctrl+L)"
@@ -80,11 +96,14 @@ assert-compose-requests 15
 # As the palette runs them: the focus is still on trip-5's Forward button.
 action win.reply
 assert-compose-last reply trip-5 reply
+composer-close
 focus list
 action win.reply
 assert-compose-last reply trip-4 reply
+composer-close
 action win.compose
 assert-compose-last new Personal
+composer-close
 assert-compose-requests 18
 
 # Several messages: Reply, Reply All and Forward don't apply, and their keys do nothing.
@@ -108,8 +127,10 @@ assert-action-enabled win.edit-draft true
 assert-action-enabled win.reply false
 action win.edit-draft
 assert-compose-last server-draft selected
+composer-close
 reply-click-card selected edit-draft
 assert-compose-last server-draft selected
+composer-close
 assert-compose-requests 20
 
 # All Inboxes: the selected message's account; another account's folder: that account.
@@ -118,9 +139,11 @@ list-select 0
 wait-until assert-list-selected 0
 action win.compose
 assert-compose-last new Work
+composer-close
 folder inbox Work
 action win.compose
 assert-compose-last new Work
+composer-close
 assert-compose-requests 22
 
 # A mailto: link through the application's open path (D-Bus Open, `sealwax mailto:`); the
@@ -128,6 +151,7 @@ assert-compose-requests 22
 bus-open "mailto:ingrid@example.test?subject=Cabin&attach=%2Fetc%2Fpasswd"
 wait-until assert-compose-requests 23
 assert-compose-last mailto ingrid@example.test
+composer-close
 assert-compose-count 1
 assert-compose 1 subject Cabin
 assert-compose 1 ignored attach

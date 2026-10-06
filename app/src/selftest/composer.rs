@@ -449,8 +449,12 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             settle(harness).await;
             Ok(())
         }
+        // Broadway, unlike a compositor, gives the focus back to no window when one closes.
         "composer-close" => {
             composer()?.window().close();
+            if let Ok(main) = harness.window() {
+                main.window().present();
+            }
             settle(harness).await;
             Ok(())
         }
