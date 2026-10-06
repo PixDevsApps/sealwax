@@ -835,6 +835,54 @@ impl Touched {
     }
 }
 
+/// Queues `changes` for their rows in `tx` as one batch of `kind`, due at once: what the outbox
+/// queues for a sent message's source (`\Answered`, `$Forwarded`) and for Drafts-folder copies
+/// to expunge. A row whose pending ops already take it away, and a flag change that changes
+/// nothing shown, get no op. Returns the row writes for `commit_rows` and the server accounts
+/// whose op runner has work.
+pub(crate) fn queue_in(
+    tx: &Connection,
+    kind: i64,
+    changes: Vec<(Row, Change)>,
+) -> rusqlite::Result<(Vec<RowPlan>, BTreeSet<AccountId>)> {
+    let mut touched = Touched::default();
+    let mut batch = None;
+    let mut seen = BTreeSet::new();
+    for (found, change) in changes {
+        if !seen.insert(found.id) {
+            continue;
+        }
+        let folded = overlay::fold(
+            found.folder,
+            chain(tx, found.id)?.iter().map(|op| op.change),
+        );
+        if folded.expunge {
+            continue;
+        }
+        let prior = found.flags & !HIDDEN;
+        if let Change::Flags { add, remove } = change
+            && (prior | add) & !remove == prior
+        {
+            continue;
+        }
+        let batch = match batch {
+            Some(batch) => batch,
+            None => *batch.insert(new_batch(tx, kind)?),
+        };
+        let local = is_local(tx, found.account)?;
+        let op = NewOp {
+            change,
+            prior_folder: folded.at,
+            prior_flags: prior,
+            not_before: 0,
+        };
+        touched.add(tx, batch, found, op, local)?;
+    }
+    let accounts = touched.accounts.clone();
+    let plans = touched.plans(tx)?;
+    Ok((plans, accounts))
+}
+
 /// An op of a batch, as Undo reads it.
 struct BatchOp {
     id: OpId,

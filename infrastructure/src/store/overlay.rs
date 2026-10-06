@@ -28,6 +28,9 @@ pub(crate) const READ_BELOW: i64 = 3;
 pub(crate) const BATCH_TRIAGE: i64 = 0;
 pub(crate) const BATCH_FOLDER_READ: i64 = 1;
 pub(crate) const BATCH_UNDO: i64 = 2;
+/// What a send queues (M6): the source message's `\Answered` or `$Forwarded`, and stale
+/// Drafts-folder copies to expunge.
+pub(crate) const BATCH_COMPOSE: i64 = 3;
 
 /// Whether a row with these flags is listed and counted.
 pub(crate) fn shown(flags: u32) -> bool {

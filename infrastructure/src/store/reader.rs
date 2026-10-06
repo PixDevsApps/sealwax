@@ -19,6 +19,7 @@ mod sync;
 
 pub(crate) use sync::SyncRead;
 mod bodies;
+pub(crate) mod compose;
 mod conversation;
 mod remote;
 
@@ -67,6 +68,7 @@ pub(crate) enum ReadJob {
         reply: Sender<Option<FolderSync>>,
     },
     Sync(SyncRead),
+    Compose(compose::ComposeRead),
     BodyTargets {
         ids: Vec<MessageId>,
         reply: Sender<Vec<BodyTarget>>,
@@ -111,6 +113,7 @@ impl ReadJob {
             ReadJob::Check { reply } => reply.is_closed(),
             ReadJob::FolderSync { reply, .. } => reply.is_closed(),
             ReadJob::Sync(read) => read.cancelled(),
+            ReadJob::Compose(read) => read.cancelled(),
             ReadJob::BodyTargets { reply, .. } => reply.is_closed(),
             ReadJob::PartSource { reply, .. } => reply.is_closed(),
             ReadJob::BodyCandidates { reply, .. } => reply.is_closed(),
@@ -206,6 +209,7 @@ impl Reader {
                 let _ = reply.try_send(self.folder_sync(folder));
             }
             ReadJob::Sync(read) => self.sync_read(read),
+            ReadJob::Compose(read) => self.compose_read(read),
             ReadJob::BodyTargets { ids, reply } => {
                 let _ = reply.try_send(self.body_targets(&ids));
             }

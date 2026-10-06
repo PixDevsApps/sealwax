@@ -7,10 +7,10 @@ use super::{
     RowChange, State, folder_counts, recompute_thread, removed_positions, thread_counts,
     view_changes,
 };
-use crate::store::StoreError;
 use crate::store::api::{ChangeEvent, StoreVersion};
 use crate::store::ops_api::{OpId, OpsRefusal, RefusedChange};
 use crate::store::overlay::{self, BATCH_FOLDER_READ, Change, Folded, HIDDEN, READ_BELOW};
+use crate::store::{StoreError, compose};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sealwax_domain::model::{AccountId, BlobKey, FolderId, MessageId, ThreadId};
 use std::collections::{BTreeMap, BTreeSet};
@@ -562,7 +562,7 @@ impl State {
             recompute_thread(&tx, *thread)?;
         }
         let orphaned_blobs = orphaned(&tx, blobs)?;
-        if rows.is_empty() && folders.is_empty() {
+        if rows.is_empty() && folders.is_empty() && self.outbox.is_empty() {
             tx.commit()?;
             drop(open);
             self.after_commit();
@@ -589,21 +589,12 @@ impl State {
     }
 }
 
-/// Of `blobs`, those no row refers to any more.
+/// Of `blobs`, those no row, draft or outbox entry refers to any more.
 pub(crate) fn orphaned(
     tx: &Connection,
     blobs: BTreeSet<BlobKey>,
 ) -> rusqlite::Result<Vec<BlobKey>> {
-    let mut used = tx.prepare_cached(
-        "SELECT EXISTS(SELECT 1 FROM messages INDEXED BY messages_blob WHERE blob_key = ?1)",
-    )?;
-    let mut out = Vec::new();
-    for key in blobs {
-        if !used.query_row([key.0.as_slice()], |row| row.get::<_, bool>(0))? {
-            out.push(key);
-        }
-    }
-    Ok(out)
+    compose::unreferenced(tx, blobs)
 }
 
 /// The pending ops waiting in `folder` for their messages, by the message they left with

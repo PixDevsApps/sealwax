@@ -355,6 +355,9 @@ pub struct ChangeEvent {
     pub threads: Vec<ThreadCount>,
     pub merged_threads: Vec<ThreadMerge>,
     pub views: Vec<ViewChange>,
+    /// Sends that entered, moved within or left the outbox (M6): the window's outbox count,
+    /// a send failed for good (`state` `None` with a `failure`) or uncertain.
+    pub outbox: Vec<super::OutboxChange>,
 }
 
 /// A body downloaded for a message the store holds as headers (ML-044). Its raw message, or for
