@@ -436,6 +436,10 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 tokio::spawn(older(shared.clone(), folder));
                 continue;
             }
+            Command::OpsQueued { account } => {
+                tracing::debug!(account = account.0, "ops queued; the op runner is M4's");
+                continue;
+            }
             Command::Reconnect => {
                 tracing::info!("reconnecting every account");
                 for actor in shared.actors().values() {

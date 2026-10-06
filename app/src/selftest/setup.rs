@@ -628,6 +628,9 @@ fn fields(
             ],
         ),
         Command::Reconnect => ("reconnect", None, Vec::new()),
+        Command::OpsQueued { account } => {
+            ("ops-queued", None, vec![("account", account.0.to_string())])
+        }
         Command::UpdatePassword { request, key, .. } => (
             "update-password",
             Some(*request),

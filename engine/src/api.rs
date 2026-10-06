@@ -1,6 +1,8 @@
 //! What the app sends the engine and what it hears back: plain `Send` values over async-channel
 //! (ADR-003). M2 covers account setup and the first sync; M3 adds the sync engine's commands:
 //! folders opened, older mail, bodies, reconnecting, a new password, and the account's status.
+//! M4 adds the op queue's: the app queues triage in the store and wakes the account, and hears
+//! when the server refuses a change for good.
 
 use sealwax_domain::account::{
     AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure, OAuthProvider,
@@ -97,6 +99,10 @@ pub enum Command {
         key: AccountKey,
         password: Password,
     },
+    /// The app queued or undid triage of `account`'s messages in the store (ML-051): its actor
+    /// runs the ops that are due now and wakes again when the next undo window ends. Queued ops
+    /// also run after a start or reconnect without it; this only spares the wait.
+    OpsQueued { account: AccountId },
     /// Stop every connection and the runtime.
     Shutdown,
 }
@@ -165,6 +171,26 @@ pub enum Event {
     },
     /// The keyring didn't answer: secrets stay in memory until Sealwax quits (ADR-008).
     KeyringUnavailable,
+    /// The server refused queued changes for good (ML-051), such as a move into a folder that
+    /// is gone: the store has dropped the ops and put `messages` back as the server has them.
+    OpsRefused {
+        account: AccountId,
+        change: Refused,
+        messages: u32,
+    },
+}
+
+/// What kind of change the server refused, for the app's message.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Refused {
+    /// Read, unread, star or unstar.
+    Flags,
+    /// Archive, junk, not junk, move, or delete into the Trash.
+    Move,
+    /// Deleting for good.
+    Expunge,
+    /// Marking a whole folder read.
+    FolderRead,
 }
 
 /// Where an account's sync stands (ML-048).

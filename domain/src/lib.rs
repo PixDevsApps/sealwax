@@ -14,3 +14,4 @@ pub mod palette;
 pub mod snippet;
 pub mod sync;
 pub mod theme;
+pub mod triage;

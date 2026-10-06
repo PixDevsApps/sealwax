@@ -283,7 +283,7 @@ impl Reader {
         let version = version(&tx)?;
         let value = tx
             .prepare_cached(
-                "SELECT id, account_id, name, role, total_count + below_floor, \
+                "SELECT id, account_id, name, role, selectable, total_count + below_floor, \
                    unread_count + below_unread \
                  FROM folders ORDER BY account_id, id",
             )?
@@ -293,8 +293,9 @@ impl Reader {
                     account: AccountId(row.get(1)?),
                     name: row.get(2)?,
                     role: FolderRole::parse(&row.get::<_, String>(3)?),
-                    total: row.get(4)?,
-                    unread: row.get(5)?,
+                    selectable: row.get(4)?,
+                    total: row.get(5)?,
+                    unread: row.get(6)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?;

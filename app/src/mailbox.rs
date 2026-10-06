@@ -596,6 +596,7 @@ mod tests {
             account: AccountId(account),
             name: name.to_owned(),
             role,
+            selectable: true,
             total: unread * 3,
             unread,
         }

@@ -19,7 +19,7 @@ HERE = Path(__file__).resolve().parent
 URL = "http://127.0.0.1:16080/jmap/"
 ADMIN = "admin:testbed-admin"
 DOMAIN = "example.test"
-USERS = ["alice", "bob", "perf", "rand", "fault", "idle", "spike"]
+USERS = ["alice", "bob", "perf", "rand", "fault", "idle", "spike", "ops", "opsfault", "triage"]
 PASSWORD = "testbed-password"
 
 

@@ -199,6 +199,7 @@ pub enum ActionId {
     Star,
     MarkRead,
     MarkUnread,
+    MarkFolderRead,
     Select,
     Undo,
     Compose,
@@ -218,7 +219,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 32] = [
+    pub const ALL: [Self; 33] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::OpenMessage,
@@ -235,6 +236,7 @@ impl ActionId {
         Self::Star,
         Self::MarkRead,
         Self::MarkUnread,
+        Self::MarkFolderRead,
         Self::Select,
         Self::Undo,
         Self::Compose,
@@ -311,6 +313,15 @@ impl ActionId {
             Self::MarkUnread => {
                 on_selection("mark-unread", "Mark as Unread", Messages, &["<Shift>u"])
             }
+            // Marks every message of the folder the list shows as read, on the server too (ML-052).
+            // No default key until the user picks one; the palette and the sidebar reach it.
+            Self::MarkFolderRead => command(
+                "mark-folder-read",
+                "Mark Folder as Read",
+                Messages,
+                Scope::Window,
+                &[],
+            ),
             // Toggles the selection of the message under the cursor, for batch actions.
             Self::Select => ActionSpec {
                 key_scopes: LIST,
@@ -664,5 +675,6 @@ mod tests {
         assert!(keys(ActionId::CustomizeShortcuts).is_empty());
         // No default key until the user picks one (ADR-017: keys wait for the user).
         assert!(keys(ActionId::AddAccount).is_empty());
+        assert!(keys(ActionId::MarkFolderRead).is_empty());
     }
 }

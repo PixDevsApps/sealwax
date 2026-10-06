@@ -100,6 +100,8 @@ pub struct Folder {
     /// The display name, decoded from modified UTF-7.
     pub name: String,
     pub role: FolderRole,
+    /// `\Noselect` folders hold no messages and take none: the hierarchy's containers.
+    pub selectable: bool,
     pub total: u32,
     pub unread: u32,
 }
