@@ -36,6 +36,8 @@ USERS = [
     "dave",
     "outbox",
     "outboxfault",
+    # M7's new-mail suite (engine/tests/newmail_testbed.rs).
+    "newmail",
 ]
 PASSWORD = "testbed-password"
 
