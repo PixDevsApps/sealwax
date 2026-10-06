@@ -426,6 +426,9 @@ fn main() -> glib::ExitCode {
                         .and_then(|now| now.format("%Y%m%d-%H%M%S").ok())
                         .map_or_else(|| "run".to_owned(), |text| text.to_string());
                     let path = support::output(&format!("composer-live-{stamp}.txt"));
+                    if let Some(parent) = path.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
                     if fs::write(&path, &report).is_ok() {
                         println!("REPORT {}", path.display());
                     }
