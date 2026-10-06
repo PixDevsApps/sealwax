@@ -256,7 +256,7 @@ static BUILDER: LazyLock<Builder<'static>> = LazyLock::new(|| {
         .link_rel(None)
         .strip_comments(true)
         .attribute_filter(|element, attribute, value| {
-            allowed_value(element, attribute, value).then(|| Cow::Borrowed(value))
+            allowed_value(element, attribute, value).then_some(Cow::Borrowed(value))
         });
     builder
 });

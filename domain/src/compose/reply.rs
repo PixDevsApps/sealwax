@@ -11,7 +11,8 @@
 //!   Antw…) or forward prefixes (Fwd, Fw, VS, WG…) are taken off first.
 //! - **Threading:** In-Reply-To is the original's Message-ID; References are the original's
 //!   (or its In-Reply-To when it has none) plus its Message-ID, at most [`MAX_REFERENCES`]: the
-//!   first, which names the thread's root, and the most recent.
+//!   first, which names the thread's root, and the most recent. A forward has neither (RFC 5322
+//!   3.6.4 gives them to replies; they would show the new recipients the thread's ids).
 
 use super::clean;
 use super::identity::{self, Signature};
@@ -166,7 +167,10 @@ pub fn plan(original: &Original, kind: ReplyKind, senders: &[Identity]) -> Reply
         ReplyKind::Reply | ReplyKind::ReplyAll => reply_subject(&headers.subject),
         ReplyKind::Forward => forward_subject(&headers.subject),
     };
-    let (in_reply_to, references) = threading(headers);
+    let (in_reply_to, references) = match kind {
+        ReplyKind::Reply | ReplyKind::ReplyAll => threading(headers),
+        ReplyKind::Forward => (None, Vec::new()),
+    };
     let available = |id: &str| {
         ids::is_header_safe(id)
             && original

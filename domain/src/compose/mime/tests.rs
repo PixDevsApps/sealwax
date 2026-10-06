@@ -677,6 +677,8 @@ fn a_planned_reply_builds_and_reads_back_as_a_draft() {
     };
     let built = build(&draft, DATE, &[]).unwrap();
     check(&built.transmitted, Which::Transmitted, &draft, &[]);
+    assert!(find(&built.transmitted, b"script").is_none());
+    assert!(find(&built.transmitted, b"Kommer du?").is_some());
     let saved = drafts_copy(&draft, DATE, &[]).unwrap();
     let back = stored::parse(&saved).unwrap();
     assert_eq!(back.from.as_ref(), Some(&draft.from));

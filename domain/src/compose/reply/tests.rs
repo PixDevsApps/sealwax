@@ -207,7 +207,11 @@ fn forward_carries_the_attachments() {
     let forward = plan(&original, ReplyKind::Forward, &senders());
     assert!(forward.to.is_empty() && forward.cc.is_empty());
     assert_eq!(forward.subject, "Fwd: SV: Møte i morgen");
-    assert_eq!(forward.in_reply_to.as_deref(), Some("m3@example.test"));
+    assert_eq!(
+        forward.in_reply_to, None,
+        "a forward starts a conversation of its own"
+    );
+    assert!(forward.references.is_empty());
     let parts: Vec<(&str, Option<&str>)> = forward
         .parts
         .iter()

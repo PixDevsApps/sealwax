@@ -3,6 +3,10 @@
 //! dropped and only its name is reported. Header values lose control characters, so an encoded
 //! CR LF can't smuggle another header line in. Ported from spike S6.
 
+use crate::compose::{self, Draft, address, text};
+use crate::message::normalize_id;
+use crate::model::Address;
+
 const MAX_HEADER_CHARS: usize = 998;
 const MAX_BODY_BYTES: usize = 256 * 1024;
 const MAX_ADDRESSES: usize = 100;
@@ -18,6 +22,46 @@ pub struct Mailto {
     pub in_reply_to: Option<String>,
     /// Lower-cased names of the header fields that were dropped, plus `invalid-address`.
     pub ignored: Vec<String>,
+}
+
+impl Mailto {
+    /// Fills `draft` (a new one, [`compose::new_draft`], with its signature) from the link: its
+    /// recipients after any the draft has (each once; addresses Sealwax can't send to are left
+    /// out), its subject, its body as the editor's lines in place of the empty line to type in,
+    /// and its In-Reply-To.
+    pub fn fill(&self, draft: &mut Draft) {
+        let add = |list: &mut Vec<Address>, emails: &[String]| {
+            let added = emails
+                .iter()
+                .filter(|email| address::is_valid(email))
+                .map(|email| Address::new("", email.clone()));
+            *list = address::dedupe(list.drain(..).chain(added));
+        };
+        add(&mut draft.to, &self.to);
+        add(&mut draft.cc, &self.cc);
+        add(&mut draft.bcc, &self.bcc);
+        if let Some(subject) = &self.subject {
+            draft.subject = text::header_text(subject);
+        }
+        if let Some(body) = self.body.as_deref().filter(|body| !body.trim().is_empty()) {
+            let body = text::to_html(body.trim_end_matches('\n'));
+            draft.html = match draft.html.strip_prefix(compose::EMPTY_LINE) {
+                Some(rest) => format!("{body}{rest}"),
+                None => format!("{body}{}", draft.html),
+            };
+        }
+        if let Some(id) = self
+            .in_reply_to
+            .as_deref()
+            .and_then(normalize_id)
+            .filter(|id| compose::ids::is_header_safe(id))
+        {
+            if draft.references.is_empty() {
+                draft.references = vec![id.clone()];
+            }
+            draft.in_reply_to = Some(id);
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -261,6 +305,44 @@ mod tests {
         let parsed = parse(&format!("mailto:{}", many.join(","))).unwrap();
         assert_eq!(parsed.to.len(), MAX_ADDRESSES);
         assert!(parsed.ignored.is_empty());
+    }
+
+    #[test]
+    fn a_link_fills_a_new_draft() {
+        let sender = crate::account::Identity {
+            name: "Ada".into(),
+            address: "ada@example.test".into(),
+            signature: Some("Ada".into()),
+        };
+        let mut draft = compose::new_draft(
+            crate::model::AccountId(1),
+            &sender,
+            "id@example.test".into(),
+        );
+        draft.to = vec![Address::new("Bob", "bob@example.test")];
+        let link = parse(
+            "mailto:BOB@example.test,%C3%A6@example.org?cc=c@example.test&bcc=d@example.test\
+             &subject=Hei%0D%0Ader&body=Linje%20%3Cen%3E%0D%0A%0D%0Ato%0A&in-reply-to=%3Cm1@example.org%3E",
+        )
+        .unwrap();
+        link.fill(&mut draft);
+        let emails = |list: &[Address]| list.iter().map(|a| a.email.clone()).collect::<Vec<_>>();
+        assert_eq!(emails(&draft.to), ["bob@example.test"]);
+        assert_eq!(emails(&draft.cc), ["c@example.test"]);
+        assert_eq!(emails(&draft.bcc), ["d@example.test"]);
+        assert_eq!(draft.subject, "Hei der");
+        assert_eq!(
+            draft.html,
+            "<div>Linje &lt;en&gt;</div><div><br></div><div>to</div><div><br></div>\
+             <div class=\"sw-signature\"><div>--&nbsp;</div><div>Ada</div></div>"
+        );
+        assert_eq!(draft.in_reply_to.as_deref(), Some("m1@example.org"));
+        assert_eq!(draft.references, ["m1@example.org"]);
+        let mut bare = Draft::default();
+        parse("mailto:x@example.test?body=b")
+            .unwrap()
+            .fill(&mut bare);
+        assert_eq!(bare.html, "<div>b</div>");
     }
 
     #[test]

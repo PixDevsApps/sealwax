@@ -6,7 +6,7 @@
 //! layout survive the assistant's writes.
 
 use crate::account::{
-    AccountKey, AccountSettings, AuthMethod, Endpoint, OAuthProvider, Protocol, Security,
+    AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider, Protocol, Security,
 };
 use crate::config::{FileError, article, did_you_mean, entries, parse_toml};
 use std::net::Ipv6Addr;
@@ -19,8 +19,21 @@ pub const ACCOUNTS_FILE: &str = "accounts.toml";
 /// The longest key a hand-written account may have.
 pub const MAX_KEY_LENGTH: usize = 40;
 
-const ACCOUNT_SETTINGS: [&str; 7] = ["key", "name", "address", "username", "auth", "imap", "smtp"];
+const ACCOUNT_SETTINGS: [&str; 9] = [
+    "key",
+    "name",
+    "address",
+    "username",
+    "auth",
+    "signature",
+    "imap",
+    "smtp",
+    "identity",
+];
 const ENDPOINT_SETTINGS: [&str; 3] = ["host", "port", "security"];
+const IDENTITY_SETTINGS: [&str; 3] = ["name", "address", "signature"];
+/// The longest signature, in characters.
+pub const MAX_SIGNATURE_CHARS: usize = 10_000;
 
 /// Whether `key` can name an account: 1 to 40 of `a`–`z`, `0`–`9`, `-` and `_`. Generated keys
 /// are 12 characters of lowercase base32; hand-written ones may be words ("work").
@@ -154,6 +167,29 @@ struct Located {
     line: usize,
     key_span: Range<usize>,
     address_span: Range<usize>,
+    /// Where each identity's address is, in the order of `account.identities`.
+    identity_spans: Vec<Range<usize>>,
+}
+
+impl Located {
+    /// The account's own address and its identities', each with where it is written.
+    fn addresses(&self) -> impl Iterator<Item = (&str, &Range<usize>)> {
+        std::iter::once((self.account.address.as_str(), &self.address_span)).chain(
+            self.account
+                .identities
+                .iter()
+                .map(|identity| identity.address.as_str())
+                .zip(&self.identity_spans),
+        )
+    }
+}
+
+/// An identity as read, before its name defaults to the account's.
+struct ReadIdentity {
+    name: Option<String>,
+    address: String,
+    address_span: Range<usize>,
+    signature: Option<String>,
 }
 
 /// Collects the mistakes of one `accounts.toml` read.
@@ -201,6 +237,134 @@ impl Reader<'_> {
         }
     }
 
+    /// A signature: plain text, line breaks and tabs allowed, at most [`MAX_SIGNATURE_CHARS`];
+    /// white space at the ends of lines and blank lines around it dropped, `None` when empty.
+    fn signature(&mut self, value: &Spanned<DeValue<'_>>) -> Option<String> {
+        let Some(text) = value.get_ref().as_str() else {
+            self.error(
+                value.span(),
+                format!(
+                    "signature takes a string in quotes, or in \"\"\" for several lines, not {}",
+                    article(value.get_ref().type_str())
+                ),
+            );
+            return None;
+        };
+        if text
+            .chars()
+            .any(|c| c.is_control() && !matches!(c, '\n' | '\r' | '\t'))
+        {
+            self.error(value.span(), "signature can't hold control characters");
+            return None;
+        }
+        if text.chars().count() > MAX_SIGNATURE_CHARS {
+            self.error(
+                value.span(),
+                format!("signature is at most {MAX_SIGNATURE_CHARS} characters"),
+            );
+            return None;
+        }
+        let text = text.replace("\r\n", "\n");
+        let lines: Vec<&str> = text.lines().map(str::trim_end).collect();
+        let first = lines.iter().position(|line| !line.is_empty())?;
+        let last = lines.iter().rposition(|line| !line.is_empty())?;
+        Some(lines[first..=last].join("\n"))
+    }
+
+    /// The `[[account.identity]]` tables of an account.
+    fn identities(&mut self, value: &Spanned<DeValue<'_>>) -> Vec<ReadIdentity> {
+        let tables = value.get_ref().as_array().filter(|array| {
+            array
+                .iter()
+                .all(|element| self.text[element.span()].starts_with("[["))
+        });
+        let Some(tables) = tables else {
+            self.error(
+                value.span(),
+                "identities are written as [[account.identity]] tables, one per address",
+            );
+            return Vec::new();
+        };
+        tables
+            .iter()
+            .filter_map(|element| {
+                let table = element.get_ref().as_table()?;
+                self.identity(table, element.span())
+            })
+            .collect()
+    }
+
+    fn identity(&mut self, table: &DeTable<'_>, header: Range<usize>) -> Option<ReadIdentity> {
+        let errors_before = self.errors.len();
+        let mut name = None;
+        let mut address = None;
+        let mut signature = None;
+        for (field, value) in entries(table) {
+            let field_name = field.get_ref().as_ref();
+            let span = value.span();
+            match field_name {
+                "name" => {
+                    if let Some(text) = self.string("name", value) {
+                        if is_plain_text(&text) {
+                            name = Some(text);
+                        } else {
+                            self.error(
+                                span,
+                                "name can't be empty or hold control characters; leave the \
+                                 line out to use the account's name",
+                            );
+                        }
+                    }
+                }
+                "address" => {
+                    if let Some(text) = self.string("address", value) {
+                        if is_valid_address(&text) {
+                            address = Some((text, span));
+                        } else {
+                            self.error(
+                                span,
+                                "address is an email address, like ada@work.example.test",
+                            );
+                        }
+                    }
+                }
+                "signature" => signature = self.signature(value),
+                _ if is_secret_name(field_name) => {
+                    self.error(field.span(), secret_message(field_name));
+                }
+                _ => {
+                    self.error(
+                        field.span(),
+                        format!(
+                            "unknown setting {field_name} in [[account.identity]]{}",
+                            did_you_mean(field_name, IDENTITY_SETTINGS)
+                        ),
+                    );
+                    if let Some(inner) = value.get_ref().as_table() {
+                        self.secrets_in(inner);
+                    }
+                }
+            }
+        }
+        if address.is_none() && !table.contains_key("address") {
+            self.error(
+                header,
+                "this identity has no address, the one it sends from; add one, like \
+                 address = \"ada@work.example.test\"",
+            );
+        }
+        if self.errors.len() != errors_before {
+            return None;
+        }
+        let (address, address_span) = address?;
+        Some(ReadIdentity {
+            name,
+            address,
+            address_span,
+            signature,
+        })
+    }
+
     fn account(&mut self, table: &DeTable<'_>, header: Range<usize>) -> Option<Located> {
         let errors_before = self.errors.len();
         let mut key = None;
@@ -210,6 +374,8 @@ impl Reader<'_> {
         let mut auth = AuthMethod::Password;
         let mut imap = None;
         let mut smtp = None;
+        let mut signature = None;
+        let mut identities = Vec::new();
         for (field, value) in entries(table) {
             let field_name = field.get_ref().as_ref();
             let span = value.span();
@@ -278,6 +444,8 @@ impl Reader<'_> {
                 },
                 "imap" => imap = self.endpoint(Protocol::Imap, value),
                 "smtp" => smtp = self.endpoint(Protocol::Smtp, value),
+                "signature" => signature = self.signature(value),
+                "identity" => identities = self.identities(value),
                 _ if is_secret_name(field_name) => {
                     self.error(field.span(), secret_message(field_name));
                 }
@@ -329,6 +497,18 @@ impl Reader<'_> {
         }
         let ((key, key_span), name, (address, address_span), imap, smtp) =
             (key?, name?, address?, imap?, smtp?);
+        let identity_spans = identities
+            .iter()
+            .map(|identity: &ReadIdentity| identity.address_span.clone())
+            .collect();
+        let identities = identities
+            .into_iter()
+            .map(|identity| Identity {
+                name: identity.name.unwrap_or_else(|| name.clone()),
+                address: identity.address,
+                signature: identity.signature,
+            })
+            .collect();
         Some(Located {
             line: self.line(&header),
             account: AccountSettings {
@@ -339,11 +519,12 @@ impl Reader<'_> {
                 imap,
                 smtp,
                 auth,
-                signature: None,
-                identities: Vec::new(),
+                signature,
+                identities,
             },
             key_span,
             address_span,
+            identity_spans,
         })
     }
 
@@ -466,18 +647,32 @@ impl Reader<'_> {
                     ),
                 );
             }
-            if let Some(first) = earlier.iter().find(|a| {
-                a.account
-                    .address
-                    .eq_ignore_ascii_case(&later.account.address)
-            }) {
-                self.error(
-                    later.address_span.clone(),
-                    format!(
-                        "this address is also the address of the account on line {}",
-                        first.line
-                    ),
-                );
+            let mut own: Vec<&str> = Vec::new();
+            for (address, span) in later.addresses() {
+                let elsewhere = earlier.iter().find_map(|account| {
+                    account
+                        .addresses()
+                        .position(|(known, _)| known.eq_ignore_ascii_case(address))
+                        .map(|position| (account.line, position == 0))
+                });
+                if let Some((line, its_own)) = elsewhere {
+                    let what = if its_own {
+                        "the address"
+                    } else {
+                        "an identity"
+                    };
+                    self.error(
+                        span.clone(),
+                        format!("this address is also {what} of the account on line {line}"),
+                    );
+                } else if own.iter().any(|known| known.eq_ignore_ascii_case(address)) {
+                    self.error(
+                        span.clone(),
+                        "this address is already one of this account's; every identity needs \
+                         an address of its own",
+                    );
+                }
+                own.push(address);
             }
         }
     }
@@ -738,6 +933,9 @@ pub fn default_accounts_file() -> String {
      # address = \"ada@example.test\"\n\
      # username = \"ada@example.test\"  # optional: the address by default\n\
      # auth = \"password\"              # or \"microsoft\" for Sign in with Microsoft\n\
+     # signature = \"\"\"\n\
+     # Ada Lovelace\n\
+     # Analytical Engines Ltd.\"\"\"       # optional: plain text under your mail, after \"-- \"\n\
      #\n\
      # [account.imap]\n\
      # host = \"imap.example.test\"\n\
@@ -747,7 +945,13 @@ pub fn default_accounts_file() -> String {
      # [account.smtp]\n\
      # host = \"smtp.example.test\"\n\
      # port = 465                     # optional: 465 for \"tls\", 587 for \"starttls\"\n\
-     # security = \"tls\"\n"
+     # security = \"tls\"\n\
+     #\n\
+     # [[account.identity]]           # optional: another address it sends from, one table each;\n\
+     #                                # a reply goes out from the address it was sent to\n\
+     # name = \"Ada at the board\"      # optional: the account's name by default\n\
+     # address = \"board@example.test\"\n\
+     # signature = \"Ada, for the board\"  # optional\n"
         .to_owned()
 }
 
@@ -847,6 +1051,139 @@ mod tests {
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].key.0, "work");
         assert_eq!(accounts[0].smtp.port, 465);
+        assert_eq!(
+            accounts[0].signature.as_deref(),
+            Some("Ada Lovelace\nAnalytical Engines Ltd.")
+        );
+        assert_eq!(
+            accounts[0].identities,
+            [Identity {
+                name: "Ada at the board".to_owned(),
+                address: "board@example.test".to_owned(),
+                signature: Some("Ada, for the board".to_owned()),
+            }]
+        );
+    }
+
+    #[test]
+    fn reads_signatures_and_identities() {
+        let text = ONE.replace(
+            "address = \"ada@example.test\"\n",
+            "address = \"ada@example.test\"\nsignature = \"\"\"\n\n  Ada  \r\n\tLovelace\n\n\"\"\"\n",
+        ) + "\n[[account.identity]]\naddress = \"alias@example.test\"\n\n\
+               [[account.identity]]\nname = \"Board\"\naddress = \"board@example.test\"\n\
+               signature = \"B\"\n";
+        let account = &parse(&text).unwrap()[0];
+        assert_eq!(account.signature.as_deref(), Some("  Ada\n\tLovelace"));
+        assert_eq!(
+            account.identities,
+            [
+                Identity {
+                    name: "Ada Lovelace".to_owned(),
+                    address: "alias@example.test".to_owned(),
+                    signature: None,
+                },
+                Identity {
+                    name: "Board".to_owned(),
+                    address: "board@example.test".to_owned(),
+                    signature: Some("B".to_owned()),
+                },
+            ]
+        );
+        let blank = ONE.replace("name = ", "signature = \" \\n \"\nname = ");
+        assert_eq!(parse(&blank).unwrap()[0].signature, None);
+    }
+
+    #[test]
+    fn identity_mistakes_say_where_they_are() {
+        let identity = |body: &str| format!("{ONE}\n[[account.identity]]\n{body}");
+        let cases: [(String, &str); 8] = [
+            (
+                identity("name = \"x\"\n"),
+                "line 13, column 1: this identity has no address",
+            ),
+            (
+                identity("address = \"nope\"\n"),
+                "line 14, column 11: address is an email address, like ada@work.example.test",
+            ),
+            (
+                identity("address = \"a@example.test\"\nadress = \"b@example.test\"\n"),
+                "line 15, column 1: unknown setting adress in [[account.identity]]; did you mean \
+                 address?",
+            ),
+            (
+                identity("address = \"a@example.test\"\npassword = \"x\"\n"),
+                "line 15, column 1: password looks like a password or token",
+            ),
+            (
+                identity("address = \"ADA@example.test\"\n"),
+                "line 14, column 11: this address is already one of this account's",
+            ),
+            (
+                identity("address = \"a@example.test\"\nsignature = 3\n"),
+                "line 15, column 13: signature takes a string in quotes",
+            ),
+            (
+                identity("address = \"a@example.test\"\nsignature = \"a\\u0007b\"\n"),
+                "line 15, column 13: signature can't hold control characters",
+            ),
+            (
+                ONE.replace(
+                    "name = ",
+                    "identity = { address = \"a@example.test\" }\nname = ",
+                ),
+                "line 3, column 12: identities are written as [[account.identity]] tables",
+            ),
+        ];
+        for (text, expected) in cases {
+            let found = errors(&text);
+            assert!(
+                found
+                    .first()
+                    .is_some_and(|error| error.starts_with(expected)),
+                "{expected:?} not in {found:?}"
+            );
+        }
+        let long = ONE.replace(
+            "name = ",
+            &format!(
+                "signature = \"{}\"\nname = ",
+                "x".repeat(MAX_SIGNATURE_CHARS + 1)
+            ),
+        );
+        assert!(errors(&long)[0].contains("signature is at most 10000 characters"));
+        let home = ONE
+            .replace("\"work\"", "\"home\"")
+            .replace("ada@example.test", "home@example.test");
+        let shared = format!(
+            "{}\n{home}\n[[account.identity]]\naddress = \"Board@example.test\"\n",
+            identity("address = \"board@example.test\"\n")
+        );
+        let found = errors(&shared);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("this address is also an identity of the account on line 1"),
+            "{found:?}"
+        );
+        assert!(!found[0].contains("board@"), "never quotes the address");
+    }
+
+    #[test]
+    fn identities_go_with_their_account() {
+        let text = format!(
+            "{ONE}\n[[account.identity]]\naddress = \"alias@example.test\"\n\n{}",
+            ONE.replace("\"work\"", "\"home\"")
+                .replace("ada@example.test", "home@example.test")
+        );
+        let accounts = parse(&text).unwrap();
+        assert_eq!(accounts[0].identities.len(), 1);
+        assert!(accounts[1].identities.is_empty());
+        let without = remove(&text, &AccountKey("work".into())).unwrap().unwrap();
+        assert!(!without.contains("alias@"), "{without}");
+        assert_eq!(parse(&without).unwrap()[0].key.0, "home");
+        let added = add(&text, &account("third", "third@example.test")).unwrap();
+        assert_eq!(parse(&added).unwrap()[0].identities.len(), 1);
+        assert!(!entry(&account("third", "third@example.test")).contains("signature"));
     }
 
     #[test]
