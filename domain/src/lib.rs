@@ -3,6 +3,7 @@
 pub mod account;
 pub mod accounts_file;
 pub mod actions;
+pub mod attachment;
 pub mod autoconfig;
 pub mod bodies;
 pub mod config;

@@ -4,13 +4,15 @@
 //! round trip; a larger one as its header and the text parts the reader shows, rebuilt in the
 //! message's own MIME structure with every attachment left empty and recorded by its IMAP
 //! section, which [`fetch_part`] fetches on demand. Each body goes into the blob store before
-//! the store's upgrade refers to it.
+//! the store's upgrade refers to it. [`fetch_original`] fetches a message whole for Show
+//! Original and Save as .eml (M5), storing nothing.
 
 use super::connection::Connection;
 use super::error::ImapError;
 use super::raw;
 use super::sync::view;
 use crate::api::BodyError;
+pub use crate::api::FetchedPart;
 use async_imap::imap_proto::{
     AttributeValue, BodyContentCommon, BodyStructure, ContentEncoding, MessageSection, Response,
     SectionPath,
@@ -254,7 +256,7 @@ pub(crate) fn rebuild(root: &Node, sections: &HashMap<String, Vec<u8>>) -> Vec<u
 
 /// The IMAP section of each part of a raw message by its mail-parser index: `1`, `2.1`…, or
 /// `TEXT` for the body of a message that isn't multipart.
-pub(crate) fn part_sections(raw: &[u8]) -> HashMap<u32, String> {
+pub fn part_sections(raw: &[u8]) -> HashMap<u32, String> {
     let mut out = HashMap::new();
     let Some(parsed) = MessageParser::default().parse(raw) else {
         return out;
@@ -580,13 +582,6 @@ pub async fn fetch_bodies(
     Ok(())
 }
 
-/// One part of a stored message, decoded.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FetchedPart {
-    pub mime_type: String,
-    pub data: Vec<u8>,
-}
-
 /// Fetches one attachment of a message stored as its text parts, by the section the store
 /// recorded (see [`Store::part_source`]), and decodes it; nothing is stored. `Gone` when the
 /// server no longer has the message.
@@ -625,6 +620,25 @@ pub async fn fetch_part(
         mime_type: source.mime_type.clone(),
         data,
     }))
+}
+
+/// Fetches the message at `uid` of `folder` whole, the bytes as the server has them, after the
+/// UIDVALIDITY check; nothing is stored and nothing is marked `\Seen`. `Gone` when the server
+/// no longer has the message.
+pub async fn fetch_original(
+    conn: &mut Connection,
+    folder: &FolderSync,
+    uid: u32,
+) -> Result<Result<Vec<u8>, BodyError>, ImapError> {
+    let uidvalidity = examine(conn, &folder.name_raw).await?;
+    if uidvalidity.is_none() || uidvalidity != folder.uidvalidity {
+        return Ok(Err(BodyError::Gone));
+    }
+    let mut fetched = uid_fetch(conn, &[uid], "UID BODY.PEEK[]").await?;
+    Ok(fetched
+        .remove(&uid)
+        .and_then(|found| found.whole)
+        .ok_or(BodyError::Gone))
 }
 
 #[cfg(test)]

@@ -8,7 +8,10 @@
 use super::conversation::{Card, Entry, HtmlBody, Item, reveal};
 use super::page::{self, Header};
 use super::prepare::{self, Body, Prepared};
-use super::{Inner, ShownBody, ViewEvent, download_failure, now, plain, rgba, stylesheet, widgets};
+use super::remote::Notice;
+use super::{
+    Inner, Reader, ShownBody, ViewEvent, download_failure, now, plain, rgba, stylesheet, widgets,
+};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
@@ -113,8 +116,12 @@ impl Inner {
                 remote_images: true,
                 ..
             }
-        ) && !self.remote.allows(id, &sender);
-        let widgets = page::card(&header, &prepared.attachments, remote_images);
+        );
+        let reader = Reader {
+            inner: self.clone(),
+        };
+        let notice = self.remote.notice(id, &sender, remote_images);
+        let widgets = page::card(&reader, &header, &prepared.attachments, notice);
         let weak = Rc::downgrade(&self);
         widgets.header.connect_clicked(move |_| {
             if let Some(inner) = weak.upgrade()
@@ -137,6 +144,7 @@ impl Inner {
             html: None,
             attachments: prepared.attachments.len(),
             sender,
+            remote_images,
         };
         match download {
             Some(state) => self.download_body(&mut card, &detail, state, key, id),
@@ -343,6 +351,9 @@ impl Inner {
             self.report_opened(key);
         }
         self.schedule();
+        if shown && self.with_page(key, |page| page.selected == id) == Some(true) {
+            self.remote.changed();
+        }
     }
 
     /// Expands message `id` of the shown conversation: its card replaces its row once read.
@@ -501,23 +512,37 @@ impl Inner {
         );
     }
 
-    /// Every body whose remote images the policy now allows loads them: its banner goes and
-    /// its view, if it holds one, loads again without the content filter.
+    /// Every expanded card follows the remote-content policy (ML-058) after Show images, a
+    /// sender allowed or forgotten, or the list read: a card whose images are now allowed for
+    /// it alone loses its banner, and its view, if it holds one, loads again without the
+    /// content filter; a card whose sender joined or left the list is built again, with the
+    /// sender's line or the banner. Collapsed messages take the policy when expanded.
     pub(super) fn refresh_remote(self: &Rc<Self>) {
         let theme = self.theme.theme();
+        let mut rebuild = Vec::new();
         for pages in [&self.shown, &self.pending] {
             let mut pages = pages.borrow_mut();
             let Some(page) = pages.as_mut() else {
                 continue;
             };
+            let key = page.key;
             for item in page.items_mut() {
                 let id = item.id();
                 let Some(card) = item.card.as_mut() else {
                     continue;
                 };
-                if !self.remote.allows(id, &card.sender) {
+                let wanted = self.remote.notice(id, &card.sender, card.remote_images);
+                if wanted == card.widgets.notice {
                     continue;
                 }
+                if !matches!(
+                    (&card.widgets.notice, &wanted),
+                    (Notice::Hidden(_), Notice::None)
+                ) {
+                    rebuild.push((key, id));
+                    continue;
+                }
+                card.widgets.notice = wanted;
                 if let Some(banner) = &card.widgets.banner
                     && banner.root.parent().is_some()
                 {
@@ -546,6 +571,9 @@ impl Inner {
                     );
                 }
             }
+        }
+        for (key, id) in rebuild {
+            self.reload_card(key, id);
         }
     }
 

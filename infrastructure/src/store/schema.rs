@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 7;
+pub const VERSION: i64 = 8;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -247,6 +247,16 @@ CREATE TABLE op_refusals(
     messages INTEGER NOT NULL
 );
 CREATE INDEX op_refusals_account ON op_refusals(account_id);
+";
+
+/// M5's senders whose remote images load without asking (ML-058): one row per address, lower
+/// case, with when the user added it (Unix seconds). The list belongs to the user, not to an
+/// account: it stays when an account is removed.
+const V8: &str = "
+CREATE TABLE remote_senders(
+    address TEXT PRIMARY KEY,
+    added INTEGER NOT NULL
+) WITHOUT ROWID;
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

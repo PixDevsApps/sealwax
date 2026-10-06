@@ -46,6 +46,9 @@ mod ops_prop_tests;
 #[cfg(test)]
 mod ops_tests;
 
+#[cfg(test)]
+mod remote_tests;
+
 pub use api::*;
 pub use conversation::{Conversation, ConversationMessage};
 pub use ops_api::*;
@@ -502,6 +505,22 @@ impl Store {
         })
     }
 
+    /// The senders whose remote images load without asking (ML-058), lower case, in order.
+    pub fn remote_senders(&self) -> Reply<Vec<String>> {
+        self.read(|reply| ReadJob::RemoteSenders { reply })
+    }
+
+    /// Images from `address` load without asking from now on; `at` (Unix seconds) is when the
+    /// user added it. The address is kept trimmed and in lower case; an empty one is ignored.
+    pub fn allow_remote_sender(&self, address: String, at: i64) -> Reply<()> {
+        self.write(|reply| WriteJob::AllowRemoteSender { address, at, reply })
+    }
+
+    /// Images from `address` are hidden again until the user allows them.
+    pub fn forget_remote_sender(&self, address: String) -> Reply<()> {
+        self.write(|reply| WriteJob::ForgetRemoteSender { address, reply })
+    }
+
     /// Stops accepting requests, lets queued requests finish and waits for the threads. The
     /// readers stop first, so the writer and the maintenance thread close last and leave an
     /// empty WAL behind.
@@ -523,6 +542,13 @@ impl Drop for Store {
         self.reads.close();
         self.writes.close();
     }
+}
+
+/// How the list of senders whose images load keeps an address: trimmed, in lower case; `None`
+/// for an empty one.
+pub(crate) fn remote_sender_key(address: &str) -> Option<String> {
+    let address = address.trim();
+    (!address.is_empty()).then(|| address.to_lowercase())
 }
 
 /// Creates the database file 0600 before SQLite does (its WAL and shared-memory files copy the

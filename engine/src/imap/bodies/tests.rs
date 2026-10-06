@@ -587,3 +587,113 @@ fn sections_follow_the_mime_tree() {
     assert_eq!(named, ["2", "3"]);
     assert_eq!(sections[&parsed.html_parts[0]], "1.2");
 }
+
+#[tokio::test]
+async fn an_original_comes_whole_with_peek_only_and_nothing_is_stored() {
+    let scratch = Scratch::new();
+    let targets = scratch.headers(&[(9, 12_400_000)]);
+    let original =
+        format!("{HEADER}--mix\r\nContent-Type: text/plain\r\n\r\n{PLAIN}\r\n--mix--\r\n");
+    let sent = original.clone();
+    let ca = test_ca();
+    let config = ca.server.clone();
+    let (listener, port) = bind().await;
+    let server = tokio::spawn(async move {
+        let mut peer = logged_in(&listener, config).await;
+        examined(&mut peer, UIDVALIDITY).await;
+        let tag = peer.expect("UID FETCH 9 (UID BODY.PEEK[])").await;
+        peer.send(&format!(
+            "* 3 FETCH (UID 9 {})\r\n{tag} OK fetched\r\n",
+            literal("BODY[]", &sent)
+        ))
+        .await;
+        peer.drain().await
+    });
+    let mut conn = client(port, &ca.trust).await;
+    let fetched = fetch_original(&mut conn, &scratch.folder_sync(), 9)
+        .await
+        .unwrap();
+    drop(conn);
+    assert_eq!(fetched, Ok(original.into_bytes()));
+    let stored = scratch.target(targets[0].message);
+    assert_eq!((stored.body_state, stored.blob), (BodyState::Partial, None));
+    assert_eq!(scratch.blobs.disk_usage().unwrap().files, 0);
+    assert_read_only(&server.await.unwrap());
+}
+
+#[tokio::test]
+async fn an_original_or_a_part_gone_from_the_server_is_gone() {
+    let scratch = Scratch::new();
+    scratch.headers(&[(9, 12_400_000)]);
+    let ca = test_ca();
+    let config = ca.server.clone();
+    let (listener, port) = bind().await;
+    let server = tokio::spawn(async move {
+        let mut peer = logged_in(&listener, config.clone()).await;
+        examined(&mut peer, UIDVALIDITY).await;
+        let tag = peer.expect("UID FETCH 9 (UID BODY.PEEK[])").await;
+        peer.send(&format!("{tag} OK nothing\r\n")).await;
+        examined(&mut peer, UIDVALIDITY).await;
+        let tag = peer
+            .expect("UID FETCH 9 (UID BODY.PEEK[2.MIME] BODY.PEEK[2])")
+            .await;
+        peer.send(&format!("{tag} NO no such message\r\n")).await;
+        let first = peer.drain().await;
+        let mut peer = logged_in(&listener, config).await;
+        examined(&mut peer, UIDVALIDITY + 1).await;
+        (first, peer.drain().await)
+    });
+    let folder = scratch.folder_sync();
+    let source = PartSource {
+        message: MessageId(1),
+        folder: folder.folder,
+        uid: 9,
+        section: "2".into(),
+        mime_type: "application/pdf".into(),
+    };
+    let mut conn = client(port, &ca.trust).await;
+    assert_eq!(
+        fetch_original(&mut conn, &folder, 9).await.unwrap(),
+        Err(BodyError::Gone)
+    );
+    assert_eq!(
+        fetch_part(&mut conn, &folder, &source).await.unwrap(),
+        Err(BodyError::Gone)
+    );
+    drop(conn);
+    let mut conn = client(port, &ca.trust).await;
+    assert_eq!(
+        fetch_original(&mut conn, &folder, 9).await.unwrap(),
+        Err(BodyError::Gone),
+        "a new UIDVALIDITY"
+    );
+    drop(conn);
+    let (first, second) = server.await.unwrap();
+    assert_read_only(&first);
+    assert!(!second.contains("FETCH"), "{second}");
+}
+
+#[tokio::test]
+async fn an_original_cut_mid_literal_is_a_lost_connection() {
+    let scratch = Scratch::new();
+    scratch.headers(&[(9, 12_400_000)]);
+    let ca = test_ca();
+    let config = ca.server.clone();
+    let (listener, port) = bind().await;
+    tokio::spawn(async move {
+        let mut peer = logged_in(&listener, config).await;
+        examined(&mut peer, UIDVALIDITY).await;
+        peer.expect("UID FETCH 9 (UID BODY.PEEK[])").await;
+        peer.send(&format!(
+            "* 3 FETCH (UID 9 BODY[] {{5000}}\r\n{}",
+            &HEADER[..40]
+        ))
+        .await;
+        drop(peer);
+    });
+    let mut conn = client(port, &ca.trust).await;
+    let error = fetch_original(&mut conn, &scratch.folder_sync(), 9)
+        .await
+        .unwrap_err();
+    assert!(error.is_connection(), "{error}");
+}

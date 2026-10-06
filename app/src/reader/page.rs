@@ -1,13 +1,14 @@
 //! The GTK side of one expanded message (DESIGN.md "Reader", the approved mock): a card with the
 //! sender block (avatar, name and address, "to me" or the recipients, the date with relative
 //! time, expandable details), its own remote-content banner, the body and the attachment cards.
-//! The sender block is a button that collapses the card. The banner is [`super::remote`]'s, the
-//! cards [`super::attachments`]'s and a plain-text body [`super::plain`]'s (M5's owners); each
-//! card calls them in one place, [`card`].
+//! The sender block is a button that collapses the card. The banner (or the line of a sender
+//! whose images load) is [`super::remote`]'s, the cards [`super::attachments`]'s and a
+//! plain-text body [`super::plain`]'s (M5's owners); each card calls them in one place, [`card`].
 
+use super::Reader;
 use super::attachments::attachment_cards;
 use super::format;
-use super::remote::{Banner, banner};
+use super::remote::{Banner, Notice, banner, sender_note};
 use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::glib;
@@ -23,6 +24,8 @@ pub struct CardWidgets {
     /// Where the body goes.
     pub body: gtk::Box,
     pub banner: Option<Banner>,
+    /// What the card says about its remote images, as it was built.
+    pub notice: Notice,
     /// What takes the focus when the reader keeps it across messages: the body once it has
     /// one, else the details button.
     pub focus: Option<gtk::Widget>,
@@ -35,7 +38,12 @@ pub struct Header<'a> {
     pub now: i64,
 }
 
-pub fn card(header: &Header<'_>, attachments: &[Attachment], remote_images: bool) -> CardWidgets {
+pub fn card(
+    reader: &Reader,
+    header: &Header<'_>,
+    attachments: &[Attachment],
+    notice: Notice,
+) -> CardWidgets {
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(18)
@@ -44,9 +52,15 @@ pub fn card(header: &Header<'_>, attachments: &[Attachment], remote_images: bool
     root.set_widget_name("reader-card");
     let (sender, header_button, details) = sender_block(header);
     root.append(&sender);
-    let banner = remote_images.then(banner);
+    let banner = match &notice {
+        Notice::Hidden(address) => Some(banner(reader, address)),
+        Notice::None | Notice::SenderAllowed(_) => None,
+    };
     if let Some(banner) = &banner {
         root.append(&banner.root);
+    }
+    if let Notice::SenderAllowed(address) = &notice {
+        root.append(&sender_note(reader, address));
     }
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -55,13 +69,18 @@ pub fn card(header: &Header<'_>, attachments: &[Attachment], remote_images: bool
     body.set_widget_name("reader-body");
     root.append(&body);
     if !attachments.is_empty() {
-        root.append(&attachment_cards(attachments));
+        root.append(&attachment_cards(
+            reader,
+            header.detail.summary.id,
+            attachments,
+        ));
     }
     CardWidgets {
         root,
         header: header_button,
         body,
         banner,
+        notice,
         focus: Some(details.upcast()),
     }
 }
