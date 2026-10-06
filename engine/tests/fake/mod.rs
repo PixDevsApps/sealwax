@@ -13,6 +13,9 @@
 //! and off; a command refused with a given reply, cut off before it runs, run with its reply
 //! lost, or run and never answered.
 //! A STORE in an EXAMINEd mailbox is answered OK and ignored, as Dovecot does (S1).
+//! For the Sent copy and drafts (M6): APPEND with a synchronizing or non-synchronizing literal,
+//! answered with APPENDUID where UIDPLUS is on; a connection cut part of the way into a literal;
+//! `UID SEARCH HEADER Message-ID` that never matches (Stalwart, S1); FETCH by sequence number.
 //! Synthetic data only.
 
 #![allow(dead_code)]
@@ -127,6 +130,10 @@ pub struct World {
     /// PERMANENTFLAGS of a read-write SELECT.
     pub permanent_flags: String,
     faults: Vec<(String, Fault)>,
+    /// The next APPEND's connection is cut after this many bytes of its literal.
+    literal_cut: Option<usize>,
+    /// `UID SEARCH HEADER …` finds nothing, as Stalwart's search of Message-IDs (S1).
+    pub header_search_misses: bool,
 }
 
 struct Cut {
@@ -188,7 +195,14 @@ impl World {
             read_only: BTreeSet::new(),
             permanent_flags: "\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*".into(),
             faults: Vec::new(),
+            literal_cut: None,
+            header_search_misses: false,
         }
+    }
+
+    /// The next APPEND's connection is cut after `bytes` of its literal arrived.
+    pub fn cut_literal(&mut self, bytes: usize) {
+        self.literal_cut = Some(bytes);
     }
 
     /// The capabilities offered after login.
@@ -920,6 +934,24 @@ fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) ->
             ok(&mut out, "done");
         }
         "UID" => return uid_command(world, session, tag, command, out),
+        "FETCH" => {
+            let rest = command[5..].trim_start();
+            let (set_text, items) = rest.split_once(' ').unwrap();
+            let set = parse_set(set_text, session.known.len() as u32);
+            let uids: Vec<u32> = session
+                .known
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| in_set(&set, *i as u32 + 1))
+                .map(|(_, uid)| *uid)
+                .collect();
+            if uids.is_empty() {
+                ok(&mut out, "fetched");
+                return Reply::Text(out);
+            }
+            let command = format!("UID FETCH {} {items}", uid_set(&uids));
+            return uid_command(world, session, tag, &command, out);
+        }
         "LOGOUT" => {
             out.push_str("* BYE bye\r\n");
             ok(&mut out, "done");
@@ -950,9 +982,14 @@ fn uid_command(
         let mut since = None;
         let mut unseen = false;
         let mut undeleted = false;
+        let mut header = None;
         let mut i = 0;
         while i < tokens.len() {
             match tokens[i].to_ascii_uppercase().as_str() {
+                "HEADER" => {
+                    header = Some(unquote(tokens[i + 2]));
+                    i += 2;
+                }
                 "UID" => {
                     set = Some(tokens[i + 1]);
                     i += 1;
@@ -978,6 +1015,12 @@ fn uid_command(
                     .filter(|(_, message)| since.is_none_or(|since| message.date >= since))
                     .filter(|(_, message)| !unseen || !has_flag(message, "\\Seen"))
                     .filter(|(_, message)| !undeleted || !has_flag(message, "\\Deleted"))
+                    .filter(|(_, message)| {
+                        header.as_ref().is_none_or(|needle| {
+                            !world.header_search_misses
+                                && format!("<{}>", message.message_id).contains(needle.as_str())
+                        })
+                    })
                     .map(|(uid, _)| uid.to_string())
                     .collect()
             }
@@ -1461,6 +1504,15 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
             }
             continue;
         }
+        if command.to_ascii_uppercase().starts_with("APPEND ")
+            && let Some((size, plus)) = literal(command)
+        {
+            match append(&mut io, &world, &mut state, tag, command, size, plus).await {
+                Some(true) => continue,
+                Some(false) => return silent(io).await,
+                None => return,
+            }
+        }
         if command.eq_ignore_ascii_case("IDLE") && caps.contains("IDLE") {
             arrived(
                 &mut world.lock().unwrap_or_else(|e| e.into_inner()),
@@ -1512,6 +1564,130 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
             }
             Reply::Silent => return silent(io).await,
         }
+    }
+}
+
+/// The size of the literal a command line ends with, and whether it is non-synchronizing.
+fn literal(command: &str) -> Option<(usize, bool)> {
+    let inner = command.strip_suffix('}')?;
+    let open = inner.rfind('{')?;
+    let size = &inner[open + 1..];
+    let (size, plus) = match size.strip_suffix('+') {
+        Some(size) => (size, true),
+        None => (size, false),
+    };
+    Some((size.parse().ok()?, plus))
+}
+
+/// `APPEND <mailbox> [(<flags>)] {n}` and its literal. `Some(true)` goes on with the next
+/// command, `Some(false)` leaves the connection silent, `None` cuts it.
+async fn append(
+    io: &mut BufReader<Box<dyn Io>>,
+    world: &Arc<Mutex<World>>,
+    state: &mut Session,
+    tag: &str,
+    command: &str,
+    size: usize,
+    plus: bool,
+) -> Option<bool> {
+    let (fault, cut) = {
+        let mut world = world.lock().unwrap_or_else(|e| e.into_inner());
+        arrived(&mut world, command);
+        let fault = world.fault(command);
+        let cut = world.literal_cut.take();
+        if matches!(fault, Some(Fault::CutBefore)) {
+            world.cuts += 1;
+        }
+        (fault, cut)
+    };
+    match &fault {
+        Some(Fault::CutBefore) => return None,
+        Some(Fault::Refuse(text)) if !plus => {
+            return write(io, &format!("{tag} {text}\r\n"))
+                .await
+                .ok()
+                .map(|()| true);
+        }
+        _ => {}
+    }
+    if !plus && write(io, "+ go ahead\r\n").await.is_err() {
+        return None;
+    }
+    let mut data = vec![0u8; size];
+    if let Some(after) = cut.filter(|after| *after < size) {
+        let _ = io.read_exact(&mut data[..after]).await;
+        world.lock().unwrap_or_else(|e| e.into_inner()).cuts += 1;
+        return None;
+    }
+    io.read_exact(&mut data).await.ok()?;
+    let mut end = String::new();
+    io.read_line(&mut end).await.ok()?;
+    if let Some(Fault::Refuse(text)) = fault {
+        return write(io, &format!("{tag} {text}\r\n"))
+            .await
+            .ok()
+            .map(|()| true);
+    }
+    let reply = {
+        let mut world = world.lock().unwrap_or_else(|e| e.into_inner());
+        let rest = command[7..].trim_start();
+        let (name, rest) = if let Some(quoted) = rest.strip_prefix('"') {
+            let close = quoted.find('"').unwrap();
+            (unquote(&rest[..close + 2]), &quoted[close + 1..])
+        } else {
+            let (name, rest) = rest.split_once(' ').unwrap();
+            (name.to_owned(), rest)
+        };
+        let rest = rest.trim_start();
+        let flags: Vec<String> = if rest.starts_with('(') {
+            group(rest)
+                .0
+                .split_whitespace()
+                .map(str::to_owned)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        if world.mailboxes.get(&name).is_none_or(|m| !selectable(m)) {
+            format!("{tag} NO [TRYCREATE] no such mailbox\r\n")
+        } else {
+            let message_id = sealwax_domain::message::parse(&data)
+                .headers
+                .message_id
+                .unwrap_or_default();
+            let uid = world.put(
+                &name,
+                Message {
+                    flags,
+                    modseq: 0,
+                    date: NOW,
+                    message_id,
+                },
+            );
+            world.changed();
+            let mut out = String::new();
+            notices(&world, state, &mut out);
+            let uidvalidity = world.mailboxes[&name].uidvalidity;
+            if world.uidplus {
+                out.push_str(&format!(
+                    "{tag} OK [APPENDUID {uidvalidity} {uid}] appended\r\n"
+                ));
+            } else {
+                out.push_str(&format!("{tag} OK appended\r\n"));
+            }
+            out
+        }
+    };
+    match fault {
+        Some(Fault::LoseReply) => {
+            world.lock().unwrap_or_else(|e| e.into_inner()).cuts += 1;
+            None
+        }
+        Some(Fault::Hold) => {
+            world.lock().unwrap_or_else(|e| e.into_inner()).cuts += 1;
+            Some(false)
+        }
+        _ => write(io, &reply).await.ok().map(|()| true),
     }
 }
 

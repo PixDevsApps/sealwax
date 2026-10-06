@@ -19,7 +19,24 @@ HERE = Path(__file__).resolve().parent
 URL = "http://127.0.0.1:16080/jmap/"
 ADMIN = "admin:testbed-admin"
 DOMAIN = "example.test"
-USERS = ["alice", "bob", "perf", "rand", "fault", "idle", "spike", "ops", "opsfault", "triage"]
+USERS = [
+    "alice",
+    "bob",
+    "perf",
+    "rand",
+    "fault",
+    "idle",
+    "spike",
+    "ops",
+    "opsfault",
+    "triage",
+    # M6's sending suites: recipients, and the Sent copy and drafts (direct, and through the
+    # fault proxy).
+    "carol",
+    "dave",
+    "outbox",
+    "outboxfault",
+]
 PASSWORD = "testbed-password"
 
 
@@ -171,6 +188,19 @@ def main():
     }
     if users:
         call([["x:Account/set", {"create": users}, "1"]])
+
+    # M6's sending suites deliver more than 25 messages an hour from example.test to one
+    # recipient, which Stalwart's default sender-to-recipient throttle defers (452 4.4.5 for an
+    # hour), so the testbed turns that throttle off. The per-address one (5 connections a
+    # second) stays; the suites leave a gap between connections.
+    throttles = get_all("MtaInboundThrottle")
+    off = {
+        throttle["id"]: {"enable": False}
+        for throttle in throttles
+        if throttle.get("key", {}).get("rcpt") and throttle.get("enable")
+    }
+    if off:
+        call([["x:MtaInboundThrottle/set", {"update": off}, "1"]])
 
     call(
         [

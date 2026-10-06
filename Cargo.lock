@@ -3304,6 +3304,7 @@ dependencies = [
  "futures-util",
  "getrandom 0.4.3",
  "hickory-resolver",
+ "idna",
  "lettre",
  "mail-parser",
  "oo7",

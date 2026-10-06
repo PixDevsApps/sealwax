@@ -17,6 +17,7 @@ pub mod roles;
 mod sync;
 pub mod write;
 
+pub(crate) use connection::xoauth2_response;
 pub use connection::{
     CONNECT_TIMEOUT, Caps, ConnectOptions, Connection, Credentials, Mechanism, connect,
     connect_with,
