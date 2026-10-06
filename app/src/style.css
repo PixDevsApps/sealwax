@@ -1543,6 +1543,7 @@ button.sw-composer-ccbcc:hover {
 }
 
 popover.sw-composer-suggestions > contents {
+  font-family: var(--sw-font-chrome);
   padding: var(--sw-space-xs);
   background: var(--popover-bg-color);
   color: var(--popover-fg-color);
@@ -1631,8 +1632,10 @@ button.sw-composer-undo {
 }
 
 .sw-composer-warning {
-  color: var(--error-color);
-  font-size: var(--sw-text-small);
+  padding: var(--sw-space-md) var(--sw-space-xxxl);
+  border-top: var(--sw-control-border-width) solid var(--border-color);
+  background: var(--sw-error-soft-bg-color);
+  color: var(--window-fg-color);
 }
 
 button.sw-composer-send {

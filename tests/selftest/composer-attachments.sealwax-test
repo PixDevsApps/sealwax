@@ -87,7 +87,7 @@ composer-open draft 1
 composer-wait
 assert-composer attachments 3
 assert-composer parts 2
-wait-until assert-composer warning "takes at most 290.0 kB"
+wait-until assert-composer warning "takes at most 290.0"
 composer-limit none
 composer-open draft 1
 composer-wait

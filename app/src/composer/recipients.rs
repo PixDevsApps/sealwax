@@ -634,7 +634,9 @@ impl RecipientField {
         }
         self.suggestions.replace(found);
         self.select(0);
-        if !self.popover.is_visible() {
+        if self.popover.is_visible() {
+            self.popover.present();
+        } else {
             self.popover.popup();
         }
         self.entry.grab_focus_without_selecting();

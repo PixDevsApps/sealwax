@@ -134,6 +134,9 @@ const TINY_PNG: &[u8] = &[
     0x81, 0x89, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
 ];
 
+/// The window whose key and button releases are counted, and the counter.
+type Watched = (glib::WeakRef<gtk::Window>, Rc<Cell<u64>>);
+
 struct Canary {
     port: u16,
     hits: Arc<Mutex<Vec<String>>>,
@@ -143,8 +146,7 @@ thread_local! {
     static PICKED: Cell<Option<usize>> = const { Cell::new(None) };
     static CANARY: RefCell<Option<Canary>> = const { RefCell::new(None) };
     static RAN_SEEN: Cell<usize> = const { Cell::new(0) };
-    static RELEASES: RefCell<Option<(glib::WeakRef<gtk::Window>, Rc<Cell<u64>>)>> =
-        const { RefCell::new(None) };
+    static RELEASES: RefCell<Option<Watched>> = const { RefCell::new(None) };
 }
 
 pub fn handles(command: &str) -> bool {

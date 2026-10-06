@@ -732,7 +732,6 @@ fn build(
                 .wrap(true)
                 .xalign(0.0)
                 .visible(false)
-                .max_width_chars(48)
                 .build(),
             &["sw-composer-warning"],
         ),
@@ -782,9 +781,16 @@ fn build(
         &["sw-composer-footer"],
     );
     footer.append(tray.widget());
-    footer.append(&warning);
     footer.append(&saved);
     footer.append(&send);
+    let bottom = classed(
+        gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build(),
+        &["sw-composer-bottom"],
+    );
+    bottom.append(&warning);
+    bottom.append(&footer);
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -793,7 +799,7 @@ fn build(
     content.append(&fields);
     content.append(&toolbar);
     content.append(&body);
-    content.append(&footer);
+    content.append(&bottom);
     let toasts = adw::ToastOverlay::new();
     toasts.set_child(Some(&content));
     window.set_content(Some(&toasts));
