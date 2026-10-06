@@ -9,6 +9,8 @@
 //! | `background-spawn NAME [ARGS…]` | As `spawn-bg` (its own id and folders under `$TMP/NAME/`, output in `$TMP/NAME.err`), and it closes its main window 300 ms after its first frame (`SEALWAX_CLOSE_WINDOW_AFTER_MS`) |
 //! | `background-menu` | Opens the main window's menu (for screenshots) |
 //! | `background-measure N` | N times: closes the main window, waits until it is gone, calls D-Bus `Activate` on this instance and times it to the new window's first frame; prints every run, p50, p95 and the rows bound at that frame |
+//! | `background-watch [composer]` | Watches the main window, its list and its reader (or the newest composer window) for `assert-freed` |
+//! | `assert-freed` | What `background-watch` watched is gone: nothing holds it after its window closed |
 //! | `background-memory LABEL` | Prints this process's proportional set size (PSS, `smaps_rollup`) and its descendant processes' (WebKit's), by name |
 //! | `assert-notices N` | `background.rs` sent N notices in this run |
 //! | `assert-notice title\|body TEXT` | The latest one's title is TEXT, or its body holds TEXT |
@@ -43,7 +45,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("background-menu", 0, 0),
     ("background-measure", 1, 1),
     ("background-memory", 1, 1),
-    ("background-watch", 0, 0),
+    ("background-watch", 0, 1),
     ("assert-freed", 0, 0),
     ("assert-notices", 1, 1),
     ("assert-notice", 2, 2),
@@ -92,6 +94,17 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             Ok(())
         }
         "background-watch" => {
+            if args.first().is_some_and(|what| what == "composer") {
+                let composer = crate::composer::composers()
+                    .pop()
+                    .ok_or("no composer is open")?;
+                let watched = vec![(
+                    "composer",
+                    composer.window().upcast_ref::<gtk::Widget>().downgrade(),
+                )];
+                WATCHED.with(|current| current.replace(watched));
+                return Ok(());
+            }
             let window = harness.window()?;
             let mut watched = vec![(
                 "window",

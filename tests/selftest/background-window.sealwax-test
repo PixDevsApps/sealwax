@@ -59,9 +59,12 @@ spawn --compose
 wait-until assert-compose-requests 1
 assert-compose-last new none
 wait-until assert-composer count 1
+background-watch composer
 composer-close
 wait-until assert-composer count 0
 assert-activations 4
+sleep 500
+assert-freed
 
 # `[background]` applies live: off releases the hold, on takes it again.
 write-file $TMP/config/sealwax/config.toml "[background]\nenabled = false\n"
