@@ -268,7 +268,20 @@ def seed_server(name: str, perf_count: int):
             alice.append_all(folder, (message("alice", i, tag) for i in range(1, count + 1)))
     alice.logout()
 
-    for user in ["bob", "rand", "fault", "idle", "spike", "ops", "opsfault", "triage"]:
+    for user in [
+        "bob",
+        "rand",
+        "fault",
+        "idle",
+        "spike",
+        "ops",
+        "opsfault",
+        "triage",
+        "carol",
+        "dave",
+        "outbox",
+        "outboxfault",
+    ]:
         account = Imap(port, user)
         account.ensure_folders(ROLE_FOLDERS if create_roles else [])
         account.logout()
