@@ -122,8 +122,9 @@ pub struct Move<'a> {
 /// What a change did.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Done {
-    /// Source and target UID of each moved message whose target UID is known: from COPYUID, or
-    /// found by Message-ID among the target's new UIDs.
+    /// Source and target UID of each moved message whose target UID is known: from COPYUID
+    /// checked against the target's Message-IDs, or found by Message-ID among the target's new
+    /// UIDs. A message left out arrives in the target as new mail.
     pub moved: Vec<(u32, u32)>,
     /// The target's UIDVALIDITY that `moved` belongs to.
     pub target_uidvalidity: Option<u32>,
@@ -322,9 +323,7 @@ struct Batch {
 /// `uids` as compact UID sets of at most [`BATCH_UIDS`] UIDs and [`BATCH_SET`] bytes each. UID 0
 /// names no message and is left out.
 fn batches(uids: &[u32]) -> Vec<Batch> {
-    let mut sorted: Vec<u32> = uids.iter().copied().filter(|uid| *uid > 0).collect();
-    sorted.sort_unstable();
-    sorted.dedup();
+    let sorted = unique(uids.iter().copied());
     let mut out = Vec::new();
     let mut batch = Batch::default();
     let mut i = 0;
@@ -360,6 +359,7 @@ fn batches(uids: &[u32]) -> Vec<Batch> {
     out
 }
 
+/// UIDs sorted, once each, without 0.
 fn unique(uids: impl IntoIterator<Item = u32>) -> Vec<u32> {
     let mut out: Vec<u32> = uids.into_iter().filter(|uid| *uid > 0).collect();
     out.sort_unstable();

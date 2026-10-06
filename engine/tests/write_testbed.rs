@@ -23,8 +23,10 @@ use proxy::Proxy;
 use sealwax_domain::account::{Endpoint, Security};
 use sealwax_domain::message;
 use sealwax_domain::model::Flags;
-use sealwax_engine::imap::write::{self, Done, Mark, Move, Moving, OpFolder, WriteFailure};
-use sealwax_engine::imap::{self, ConnectOptions, Connection, Credentials};
+use sealwax_engine::imap::write::{
+    self, Done, Mark, Move, Moving, OpFolder, WriteError, WriteFailure,
+};
+use sealwax_engine::imap::{self, ConnectOptions, Connection, Credentials, ImapError};
 use snapshot::Rng;
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
@@ -213,6 +215,16 @@ fn path_name(moves: bool) -> &'static str {
     if moves { "UID MOVE" } else { "COPY path" }
 }
 
+/// The response code of a refusal, for the table (synthetic test data only).
+fn code(error: &WriteError) -> String {
+    match error {
+        WriteError::Imap(ImapError::No(text) | ImapError::Bad(text)) => {
+            format!("[{}]", text.code().unwrap_or("no code"))
+        }
+        other => format!("({other})"),
+    }
+}
+
 #[test]
 #[ignore = "needs the testbed: tools/testbed/up.sh && tools/testbed/seed.sh"]
 fn capabilities_copyuid_and_refusals_on_every_server() {
@@ -278,7 +290,7 @@ fn capabilities_copyuid_and_refusals_on_every_server() {
             assert_eq!(missing.failure(), WriteFailure::Refuse, "{}", server.name);
             assert_eq!(read(&mut test, INBOX).await.len(), rows.len());
             println!(
-                "| {} | {} | {} | {} | {} | {} | {} | {:?} (untagged, tagged) | {} | {:?} | {:?} |",
+                "| {} | {} | {} | {} | {} | {} | {} | {:?} (untagged, tagged) | {} | {:?} {} | {:?} {} |",
                 server.name,
                 moves,
                 conn.caps().has("UIDPLUS"),
@@ -289,7 +301,9 @@ fn capabilities_copyuid_and_refusals_on_every_server() {
                 copy,
                 on_move,
                 refused.failure(),
+                code(&refused),
                 missing.failure(),
+                code(&missing),
             );
             conn.logout().await;
             reset(&mut test).await;
