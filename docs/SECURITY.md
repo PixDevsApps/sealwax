@@ -1,6 +1,6 @@
 # Security
 
-Synced: 2026-10-05
+Synced: 2026-10-06
 
 Sealwax handles hostile content (every incoming message), long-lived credentials and private data. This page is the threat model and the rules every change must keep. M9 reviews it (ML-093).
 
@@ -9,9 +9,9 @@ Sealwax handles hostile content (every incoming message), long-lived credentials
 | Threat | Example | Defence |
 | --- | --- | --- |
 | Hostile HTML | Scripts, tracking pixels, CSS `url()` beacons, `@import`, meta refresh, forms, iframes, SVG scripts, `<a ping>`, DNS prefetch, `<base>` tricks | Layered WebKit hardening ([below](#message-rendering)); the hostile-HTML suite in CI (ML-065) |
-| Tracking | Remote images reveal when and where a message was opened | Nothing remote loads until allowed per message or per sender |
+| Tracking | Remote images reveal when and where a message was opened | Nothing remote loads until allowed per message (for the session) or per sender (a list the user keeps); a forged From address can borrow a listed sender's permission, still https only and without cookies |
 | Phishing | Link text shows one domain, the target is another | Real URL on hover; mismatch warning; links open in the browser, never in the app |
-| Dangerous attachments | `.desktop`, `.sh`, `.AppImage`, `.jar` launched by a double-click | Never opened directly; warning and Save only |
+| Dangerous attachments | `.desktop`, `.sh`, `.AppImage`, `.jar` launched by a double-click; names that hide their type | Never opened directly; warning and Save only; safe names; content checked at Open |
 | `mailto:` abuse | `attach=` parameters that pull local files into a message | `attach` / `attachment` parameters ignored; nothing is sent without the user |
 | Network attackers | TLS stripping, STARTTLS downgrade, forged certificates | TLS everywhere, STARTTLS required when used, platform certificate verification, plaintext authentication refused |
 | Credential theft | Passwords or tokens in files, logs or crash output | Secrets only in the Secret Service; grep tests over config, database and logs |
@@ -40,17 +40,17 @@ Sealwax handles hostile content (every incoming message), long-lived credentials
 
 ### Message rendering
 
-Every layer stays even when another would suffice ([ADR-011](DECISIONS.md#adr-011--reading-pane-approach-a-with-hardened-webkit-2026-10-04) and its S2 and S7 amendments). S2 checked them against 47 hostile cases: 0 connections, 0 TLS hellos and 0 script traces at a local canary, while a no-defence control showed the attacks were live. M1's reader (ML-027) passes the same 47 cases in three runs: as shipped, with real pointer clicks, and in pooled views after Show images. Every run shows 0 connections, 0 requests, 0 TLS hellos and 0 script traces; after Show images the canary saw only TLS hellos.
+Every layer stays even when another would suffice ([ADR-011](DECISIONS.md#adr-011--reading-pane-approach-a-with-hardened-webkit-2026-10-04) and its S2 and S7 amendments). S2 checked them against 47 hostile cases: 0 connections, 0 TLS hellos and 0 script traces at a local canary, while a no-defence control showed the attacks were live. M5's suite (ML-065) runs 60 cases in `tools/ci.sh --ui`, S2's 47 plus M5's surfaces and a conversation of hostile bodies, with a DNS canary that records and refuses every name the app or WebKit looks up: production passes show 0 connections, 0 requests, 0 TLS hellos, 0 DNS lookups and 0 script traces. M1's reader (ML-027) passed the same 47 cases in three runs: as shipped, with real pointer clicks, and in pooled views after Show images. Every run shows 0 connections, 0 requests, 0 TLS hellos and 0 script traces; after Show images the canary saw only TLS hellos.
 
 1. `enable-javascript-markup = false`: no script in a message ever runs; WebKit also strips `javascript:` URLs and `srcdoc` attributes. It makes `<noscript>` content live, so the other layers must stay. Sealwax's own helper scripts run in an isolated world.
 2. `default-content-security-policy` set when each view is built: `default-src 'none'; img-src cid: data: https:; style-src 'unsafe-inline'; font-src cid: data:; form-action 'none'; base-uri 'none'; frame-src 'none'; upgrade-insecure-requests` (so remote images the user allows load over TLS).
 3. A WebKit content filter blocks every URL except `cid:`, `data:` and `about:` until the user allows remote content for that message or sender.
-4. Link clicks and form submits are intercepted in Sealwax's isolated world, because WebKit connects to a clicked link's host before `decide-policy` answers. Sealwax opens only absolute http(s) links with a host, and mailto links, after the link-mismatch check, in the default browser or mail handler (`gtk::UriLauncher`). Relative, `cid:`, `data:`, `file:` and `javascript:` targets are dropped, and a headless run never opens a link. `decide-policy` blocks every navigation as the backstop.
+4. Link clicks and form submits are intercepted in Sealwax's isolated world, because WebKit connects to a clicked link's host before `decide-policy` answers. Sealwax opens only absolute http(s) links with a host, and mailto links, after the link-mismatch check, in the default browser or mail handler (`gtk::UriLauncher`). Relative, `cid:`, `data:`, `file:` and `javascript:` targets are dropped, and a headless run never opens a link. `decide-policy` blocks every navigation as the backstop. A link whose visible text names another registrable domain than its target, or whose address puts a name before an `@` (`https://bank.example@evil.example/`), shows a warning on hover and asks before opening, with Cancel as the default; the real target shows in a strip on hover and focus, hosts that mix alphabets in punycode. Plain-text bodies link only http(s), `www.` and mailto targets (M5, ML-062).
 5. An ephemeral network session (no cookies accepted, so allowed images can't link messages through a cookie; no cache on disk; TLS errors fail; downloads are cancelled). The runtime features `LinkDNSPrefetch`, `LinkPreconnect`, `LinkPrefetch`, `LinkPreload` and `SpeculationRulesPrefetch` are off (`Settings::set_feature_enabled`): the older `enable-dns-prefetching` and `enable-hyperlink-auditing` settings do nothing in WebKitGTK 2.52, and `<a ping>` is otherwise sent. Page cache, local storage, databases, WebGL, WebAudio, media and (in release builds) developer extras are off.
-6. `cid:` parts come from a per-view URI scheme backed by the local blob store; a part belonging to another message never loads.
+6. `cid:` parts come from a per-view URI scheme backed by the local blob store; a part belonging to another message never loads. Answers come from the main loop, never inside WebKit's call, and only for the load that asked: a view released, blanked or loaded again gets its request ended unanswered. A large message's inline parts come from the server by their section (`FetchPart`) and are served as the type the stored message declares (M5, ML-060).
 7. View heights are capped at 16,000 px, and growth driven by viewport units is frozen (a hostile `150vh` would otherwise inflate the view).
 8. WebKitGTK 6's web-process sandbox (bubblewrap) stays on. Only web processes run inside it; WebKit's network process is a plain child of the app.
-9. **Show images** lifts the content filter for that message, in that reader, until Sealwax quits; nothing is stored. The CSP still admits only https images, upgrading http ones. Every other load, in any pooled view, keeps the filter: a released view gets it back before it loads anything else (M1).
+9. **Show images** lifts the content filter for that message, in that reader, until Sealwax quits; nothing is stored. **Always for this sender** puts the sender's address (lower case) on a list in the store (schema v8); a message whose From address is on it loads its images with the filter off, under the same CSP and the same cookieless session. A forged From address borrows that permission: the images tell the forger that the message was opened and from where, which is what remote images always tell; nothing else loads. Hide, or the toggle turned off, forgets the sender. In a conversation each message has its own banner, and a view that comes back for a body far off screen gets the filter again unless that message or its sender is allowed (M5, ML-058). The CSP still admits only https images, upgrading http ones. Every other load, in any pooled view, keeps the filter: a released view gets it back before it loads anything else (M1).
 10. Views refuse new windows, script dialogs, permission requests, file and colour choosers, fullscreen, page-initiated printing, notifications and HTTP authentication. The context menu keeps Copy, Copy Link, Copy Image and Select All, plus Inspect Element in debug builds. Console messages never reach stdout (M1).
 11. If a web process ends, the message is rendered once more; after a second crash it is shown as text (M1).
 
@@ -62,8 +62,15 @@ The composer view uses the same layers as the reader, without `https:` for image
 
 ### Attachments
 
-- Opened through a private temporary folder (0700) with a sanitised file name, using the desktop's default application.
-- Executable and launcher types (`.desktop`, `.sh`, `.AppImage`, `.jar`, `.exe`, `.bat`, `.ps1`, `.run`, files with the executable bit) are never opened directly; Save is offered with a warning.
+- Opened from a new private folder (0700) under `$XDG_RUNTIME_DIR/<app-id>/attachments` (the cache folder without a runtime folder), as a file created 0600 with a safe name, never executable, with the desktop's default application (`gtk::FileLauncher`); the folder is emptied when Sealwax next starts, and the runtime folder at logout.
+- **Safe names** (`domain::attachment`): the last path component, without control or invisible characters, look-alike dots made real, no leading dot, dash or space, no trailing dot or space, no `..`, at most 200 bytes, `attachment.<ext>` from the type when nothing is left; Download all never overwrites (`name (2).pdf`). The card shows that name.
+- **Never opened directly**, with a warning and Save only: programs, launchers, scripts, installers and packages by their last extension (case-insensitive, trailing dots and spaces ignored: `.desktop`, `.sh` and other shells, `.AppImage`, `.jar`, `.jnlp`, `.exe`, `.msi`, `.bat`, `.cmd`, `.com`, `.scr`, `.ps1`, `.vbs`, `.hta`, `.lnk`, `.run`, `.bin`, `.deb`, `.rpm`, `.apk`, `.snap`, `.flatpak` and `.flatpakref`, and the rest in the code) or MIME type; names that hide their type (direction overrides, a look-alike dot before what reads as an extension); and files whose content GIO identifies as one of those types when they are opened.
+- Saved files (Save, Download all, Save as .eml) go through the file chooser (the portal's where there is one) and are never made executable.
+
+### Print and Show Original
+
+- **Print** renders the message in a view from the reader's pool (every layer above; remote images only where the user allowed them), held by a window that is never shown; Sealwax's isolated world adds the header as text. Page-initiated printing stays refused.
+- **Show Original** shows the raw source as text in a read-only view, never rendered. For a large message stored as its text parts, Show Original and Save as .eml fetch the message whole first (`FetchOriginal`); the copy rebuilt from its text parts is never shown or saved.
 
 ### Outgoing mail
 
@@ -86,12 +93,12 @@ Third-party protocol crates are capped at `warn` whatever `RUST_LOG` says: S1 fo
 
 ### Local data
 
-- Private folders are created 0700 and files 0600 (database, blobs, drafts, temporary attachment copies).
+- Private folders are created 0700 and files 0600 (database, blobs, drafts, temporary attachment copies under `$XDG_RUNTIME_DIR/<app-id>/attachments`).
 - The app never edits `~/.config` outside its own folder, `~/.local/state/omarchy` or system files, except through opt-in commands the user confirms (the default mail handler).
 
 ## Known limitations
 
 - **Plaintext keyring on this machine:** gnome-keyring's "Default keyring" is passwordless, so its file is stored unencrypted and protected only by full-disk encryption. Sealwax can't fix this; USER_GUIDE will explain how to set a keyring password.
 - **Self-signed servers** (Proton Bridge, some self-hosted servers) can't be added until pinned exceptions arrive in 1.x.
-- **Encrypted and signed mail** (PGP, S/MIME) is displayed gracefully but not decrypted or verified in 1.0.
+- **Encrypted and signed mail** (PGP, S/MIME) is displayed gracefully but not decrypted or verified in 1.0: encrypted mail shows a notice in place of its body (the ciphertext is never shown, and the encrypted part can be saved); signed mail shows its content with "Signed · not checked"; signature parts stay out of the attachment cards (M5, ML-064).
 - **Google verification** (only once Sign in with Google returns in 1.x): until the OAuth app is verified, Google shows an "unverified app" screen and limits use to test users ([OAUTH-SETUP.md](OAUTH-SETUP.md)).

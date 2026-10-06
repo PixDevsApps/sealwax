@@ -25,7 +25,7 @@ cargo build                       # the app (default member)
 cargo build --workspace           # every crate
 cargo test --workspace
 bash tools/ci.sh                  # fmt, clippy -D warnings, tests, build
-SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run
+SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run, the self-test scripts and the hostile suite
 bash tools/ci.sh --testbed        # plus every testbed suite (see Mail testbed)
 tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/window.sealwax-test
 cargo run -p sealwax -- --version
@@ -39,7 +39,8 @@ cargo run -p sealwax -- --version
 | `sealwax-infrastructure` | `infrastructure/` | Local std I/O, logging |
 | `sealwax-engine` | `engine/` | tokio: network, sync, op queue, secrets |
 | `sealwax` | `app/` | GTK app, binary `sealwax` |
-| `sealwax-fixtures` | `devtools/fixtures/` | Synthetic `.eml` corpora, import and store benchmarks (workspace glob `devtools/*`, `publish = false`) |
+| `sealwax-fixtures` | `devtools/fixtures/` | Synthetic `.eml` corpora, import and store benchmarks, `bench-conversation` (workspace glob `devtools/*`, `publish = false`) |
+| `sealwax-dns-canary` | `devtools/dns-canary/` | A preloadable `getaddrinfo` that records and refuses every name looked up, for the hostile suite (M5) |
 | `email-spike-s1` … `email-spike-s7` | `spikes/<id>-<topic>/` | M0 measurement code, one crate per spike (workspace glob `spikes/*`) |
 
 Release profile: thin LTO, one codegen unit. The M0 spike crates keep their `email-spike-*` names (ADR-010).
@@ -55,6 +56,18 @@ target/release/sealwax-fixtures check --store target/m1-store/100k/store.sqlite
 ```
 
 Always give `--store` a scratch path; the app's own store is `SealwaxDirs::from_env().store_file()`. The store links the system SQLite and refuses one without FTS5 or `contentless_delete` (≥ 3.43).
+
+## Reader measurements (M5)
+
+```bash
+python3 tools/corpus/fetch.py                  # the real-world corpus into .local/corpus/real/ (open-licensed templates, checked by SHA-256)
+cargo build --release -p sealwax --example reader_corpus --example reader_memory
+SEALWAX_OMARCHY_STATE=$PWD/.local/reader-examples/corpus-theme SEALWAX_HEADLESS_TIMEOUT=900 \
+    tools/headless.sh 33 target/release/examples/reader_corpus [--previews]
+SEALWAX_HEADLESS_TIMEOUT=600 tools/headless.sh 31 target/release/examples/reader_memory
+```
+
+The fetch makes anonymous HTTPS GETs of public files with a generic User-Agent; the templates stay out of the repository (`tests/corpus/real/SOURCES.toml` lists them with their licences). Both harnesses write only under `.local/`. On the live session they run only under a live-window authorization (`reader_memory --live`), and measure at the window size the compositor gives.
 
 ## Headless GTK runs
 

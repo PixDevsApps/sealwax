@@ -101,6 +101,15 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   - **Keys:** WebKitGTK and the plain-text view keep Delete while a body has the focus, so the reader takes Delete before the body does; a text field inside an HTML message loses Delete.
   - **Move to…** (`v`, Ctrl+Shift+V): a picker over the window like the command palette, "Move 3 messages to…", listing the account's folders that take messages except the one they are in, role folders first under their role's name (the server's own name beside it). Typing filters, Up/Down move, Enter moves, Escape closes. Insensitive, saying why, when the selection spans accounts (1.0 doesn't move between accounts).
 
+- *As built in M5 ([conversation](m5/conversation.md), [files](m5/files.md), [rendering](m5/rendering.md)); the M5 gate decides the proposals:*
+  - **The conversation** (ML-057): the selected message's subject as the heading; every message oldest first; the selected one, the unread ones and the latest as cards, the others as one-line rows (initials, sender, the snippet's first line, a short time; unread ones dotted and bold). A click, Enter or Space on a row expands it; on a card's sender block collapses it, except the only expanded one. Expand All and Collapse All (More menu, palette) keep folds folded and the selected message expanded. Over 100 messages the first, the latest 10 and the expanded ones show; the rest fold into "N earlier messages", which reveals 50 a click. The column opens at the selected message once the bodies of its first screen are laid out; changes above what the column shows don't move it. A message arriving while the conversation is shown joins as an unread row.
+  - **Toolbar:** Print (Ctrl+P, the mock's) and the More menu: Show Original, Save as .eml…, Expand and Collapse All Messages, Show Images, Always Show Images from This Sender. Reply, Reply All, Forward and the quick reply are M6's; the mock's Unsubscribe is 1.x.
+  - **Remote content** (ML-058): each card has its own banner; "Always for this sender" works, and a listed sender's message shows a quiet line instead, "Images from this sender are always shown." with Hide (which forgets the sender). Always or Hide changes every card of that sender at once. The banner keeps M1's text; the mock's count ("7 images are hidden…") isn't built.
+  - **Attachment cards** (ML-061): type badge, the name it is saved under, the size, Open and Save ("84 KB · Open · Save"); "N attachments" with a Download all chip. A program, launcher, script or installer, or a name that hides its type, has a warning sign in the badge, a warning and Save only. A large message's attachments show "about" sizes and download on demand ("Downloading…" with Cancel; a failure with Retry).
+  - **Print** opens the print dialog on the message with a header (subject, From, To, Cc, Date); **Show Original** is a dialog with the source in the Omarchy font (the first 512 KiB) and Save as .eml…; **Save as .eml** suggests the subject as the name (ML-063).
+  - **Links** (ML-062): the link under the pointer or the focus shows its target in a strip at the reader's bottom-left; a link whose text names another domain shows the mock's warning ("The link text and its target differ" / "Text says …" / "Opens …") and asks before opening ("Open this link?", Cancel the default).
+  - **Encrypted and signed mail** (ML-064): "This message is encrypted. Sealwax can't read encrypted mail yet." in place of the body; signed mail shows "Signed · not checked".
+
 **Composer**
 - From (identity), To / Cc / Bcc as chips with autocomplete, Subject.
 - Formatting toolbar (bold, italic, underline, strike, lists, link, quote, indent, clear formatting) driven by the editor state.
@@ -195,6 +204,11 @@ Roles map to palette positions, never hue names: matte-black's `green` is amber 
 - Quotes are collapsed behind "…" when they repeat earlier messages in the conversation.
 - Nothing remote loads until allowed ([SECURITY.md](SECURITY.md)); hidden images keep the box their HTML declares (WebKit outlines it and shows the alt text), so the page doesn't jump when shown.
 - Themed bodies paint their root in the theme's background: with a transparent root and `color-scheme: dark`, WebKit would paint its own dark canvas. Plain-text bodies set `line-height: 1.35` in GTK, about the 1.55 of message text in a browser (M1).
+
+*As built in M5 (ML-059, [report](m5/rendering.md); checked on 69 open-licensed real-world templates in a dark and a light theme):*
+- A message with dark-mode rules (`@media (prefers-color-scheme: dark)`) shows its own dark design under a dark theme; its body fills the paper card, which paints no surface of its own under a message's background. The card keeps its 1 px border (a proposal at the gate).
+- Themed bodies always give links the accent; colours set only for links (Outlook's replies) don't make a body paper.
+- Quoted history collapses behind a "…" toggle, in HTML and plain text, for a message with an earlier message in the shown conversation.
 
 ## Avatars
 

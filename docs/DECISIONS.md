@@ -14,18 +14,18 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
 | 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6, the application shell built in M1, the engine service and autodetect built in M2 |
 | 004 | Follow the live Omarchy theme | Accepted (user request); built in M1 |
-| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2; v3–v6 in M3; v7 (the op queue, the overlay in the rows) in M4 |
-| 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2; the sync core and actor in M3; the op queue's writes in M4 |
+| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2; v3–v6 in M3; v7 (the op queue, the overlay in the rows) in M4; v8 (the senders whose images load) in M5 |
+| 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2; the sync core and actor in M3; the op queue's writes in M4; parts and originals on demand in M5 |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending); the SMTP login check built in M2 |
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism accepted on S5's evidence (GO, 2026-10-05); secrets keyed by the account key in M2 |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
-| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1 |
+| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1; conversations, links, remote content per sender and print in M5; memory measured live in M5, the verdict at the M5 gate |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send waits for M6 |
-| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start) |
+| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start); built in M5 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate) |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
@@ -264,6 +264,10 @@ Built in M4's phase A ([report](m4/ops-store.md)).
 - **Measured at 100,000 messages** (release): S3's bars hold (folder open ≤ 12.8 ms cold, the one-insert diff p99 4.66 ms, pages as before); a flag change costs about 0.4 ms more at p99 because the date indexes hold `flags`; the migration takes about 1 s on the first start and leaves the file about 7 MiB larger.
 - **Rejected:** an overlay table beside unchanged rows. Its anti-join made a deep page and every position count 6–7 ms slower, a frame's budget at 144 Hz on its own.
 
+### ADR-005 amendment — schema v8: the senders whose images load (M5, 2026-10-06)
+
+Built as [m5/files.md](m5/files.md) records. Migration v8 adds `remote_senders(address PRIMARY KEY, added) WITHOUT ROWID`: lower-case addresses whose remote images load without asking (ML-058), with when each was added. The list is the user's, not an account's: it stays when an account is removed. Its writes bump no store version and send no change event. The conversation view (ML-057) added no migration: `Store::conversation` walks v1's `messages_thread (thread_id, date)` index (≤ 1.66 ms cold for 150 messages at 100,000).
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -369,6 +373,10 @@ Built in M4 ([report](m4/imap-writes.md)) on S1's raw layer, without the store.
 ### ADR-006 amendment — new mail refreshes the flags of rows already held (M4 phase B, 2026-10-06)
 
 Found by M4's randomized triage suite ([report](m4/runner.md#the-flag-refresh-fix)): the folder pass's new-mail fetch also updates the flags and keywords of fetched UIDs the store already holds. These are rows the op runner re-homed into a target above its stored UIDNEXT, which the flag scan doesn't reach; before the fix, a flag another client set just before the move never reached the store.
+
+### ADR-006 amendment — parts and originals on demand (M5, 2026-10-06)
+
+Built as [m5/files.md](m5/files.md) records. `Command::FetchPart` fetches `BODY.PEEK[<section>.MIME]` and `BODY.PEEK[<section>]` by the section the store recorded, and `Command::FetchOriginal` fetches `BODY.PEEK[]`, on the account's body connection after EXAMINE and the UIDVALIDITY check, ahead of body batches, one at a time, retried once after a cut. Nothing is stored and nothing is marked `\Seen`; a vanished UID or a new UIDVALIDITY is `Gone`. The reader uses them for a large message stored as its text parts: its attachments, its inline images (served as the type the stored message declares) and Show Original and Save as .eml. On the testbed a 12 MB original took 25–63 ms and its 4.4 MB attachment 28–43 ms, byte for byte.
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
@@ -603,6 +611,20 @@ Built as [m1/reader.md](m1/reader.md) records, with every layer of the S2 amendm
 - **A crashed web process** renders the message once more, then as text.
 - **Started after the first frame** (added 2026-10-04, after the live startup check): the reader, and with it the engine, is created right after the first window's first painted frame instead of in the window build. A selection made before then is shown once the reader exists, and the reader takes the keymap current at that moment. The view prewarm still waits for the reader to be shown.
 
+### ADR-011 amendment — the reader as built in M5 (2026-10-06)
+
+Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) and [m5/rendering.md](m5/rendering.md) record. Every layer of the S2 amendment stays; the hostile suite runs in `tools/ci.sh --ui` (60 cases) with a DNS canary.
+- **Live views:** at most `MAX_LIVE_VIEWS` (4). Expanded HTML bodies within one column height of the visible part hold one, nearest first; the others give theirs back and keep their measured height; a focused body keeps its view; a spare view measures the nearest unmeasured body. A view that comes back gets the content filter again unless its message or sender is allowed. Changes above the visible part are held still by moving the column's scroll in the frame clock's layout phase.
+- **`cid:`** answers come from the main loop, asynchronously, and only for the load that asked (epochs per view); parts the store doesn't hold come from `FetchPart`.
+- **Links:** the isolated world reports the hovered or focused link; the reader shows its target and, when the link's text names another registrable domain (`domain::links`, the PSL) or its address hides a name before `@`, warns and asks before opening. Plain-text bodies link only http(s), `www.` and mailto.
+- **Paper** keeps `color-scheme: light` and paints no root background, so a message's body background reaches the canvas; WebKit's `prefers-color-scheme` follows the app's scheme, so a message with dark-mode rules shows its own dark design in a dark theme. Themed links take the accent; colours set only for links don't make a body paper.
+- **Remote content per sender:** images load for a message the user allowed this session, or for a sender on the store's list (ADR-005, v8). The CSP and the cookieless session are unchanged; a forged From address borrowing a listed sender's permission is the accepted risk.
+- **Print** renders the selected message in a pooled hardened view held by a window that is never shown (WebKit loads only under a window), with Sealwax's header added from the isolated world. **Show Original** shows the source as text and never renders it.
+
+### ADR-011 amendment — the memory measured live (M5 phase B, 2026-10-06)
+
+`reader_memory --live --judge`, five runs on the live session (release; NVIDIA RTX 3070 Ti; the window tiled to 1709×1400): with a typical 10-message conversation open, process-tree PSS **383.5–397.8 MB**, of which NVIDIA's libraries and device mappings are 96.9–97.1 MiB (71.5 in the app, 16.6 in WebKit's web process, 9.0 in its network process); **without them 281.9–296.0 MB**. At most 3 views were live (cap 4). GPU memory by `nvidia-smi`: 47 MiB steady, 55 MiB at peak, all the app's (reader views render without acceleration). Growth after 200 opens: 15.7–26.6 MB (3 of 5 runs over the 20 MB target; the app's share about 10 MiB each run). Whether the driver's mappings count toward the 300 MB bar or the GPU budget (the M1 question, deferred to M5), and the cap and the GPU budget, are the user's decisions at the M5 gate ([PLAN.md](PLAN.md#m5-integrated-the-gate-is-the-users--2026-10-06)).
+
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
 **Status:** Accepted — user decision, 2026-10-04.
@@ -762,6 +784,10 @@ Built in M3 ([report](m3/threading.md)).
 **Alternative rejected:** one list row per conversation (Gmail's grouping), which would rework the store's views, counts, sections and change events at 100,000 messages and make triage act on whole conversations; about 4–6 days more.
 
 **Consequence:** "per-folder conversation rows", listed as not built in the M1 and M3 amendments above, aren't built in 1.0.
+
+### ADR-016 amendment — the conversation view as built (M5, 2026-10-06)
+
+Built as [m5/conversation.md](m5/conversation.md) records. `Store::conversation(id)` reads the selected message's conversation in one snapshot, oldest first: rows a pending move or expunge or `\Deleted` hides are left out (never the selected one); copies of one Message-ID show once (the selected copy, else Inbox, Archive, All Mail, Sent, other folders, Drafts, Junk, Trash); the Trash and Junk show only when the selected message is there. The reader expands the selected message, the unread ones and the latest; over 100 messages it keeps the first, the latest 10 and the expanded ones and folds the rest into "N earlier messages", revealed 50 a click. Messages arriving while it is shown join as unread rows. The list's conversation size still counts every message of the conversation (a design question at the gate). Threads over 100 messages are folded by the reader, which this ADR's "collapse their middle" asked for.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 
