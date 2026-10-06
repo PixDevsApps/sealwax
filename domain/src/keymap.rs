@@ -1690,8 +1690,8 @@ mod tests {
         assert!(!keymap.is_changed(ActionId::Star));
         assert_eq!(keymap.changed_count(), 4);
         // The list's own keys stay.
-        let keymap = parse("next-message = [\"n\"]\n").unwrap();
-        assert_eq!(keymap.display(ActionId::NextMessage), "n, Down");
+        let keymap = parse("next-message = [\"l\"]\n").unwrap();
+        assert_eq!(keymap.display(ActionId::NextMessage), "l, Down");
     }
 
     #[test]

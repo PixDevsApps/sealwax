@@ -631,6 +631,17 @@ impl Reader {
         export::save_message(self);
     }
 
+    /// Next Message in Conversation (`n`): the message after the one last moved to expands and
+    /// the column scrolls to it.
+    pub fn next_in_conversation(&self) {
+        self.inner.step(true);
+    }
+
+    /// Previous Message in Conversation (`p`).
+    pub fn previous_in_conversation(&self) {
+        self.inner.step(false);
+    }
+
     /// Expands every message of the shown conversation, folded ones excepted (ML-057).
     pub fn expand_all(&self) {
         self.inner.expand_all();

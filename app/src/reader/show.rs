@@ -151,6 +151,7 @@ impl Inner {
             entries,
             members: conversation.members().collect(),
             missing: false,
+            current: None,
         }
     }
 
@@ -408,6 +409,7 @@ impl Inner {
             entries: Vec::new(),
             members: HashSet::from([id]),
             missing: true,
+            current: None,
         }));
         let elapsed = started.elapsed();
         self.present(generation, false, started, elapsed, elapsed);

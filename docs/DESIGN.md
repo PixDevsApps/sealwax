@@ -254,6 +254,8 @@ As built in M1 ([ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keymap-a
 
 As built in M4 (ML-055, [report](m4/triage-app.md)): the message commands' keys act (archive, delete, junk, move to, star, read, unread, select, undo). No key was added to the registry; the list's own keys beside it, accepted at the M4 gate (2026-10-06, [ADR-017](DECISIONS.md#adr-017-amendment--the-lists-own-keys-accepted-m4-gate-2026-10-06)): **Shift with Next and Previous Message's keys** (Shift+`j`/`k`, as Shift+Down/Up) extends the selection; **Escape** leaves the select mode; **Menu** and **Shift+F10** open a sidebar folder's menu. Mark Folder as Read has no default key. The keyboard pass was approved headless; the user's own live pass followed on 2026-10-06 ("Keyboard pass approved").
 
+Accepted at the M5 gate (2026-10-06, [ADR-017](DECISIONS.md#adr-017-amendment--m5s-keys-accepted-m5-gate-2026-10-06)): **Ctrl+P** Print (the mock's), **Ctrl+U** Show Original, **Ctrl+S** Save as .eml, and **`n`** and **`p`** for Next and Previous Message in Conversation, in the list and the reader (each expands the message it reaches and scrolls to it). Expand and Collapse All Messages, Show Images and Always Show Images from This Sender have no default key.
+
 ## Accessibility
 
 - Every control has an accessible label; icon-only buttons have tooltips with their shortcut, taken from the keymap in use, so `keys.toml` changes show.

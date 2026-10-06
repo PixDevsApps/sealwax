@@ -438,6 +438,31 @@ impl Inner {
         }
     }
 
+    /// Next (`forward`) or Previous Message in Conversation: the message after or before the one
+    /// these last moved to (the selected one at first) expands, and the column scrolls to it.
+    /// Folded messages are passed over.
+    pub(super) fn step(self: &Rc<Self>, forward: bool) {
+        let target = self.shown.borrow_mut().as_mut().and_then(|page| {
+            let ids: Vec<MessageId> = page.items().map(Item::id).collect();
+            let current = page
+                .current
+                .filter(|id| ids.contains(id))
+                .unwrap_or(page.selected);
+            let at = ids.iter().position(|id| *id == current)?;
+            let next = if forward {
+                ids.get(at + 1).copied()
+            } else {
+                at.checked_sub(1).map(|at| ids[at])
+            }?;
+            page.current = Some(next);
+            Some(next)
+        });
+        if let Some(id) = target {
+            self.expand(id);
+            self.scroll_to_message(id);
+        }
+    }
+
     /// Collapse All: every message but the selected one becomes a row.
     pub(super) fn collapse_all(self: &Rc<Self>) {
         let Some(selected) = self.shown.borrow().as_ref().map(|page| page.selected) else {

@@ -52,6 +52,26 @@ assert-conversation collapsed 5
 conversation-click-header trip-6
 assert-conversation expanded trip-6
 
+# Previous and Next Message in Conversation (p, n; accepted at the M5 gate) step from the selected
+# message: each expands the one it reaches and scrolls the column to it; the ends stay put.
+assert-action-enabled win.previous-in-conversation true
+action win.previous-in-conversation
+wait-until assert-conversation cards 2
+assert-conversation expanded trip-5,trip-6
+wait-until assert-conversation top-of trip-5
+action win.previous-in-conversation
+wait-until assert-conversation cards 3
+assert-conversation expanded trip-4,trip-5,trip-6
+wait-until assert-conversation top-of trip-4
+action win.next-in-conversation
+wait-until assert-conversation top-of trip-5
+assert-conversation expanded trip-4,trip-5,trip-6
+action win.next-in-conversation
+action win.next-in-conversation
+wait-until assert-conversation top-of trip-6
+assert-conversation expanded trip-4,trip-5,trip-6
+assert-conversation selected trip-6
+
 # An older message selected: its conversation opens at it, expanded with the latest.
 conversation-show trip-2
 assert-conversation selected trip-2

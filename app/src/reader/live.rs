@@ -100,8 +100,10 @@ pub struct Scheduling {
     queued: Cell<bool>,
     /// What the column keeps in place while things above it change.
     anchor: RefCell<Option<Anchor>>,
-    /// Scroll to the selected message at the next layout (a conversation was just shown).
+    /// Scroll to the selected message at the next layout (a conversation was just shown), or to
+    /// `scroll_target` (Next or Previous Message in Conversation).
     scroll_to: Cell<bool>,
+    scroll_target: Cell<Option<MessageId>>,
     clock: RefCell<Option<(gdk::FrameClock, glib::SignalHandlerId)>>,
     column: RefCell<Option<(gtk::Adjustment, Vec<glib::SignalHandlerId>)>>,
 }
@@ -509,6 +511,16 @@ impl Inner {
     /// The conversation just shown opens at its selected message.
     pub(super) fn scroll_to_selected(&self) {
         self.scheduling.anchor.replace(None);
+        self.scheduling.scroll_target.set(None);
+        self.scheduling.scroll_to.set(true);
+        self.stage.queue_resize();
+    }
+
+    /// Scrolls the column to message `id`'s row or card at the next layout, its top a margin
+    /// below the column's.
+    pub(super) fn scroll_to_message(&self, id: MessageId) {
+        self.scheduling.anchor.replace(None);
+        self.scheduling.scroll_target.set(Some(id));
         self.scheduling.scroll_to.set(true);
         self.stage.queue_resize();
     }
@@ -584,9 +596,14 @@ impl Inner {
         if page.root.width() <= 1 {
             return None;
         }
+        let root = top_in(&page.root, scroller)? + scroller.vadjustment().value();
+        if let Some(target) = self.scheduling.scroll_target.get() {
+            let top = top_in(&page.item(target)?.slot, &page.root)?;
+            self.scheduling.scroll_target.set(None);
+            return Some(root + top - SCROLL_MARGIN);
+        }
         let item = page.item(page.selected)?;
         let selected = top_in(&item.slot, &page.root)?;
-        let root = top_in(&page.root, scroller)? + scroller.vadjustment().value();
         let height = f64::from(scroller.height());
         Some(if selected <= height / 3.0 {
             0.0

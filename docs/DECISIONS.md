@@ -20,13 +20,13 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism accepted on S5's evidence (GO, 2026-10-05); secrets keyed by the account key in M2 |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
-| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1; conversations, links, remote content per sender and print in M5; memory measured live in M5, the verdict at the M5 gate |
+| 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1; conversations, links, remote content per sender and print in M5; memory measured live in M5, NVIDIA's mappings counted in the GPU budget (user decision, M5 gate) |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send waits for M6 |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start); built in M5 |
-| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate) |
+| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate), M5's keys accepted (M5 gate) |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 
@@ -625,6 +625,14 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 
 `reader_memory --live --judge`, five runs on the live session (release; NVIDIA RTX 3070 Ti; the window tiled to 1709×1400): with a typical 10-message conversation open, process-tree PSS **383.5–397.8 MB**, of which NVIDIA's libraries and device mappings are 96.9–97.1 MiB (71.5 in the app, 16.6 in WebKit's web process, 9.0 in its network process); **without them 281.9–296.0 MB**. At most 3 views were live (cap 4). GPU memory by `nvidia-smi`: 47 MiB steady, 55 MiB at peak, all the app's (reader views render without acceleration). Growth after 200 opens: 15.7–26.6 MB (3 of 5 runs over the 20 MB target; the app's share about 10 MiB each run). Whether the driver's mappings count toward the 300 MB bar or the GPU budget (the M1 question, deferred to M5), and the cap and the GPU budget, are the user's decisions at the M5 gate ([PLAN.md](PLAN.md#m5-integrated-the-gate-is-the-users--2026-10-06)).
 
+### ADR-011 amendment — memory decided at the M5 gate (2026-10-06)
+
+**Status:** Accepted — user decision at the M5 gate, 2026-10-06 ("GPU budget (Recommended)").
+
+**Decision:** the memory bars judge PSS without NVIDIA's driver libraries and device mappings: the reader's process tree ≤ 300 MB with a typical 10-message conversation open, the UI process ≤ 150 MB. The mappings count toward the GPU budget instead, which covers them ("~100 MiB") plus GPU memory ("~64 MiB"). The live-view cap stays at 4. Judged so, the reader measured 281.9–296.0 MB live and M1's UI measurement 114.3 MiB; both pass, the reader with little headroom. Growth after 200 opens (15.7–26.6 MB live, 3 of 5 runs over 20 MB) is a P1 follow-up: measured over 1,000 opens, and fixed before 1.0 if it doesn't level off ("Follow-up (Recommended)").
+
+**Supersedes:** the M1 measurement's open question (whether the driver's share counts toward the UI bar or the GPU budget) and the amendment above's "the user's decisions at the M5 gate".
+
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
 **Status:** Accepted — user decision, 2026-10-04.
@@ -815,6 +823,10 @@ Built as [m5/conversation.md](m5/conversation.md) records. `Store::conversation(
 ### ADR-017 amendment — the list's own keys accepted (M4 gate, 2026-10-06)
 
 Accepted by the user at the M4 gate ("Keep all four", 2026-10-06). Beside the registry, as the message list's own keys (no `keys.toml` name, like GtkListView's Down and Up): Shift+`j` and Shift+`k` extend the selection as Shift+Down and Shift+Up do; Escape leaves the select mode; Menu and Shift+F10 open a sidebar folder's menu. GtkListView's Ctrl+A is swallowed (rows not loaded have no ids). The keyboard pass on the US and Norwegian layouts was approved headless (`triage-keys` and M1's audit); the live pass stays a P1 follow-up. *(Done 2026-10-06: the user's own live pass, "Keyboard pass approved".)*
+
+### ADR-017 amendment — M5's keys accepted (M5 gate, 2026-10-06)
+
+Accepted by the user at the M5 gate ("Ctrl+U: Show Original", "Ctrl+S: Save as .eml", "n / p in conversations", 2026-10-06), beside Print's Ctrl+P from the approved mock. Show Original takes Ctrl+U and Save as .eml Ctrl+S, scoped to the list and the reader like the other message commands' Ctrl keys (the composer's own Ctrl+U, ADR-014, is in another scope). Two registry commands are new: Next Message in Conversation (`n`) and Previous Message in Conversation (`p`), in the list and the reader; `j` and `k` stay the list's next and previous. All four keys pass the audit (no AltGr, unshifted on US and Norwegian). Expand and Collapse All Messages, Show Images and Always Show Images from This Sender keep no default key.
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 

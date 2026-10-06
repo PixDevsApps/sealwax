@@ -185,6 +185,8 @@ const fn go_to(
 pub enum ActionId {
     NextMessage,
     PreviousMessage,
+    NextInConversation,
+    PreviousInConversation,
     OpenMessage,
     BackToList,
     Search,
@@ -226,9 +228,11 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 40] = [
+    pub const ALL: [Self; 42] = [
         Self::NextMessage,
         Self::PreviousMessage,
+        Self::NextInConversation,
+        Self::PreviousInConversation,
         Self::OpenMessage,
         Self::BackToList,
         Self::Search,
@@ -293,6 +297,22 @@ impl ActionId {
                     &["k"],
                 )
             },
+            // Within the conversation the reader shows (Gmail's `n` and `p`; accepted at the M5
+            // gate, 2026-10-06): the next or previous message expands and the column scrolls to it.
+            Self::NextInConversation => command(
+                "next-in-conversation",
+                "Next Message in Conversation",
+                Navigation,
+                Scope::List,
+                &["n"],
+            ),
+            Self::PreviousInConversation => command(
+                "previous-in-conversation",
+                "Previous Message in Conversation",
+                Navigation,
+                Scope::List,
+                &["p"],
+            ),
             Self::OpenMessage => ActionSpec {
                 key_scopes: LIST,
                 ..on_selection("open-message", "Open Message", Navigation, &["Return", "o"])
@@ -343,11 +363,15 @@ impl ActionId {
             },
             // Undoes the last mail action. Its keys are scoped, so text fields keep Ctrl+Z.
             Self::Undo => command("undo", "Undo", Messages, Scope::List, &["z", "<Control>z"]),
-            // The message the reader shows (ML-063). Ctrl+P is the approved mock's; Show Original
-            // and Save as .eml have no default key until the user picks one.
+            // The message the reader shows (ML-063). Ctrl+P is the approved mock's; Ctrl+U and
+            // Ctrl+S were accepted at the M5 gate (2026-10-06).
             Self::Print => on_selection("print", "Print…", Messages, &["<Control>p"]),
-            Self::ShowOriginal => on_selection("show-original", "Show Original", Messages, &[]),
-            Self::SaveMessage => on_selection("save-message", "Save as .eml…", Messages, &[]),
+            Self::ShowOriginal => {
+                on_selection("show-original", "Show Original", Messages, &["<Control>u"])
+            }
+            Self::SaveMessage => {
+                on_selection("save-message", "Save as .eml…", Messages, &["<Control>s"])
+            }
             Self::Compose => command(
                 "compose",
                 "Compose",
@@ -728,9 +752,11 @@ mod tests {
         assert!(keys(ActionId::AddAccount).is_empty());
         assert!(keys(ActionId::MarkFolderRead).is_empty());
         assert_eq!(keys(ActionId::Print), ["<Control>p"]);
+        assert_eq!(keys(ActionId::ShowOriginal), ["<Control>u"]);
+        assert_eq!(keys(ActionId::SaveMessage), ["<Control>s"]);
+        assert_eq!(keys(ActionId::NextInConversation), ["n"]);
+        assert_eq!(keys(ActionId::PreviousInConversation), ["p"]);
         for id in [
-            ActionId::ShowOriginal,
-            ActionId::SaveMessage,
             ActionId::ExpandAll,
             ActionId::CollapseAll,
             ActionId::ShowImages,

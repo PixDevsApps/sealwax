@@ -210,6 +210,9 @@ pub struct Page {
     pub members: HashSet<MessageId>,
     /// The page shows that the message is gone.
     pub missing: bool,
+    /// The message Next and Previous Message in Conversation last moved to; the selected one
+    /// before they are used.
+    pub current: Option<MessageId>,
 }
 
 impl Page {

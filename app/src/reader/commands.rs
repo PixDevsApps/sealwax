@@ -19,12 +19,17 @@ pub fn connect(actions: &ActionSet, reader: &Reader) {
     remote_content(actions, reader);
 }
 
-/// Expand All Messages and Collapse All Messages (ML-057), available while the shown
-/// conversation has more than one message.
+/// Expand All Messages, Collapse All Messages, and Next and Previous Message in Conversation
+/// (ML-057), available while the shown conversation has more than one message.
 fn conversation(actions: &ActionSet, reader: &Reader) {
     for (id, run) in [
         (ActionId::ExpandAll, Reader::expand_all as fn(&Reader)),
         (ActionId::CollapseAll, Reader::collapse_all),
+        (ActionId::NextInConversation, Reader::next_in_conversation),
+        (
+            ActionId::PreviousInConversation,
+            Reader::previous_in_conversation,
+        ),
     ] {
         let target = reader.clone();
         actions.connect(id, move || run(&target));
