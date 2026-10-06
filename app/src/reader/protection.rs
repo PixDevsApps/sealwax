@@ -26,6 +26,14 @@ pub enum Unreadable {
     SignedOpaque,
 }
 
+/// What the notice says (printing uses it too).
+pub fn text(unreadable: Unreadable) -> &'static str {
+    match unreadable {
+        Unreadable::Encrypted(_) => ENCRYPTED,
+        Unreadable::SignedOpaque => SIGNED_OPAQUE,
+    }
+}
+
 /// The notice in place of an unreadable body.
 pub fn notice(unreadable: Unreadable) -> gtk::Box {
     let row = gtk::Box::builder()
@@ -40,12 +48,8 @@ pub fn notice(unreadable: Unreadable) -> gtk::Box {
     ]);
     image.set_valign(gtk::Align::Start);
     row.append(&image);
-    let text = match unreadable {
-        Unreadable::Encrypted(_) => ENCRYPTED,
-        Unreadable::SignedOpaque => SIGNED_OPAQUE,
-    };
     let label = gtk::Label::builder()
-        .label(text)
+        .label(text(unreadable))
         .xalign(0.0)
         .wrap(true)
         .hexpand(true)

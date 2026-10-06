@@ -105,6 +105,7 @@ fn arity(command: &str) -> Option<(usize, usize)> {
         .iter()
         .chain(super::bodies::COMMANDS)
         .chain(super::conversation::COMMANDS)
+        .chain(super::files::COMMANDS)
         .chain(super::mail::COMMANDS)
         .chain(super::perf::COMMANDS)
         .chain(super::reader::COMMANDS)

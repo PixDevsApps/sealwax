@@ -19,6 +19,7 @@ pub mod commands;
 mod conversation;
 mod engine;
 mod export;
+mod files;
 mod format;
 mod heuristic;
 mod links;
@@ -35,11 +36,14 @@ mod toolbar;
 mod view;
 mod widgets;
 
+pub use attachments::CardState;
 pub use conversation::{COLLAPSE_OVER, GAP_STEP, KEEP_LATEST};
 pub use engine::{
     CONTENT_SECURITY_POLICY, CidOutcome, CidRequest, InlinePart, MAX_LIVE_VIEWS, NETWORK_FEATURES,
     PartLoader,
 };
+pub use export::{ORIGINAL_SHOWN, OriginalDialog, original_dialog};
+pub use files::FileChoice;
 pub use heuristic::{Evidence, Scan, scan as scan_html};
 pub use links::LinkState;
 pub use plain::{links_in, shown_text};
@@ -250,6 +254,8 @@ struct Inner {
     refresh_queued: Cell<bool>,
     /// Woken by every body event, for the layout wait of a new conversation.
     progress: (async_channel::Sender<()>, async_channel::Receiver<()>),
+    /// Attachments, Print, Show Original and Save as .eml (ML-061, ML-063).
+    files: files::Files,
 }
 
 impl Reader {
@@ -301,7 +307,9 @@ impl Reader {
             scheduling: live::Scheduling::default(),
             refresh_queued: Cell::new(false),
             progress: async_channel::unbounded(),
+            files: files::Files::new(cache),
         });
+        remote::load(&inner);
         let weak = Rc::downgrade(&inner);
         let id = inner.theme.connect_changed(move |theme| {
             if let Some(inner) = weak.upgrade() {
@@ -372,6 +380,7 @@ impl Reader {
             }
         });
         self.inner.engine_events.replace(Some(subscription));
+        files::connect_engine(self, engine);
     }
 
     /// The engine's answer to a download: a failure is shown with Retry, a success shows the

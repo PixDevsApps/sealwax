@@ -25,6 +25,7 @@ mod accounts;
 mod bodies;
 pub(crate) mod ops;
 pub(crate) mod overlay;
+mod remote;
 pub(crate) mod sync;
 
 /// Messages per header transaction (S3: 500 held the writer for up to 258 ms with text).
@@ -114,6 +115,15 @@ pub(crate) enum WriteJob {
         limit: u64,
         keep: Vec<MessageId>,
         reply: Sender<Evicted>,
+    },
+    AllowRemoteSender {
+        address: String,
+        at: i64,
+        reply: Sender<()>,
+    },
+    ForgetRemoteSender {
+        address: String,
+        reply: Sender<()>,
     },
 }
 
@@ -336,6 +346,12 @@ impl Writer {
             }
             WriteJob::EvictBodies { limit, keep, reply } => {
                 let _ = reply.try_send(self.evict_bodies(limit, &keep));
+            }
+            WriteJob::AllowRemoteSender { address, at, reply } => {
+                let _ = reply.try_send(self.allow_remote_sender(&address, at));
+            }
+            WriteJob::ForgetRemoteSender { address, reply } => {
+                let _ = reply.try_send(self.forget_remote_sender(&address));
             }
             WriteJob::Ingest { .. } => unreachable!("ingest jobs are bulk"),
         }

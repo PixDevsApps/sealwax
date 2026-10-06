@@ -146,6 +146,8 @@ pub struct Card {
     pub attachments: usize,
     /// The sender's address, lower case, for the senders whose images load (ML-058).
     pub sender: String,
+    /// Its body has remote images (ML-058).
+    pub remote_images: bool,
 }
 
 impl Card {

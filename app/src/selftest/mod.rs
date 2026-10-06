@@ -9,6 +9,7 @@
 mod bodies;
 mod broadway;
 mod conversation;
+mod files;
 mod mail;
 mod perf;
 mod probe;
@@ -405,6 +406,7 @@ impl Harness {
             command if bodies::handles(command) => bodies::step(self, command, args).await,
             command if setup::handles(command) => setup::step(self, command, args).await,
             command if triage::handles(command) => triage::step(self, command, args).await,
+            command if files::handles(command) => files::step(self, command, args).await,
             command => self.check(command, args).await,
         }
     }
@@ -711,6 +713,7 @@ impl Harness {
             assertion if bodies::handles(assertion) => bodies::step(self, assertion, args).await,
             assertion if setup::checks(assertion) => setup::check(self, assertion, args),
             assertion if triage::handles(assertion) => triage::step(self, assertion, args).await,
+            assertion if files::handles(assertion) => files::step(self, assertion, args).await,
             other => Err(format!("unknown command {other}")),
         }
     }

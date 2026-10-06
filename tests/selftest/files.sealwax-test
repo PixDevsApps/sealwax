@@ -1,0 +1,311 @@
+# Files and remote content (M5: ML-058, ML-061, ML-063) in the app's own reader, against the
+# fake engine: attachment cards with Open, Save and Download all; the attachments the desktop
+# must never open; a message stored as its text parts, whose attachments and original are
+# downloaded on demand, with Cancel, failures and Retry; Always for this sender and forgetting
+# it; Print to a PDF; Show Original; Save as .eml. Opened files and the choosers go to the
+# reader's hooks under $TMP: nothing reaches the desktop. Buttons take real clicks through
+# Broadway. Every name, address and message is fictional.
+# Run: tools/headless.sh 35 target/debug/sealwax --self-test tests/selftest/files.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-mark-read-on-open false
+mail-account Files
+files-add attachments files-danger files-sniffed remote files-remote-again newsletter
+files-hooks
+assert-list-count 6
+
+# Attachment cards: type, name and size, Open and Save, and Download all.
+list-select 0
+wait-until assert-files message attachments
+wait-until assert-files cards 3
+assert-files card 0 name Invoice-2041.pdf
+assert-files card 0 size "212.0 kB"
+assert-files card 0 open true
+assert-files card 0 danger false
+assert-files card 0 busy false
+assert-labelled
+files-click 0 open
+wait-until assert-files opened 1
+assert-files opened-file Invoice-2041.pdf attachments 0
+files-click 2 open
+wait-until assert-files opened 2
+assert-files opened-file workshop.png attachments 2
+files-click 1 save
+wait-until assert-files saved $TMP/files-saved/hours-september.csv attachments 1
+assert-toast "Saved hours-september.csv"
+setup-dismiss-toasts
+files-answer save cancel
+files-click 0 save
+assert-files missing $TMP/files-saved/Invoice-2041.pdf
+files-click download-all
+wait-until assert-files folder 3
+assert-files saved $TMP/files-folder/Invoice-2041.pdf attachments 0
+assert-files saved $TMP/files-folder/workshop.png attachments 2
+assert-toast "Saved 3 attachments to files-folder"
+setup-dismiss-toasts
+# Again into the same folder: new names, nothing overwritten.
+files-click download-all
+wait-until assert-files folder 6
+assert-files saved "$TMP/files-folder/Invoice-2041 (2).pdf" attachments 0
+
+# Programs, launchers and names that hide their type: Save only, with a warning.
+list-select 1
+wait-until assert-files message files-danger
+wait-until assert-files cards 4
+assert-files card 0 danger false
+assert-files card 0 open true
+assert-files card 1 name invoice.pdf.desktop
+assert-files card 1 danger true
+assert-files card 1 open false
+assert-files card 2 name Viewerfdp.EXE
+assert-files card 2 danger true
+assert-files card 2 open false
+assert-files card 3 name scan.pdf
+assert-files card 3 danger true
+assert-files card 3 open false
+assert-files card 1 warning "can run programs"
+assert-files card 3 warning "hides what kind of file"
+assert-labelled
+files-click 1 save
+wait-until assert-files saved $TMP/files-saved/invoice.pdf.desktop files-danger 1
+assert-files opened 2
+
+# A name that says text, content that is a script: refused when opened, the card warns.
+list-select 2
+wait-until assert-files message files-sniffed
+wait-until assert-files cards 1
+assert-files card 0 danger false
+files-click 0 open
+wait-until assert-files card 0 danger true
+assert-files card 0 open false
+assert-files opened 2
+
+# Remote images: the banner; Always for this sender loads them, here and in the sender's next
+# message, and says so quietly; another sender's still ask; Hide forgets the sender.
+list-select 3
+wait-until assert-files message remote
+wait-until assert-files banner true
+assert-files remote-allowed false
+assert-files note false
+assert-action-enabled win.show-images true
+assert-action-enabled win.always-show-images true
+assert-files toggle always-show-images false
+files-click always
+wait-until assert-files note true
+wait-until assert-files remote-allowed true
+assert-files banner false
+assert-files sender noreply@akerlibrary.example.test true
+wait-until assert-files stored-sender noreply@akerlibrary.example.test true
+assert-files toggle always-show-images true
+assert-action-enabled win.show-images false
+list-select 4
+wait-until assert-files message files-remote-again
+wait-until assert-files note true
+assert-files remote-allowed true
+assert-files banner false
+assert-files toggle always-show-images true
+list-select 5
+wait-until assert-files message newsletter
+wait-until assert-files banner true
+assert-files remote-allowed false
+assert-files toggle always-show-images false
+list-select 4
+wait-until assert-files message files-remote-again
+wait-until assert-files note true
+files-click hide
+wait-until assert-files banner true
+assert-files remote-allowed false
+assert-files note false
+assert-files sender noreply@akerlibrary.example.test false
+wait-until assert-files stored-sender noreply@akerlibrary.example.test false
+assert-files toggle always-show-images false
+# The same through the registry: the toggle on, then off again.
+action win.always-show-images
+wait-until assert-files note true
+assert-files remote-allowed true
+wait-until assert-files stored-sender noreply@akerlibrary.example.test true
+action win.always-show-images
+wait-until assert-files banner true
+assert-files remote-allowed false
+wait-until assert-files stored-sender noreply@akerlibrary.example.test false
+# Show Images: this message only, this session.
+list-select 5
+wait-until assert-files message newsletter
+wait-until assert-files banner true
+action win.show-images
+wait-until assert-files remote-allowed true
+assert-files banner false
+assert-files note false
+assert-action-enabled win.show-images false
+assert-files sender news@northwind.example.test false
+
+# A conversation with remote images in every message: the newsletter's first issue read (a
+# row), its second and fourth issues and a cafe's answer unread (cards). Always for this sender
+# in the selected card loads both of the sender's cards and says so in each; the cafe's card
+# keeps its banner; the sender's row takes the policy when expanded. Show images in the cafe's
+# card loads that card alone. Hide in another of the sender's cards forgets the sender in all
+# of them.
+files-add files-thread
+files-show files-thread-4
+assert-conversation messages 4
+assert-conversation expanded 3
+assert-conversation collapsed 1
+wait-until assert-files banner true
+assert-files banner true files-thread-2
+assert-files banner true files-thread-3
+assert-files remote-allowed false
+assert-files remote-allowed false files-thread-2
+assert-files toggle always-show-images false
+files-click always
+wait-until assert-files note true
+wait-until assert-files note true files-thread-2
+wait-until assert-files remote-allowed true
+assert-files remote-allowed true files-thread-2
+assert-files banner false
+assert-files banner false files-thread-2
+assert-files banner true files-thread-3
+assert-files note false files-thread-3
+assert-files remote-allowed false files-thread-3
+assert-files toggle always-show-images true
+assert-action-enabled win.show-images false
+wait-until assert-files stored-sender news@fjordweekly.example.test true
+conversation-click-row 0
+wait-until assert-files note true files-thread-1
+assert-files remote-allowed true files-thread-1
+files-click show-images files-thread-3
+wait-until assert-files remote-allowed true files-thread-3
+assert-files banner false files-thread-3
+assert-files note false files-thread-3
+files-click hide files-thread-2
+wait-until assert-files banner true files-thread-2
+wait-until assert-files banner true
+wait-until assert-files banner true files-thread-1
+assert-files remote-allowed false
+assert-files remote-allowed false files-thread-1
+assert-files remote-allowed false files-thread-2
+assert-files note false files-thread-2
+assert-files remote-allowed true files-thread-3
+assert-files toggle always-show-images false
+assert-action-enabled win.show-images true
+wait-until assert-files stored-sender news@fjordweekly.example.test false
+
+# Print to a PDF: a plain-text and an HTML message, each with its header.
+list-select 0
+wait-until assert-files message attachments
+wait-until assert-files cards 3
+files-print $TMP/print-plain.pdf
+assert-files pdf $TMP/print-plain.pdf "Invoice #2041"
+assert-files pdf $TMP/print-plain.pdf "studio-kim.example.test"
+assert-files pdf $TMP/print-plain.pdf "spreadsheet and the photo"
+list-select 5
+wait-until assert-files message newsletter
+wait-until assert-files remote-allowed true
+files-print $TMP/print-html.pdf
+assert-files pdf $TMP/print-html.pdf "This week in design systems"
+assert-files pdf $TMP/print-html.pdf "Northwind"
+
+# Show Original and Save as .eml of a message stored whole: the stored bytes.
+list-select 0
+wait-until assert-files message attachments
+wait-until assert-files cards 3
+action win.show-original
+wait-until assert-files original view source
+assert-files original contains "Subject: Invoice #2041"
+assert-files original contains "Content-Disposition: attachment; filename=\"Invoice-2041.pdf\""
+assert-files original cut false
+files-click original-close
+wait-until assert-files original open false
+action win.save-message
+wait-until assert-files eml "$TMP/files-saved/Invoice #2041.eml" attachments
+files-answer save $TMP/elsewhere.eml
+action win.show-original
+wait-until assert-files original view source
+files-click original-save
+wait-until assert-files eml $TMP/elsewhere.eml attachments
+files-click original-close
+
+# Several selected: Print, Show Original and Save as .eml don't apply.
+assert-action-enabled win.print true
+assert-action-enabled win.show-original true
+assert-action-enabled win.save-message true
+click-row 1 ctrl
+assert-action-enabled win.print false
+assert-action-enabled win.show-original false
+assert-action-enabled win.save-message false
+click-row 0
+wait-until assert-files message attachments
+wait-until assert-files cards 3
+assert-action-enabled win.print true
+
+# A message stored as its text parts: sizes are estimates, attachments come by their section,
+# with Downloading…, Cancel, failures and Retry.
+files-add-text files-large
+assert-list-count 11
+list-select 0
+wait-until assert-files message files-large
+wait-until assert-files cards 2
+wait-until assert-files card 0 size "about 4.4 MB"
+assert-files card 1 size "about 12.0 kB"
+engine-expect none
+files-click 0 open
+engine-expect fetch-part
+wait-until assert-files card 0 busy true
+assert-text-contains reader-attachment-status Downloading
+engine-reply part-fetched offline
+wait-until assert-files card 0 failure "can't be reached"
+assert-files card 0 busy false
+files-click 0 retry
+engine-expect fetch-part
+wait-until assert-files card 0 busy true
+engine-reply part-fetched ok
+wait-until assert-files opened 3
+assert-files opened-file board-pack-october.pdf files-large 0
+assert-files card 0 busy false
+assert-files card 0 failure none
+files-click 1 save
+engine-expect fetch-part
+wait-until assert-files card 1 busy true
+files-click 1 cancel
+assert-files card 1 busy false
+engine-reply part-fetched ok
+assert-files missing $TMP/files-saved/minutes-september.txt
+files-click 1 save
+engine-expect fetch-part
+engine-reply part-fetched gone
+wait-until assert-files card 1 failure "no longer on the server"
+files-click 1 retry
+engine-expect fetch-part
+engine-reply part-fetched ok
+wait-until assert-files saved $TMP/files-saved/minutes-september.txt files-large 1
+files-click download-all
+engine-expect fetch-part
+engine-reply part-fetched ok
+engine-expect fetch-part
+engine-reply part-fetched ok
+wait-until assert-files folder 8
+
+# Its original comes from the server, never the copy rebuilt from its text parts.
+action win.show-original
+engine-expect fetch-original
+wait-until assert-files original status "Downloading the original"
+engine-reply original-fetched offline
+wait-until assert-files original status "can't be reached"
+files-click original-retry
+engine-expect fetch-original
+engine-reply original-fetched ok
+wait-until assert-files original view source
+assert-files original contains "Subject: Board pack for October"
+assert-files original cut true
+assert-files original lacks "minutes-september-not-there"
+files-click original-save
+wait-until assert-files eml "$TMP/files-saved/Board pack for October.eml" files-large
+files-click original-close
+files-answer save $TMP/large.eml
+action win.save-message
+engine-expect fetch-original
+engine-reply original-fetched ok
+wait-until assert-files eml $TMP/large.eml files-large
+engine-expect none
+assert-labelled

@@ -23,6 +23,8 @@
 //! | `desktop-network up\|down`, `desktop-resume` | What the network monitor and logind would report, through the app's own handler |
 //! | `engine-reply body-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `BodyFetched` for the first message of the last `fetch-bodies` taken (its fields: `messages`, `count`); storing the body is `bodies-store`'s (`bodies.rs`) |
 //! | `engine-reply older-loaded FETCHED complete\|more` | `OlderLoaded` for the folder of the last `load-older` taken (its field: `folder`; `folder-opened` has the same) (ML-043) |
+//! | `engine-reply part-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `PartFetched` for the last `fetch-part` taken (its fields: `message`, `part`); `ok` carries the part of the message `files.rs` stored (ML-061) |
+//! | `engine-reply original-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `OriginalFetched` for the last `fetch-original` taken (its field: `message`); `ok` carries the message `files.rs` stored, whole (ML-063) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -56,7 +58,8 @@ use sealwax_domain::account::{
 };
 use sealwax_domain::model::{FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
-    AccountError, BodyError, Command, Event, Password, Refused, RequestId, SyncStatus,
+    AccountError, BodyError, Command, Event, FetchedPart, Original, Password, Refused, RequestId,
+    SyncStatus,
 };
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
@@ -131,6 +134,10 @@ thread_local! {
     static REQUESTED: RefCell<Vec<MessageId>> = const { RefCell::new(Vec::new()) };
     /// The folder of the last `LoadOlder` taken (ML-043).
     static OLDER: Cell<Option<FolderId>> = const { Cell::new(None) };
+    /// The message and part of the last `FetchPart` taken (ML-061).
+    static PART: Cell<Option<(MessageId, u32)>> = const { Cell::new(None) };
+    /// The message of the last `FetchOriginal` taken (ML-063).
+    static ORIGINAL: Cell<Option<MessageId>> = const { Cell::new(None) };
 }
 
 /// The messages the last `FetchBodies` the script took asked for.
@@ -695,6 +702,12 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
     if let Command::LoadOlder { folder } = &command {
         OLDER.with(|older| older.set(Some(*folder)));
     }
+    if let Command::FetchPart { message, part } = &command {
+        PART.with(|asked| asked.set(Some((*message, *part))));
+    }
+    if let Command::FetchOriginal { message } = &command {
+        ORIGINAL.with(|asked| asked.set(Some(*message)));
+    }
     let (kind, request, fields) = fields(&command, fake.last_sign_in.get());
     let shown: Vec<String> = fields
         .iter()
@@ -742,6 +755,9 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
         return send_event(harness, &fake, event).await;
     }
     if let Some(event) = older_event(args)? {
+        return send_event(harness, &fake, event).await;
+    }
+    if let Some(event) = download_event(args)? {
         return send_event(harness, &fake, event).await;
     }
     let last = fake
@@ -939,6 +955,58 @@ fn body_event(args: &[String]) -> Result<Option<Event>, String> {
         other => return Err(format!("no body outcome {other}")),
     };
     Ok(Some(Event::BodyFetched { message, result }))
+}
+
+/// `part-fetched OUTCOME` and `original-fetched OUTCOME`: the answer to the last `FetchPart` or
+/// `FetchOriginal` taken; `ok` carries the bytes of the message `files.rs` stored.
+fn download_event(args: &[String]) -> Result<Option<Event>, String> {
+    let (kind @ ("part-fetched" | "original-fetched"), [outcome]) = (args[0].as_str(), &args[1..])
+    else {
+        return Ok(None);
+    };
+    let failure = match outcome.as_str() {
+        "ok" => None,
+        "offline" => Some(BodyError::Offline),
+        "needs-sign-in" => Some(BodyError::NeedsSignIn),
+        "gone" => Some(BodyError::Gone),
+        "store" => Some(BodyError::Store),
+        "other" => Some(BodyError::Other),
+        other => return Err(format!("no download outcome {other}")),
+    };
+    Ok(Some(match kind {
+        "part-fetched" => {
+            let (message, part) = PART
+                .with(Cell::get)
+                .ok_or("no fetch-part to answer; use engine-expect first")?;
+            let result = match failure {
+                Some(error) => Err(error),
+                None => Ok(FetchedPart {
+                    mime_type: "application/octet-stream".to_owned(),
+                    data: super::files::part_bytes(message, part)
+                        .ok_or("files.rs stored no such part")?,
+                }),
+            };
+            Event::PartFetched {
+                message,
+                part,
+                result,
+            }
+        }
+        "original-fetched" => {
+            let message = ORIGINAL
+                .with(Cell::get)
+                .ok_or("no fetch-original to answer; use engine-expect first")?;
+            let result = match failure {
+                Some(error) => Err(error),
+                None => Ok(Original(
+                    super::files::original_bytes(message)
+                        .ok_or("files.rs stored no such message")?,
+                )),
+            };
+            Event::OriginalFetched { message, result }
+        }
+        _ => return Ok(None),
+    }))
 }
 
 /// `older-loaded FETCHED complete|more`: `OlderLoaded` for the folder of the last `LoadOlder`
