@@ -1,7 +1,7 @@
 # The keyboard pass (ML-055), with real key presses through Broadway on a fixture store: every
 # one-key shortcut and scoped Ctrl key of the registry, in the list and in the reader, runs its
 # command (the log of commands run says which); the commands not built yet (go to, back to the
-# list, compose, reply, reply all, forward) run nothing; g waits for its second key, and a
+# list) run nothing; g waits for its second key, and a
 # mistyped sequence runs nothing; the unshifted alternatives (Delete for #, Ctrl+F for /,
 # Ctrl+J for !, h for ?) work; the search field and the Move to… picker's entry keep every
 # letter, Delete and Ctrl+Z. The keysyms are chosen by the script, so which keys need Shift on
@@ -87,7 +87,7 @@ assert-action-log win.move-to
 assert-move-to open true
 key Escape
 
-# Not built yet: nothing runs, in the list.
+# Compose and the replies (M6), in the list.
 key c
 key r
 key a
@@ -95,7 +95,7 @@ key f
 key <Control>r
 key <Control><Shift>r
 key <Control>l
-assert-action-log none
+assert-action-log win.compose,win.reply,win.reply-all,win.forward,win.reply,win.reply-all,win.forward
 
 # g waits for its second key; a mistyped sequence runs nothing, and s after g doesn't star.
 key g
@@ -235,13 +235,15 @@ key h
 wait-until assert-action-log app.shortcuts
 key Escape
 focus reader
-# Not built yet, in the reader; x and Space and Enter are the list's alone.
-key u
-key Escape
+# Compose and the replies (M6) in the reader; the rest not built yet; x and Space and Enter are
+# the list's alone.
 key c
 key r
 key a
 key f
+assert-action-log win.compose,win.reply,win.reply-all,win.forward
+key u
+key Escape
 key g
 key i
 key x

@@ -1422,6 +1422,11 @@ button.sw-quote-toggle:hover {
    in the reading font with its placeholder over it, the hint to expand it, and Send in the
    accent fill with its keys lighter beside the bold title (the mock's). A Send with nothing to
    send takes the selected chip's pair, as a disabled primary button does. */
+/* The accent border marks the focus in the text area, as in the setup assistant's fields. */
+box.sw-quick-reply:focus-within {
+  border-color: var(--accent-bg-color);
+}
+
 textview.sw-quick-reply-text,
 textview.sw-quick-reply-text > text {
   background: none;

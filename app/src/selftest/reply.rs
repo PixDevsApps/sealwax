@@ -6,7 +6,7 @@
 //!
 //! | Command | What it does |
 //! | --- | --- |
-//! | `reply-sandbox` | Before the app starts: `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point into the run's scratch directory (`$TMP/home`), so GIO reads and writes the run's own `mimeapps.list` and desktop entries |
+//! | `reply-sandbox` | Before the app starts: `HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` point into the run's scratch directory (`$TMP/home`), so GIO reads and writes the run's own `mimeapps.list` and desktop entries |
 //! | `reply-install-entry` | Writes a desktop entry for this run's app-id into the sandbox and waits until GIO lists it |
 //! | `reply-click-card MESSAGE reply\|reply-all\|forward\|edit-draft` | A real click on that button of MESSAGE's card |
 //! | `assert-compose-requests N` | `composer::open` was asked N times in this run |
@@ -54,8 +54,9 @@ pub fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
-/// `reply-sandbox`, before GTK or any thread starts: GIO's per-user configuration and data
-/// (`mimeapps.list`, `applications/`) are the run's own, under `root/home`.
+/// `reply-sandbox`, before GTK or any thread starts: the home folder and GIO's per-user
+/// configuration and data (`mimeapps.list`, `applications/`) are the run's own, under
+/// `root/home`.
 pub fn before_start(steps: &[Step], root: &Path) -> Result<(), String> {
     if !steps.iter().any(|step| step.command == "reply-sandbox") {
         return Ok(());
@@ -69,6 +70,7 @@ pub fn before_start(steps: &[Step], root: &Path) -> Result<(), String> {
     // SAFETY: the self-test calls this before GTK, the Broadway client or any worker starts, so
     // no other thread reads the environment.
     unsafe {
+        std::env::set_var("HOME", &home);
         std::env::set_var("XDG_CONFIG_HOME", &config);
         std::env::set_var("XDG_DATA_HOME", &data);
     }
