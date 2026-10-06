@@ -128,9 +128,11 @@ struct Inner {
     welcome_menu: gtk::MenuButton,
     reader_pane: adw::ToolbarView,
     reader_toolbar: adw::Bin,
-    /// `empty` or `message`.
+    /// `empty`, `message` or `batch`.
     reader: gtk::Stack,
     column: ReaderColumn,
+    /// The reader while several messages are selected.
+    batch: empty::BatchPage,
     welcome: adw::ToolbarView,
     /// "or press Ctrl+Shift+P / F1 for every command", with the keys in use.
     welcome_hint: gtk::Label,
@@ -209,9 +211,12 @@ impl Window {
         let column = ReaderColumn::new();
         column.slot.set_widget_name("reader-column");
         let reader_empty = named(empty::no_message(), "reader-empty");
+        let batch = empty::BatchPage::new();
+        batch.widget.set_widget_name("reader-batch");
         let reader = gtk::Stack::builder().vexpand(true).build();
         reader.add_named(&reader_empty, Some("empty"));
         reader.add_named(&column.scroller, Some("message"));
+        reader.add_named(&batch.widget, Some("batch"));
         reader.set_visible_child_name("empty");
         let reader_pane = named(
             classed(
@@ -384,6 +389,7 @@ impl Window {
                 reader_toolbar,
                 reader,
                 column,
+                batch,
                 welcome,
                 welcome_hint,
                 banner,
@@ -474,6 +480,29 @@ impl Window {
         let inner = &self.inner;
         inner.reader.set_visible_child_name("empty");
         inner.column.slot.set_child(None::<&gtk::Widget>);
+    }
+
+    /// The reader's page for the select mode: "N messages selected" with the batch actions
+    /// (ML-054). The message shown before goes; `set_reader` brings one back.
+    pub fn show_batch(&self, count: u32) {
+        let inner = &self.inner;
+        inner.batch.set_count(count);
+        inner.reader.set_visible_child_name("batch");
+        inner.column.slot.set_child(None::<&gtk::Widget>);
+    }
+
+    /// The batch page, for its commands' titles and tooltips.
+    pub fn batch_page(&self) -> &empty::BatchPage {
+        &self.inner.batch
+    }
+
+    /// What the reader pane shows: `empty`, `message` or `batch`.
+    pub fn reader_page(&self) -> String {
+        self.inner
+            .reader
+            .visible_child_name()
+            .map(|name| name.to_string())
+            .unwrap_or_default()
     }
 
     /// The reader's actions (archive, delete, … "n of N"), in its bar; the bar stretches.

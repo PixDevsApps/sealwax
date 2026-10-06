@@ -1,14 +1,25 @@
 //! A minimal Broadway web client, from Stet (and its spike S1). Without a browser connected,
 //! Broadway's screen is 1024×768, so a window can't be made wider, and GDK paints a surface
 //! only once a second. This client tells the daemon the screen is [`SCREEN`], answers it the
-//! way `broadway.js` does, and draws nothing.
+//! way `broadway.js` does, and draws nothing. It also types and clicks as `broadway.js` does
+//! ([`key`], [`click`]): the events reach GTK as real key and button presses through GDK's
+//! Broadway backend, with the keysym already chosen, so no keyboard layout applies.
 
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
+use std::time::Instant;
 
 /// Room for the widest window the scripts make.
 pub const SCREEN: (i64, i64) = (2560, 1600);
+
+/// GDK's modifier bits, as `broadway.js` sends them.
+pub const SHIFT: u32 = 1 << 0;
+pub const CONTROL: u32 = 1 << 2;
+pub const ALT: u32 = 1 << 3;
+const BUTTON1: u32 = 1 << 8;
 
 const OP_GRAB_POINTER: u8 = 0;
 const OP_UNGRAB_POINTER: u8 = 1;
@@ -26,6 +37,11 @@ const OP_UPLOAD_TEXTURE: u8 = 13;
 const OP_RELEASE_TEXTURE: u8 = 14;
 const OP_SET_NODES: u8 = 15;
 const OP_ROUNDTRIP: u8 = 16;
+const EVENT_POINTER_MOVE: i64 = 2;
+const EVENT_BUTTON_PRESS: i64 = 3;
+const EVENT_BUTTON_RELEASE: i64 = 4;
+const EVENT_KEY_PRESS: i64 = 7;
+const EVENT_KEY_RELEASE: i64 = 8;
 const EVENT_CONFIGURE_NOTIFY: i64 = 11;
 const EVENT_SCREEN_SIZE_CHANGED: i64 = 12;
 const EVENT_ROUNDTRIP_NOTIFY: i64 = 14;
@@ -33,6 +49,19 @@ const EVENT_ROUNDTRIP_NOTIFY: i64 = 14;
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.to_owned())
 }
+
+/// What the input functions share with the client's thread.
+struct Shared {
+    writer: Mutex<TcpStream>,
+    serial: AtomicU32,
+    surfaces: Mutex<HashMap<u16, [i64; 4]>>,
+    started: Instant,
+    /// Milliseconds added to the events' times after each click, so two clicks never make a
+    /// double click.
+    skew: AtomicU32,
+}
+
+static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
 
 /// Connects to the Broadway daemon of `$BROADWAY_DISPLAY` and serves it from a thread.
 pub fn connect() -> io::Result<()> {
@@ -57,11 +86,15 @@ pub fn connect() -> io::Result<()> {
     if !response.starts_with(b"HTTP/1.1 101") {
         return Err(invalid("the WebSocket upgrade was refused"));
     }
-    let mut client = Client {
-        writer: stream.try_clone()?,
-        serial: 0,
-        surfaces: HashMap::new(),
-    };
+    let shared = Arc::new(Shared {
+        writer: Mutex::new(stream.try_clone()?),
+        serial: AtomicU32::new(0),
+        surfaces: Mutex::new(HashMap::new()),
+        started: Instant::now(),
+        skew: AtomicU32::new(0),
+    });
+    let _ = SHARED.set(shared.clone());
+    let mut client = Client { shared };
     client.send(&[EVENT_SCREEN_SIZE_CHANGED, SCREEN.0, SCREEN.1, 1])?;
     std::thread::Builder::new()
         .name("sealwax-broadway-client".into())
@@ -73,10 +106,104 @@ pub fn connect() -> io::Result<()> {
     Ok(())
 }
 
+/// Presses and releases `keysym` with the modifiers in `state`, on the surface Broadway has
+/// focused (the window).
+pub fn key(keysym: u32, state: u32) -> io::Result<()> {
+    let shared = shared()?;
+    for event in [EVENT_KEY_PRESS, EVENT_KEY_RELEASE] {
+        shared.send(&[event, i64::from(keysym), i64::from(state)])?;
+    }
+    Ok(())
+}
+
+/// Moves the pointer to `(x, y)` in the window and clicks `button` there (1 the primary, 3 the
+/// secondary), holding the modifiers in `state`.
+pub fn click(x: f64, y: f64, state: u32, button: u32) -> io::Result<()> {
+    let shared = shared()?;
+    let (id, [left, top, _, _]) = shared.window()?;
+    let (x, y) = (x.round() as i64, y.round() as i64);
+    let id = i64::from(id);
+    let at = [id, id, left + x, top + y, x, y];
+    let mut moved = vec![EVENT_POINTER_MOVE];
+    moved.extend(at);
+    moved.push(i64::from(state));
+    shared.send(&moved)?;
+    // As broadway.js: the press carries the button's mask, the release no longer does.
+    let held = BUTTON1 << (button.clamp(1, 5) - 1);
+    for (event, state) in [
+        (EVENT_BUTTON_PRESS, state | held),
+        (EVENT_BUTTON_RELEASE, state),
+    ] {
+        let mut words = vec![event];
+        words.extend(at);
+        words.extend([i64::from(state), i64::from(button)]);
+        shared.send(&words)?;
+    }
+    shared.skew.fetch_add(1_000, Ordering::Relaxed);
+    Ok(())
+}
+
+/// Moves the pointer to `(x, y)` in the window, as hovering does.
+pub fn hover(x: f64, y: f64) -> io::Result<()> {
+    let shared = shared()?;
+    let (id, [left, top, _, _]) = shared.window()?;
+    let (x, y) = (x.round() as i64, y.round() as i64);
+    let id = i64::from(id);
+    shared.send(&[EVENT_POINTER_MOVE, id, id, left + x, top + y, x, y, 0])
+}
+
+fn shared() -> io::Result<&'static Arc<Shared>> {
+    SHARED
+        .get()
+        .ok_or_else(|| invalid("no Broadway client is connected"))
+}
+
+impl Shared {
+    fn surfaces(&self) -> MutexGuard<'_, HashMap<u16, [i64; 4]>> {
+        self.surfaces.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The largest surface: the window, not a tooltip or a popover.
+    fn window(&self) -> io::Result<(u16, [i64; 4])> {
+        self.surfaces()
+            .iter()
+            .max_by_key(|(_, geometry)| geometry[2] * geometry[3])
+            .map(|(id, geometry)| (*id, *geometry))
+            .ok_or_else(|| invalid("Broadway shows no surface"))
+    }
+
+    /// Sends `[event, last serial, time, args...]` as big-endian 32-bit words in a masked
+    /// binary frame.
+    fn send(&self, event_and_args: &[i64]) -> io::Result<()> {
+        let (event, args) = event_and_args
+            .split_first()
+            .ok_or_else(|| invalid("empty event"))?;
+        let time = self.started.elapsed().as_millis() as i64
+            + i64::from(self.skew.load(Ordering::Relaxed));
+        let serial = i64::from(self.serial.load(Ordering::Relaxed));
+        let words = [*event, serial, time]
+            .into_iter()
+            .chain(args.iter().copied());
+        let payload: Vec<u8> = words.flat_map(|word| (word as i32).to_be_bytes()).collect();
+        let mask = [0x6e, 0x6f, 0x74, 0x65];
+        let length = u8::try_from(payload.len()).map_err(|_| invalid("event too long"))?;
+        let mut frame = vec![0x82, 0x80 | length];
+        frame.extend(mask);
+        frame.extend(
+            payload
+                .iter()
+                .enumerate()
+                .map(|(index, byte)| byte ^ mask[index % 4]),
+        );
+        self.writer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .write_all(&frame)
+    }
+}
+
 struct Client {
-    writer: TcpStream,
-    serial: u32,
-    surfaces: HashMap<u16, [i64; 4]>,
+    shared: Arc<Shared>,
 }
 
 impl Client {
@@ -128,7 +255,7 @@ impl Client {
         };
         while cursor.pos < message.len() {
             let op = cursor.u8()?;
-            self.serial = cursor.u32()?;
+            self.shared.serial.store(cursor.u32()?, Ordering::Relaxed);
             match op {
                 OP_GRAB_POINTER => cursor.skip(3)?,
                 OP_UNGRAB_POINTER | OP_DISCONNECTED => {}
@@ -140,18 +267,19 @@ impl Client {
                         i64::from(cursor.u16()?),
                         i64::from(cursor.u16()?),
                     ];
-                    self.surfaces.insert(id, geometry);
+                    self.shared.surfaces().insert(id, geometry);
                     self.configure(id)?;
                 }
                 OP_DESTROY_SURFACE => {
-                    self.surfaces.remove(&cursor.u16()?);
+                    let id = cursor.u16()?;
+                    self.shared.surfaces().remove(&id);
                 }
                 OP_SHOW_SURFACE | OP_HIDE_SURFACE | OP_RAISE_SURFACE | OP_LOWER_SURFACE
                 | OP_SET_SHOW_KEYBOARD => cursor.skip(2)?,
                 OP_MOVE_RESIZE => {
                     let id = cursor.u16()?;
                     let flags = cursor.u8()?;
-                    let geometry = self.surfaces.entry(id).or_default();
+                    let mut geometry = self.shared.surfaces().get(&id).copied().unwrap_or_default();
                     if flags & 1 != 0 {
                         geometry[0] = i64::from(cursor.i16()?);
                         geometry[1] = i64::from(cursor.i16()?);
@@ -160,6 +288,7 @@ impl Client {
                         geometry[2] = i64::from(cursor.u16()?);
                         geometry[3] = i64::from(cursor.u16()?);
                     }
+                    self.shared.surfaces().insert(id, geometry);
                     self.configure(id)?;
                 }
                 OP_SET_TRANSIENT_FOR | OP_RELEASE_TEXTURE => cursor.skip(4)?,
@@ -185,31 +314,12 @@ impl Client {
     }
 
     fn configure(&mut self, id: u16) -> io::Result<()> {
-        let [x, y, width, height] = self.surfaces.get(&id).copied().unwrap_or_default();
+        let [x, y, width, height] = self.shared.surfaces().get(&id).copied().unwrap_or_default();
         self.send(&[EVENT_CONFIGURE_NOTIFY, i64::from(id), x, y, width, height])
     }
 
-    /// Sends `[event, last serial, timestamp, args...]` as big-endian 32-bit words in a masked
-    /// binary frame.
     fn send(&mut self, event_and_args: &[i64]) -> io::Result<()> {
-        let (event, args) = event_and_args
-            .split_first()
-            .ok_or_else(|| invalid("empty event"))?;
-        let words = [*event, i64::from(self.serial), 0]
-            .into_iter()
-            .chain(args.iter().copied());
-        let payload: Vec<u8> = words.flat_map(|word| (word as i32).to_be_bytes()).collect();
-        let mask = [0x6e, 0x6f, 0x74, 0x65];
-        let length = u8::try_from(payload.len()).map_err(|_| invalid("event too long"))?;
-        let mut frame = vec![0x82, 0x80 | length];
-        frame.extend(mask);
-        frame.extend(
-            payload
-                .iter()
-                .enumerate()
-                .map(|(index, byte)| byte ^ mask[index % 4]),
-        );
-        self.writer.write_all(&frame)
+        self.shared.send(event_and_args)
     }
 }
 

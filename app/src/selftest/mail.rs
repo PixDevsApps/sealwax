@@ -456,6 +456,8 @@ pub(super) struct Fiction {
     pub(super) attachment: bool,
     /// The self-test message this one answers, by its number.
     pub(super) reply_to: Option<u32>,
+    /// An HTML body (a paragraph of the text) instead of plain text.
+    pub(super) html: bool,
 }
 
 pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> {
@@ -486,6 +488,11 @@ pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> 
              Content-Type: text/csv; name=\"report.csv\"\r\n\
              Content-Disposition: attachment; filename=\"report.csv\"\r\n\r\n\
              month,total\r\nseptember,42\r\n--b{serial}--\r\n",
+            fiction.text
+        ));
+    } else if fiction.html {
+        text.push_str(&format!(
+            "Content-Type: text/html; charset=utf-8\r\n\r\n<html><body><p>{}</p></body></html>\r\n",
             fiction.text
         ));
     } else {
@@ -535,7 +542,7 @@ async fn ingest_fiction(
         .ok_or_else(|| "the store already held that message".to_owned())
 }
 
-/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [from=NAME] [text=WORDS]`.
+/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [html] [from=NAME] [text=WORDS]`.
 async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
     let list = list(harness)?;
     let folder = find_folder(harness, &args[0])?;
@@ -546,6 +553,7 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
         text: "Hei! Dette er en melding fra selvtesten.".to_owned(),
         attachment: false,
         reply_to: None,
+        html: false,
     };
     let mut flags = Flags::NONE;
     for option in &args[3..] {
@@ -553,6 +561,7 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
             "read" => flags = flags | Flags::SEEN,
             "starred" => flags = flags | Flags::FLAGGED,
             "attachment" => fiction.attachment = true,
+            "html" => fiction.html = true,
             other => match other.split_once('=') {
                 Some(("from", name)) => fiction.from = name.to_owned(),
                 Some(("text", text)) => fiction.text = text.to_owned(),
@@ -676,6 +685,7 @@ fn churn_message(rng: &mut Rng, answered: &mut Vec<u32>, folder: FolderId, now: 
         text: "En melding fra selvtestens tilfeldige endringer.".to_owned(),
         attachment: rng.below(5) == 0,
         reply_to,
+        html: false,
     };
     RawMessage {
         folder,
@@ -1119,6 +1129,7 @@ mod tests {
             text: "Blåbærsyltetøy til frokost.".to_owned(),
             attachment: true,
             reply_to: Some(3),
+            html: false,
         };
         let raw = raw_message(&fiction, 1_791_072_000, 7);
         let parsed = sealwax_domain::message::parse(&raw);

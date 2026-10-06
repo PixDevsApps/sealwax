@@ -20,7 +20,7 @@ mod view;
 mod widgets;
 
 pub use engine::{CONTENT_SECURITY_POLICY, CidRequest, MAX_LIVE_VIEWS, NETWORK_FEATURES};
-pub use toolbar::Position;
+pub use toolbar::{Position, tooltip};
 pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
 
 use crate::actions::{self, ScopedShortcuts};
@@ -32,7 +32,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use page::PageWidgets;
 use prepare::{Body, Prepared};
-use sealwax_domain::actions::Scope;
+use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{Account, MessageDetail, MessageId};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
@@ -52,6 +52,9 @@ const READY_TIMEOUT: Duration = Duration::from_secs(3);
 /// A reader hidden this long gives its view back (ADR-011: views of hidden bodies are released
 /// and re-rendered on return).
 const RELEASE_HIDDEN_AFTER: Duration = Duration::from_secs(3);
+/// Keys a focused message body keeps from the Reader scope: WebKitGTK 2.52 and the plain-text
+/// view take Delete (seen headless).
+const KEPT_KEYS: [gdk::Key; 1] = [gdk::Key::Delete];
 
 /// What [`Reader::show`] showed, for listeners such as the self-test and measurements.
 #[derive(Debug, Clone, PartialEq)]
@@ -273,6 +276,7 @@ impl Reader {
         });
         inner.listener.set(Some(id));
         Inner::follow_visibility(&inner);
+        Inner::take_kept_keys(&inner);
         Reader { inner }
     }
 
@@ -395,6 +399,11 @@ impl Reader {
     /// "n of N" in the toolbar, or nothing; previous and next follow it.
     pub fn set_position(&self, position: Option<Position>) {
         self.inner.toolbar.set_position(position);
+    }
+
+    /// A toolbar command's title for the selected messages and why it doesn't apply (M4).
+    pub fn set_command(&self, id: ActionId, title: &str, reason: Option<&str>) {
+        self.inner.toolbar.set_command(id, title, reason);
     }
 
     pub fn connect_previous(&self, callback: impl Fn() + 'static) {
@@ -1104,6 +1113,61 @@ impl Inner {
                 &rgba(theme.webview_background(style)),
             );
         }
+    }
+
+    /// WebKitGTK and the plain-text view keep Delete although a read-only message has no use
+    /// for it, so with a body focused the Reader scope's Delete would never run (M4's keyboard
+    /// pass): the scope sees the keys of [`KEPT_KEYS`] before the body does. A text field
+    /// inside an HTML message loses them.
+    fn take_kept_keys(inner: &Rc<Inner>) {
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(inner);
+        keys.connect_key_pressed(move |controller, key, _, state| {
+            let Some(inner) = weak.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            let in_view = inner
+                .stage
+                .root()
+                .and_then(|root| root.focus())
+                .is_some_and(|focus| {
+                    focus.is::<webkit6::WebView>()
+                        || focus.ancestor(webkit6::WebView::static_type()).is_some()
+                        || focus
+                            .downcast_ref::<gtk::TextView>()
+                            .is_some_and(|view| !view.is_editable())
+                });
+            let (Some(event), true) = (controller.current_event(), in_view) else {
+                return glib::Propagation::Proceed;
+            };
+            if !KEPT_KEYS.contains(&key) || !state.is_empty() {
+                return glib::Propagation::Proceed;
+            }
+            let model = inner.keys.model();
+            let shortcut = (0..model.n_items())
+                .filter_map(|index| model.item(index).and_downcast::<gtk::Shortcut>())
+                .find(|shortcut| {
+                    shortcut.trigger().is_some_and(|trigger| {
+                        trigger.trigger(&event, false) == gdk::KeyMatch::Exact
+                    })
+                });
+            let ran = shortcut
+                .and_then(|shortcut| shortcut.action())
+                .is_some_and(|action| {
+                    action.activate(
+                        gtk::ShortcutActionFlags::empty(),
+                        &inner.stage,
+                        None::<&glib::Variant>,
+                    )
+                });
+            if ran {
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        inner.stage.add_controller(keys);
     }
 
     /// Releases the view of a reader hidden for [`RELEASE_HIDDEN_AFTER`], and shows its

@@ -1,0 +1,117 @@
+# Previews for the M4 gate (ML-052 to ML-055): the reader's toolbar with the mail actions
+# active, a row's quick actions, the select mode with several messages selected and the batch
+# page, the Undo toast, Move to…, the sidebar's Mark Folder as Read menu, and a change the
+# server refused, in a dark and a light stock theme (matte-black with square corners,
+# catppuccin-latte rounded). On a scripted engine with phase A's backend; every name, address
+# and message is fictional. Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 24 target/debug/sealwax --self-test tests/selftest/preview-m4.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+triage-mark-read-on-open false
+triage-account Arbeid arbeid
+mail-add Arbeid:inbox 4m "Kvartalsrapport for tredje kvartal" "from=Ingrid Solberg" "text=Her er utkastet til kvartalsrapporten. Si ifra om tallene for september ser riktige ut før fredag." attachment
+mail-add Arbeid:inbox 12m "Styremøte torsdag kl. 14" "from=Marius Dahl" "text=Agendaen ligger i delt mappe. Vi starter med budsjettet og tar ansettelsene til slutt."
+mail-add Arbeid:inbox 35m "Re: Kontorflytting i november" "from=Leah Kim" "text=Flyttebyrået kommer den 14. Pakk ned skrivebordet innen torsdag kveld, takk!" starred
+mail-add Arbeid:inbox 1h "Lunsj fredag?" "from=Nora Berg" "text=Skal vi prøve den nye restauranten ved fjorden? Jeg kan bestille bord til fire." read
+mail-add Arbeid:inbox 2h "Ny versjon av designskissene" "from=Ingrid Solberg" "text=Jeg har oppdatert skissene etter tilbakemeldingene. Se særlig på navigasjonen." attachment
+mail-add Arbeid:inbox 3h "Påminnelse: reiseregning" "from=Økonomi" "text=Husk å levere reiseregningen for september innen mandag." read
+mail-add Arbeid:inbox 5h "Kundemøte med Fjordpost" "from=Marius Dahl" "text=Kunden ønsker en demo av den nye løsningen neste uke. Hvem kan ta den?"
+mail-add Arbeid:inbox 7h "Oppsummering fra workshopen" "from=Leah Kim" "text=Takk for i dag! Her er notatene fra workshopen og de viktigste punktene videre." read
+mail-add Arbeid:inbox 9h "Sommerfest – sett av datoen" "from=Nora Berg" "text=Årets sommerfest blir lørdag 20. juni. Mer informasjon kommer." read starred
+mail-add Arbeid:inbox 1d "Velkommen til teamet" "from=Ingrid Solberg" "text=Vi gleder oss til å jobbe sammen! Her er en liste over nyttige lenker." read
+mail-add Arbeid:inbox 1d "Oppdatering av prosjektplanen" "from=Marius Dahl" "text=Milepælene for desember er flyttet en uke. Se vedlagt plan." attachment read
+mail-add Arbeid:inbox 2d "Spørsmål om ferieavvikling" "from=Leah Kim" "text=Kan du sende meg ønskene dine for juleferien innen neste fredag?" read
+mail-add Arbeid:inbox 2d "Bilder fra teamturen" "from=Nora Berg" "text=Bildene ligger i albumet. Takk for en fin tur til fjellet!" read
+mail-add Arbeid:inbox 3d "Nytt nettverksoppsett" "from=IT-støtte" "text=Det trådløse nettet bytter navn mandag morgen. Logg inn med det nye passordet." read
+folder inbox Arbeid
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+focus list
+
+# The reader's toolbar with the mail actions active.
+list-select 1
+wait-until assert-reader-page message
+assert-sensitive reader-archive true
+setup-dismiss-toasts
+screenshot $DIR/../../tools/progress/public/m4-reader-matte-black-square-2026-10-06.png
+
+# A row's quick actions.
+hover-row 3
+assert-row-quick 3 true
+screenshot $DIR/../../tools/progress/public/m4-quick-actions-matte-black-square-2026-10-06.png
+
+# The select mode: three selected, the checkboxes, the batch page.
+click-row 0
+click-row 2 ctrl
+click-row 4 ctrl
+assert-list-selection 0,2,4
+assert-reader-page batch
+hover-row 6
+screenshot $DIR/../../tools/progress/public/m4-select-mode-matte-black-square-2026-10-06.png
+
+# Archived: the Undo toast, the next message selected.
+key e
+assert-toast "Archived 3 messages"
+screenshot $DIR/../../tools/progress/public/m4-undo-toast-matte-black-square-2026-10-06.png
+
+# Move to…: the account's folders, then "ar" typed.
+setup-dismiss-toasts
+key v
+assert-move-to open true
+screenshot $DIR/../../tools/progress/public/m4-move-to-matte-black-square-2026-10-06.png
+type ar
+assert-move-to selected Archive
+screenshot $DIR/../../tools/progress/public/m4-move-to-typed-matte-black-square-2026-10-06.png
+key Escape
+
+# The sidebar's Mark Folder as Read.
+sidebar-menu Arbeid:inbox
+assert-sidebar-menu enabled
+screenshot $DIR/../../tools/progress/public/m4-folder-menu-matte-black-square-2026-10-06.png
+sidebar-menu-click
+
+# A change the server refused.
+setup-dismiss-toasts
+engine-reply ops-refused arbeid@example.test move 3
+assert-toast "The server didn't move 3 messages; they're back where they were"
+screenshot $DIR/../../tools/progress/public/m4-refused-matte-black-square-2026-10-06.png
+
+# The same in a light theme with rounded corners.
+theme catppuccin-latte
+corners 8
+setup-dismiss-toasts
+focus list
+list-select 1
+wait-until assert-reader-page message
+screenshot $DIR/../../tools/progress/public/m4-reader-catppuccin-latte-rounded-2026-10-06.png
+hover-row 2
+assert-row-quick 2 true
+screenshot $DIR/../../tools/progress/public/m4-quick-actions-catppuccin-latte-rounded-2026-10-06.png
+click-row 0
+click-row 1 ctrl
+click-row 3 ctrl
+assert-reader-page batch
+hover-row 5
+screenshot $DIR/../../tools/progress/public/m4-select-mode-catppuccin-latte-rounded-2026-10-06.png
+key numbersign
+assert-toast "Moved 3 messages to the Trash"
+screenshot $DIR/../../tools/progress/public/m4-undo-toast-catppuccin-latte-rounded-2026-10-06.png
+setup-dismiss-toasts
+key v
+assert-move-to open true
+screenshot $DIR/../../tools/progress/public/m4-move-to-catppuccin-latte-rounded-2026-10-06.png
+key Escape
+mail-add Arbeid:inbox now "Ny kunde i Bergen" "from=Marius Dahl" "text=Avtalen er signert. Oppstartsmøtet blir neste tirsdag."
+mail-add Arbeid:inbox 1m "Husk felles frokost" "from=Nora Berg" "text=Frokost i kantina fredag kl. 8."
+sidebar-menu Arbeid:inbox
+assert-sidebar-menu enabled
+screenshot $DIR/../../tools/progress/public/m4-folder-menu-catppuccin-latte-rounded-2026-10-06.png
+sidebar-menu-click
+setup-dismiss-toasts
+engine-reply ops-refused arbeid@example.test flags 2
+screenshot $DIR/../../tools/progress/public/m4-refused-catppuccin-latte-rounded-2026-10-06.png

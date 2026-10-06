@@ -19,6 +19,8 @@ pub struct ActionSet {
     actions: Vec<(ActionId, gio::SimpleAction)>,
     available: RefCell<HashSet<ActionId>>,
     has_selection: Cell<bool>,
+    /// Commands that don't apply to what is selected, such as Archive in the Archive folder.
+    blocked: RefCell<HashSet<ActionId>>,
 }
 
 impl ActionSet {
@@ -40,6 +42,7 @@ impl ActionSet {
             actions,
             available: RefCell::new(HashSet::new()),
             has_selection: Cell::new(false),
+            blocked: RefCell::new(HashSet::new()),
         }
     }
 
@@ -114,9 +117,23 @@ impl ActionSet {
         self.action(id).is_some_and(|action| action.is_enabled())
     }
 
+    /// Whether `id` applies to what is selected now; an available command that doesn't is
+    /// disabled until it does, and the keyboard shortcuts dialog still lists it as built.
+    pub fn set_applies(&self, id: ActionId, applies: bool) {
+        let changed = if applies {
+            self.blocked.borrow_mut().remove(&id)
+        } else {
+            self.blocked.borrow_mut().insert(id)
+        };
+        if changed {
+            self.refresh(id);
+        }
+    }
+
     fn refresh(&self, id: ActionId) {
-        let enabled =
-            self.is_available(id) && (!id.spec().needs_selection || self.has_selection.get());
+        let enabled = self.is_available(id)
+            && (!id.spec().needs_selection || self.has_selection.get())
+            && !self.blocked.borrow().contains(&id);
         if let Some(action) = self.action(id) {
             action.set_enabled(enabled);
         }

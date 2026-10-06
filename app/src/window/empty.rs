@@ -74,6 +74,88 @@ pub fn no_message() -> gtk::Widget {
     ))
 }
 
+/// The batch actions the reader's page offers while several messages are selected (ML-054),
+/// in the toolbar's order.
+pub const BATCH_ACTIONS: [ActionId; 7] = [
+    ActionId::Archive,
+    ActionId::Delete,
+    ActionId::Junk,
+    ActionId::MoveTo,
+    ActionId::Star,
+    ActionId::MarkRead,
+    ActionId::MarkUnread,
+];
+
+/// The reader in the select mode: "3 messages selected", what applies to them, and the batch
+/// actions as buttons bound to the registry's commands.
+pub struct BatchPage {
+    pub widget: gtk::Widget,
+    title: gtk::Label,
+    buttons: Vec<(ActionId, gtk::Button)>,
+}
+
+impl BatchPage {
+    pub fn new() -> Self {
+        let (state, title, _) = empty_state_parts(
+            &["object-select-symbolic", "checkbox-checked-symbolic"],
+            "No messages selected",
+            "Every action here applies to all of them. Escape leaves the select mode.",
+            "sw-batch-page",
+        );
+        let row = classed(
+            gtk::FlowBox::builder()
+                .selection_mode(gtk::SelectionMode::None)
+                .halign(gtk::Align::Center)
+                .max_children_per_line(4)
+                .homogeneous(false)
+                .build(),
+            &["sw-batch-actions"],
+        );
+        let mut buttons = Vec::new();
+        for id in BATCH_ACTIONS {
+            let button = classed(
+                gtk::Button::builder()
+                    .label(id.title())
+                    .action_name(id.detailed_name())
+                    .build(),
+                &["sw-batch-action"],
+            );
+            button.set_widget_name(&format!("batch-{}", id.name()));
+            row.insert(&button, -1);
+            buttons.push((id, button));
+        }
+        state.append(&row);
+        title.set_widget_name("batch-title");
+        Self {
+            widget: centred(&state),
+            title,
+            buttons,
+        }
+    }
+
+    /// "1 message selected", "3 messages selected".
+    pub fn set_count(&self, count: u32) {
+        self.title.set_label(&match count {
+            1 => "1 message selected".to_owned(),
+            count => format!("{count} messages selected"),
+        });
+    }
+
+    /// A command's title here (Not Junk, Unstar) and its tooltip.
+    pub fn set_command(&self, id: ActionId, title: &str, tooltip: &str) {
+        if let Some((_, button)) = self.buttons.iter().find(|(candidate, _)| *candidate == id) {
+            button.set_label(title);
+            button.set_tooltip_text(Some(tooltip));
+        }
+    }
+}
+
+impl Default for BatchPage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A folder without messages, such as "Nothing archived yet"; the list changes its text for
 /// filters and searches.
 pub fn folder(title: &str, description: &str) -> EmptyState {

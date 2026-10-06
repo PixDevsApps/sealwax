@@ -17,7 +17,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Item {
     id: ActionId,
-    title: &'static str,
+    title: String,
     category: &'static str,
     keys: String,
 }
@@ -49,13 +49,13 @@ pub struct Palette {
 }
 
 /// The commands of `window` the palette lists: in the palette and enabled now.
-fn items(window: &gtk::ApplicationWindow, keymap: &Keymap) -> Vec<Item> {
+fn items(window: &gtk::ApplicationWindow, keymap: &Keymap, titles: &Titles) -> Vec<Item> {
     ActionId::ALL
         .into_iter()
         .filter(|id| id.spec().palette && is_enabled(window, *id))
         .map(|id| Item {
             id,
-            title: id.title(),
+            title: titles(id).unwrap_or_else(|| id.title().to_owned()),
             category: id.category().label(),
             keys: keymap.display(id),
         })
@@ -71,8 +71,21 @@ fn is_enabled(window: &gtk::ApplicationWindow, id: ActionId) -> bool {
     }
 }
 
+/// A command's title where it differs from the registry's: Move to Junk is Not Junk in a
+/// Junk folder.
+pub type Titles = dyn Fn(ActionId) -> Option<String>;
+
 impl Palette {
     pub fn new(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Self {
+        Self::titled(window, keymap, &|_| None)
+    }
+
+    /// A palette whose commands take their titles from `titles` where it has one.
+    pub fn titled(
+        window: &impl IsA<gtk::ApplicationWindow>,
+        keymap: &Keymap,
+        titles: &Titles,
+    ) -> Self {
         let window = window.as_ref();
         let entry = gtk::SearchEntry::builder()
             .placeholder_text("Type a command")
@@ -113,7 +126,7 @@ impl Palette {
             list: list.downgrade(),
             scrolled: scrolled.downgrade(),
             window: window.downgrade(),
-            items: items(window, keymap),
+            items: items(window, keymap, titles),
             shown: RefCell::new(Vec::new()),
         });
         connect(&inner, &entry, &list);
@@ -179,7 +192,16 @@ impl Palette {
 
 /// Builds a palette for `window` and opens it.
 pub fn present(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Palette {
-    let palette = Palette::new(window, keymap);
+    present_titled(window, keymap, &|_| None)
+}
+
+/// Builds a palette for `window` whose commands take their titles from `titles`, and opens it.
+pub fn present_titled(
+    window: &impl IsA<gtk::ApplicationWindow>,
+    keymap: &Keymap,
+    titles: &Titles,
+) -> Palette {
+    let palette = Palette::titled(window, keymap, titles);
     palette.present();
     palette
 }
@@ -321,7 +343,7 @@ impl Inner {
 
 fn row(item: &Item) -> gtk::ListBoxRow {
     let title = gtk::Label::builder()
-        .label(item.title)
+        .label(&item.title)
         .xalign(0.0)
         .css_classes(["sw-palette-title"])
         .build();
@@ -354,7 +376,7 @@ fn row(item: &Item) -> gtk::ListBoxRow {
         .css_classes(["sw-palette-row"])
         .build();
     // A screen reader reads the row as one: the command, its category, its keys.
-    let spoken: Vec<&str> = [item.title, item.category, item.keys.as_str()]
+    let spoken: Vec<&str> = [item.title.as_str(), item.category, item.keys.as_str()]
         .into_iter()
         .filter(|part| !part.is_empty())
         .collect();

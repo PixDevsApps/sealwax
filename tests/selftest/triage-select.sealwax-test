@@ -1,0 +1,189 @@
+# Batch selection (ML-054) with real clicks and keys through Broadway: Ctrl+click toggles a row
+# and enters the select mode, whose rows show checkboxes and whose reader shows "N messages
+# selected" with the batch actions; Shift+click, Shift+j/k and Shift+Down/Up extend; j/k and
+# the arrows move a cursor there, x and Space toggle the row under it, Escape leaves with that
+# message alone; every action applies to every selected message, and after the selected
+# messages leave the list the next one is selected. Move to… doesn't move between accounts.
+# Every message is fictional.
+# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-select.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+mail-account Personal
+mail-add Personal:inbox 10m "Hyttetur i oktober" "from=Ingrid Solberg"
+mail-add Personal:inbox 20m "Styremøte torsdag" "from=Marius Dahl"
+mail-add Personal:inbox 30m "Kvittering for bestilling" "from=Leah Kim"
+mail-add Personal:inbox 40m "Nyhetsbrev uke 41" "from=Marius Dahl"
+mail-add Personal:inbox 50m "Lunsj fredag" "from=Leah Kim"
+mail-add Personal:inbox 60m "Bilder fra turen" "from=Ingrid Solberg"
+mail-add Personal:inbox 70m "Budsjett 2027" "from=Marius Dahl"
+mail-add Personal:inbox 80m "Ferieplaner" "from=Leah Kim"
+folder inbox Personal
+assert-list-count 8
+focus list
+
+# A click selects one message; the reader shows it.
+click-row 1
+assert-list-selection 1
+assert-select-mode false
+wait-until assert-reader-page message
+assert-row-check 1 none
+
+# Ctrl+click adds a row: the select mode, its checkboxes and the batch page.
+click-row 3 ctrl
+assert-list-selection 1,3
+assert-select-mode true
+assert-reader-page batch
+assert-label batch-title "2 messages selected"
+assert-row-check 1 true
+assert-row-check 2 false
+assert-row-check 3 true
+assert-action-enabled win.open-message false
+assert-action-enabled win.archive true
+# Ctrl+click again takes it out; the select mode stays.
+click-row 3 ctrl
+assert-list-selection 1
+assert-select-mode true
+assert-label batch-title "1 message selected"
+# Shift+click selects from the row last clicked to this one.
+click-row 3 ctrl
+click-row 5 shift
+assert-list-selection 3,4,5
+assert-label batch-title "3 messages selected"
+# A checkbox toggles its row and keeps the others.
+check-row 0
+assert-list-selection 0,3,4,5
+check-row 0
+assert-list-selection 3,4,5
+# A plain click leaves the select mode with that message alone.
+click-row 0
+assert-list-selection 0
+assert-select-mode false
+assert-reader-page message
+assert-row-check 0 none
+
+# Shift with j/k and the arrows extends from the keyboard.
+key <Shift>j
+assert-list-selection 0,1
+assert-select-mode true
+key <Shift>Down
+assert-list-selection 0,1,2
+key <Shift>k
+assert-list-selection 0,1
+key <Shift>Down 2
+assert-list-selection 0,1,2,3
+key <Shift>Up
+assert-list-selection 0,1,2
+
+# In the select mode j/k and the arrows move the cursor; x and Space toggle its row.
+key j
+assert-list-selection 0,1,2
+key x
+assert-list-selection 0,1,2,3
+key k
+key space
+assert-list-selection 0,1,3
+key space
+assert-list-selection 0,1,2,3
+key Down
+key x
+assert-list-selection 0,1,2
+# GtkListView's own Ctrl+A is not a command here: it selects nothing more.
+key <Control>a
+assert-list-selection 0,1,2
+
+# Every action applies to every selected message: star all, then unstar all.
+key s
+assert-toast "Starred 3 messages"
+assert-list-row 0 starred true
+assert-list-row 1 starred true
+assert-list-row 2 starred true
+assert-list-row 3 starred false
+assert-undoable true
+key s
+assert-toast "Unstarred 3 messages"
+assert-list-row 1 starred false
+# Mixed: star all unless all are starred.
+mail-flag 1 +starred
+key s
+assert-toast "Starred 3 messages"
+assert-list-row 0 starred true
+# Read and unread for all, and Undo puts each back as it was.
+key <Shift>i
+assert-toast "Marked 3 messages as read"
+assert-list-row 0 unread false
+assert-list-row 2 unread false
+key z
+assert-toast Undone
+assert-list-row 0 unread true
+assert-list-row 2 unread true
+assert-undoable false
+# The batch page's buttons are the same commands.
+setup-click batch-mark-read
+assert-toast "Marked 3 messages as read"
+assert-label batch-mark-read "Mark as Read"
+assert-sensitive batch-mark-read false
+assert-tooltip batch-mark-read "Mark as Read (Shift+I) — already read"
+assert-label batch-star Unstar
+
+# Escape leaves the select mode with the message under the cursor alone.
+key Escape
+assert-select-mode false
+assert-list-selection 3
+assert-reader-page message
+
+# Archive three: they leave, the message after them is selected, Undo is the toast's.
+click-row 0
+key <Shift>j 2
+assert-list-selection 0,1,2
+assert-reader-page batch
+key e
+assert-toast "Archived 3 messages"
+assert-list-count 5
+assert-list-selection 0
+assert-select-mode false
+assert-list-row 0 subject "Nyhetsbrev uke 41"
+wait-until assert-reader-page message
+# The batch page's Delete deletes every selected message.
+click-row 1
+click-row 2 ctrl
+setup-click batch-delete
+assert-toast "Moved 2 messages to the Trash"
+assert-list-count 3
+assert-list-selection 1
+# Selected at the end of the list: the one before takes its place.
+click-row 2
+key numbersign
+assert-list-count 2
+assert-list-selection 1
+
+# Hovering a row shows its quick actions; they act on that row, selected or not.
+hover-row 0
+assert-row-quick 0 true
+assert-row-quick 1 false
+click-quick 0 star
+assert-list-row 0 starred true
+assert-list-selection 1
+hover-row 1
+assert-row-quick 0 false
+assert-row-quick 1 true
+click-quick 1 archive
+assert-toast "Archived 1 message"
+assert-list-count 1
+
+# Move to… stays within one account: across accounts it is insensitive and says why.
+mail-account Work
+mail-add Work:inbox 15m "Prosjektmøte" "from=Leah Kim"
+folder all-inboxes
+assert-list-count 2
+focus list
+click-row 0
+click-row 1 ctrl
+assert-action-enabled win.move-to false
+assert-tooltip reader-move-to "Move to… (v, Ctrl+Shift+V) — the messages are in more than one account"
+key v
+assert-move-to open false
+click-row 0
+assert-action-enabled win.move-to true
+assert-labelled

@@ -8,8 +8,11 @@
 //! - After every reset the list shows [`FIRST_ROWS`] rows, then grows by [`GROW_STEP`] a frame
 //!   (S6's first-frame trim).
 //! - Sections regroup when the day changes.
-//! - One message is selected at a time (batch selection is M4); the List scope's keys move the
-//!   selection (`j`, `k`; GtkListView's Down and Up) and open it (Enter, `o`).
+//! - The List scope's keys move the selection (`j`, `k`; GtkListView's Down and Up) and open it
+//!   (Enter, `o`). Several messages can be selected for batch actions (ML-054): Ctrl+click
+//!   toggles a row, Shift+click and Shift with the arrows or `j`/`k` extend, and Select (`x`,
+//!   Space) enters a select mode whose rows show checkboxes, where `j`/`k` and the arrows move a
+//!   cursor and Escape leaves.
 
 pub mod item;
 pub mod model;
@@ -20,21 +23,24 @@ pub use model::{Change, Content, FIRST_ROWS, GROW_STEP, MessageModel, ModelStats
 
 use crate::actions::{self, ScopedShortcuts};
 use crate::mailbox::{Latch, Mailbox};
+use crate::triage::Target;
 use crate::window::empty;
 use gtk4 as gtk;
-use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4::{gdk, glib};
 use item::MessageItem;
+pub use row::Quick;
 use row::{MessageRow, RowContext, SectionHeader};
-use sealwax_domain::actions::Scope;
+use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{FolderId, MessageId};
 use sealwax_infrastructure::store::{ChangeEvent, ViewFilter, ViewScope, ViewSpec};
 use sections::{Thresholds, until_next_day};
 use std::cell::{Cell, RefCell};
+use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Faster than this (px/s), rows skip their text (S3: a scrollbar drag through 100k rows then
 /// holds 144 Hz).
@@ -48,6 +54,10 @@ const PIN_SLACK: f64 = 48.0;
 /// The day is checked at least this often, so sections regroup soon after a suspend over
 /// midnight too.
 const DAY_CHECK: Duration = Duration::from_secs(600);
+/// How long the list waits for the messages of an action to leave it.
+const LEAVING_WAIT: Duration = Duration::from_secs(10);
+/// How long an action waits for selected rows that aren't loaded yet.
+const TARGETS_WAIT: Duration = Duration::from_secs(3);
 
 pub const FILTERS: [(ViewFilter, &str); 4] = [
     (ViewFilter::All, "All"),
@@ -95,17 +105,39 @@ pub struct BoundRow {
 type IdHandler = Rc<dyn Fn(MessageId)>;
 type Handler = Rc<dyn Fn()>;
 type SearchHandler = Rc<dyn Fn(Option<&SearchHeading>)>;
+type CountHandler = Rc<dyn Fn(u32)>;
+type QuickHandler = Rc<dyn Fn(ActionId, Target)>;
 
 #[derive(Default)]
 struct Handlers {
     selected: RefCell<Vec<IdHandler>>,
     opened: RefCell<Vec<IdHandler>>,
     cleared: RefCell<Vec<Handler>>,
+    batch: RefCell<Vec<CountHandler>>,
     search: RefCell<Vec<SearchHandler>>,
     older: RefCell<Vec<FolderHandler>>,
+    quick: RefCell<Vec<QuickHandler>>,
 }
 
 type FolderHandler = Rc<dyn Fn(FolderId)>;
+
+/// What the list last reported about its selection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Selected {
+    Nothing,
+    /// One message, outside the select mode: the reader shows it.
+    One(MessageId),
+    /// The select mode, with this many messages selected.
+    Batch(u32),
+}
+
+/// Messages an action is taking out of the list. Once one is gone and nothing is selected, the
+/// row that took the first one's place is selected: the next message, as Gmail does.
+struct Leaving {
+    ids: HashSet<MessageId>,
+    position: u32,
+    since: Instant,
+}
 
 /// Older mail of a folder whose first sync kept only its newest messages (ML-043).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -133,7 +165,7 @@ struct Inner {
     scroller: gtk::ScrolledWindow,
     view: gtk::ListView,
     model: MessageModel,
-    selection: gtk::SingleSelection,
+    selection: gtk::MultiSelection,
     context: Rc<RowContext>,
     scope: Cell<Option<ViewScope>>,
     filter: Cell<ViewFilter>,
@@ -146,10 +178,24 @@ struct Inner {
     growth: RefCell<Option<gtk::TickCallbackId>>,
     growth_frames: RefCell<Vec<u32>>,
     speed: RefCell<Option<gtk::TickCallbackId>>,
-    /// The message the list last reported as selected.
-    selected: Cell<Option<MessageId>>,
-    /// A message to select again once its row loads, after a reload.
-    wanted: Cell<Option<MessageId>>,
+    /// What the list last reported as selected.
+    reported: Cell<Selected>,
+    /// Messages to select again once their rows load, after a reload, until `wanted_until`.
+    wanted: RefCell<Vec<MessageId>>,
+    wanted_until: Cell<Option<Instant>>,
+    /// The selected messages and the select mode just before a reset.
+    restoring: RefCell<(Vec<MessageId>, bool)>,
+    /// The selected messages when the selection last settled.
+    settled: RefCell<Vec<MessageId>>,
+    /// Rows show checkboxes, and `j`/`k` and the arrows move the cursor, not the selection.
+    select_mode: Cell<bool>,
+    /// The row the select mode's cursor is on, when the list hasn't got the keyboard focus.
+    cursor: Cell<Option<MessageId>>,
+    /// A click without Ctrl or Shift selects one row and leaves the select mode.
+    plain_click: Cell<bool>,
+    leaving: RefCell<Option<Leaving>>,
+    /// Next and Previous Message's one-key keys, which extend the selection with Shift.
+    extend_keys: RefCell<Vec<(gdk::Key, i64)>>,
     /// Where the list was just before its last reset, and whether it had the keyboard focus.
     place: Cell<f64>,
     refocus: Cell<bool>,
@@ -180,6 +226,7 @@ impl MessageList {
             .hexpand(true)
             .build();
         search.add_css_class("sw-search");
+        search.set_widget_name("list-search");
         search.update_property(&[gtk::accessible::Property::Label("Search mail")]);
         let chip_row = gtk::Box::builder().spacing(6).build();
         chip_row.add_css_class("sw-chips");
@@ -206,11 +253,7 @@ impl MessageList {
         head.append(&chip_row);
 
         let model = MessageModel::new(mailbox.clone());
-        let selection = gtk::SingleSelection::builder()
-            .model(&model)
-            .autoselect(false)
-            .can_unselect(true)
-            .build();
+        let selection = gtk::MultiSelection::new(Some(model.clone()));
         let context = RowContext::new();
         let factory = gtk::SignalListItemFactory::new();
         let row_context = context.clone();
@@ -326,8 +369,16 @@ impl MessageList {
                 growth: RefCell::new(None),
                 growth_frames: RefCell::new(Vec::new()),
                 speed: RefCell::new(None),
-                selected: Cell::new(None),
-                wanted: Cell::new(None),
+                reported: Cell::new(Selected::Nothing),
+                wanted: RefCell::new(Vec::new()),
+                wanted_until: Cell::new(None),
+                restoring: RefCell::new((Vec::new(), false)),
+                settled: RefCell::new(Vec::new()),
+                select_mode: Cell::new(false),
+                cursor: Cell::new(None),
+                plain_click: Cell::new(false),
+                leaving: RefCell::new(None),
+                extend_keys: RefCell::new(Vec::new()),
                 place: Cell::new(0.0),
                 refocus: Cell::new(false),
                 settle_queued: Cell::new(false),
@@ -363,15 +414,35 @@ impl MessageList {
             Self::with(&weak, |list| list.model_changed(change));
         });
         let weak = self.downgrade();
-        inner.selection.connect_selected_notify(move |_| {
+        inner.selection.connect_selection_changed(move |_, _, _| {
             Self::with(&weak, |list| list.queue_settle());
         });
+        // GtkMultiSelection drops removed rows from the selection without a signal of its own.
+        let weak = self.downgrade();
+        inner
+            .selection
+            .connect_items_changed(move |_, _, removed, _| {
+                if removed > 0 {
+                    Self::with(&weak, |list| list.queue_settle());
+                }
+            });
         let weak = self.downgrade();
         inner.view.connect_activate(move |_, position| {
             Self::with(&weak, |list| {
-                list.inner.selection.set_selected(position);
+                list.inner.select_mode.set(false);
+                list.select_position(position);
                 list.settle();
                 list.open_selected();
+            });
+        });
+        self.connect_selection_input();
+        let weak = self.downgrade();
+        inner.context.set_quick(move |action, target| {
+            Self::with(&weak, |list| {
+                let handlers = list.inner.handlers.quick.borrow().clone();
+                for handler in handlers {
+                    handler(action, target);
+                }
             });
         });
         let weak = self.downgrade();
@@ -393,9 +464,7 @@ impl MessageList {
         let weak = self.downgrade();
         inner.search.connect_activate(move |_| {
             Self::with(&weak, |list| {
-                if list.inner.selection.selected() == gtk::INVALID_LIST_POSITION
-                    && list.inner.model.total() > 0
-                {
+                if list.selected_positions().is_empty() && list.inner.model.total() > 0 {
                     list.select_position(0);
                 }
                 list.inner.view.grab_focus();
@@ -455,7 +524,7 @@ impl MessageList {
         &self.inner.model
     }
 
-    pub fn selection(&self) -> &gtk::SingleSelection {
+    pub fn selection(&self) -> &gtk::MultiSelection {
         &self.inner.selection
     }
 
@@ -545,8 +614,14 @@ impl MessageList {
         self.reload();
     }
 
-    /// Ends the search, as Escape in the search field does.
+    /// Ends the search, as Escape in the search field does; text typed within the entry's
+    /// search delay goes too, so it doesn't start a search afterwards.
     pub fn clear_search(&self) {
+        if !self.inner.search.text().is_empty() {
+            self.inner.quiet.set(true);
+            self.inner.search.set_text("");
+            self.inner.quiet.set(false);
+        }
         self.set_query(String::new());
     }
 
@@ -590,6 +665,11 @@ impl MessageList {
                 self.inner
                     .place
                     .set(self.inner.scroller.vadjustment().value());
+                // The model holds the new rows already; the selection is what settled last.
+                let selected = self.inner.settled.borrow().clone();
+                self.inner
+                    .restoring
+                    .replace((selected, self.inner.select_mode.get()));
                 // A reload of the same view destroys the row that has the keyboard focus, and
                 // GTK would then scroll its next focus row, the first, into view: the focus
                 // leaves the list until the rows are back at their place.
@@ -617,14 +697,20 @@ impl MessageList {
                     }
                     self.restore_selection();
                 } else {
-                    self.inner.wanted.set(None);
+                    self.inner.wanted.borrow_mut().clear();
+                    self.inner.leaving.take();
+                    self.inner.cursor.set(None);
+                    self.set_select_mode(false);
                     self.scroll_after_layout(0.0);
                 }
                 if let Some(latch) = self.inner.first_rows.borrow().as_ref() {
                     latch.open();
                 }
             }
-            Change::Rows => self.select_wanted(),
+            Change::Rows => {
+                self.select_wanted();
+                self.check_leaving();
+            }
             Change::Failed => {
                 if let Some(latch) = self.inner.first_rows.borrow().as_ref() {
                     latch.open();
@@ -1020,86 +1106,223 @@ impl MessageList {
     }
 
     /// Reports the selection once it has settled: a reset that keeps the same message selected
-    /// reports nothing, and a placeholder is reported once its row is in.
+    /// reports nothing, and a placeholder is reported once its row is in. Two messages or more
+    /// put the list in the select mode, and nothing selected, or a plain click, leaves it.
     fn settle(&self) {
         let inner = &self.inner;
         inner.settle_queued.set(false);
         if let Some((item, handler)) = inner.waiting.take() {
             item.disconnect(handler);
         }
-        let item = inner
-            .selection
-            .selected_item()
-            .and_downcast::<MessageItem>();
-        if item.is_some() {
-            inner.wanted.set(None);
+        let positions = self.selected_positions();
+        if !positions.is_empty() || inner.wanted_until.get() < Some(Instant::now()) {
+            inner.wanted.borrow_mut().clear();
         }
-        match item {
-            Some(item) if item.is_loaded() => {
-                let id = item.id();
-                if inner.selected.replace(id) != id
-                    && let Some(id) = id
-                {
-                    let handlers = inner.handlers.selected.borrow().clone();
-                    for handler in handlers {
-                        handler(id);
+        if !inner.wanted.borrow().is_empty() {
+            // A reload is bringing the selection back as its rows load.
+            return;
+        }
+        inner.settled.replace(self.selected_ids());
+        let plain_click = inner.plain_click.replace(false);
+        if positions.is_empty() || (plain_click && positions.len() == 1) {
+            self.set_select_mode(false);
+        } else if positions.len() > 1 {
+            self.set_select_mode(true);
+        }
+        let selected = match positions.as_slice() {
+            [] => Selected::Nothing,
+            [position] if !inner.select_mode.get() => {
+                let Some(item) = inner.model.item(*position).and_downcast::<MessageItem>() else {
+                    return;
+                };
+                match item.id() {
+                    Some(id) => {
+                        inner.cursor.set(Some(id));
+                        Selected::One(id)
+                    }
+                    None => {
+                        let weak = self.downgrade();
+                        let handler = item.connect_changed(move |_| {
+                            Self::with(&weak, |list| list.queue_settle());
+                        });
+                        inner.waiting.replace(Some((item, handler)));
+                        return;
                     }
                 }
             }
-            Some(item) => {
-                let weak = self.downgrade();
-                let handler = item.connect_changed(move |_| {
-                    Self::with(&weak, |list| list.queue_settle());
-                });
-                inner.waiting.replace(Some((item, handler)));
+            positions => Selected::Batch(positions.len() as u32),
+        };
+        self.report(selected);
+    }
+
+    fn report(&self, selected: Selected) {
+        if self.inner.reported.replace(selected) == selected {
+            return;
+        }
+        let handlers = &self.inner.handlers;
+        match selected {
+            Selected::Nothing => {
+                let cleared = handlers.cleared.borrow().clone();
+                for handler in cleared {
+                    handler();
+                }
             }
-            None => {
-                if inner.selected.take().is_some() {
-                    let handlers = inner.handlers.cleared.borrow().clone();
-                    for handler in handlers {
-                        handler();
-                    }
+            Selected::One(id) => {
+                let selected = handlers.selected.borrow().clone();
+                for handler in selected {
+                    handler(id);
+                }
+            }
+            Selected::Batch(count) => {
+                let batch = handlers.batch.borrow().clone();
+                for handler in batch {
+                    handler(count);
                 }
             }
         }
     }
 
-    /// After the same content was read again (a reload), selects the message that was selected,
-    /// now or once its row loads.
+    /// What the list last reported: nothing, one message, or the select mode's count.
+    pub fn reported(&self) -> Selected {
+        self.inner.reported.get()
+    }
+
+    /// Whether the rows show checkboxes and `j`/`k` move a cursor.
+    pub fn is_select_mode(&self) -> bool {
+        self.inner.select_mode.get()
+    }
+
+    fn set_select_mode(&self, on: bool) {
+        if self.inner.select_mode.replace(on) == on {
+            return;
+        }
+        self.inner.context.select_mode.set(on);
+        if on {
+            self.inner.view.add_css_class("sw-select-mode");
+        } else {
+            self.inner.view.remove_css_class("sw-select-mode");
+        }
+        let rows = self.inner.context.bound.borrow().clone();
+        for row in rows {
+            row.refresh();
+        }
+    }
+
+    /// After the same content was read again (a reload), selects the messages that were
+    /// selected, now or once their rows load, in the select mode if it was on.
     fn restore_selection(&self) {
-        if self.selected_position().is_none()
-            && let Some(id) = self.inner.selected.get()
-        {
-            self.inner.wanted.set(Some(id));
+        let (ids, select_mode) = self.inner.restoring.take();
+        if select_mode {
+            self.set_select_mode(true);
+        }
+        if self.selected_positions().is_empty() && !ids.is_empty() {
+            self.inner.wanted.replace(ids);
+            self.inner
+                .wanted_until
+                .set(Some(Instant::now() + TARGETS_WAIT));
+            let weak = self.downgrade();
+            glib::timeout_add_local_once(TARGETS_WAIT, move || {
+                Self::with(&weak, |list| list.queue_settle());
+            });
         }
         self.select_wanted();
     }
 
     fn select_wanted(&self) {
-        let Some(wanted) = self.inner.wanted.get() else {
+        if self.inner.wanted.borrow().is_empty() {
             return;
-        };
-        if let Some(position) = self.inner.model.position_of(wanted) {
-            self.inner.wanted.set(None);
-            if position >= self.inner.model.n_items() {
-                self.inner.model.complete_growth();
+        }
+        let wanted = self.inner.wanted.take();
+        let mut waiting = Vec::new();
+        for id in wanted {
+            match self.inner.model.position_of(id) {
+                Some(position) => {
+                    if position >= self.inner.model.n_items() {
+                        self.inner.model.complete_growth();
+                    }
+                    self.inner.selection.select_item(position, false);
+                }
+                None => waiting.push(id),
             }
-            self.inner.selection.set_selected(position);
+        }
+        self.inner.wanted.replace(waiting);
+    }
+
+    /// The selected positions, first to last.
+    pub fn selected_positions(&self) -> Vec<u32> {
+        let set = self.inner.selection.selection();
+        match gtk::BitsetIter::init_first(&set) {
+            Some((rest, first)) => std::iter::once(first).chain(rest).collect(),
+            None => Vec::new(),
         }
     }
 
-    /// The selected message.
-    pub fn selected(&self) -> Option<MessageId> {
-        self.inner
-            .selection
-            .selected_item()
-            .and_downcast::<MessageItem>()
-            .and_then(|item| item.id())
+    /// The selected messages whose rows are loaded.
+    pub fn selected_ids(&self) -> Vec<MessageId> {
+        self.selected_positions()
+            .into_iter()
+            .filter_map(|position| self.inner.model.row_at(position).map(|row| row.id))
+            .collect()
     }
 
-    /// The selected position.
+    /// The message selected, when it is the only one.
+    pub fn selected(&self) -> Option<MessageId> {
+        self.selected_position()
+            .and_then(|position| self.inner.model.row_at(position))
+            .map(|row| row.id)
+    }
+
+    /// The selected position, when it is the only one.
     pub fn selected_position(&self) -> Option<u32> {
-        Some(self.inner.selection.selected()).filter(|p| *p != gtk::INVALID_LIST_POSITION)
+        match self.selected_positions().as_slice() {
+            [position] => Some(*position),
+            _ => None,
+        }
+    }
+
+    /// The selected messages as an action needs them, or the positions whose rows aren't
+    /// loaded yet.
+    pub fn selected_targets(&self) -> Result<Vec<Target>, Vec<u32>> {
+        let mut targets = Vec::new();
+        let mut missing = Vec::new();
+        for position in self.selected_positions() {
+            match self.target_at(position) {
+                Some(target) => targets.push(target),
+                None => missing.push(position),
+            }
+        }
+        if missing.is_empty() {
+            Ok(targets)
+        } else {
+            Err(missing)
+        }
+    }
+
+    /// The selected messages, once the rows of those far down a range are loaded too; `None`
+    /// when they don't come within [`TARGETS_WAIT`].
+    pub async fn wait_targets(&self) -> Option<Vec<Target>> {
+        let started = Instant::now();
+        loop {
+            match self.selected_targets() {
+                Ok(targets) => return Some(targets),
+                Err(_) if started.elapsed() > TARGETS_WAIT => return None,
+                Err(missing) => {
+                    for position in missing {
+                        self.inner.model.request_position(position);
+                    }
+                    glib::timeout_future(Duration::from_millis(16)).await;
+                }
+            }
+        }
+    }
+
+    /// The message at `position`, as an action needs it.
+    pub fn target_at(&self, position: u32) -> Option<Target> {
+        self.inner.model.row_at(position).map(|row| Target {
+            id: row.id,
+            folder: row.folder,
+            flags: row.flags,
+        })
     }
 
     /// Where a message is in the list, 1-based, and how many the list holds: the reader's
@@ -1121,12 +1344,14 @@ impl MessageList {
             .map(|position| (position + 1, total))
     }
 
-    /// Selects the next message (Next Message: `j`, and GtkListView's own Down).
+    /// Selects the next message (Next Message: `j`, and GtkListView's own Down); in the select
+    /// mode, moves the cursor.
     pub fn select_next(&self) {
         self.step(1);
     }
 
-    /// Selects the previous message (Previous Message: `k`, and GtkListView's own Up).
+    /// Selects the previous message (Previous Message: `k`, and GtkListView's own Up); in the
+    /// select mode, moves the cursor.
     pub fn select_previous(&self) {
         self.step(-1);
     }
@@ -1136,15 +1361,133 @@ impl MessageList {
         if total == 0 {
             return;
         }
-        let target = match self.selected_position() {
-            None => 0,
-            Some(current) => (i64::from(current) + delta).clamp(0, i64::from(total) - 1) as u32,
+        self.inner.wanted.borrow_mut().clear();
+        if self.inner.select_mode.get() {
+            let target = self
+                .cursor_position()
+                .map_or(0, |current| offset(current, delta, total));
+            self.move_cursor(target);
+            return;
+        }
+        let target = match self.selected_positions().as_slice() {
+            [] => 0,
+            [first, ..] if delta < 0 => offset(*first, delta, total),
+            positions => offset(positions[positions.len() - 1], delta, total),
         };
         self.select_position(target);
     }
 
-    /// Selects the message at `position` and scrolls it into view; the keyboard focus moves
-    /// with it only when it was in the list.
+    /// Extends the selection from where it started to the next or previous row (Shift with the
+    /// arrows or with `j`/`k`), as Shift+click does.
+    pub fn extend(&self, delta: i64) {
+        let total = self.inner.model.total();
+        if total == 0 {
+            return;
+        }
+        self.inner.wanted.borrow_mut().clear();
+        let Some(from) = self.cursor_position() else {
+            self.select_position(0);
+            return;
+        };
+        if self.selected_positions().is_empty() {
+            self.select_position(from);
+            return;
+        }
+        let target = offset(from, delta, total);
+        if target >= self.inner.model.n_items() {
+            self.inner.model.complete_growth();
+        }
+        self.select_item(target, false, true);
+        self.move_cursor(target);
+    }
+
+    /// Select (`x`, Space): enters the select mode with the message under the cursor selected,
+    /// or in the select mode selects or unselects it.
+    pub fn toggle_selection(&self) {
+        let total = self.inner.model.total();
+        if total == 0 {
+            return;
+        }
+        self.inner.wanted.borrow_mut().clear();
+        let position = self.cursor_position().unwrap_or(0).min(total - 1);
+        if position >= self.inner.model.n_items() {
+            self.inner.model.complete_growth();
+        }
+        if let Some(row) = self.inner.model.row_at(position) {
+            self.inner.cursor.set(Some(row.id));
+        }
+        if self.inner.select_mode.get() {
+            self.select_item(position, true, false);
+        } else {
+            self.set_select_mode(true);
+            if !self.inner.selection.is_selected(position) {
+                self.select_item(position, true, false);
+            }
+            self.queue_settle();
+        }
+    }
+
+    /// Leaves the select mode (Escape) with the message under the cursor selected alone.
+    pub fn leave_select_mode(&self) {
+        if !self.inner.select_mode.get() {
+            return;
+        }
+        let position = self.cursor_position();
+        self.set_select_mode(false);
+        match position {
+            Some(position) => self.select_position(position),
+            None => {
+                self.inner.selection.unselect_all();
+            }
+        }
+        self.queue_settle();
+    }
+
+    /// The messages of `ids` are about to leave the list (an action on the selection). Once
+    /// one has and nothing is selected any more, the row in the first one's place is selected.
+    pub fn advance_after(&self, ids: &[MessageId]) {
+        let Some(position) = ids
+            .iter()
+            .filter_map(|id| self.inner.model.position_of(*id))
+            .min()
+        else {
+            return;
+        };
+        self.inner.leaving.replace(Some(Leaving {
+            ids: ids.iter().copied().collect(),
+            position,
+            since: Instant::now(),
+        }));
+    }
+
+    fn check_leaving(&self) {
+        let ready = {
+            let leaving = self.inner.leaving.borrow();
+            let Some(leaving) = leaving.as_ref() else {
+                return;
+            };
+            if leaving.since.elapsed() > LEAVING_WAIT {
+                None
+            } else if !self.selected_positions().is_empty()
+                || self.inner.model.held(&leaving.ids) == leaving.ids.len()
+            {
+                return;
+            } else {
+                Some(leaving.position)
+            }
+        };
+        self.inner.leaving.take();
+        let total = self.inner.model.total();
+        if let Some(position) = ready
+            && total > 0
+        {
+            self.set_select_mode(false);
+            self.select_position(position.min(total - 1));
+        }
+    }
+
+    /// Selects the message at `position` alone and scrolls it into view; the keyboard focus
+    /// moves with it only when it was in the list.
     pub fn select_position(&self, position: u32) {
         let inner = &self.inner;
         if position >= inner.model.total() {
@@ -1153,14 +1496,76 @@ impl MessageList {
         if position >= inner.model.n_items() {
             inner.model.complete_growth();
         }
+        inner.wanted.borrow_mut().clear();
         let focus = self.has_focus_within();
-        inner.selection.set_selected(position);
+        self.select_item(position, false, false);
+        if let Some(row) = inner.model.row_at(position) {
+            inner.cursor.set(Some(row.id));
+        }
         let flags = if focus {
             gtk::ListScrollFlags::FOCUS
         } else {
             gtk::ListScrollFlags::NONE
         };
         inner.view.scroll_to(position, flags, None);
+    }
+
+    /// GtkListView's own selection, as a click makes it: alone, toggled (`modify`) or from the
+    /// anchor (`extend`); all but extending move the anchor.
+    fn select_item(&self, position: u32, modify: bool, extend: bool) {
+        if self
+            .inner
+            .view
+            .activate_action(
+                "list.select-item",
+                Some(&(position, modify, extend).to_variant()),
+            )
+            .is_err()
+        {
+            tracing::warn!("the message list has no list.select-item");
+        }
+    }
+
+    /// Moves the keyboard cursor without changing the selection (the select mode's `j`, `k`).
+    fn move_cursor(&self, position: u32) {
+        let inner = &self.inner;
+        if position >= inner.model.n_items() {
+            inner.model.complete_growth();
+        }
+        if let Some(row) = inner.model.row_at(position) {
+            inner.cursor.set(Some(row.id));
+        }
+        let flags = if self.has_focus_within() {
+            gtk::ListScrollFlags::FOCUS
+        } else {
+            gtk::ListScrollFlags::NONE
+        };
+        inner.view.scroll_to(position, flags, None);
+    }
+
+    /// The row the keyboard focus is on, else the cursor's, else the first selected.
+    fn cursor_position(&self) -> Option<u32> {
+        if self.has_focus_within()
+            && let Some(position) = self.focused_row()
+        {
+            return Some(position);
+        }
+        self.inner
+            .cursor
+            .get()
+            .and_then(|id| self.inner.model.position_of(id))
+            .or_else(|| self.selected_positions().first().copied())
+    }
+
+    fn focused_row(&self) -> Option<u32> {
+        let focus = self.inner.view.root()?.focus()?;
+        self.inner
+            .context
+            .bound
+            .borrow()
+            .iter()
+            .find(|row| row.is_ancestor(&focus) || focus == **row || focus.is_ancestor(*row))
+            .and_then(MessageRow::position)
     }
 
     fn has_focus_within(&self) -> bool {
@@ -1170,6 +1575,91 @@ impl MessageList {
             .is_some_and(|focus| {
                 &focus == view.upcast_ref::<gtk::Widget>() || focus.is_ancestor(view)
             })
+    }
+
+    /// Clicks and keys of the selection: a plain click leaves the select mode; Shift with the
+    /// arrows or with Next and Previous Message's keys extends; in the select mode the arrows
+    /// move the cursor and Escape leaves; GtkListView's own Ctrl+A is no command here.
+    fn connect_selection_input(&self) {
+        let view = &self.inner.view;
+        let click = gtk::GestureClick::new();
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = self.downgrade();
+        click.connect_pressed(move |gesture, _, x, y| {
+            let state = gesture.current_event_state();
+            let modify = state.contains(gdk::ModifierType::CONTROL_MASK);
+            let extend = state.contains(gdk::ModifierType::SHIFT_MASK);
+            Self::with(&weak, |list| {
+                let picked = list.inner.view.pick(x, y, gtk::PickFlags::DEFAULT);
+                let control = picked.as_ref().is_some_and(|widget| {
+                    widget.ancestor(gtk::CheckButton::static_type()).is_some()
+                        || widget.ancestor(gtk::Button::static_type()).is_some()
+                });
+                list.inner.plain_click.set(!modify && !extend && !control);
+                // Ctrl and Shift clicks take effect here, on the press: GtkListView's own
+                // Ctrl+click on a selected row selected it alone on the press and unselected it
+                // on the release (seen headless, GTK 4.22).
+                let position = picked
+                    .and_then(|widget| widget.ancestor(MessageRow::static_type()))
+                    .and_downcast::<MessageRow>()
+                    .and_then(|row| row.position());
+                if (modify || extend)
+                    && !control
+                    && let Some(position) = position
+                {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    list.inner.view.grab_focus();
+                    list.select_item(position, modify, extend);
+                    list.move_cursor(position);
+                }
+            });
+        });
+        view.add_controller(click);
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = self.downgrade();
+        keys.connect_key_pressed(move |_, key, _, state| {
+            let Some(inner) = weak.upgrade() else {
+                return glib::Propagation::Proceed;
+            };
+            MessageList { inner }.selection_key(key, state)
+        });
+        view.add_controller(keys);
+    }
+
+    fn selection_key(&self, key: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
+        let shift = state.contains(gdk::ModifierType::SHIFT_MASK);
+        if state.contains(gdk::ModifierType::ALT_MASK) {
+            return glib::Propagation::Proceed;
+        }
+        if state.contains(gdk::ModifierType::CONTROL_MASK) {
+            return if key.to_lower() == gdk::Key::a {
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            };
+        }
+        let delta = match key {
+            gdk::Key::Down => Some(1),
+            gdk::Key::Up => Some(-1),
+            _ if shift => self
+                .inner
+                .extend_keys
+                .borrow()
+                .iter()
+                .find(|(bound, _)| *bound == key.to_lower())
+                .map(|(_, delta)| *delta),
+            _ => None,
+        };
+        match delta {
+            Some(delta) if shift => self.extend(delta),
+            Some(delta) if self.inner.select_mode.get() => self.step(delta),
+            _ if key == gdk::Key::Escape && !shift && self.inner.select_mode.get() => {
+                self.leave_select_mode();
+            }
+            _ => return glib::Propagation::Proceed,
+        }
+        glib::Propagation::Stop
     }
 
     /// Opens the selected message (Open Message: Enter, `o`, or a double click).
@@ -1209,6 +1699,30 @@ impl MessageList {
             .push(Rc::new(handler));
     }
 
+    /// Runs `handler` with the count of selected messages while the list is in the select mode.
+    pub fn connect_batch_selected(&self, handler: impl Fn(u32) + 'static) {
+        self.inner
+            .handlers
+            .batch
+            .borrow_mut()
+            .push(Rc::new(handler));
+    }
+
+    /// Runs `handler` when a row's quick action is clicked: the command and that row's message,
+    /// selected or not.
+    pub fn connect_quick_action(&self, handler: impl Fn(ActionId, Target) + 'static) {
+        self.inner
+            .handlers
+            .quick
+            .borrow_mut()
+            .push(Rc::new(handler));
+    }
+
+    /// Shows the quick actions' keys in their tooltips (`keys.toml`).
+    pub fn set_quick_tooltips(&self, tooltips: Vec<(Quick, String)>) {
+        self.inner.context.set_quick_tooltips(tooltips);
+    }
+
     /// Runs `handler` when search results come or go (`None`: the folder shows again).
     pub fn connect_search_changed(&self, handler: impl Fn(Option<&SearchHeading>) + 'static) {
         self.inner
@@ -1224,6 +1738,7 @@ impl MessageList {
         let keys = actions::install_scoped(&self.inner.root, Scope::List, keymap);
         keys.attach(&self.inner.view, gtk::PropagationPhase::Capture);
         self.inner.keys.replace(Some(keys));
+        self.inner.extend_keys.replace(extend_keys(keymap));
     }
 
     /// `keys.toml` changed.
@@ -1231,6 +1746,7 @@ impl MessageList {
         if let Some(keys) = self.inner.keys.borrow().as_ref() {
             keys.update(keymap);
         }
+        self.inner.extend_keys.replace(extend_keys(keymap));
     }
 
     pub fn keys(&self) -> Option<std::cell::Ref<'_, ScopedShortcuts>> {
@@ -1353,9 +1869,51 @@ impl MessageList {
     }
 }
 
+/// `current` moved by `delta`, kept inside a list of `total` rows.
+fn offset(current: u32, delta: i64, total: u32) -> u32 {
+    (i64::from(current) + delta).clamp(0, i64::from(total) - 1) as u32
+}
+
+/// The one-key keys of Next and Previous Message, which extend the selection with Shift.
+fn extend_keys(keymap: &Keymap) -> Vec<(gdk::Key, i64)> {
+    [(ActionId::NextMessage, 1), (ActionId::PreviousMessage, -1)]
+        .into_iter()
+        .flat_map(|(id, delta)| {
+            keymap
+                .keys(id)
+                .into_iter()
+                .filter_map(|binding| binding.single().cloned())
+                .filter(|key| key.is_one_key() && !key.shift)
+                .filter_map(|key| gdk::Key::from_name(&key.key))
+                .map(move |key| (key.to_lower(), delta))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn offsets_stay_inside_the_list() {
+        assert_eq!(offset(0, -1, 10), 0);
+        assert_eq!(offset(9, 1, 10), 9);
+        assert_eq!(offset(4, 1, 10), 5);
+    }
+
+    #[test]
+    fn shift_extends_with_next_and_previous_messages_one_key_keys() {
+        assert_eq!(
+            extend_keys(&Keymap::default()),
+            [(gdk::Key::j, 1), (gdk::Key::k, -1)]
+        );
+        let rebound = Keymap::with_overrides([(
+            ActionId::NextMessage,
+            vec![sealwax_domain::keymap::Binding::parse("n").unwrap()],
+        )]);
+        assert_eq!(extend_keys(&rebound), [(gdk::Key::n, 1), (gdk::Key::k, -1)]);
+    }
 
     #[test]
     fn search_headings_count_their_results() {

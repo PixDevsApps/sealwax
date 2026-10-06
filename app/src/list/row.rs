@@ -7,17 +7,65 @@
 //! and nothing changes unless it differs from what the row shows. The only class that changes is
 //! the avatar's tint (`sw-avatar-tint-<n>`, from the theme). While the list moves faster than
 //! ~30,000 px/s rows show their placeholder look instead of text (S3).
+//!
+//! In the select mode (ML-054) a checkbox takes the avatar's place, so the text doesn't move;
+//! it follows the row's selection and toggles it. Hovering a row shows its quick actions
+//! (archive, delete, star) where the time was; they are built on the first hover.
 
 use super::item::MessageItem;
 use super::sections::LABELS;
+use crate::triage::Target;
+use crate::window::panes::icon_button;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{glib, pango};
+use sealwax_domain::actions::ActionId;
 use sealwax_domain::model::{MessageId, MessageSummary};
 use sealwax_domain::theme::{avatar_index, initials};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
+
+/// A row's quick actions, shown while the pointer is over it (DESIGN.md "Message list").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Quick {
+    Archive,
+    Delete,
+    Star,
+}
+
+impl Quick {
+    pub const ALL: [Quick; 3] = [Quick::Archive, Quick::Delete, Quick::Star];
+
+    pub fn action(self) -> ActionId {
+        match self {
+            Quick::Archive => ActionId::Archive,
+            Quick::Delete => ActionId::Delete,
+            Quick::Star => ActionId::Star,
+        }
+    }
+
+    fn icons(self) -> &'static [&'static str] {
+        match self {
+            Quick::Archive => &["mail-archive-symbolic", "folder-documents-symbolic"],
+            Quick::Delete => &["user-trash-symbolic"],
+            Quick::Star => &["starred-symbolic"],
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Quick::Archive => "archive",
+            Quick::Delete => "delete",
+            Quick::Star => "star",
+        }
+    }
+}
+
+type QuickCallback = Rc<dyn Fn(ActionId, Target)>;
+
+/// A row's quick actions: their box and each button.
+type QuickActions = (gtk::Box, Vec<(Quick, gtk::Button)>);
 
 /// Characters a row shows at most, at a 400 px list (S3): sender, subject, snippet.
 const CUT: (usize, usize, usize) = (48, 100, 140);
@@ -46,6 +94,11 @@ pub struct RowContext {
     pub binds: Cell<u64>,
     /// Row widgets created so far.
     pub rows_created: Cell<u64>,
+    /// Rows show a checkbox in the avatar's place.
+    pub select_mode: Cell<bool>,
+    quick: RefCell<Option<QuickCallback>>,
+    /// Each quick action's tooltip, with its keys.
+    quick_tooltips: RefCell<Vec<(Quick, String)>>,
 }
 
 impl RowContext {
@@ -62,7 +115,33 @@ impl RowContext {
             headers: RefCell::new(Vec::new()),
             binds: Cell::new(0),
             rows_created: Cell::new(0),
+            select_mode: Cell::new(false),
+            quick: RefCell::new(None),
+            quick_tooltips: RefCell::new(Vec::new()),
         })
+    }
+
+    /// Runs `callback` when a row's quick action is clicked.
+    pub fn set_quick(&self, callback: impl Fn(ActionId, Target) + 'static) {
+        self.quick.replace(Some(Rc::new(callback)));
+    }
+
+    pub fn set_quick_tooltips(&self, tooltips: Vec<(Quick, String)>) {
+        self.quick_tooltips.replace(tooltips);
+        for row in self.bound.borrow().iter() {
+            row.update_quick_tooltips();
+        }
+    }
+
+    fn quick_tooltip(&self, quick: Quick) -> String {
+        self.quick_tooltips
+            .borrow()
+            .iter()
+            .find(|(candidate, _)| *candidate == quick)
+            .map_or_else(
+                || quick.action().title().to_owned(),
+                |(_, text)| text.clone(),
+            )
     }
 
     fn limits(&self) -> (usize, usize, usize) {
@@ -141,6 +220,8 @@ thread_local! {
 struct Parts {
     dot: gtk::Box,
     avatar: gtk::Label,
+    check: gtk::CheckButton,
+    top: gtk::Box,
     sender: gtk::Label,
     count: gtk::Label,
     time: gtk::Label,
@@ -154,6 +235,7 @@ struct Bound {
     item: MessageItem,
     list_item: glib::WeakRef<gtk::ListItem>,
     handlers: [glib::SignalHandlerId; 2],
+    selected: Option<glib::SignalHandlerId>,
 }
 
 mod imp {
@@ -168,6 +250,11 @@ mod imp {
         pub(super) skeleton: Cell<bool>,
         pub(super) bold: Cell<bool>,
         pub(super) tint: Cell<Option<usize>>,
+        /// The quick actions, once the row was first hovered.
+        pub(super) quick: RefCell<Option<QuickActions>>,
+        pub(super) hovered: Cell<bool>,
+        /// The checkbox is being set from the selection, not clicked.
+        pub(super) syncing: Cell<bool>,
     }
 
     #[glib::object_subclass]
@@ -217,6 +304,14 @@ impl MessageRow {
             .xalign(0.5)
             .build();
         avatar.add_css_class("sw-avatar");
+        let check = gtk::CheckButton::builder()
+            .valign(gtk::Align::Start)
+            .halign(gtk::Align::Center)
+            .focusable(false)
+            .visible(false)
+            .build();
+        check.add_css_class("sw-row-check");
+        check.update_property(&[gtk::accessible::Property::Label("Selected")]);
         let sender = line("sw-sender");
         sender.set_hexpand(true);
         let count = gtk::Label::builder().visible(false).build();
@@ -266,12 +361,32 @@ impl MessageRow {
         indicators.append(&clip);
         row.append(&dot);
         row.append(&avatar);
+        row.append(&check);
         row.append(&content);
         row.append(&indicators);
+        check.connect_toggled(glib::clone!(
+            #[weak]
+            row,
+            move |_| row.check_toggled()
+        ));
+        let motion = gtk::EventControllerMotion::new();
+        motion.connect_enter(glib::clone!(
+            #[weak]
+            row,
+            move |_, _, _| row.set_hovered(true)
+        ));
+        motion.connect_leave(glib::clone!(
+            #[weak]
+            row,
+            move |_| row.set_hovered(false)
+        ));
+        row.add_controller(motion);
         let imp = row.imp();
         let _ = imp.parts.set(Parts {
             dot,
             avatar,
+            check,
+            top,
             sender,
             count,
             time,
@@ -282,6 +397,142 @@ impl MessageRow {
         });
         let _ = imp.context.set(context);
         row
+    }
+
+    /// The user clicked the checkbox: the row's selection follows, the others stay.
+    fn check_toggled(&self) {
+        if self.imp().syncing.get() {
+            return;
+        }
+        let Some(position) = self.position() else {
+            return;
+        };
+        if self
+            .activate_action(
+                "list.select-item",
+                Some(&(position, true, false).to_variant()),
+            )
+            .is_err()
+        {
+            tracing::warn!("a row's checkbox has no list.select-item");
+        }
+    }
+
+    /// The checkbox shows whether the row is selected.
+    fn sync_check(&self) {
+        let (Some(parts), Some(list_item)) = (
+            self.imp().parts.get(),
+            self.imp()
+                .bound
+                .borrow()
+                .as_ref()
+                .and_then(|bound| bound.list_item.upgrade()),
+        ) else {
+            return;
+        };
+        let selected = list_item.is_selected();
+        if parts.check.is_active() != selected {
+            self.imp().syncing.set(true);
+            parts.check.set_active(selected);
+            self.imp().syncing.set(false);
+        }
+    }
+
+    fn set_hovered(&self, hovered: bool) {
+        if self.imp().hovered.replace(hovered) == hovered {
+            return;
+        }
+        self.show_quick();
+    }
+
+    /// The quick actions show while the pointer is over a loaded row, outside the select mode,
+    /// in the time's place.
+    fn show_quick(&self) {
+        let Some(parts) = self.imp().parts.get() else {
+            return;
+        };
+        let shown =
+            self.imp().hovered.get() && !self.context().select_mode.get() && !self.is_placeholder();
+        if shown && self.imp().quick.borrow().is_none() {
+            let quick = gtk::Box::builder().spacing(2).visible(false).build();
+            quick.add_css_class("sw-quick-actions");
+            let mut buttons = Vec::new();
+            for action in Quick::ALL {
+                let button = icon_button(action.icons(), &self.context().quick_tooltip(action));
+                button.add_css_class("sw-quick-action");
+                button.set_focusable(false);
+                button.set_widget_name(&format!("quick-{}", action.name()));
+                button.connect_clicked(glib::clone!(
+                    #[weak(rename_to = row)]
+                    self,
+                    move |_| row.quick_clicked(action)
+                ));
+                quick.append(&button);
+                buttons.push((action, button));
+            }
+            parts.top.append(&quick);
+            self.imp().quick.replace(Some((quick, buttons)));
+        }
+        if let Some((quick, _)) = self.imp().quick.borrow().as_ref() {
+            quick.set_visible(shown);
+        }
+        parts.time.set_visible(!shown);
+    }
+
+    fn update_quick_tooltips(&self) {
+        if let Some((_, buttons)) = self.imp().quick.borrow().as_ref() {
+            for (action, button) in buttons {
+                let text = self.context().quick_tooltip(*action);
+                button.set_tooltip_text(Some(&text));
+                button.update_property(&[gtk::accessible::Property::Label(&text)]);
+            }
+        }
+    }
+
+    fn quick_clicked(&self, action: Quick) {
+        let target = self.item().and_then(|item| {
+            item.row().as_ref().map(|row| Target {
+                id: row.id,
+                folder: row.folder,
+                flags: row.flags,
+            })
+        });
+        let callback = self.context().quick.borrow().clone();
+        if let (Some(target), Some(callback)) = (target, callback) {
+            callback(action.action(), target);
+        }
+    }
+
+    /// Whether the row shows its quick actions now (for the self-test).
+    pub fn shows_quick(&self) -> bool {
+        self.imp()
+            .quick
+            .borrow()
+            .as_ref()
+            .is_some_and(|(quick, _)| quick.is_visible())
+    }
+
+    /// The quick action button for `action`, once the row has been hovered.
+    pub fn quick_button(&self, action: Quick) -> Option<gtk::Button> {
+        self.imp().quick.borrow().as_ref().and_then(|(_, buttons)| {
+            buttons
+                .iter()
+                .find(|(candidate, _)| *candidate == action)
+                .map(|(_, button)| button.clone())
+        })
+    }
+
+    /// Ticks or unticks the checkbox, as a click on it does.
+    pub fn toggle_check(&self) {
+        if let Some(parts) = self.imp().parts.get() {
+            parts.check.activate();
+        }
+    }
+
+    /// Whether the row shows its checkbox, and whether it is ticked.
+    pub fn check_state(&self) -> Option<bool> {
+        let parts = self.imp().parts.get()?;
+        parts.check.is_visible().then(|| parts.check.is_active())
     }
 
     fn context(&self) -> &Rc<RowContext> {
@@ -303,10 +554,16 @@ impl MessageRow {
             self,
             move |_| row.show()
         ));
+        let selected = list_item.connect_selected_notify(glib::clone!(
+            #[weak(rename_to = row)]
+            self,
+            move |_| row.sync_check()
+        ));
         self.imp().bound.replace(Some(Bound {
             item: item.clone(),
             list_item: list_item.downgrade(),
             handlers: [changed, section],
+            selected: Some(selected),
         }));
         let context = self.context();
         context.binds.set(context.binds.get() + 1);
@@ -320,6 +577,9 @@ impl MessageRow {
         };
         for handler in bound.handlers {
             bound.item.disconnect(handler);
+        }
+        if let (Some(list_item), Some(handler)) = (bound.list_item.upgrade(), bound.selected) {
+            list_item.disconnect(handler);
         }
         self.context().bound.borrow_mut().retain(|row| row != self);
     }
@@ -431,6 +691,7 @@ impl MessageRow {
         self.set_bold(parts, unread);
         set_opacity(&parts.dot, unread);
         set_opacity(&parts.avatar, true);
+        self.show_check(parts, self.context().select_mode.get());
         self.set_tint(parts, avatar_index(&row.sender_email));
         parts
             .avatar
@@ -461,6 +722,18 @@ impl MessageRow {
         {
             list_item.set_accessible_label(&accessible_text(row, &time));
         }
+        self.show_quick();
+    }
+
+    /// In the select mode the checkbox takes the avatar's place.
+    fn show_check(&self, parts: &Parts, select_mode: bool) {
+        if parts.check.is_visible() != select_mode {
+            parts.check.set_visible(select_mode);
+            parts.avatar.set_visible(!select_mode);
+        }
+        if select_mode {
+            self.sync_check();
+        }
     }
 
     /// The row's shape without its text: a row that is loading, or one the list moves past too
@@ -480,6 +753,8 @@ impl MessageRow {
         parts.count.set_visible(false);
         set_opacity(&parts.star, false);
         set_opacity(&parts.clip, false);
+        self.show_check(parts, false);
+        self.show_quick();
     }
 }
 

@@ -331,7 +331,14 @@ pub struct Sidebar {
     model: RefCell<SidebarModel>,
     selected: RefCell<String>,
     expanded: RefCell<HashSet<String>>,
+    /// A folder row's context menu, while it is open.
+    menu: RefCell<Option<gtk::Popover>>,
+    /// Whether Mark Folder as Read applies to a folder key, and what it does.
+    mark_read: RefCell<Option<MarkRead>>,
+    weak: RefCell<std::rc::Weak<Sidebar>>,
 }
+
+type MarkRead = (Rc<dyn Fn(&str) -> bool>, Rc<dyn Fn(&str)>);
 
 impl Sidebar {
     /// `tooltips` names the keys of the buttons that run a registry command.
@@ -445,7 +452,11 @@ impl Sidebar {
             model: RefCell::new(SidebarModel::default()),
             selected: RefCell::new(String::new()),
             expanded: RefCell::new(HashSet::new()),
+            menu: RefCell::new(None),
+            mark_read: RefCell::new(None),
+            weak: RefCell::new(std::rc::Weak::new()),
         });
+        sidebar.weak.replace(Rc::downgrade(&sidebar));
         sidebar.list.connect_row_activated(glib::clone!(
             #[weak]
             sidebar,
@@ -496,6 +507,136 @@ impl Sidebar {
 
     pub fn is_expanded(&self, account: &str) -> bool {
         self.expanded.borrow().contains(account)
+    }
+
+    /// Gives every folder row a context menu with Mark Folder as Read (ML-052): a right click,
+    /// or Menu or Shift+F10 on a focused row, opens it. `applies` says whether the folder has
+    /// anything unread; `activate` marks it read.
+    pub fn connect_mark_read(
+        &self,
+        applies: impl Fn(&str) -> bool + 'static,
+        activate: impl Fn(&str) + 'static,
+    ) {
+        self.mark_read
+            .replace(Some((Rc::new(applies), Rc::new(activate))));
+    }
+
+    /// Opens the context menu of the folder row `key`, as a right click does.
+    pub fn open_menu(&self, key: &str) -> bool {
+        let row = self
+            .rows
+            .borrow()
+            .iter()
+            .find(|row| row.kind == RowKind::Folder(key.to_owned()))
+            .map(|row| row.widget.clone());
+        match row {
+            Some(row) => {
+                self.show_menu(&row, key);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// The open context menu, if any.
+    pub fn menu(&self) -> Option<gtk::Popover> {
+        self.menu
+            .borrow()
+            .clone()
+            .filter(|menu| menu.parent().is_some())
+    }
+
+    fn show_menu(&self, row: &gtk::ListBoxRow, key: &str) {
+        self.close_menu();
+        let Some((applies, activate)) = self.mark_read.borrow().clone() else {
+            return;
+        };
+        let enabled = applies(key);
+        let button = named(
+            classed(
+                gtk::Button::builder()
+                    .label(ActionId::MarkFolderRead.title())
+                    .sensitive(enabled)
+                    .build(),
+                &["flat", "sw-menu-item"],
+            ),
+            "folder-menu-mark-read",
+        );
+        if !enabled {
+            button.set_tooltip_text(Some("Nothing here is unread"));
+        }
+        let popover = named(
+            classed(
+                gtk::Popover::builder()
+                    .child(&button)
+                    .has_arrow(false)
+                    .position(gtk::PositionType::Bottom)
+                    .build(),
+                &["sw-folder-menu"],
+            ),
+            "folder-menu",
+        );
+        popover.set_parent(row);
+        popover.connect_closed(|popover| popover.unparent());
+        let key = key.to_owned();
+        button.connect_clicked(glib::clone!(
+            #[weak]
+            popover,
+            move |_| {
+                popover.popdown();
+                activate(&key);
+            }
+        ));
+        popover.popup();
+        self.menu.replace(Some(popover));
+    }
+
+    fn close_menu(&self) {
+        if let Some(menu) = self.menu.take()
+            && menu.parent().is_some()
+        {
+            menu.popdown();
+            if menu.parent().is_some() {
+                menu.unparent();
+            }
+        }
+    }
+
+    /// A right click, Menu or Shift+F10 on a folder row opens its context menu.
+    fn add_menu_triggers(&self, row: &gtk::ListBoxRow, key: &str) {
+        let click = gtk::GestureClick::builder().button(3).build();
+        let weak = self.weak.borrow().clone();
+        let target = key.to_owned();
+        click.connect_pressed(move |gesture, _, _, _| {
+            if let (Some(sidebar), Some(row)) = (
+                weak.upgrade(),
+                gesture.widget().and_downcast::<gtk::ListBoxRow>(),
+            ) {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+                sidebar.show_menu(&row, &target);
+            }
+        });
+        row.add_controller(click);
+        let keys = gtk::EventControllerKey::new();
+        let weak = self.weak.borrow().clone();
+        let target = key.to_owned();
+        keys.connect_key_pressed(move |controller, key, _, state| {
+            let menu_key = key == gtk::gdk::Key::Menu
+                || (key == gtk::gdk::Key::F10
+                    && state.contains(gtk::gdk::ModifierType::SHIFT_MASK));
+            match (
+                menu_key,
+                weak.upgrade(),
+                controller.widget().and_downcast::<gtk::ListBoxRow>(),
+            ) {
+                (true, Some(sidebar), Some(row)) => {
+                    sidebar.show_menu(&row, &target);
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
+        });
+        row.add_controller(keys);
     }
 
     /// Opens or closes an account's "More" folders.
@@ -585,6 +726,7 @@ impl Sidebar {
     }
 
     fn rebuild_list(&self) {
+        self.close_menu();
         self.list.remove_all();
         let model = self.model.borrow();
         let expanded = self.expanded.borrow();
@@ -623,6 +765,9 @@ impl Sidebar {
             }
         }
         for row in &rows {
+            if let RowKind::Folder(key) = &row.kind {
+                self.add_menu_triggers(&row.widget, key);
+            }
             self.list.append(&row.widget);
         }
         drop(expanded);

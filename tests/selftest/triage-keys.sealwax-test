@@ -1,0 +1,250 @@
+# The keyboard pass (ML-055), with real key presses through Broadway on a fixture store: every
+# one-key shortcut and scoped Ctrl key of the registry, in the list and in the reader, runs its
+# command (the log of commands run says which); the commands not built yet (go to, back to the
+# list, compose, reply, reply all, forward) run nothing; g waits for its second key, and a
+# mistyped sequence runs nothing; the unshifted alternatives (Delete for #, Ctrl+F for /,
+# Ctrl+J for !, h for ?) work; the search field and the Move to… picker's entry keep every
+# letter, Delete and Ctrl+Z. The keysyms are chosen by the script, so which keys need Shift on
+# US and Norwegian keyboards is the audit's (domain/src/keymap.rs), not this script's.
+# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-keys.sealwax-test
+
+desktop tiling
+fixtures --count 60 --seed 9 --folders spread
+resize 1440 900
+triage-mark-read-on-open false
+list-wait
+action-log
+focus list
+assert-focus list
+
+# Moving and opening, in the list.
+key j
+assert-action-log win.next-message
+assert-list-selection 0
+key j
+key k
+assert-action-log win.next-message,win.previous-message
+assert-list-selection 0
+key Down
+assert-list-selection 1
+key Up
+assert-list-selection 0
+assert-action-log none
+key Return
+assert-action-log win.open-message
+key o
+assert-action-log win.open-message
+
+# The mail commands, in the list.
+key s
+assert-action-log win.star
+assert-list-row 0 starred true
+key s
+mail-flag 0 +read
+key <Shift>u
+key <Shift>i
+assert-action-log win.star,win.mark-unread,win.mark-read
+assert-list-row 0 unread false
+key x
+assert-action-log win.select
+assert-select-mode true
+key space
+assert-action-log win.select
+assert-select-mode false
+assert-list-selection none
+key j
+assert-action-log win.next-message
+key e
+assert-action-log win.archive
+key y
+assert-action-log win.archive
+key numbersign
+assert-action-log win.delete
+key Delete
+assert-action-log win.delete
+key exclam
+assert-action-log win.junk
+key <Control>j
+assert-action-log win.junk
+key z
+assert-action-log win.undo
+key s
+key <Control>z
+assert-action-log win.star
+key <Shift>j
+key s
+key <Control>z
+assert-action-log win.star,win.undo
+key Escape
+key v
+assert-action-log win.move-to
+assert-move-to open true
+key Escape
+assert-move-to open false
+assert-focus list
+key <Control><Shift>v
+assert-action-log win.move-to
+assert-move-to open true
+key Escape
+
+# Not built yet: nothing runs, in the list.
+key c
+key r
+key a
+key f
+key <Control>r
+key <Control><Shift>r
+key <Control>l
+assert-action-log none
+
+# g waits for its second key; a mistyped sequence runs nothing, and s after g doesn't star.
+key g
+key s
+key g
+key e
+key g
+key i
+key g
+key t
+key g
+key d
+assert-action-log none
+key g
+sleep 1700
+key s
+assert-action-log win.star
+
+# The window's keys from the list: search, the palette, the keyboard shortcuts.
+key slash
+assert-action-log win.search
+assert-focus search
+key Escape
+assert-focus list
+key <Control>f
+assert-action-log win.search
+assert-focus search
+key Escape
+key F1
+assert-action-log win.command-palette
+key Escape
+focus list
+key <Control><Shift>p
+assert-action-log win.command-palette
+key Escape
+focus list
+key question
+assert-action-log app.shortcuts
+key Escape
+focus list
+key h
+assert-action-log app.shortcuts
+key Escape
+focus list
+
+# The search field keeps every letter, Delete and Ctrl+Z.
+focus search
+type sexjk#!zvy
+wait-until assert-field list-search sexjk#!zvy
+key Delete
+key <Control>z
+key space
+key x
+assert-action-log none
+assert-focus search
+search-escape
+focus list
+list-wait
+
+# The Move to… picker's entry keeps them too.
+list-select 2
+key v
+assert-action-log win.move-to
+assert-focus move-to
+type exjk
+assert-move-to shown none
+key <Control>z
+key Delete
+key s
+assert-action-log none
+key Escape
+assert-move-to open false
+
+# The reader: the same keys while the message's body has the focus, a plain-text body (a text
+# view) and an HTML body (a WebView, which hands back the keys it doesn't use, so the log is
+# waited for). Both keep Delete from the reader's keys unless the reader takes it first.
+mail-add inbox 2m "HTML-melding" html "from=Marius Dahl" "text=Et avsnitt i HTML for tastaturet."
+mail-add inbox now "Tastaturtest" "from=Leah Kim" "text=Ren tekst for tastaturet."
+list-select 0
+wait-until assert-body plain
+focus reader
+assert-focus reader
+key j
+wait-until assert-action-log win.next-message
+assert-list-selection 1
+list-select 0
+wait-until assert-body plain
+focus reader
+key k
+wait-until assert-action-log win.previous-message
+assert-list-selection 0
+mail-flag 0 +read
+focus reader
+key s
+key <Shift>u
+key <Shift>i
+wait-until assert-action-log win.star,win.mark-unread,win.mark-read
+key Delete
+wait-until assert-action-log win.delete
+assert-list-row 0 subject HTML-melding
+wait-until assert-body html-themed
+focus reader
+assert-focus reader
+key s
+wait-until assert-action-log win.star
+key Delete
+wait-until assert-action-log win.delete
+wait-until assert-reader-page message
+focus reader
+key e
+wait-until assert-action-log win.archive
+focus reader
+key y
+key numbersign
+wait-until assert-action-log win.archive,win.delete
+focus reader
+key exclam
+focus reader
+key <Control>j
+wait-until assert-action-log win.junk,win.junk
+focus reader
+key z
+key <Control>z
+wait-until assert-action-log win.undo
+key v
+wait-until assert-action-log win.move-to
+key Escape
+focus reader
+key slash
+wait-until assert-action-log win.search
+focus reader
+key question
+wait-until assert-action-log app.shortcuts
+key Escape
+focus reader
+key h
+wait-until assert-action-log app.shortcuts
+key Escape
+focus reader
+# Not built yet, in the reader; x and Space and Enter are the list's alone.
+key u
+key Escape
+key c
+key r
+key a
+key f
+key g
+key i
+key x
+key space
+sleep 500
+assert-action-log none
