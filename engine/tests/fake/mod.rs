@@ -9,8 +9,9 @@
 //! connection silently dead.
 //! For the op queue's writes (M4): SELECT read-write (or READ-ONLY by mailbox) with
 //! PERMANENTFLAGS, UID STORE, UID MOVE and UID COPY with COPYUID untagged, tagged or absent, UID
-//! EXPUNGE, EXPUNGE and CLOSE, UID SEARCH UNSEEN and UNDELETED; MOVE and UIDPLUS switched on and off; a command
-//! refused with a given reply, or cut off before it runs or after it ran with its reply lost.
+//! EXPUNGE, EXPUNGE and CLOSE, UID SEARCH UNSEEN and UNDELETED; MOVE and UIDPLUS switched on
+//! and off; a command refused with a given reply, cut off before it runs, run with its reply
+//! lost, or run and never answered.
 //! A STORE in an EXAMINEd mailbox is answered OK and ignored, as Dovecot does (S1).
 //! Synthetic data only.
 
@@ -152,6 +153,8 @@ enum Fault {
     CutBefore,
     /// It runs, and the connection is cut before its reply.
     LoseReply,
+    /// It runs, and the server never answers on that connection again.
+    Hold,
 }
 
 pub const NOW: i64 = 1_791_158_400;
@@ -219,6 +222,11 @@ impl World {
     /// The next command containing `needle` runs, and the connection is cut before its reply.
     pub fn lose_reply(&mut self, needle: &str) {
         self.faults.push((needle.to_owned(), Fault::LoseReply));
+    }
+
+    /// The next command containing `needle` runs, and its connection goes silent for good.
+    pub fn hold(&mut self, needle: &str) {
+        self.faults.push((needle.to_owned(), Fault::Hold));
     }
 
     fn fault(&mut self, command: &str) -> Option<Fault> {
@@ -781,6 +789,8 @@ enum Reply {
     Text(String),
     /// Send the text, then drop the connection without a reply.
     Cut(String),
+    /// Answer nothing more on this connection.
+    Silent,
 }
 
 fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) -> Reply {
@@ -1479,6 +1489,11 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
                     world.cuts += 1;
                     Reply::Cut(String::new())
                 }
+                Some(Fault::Hold) => {
+                    answer(&mut world, &mut state, tag, command);
+                    world.cuts += 1;
+                    Reply::Silent
+                }
                 None => answer(&mut world, &mut state, tag, command),
             }
         };
@@ -1495,6 +1510,7 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
                 let _ = write(&mut io, &text).await;
                 return;
             }
+            Reply::Silent => return silent(io).await,
         }
     }
 }

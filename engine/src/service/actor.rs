@@ -3,7 +3,9 @@
 //! - The **command connection** runs an account pass on a schedule (every synced folder's
 //!   STATUS, a pass where it changed), with INBOX left to the IDLE connection and its STATUS as
 //!   the backstop; a pass over the folder the user has open, at once and then more often; older
-//!   mail on request. Servers without IDLE get INBOX polled here.
+//!   mail on request. Servers without IDLE get INBOX polled here. Before all of them it runs
+//!   the ops that are due (`ops`): after connecting, on `Command::OpsQueued`, and when the next
+//!   undo window or retry ends.
 //! - The **IDLE connection** keeps INBOX current: a pass, NOOP (another pass when it reported a
 //!   change, S1's Stalwart gap), IDLE until the server says anything or the restart interval,
 //!   and a pass on every wake.
@@ -28,6 +30,8 @@ use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
+
+mod ops;
 
 /// How often and how patiently the actors sync. The defaults are proposals for the user.
 #[derive(Clone, Debug)]
@@ -100,6 +104,8 @@ pub(super) enum Control {
     Opened(Option<FolderId>),
     /// `LoadOlder` for one of this account's folders.
     Older(FolderId),
+    /// `OpsQueued`: the store has new ops for this account.
+    Ops,
 }
 
 /// Reconnects asked for so far, and whether to stop.
@@ -332,6 +338,9 @@ async fn run(
         next_account: Instant::now(),
         next_inbox: Instant::now(),
         next_opened: Instant::now(),
+        ops_now: true,
+        next_ops: None,
+        quota: false,
     };
     poller.run().await;
 }
@@ -360,6 +369,12 @@ struct Poller {
     next_account: Instant,
     next_inbox: Instant,
     next_opened: Instant,
+    /// Run the due ops at the next chance: after connecting, or on `OpsQueued`.
+    ops_now: bool,
+    /// When the next op becomes due (an undo window or a retry ends).
+    next_ops: Option<Instant>,
+    /// The server said the mailbox is full; the account shows it until ops get through.
+    quota: bool,
 }
 
 /// What woke the command connection's loop.
@@ -391,6 +406,7 @@ impl Poller {
                         self.conn = Some(conn);
                         self.used = Instant::now();
                         self.next_account = Instant::now();
+                        self.ops_now = true;
                     }
                     Ok(Err(failure)) => self.failed(failure),
                     Err(interrupt) => {
@@ -505,7 +521,10 @@ impl Poller {
             if self.opened.is_some() {
                 due = due.min(self.next_opened);
             }
-            if self.opened_now || !self.older.is_empty() {
+            if let Some(ops) = self.next_ops {
+                due = due.min(ops);
+            }
+            if self.opened_now || self.ops_now || !self.older.is_empty() {
                 due = now;
             }
             Some(due)
@@ -557,6 +576,7 @@ impl Poller {
                     });
                 }
             }
+            Control::Ops => self.ops_now = true,
         }
     }
 
@@ -575,6 +595,12 @@ impl Poller {
                     "a quiet connection didn't answer NOOP"
                 );
                 self.lost();
+                return Ok(());
+            }
+        }
+        if self.ops_now || self.next_ops.is_some_and(|due| due <= Instant::now()) {
+            self.run_ops(seen).await?;
+            if self.conn.is_none() {
                 return Ok(());
             }
         }
@@ -652,7 +678,11 @@ impl Poller {
                 self.failures = 0;
                 let stored = report.stats.stored;
                 self.done(report).await;
-                self.status.set(SyncStatus::Synced);
+                self.status.set(if self.quota {
+                    SyncStatus::QuotaFull
+                } else {
+                    SyncStatus::Synced
+                });
                 self.find_inbox().await;
                 if stored > 0 {
                     bodies::prefetch(&self.shared);
