@@ -1017,7 +1017,15 @@ impl AppState {
         let target = list.clone();
         win_actions.connect(ActionId::Search, move || target.focus_search());
         let pane = window.clone();
-        list.connect_message_opened(move |_| pane.show_pane(Pane::Reader));
+        let weak = Rc::downgrade(self);
+        list.connect_message_opened(move |message| {
+            let edited = weak
+                .upgrade()
+                .is_some_and(|state| compose_actions::open_if_draft(&state, &pane, message));
+            if !edited {
+                pane.show_pane(Pane::Reader);
+            }
+        });
         let weak = Rc::downgrade(self);
         list.connect_message_selected(move |id| {
             if let Some(state) = weak.upgrade() {

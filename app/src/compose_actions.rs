@@ -106,6 +106,25 @@ pub fn refresh(actions: &ActionSet, list: &MessageList, targets: &[Target], fold
     actions.set_applies(ActionId::EditDraft, draft);
 }
 
+/// Opening a message of a Drafts folder (Enter, `o`, a double click) edits it in the composer
+/// rather than showing it (the user's choice at the M6 gate); true when it did.
+pub fn open_if_draft(state: &AppState, window: &Window, message: MessageId) -> bool {
+    let Some(list) = state.list() else {
+        return false;
+    };
+    let folders = state.mailbox().folders();
+    let in_drafts = list
+        .selected_targets()
+        .ok()
+        .and_then(|targets| targets.into_iter().find(|target| target.id == message))
+        .and_then(|target| folders.iter().find(|folder| folder.id == target.folder))
+        .is_some_and(|folder| folder.role == FolderRole::Drafts);
+    if in_drafts {
+        open(window.window(), ComposeRequest::ServerDraft(message));
+    }
+    in_drafts
+}
+
 fn open(window: &adw::ApplicationWindow, request: ComposeRequest) {
     if let Some(app) = window.application().and_downcast::<SealwaxApplication>() {
         composer::open(&app, request);

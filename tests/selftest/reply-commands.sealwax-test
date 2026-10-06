@@ -132,6 +132,16 @@ reply-click-card selected edit-draft
 assert-compose-last server-draft selected
 composer-close
 assert-compose-requests 20
+# Opening a draft (Enter, o) edits it in the composer, as Gmail and Thunderbird do (the user's
+# choice at the M6 gate).
+focus list
+key Return
+assert-compose-last server-draft selected
+composer-close
+key o
+assert-compose-last server-draft selected
+composer-close
+assert-compose-requests 22
 
 # All Inboxes: the selected message's account; another account's folder: that account.
 folder all-inboxes
@@ -144,12 +154,12 @@ folder inbox Work
 action win.compose
 assert-compose-last new Work
 composer-close
-assert-compose-requests 22
+assert-compose-requests 24
 
 # A mailto: link through the application's open path (D-Bus Open, `sealwax mailto:`); the
 # attach parameter is dropped.
 bus-open "mailto:ingrid@example.test?subject=Cabin&attach=%2Fetc%2Fpasswd"
-wait-until assert-compose-requests 23
+wait-until assert-compose-requests 25
 assert-compose-last mailto ingrid@example.test
 composer-close
 assert-compose-count 1
