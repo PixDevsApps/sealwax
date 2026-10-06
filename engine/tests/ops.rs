@@ -616,3 +616,61 @@ async fn a_folder_marked_read_reaches_the_messages_below_the_floor() {
     );
     run.check().await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_op_that_keeps_failing_is_refused_after_five_attempts() {
+    let fake = fake(Flavor::Qresync, true).await;
+    let mut run = Running::start(&fake, config());
+    let account = run.add(&fake).await;
+    let inbox = run.folder(account, "INBOX").await;
+    let messages = run.ids(inbox, &[3]).await;
+    for _ in 0..6 {
+        fake.world().refuse("UID STORE", "NO Temporary failure");
+    }
+    let started = Instant::now();
+    run.queue(Triage::Star(true), messages, 0).await;
+    let refused = run
+        .event(WAIT, |event| match event {
+            Event::OpsRefused {
+                change, messages, ..
+            } => Some((*change, *messages)),
+            _ => None,
+        })
+        .await;
+    assert_eq!(refused, (Refused::Flags, 1));
+    println!("refused after {:?}", started.elapsed());
+    assert_eq!(
+        fake.world().count("UID STORE"),
+        5,
+        "five attempts, then given up"
+    );
+    assert_eq!(run.pending(account).await, 0);
+    assert!(!has(&fake, "INBOX", 3, "\\Flagged"));
+    run.check().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ops_into_a_folder_gone_from_the_server_are_refused_from_the_sync() {
+    let fake = fake(Flavor::Qresync, true).await;
+    let mut sync = config();
+    sync.account_pass = Duration::from_millis(500);
+    let mut run = Running::start(&fake, sync);
+    let account = run.add(&fake).await;
+    let inbox = run.folder(account, "INBOX").await;
+    let messages = run.ids(inbox, &[4, 5]).await;
+    run.queue(Triage::Archive, messages, 2_000).await;
+    fake.world().delete("Arkiv");
+    let refused = run
+        .event(WAIT, |event| match event {
+            Event::OpsRefused {
+                change, messages, ..
+            } => Some((*change, *messages)),
+            _ => None,
+        })
+        .await;
+    assert_eq!(refused, (Refused::Move, 2));
+    assert_eq!(fake.world().count("UID MOVE"), 0);
+    assert_eq!(run.pending(account).await, 0);
+    assert_eq!(fake.world().uids("INBOX").len(), 12);
+    run.check().await;
+}
