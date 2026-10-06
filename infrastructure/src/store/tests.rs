@@ -153,9 +153,10 @@ fn migrates_once_and_refuses_a_newer_schema() {
 
     let future = dir.path().join("future.sqlite");
     let conn = Connection::open(&future).unwrap();
-    conn.execute_batch(
-        "PRAGMA user_version=10; CREATE TABLE later(x); INSERT INTO later VALUES (1);",
-    )
+    conn.execute_batch(&format!(
+        "PRAGMA user_version={}; CREATE TABLE later(x); INSERT INTO later VALUES (1);",
+        SCHEMA_VERSION + 1
+    ))
     .unwrap();
     drop(conn);
     let before = fs::read(&future).unwrap();
@@ -164,9 +165,9 @@ fn migrates_once_and_refuses_a_newer_schema() {
         matches!(
             error,
             StoreError::NewerSchema {
-                found: 10,
+                found,
                 supported: SCHEMA_VERSION
-            }
+            } if found == SCHEMA_VERSION + 1
         ),
         "{error}"
     );
@@ -797,7 +798,11 @@ fn search_finds_norwegian_cjk_prefixes_and_phrases() {
             .value)
     };
     assert_eq!(find("blåbærsyltetøy", None), [stored[0]]);
-    assert_eq!(find("blabaersyltetoy", None), Vec::<MessageId>::new());
+    assert_eq!(
+        find("blabaersyltetoy", None),
+        [stored[0]],
+        "æ and ø typed as ae and o"
+    );
     assert_eq!(find("会议", None), [stored[1]]);
     assert_eq!(find("進捗", None), [stored[2]]);
     assert_eq!(find("prosjekt*", None), [stored[3]]);

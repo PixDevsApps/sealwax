@@ -161,7 +161,7 @@ impl Writer {
             fts::index_text(&stored.subject),
             fts::index_text(&people(std::slice::from_ref(&stored.sender))),
             fts::index_text(&people(&stored.recipients)),
-            fts::index_text(&upgrade.search_text),
+            fts::index_text(&fts::body_text(&upgrade.search_text, &upgrade.attachments)),
         ])?;
         tx.prepare_cached(
             "INSERT INTO bodies(blob_key, size, used) VALUES (?1, ?2, ?3) \

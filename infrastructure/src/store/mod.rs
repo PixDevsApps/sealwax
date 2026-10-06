@@ -57,6 +57,9 @@ mod compose_tests;
 #[cfg(test)]
 mod remote_tests;
 
+#[cfg(test)]
+mod search_tests;
+
 pub use api::*;
 pub use compose_api::*;
 pub use conversation::{Conversation, ConversationMessage};
@@ -162,6 +165,18 @@ pub struct IndexRebuilt {
     /// Messages indexed again.
     pub messages: u64,
     pub elapsed: std::time::Duration,
+    /// Messages that kept their entry: the store holds no body to index them from, and their
+    /// entry holds words of the preview it doesn't keep.
+    pub kept: u64,
+    /// Entries deleted because their message was gone.
+    pub removed: u64,
+}
+
+/// How far a rebuild of the search index has come: messages walked of those to walk.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct IndexProgress {
+    pub done: u64,
+    pub total: u64,
 }
 
 /// The writer's reply to an account's removal.
@@ -180,6 +195,8 @@ pub(crate) struct Shared {
     registry: Registry,
     subscribers: Mutex<Vec<async_channel::Sender<Arc<ChangeEvent>>>>,
     blobs: Option<BlobStore>,
+    /// The search index's rebuild under way, which the writer updates after each step.
+    index_progress: Mutex<Option<IndexProgress>>,
 }
 
 impl Shared {
@@ -227,6 +244,7 @@ impl Store {
             registry: Registry::new(),
             subscribers: Mutex::new(Vec::new()),
             blobs: options.blobs,
+            index_progress: Mutex::new(None),
         });
         let mut reader_threads = Vec::new();
         let (reads, read_queue) = async_channel::unbounded();
@@ -348,8 +366,9 @@ impl Store {
         self.read(|reply| ReadJob::Raw { id, reply })
     }
 
-    /// The newest `limit` messages matching what the user typed (see [`fts::match_query`]),
-    /// in one folder or everywhere.
+    /// The newest `limit` messages that what the user typed finds (the query language of
+    /// [`sealwax_domain::search::parse_typed`]: a last word with nothing after it is the start
+    /// of a word), in one folder or in every folder but Trash and Junk of the attached accounts.
     pub fn search(
         &self,
         text: &str,
@@ -365,13 +384,24 @@ impl Store {
         })
     }
 
-    /// Indexes every stored message again in the background (ML-081, Rebuild Search Index);
-    /// search keeps answering from the old index until the new one is complete. M7's contract:
-    /// answers at once, without indexing, until phase A builds it.
+    /// Indexes every stored message again in the background (ML-081, Rebuild Search Index):
+    /// in place, a few messages a transaction on the writer's full-text lane, after every other
+    /// write, so a search finds each message by its old entry or its new one throughout. A
+    /// message whose body the store doesn't hold keeps its entry. Replies when done; a request
+    /// while one runs gets the running one's reply. A rebuild cut short by closing the store
+    /// goes on when it opens again.
     pub fn rebuild_index(&self) -> Reply<IndexRebuilt> {
-        let (sender, reply) = Reply::pair();
-        let _ = sender.try_send(Ok(IndexRebuilt::default()));
-        reply
+        self.write(|reply| WriteJob::RebuildIndex { reply })
+    }
+
+    /// The rebuild of the search index under way, if any. Reads no database: safe to poll
+    /// from the GTK thread.
+    pub fn index_progress(&self) -> Option<IndexProgress> {
+        *self
+            .shared
+            .index_progress
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     /// Recounts every maintained aggregate and lists disagreements (a diagnostic).

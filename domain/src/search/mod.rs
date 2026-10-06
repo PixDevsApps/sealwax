@@ -2,9 +2,8 @@
 //! `subject:`, `has:attachment`, `is:unread`, `before:` and `after:`. Pure: the store turns a
 //! [`Query`] into SQL against the full-text index, and the list's search field suggests from
 //! [`OPERATORS`].
-//!
-//! M7's contract: the types and the operator list. [`parse`] understands only words, phrases
-//! and prefixes until the search agent's parser replaces it (phase A).
+
+mod parser;
 
 pub mod hints;
 
@@ -18,6 +17,23 @@ pub struct Date {
     pub month: u8,
     /// 1–31.
     pub day: u8,
+}
+
+impl Date {
+    /// The day, when it exists in the Gregorian calendar.
+    pub fn new(year: i32, month: u8, day: u8) -> Option<Date> {
+        ((1..=12).contains(&month) && (1..=days_in_month(year, month)).contains(&day))
+            .then_some(Date { year, month, day })
+    }
+}
+
+fn days_in_month(year: i32, month: u8) -> u8 {
+    match month {
+        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
 }
 
 /// One full-text term.
@@ -56,6 +72,8 @@ impl fmt::Debug for Term {
 pub struct Query {
     /// Words and phrases matched anywhere: subject, sender, recipients, body.
     pub text: Vec<Term>,
+    /// `-word` and `-"phrase"`: messages with them anywhere are left out.
+    pub exclude: Vec<Term>,
     /// `from:`, the sender's name or address.
     pub from: Vec<Term>,
     /// `to:`, a recipient's name or address (To and Cc).
@@ -85,6 +103,7 @@ impl fmt::Debug for Query {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Query")
             .field("text", &self.text.len())
+            .field("exclude", &self.exclude.len())
             .field("from", &self.from.len())
             .field("to", &self.to.len())
             .field("subject", &self.subject.len())
@@ -158,35 +177,22 @@ pub const OPERATORS: &[Operator] = &[
 ];
 
 /// What the user typed, as a [`Query`]. Never fails: anything not understood is searched as
-/// text. The contract's version reads words, `"phrases"` and `prefix*` only.
+/// text, and an operator still being typed (`is:un`, `before:2026-`) is left out until it reads
+/// as one. Operator names and their fixed values are case-insensitive; `-` before a word, a
+/// phrase, `has:` or `is:` negates it, and `-before:` reads as `after:` (and the reverse).
+/// Dates are `2026-10-01`, `2026/10/01`, `1.10.2026`, `2026-10` (its first day) or `2026` (1
+/// January). Repeated conditions narrow: the latest `after:` and the earliest `before:` hold,
+/// and a later `is:` or `has:` replaces an earlier one of the same kind.
 pub fn parse(text: &str) -> Query {
-    let mut query = Query::default();
-    let mut rest = text;
-    loop {
-        rest = rest.trim_start();
-        if rest.is_empty() {
-            break;
-        }
-        let (term, phrase, after) = if let Some(quoted) = rest.strip_prefix('"') {
-            match quoted.find('"') {
-                Some(end) => (&quoted[..end], true, &quoted[end + 1..]),
-                None => (quoted, true, ""),
-            }
-        } else {
-            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-            (&rest[..end], false, &rest[end..])
-        };
-        rest = after;
-        if !term.chars().any(char::is_alphanumeric) {
-            continue;
-        }
-        query.text.push(match term.strip_suffix('*') {
-            _ if phrase => Term::Phrase(term.trim().to_owned()),
-            Some(stem) => Term::Prefix(stem.to_owned()),
-            None => Term::Word(term.to_owned()),
-        });
-    }
-    query
+    parser::parse(text, false)
+}
+
+/// [`parse`] for text still being typed, as the search field sends it on every key: when the
+/// text doesn't end in whitespace, its last word is the start of a word (`budsjett kon` finds
+/// "kontrakt"), in the text and under `from:`, `to:` and `subject:`. A phrase in quotes and an
+/// excluded word (`-utkast`) stay whole.
+pub fn parse_typed(text: &str) -> Query {
+    parser::parse(text, true)
 }
 
 #[cfg(test)]

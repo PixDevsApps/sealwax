@@ -3,9 +3,12 @@
 //! computes positions in it for change events.
 
 use super::api::{ViewFilter, ViewId, ViewScope, ViewSpec};
+use super::fts::Expression;
 use super::overlay;
-use rusqlite::{Connection, OptionalExtension, Row, params};
-use sealwax_domain::model::{FolderId, MessageId, MessageSummary, ThreadId};
+use rusqlite::types::Value;
+use rusqlite::{Connection, OptionalExtension, Row, Statement, ToSql, params};
+use sealwax_domain::model::{FolderId, FolderRole, MessageId, MessageSummary, ThreadId};
+use sealwax_domain::search::{Date, Query};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::Write as _;
@@ -332,33 +335,197 @@ fn stored(conn: &Connection) -> rusqlite::Result<u64> {
         .map(|count| count.max(0) as u64)
 }
 
-/// The newest `limit` messages matching an FTS5 expression, walking the date index against the
-/// match set ("date first", S3). Hidden rows are left out, as in every view.
+/// Below this many matches a search reads the matching rows themselves ("FTS first"). From it
+/// on, it walks a date index against the match set ("date first", S3): the walk reads only the
+/// rows newer than its last result, but FTS5 gathers every match before it starts.
+const FEW_MATCHES: usize = 200;
+
+/// Folders a search of every folder leaves out, as most clients do: what the user threw away and
+/// what the server judged junk. A search in one of them finds its mail.
+pub(crate) const UNSEARCHED: [FolderRole; 2] = [FolderRole::Trash, FolderRole::Junk];
+
+/// The folders a search looks in: `folder`, or every folder of an attached account but the
+/// [`UNSEARCHED`] ones.
+fn searched(conn: &Connection, folder: Option<FolderId>) -> rusqlite::Result<Vec<FolderId>> {
+    if let Some(folder) = folder {
+        return Ok(vec![folder]);
+    }
+    conn.prepare_cached(
+        "SELECT f.id FROM folders f JOIN accounts a ON a.id = f.account_id \
+         WHERE a.detached = 0 AND f.role NOT IN (?1, ?2) ORDER BY f.id",
+    )?
+    .query_map([UNSEARCHED[0].as_str(), UNSEARCHED[1].as_str()], |row| {
+        row.get(0).map(FolderId)
+    })?
+    .collect()
+}
+
+/// The newest `limit` messages a query finds, in `folder` or in every searched folder. Hidden
+/// rows are left out and the flags are the ones shown, pending ops applied, so search agrees
+/// with the list. `after:` and `before:` are local midnights.
 pub(crate) fn search(
     conn: &Connection,
-    expression: &str,
+    query: &Query,
     folder: Option<FolderId>,
     limit: u32,
 ) -> rusqlite::Result<Vec<MessageSummary>> {
-    let inner = match folder {
-        None => "SELECT m.id FROM messages m INDEXED BY messages_date \
-                 WHERE m.flags & 264 = 0 \
-                   AND m.id IN (SELECT rowid FROM message_fts WHERE message_fts MATCH ?1) \
-                 ORDER BY m.date DESC, m.id DESC LIMIT ?2"
-            .to_owned(),
-        Some(folder) => format!(
-            "SELECT m.id FROM messages m INDEXED BY messages_folder_date \
-             WHERE m.folder_id = {} AND m.flags & 264 = 0 \
-               AND m.id IN (SELECT rowid FROM message_fts WHERE message_fts MATCH ?1) \
-             ORDER BY m.date DESC, m.id DESC LIMIT ?2",
-            folder.0
+    let after = query.after.map(local_midnight);
+    let before = query.before.map(local_midnight);
+    if limit == 0 || matches!((after, before), (Some(after), Some(before)) if after >= before) {
+        return Ok(Vec::new());
+    }
+    let folders = searched(conn, folder)?;
+    let mut conditions = match folders.as_slice() {
+        [] => return Ok(Vec::new()),
+        [folder] => format!(" AND m.folder_id = {}", folder.0),
+        many => format!(
+            " AND m.folder_id IN ({})",
+            list(many.iter().map(|folder| folder.0))
         ),
     };
+    for (wanted, yes, no) in [
+        (query.unread, "m.flags & 1 = 0", "m.flags & 1 <> 0"),
+        (query.starred, "m.flags & 4 <> 0", "m.flags & 4 = 0"),
+        (
+            query.has_attachment,
+            "m.has_attachments <> 0",
+            "m.has_attachments = 0",
+        ),
+    ] {
+        if let Some(wanted) = wanted {
+            conditions.push_str(" AND ");
+            conditions.push_str(if wanted { yes } else { no });
+        }
+    }
+    let mut values = vec![(":limit", Value::Integer(i64::from(limit)))];
+    if let Some(after) = after {
+        conditions.push_str(" AND m.date >= :after");
+        values.push((":after", Value::Integer(after)));
+    }
+    if let Some(before) = before {
+        conditions.push_str(" AND m.date < :before");
+        values.push((":before", Value::Integer(before)));
+    }
+    let expression = Expression::of(query);
+    if let Some(excluded) = expression.excluded {
+        conditions.push_str(
+            " AND m.id NOT IN (SELECT rowid FROM message_fts WHERE message_fts MATCH :excluded)",
+        );
+        values.push((":excluded", Value::Text(excluded)));
+    }
+    if let Some(matching) = expression.matching {
+        if !expression.prefix
+            && let Some(ids) = few_matches(conn, &matching)?
+        {
+            if ids.is_empty() {
+                return Ok(Vec::new());
+            }
+            let sql = format!(
+                "SELECT {SUMMARY_COLUMNS} FROM messages m JOIN threads t ON t.id = m.thread_id \
+                 WHERE m.id IN ({}) AND m.flags & 264 = 0{conditions} \
+                 ORDER BY m.date DESC, m.id DESC LIMIT :limit",
+                list(ids.into_iter())
+            );
+            return rows(&mut conn.prepare(&sql)?, &values);
+        }
+        conditions.push_str(
+            " AND m.id IN (SELECT rowid FROM message_fts WHERE message_fts MATCH :matching)",
+        );
+        values.push((":matching", Value::Text(matching)));
+    }
+    let (index, shown) = walk(query, folders.len() == 1);
     let sql = format!(
-        "SELECT {SUMMARY_COLUMNS} FROM ({inner}) AS p JOIN messages m ON m.id = p.id \
-         JOIN threads t ON t.id = m.thread_id ORDER BY m.date DESC, m.id DESC"
+        "SELECT {SUMMARY_COLUMNS} FROM (SELECT m.id FROM messages m INDEXED BY {index} \
+         WHERE {shown}{conditions} ORDER BY m.date DESC, m.id DESC LIMIT :limit) AS p \
+         JOIN messages m ON m.id = p.id JOIN threads t ON t.id = m.thread_id \
+         ORDER BY m.date DESC, m.id DESC"
     );
-    conn.prepare_cached(&sql)?
-        .query_map(params![expression, limit], summary_row)?
+    let mut statement = conn.prepare_cached(&sql)?;
+    rows(&mut statement, &values)
+}
+
+/// The matches of a full-text expression, when there are at most [`FEW_MATCHES`]. FTS5 stops
+/// early for words and phrases, not for prefixes.
+fn few_matches(conn: &Connection, expression: &str) -> rusqlite::Result<Option<Vec<i64>>> {
+    let ids = conn
+        .prepare_cached("SELECT rowid FROM message_fts WHERE message_fts MATCH ?1 LIMIT ?2")?
+        .query_map(params![expression, FEW_MATCHES as i64 + 1], |row| {
+            row.get(0)
+        })?
+        .collect::<rusqlite::Result<Vec<i64>>>()?;
+    Ok((ids.len() <= FEW_MATCHES).then_some(ids))
+}
+
+/// The index a search walks newest first, and the condition that selects it: in one folder the
+/// partial index of the most selective condition asked for, across folders the date index.
+fn walk(query: &Query, one_folder: bool) -> (&'static str, &'static str) {
+    if !one_folder {
+        ("messages_date", "m.flags & 264 = 0")
+    } else if query.starred == Some(true) {
+        ("messages_flagged", "m.flags & 268 = 4")
+    } else if query.has_attachment == Some(true) {
+        (
+            "messages_attachments",
+            "m.has_attachments <> 0 AND m.flags & 264 = 0",
+        )
+    } else if query.unread == Some(true) {
+        ("messages_unread", "m.flags & 265 = 0")
+    } else {
+        ("messages_folder_date", "m.flags & 264 = 0")
+    }
+}
+
+fn list(ids: impl Iterator<Item = i64>) -> String {
+    let mut out = String::new();
+    for (n, id) in ids.enumerate() {
+        if n > 0 {
+            out.push_str(", ");
+        }
+        let _ = write!(out, "{id}");
+    }
+    out
+}
+
+fn rows(
+    statement: &mut Statement<'_>,
+    values: &[(&str, Value)],
+) -> rusqlite::Result<Vec<MessageSummary>> {
+    let values: Vec<(&str, &dyn ToSql)> = values
+        .iter()
+        .map(|(name, value)| (*name, value as &dyn ToSql))
+        .collect();
+    statement
+        .query_map(values.as_slice(), summary_row)?
         .collect()
+}
+
+/// Unix seconds at the start of `date` in the local time zone (UTC when the C library can't
+/// tell).
+pub(crate) fn local_midnight(date: Date) -> i64 {
+    // SAFETY: `tm` is a plain C struct for which all zeros (a null zone name) is valid, and
+    // `mktime` only reads and normalizes it.
+    let mut tm: libc::tm = unsafe { std::mem::zeroed() };
+    tm.tm_year = date.year - 1900;
+    tm.tm_mon = i32::from(date.month) - 1;
+    tm.tm_mday = i32::from(date.day);
+    tm.tm_isdst = -1;
+    // SAFETY: as above; `mktime` is thread-safe in glibc.
+    let seconds = unsafe { libc::mktime(&mut tm) };
+    if seconds == -1 {
+        utc_midnight(date)
+    } else {
+        seconds
+    }
+}
+
+/// Unix seconds at the start of `date` in UTC (days from the civil date, Howard Hinnant's
+/// algorithm).
+fn utc_midnight(date: Date) -> i64 {
+    let month = i64::from(date.month);
+    let year = i64::from(date.year) - i64::from(month <= 2);
+    let era = year.div_euclid(400);
+    let of_era = year.rem_euclid(400);
+    let of_year = (153 * ((month + 9) % 12) + 2) / 5 + i64::from(date.day) - 1;
+    let of_era_days = of_era * 365 + of_era / 4 - of_era / 100 + of_year;
+    (era * 146_097 + of_era_days - 719_468) * 86_400
 }
