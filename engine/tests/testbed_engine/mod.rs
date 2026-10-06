@@ -37,6 +37,11 @@ impl TestEngine {
             .prefix("actor-testbed-")
             .tempdir_in(base)
             .unwrap();
+        Self::start_in(dir, sync)
+    }
+
+    /// The engine on the store, blobs and `accounts.toml` already in `dir`, or new ones.
+    fn start_in(dir: tempfile::TempDir, sync: SyncConfig) -> TestEngine {
         let dirs = SealwaxDirs::under(dir.path());
         let blobs = BlobStore::open(&dirs.blobs_dir()).unwrap();
         let store = Arc::new(
@@ -198,6 +203,32 @@ impl TestEngine {
         let started = Instant::now();
         tokio::task::block_in_place(|| engine.stop());
         started.elapsed()
+    }
+
+    /// Stops the engine, closes the store and starts a new engine on the same store, blobs
+    /// and `accounts.toml` (M4's replay after a stop). Secrets were in memory: the accounts need
+    /// their passwords again (`UpdatePassword`).
+    pub fn restart(self, sync: SyncConfig) -> TestEngine {
+        let mut this = self;
+        if let Some(engine) = this.engine.take() {
+            tokio::task::block_in_place(|| engine.stop());
+        }
+        // What `this` keeps until it is dropped: an empty store in a scratch folder.
+        let spare = tempfile::tempdir().unwrap();
+        let empty = Store::open(&spare.path().join("spare.sqlite"), StoreOptions::default());
+        let store = std::mem::replace(&mut this.store, Arc::new(empty.unwrap()));
+        let store = Arc::try_unwrap(store)
+            .ok()
+            .expect("the store is still shared");
+        tokio::task::block_in_place(|| store.close()).unwrap();
+        let dir = std::mem::replace(&mut this._dir, spare);
+        Self::start_in(dir, sync)
+    }
+
+    /// The accounts `accounts.toml` lists, with the keys the engine gave them.
+    pub fn accounts(&self) -> Vec<AccountSettings> {
+        let dirs = SealwaxDirs::under(self._dir.path());
+        sealwax_infrastructure::accounts::read(&dirs.accounts_file()).unwrap()
     }
 }
 

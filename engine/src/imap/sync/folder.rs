@@ -10,7 +10,9 @@ use crate::imap::error::SyncError;
 use crate::imap::first_sync::{self, BATCH, Progress};
 use crate::imap::raw;
 use sealwax_domain::model::{Flags, FolderId};
-use sealwax_infrastructure::store::{FolderChanges, FolderSync, Store, SyncState};
+use sealwax_infrastructure::store::{
+    FlagUpdate, FolderChanges, FolderSync, NewMessage, Store, SyncState,
+};
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
@@ -225,6 +227,22 @@ async fn count_check(
     Ok(())
 }
 
+/// The flags of fetched rows as flag updates. A row the store already holds at one of these
+/// UIDs (a moved message the op runner re-homed under its new UID, M4) is skipped as new, and
+/// the flag scan doesn't reach UIDs above the stored UIDNEXT: without these, a flag another
+/// client changed just before the move would never reach it.
+fn refreshed(rows: &[NewMessage]) -> Vec<FlagUpdate> {
+    rows.iter()
+        .filter_map(|row| {
+            Some(FlagUpdate {
+                uid: row.uid?,
+                flags: row.flags,
+                keywords: row.keywords.clone(),
+            })
+        })
+        .collect()
+}
+
 /// New messages from UID `from` up, ascending, each batch committed with its UIDNEXT: one FETCH
 /// of `from:*` for a small gap, else a SEARCH and batches.
 async fn fetch_new(
@@ -246,6 +264,7 @@ async fn fetch_new(
             .max()
             .map_or(from, |uid| uid + 1);
         let changes = FolderChanges {
+            flags: refreshed(&rows),
             new: rows,
             uidnext: Some(top.max(view.uidnext.unwrap_or(from))),
             ..FolderChanges::default()
@@ -260,6 +279,7 @@ async fn fetch_new(
         let rows = view::fetch_rows(conn, folder, &set, |uid| wanted.contains(&uid), view).await?;
         report.stats.new_mail_fetches += 1;
         let changes = FolderChanges {
+            flags: refreshed(&rows),
             new: rows,
             uidnext: chunk.last().map(|uid| uid + 1),
             ..FolderChanges::default()
