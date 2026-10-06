@@ -151,7 +151,7 @@ thread_local! {
 /// it, so the box empties; phase B plans the reply by the compose rules, saves it as a draft
 /// and queues it with Undo send. Only the message's id is logged, never the text.
 pub fn quick_send(message: MessageId, text: &str) -> bool {
-    tracing::info!(message = message.0, "quick reply send requested");
+    tracing::info!(id = message.0, "quick reply send requested");
     QUICK_SENDS.with(|sends| sends.borrow_mut().push((message, text.to_owned())));
     true
 }

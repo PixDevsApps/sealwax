@@ -1,0 +1,120 @@
+# The quick reply under the conversation (M6, ML-068): it answers the latest message that isn't
+# the user's own ("Reply to Tomas Berg"); typing in it keeps every letter, and no one-key
+# shortcut (j, k, e, #, r, s, z, …) or reader command (Ctrl+Z, Ctrl+J, Ctrl+R, Delete) fires
+# from it; Ctrl+Enter sends through the seam phase B wires, Ctrl+Shift+E and a click on the hint
+# take the text to a composer window, Escape gives the focus back to the conversation; the text
+# is kept per message across selection changes, and keeps its message when a reply arrives.
+# Keys and clicks go through Broadway as real presses. Every message is fictional.
+# Run: tools/headless.sh 43 target/debug/sealwax --self-test tests/selftest/reply-quick.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+conversation-add trip
+mail-add inbox 3d "A message on its own" read
+focus list
+
+# The trip conversation: the quick reply answers trip-6, Tomas Berg's (trip-3 is the user's).
+conversation-show trip-6
+wait-until assert-quick-reply shown true
+assert-quick-reply target trip-6
+assert-quick-reply label "Reply to Tomas Berg"
+assert-quick-reply text ""
+assert-quick-reply send false
+assert-label quick-reply-placeholder "Write a reply…"
+assert-action-enabled win.send false
+assert-action-enabled win.quick-reply true
+assert-action-enabled win.reply-in-composer true
+assert-tooltip quick-reply-send "Send (Ctrl+Enter)"
+assert-labelled
+
+# Quick Reply puts the focus in it.
+action win.quick-reply
+assert-quick-reply focused true
+assert-focus quick-reply-text
+
+# Typing keeps every letter: no one-key shortcut and no mail command runs.
+action-log
+type "jkexs#rzacfnpuv!? hello"
+assert-quick-reply text "jkexs#rzacfnpuv!? hello"
+key <Shift>i
+key <Shift>u
+key <Control>z
+key <Control>j
+key <Control>r
+key <Control><Shift>r
+key <Control>l
+key <Control>p
+key <Control>s
+key <Control><Shift>v
+key Delete
+assert-action-log none
+assert-compose-requests 0
+assert-quick-reply focused true
+assert-list-selected 0
+assert-conversation messages 6
+assert-quick-reply send true
+assert-action-enabled win.send true
+
+# Ctrl+Enter sends what it holds as a reply to trip-6, and the box empties.
+key <Control>a
+key BackSpace
+type "See you Friday!"
+key <Control>Return
+assert-quick-sends 1
+assert-quick-send-last trip-6 "See you Friday!"
+assert-quick-reply text ""
+assert-quick-reply send false
+# With nothing to send, Ctrl+Enter does nothing, and adds no line.
+key <Control>Return
+assert-quick-sends 1
+assert-quick-reply text ""
+
+# Ctrl+Shift+E takes the text to a composer window as a quick reply to trip-6, and empties it.
+type "Bringing the waffle iron."
+key <Control><Shift>e
+assert-compose-requests 1
+assert-compose-last quick-reply trip-6 "Bringing the waffle iron."
+assert-quick-reply text ""
+# A click on the hint does the same.
+focus quick-reply-text
+type "And cards."
+click quick-reply-expand
+assert-compose-requests 2
+assert-compose-last quick-reply trip-6 "And cards."
+assert-quick-reply text ""
+
+# Escape leaves the quick reply for the message it answers.
+focus quick-reply-text
+key Escape
+assert-quick-reply focused false
+assert-action-log win.send,win.reply-in-composer,win.reply-in-composer
+
+# What was typed stays with its message across selection changes.
+focus quick-reply-text
+type "Half typed"
+focus list
+list-select 5
+wait-until assert-conversation messages 1
+assert-quick-reply text ""
+conversation-show trip-6
+assert-quick-reply text "Half typed"
+# Another message of the same conversation answers the same message.
+conversation-show trip-2
+assert-quick-reply target trip-6
+assert-quick-reply text "Half typed"
+
+# A reply arriving leaves a reply with text answering its message; an empty one follows it.
+conversation-reply trip
+wait-until assert-conversation messages 7
+assert-quick-reply target trip-6
+assert-quick-reply text "Half typed"
+focus quick-reply-text
+key <Control>a
+key BackSpace
+conversation-reply trip
+wait-until assert-conversation messages 8
+wait-until assert-quick-reply target trip-reply-2
+assert-quick-reply label "Reply to Tomas Berg"
+assert-conversation criticals 0

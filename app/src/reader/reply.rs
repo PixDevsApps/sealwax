@@ -37,21 +37,13 @@ pub const PLACEHOLDER: &str = "Write a reply…";
 /// The cards' buttons: the command each stands for, its icons and its accessible label (the
 /// mock's "Reply", "Reply all", "Forward").
 const REPLIES: [(ActionId, &[&str], &str); 3] = [
-    (
-        ActionId::Reply,
-        &["mail-reply-sender-symbolic"],
-        "Reply",
-    ),
+    (ActionId::Reply, &["mail-reply-sender-symbolic"], "Reply"),
     (
         ActionId::ReplyAll,
         &["mail-reply-all-symbolic", "mail-reply-sender-symbolic"],
         "Reply all",
     ),
-    (
-        ActionId::Forward,
-        &["mail-forward-symbolic"],
-        "Forward",
-    ),
+    (ActionId::Forward, &["mail-forward-symbolic"], "Forward"),
 ];
 
 /// A draft's card offers Edit draft instead: replying to one's own unsent draft makes no sense.
@@ -366,7 +358,11 @@ impl Reader {
 
     /// Runs `listener` when the quick reply on screen comes or goes, or gets or loses its text.
     pub fn connect_quick_state(&self, listener: impl Fn(QuickState) + 'static) {
-        self.inner.quick.on_state.borrow_mut().push(Rc::new(listener));
+        self.inner
+            .quick
+            .on_state
+            .borrow_mut()
+            .push(Rc::new(listener));
     }
 
     pub fn quick_state(&self) -> QuickState {
@@ -429,11 +425,8 @@ impl Inner {
         let Some(row) = header.parent().and_downcast::<gtk::Box>() else {
             return Vec::new();
         };
-        let specs: Vec<(ActionId, &[&str], &str)> = if draft {
-            vec![EDIT]
-        } else {
-            REPLIES.to_vec()
-        };
+        let specs: Vec<(ActionId, &[&str], &str)> =
+            if draft { vec![EDIT] } else { REPLIES.to_vec() };
         let keymap = self.keymap.borrow().clone();
         specs
             .into_iter()
@@ -494,7 +487,10 @@ impl Inner {
 
     /// The quick reply of the conversation on screen.
     fn shown_quick(&self) -> Option<Rc<QuickReply>> {
-        self.shown.borrow().as_ref().and_then(|page| page.quick.clone())
+        self.shown
+            .borrow()
+            .as_ref()
+            .and_then(|page| page.quick.clone())
     }
 
     /// Puts a quick reply under page `key`'s conversation, answering [`reply_target`], with
@@ -863,6 +859,9 @@ mod tests {
             send_sensitive: true,
         };
         let printed = format!("{report:?}");
-        assert!(!printed.contains("Friday") && !printed.contains("Tomas"), "{printed}");
+        assert!(
+            !printed.contains("Friday") && !printed.contains("Tomas"),
+            "{printed}"
+        );
     }
 }

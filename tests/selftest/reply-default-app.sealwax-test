@@ -1,0 +1,45 @@
+# Make Sealwax the Default Mail App… (PRD C8, ML-078), in a sandboxed XDG home: GIO reads and
+# writes this run's own mimeapps.list and desktop entries under $TMP/home, never the user's. Without
+# an installed desktop entry the command says why it can't; with one it says what changes and
+# how to undo it, and asks; Cancel changes nothing; Make Default makes the run's entry the handler
+# of x-scheme-handler/mailto; asked again, it says Sealwax already is.
+# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/reply-default-app.sealwax-test
+
+desktop tiling
+reply-sandbox
+resize 1440 900
+assert-mailto-handler not-ours
+
+# No desktop entry installed for this run's app-id.
+action app.default-mail-app
+wait-until assert-shown default-mail-app true
+assert-default-app-dialog heading "Sealwax can't be the default mail app yet"
+assert-default-app-dialog body "isn't installed"
+setup-respond default-mail-app close
+assert-mailto-handler not-ours
+
+# Installed: the question, then Cancel.
+reply-install-entry
+action app.default-mail-app
+wait-until assert-shown default-mail-app true
+assert-default-app-dialog heading "Make Sealwax the default mail app?"
+assert-default-app-dialog body "Links that start with mailto:"
+assert-default-app-dialog body "To undo:"
+assert-labelled
+setup-respond default-mail-app cancel
+assert-mailto-handler not-ours
+
+# Make Default: the run's entry handles mailto: links; mimeapps.list says so.
+action app.default-mail-app
+wait-until assert-shown default-mail-app true
+setup-respond default-mail-app make-default
+wait-until assert-mailto-handler ours
+assert-file-contains $TMP/home/.config/mimeapps.list "x-scheme-handler/mailto=io.github.pixdevsapps.Sealwax."
+assert-file-contains $TMP/home/.config/mimeapps.list ".SelfTest.desktop"
+
+# Asked again: already the default; nothing changes.
+action app.default-mail-app
+wait-until assert-shown default-mail-app true
+assert-default-app-dialog heading "Sealwax is already the default mail app"
+setup-respond default-mail-app close
+assert-mailto-handler ours

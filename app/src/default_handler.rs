@@ -283,7 +283,10 @@ mod tests {
             Decision::Missing
         );
         assert_eq!(decide(&probe(None, false)), Decision::Missing);
-        assert_eq!(decide(&probe(Some("bluemail.desktop"), true)), Decision::Ask);
+        assert_eq!(
+            decide(&probe(Some("bluemail.desktop"), true)),
+            Decision::Ask
+        );
         assert_eq!(decide(&probe(None, true)), Decision::Ask);
         assert_eq!(
             desktop_id("io.github.pixdevsapps.Sealwax"),
@@ -295,7 +298,10 @@ mod tests {
     fn the_question_says_what_changes_and_how_to_undo_it() {
         let (heading, body) = question(&probe(Some("bluemail.desktop"), true));
         assert_eq!(heading, "Make Sealwax the default mail app?");
-        assert!(body.contains("io.github.pixdevsapps.Sealwax.desktop"), "{body}");
+        assert!(
+            body.contains("io.github.pixdevsapps.Sealwax.desktop"),
+            "{body}"
+        );
         assert!(body.contains("now: Mail, bluemail.desktop"), "{body}");
         assert!(
             body.contains("To undo: xdg-mime default bluemail.desktop x-scheme-handler/mailto"),
@@ -311,10 +317,7 @@ mod tests {
         let mut missing = probe(Some("bluemail.desktop"), false);
         missing.development = true;
         let (heading, body) = explanation(&missing);
-        assert_eq!(
-            heading,
-            "A development build can't be the default mail app"
-        );
+        assert_eq!(heading, "A development build can't be the default mail app");
         assert!(body.contains("Install Sealwax's package"), "{body}");
         missing.development = false;
         assert_eq!(
