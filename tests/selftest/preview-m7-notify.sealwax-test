@@ -62,13 +62,14 @@ assert-notify 3 body "Ingrid Solberg, Kari Nordmann, Marius Dahl and 1 other"
 # Light, rounded: background mode, the window closed; a click builds a new one on the message.
 theme catppuccin-latte
 corners 8
-background true
 close-window
 assert-window false
+wait-until assert-notify-count 4
+assert-notify 4 summary "Sealwax keeps running"
 notify-mail dinner Work:inbox "Middag fredag?" "from=Ingrid Solberg" "text=Vi lager taco hos oss på fredag. Kom gjerne ved sjutiden!"
 notify-arrive dinner
-wait-until assert-notify-count 4
-notify-click 4 default
+wait-until assert-notify-count 5
+notify-click 5 default
 wait-until assert-window true
 wait-until assert-notify-opened dinner new-window
 sleep 500

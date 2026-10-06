@@ -10,8 +10,8 @@
 //! - **Grouping:** up to [`SEPARATE`] notifications of their own within [`LIVE`]; past that, one
 //!   notification counts them all ("5 new messages", with the senders), and the others are
 //!   withdrawn. In the count mode there is only that one.
-//! - **A click** (`app.open-message`, the message's id as the target) presents the main window,
-//!   building it when background mode closed it, shows the message's folder (All Inboxes stays),
+//! - **A click** (`app.open-message`, the message's id as the target) shows the main window
+//!   (`AppState::show_main_window`, which builds it when background mode closed it), shows the message's folder (All Inboxes stays),
 //!   selects the message and opens it in the reader. **Archive** (`app.archive-message`) and
 //!   **Mark Read** (`app.mark-message-read`) run the triage controller's actions, so the window's
 //!   Undo works. These actions take a message, so they are not the registry's commands.
@@ -761,7 +761,7 @@ fn open(state: &Rc<AppState>, id: MessageId) {
     let Some(app) = app() else {
         return;
     };
-    app.activate();
+    state.show_main_window(&app);
     {
         let notifier = shared();
         let mut clicks = notifier.clicks.borrow_mut();
@@ -837,8 +837,13 @@ async fn select(state: &Rc<AppState>, message: &MessageSummary) -> bool {
     if !passes(list.filter(), message) {
         list.set_filter(ViewFilter::All);
     }
+    drop((window, list));
     let started = Instant::now();
     loop {
+        // Looked up each time: a window closed meanwhile is freed with its list.
+        let Some(list) = state.list() else {
+            return false;
+        };
         let model = list.model();
         if !model.is_pending() {
             if let Some(position) = model.position_of(message.id) {

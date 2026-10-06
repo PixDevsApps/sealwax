@@ -70,15 +70,26 @@ assert-notify-open 0
 action "app.open-message(int64 999999)"
 wait-until assert-toast "The message was moved or deleted"
 
-# Background mode: the window closed, the click builds a new one on the message.
-background true
+# Background mode (on by default): the window closed; background mode's one-time notice is no
+# new-mail notification. The click builds a new window on the message.
 close-window
 assert-window false
-notify-mail later Work:inbox "Middag fredag" "from=Leah Kim"
-notify-arrive later
 wait-until assert-notify-count 5
-assert-notify 5 summary "Leah Kim"
-notify-click 5 default
+assert-notify 5 summary "Sealwax keeps running"
+assert-notify 5 actions default
+assert-notify 5 target none
+notify-mail later Work:inbox "Middag fredag" "from=Leah Kim" ago=1
+notify-mail away Work:inbox "Nyhetsbrev uke 42" "from=Marius Dahl"
+notify-arrive later away
+wait-until assert-notify-count 7
+assert-notify 6 summary "Leah Kim"
+assert-notify 7 summary "Marius Dahl"
+# Archive with no window: queued, and no window opens for it.
+notify-click 7 Archive
+outbox-expect ops-queued
+assert-notified away none
+assert-window false
+notify-click 6 default
 wait-until assert-window true
 wait-until assert-notify-opened later new-window
 wait-until assert-message later read

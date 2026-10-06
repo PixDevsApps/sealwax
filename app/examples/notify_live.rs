@@ -413,7 +413,9 @@ impl Run {
         if self.live {
             println!("Step 2 of 2: the window closes by itself (background mode).");
         }
-        state.set_background(&self.app, true);
+        if !state.is_background() {
+            return Err("background mode is off in the scratch config.toml".into());
+        }
         if let Some(window) = state.window() {
             window.window().close();
         }
@@ -454,6 +456,12 @@ fn main() -> glib::ExitCode {
     let _ = sealwax_infrastructure::logging::init();
     support::count_criticals();
     let dirs = SealwaxDirs::under(&root.join("sealwax"));
+    // Background mode's one-time notice counts as shown in the scratch state, so the steps'
+    // notifications are the only ones (the notice has its own checks in background-*).
+    if let Err(error) = sealwax_app::background::remember_notice(&dirs.state) {
+        eprintln!("notify_live: the scratch state: {error}");
+        return glib::ExitCode::FAILURE;
+    }
     let mailbox = match fill(&dirs) {
         Ok(mailbox) => mailbox,
         Err(error) => {
