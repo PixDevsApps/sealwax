@@ -1657,6 +1657,57 @@ fn a_folder_read_refused_or_undone_in_time_shows_the_unread_below_again() {
 }
 
 #[test]
+fn older_mail_loaded_under_a_pending_folder_read_shows_read() {
+    let fx = server();
+    windowed(&fx);
+    fx.store
+        .mark_folder_read(fx.inbox, NOW + WINDOW)
+        .recv_blocking()
+        .unwrap();
+    let mut views = Views::open(&fx.store, &all_views(&fx));
+    // UIDs 701–800 from below the floor, 33 of them unread on the server.
+    fx.store
+        .sync_changes(
+            fx.inbox,
+            FolderChanges {
+                new: (701..=800)
+                    .map(|uid| {
+                        let flags = if uid % 3 == 0 {
+                            Flags::NONE
+                        } else {
+                            Flags::SEEN
+                        };
+                        message(fx.inbox, uid, flags)
+                    })
+                    .collect(),
+                floor: Some(701),
+                below: Some(700),
+                ..FolderChanges::default()
+            },
+        )
+        .recv_blocking()
+        .unwrap();
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.inbox), (1_000, 0));
+    let held = held_ids(&fx.store, fx.inbox);
+    assert_eq!(shown(&fx.store, held[&702]), Some(Flags::SEEN));
+    assert_eq!(server_flags(&fx.store, fx.inbox)[&702], Flags::NONE);
+    clean(&fx.store);
+    let mut next_uid = 3_000;
+    run_all(&fx, NOW + WINDOW, &mut next_uid);
+    views.settle(&fx.store);
+    assert_eq!(
+        server_flags(&fx.store, fx.inbox)[&702],
+        Flags::SEEN,
+        "read on the server once the folder read ran"
+    );
+    assert_eq!(counts(&fx.store, fx.inbox), (1_000, 0));
+    assert_eq!(fx.store.pending_ops(fx.account).recv_blocking().unwrap(), 0);
+    clean(&fx.store);
+    fx.store.close().unwrap();
+}
+
+#[test]
 fn count_below_counts_rows_as_the_server_holds_them() {
     let fx = server();
     windowed(&fx);
