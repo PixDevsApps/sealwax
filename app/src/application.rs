@@ -73,6 +73,10 @@ const SETTINGS_WAIT: Duration = Duration::from_millis(150);
 /// first frame never shows an empty list. The store opens in about 2 ms.
 const FIRST_ROWS_WAIT: Duration = Duration::from_millis(300);
 
+/// How long an engine started without a window waits for the settings files: the accounts it
+/// syncs come from `accounts.toml` (ML-084).
+const ENGINE_SETTINGS_WAIT: Duration = Duration::from_secs(5);
+
 /// How long the pending-op count waits after an action, an Undo or a change event, so a burst
 /// of them is one count.
 const PENDING_COUNT_DELAY: Duration = Duration::from_millis(200);
@@ -191,6 +195,7 @@ impl SealwaxApplication {
             .build();
         let state = Rc::new(AppState {
             config,
+            launched: started,
             started: Cell::new(Some(started)),
             window: RefCell::new(None),
             first_frame: Rc::new(Cell::new(None)),
@@ -200,6 +205,7 @@ impl SealwaxApplication {
             present_gate: RefCell::new(None),
             activations: Cell::new(0),
             background: RefCell::new(None),
+            hidden: RefCell::new(None),
             quitting: Cell::new(false),
             theme: OnceCell::new(),
             prefs: OnceCell::new(),
@@ -214,6 +220,9 @@ impl SealwaxApplication {
             engine: EngineLink::new(),
             engine_service: RefCell::new(None),
             engine_events: RefCell::new(None),
+            engine_pending: Cell::new(false),
+            triage_listening: Cell::new(false),
+            reader_listening: Cell::new(false),
             accounts_read: Cell::new(false),
             keyring_missing: Cell::new(false),
             keyring_dismissed: Cell::new(false),
@@ -257,6 +266,8 @@ type PresentGate = Pin<Box<dyn Future<Output = ()>>>;
 
 pub struct AppState {
     config: AppConfig,
+    /// When the process started.
+    launched: Instant,
     started: Cell<Option<Instant>>,
     window: RefCell<Option<Window>>,
     first_frame: Rc<Cell<Option<Instant>>>,
@@ -267,6 +278,9 @@ pub struct AppState {
     present_gate: RefCell<Option<PresentGate>>,
     activations: Cell<u32>,
     background: RefCell<Option<gio::ApplicationHoldGuard>>,
+    /// Started with `--background`: held until a main window shows, whatever `[background]`
+    /// says (ML-084).
+    hidden: RefCell<Option<gio::ApplicationHoldGuard>>,
     quitting: Cell<bool>,
     theme: OnceCell<Rc<ThemeController>>,
     prefs: OnceCell<Rc<Preferences>>,
@@ -285,6 +299,11 @@ pub struct AppState {
     /// The engine this application started; the setup self-tests attach a fake one instead.
     engine_service: RefCell<Option<Engine>>,
     engine_events: RefCell<Option<Subscription>>,
+    /// An engine started without a window waits for the store and the settings.
+    engine_pending: Cell<bool>,
+    /// The mail actions' and the reader's store listeners are connected (once per process).
+    triage_listening: Cell<bool>,
+    reader_listening: Cell<bool>,
     /// `accounts.toml` has been read without mistakes at least once.
     accounts_read: Cell<bool>,
     /// The engine keeps secrets in memory: no Secret Service answered (ML-048).
@@ -597,6 +616,23 @@ impl AppState {
         self.background.borrow().is_some()
     }
 
+    /// Whether Quit is under way: windows closing then are not closing into background mode.
+    pub fn is_quitting(&self) -> bool {
+        self.quitting.get()
+    }
+
+    /// Whether `--background` holds Sealwax until a main window shows.
+    pub fn is_hidden_start(&self) -> bool {
+        self.hidden.borrow().is_some()
+    }
+
+    /// Shows the main window, built anew when it was closed (background mode): what an
+    /// activation and a click on the background notice do.
+    pub fn show_main_window(self: &Rc<Self>, app: &SealwaxApplication) {
+        let window = self.window_or_new(app);
+        self.present(&window);
+    }
+
     /// The theme follower (ADR-004), from `startup` on.
     pub fn theme(&self) -> Option<Rc<ThemeController>> {
         self.theme.get().cloned()
@@ -631,6 +667,7 @@ impl AppState {
             return;
         }
         self.background.take();
+        self.hidden.take();
         let app = app.clone();
         let finish = move || {
             for window in app.windows() {
@@ -755,8 +792,7 @@ impl AppState {
                         window.window().upcast_ref::<gtk4::Window>() == removed
                     });
                 if ours {
-                    state.window.replace(None);
-                    state.list.replace(None);
+                    state.main_window_closed();
                 }
             }
         ));
@@ -819,9 +855,48 @@ impl AppState {
             );
             return glib::ExitCode::from(2);
         }
-        let uris: Vec<&str> = parsed.uris.iter().map(String::as_str).collect();
-        self.compose_links(app, &uris);
+        if parsed.background {
+            self.start_hidden(app);
+        } else if parsed.compose && parsed.uris.is_empty() {
+            self.compose_new(app);
+        } else {
+            let uris: Vec<&str> = parsed.uris.iter().map(String::as_str).collect();
+            self.compose_links(app, &uris);
+        }
         glib::ExitCode::SUCCESS
+    }
+
+    /// `--background` (ML-084): no window. A Sealwax with no window yet holds itself until a
+    /// main window shows, so it runs with `[background]` off too, and starts its engine without
+    /// waiting for a first frame; a running one shows nothing.
+    fn start_hidden(self: &Rc<Self>, app: &SealwaxApplication) {
+        if app.windows().is_empty() && self.hidden.borrow().is_none() {
+            self.hidden.replace(Some(app.hold()));
+            tracing::info!("started without a window");
+        }
+        if self.window().is_none() {
+            self.start_engine_without_window();
+        }
+    }
+
+    /// `--compose` (ML-084): a new message. With the main window shown it is the window's
+    /// Compose (from the account the list shows); without it the composer window opens alone,
+    /// as a `mailto:` link's does (M6), from the first account.
+    fn compose_new(self: &Rc<Self>, app: &SealwaxApplication) {
+        if let Some(window) = self.window() {
+            let compose = ActionId::Compose.detailed_name();
+            if WidgetExt::activate_action(window.window(), &compose, None).is_err() {
+                tracing::warn!("the window has no Compose command");
+            }
+            return;
+        }
+        let before = crate::composer::composers().len();
+        composer::open(app, ComposeRequest::New { account: None });
+        if crate::composer::composers().len() > before {
+            self.start_engine_without_window();
+        } else {
+            self.show_main_window(app);
+        }
     }
 
     /// `mailto:` links from the command line or D-Bus `Open`. With no main window shown yet
@@ -835,6 +910,7 @@ impl AppState {
             compose(app, uri);
         }
         if alone && crate::composer::composers().len() > before {
+            self.start_engine_without_window();
             return;
         }
         let window = window.unwrap_or_else(|| self.window_or_new(app));
@@ -1011,6 +1087,8 @@ impl AppState {
     /// sidebar, which the store fills and keeps current; its keys move and open the selection.
     fn install_list(self: &Rc<Self>, window: &Window, win_actions: &ActionSet, keymap: &Keymap) {
         let list = MessageList::new(self.mailbox.clone());
+        // Known to the state before anything below runs: the handlers look it up there.
+        self.list.replace(Some(list.clone()));
         list.set_first_rows(self.first_rows.clone());
         list.install_keys(keymap);
         list.set_quick_tooltips(quick_tooltips(keymap));
@@ -1019,21 +1097,30 @@ impl AppState {
         list.keep_focus(window.window());
         self.install_triage(window, &list, win_actions);
 
-        let target = list.clone();
-        win_actions.connect(ActionId::NextMessage, move || target.select_next());
-        let target = list.clone();
-        win_actions.connect(ActionId::PreviousMessage, move || target.select_previous());
-        let target = list.clone();
-        win_actions.connect(ActionId::OpenMessage, move || target.open_selected());
-        let target = list.clone();
-        win_actions.connect(ActionId::Search, move || target.focus_search());
-        let pane = window.clone();
+        // The window's handlers find the window and the list through the state, never by a
+        // clone of their own: a clone would keep a window closed into background mode alive.
+        for (id, run) in [
+            (
+                ActionId::NextMessage,
+                MessageList::select_next as fn(&MessageList),
+            ),
+            (ActionId::PreviousMessage, MessageList::select_previous),
+            (ActionId::OpenMessage, MessageList::open_selected),
+            (ActionId::Search, MessageList::focus_search),
+        ] {
+            let weak = Rc::downgrade(self);
+            win_actions.connect(id, move || {
+                if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                    run(&list);
+                }
+            });
+        }
         let weak = Rc::downgrade(self);
         list.connect_message_opened(move |message| {
-            let edited = weak
-                .upgrade()
-                .is_some_and(|state| compose_actions::open_if_draft(&state, &pane, message));
-            if !edited {
+            if let Some(state) = weak.upgrade()
+                && let Some(pane) = state.window()
+                && !compose_actions::open_if_draft(&state, &pane, message)
+            {
                 pane.show_pane(Pane::Reader);
             }
         });
@@ -1046,19 +1133,19 @@ impl AppState {
             }
         });
         let weak = Rc::downgrade(self);
-        let shown = window.clone();
         list.connect_selection_cleared(move || {
             if let Some(state) = weak.upgrade() {
                 state.leave_opened(None);
                 state.set_has_selection(false);
-                if shown.reader_page() == "batch" {
+                if let Some(shown) = state.window()
+                    && shown.reader_page() == "batch"
+                {
                     shown.clear_reader();
                 }
                 state.refresh_commands();
             }
         });
         let weak = Rc::downgrade(self);
-        let shown = window.clone();
         list.connect_batch_selected(move |count| {
             if let Some(state) = weak.upgrade() {
                 state.leave_opened(None);
@@ -1068,33 +1155,44 @@ impl AppState {
                     reader.clear();
                     reader.set_position(None);
                 }
-                shown.show_batch(count);
+                if let Some(shown) = state.window() {
+                    shown.show_batch(count);
+                }
                 state.set_has_selection(true);
                 state.refresh_commands();
             }
         });
-        let heading = window.clone();
-        list.connect_search_changed(move |search| match search {
-            Some(search) => heading.set_list_heading("Search", &search.subtitle()),
-            None => {
-                let (title, subtitle) = heading
-                    .sidebar()
-                    .heading(&heading.selected_folder())
-                    .unwrap_or_default();
-                heading.set_list_heading(&title, &subtitle);
+        let weak = Rc::downgrade(self);
+        list.connect_search_changed(move |search| {
+            let Some(heading) = weak.upgrade().and_then(|state| state.window()) else {
+                return;
+            };
+            match search {
+                Some(search) => heading.set_list_heading("Search", &search.subtitle()),
+                None => {
+                    let (title, subtitle) = heading
+                        .sidebar()
+                        .heading(&heading.selected_folder())
+                        .unwrap_or_default();
+                    heading.set_list_heading(&title, &subtitle);
+                }
             }
         });
 
         // A folder (not All Inboxes) is synced now and kept current while it is shown (ML-042);
         // at the end of its first-sync window the list asks for older mail (ML-043).
-        let (mailbox, engine) = (self.mailbox.clone(), self.engine.clone());
-        let shown = list.clone();
+        let weak = Rc::downgrade(self);
         window.connect_folder_selected(move |_, key| {
-            let scope = mailbox.scope_for_key(key);
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let scope = state.mailbox.scope_for_key(key);
             if let Some(ViewScope::Folder(folder)) = scope {
-                let _ = engine.send(Command::FolderOpened { folder });
+                let _ = state.engine.send(Command::FolderOpened { folder });
             }
-            shown.show(scope);
+            if let Some(shown) = state.list() {
+                shown.show(scope);
+            }
         });
         let weak = Rc::downgrade(self);
         list.connect_older_wanted(move |folder| {
@@ -1111,17 +1209,18 @@ impl AppState {
         // The reader's WebKit engine is created after the first frame: it isn't needed to show
         // the list, and creating it inside the window build cost startup time (M1, live). It
         // takes the keymap current by then, since `settings_changed` only updates a reader
-        // that exists.
+        // that exists. A window built again from background mode waits for its own first frame.
         let weak = Rc::downgrade(self);
-        let (target, shown) = (window.clone(), list.clone());
-        self.run_after_first_frame(move || {
+        let built = window.window().downgrade();
+        self.run_after_window_frame(window, move || {
             if let Some(state) = weak.upgrade()
                 && let Some(prefs) = state.preferences()
+                && let (Some(target), Some(shown)) = (state.window(), state.list())
+                && built.upgrade().as_ref() == Some(target.window())
             {
                 state.install_reader(&target, &shown, &prefs.keymap());
             }
         });
-        self.list.replace(Some(list));
     }
 
     /// The mail actions (ML-052 to ML-055): the registry's commands on the list's selection,
@@ -1173,8 +1272,12 @@ impl AppState {
                 state.mark_read(list.scope());
             }
         });
-        let target = list.clone();
-        actions.connect(ActionId::Select, move || target.toggle_selection());
+        let weak = Rc::downgrade(self);
+        actions.connect(ActionId::Select, move || {
+            if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                list.toggle_selection();
+            }
+        });
         let weak = Rc::downgrade(self);
         actions.connect(ActionId::Undo, move || {
             if let Some(state) = weak.upgrade()
@@ -1188,13 +1291,18 @@ impl AppState {
         // batch page, or nowhere once a button there went insensitive under it. Text fields and
         // dialogs take their Escape first.
         let escape = gtk4::EventControllerKey::new();
-        let target = list.clone();
-        escape.connect_key_pressed(move |_, key, _, state| {
-            if key == gtk4::gdk::Key::Escape && state.is_empty() && target.is_select_mode() {
-                target.leave_select_mode();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
+        let weak = Rc::downgrade(self);
+        escape.connect_key_pressed(move |_, key, _, modifiers| {
+            match weak.upgrade().and_then(|state| state.list()) {
+                Some(target)
+                    if key == gtk4::gdk::Key::Escape
+                        && modifiers.is_empty()
+                        && target.is_select_mode() =>
+                {
+                    target.leave_select_mode();
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
             }
         });
         window.window().add_controller(escape);
@@ -1220,13 +1328,17 @@ impl AppState {
                 }
             },
         );
-        let weak = Rc::downgrade(self);
-        self.mailbox.connect_event(move |_| {
-            if let Some(state) = weak.upgrade() {
-                state.refresh_commands();
-                state.queue_pending_count();
-            }
-        });
+        // Once per process: a window built again from background mode uses the same listener,
+        // as the store has no way to drop one.
+        if !self.triage_listening.replace(true) {
+            let weak = Rc::downgrade(self);
+            self.mailbox.connect_event(move |_| {
+                if let Some(state) = weak.upgrade() {
+                    state.refresh_commands();
+                    state.queue_pending_count();
+                }
+            });
+        }
         // Mark Folder as Read follows the folder shown, also when no selection changes with it.
         let weak = Rc::downgrade(self);
         window.connect_folder_selected(move |_, _| {
@@ -1734,6 +1846,107 @@ impl AppState {
         );
     }
 
+    /// The engine without a first frame (ML-084). When Sealwax starts with no main window
+    /// (`--background`, or a `mailto:` link or `--compose` opening a composer alone), the
+    /// engine starts once the store is open and the settings are read, with the watch on resume
+    /// and the network, so mail syncs and notifications come without a window. A main window
+    /// shown later finds it running and never starts a second one.
+    pub fn start_engine_without_window(self: &Rc<Self>) {
+        let Some(options) = self.config.engine.clone() else {
+            return;
+        };
+        if self.engine_service.borrow().is_some() || self.engine_pending.replace(true) {
+            return;
+        }
+        let ready = self.mailbox.wait_ready();
+        let prefs = self.preferences();
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            ready.await;
+            if let Some(prefs) = prefs {
+                prefs.ready(ENGINE_SETTINGS_WAIT).await;
+            }
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.engine_pending.set(false);
+            if state.engine_service.borrow().is_some() {
+                return;
+            }
+            state.start_engine(&options);
+            state.watch_desktop();
+            if state.engine_service.borrow().is_some() {
+                let accounts = state
+                    .preferences()
+                    .filter(|_| state.accounts_read.get())
+                    .map_or(0, |prefs| prefs.accounts().len());
+                tracing::info!(
+                    ms = state.launched.elapsed().as_secs_f64() * 1000.0,
+                    accounts,
+                    accounts_sent = state.accounts_read.get(),
+                    "engine started without a window"
+                );
+            }
+        });
+    }
+
+    /// The main window closed (into background mode, or before Quit): what only it used goes
+    /// with it, so the window, its list and its reader are freed (their views back in the
+    /// reader's pool) and a window built again costs no more memory. A message the reader left
+    /// to be marked read on leaving is left now.
+    fn main_window_closed(&self) {
+        self.leave_opened(None);
+        self.window.replace(None);
+        self.list.replace(None);
+        self.reader.replace(None);
+        self.reader_shows.set(None);
+        self.toast.replace(None);
+        self.win_actions.replace(None);
+    }
+
+    /// Runs `hook` once `window` has painted its first frame: the first window's with
+    /// [`Self::run_after_first_frame`], a window built later (from background mode) after its
+    /// own, so its first frame waits for nothing it doesn't show.
+    fn run_after_window_frame(&self, window: &Window, hook: impl FnOnce() + 'static) {
+        if self.first_frame.get().is_none() {
+            self.run_after_first_frame(hook);
+            return;
+        }
+        let hook: Rc<RefCell<Option<Hook>>> = Rc::new(RefCell::new(Some(Box::new(hook))));
+        let mapped: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+        let handler = window.window().connect_map(glib::clone!(
+            #[strong]
+            mapped,
+            move |window| {
+                if let Some(handler) = mapped.take() {
+                    window.disconnect(handler);
+                }
+                let Some(clock) = window.frame_clock() else {
+                    if let Some(hook) = hook.take() {
+                        hook();
+                    }
+                    return;
+                };
+                let painted: Rc<RefCell<Option<glib::SignalHandlerId>>> = Rc::default();
+                let hook = hook.clone();
+                let handler = clock.connect_after_paint(glib::clone!(
+                    #[strong]
+                    painted,
+                    move |clock| {
+                        if let Some(handler) = painted.take() {
+                            clock.disconnect(handler);
+                        }
+                        if let Some(hook) = hook.take() {
+                            glib::idle_add_local_once(hook);
+                        }
+                    }
+                ));
+                painted.replace(Some(handler));
+            }
+        ));
+        mapped.replace(Some(handler));
+    }
+
     /// Runs `hook` once the first window's first frame is painted, or at once if it already is.
     fn run_after_first_frame(&self, hook: impl FnOnce() + 'static) {
         if self.first_frame.get().is_some() {
@@ -1760,12 +1973,11 @@ impl AppState {
             .attach(&window.batch_page().widget, gtk4::PropagationPhase::Bubble);
 
         let weak = Rc::downgrade(self);
-        let target = window.clone();
         list.connect_message_selected(move |id| {
             let Some(state) = weak.upgrade() else {
                 return;
             };
-            let Some(reader) = state.reader() else {
+            let (Some(reader), Some(target)) = (state.reader(), state.window()) else {
                 return;
             };
             if state.reader_shows.replace(Some(id)).is_none() {
@@ -1775,7 +1987,6 @@ impl AppState {
             state.update_position();
         });
         let weak = Rc::downgrade(self);
-        let target = window.clone();
         list.connect_selection_cleared(move || {
             let Some(state) = weak.upgrade() else {
                 return;
@@ -1785,7 +1996,9 @@ impl AppState {
                     reader.clear();
                     reader.set_position(None);
                 }
-                target.clear_reader();
+                if let Some(target) = state.window() {
+                    target.clear_reader();
+                }
             }
         });
         if let Some(id) = list.selected() {
@@ -1793,10 +2006,18 @@ impl AppState {
             window.set_reader(&reader.widget());
             reader.show(id);
         }
-        let previous = list.clone();
-        reader.connect_previous(move || previous.select_previous());
-        let next = list.clone();
-        reader.connect_next(move || next.select_next());
+        let weak = Rc::downgrade(self);
+        reader.connect_previous(move || {
+            if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                list.select_previous();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        reader.connect_next(move || {
+            if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                list.select_next();
+            }
+        });
         let weak = Rc::downgrade(self);
         reader.connect_opened(move |opened| {
             if let Some(state) = weak.upgrade() {
@@ -1809,15 +2030,17 @@ impl AppState {
                 state.reader_mapped();
             }
         });
-        let weak = Rc::downgrade(self);
-        self.mailbox.connect_event(move |event| {
-            if let Some(state) = weak.upgrade() {
-                state.update_position();
-                if let Some(reader) = state.reader() {
-                    reader.store_changed(event);
+        if !self.reader_listening.replace(true) {
+            let weak = Rc::downgrade(self);
+            self.mailbox.connect_event(move |event| {
+                if let Some(state) = weak.upgrade() {
+                    state.update_position();
+                    if let Some(reader) = state.reader() {
+                        reader.store_changed(event);
+                    }
                 }
-            }
-        });
+            });
+        }
         if let Some(actions) = self.win_actions.borrow().as_ref() {
             crate::reader::commands::connect(actions, &reader);
         }
@@ -1894,8 +2117,9 @@ impl AppState {
             return window;
         }
         let window = Window::new(app.upcast_ref(), self.config.tiling);
-        self.install_window(app, &window);
+        // Known to the state before its handlers are installed: they look it up there.
         self.window.replace(Some(window.clone()));
+        self.install_window(app, &window);
         self.update_banner();
         window
     }
@@ -1921,6 +2145,7 @@ impl AppState {
     }
 
     fn show(&self, window: &Window) {
+        self.hidden.take();
         if let Some(started) = self.started.take() {
             let exec_ns = std::env::var(config::EXEC_NS_ENV)
                 .ok()

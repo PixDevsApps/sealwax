@@ -25,27 +25,67 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 
 - Configured in Lua (`~/.config/hypr/hyprland.lua` loads Omarchy's defaults, then the user's modules); `hyprctl reload` applies, `hyprctl configerrors` checks.
 - **Corner radius:** `hyprctl -j getoption decoration:rounding` (8 here, 0 on stock Omarchy), read at start and after theme changes, as omarchy-shell does ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)).
-- **Window class:** GTK4 apps use the app-id as their Wayland app_id, so rules match `^io\.github\.pixdevsapps\.Sealwax$`.
+- **Window class:** GTK4 apps use the app-id as their Wayland app_id, so rules match `^io\.github\.pixdevsapps\.Sealwax$` (`.Devel` for development builds). Every Sealwax window has that class; the main window's title is always `Sealwax`, and a composer window opens titled `New message` and then takes its subject (M6).
 - **Focus and scale (S6):** Omarchy sets `misc.focus_on_activate = true`, so `present()` focuses the window (2–4 ms). `GDK_SCALE=2` in the session environment has no effect on GTK 4 Wayland apps; it still applies to X11 and XWayland programs.
 - **No title bar:** Sealwax shows no title bar and no window controls when `HYPRLAND_INSTANCE_SIGNATURE` is set or `XDG_CURRENT_DESKTOP` contains `Hyprland`; elsewhere the pane bars carry the window controls at the window's edges and drag the window (M1).
 - **Default opacity:** Omarchy tags every window `default-opacity` (0.985 / 0.96); an opt-out snippet is `o.window(<match>, { tag = "-default-opacity" })`. This machine's `looknfeel.lua` already forces windows opaque.
-- **Key binding:** the user's `~/.config/hypr/bindings.lua` binds SUPER+SHIFT+E to BlueMail. The snippet the user can paste once Sealwax is installed (ML-085):
+- **Key bindings (ML-085, M7):** ready to paste into `~/.config/hypr/bindings.lua` once Sealwax is installed; Sealwax never edits Hyprland files itself. Read on 2026-10-06 (Omarchy 4.0.0.alpha, Hyprland 0.56.2): the user's `bindings.lua` unbinds SUPER+SHIFT+E and binds it to BlueMail (`o.bind("SUPER + SHIFT + E", "BlueMail", { launch = "bluemail" })`); Omarchy's own defaults (`default/hypr/bindings/applications.lua`) bind SUPER+SHIFT+E to HEY's web app ("Email") and SUPER+SHIFT+ALT+E to HEY's new message ("New email").
   ```lua
+  -- Sealwax instead of BlueMail: replace the BlueMail line (the unbind above it stays).
   hl.unbind("SUPER + SHIFT + E")
-  o.bind("SUPER + SHIFT + E", "Sealwax", { launch = "sealwax", focus = "^io\\.github\\.pixdevsapps\\.Sealwax$" })
+  o.bind("SUPER + SHIFT + E", "Sealwax", { launch = "sealwax", focus = "^Sealwax$" })
+
+  -- A new message in Sealwax instead of HEY's (Omarchy's default "New email").
+  hl.unbind("SUPER + SHIFT + ALT + E")
+  o.bind("SUPER + SHIFT + ALT + E", "New email", { launch = "sealwax --compose" })
   ```
-  Sealwax never edits Hyprland files itself.
+  - `focus` runs `omarchy-launch-or-focus`, which focuses the first window whose class or title matches. `^Sealwax$` matches the main window's title only; a class pattern would also match a composer window and focus it instead. With no main window (Sealwax not running, or closed into background mode) it runs `uwsm-app -- sealwax`, which starts Sealwax or shows a new main window in the running one.
+  - `sealwax --compose` opens a composer window: alone when no main window is shown, else as the main window's Compose (from the account the list shows). It reaches a running Sealwax through the bus, like `mailto:` links.
+  - Check after pasting: `hyprctl reload`, then `hyprctl configerrors` (Omarchy's advice). Not tried on the live desktop.
+- **Window rules (M7):** none is needed: the main window and composer windows tile, as decided at M6's start. To float composer windows, Omarchy's `floating-window` tag (float, centred, 875×600) can be given to every Sealwax window and taken back from the main window by its title; the last matching rule wins, and static rules such as float see the title a window opens with ([Hyprland's window rules](https://wiki.hypr.land/Configuring/Basics/Window-Rules/), read 2026-10-06), which is `Sealwax` for the main window. Matching a composer by `title = "^New message$"` is less safe: it holds only if Hyprland maps the window before the composer fills in the subject. Not tried on the live desktop:
+  ```lua
+  o.window("^io\\.github\\.pixdevsapps\\.Sealwax$", { tag = "+floating-window" })
+  o.window({ class = "^io\\.github\\.pixdevsapps\\.Sealwax$", title = "^Sealwax$" }, { tag = "-floating-window" })
+  ```
 
 ## omarchy-shell (notifications, launcher)
 
 - omarchy-shell (Quickshell 0.3.1) owns `org.freedesktop.Notifications`. Measured in S6: name and vendor `quickshell`, spec 1.2, capabilities `persistence`, `body`, `body-markup`, `body-hyperlinks`, `actions`, `icon-static`; a notification is accepted in 0.8 ms.
 - **Click behaviour** (read in `/usr/share/omarchy/shell/plugins/notifications/Service.qml`): the shell invokes the notification's `default` action if there is one; otherwise it focuses a window whose class matches `app_name` as a case-insensitive regex. Sealwax always sends a `default` action. **Cards show no action buttons:** a left click runs `default`, a right click dismisses. GLib 2.88 ignores the `ActivationToken` signal; GTK's `present()` requests its own token and Omarchy's `focus_on_activate = true` focuses the window (2–4 ms, S6). A real click is the user's manual check.
 - Low-urgency notifications stay ≥ 5 s, normal ≥ 8 s, none longer than 30 s; Do Not Disturb stores them silently.
-- **History:** toasts are mirrored under `~/.local/state/omarchy/notifications/` and moved to `history/` (newest 10) when they leave the screen. Restored and history entries have no live actions, so a click reaches the app only while it runs (background mode, D6).
+- **History:** toasts are mirrored under `~/.local/state/omarchy/notifications/` and moved to `history/` (newest 10) when they leave the screen. Restored and history entries have no live actions, so a click reaches the app only while it runs: background mode, on by default since M7 ([below](#background-mode-and-autostart)).
 - **What GLib sends** (S6): `app_name` is the process name, so the app sets it to the product name (`g_set_prgname`) before its first notification; the app-id goes in the `desktop-entry` hint, the themed icon name in `image-path`, and actions as detailed action names.
 - **Launcher:** the `.desktop` file is found through Quickshell `DesktopEntries` and started with `uwsm-app -- gtk-launch <id>.desktop`.
-- **Omarchy menu (snippet only):** entries can be added in `~/.config/omarchy/extensions/omarchy-menu.jsonc` (ids like `"mail.compose"`). Documented in M7, never written by the app.
+- **Omarchy menu (snippet only, ML-085):** the menu takes the user's own entries in `~/.config/omarchy/extensions/omarchy-menu.jsonc` (read 2026-10-06: a dotted id puts an entry under its parent, `action` is a shell command, `when` hides a row whose condition fails; the file's own comments document the fields). Never written by the app. Ready to paste inside the file's braces:
+  ```jsonc
+  "mail": {"icon":"󰇮","label":"Mail"},
+  "mail.open": {"icon":"󰇮","label":"Open Sealwax","action":"uwsm-app -- sealwax"},
+  "mail.compose": {"icon":"󰏫","label":"New Message","action":"uwsm-app -- sealwax --compose"},
+  "mail.quit": {"icon":"󰗼","label":"Quit Sealwax","when":"pgrep -x sealwax","action":"pkill -TERM -x sealwax"},
+  ```
+  Quit Sealwax sends SIGTERM, which quits as Ctrl+Q does: open drafts are saved and the engine logs out. `mail` shows on the menu's root; another parent id (such as `"apps.mail"`) puts it elsewhere. Not tried on the live desktop.
 - **Unread count in the bar:** a 1.x bar-widget plugin (manifest `kinds: ["bar-widget"]`, QML with `qs.Commons`), following the user's Hertz Radio and Scarlett Control plugins.
+
+## Background mode and autostart
+
+- **Background mode** (ML-084, on by default since M7's start, [ADR-013](DECISIONS.md#adr-013-amendment--background-mode-on-by-default-notifications-show-sender-and-subject-m7-start-2026-10-06)): closing the last window leaves Sealwax running, an application hold, so sync, IDLE and notifications go on; the first time, a desktop notification says so and how to quit (once per user: `$XDG_STATE_HOME/sealwax/background-notice-shown`). Activating Sealwax again (the launcher, the key binding, `sealwax`, a notification) shows a new main window on the same store and engine. `[background] enabled = false` in `config.toml` makes closing the last window quit, applied as soon as the file changes. Quit (Ctrl+Q, the menu) and SIGTERM (`pkill -TERM -x sealwax`, uwsm at logout) end it either way, saving open drafts first.
+- **`sealwax --background`** starts Sealwax with no window: it holds itself until a main window shows, with `[background]` off too, and its engine starts once the store and the settings are read, so mail syncs and notifications come from the start. Given to a running Sealwax it shows nothing.
+- **XDG autostart runs on Omarchy** (read on this machine on 2026-10-06, no file changed): Hyprland runs under uwsm (`wayland-wm@hyprland.desktop.service`), and uwsm's `wayland-session-xdg-autostart@.target` binds `xdg-desktop-autostart.target`, which was active; systemd's `systemd-xdg-autostart-generator` turns every entry in `$XDG_CONFIG_HOME/autostart/` and `/etc/xdg/autostart/` into an `app-<id>@autostart.service` unit (the generated units are in `/run/user/<uid>/systemd/generator.late/`). Omarchy relies on it: its migrations disable system entries by writing `Hidden=true` copies into `~/.config/autostart/` (`limine-snapper-notify`, `org.fcitx.Fcitx5`, `print-applet` here).
+- **Start Sealwax at Login** (Settings menu and palette, no key; ML-084): on while `$XDG_CONFIG_HOME/autostart/<app-id>.desktop` exists and isn't hidden (`Hidden=true` or `X-GNOME-Autostart-enabled=false`). Turning it on says what it writes and how to undo it, and asks; on yes it writes:
+  ```ini
+  [Desktop Entry]
+  # Written by Sealwax's Start Sealwax at Login. Turning it off deletes this file.
+  Type=Application
+  Name=Sealwax
+  Comment=Starts Sealwax without a window, so mail keeps syncing
+  Exec=sealwax --background
+  TryExec=sealwax
+  Icon=io.github.pixdevsapps.Sealwax
+  Terminal=false
+  NoDisplay=true
+  ```
+  Turning it off deletes that file and nothing else. A Sealwax that isn't the `sealwax` on `PATH` (a development build, or a build run from the source tree) writes its own absolute path in `Exec` and `TryExec`, so the entry does nothing once that file is gone; a development build's entry is `io.github.pixdevsapps.Sealwax.Devel.desktop`, named "Sealwax (development build)". The generator reads the folder when the user's systemd starts (and on `systemctl --user daemon-reload`), so a change takes effect at the next login. At login the entry's command line asks the bus to start the installed service (as any command line does), hands it `--background` and exits, so its unit ends at once and the service runs Sealwax.
+- **Instead, from Hyprland's own autostart** (`~/.config/hypr/autostart.lua`, Omarchy's helper; not tried on the live desktop): `o.launch_on_start("sealwax --background")`. Both together are harmless: the second start forwards `--background` to the first, which shows nothing.
 
 ## Secret Service
 
@@ -56,7 +96,7 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 
 - Current handler: `bluemail.desktop`. `~/.config/mimeapps.list` still names a removed Thunderbird for `message/rfc822`; Sealwax does not touch it.
 - Sealwax's desktop file declares `MimeType=x-scheme-handler/mailto;` and is installed as `io.github.pixdevsapps.Sealwax.desktop` (`<app-id>.desktop`, which `DBusActivatable` needs). **Make Sealwax the Default Mail App…** (palette, no key; built in M6, [m6/reply.md](m6/reply.md)) is the opt-in command: it says what it changes (the handler of `x-scheme-handler/mailto` in `$XDG_CONFIG_HOME/mimeapps.list`), shows the current handler and the command that undoes it (`xdg-mime default <previous>.desktop x-scheme-handler/mailto`), and asks; on yes GIO's `set_as_default_for_type` writes `[Default Applications]` and `[Added Associations]`, as `xdg-mime default` does. It says when Sealwax already is the default, and that a development build (`.Devel`, never installed) or a Sealwax without its desktop entry can't be. When a desktop-specific list (`hyprland-mimeapps.list`) still names another app it says so. Tested only in a sandboxed XDG home (`reply-default-app`); the live desktop's handler is the user's to change.
-- A `mailto:` link from the command line, a second instance or D-Bus `Open` opens a composer window with the safe fields (M6); when Sealwax's main window isn't shown, the composer window opens alone.
+- A `mailto:` link from the command line, a second instance or D-Bus `Open` opens a composer window with the safe fields (M6); when Sealwax's main window isn't shown, the composer window opens alone, and since M7 the engine starts too, without waiting for a main window (a send from that composer through the testbed is not verified).
 - `mailto:` URIs are parsed per RFC 6068; `attach` / `attachment` parameters are ignored. Only `to`, `cc`, `bcc`, `subject`, `body` and `in-reply-to` are kept, and control characters are stripped from header values (S6).
 - **Forwarding (S6):** a second process forwards a `mailto:` to the running instance in ~51 ms, 49 of them loading libraries; a D-Bus `org.freedesktop.Application.Open` call, which launchers use for a `DBusActivatable` app, takes 0.5 ms. The desktop file keeps `DBusActivatable=true`, and the app handles both `open` and `command-line` (built in M1). With no instance running, a command line first asks the bus to start the installed service (Stet's pattern), so `xdg-open mailto:…` from a browser starts a Sealwax that doesn't belong to the browser; verified headlessly with a private bus, `xdg-open` on the live desktop not yet.
 

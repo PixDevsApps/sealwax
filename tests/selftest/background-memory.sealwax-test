@@ -1,0 +1,61 @@
+# Memory in background mode (M7, ML-084): a window closed into background mode is freed with its
+# list and reader (weak references to them die), and closing and reopening it keeps no memory:
+# the proportional set size of this Sealwax and of the processes under it (WebKit's) is printed
+# with a message shown, a few seconds after the window closed, and after 10 and 30 more closes
+# and activations. Printed, not asserted: the report's numbers come from a release build. Every
+# message is fictional.
+# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/background-memory.sealwax-test
+
+desktop tiling
+fixtures --count 2000 --seed 13 --folders single
+resize 1440 900
+list-wait
+wait-until assert-reader-built true
+list-select 0
+wait-until assert-reader-selected
+search the
+list-wait
+search-escape
+list-select 5
+wait-until assert-reader-selected
+sleep 2000
+background-memory "window open, a message shown"
+
+# The closed window, its list and its reader are freed; the reader's views go back to the
+# process's pool, whose web process stays (M5).
+background-watch
+close-window
+wait-until assert-window false
+assert-reader-built false
+sleep 3000
+assert-freed
+background-memory "window closed, background mode"
+
+# Reopened, with a message shown: the same again, and after 10 and 30 more cycles.
+bus-activate
+wait-until assert-reader-built true
+list-wait
+list-select 0
+wait-until assert-reader-selected
+sleep 2000
+background-memory "a new window, a message shown"
+background-measure 10
+wait-until assert-reader-built true
+list-wait
+list-select 0
+wait-until assert-reader-selected
+sleep 2000
+background-memory "after 10 more cycles, a message shown"
+background-measure 20
+wait-until assert-reader-built true
+list-wait
+list-select 0
+wait-until assert-reader-selected
+sleep 2000
+background-memory "after 30 more cycles, a message shown"
+background-watch
+close-window
+wait-until assert-window false
+sleep 3000
+assert-freed
+background-memory "after 30 more cycles, window closed"

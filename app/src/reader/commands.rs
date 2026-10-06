@@ -32,8 +32,14 @@ fn conversation(actions: &ActionSet, reader: &Reader) {
             Reader::previous_in_conversation,
         ),
     ] {
-        let target = reader.clone();
-        actions.connect(id, move || run(&target));
+        // Weak: the reader keeps the action (below), so a strong reader here would keep both
+        // alive after the window closes into background mode (M7).
+        let target = Rc::downgrade(&reader.inner);
+        actions.connect(id, move || {
+            if let Some(inner) = target.upgrade() {
+                run(&Reader { inner });
+            }
+        });
         if let Some(action) = actions.action(id).cloned() {
             action.set_enabled(reader.state().messages > 1);
             reader.connect_size(move |size| action.set_enabled(size > 1));

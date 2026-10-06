@@ -1,0 +1,90 @@
+# Background mode in this instance (M7, ML-084): on by default, so closing the main window keeps
+# Sealwax running (an application hold) and the first close sends the one-time notice, recorded
+# by background.rs instead of a notification server; activation, a second launch and the
+# notice's click build a new main window on the same store; `--background` to a running Sealwax
+# shows nothing and `--compose` is the window's Compose; `[background] enabled` in config.toml
+# applies live; Quit ends it all. Every name and address is fictional.
+# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/background-window.sealwax-test
+
+desktop tiling
+resize 1440 900
+
+# On by default: the application holds itself; nothing was noticed yet.
+assert-background true
+assert-hidden-start false
+assert-notices 0
+assert-notice-marker false
+
+# The first close: the window goes, the process stays, the notice is sent once.
+close-window
+wait-until assert-window false
+assert-background true
+wait-until assert-notices 1
+assert-notice title "Sealwax keeps running"
+assert-notice body "To quit, open Sealwax and press Ctrl+Q."
+assert-notice body "enabled = false under [background] in config.toml"
+assert-notice-marker true
+
+# D-Bus Activate (a launcher) builds a new main window on the same store.
+bus-activate
+wait-until assert-window true
+assert-activations 2
+assert-labelled
+
+# A second close: no second notice.
+close-window
+wait-until assert-window false
+sleep 300
+assert-notices 1
+
+# A second launch shows a new window; the notice's click (its default action) does too.
+spawn
+wait-until assert-window true
+assert-activations 3
+close-window
+wait-until assert-window false
+action app.show-main-window
+wait-until assert-window true
+assert-activations 4
+assert-notices 1
+
+# `--background` given to a running Sealwax shows nothing and holds nothing more.
+spawn --background
+assert-activations 4
+assert-hidden-start false
+assert-window true
+
+# `--compose` given to a running Sealwax with its window shown: the window's Compose.
+spawn --compose
+wait-until assert-compose-requests 1
+assert-compose-last new none
+wait-until assert-composer count 1
+background-watch composer
+composer-close
+wait-until assert-composer count 0
+assert-activations 4
+sleep 500
+assert-freed
+
+# `[background]` applies live: off releases the hold, on takes it again.
+write-file $TMP/config/sealwax/config.toml "[background]\nenabled = false\n"
+wait-until assert-background false
+write-file $TMP/config/sealwax/config.toml "[background]\nenabled = true\n"
+wait-until assert-background true
+
+# With no window, the network coming back and a resume (as desktop.rs reports them) still
+# reconnect the engine (here a scripted one).
+engine-attach
+close-window
+wait-until assert-window false
+desktop-network down
+engine-expect none
+desktop-network up
+engine-expect reconnect
+desktop-resume
+engine-expect reconnect
+bus-activate
+wait-until assert-window true
+
+# Quit (Ctrl+Q's action) ends Sealwax even in background mode.
+quit
