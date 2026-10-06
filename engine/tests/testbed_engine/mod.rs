@@ -6,7 +6,7 @@
 
 use crate::common::{self, PASSWORD};
 use crate::snapshot::{self, Folder};
-use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Security};
+use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint, Security};
 use sealwax_domain::model::{AccountId, FolderId};
 use sealwax_engine::api::{Command, Event, Password, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
@@ -24,6 +24,8 @@ pub struct TestEngine {
     _dir: tempfile::TempDir,
     engine: Option<Engine>,
     pub store: Arc<Store>,
+    /// The engine's blob store (M6: a draft's parts go here before the save that names them).
+    pub blobs: BlobStore,
     pub events: async_channel::Receiver<Event>,
     /// Events read while looking for others, oldest first.
     pub seen: Vec<Event>,
@@ -57,7 +59,7 @@ impl TestEngine {
         let engine = Engine::start(EngineConfig {
             application: "io.github.pixdevsapps.Sealwax.Test".into(),
             store: store.clone(),
-            blobs,
+            blobs: blobs.clone(),
             paths: AccountPaths::new(&dirs),
             trust: common::trust(),
             secrets: SecretBackend::Memory,
@@ -72,6 +74,7 @@ impl TestEngine {
             _dir: dir,
             engine: Some(engine),
             store,
+            blobs,
             events,
             seen: Vec::new(),
         }
@@ -150,12 +153,26 @@ impl TestEngine {
     /// Adds the testbed user `user` on the TLS port `port` (a server's, or a proxy's) and
     /// waits until it is saved; its sync starts then.
     pub async fn add(&mut self, request: u64, user: &str, port: u16) -> AccountId {
+        let smtp = common::submission(Security::Tls);
+        self.add_with(request, user, common::endpoint(port, Security::Tls), smtp)
+            .await
+    }
+
+    /// Adds the testbed user `user` with the given IMAP and submission servers (M6: a proxy in
+    /// front of either, or Mailpit for sending).
+    pub async fn add_with(
+        &mut self,
+        request: u64,
+        user: &str,
+        imap: Endpoint,
+        smtp: Endpoint,
+    ) -> AccountId {
         let settings = AccountSettings {
             key: AccountKey(String::new()),
             name: user.into(),
             address: format!("{user}@example.test"),
-            imap: common::endpoint(port, Security::Tls),
-            smtp: common::submission(Security::Tls),
+            imap,
+            smtp,
             username: user.into(),
             auth: AuthMethod::Password,
             signature: None,

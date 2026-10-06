@@ -60,29 +60,39 @@ enum Fate {
 /// A one-shot rule on a command the client sends.
 struct Sent {
     needle: Vec<u8>,
-    /// Cut as the command goes out, before the server sees it; otherwise let it through and lose
-    /// (or hold) the server's reply.
+    /// Cut (or freeze, with `hold`) as the command goes out, before the server sees it;
+    /// otherwise let it through and lose (or hold) the server's reply.
     before: bool,
     hold: bool,
     /// The connection that sent it.
     owner: Option<u64>,
 }
 
+/// What happens to a chunk the client sent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Judged {
+    Forward,
+    Cut,
+    /// Dropped, and the connection silent from then on, both ways.
+    Freeze,
+}
+
 impl State {
-    /// Whether to cut instead of forwarding a client chunk.
-    fn judge_sent(&mut self, connection: u64, chunk: &[u8]) -> bool {
+    /// Whether to forward a client chunk, cut the connection or freeze it.
+    fn judge_sent(&mut self, connection: u64, chunk: &[u8]) -> Judged {
         let Some(sent) = self.sent.as_mut() else {
-            return false;
+            return Judged::Forward;
         };
         if sent.owner.is_some() || find(chunk, &sent.needle, 0).is_none() {
-            return false;
+            return Judged::Forward;
         }
         if sent.before {
+            let hold = sent.hold;
             self.sent = None;
-            return true;
+            return if hold { Judged::Freeze } else { Judged::Cut };
         }
         sent.owner = Some(connection);
-        false
+        Judged::Forward
     }
 
     /// Whether a server chunk is the reply to lose: anything but a continuation request, once
@@ -263,6 +273,18 @@ impl Proxy {
         });
     }
 
+    /// As the client sends `needle`, that data is dropped and the connection goes silent both
+    /// ways, left open: the client is stuck part of the way through a command or its data
+    /// (M6: an engine stopped while the data goes out).
+    pub fn freeze_on_send(&self, needle: &str) {
+        self.state.lock().unwrap().sent = Some(Sent {
+            needle: needle.as_bytes().to_vec(),
+            before: true,
+            hold: true,
+            owner: None,
+        });
+    }
+
     /// The connection is cut as the client sends `needle`, before the server sees it.
     pub fn cut_on_send(&self, needle: &str) {
         self.state.lock().unwrap().sent = Some(Sent {
@@ -295,6 +317,13 @@ impl Proxy {
                     .to_owned()
             })
             .collect()
+    }
+
+    /// The lines the clients sent since `record`, whole (SMTP has no tags; M6 counts a message's
+    /// data by its header lines).
+    pub fn sent_raw_lines(&self) -> Vec<String> {
+        let state = self.state.lock().unwrap();
+        state.recorded.iter().flatten().cloned().collect()
     }
 
     /// Whether a rule on what the client sends is still waiting.
@@ -443,13 +472,18 @@ async fn relay(
             if inbound.load(Ordering::SeqCst) {
                 continue;
             }
-            let cut = {
+            let judged = {
                 let mut state = sending.lock().unwrap();
                 state.record(id, &buf[..n]);
                 state.judge_sent(id, &buf[..n])
             };
-            if cut {
-                return Ok(true);
+            match judged {
+                Judged::Forward => {}
+                Judged::Cut => return Ok(true),
+                Judged::Freeze => {
+                    inbound.store(true, Ordering::SeqCst);
+                    continue;
+                }
             }
             server_write.write_all(&buf[..n]).await?;
             server_write.flush().await?;

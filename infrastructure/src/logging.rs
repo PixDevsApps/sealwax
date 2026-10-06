@@ -5,9 +5,11 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
-/// Third-party protocol crates capped at `warn` whatever `RUST_LOG` asks for: their trace output
-/// carries protocol traces, and async-imap's prints the LOGIN password (ADR-018 amendment).
-pub const CAPPED: [&str; 11] = [
+/// Third-party crates capped at `warn` whatever `RUST_LOG` asks for: the protocol crates' trace
+/// output carries protocol traces, and async-imap's prints the LOGIN password (ADR-018
+/// amendment); the HTML parser's debug output carries the text it parses, which is mail (M6:
+/// html5ever logged a draft's body while the MIME builder made its text part).
+pub const CAPPED: [&str; 15] = [
     "async_imap",
     "imap_proto",
     "lettre",
@@ -19,6 +21,10 @@ pub const CAPPED: [&str; 11] = [
     "hyper_util",
     "h2",
     "zbus",
+    "html5ever",
+    "markup5ever",
+    "html2text",
+    "mail_builder",
 ];
 
 /// Plain-text diagnostics on stderr, filtered by `RUST_LOG` (default `info`).
