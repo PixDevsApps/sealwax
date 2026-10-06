@@ -5,7 +5,9 @@
 //!   the backstop; a pass over the folder the user has open, at once and then more often; older
 //!   mail on request. Servers without IDLE get INBOX polled here. Before all of them it runs
 //!   the ops that are due (`ops`): after connecting, on `Command::OpsQueued`, and when the next
-//!   undo window or retry ends.
+//!   undo window or retry ends; then the outbox and the Drafts folder (`outbox`): after
+//!   connecting, on `Command::OutboxQueued` and `Command::DraftsChanged`, and when the next send,
+//!   Sent copy, upload or deletion comes due.
 //! - The **IDLE connection** keeps INBOX current: a pass, NOOP (another pass when it reported a
 //!   change, S1's Stalwart gap), IDLE until the server says anything or the restart interval,
 //!   and a pass on every wake.
@@ -19,19 +21,22 @@
 
 use super::{Shared, bodies, log_in_with_password, log_in_with_token};
 use crate::api::{Event, SyncStatus};
+use crate::imap::write::Mark;
 use crate::imap::{
     self, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop, SyncError,
     SyncOptions, SyncReport,
 };
+use crate::smtp::submit::Timeouts;
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
-use sealwax_domain::model::{AccountId, BlobKey, FolderId, FolderRole};
-use std::collections::VecDeque;
+use sealwax_domain::model::{AccountId, BlobKey, DraftId, FolderId, FolderRole};
+use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
 mod ops;
+mod outbox;
 
 /// How often and how patiently the actors sync. The defaults are proposals for the user.
 #[derive(Clone, Debug)]
@@ -61,6 +66,8 @@ pub struct SyncConfig {
     /// How every sync and body connection is prepared (QRESYNC off reaches the CONDSTORE-only
     /// path on servers that offer both).
     pub connect: ConnectOptions,
+    /// How long the outbox's SMTP steps may take.
+    pub submission: Timeouts,
 }
 
 impl Default for SyncConfig {
@@ -79,6 +86,7 @@ impl Default for SyncConfig {
             body_linger: Duration::from_secs(60),
             logout_wait: Duration::from_millis(300),
             connect: ConnectOptions::default(),
+            submission: Timeouts::default(),
         }
     }
 }
@@ -106,6 +114,10 @@ pub(super) enum Control {
     Older(FolderId),
     /// `OpsQueued`: the store has new ops for this account.
     Ops,
+    /// `OutboxQueued`: a send was queued or undone.
+    Outbox,
+    /// `DraftsChanged`: a draft was saved, closed or discarded.
+    Drafts,
 }
 
 /// Reconnects asked for so far, and whether to stop.
@@ -341,6 +353,13 @@ async fn run(
         ops_now: true,
         next_ops: None,
         quota: false,
+        outbox_now: true,
+        next_outbox: None,
+        drafts_now: true,
+        next_drafts: None,
+        smtp_failures: 0,
+        smtp_status: None,
+        sent_marks: HashMap::new(),
     };
     poller.run().await;
 }
@@ -375,6 +394,20 @@ struct Poller {
     next_ops: Option<Instant>,
     /// The server said the mailbox is full; the account shows it until ops get through.
     quota: bool,
+    /// Run the due sends and Sent copies at the next chance.
+    outbox_now: bool,
+    /// When the next send or Sent copy becomes due.
+    next_outbox: Option<Instant>,
+    /// Run the due Drafts-folder uploads and deletions at the next chance.
+    drafts_now: bool,
+    next_drafts: Option<Instant>,
+    /// Submission failures in a row, for the backoff.
+    smtp_failures: u32,
+    /// The submission server refused the login: the account shows it until a login works.
+    smtp_status: Option<SyncStatus>,
+    /// The Sent folder's mark taken before each send's data went out, until its Sent copy is
+    /// done: a server that saves its own copy puts it above.
+    sent_marks: HashMap<DraftId, Mark>,
 }
 
 /// What woke the command connection's loop.
@@ -407,6 +440,8 @@ impl Poller {
                         self.used = Instant::now();
                         self.next_account = Instant::now();
                         self.ops_now = true;
+                        self.outbox_now = true;
+                        self.drafts_now = true;
                     }
                     Ok(Err(failure)) => self.failed(failure),
                     Err(interrupt) => {
@@ -521,10 +556,18 @@ impl Poller {
             if self.opened.is_some() {
                 due = due.min(self.next_opened);
             }
-            if let Some(ops) = self.next_ops {
-                due = due.min(ops);
+            for next in [self.next_ops, self.next_outbox, self.next_drafts]
+                .into_iter()
+                .flatten()
+            {
+                due = due.min(next);
             }
-            if self.opened_now || self.ops_now || !self.older.is_empty() {
+            if self.opened_now
+                || self.ops_now
+                || self.outbox_now
+                || self.drafts_now
+                || !self.older.is_empty()
+            {
                 due = now;
             }
             Some(due)
@@ -577,6 +620,8 @@ impl Poller {
                 }
             }
             Control::Ops => self.ops_now = true,
+            Control::Outbox => self.outbox_now = true,
+            Control::Drafts => self.drafts_now = true,
         }
     }
 
@@ -600,6 +645,18 @@ impl Poller {
         }
         if self.ops_now || self.next_ops.is_some_and(|due| due <= Instant::now()) {
             self.run_ops(seen).await?;
+            if self.conn.is_none() {
+                return Ok(());
+            }
+        }
+        if self.outbox_now || self.next_outbox.is_some_and(|due| due <= Instant::now()) {
+            self.run_outbox(seen).await?;
+            if self.conn.is_none() {
+                return Ok(());
+            }
+        }
+        if self.drafts_now || self.next_drafts.is_some_and(|due| due <= Instant::now()) {
+            self.run_drafts(seen).await?;
             if self.conn.is_none() {
                 return Ok(());
             }
@@ -678,11 +735,7 @@ impl Poller {
                 self.failures = 0;
                 let stored = report.stats.stored;
                 self.done(report).await;
-                self.status.set(if self.quota {
-                    SyncStatus::QuotaFull
-                } else {
-                    SyncStatus::Synced
-                });
+                self.status.set(self.healthy());
                 self.find_inbox().await;
                 if stored > 0 {
                     bodies::prefetch(&self.shared);
@@ -719,7 +772,7 @@ impl Poller {
             Ok(report) => {
                 self.done(report).await;
                 if self.status.current() == Some(SyncStatus::Syncing) {
-                    self.status.set(SyncStatus::Synced);
+                    self.status.set(self.healthy());
                 }
             }
             Err(SyncError::Imap(imap::ImapError::No(_)) | SyncError::NotSelectable) => {}

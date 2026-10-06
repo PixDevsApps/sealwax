@@ -30,7 +30,7 @@ pub(super) fn unix_ms() -> i64 {
 }
 
 /// The instant a store time falls at, `now` being the store time of `Instant::now()`.
-fn instant_at(at: i64, now: i64) -> Instant {
+pub(super) fn instant_at(at: i64, now: i64) -> Instant {
     Instant::now() + Duration::from_millis(u64::try_from(at.saturating_sub(now)).unwrap_or(0))
 }
 
@@ -140,7 +140,7 @@ impl Poller {
         let pending = self.shared.store.pending_ops(self.account).recv().await;
         if pending.is_ok_and(|pending| pending == 0) {
             self.quota = false;
-            self.status.set(SyncStatus::Synced);
+            self.status.set(self.healthy());
         }
     }
 
@@ -315,7 +315,7 @@ impl Poller {
         }
         if matches!(group.action, OpAction::Move { .. } | OpAction::Expunge) && self.quota {
             self.quota = false;
-            self.status.set(SyncStatus::Synced);
+            self.status.set(self.healthy());
         }
     }
 

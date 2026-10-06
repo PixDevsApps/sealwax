@@ -23,7 +23,8 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use common::*;
 use sealwax_domain::account::Security;
-use sealwax_domain::model::{Flags, FolderRole};
+use sealwax_domain::compose::{Draft, ids};
+use sealwax_domain::model::{Address, Flags, FolderRole};
 use sealwax_domain::sync::Window;
 use sealwax_domain::triage::Triage;
 use sealwax_engine::api::{Command, Password};
@@ -128,6 +129,7 @@ async fn flows() {
         appends(server).await;
     }
     submissions().await;
+    outbox().await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     let account = settings(
         imap(DOVECOT, Security::Tls),
@@ -252,6 +254,99 @@ async fn submissions() {
         submitter.quit().await;
     }
     outgoing::Mailpit::clear().await;
+    for user in ["bob", "carol"] {
+        let mut test = testbed_client::Client::connect(STALWART.tls, &ca(), user)
+            .await
+            .unwrap();
+        test.empty("INBOX").await.unwrap();
+        test.logout().await;
+    }
+}
+
+/// The outbox on the engine's actor (M6 phase B) as `outbox` on Stalwart: a draft closed and
+/// uploaded to the Drafts folder, then sent with a Bcc recipient, its Sent copy appended and
+/// its Drafts copy removed.
+async fn outbox() {
+    use sealwax_infrastructure::store::{DraftSaved, SaveDraft, SendQueued};
+    let folders = ["Sent Items", "Drafts"];
+    let mut test = testbed_client::Client::connect(STALWART.tls, &ca(), "outbox")
+        .await
+        .unwrap();
+    for folder in folders {
+        test.empty(folder).await.unwrap();
+    }
+    let now = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
+    };
+    let mut random = [0u8; 16];
+    random[..8].copy_from_slice(&now().to_le_bytes());
+    let mut engine = testbed_engine::TestEngine::start(SyncConfig {
+        account_pass: Duration::from_secs(3),
+        ..SyncConfig::default()
+    });
+    let account = engine.add(1, "outbox", STALWART.tls).await;
+    engine.settled(account, Duration::from_secs(30)).await;
+    let draft = Draft {
+        account,
+        from: Address::new("Logs Sender", "outbox@example.test"),
+        to: vec![Address::new("Logs Bob", "bob@example.test")],
+        bcc: vec![Address::new("Logs Carol", "carol@example.test")],
+        subject: "Logs subject Hilsen".into(),
+        html: "<p>Logs body text</p>".into(),
+        message_id: ids::message_id("outbox@example.test", random).unwrap(),
+        ..Draft::default()
+    };
+    let saved = engine
+        .store
+        .save_draft(SaveDraft {
+            id: None,
+            draft,
+            open: false,
+            now: now(),
+        })
+        .recv()
+        .await
+        .unwrap();
+    let DraftSaved::Saved { id, .. } = saved else {
+        panic!("{saved:?}");
+    };
+    engine.send(Command::DraftsChanged { account });
+    let store = engine.store.clone();
+    let uploaded = testbed_engine::until(Duration::from_secs(30), || async {
+        let due = store
+            .due_drafts(account, now() + 600_000)
+            .recv()
+            .await
+            .unwrap();
+        due.uploads.is_empty()
+    })
+    .await;
+    assert!(uploaded.is_some(), "the draft was uploaded");
+    match engine.store.queue_send(id, now()).recv().await.unwrap() {
+        SendQueued::Queued { .. } => engine.send(Command::OutboxQueued { account }),
+        other => panic!("{other:?}"),
+    }
+    let sent = engine
+        .event(Duration::from_secs(30), |event| match event {
+            sealwax_engine::api::Event::Sent { draft, .. } if *draft == id => Some(()),
+            _ => None,
+        })
+        .await;
+    assert!(sent.is_some(), "the draft was sent");
+    let done = testbed_engine::until(Duration::from_secs(30), || async {
+        store.outbox(None).recv().await.unwrap().is_empty()
+    })
+    .await;
+    assert!(done.is_some(), "its Sent copy was recorded");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    drop(engine);
+    for folder in folders {
+        test.empty(folder).await.unwrap();
+    }
+    test.logout().await;
     for user in ["bob", "carol"] {
         let mut test = testbed_client::Client::connect(STALWART.tls, &ca(), user)
             .await
@@ -438,6 +533,9 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "smtp message accepted",
         "imap append done",
         "imap find done",
+        "draft uploaded",
+        "message sent",
+        "Sent copy done",
     ] {
         assert!(log.contains(event), "the capture holds {event}");
     }
@@ -465,6 +563,14 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "XOAUTH2",
         "APPEND",
         "APPENDUID",
+        "Logs subject",
+        "Hilsen",
+        "Logs body",
+        "Logs Sender",
+        "Logs Bob",
+        "Logs Carol",
+        "Sent Items",
+        "Drafts",
         "alice",
         "rand",
         "nobody",
@@ -494,7 +600,13 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "lettre",
     ];
     for needle in forbidden {
-        assert!(!log.contains(needle), "{needle} appears in the log");
+        // Test data only: the lines that leak it, cut at the needle, say which event did.
+        let leaks: Vec<&str> = log
+            .lines()
+            .filter(|line| line.contains(needle))
+            .map(|line| &line[..line.find(needle).unwrap_or(0)])
+            .collect();
+        assert!(leaks.is_empty(), "{needle} appears in the log: {leaks:#?}");
     }
     println!(
         "captured {} lines, {} bytes at trace level:\n{log}",

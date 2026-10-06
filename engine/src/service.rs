@@ -194,6 +194,8 @@ struct Shared {
     sync: SyncConfig,
     /// Body downloads and the disk cap (ML-044).
     bodies: bodies::Bodies,
+    /// Each account's submission size limit, once read (`SubmissionLimit`).
+    limits: Mutex<HashMap<AccountId, Option<u64>>>,
 }
 
 impl Shared {
@@ -218,6 +220,7 @@ impl Shared {
             actors: Mutex::default(),
             sync: config.sync,
             bodies: bodies::Bodies::default(),
+            limits: Mutex::default(),
         }
     }
 
@@ -349,7 +352,24 @@ enum Job {
     },
 }
 
+/// Sends a stop left mid-way become uncertain (their data may have reached the server), before
+/// any actor starts and asks for due sends; the app hears each.
+async fn recover_sends(shared: &Shared) {
+    match shared.store.recover_sends().recv().await {
+        Ok(changes) => {
+            for change in changes {
+                shared.send(Event::SendUncertain {
+                    account: change.account,
+                    draft: change.draft,
+                });
+            }
+        }
+        Err(error) => tracing::warn!(%error, "interrupted sends couldn't be recovered"),
+    }
+}
+
 async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
+    recover_sends(&shared).await;
     let (jobs, lane_jobs) = async_channel::unbounded();
     let lane_task = tokio::spawn(lane(shared.clone(), lane_jobs));
     while let Ok(command) = commands.recv().await {
@@ -444,26 +464,21 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 tokio::spawn(older(shared.clone(), folder));
                 continue;
             }
+            // Without a running actor the ops, sends and drafts wait in the store for its start.
             Command::OpsQueued { account } => {
-                // Without a running actor the ops wait in the store for its start.
-                if let Some(actor) = shared
-                    .actors()
-                    .values()
-                    .find(|actor| actor.account() == Some(account))
-                {
-                    let _ = actor.control.try_send(actor::Control::Ops);
-                }
+                wake(&shared, account, actor::Control::Ops);
                 continue;
             }
-            // Built in M6's phase A and B: until then queued sends and drafts wait in the store,
-            // and the size limit is answered as unknown.
-            Command::OutboxQueued { .. } | Command::DraftsChanged { .. } => continue,
+            Command::OutboxQueued { account } => {
+                wake(&shared, account, actor::Control::Outbox);
+                continue;
+            }
+            Command::DraftsChanged { account } => {
+                wake(&shared, account, actor::Control::Drafts);
+                continue;
+            }
             Command::SubmissionLimit { request, account } => {
-                shared.send(Event::SubmissionLimit {
-                    request,
-                    account,
-                    result: Err(SendError::Other),
-                });
+                tokio::spawn(submission_limit(shared.clone(), request, account));
                 continue;
             }
             Command::Reconnect => {
@@ -486,6 +501,53 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
     shared.bodies.stop();
     let actors: Vec<actor::Handle> = shared.actors().drain().map(|(_, actor)| actor).collect();
     stop_actors(actors, Stop::Logout(shared.sync.logout_wait)).await;
+}
+
+/// Tells the account's actor, when one runs, that something waits in the store.
+fn wake(shared: &Shared, account: AccountId, control: actor::Control) {
+    if let Some(actor) = shared
+        .actors()
+        .values()
+        .find(|actor| actor.account() == Some(account))
+    {
+        let _ = actor.control.try_send(control);
+    }
+}
+
+/// `SubmissionLimit`: EHLO's SIZE from the account's submission server, without a login, once
+/// per session (a limit read is kept until the engine stops).
+async fn submission_limit(shared: Arc<Shared>, request: RequestId, account: AccountId) {
+    let cached = shared
+        .limits
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(&account)
+        .copied();
+    let result = match (cached, shared.actor_settings(account)) {
+        (Some(limit), _) => Ok(limit),
+        (None, None) => Err(SendError::Other),
+        (None, Some(settings)) => {
+            let read = smtp::submit::submission_limit(
+                &settings.smtp,
+                &shared.trust,
+                shared.sync.submission,
+            )
+            .await;
+            if let Ok(limit) = read {
+                shared
+                    .limits
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .insert(account, limit);
+            }
+            read.map_err(|error| error.send_error(&[]))
+        }
+    };
+    shared.send(Event::SubmissionLimit {
+        request,
+        account,
+        result,
+    });
 }
 
 /// Stops actors together: each logs out within `stop`'s wait (and its IDLE connection with it);

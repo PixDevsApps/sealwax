@@ -365,6 +365,11 @@ impl Submitter {
         self.extensions
     }
 
+    /// The connection is still usable: no failure dropped it.
+    pub fn is_connected(&self) -> bool {
+        self.conn.is_some()
+    }
+
     /// The envelope: checks what needs no server, then `MAIL FROM` and every `RCPT TO`. On
     /// success the server has accepted the sender and every recipient and nothing of the
     /// message was sent; the caller marks the send as started and then calls
