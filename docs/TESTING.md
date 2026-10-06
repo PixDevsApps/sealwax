@@ -61,6 +61,17 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M3 gate: the server's counts for windowed folders — 2026-10-06
+
+Development machine, debug builds for CI and the self-test, release for the testbed suites, the Docker testbed up; [report](m3/counts.md).
+
+| Check | Result |
+| --- | --- |
+| `SEALWAX_CI_DISPLAY=31 bash tools/ci.sh --ui` on the branch | 783 passed, 0 failed, 40 ignored; all 25 self-test scripts |
+| `testbed-setup.sealwax-test` against the testbed (headless, display 31) | 73/73: `perf`'s Inbox shows 3,333 unread (66 before) with 200 rows held; its heading "3333 unread · Perf"; All Inboxes "3343 unread · 2 accounts" with 230 rows |
+| `sync_testbed`, `actor_testbed`, `testbed` | 9, 9 and 5 passed; 0 divergences and 0 count mismatches in 40 of 40 randomized runs; the counts equal the server's at the actor's first check every time |
+| `a_refused_login_halts_until_reconnect` | Flaky before the change (1 failure in 30 runs on `40088fd`); now waits 300 ms before counting logins: 40 of 40 |
+
 ### M3 6-hour soak (ML-049) — 2026-10-05 to 2026-10-06
 
 `SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem SEALWAX_SOAK_MINUTES=360 cargo test -p sealwax-engine --release --test soak -- --ignored --nocapture` on `571eb0b`, development machine, 2026-10-05 19:25:08 CEST to 01:26, under `systemd-inhibit --what=sleep`. Log: `.local/soak-m3-6h-2026-10-05.log`.

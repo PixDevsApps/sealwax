@@ -246,6 +246,15 @@ Built in M3's phase A by three agents, renumbered at the lead's merge ([sync](m3
 - **Disk cap:** the bodies used longest ago are evicted back to headers and preview (rows, snippets and full text stay), 200 per transaction, without a change event; their blobs are deleted after the commit.
 - **All Inboxes pages:** a view over several folders merges the folders' index walks in one compound SELECT (no sort; only `offset + limit` rows read) for every filter. An unfiltered view whose folders hold at least half the store's messages walks the global date index instead. On 3–5 fixture accounts with 90,000–100,000 messages, deep filtered pages went from 0.7–5.4 ms warm (up to 50 ms cold) to 0.3–1.7 ms warm (≤ 17.7 ms cold). Opening All Inboxes took ≤ 32.3 ms cold, and one new message's diff p99 ≤ 5.2 ms.
 
+### ADR-005 amendment — schema v6: the server's counts for windowed folders (M3 gate, 2026-10-06)
+
+Built at the user's choice ("Show server counts"; [report](m3/counts.md)).
+- **Migration v6** adds `folders.below_unread`, the server's unread messages under a windowed folder's floor.
+- **The counts the app sees** (the folder list and every change event's folder counts) are the store's own plus `below_floor` and `below_unread`. List views keep counting the rows the store holds.
+- **Where they come from:** the account pass sets both from each windowed folder's STATUS, in one transaction against the store's own rows (`count_below`): MESSAGES less the stored messages, and UNSEEN less the stored unread, at most the messages below. A STATUS older than the store is ignored (another UIDVALIDITY, or a lower UIDNEXT or HIGHESTMODSEQ). A change event goes out only when the counts change.
+- **Older mail** moves its messages and unread from below the floor into the store in one transaction, so the counts shown stay.
+- **They remain hints:** never a reason to store or drop a row, recounted by the UID diff and the next STATUS. A new folder keeps showing STATUS counts until its first sync; a complete folder has nothing below.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
