@@ -1419,10 +1419,15 @@ impl AppState {
                 &reader::tooltip(&keymap, id, availability.title, availability.reason),
             );
         }
-        actions.set_applies(
+        let one = matches!(list.reported(), Selected::One(_));
+        for id in [
             ActionId::OpenMessage,
-            matches!(list.reported(), Selected::One(_)),
-        );
+            ActionId::Print,
+            ActionId::ShowOriginal,
+            ActionId::SaveMessage,
+        ] {
+            actions.set_applies(id, one);
+        }
         actions.set_applies(ActionId::Select, list.model().total() > 0);
         actions.set_applies(
             ActionId::MarkFolderRead,

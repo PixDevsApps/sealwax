@@ -13,6 +13,7 @@ mod attachments;
 pub mod commands;
 mod engine;
 mod export;
+mod files;
 mod format;
 mod heuristic;
 mod links;
@@ -26,7 +27,10 @@ mod toolbar;
 mod view;
 mod widgets;
 
+pub use attachments::CardState;
 pub use engine::{CONTENT_SECURITY_POLICY, CidRequest, MAX_LIVE_VIEWS, NETWORK_FEATURES};
+pub use export::{ORIGINAL_SHOWN, OriginalDialog, original_dialog};
+pub use files::FileChoice;
 pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
 pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
@@ -188,6 +192,8 @@ struct Inner {
     /// The message the newest `show` is for.
     target: Cell<Option<MessageId>>,
     engine_events: RefCell<Option<Subscription>>,
+    /// Attachments, Print, Show Original and Save as .eml (ML-061, ML-063).
+    files: files::Files,
 }
 
 impl Reader {
@@ -232,7 +238,9 @@ impl Reader {
             answers: RefCell::new(HashMap::new()),
             target: Cell::new(None),
             engine_events: RefCell::new(None),
+            files: files::Files::new(cache),
         });
+        remote::load(&inner);
         let weak = Rc::downgrade(&inner);
         let id = inner.theme.connect_changed(move |theme| {
             if let Some(inner) = weak.upgrade() {
@@ -302,6 +310,7 @@ impl Reader {
             }
         });
         self.inner.engine_events.replace(Some(subscription));
+        files::connect_engine(self, engine);
     }
 
     /// The engine's answer to a download: a failure is shown with Retry, a success shows the
@@ -647,8 +656,12 @@ impl Inner {
                 remote_images: true,
                 ..
             }
-        ) && !self.remote.allows(id, &sender);
-        let widgets = page::build(&header, &prepared.attachments, remote_images);
+        );
+        let notice = self.remote.notice(id, &sender, remote_images);
+        let reader = Reader {
+            inner: self.clone(),
+        };
+        let widgets = page::build(&reader, &header, &prepared.attachments, notice);
         let attachments = prepared.attachments.len();
         let mut page = Page {
             id,
@@ -1098,6 +1111,37 @@ impl Inner {
             message = id.0,
             "reader: remote images allowed for a message"
         );
+    }
+
+    /// The list of senders whose images load changed for `sender` (ML-058; `allowed` whether it
+    /// is on it now): every shown message from `sender` with remote images is shown again, so
+    /// its banner and its images follow the list; forgotten, its images allowed this session
+    /// are hidden again too. The conversation view calls this for each of its messages.
+    fn remote_changed(self: &Rc<Self>, sender: &str, allowed: bool) {
+        let shown = self
+            .shown
+            .borrow()
+            .as_ref()
+            .filter(|page| {
+                page.sender == sender
+                    && matches!(
+                        page.body,
+                        ShownBody::Html {
+                            remote_images: true,
+                            ..
+                        }
+                    )
+            })
+            .map(|page| page.id);
+        let Some(id) = shown else {
+            return;
+        };
+        if !allowed {
+            self.remote.forget_message(id);
+        }
+        if self.target.get() == Some(id) {
+            self.reshow(id);
+        }
     }
 
     /// The theme changed: every live body takes its new stylesheet, background and fonts in

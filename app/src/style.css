@@ -1249,3 +1249,63 @@ popover.sw-folder-menu button.sw-menu-item {
 popover.sw-folder-menu button.sw-menu-item:hover {
   background: var(--sw-hover-bg-color);
 }
+
+/* Files and remote content (M5: ML-058, ML-061, ML-063). */
+
+/* Open and Save in a card's size line, and Cancel and Retry under it: quiet words in the
+   line's own size, not buttons with a fill. */
+button.sw-attachment-action {
+  min-height: 0;
+  min-width: 0;
+  padding: 0 var(--sw-space-xxs);
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--accent-color);
+  font-size: var(--sw-text-small);
+  font-weight: normal;
+}
+
+button.sw-attachment-action:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+/* A file that can run programs: the warning sign in the badge, on the error's soft tint. */
+.sw-attachment-type.sw-attachment-danger {
+  background: var(--sw-error-soft-bg-color);
+  color: var(--error-color);
+}
+
+.sw-attachment-warning {
+  color: var(--window-fg-color);
+}
+
+/* Download all: the mock's chip beside "N attachments". */
+button.sw-download-all {
+  font-size: var(--sw-text-small);
+}
+
+/* A message whose sender's images always load: a quiet line where the banner would be. */
+.sw-reader-sender-note {
+  padding: 0 var(--sw-space-xxxl);
+}
+
+button.sw-reader-sender-hide {
+  min-height: 0;
+  padding: var(--sw-space-xxs) var(--sw-space-md);
+  font-size: var(--sw-text-small);
+  font-weight: normal;
+}
+
+/* Show Original: the raw source in the Omarchy font on the dialog's surface. */
+textview.sw-original-text,
+textview.sw-original-text > text {
+  font-family: var(--sw-font-mono);
+  font-size: var(--sw-text-small);
+  background: none;
+}
+
+.sw-original-notice {
+  padding: var(--sw-space-xl) var(--sw-space-xxxl);
+  border-top: var(--sw-control-border-width) solid var(--border-color);
+}

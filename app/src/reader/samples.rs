@@ -604,6 +604,119 @@ pub fn messages(now: i64) -> Vec<(&'static str, Vec<u8>)> {
         .collect()
 }
 
+/// The files-and-remote-content samples (M5: ML-058, ML-061, ML-063), beside [`NAMES`]:
+/// attachments the desktop must never open, one whose content is a script though its name
+/// says text, a second message from the remote sample's sender, and a message with
+/// attachments that the self-test stores as its text parts, as a large one is.
+pub const FILES_NAMES: [&str; 4] = [
+    "files-danger",
+    "files-sniffed",
+    "files-remote-again",
+    "files-large",
+];
+
+/// A files sample by name, dated `date`; also any of [`NAMES`].
+pub fn files_draft(name: &str, date: i64) -> Option<Draft> {
+    if NAMES.contains(&name) {
+        return Some(draft(name, date));
+    }
+    let draft = match name {
+        "files-danger" => {
+            let mut draft = Draft::new(
+                ("Mira Holm", "mira@holm-trading.example.test"),
+                "Your order documents",
+                date,
+                "files-danger",
+            );
+            draft.text = Some(
+                "Hello,\n\nThe documents for order 7731 are attached. Install the viewer \
+                 first.\n\nMira\n"
+                    .into(),
+            );
+            draft.attachments = vec![
+                Part::attachment(
+                    "agenda.pdf",
+                    "application/pdf",
+                    filler(b"%PDF-1.4\n", 24_000),
+                ),
+                Part::attachment(
+                    "invoice.pdf.desktop",
+                    "application/x-desktop",
+                    b"[Desktop Entry]\nType=Application\nName=Invoice\nExec=true\n".to_vec(),
+                ),
+                Part::attachment(
+                    "Viewer\u{202E}fdp.EXE",
+                    "application/octet-stream",
+                    filler(b"MZ\x90\x00", 4_096),
+                ),
+                Part::attachment(
+                    "scan\u{2024}pdf",
+                    "application/octet-stream",
+                    b"A fictional scan.\n".to_vec(),
+                ),
+            ];
+            draft
+        }
+        "files-sniffed" => {
+            let mut draft = Draft::new(
+                ("Jonas Lie", "jonas@example.test"),
+                "Notes from the workshop",
+                date,
+                "files-sniffed",
+            );
+            draft.text = Some("Hi,\n\nMy notes are attached.\n\nJonas\n".into());
+            draft.attachments = vec![Part::attachment(
+                "notes.txt",
+                "text/plain",
+                b"#!/bin/sh\necho 'a fictional script'\n".to_vec(),
+            )];
+            draft
+        }
+        "files-remote-again" => {
+            let mut draft = Draft::new(
+                ("Aker Library", "noreply@akerlibrary.example.test"),
+                "Your loan is due on Friday",
+                date,
+                "files-remote-again",
+            );
+            draft.html = Some(format!(
+                "<p>Hello,</p><p>'A Field Guide to Fjords' is due on Friday. You can renew it \
+                 once online.</p><p><img src=\"{REMOTE_ORIGIN}/library/due.png\" width=\"120\" \
+                 height=\"80\" alt=\"Library card\"></p><p>Aker Library</p>"
+            ));
+            draft
+        }
+        "files-large" => {
+            let mut draft = Draft::new(
+                ("Board Office", "board@fjordhavn.example.test"),
+                "Board pack for October",
+                date,
+                "files-large",
+            );
+            draft.text = Some(
+                "Dear members,\n\nThe board pack and last month's minutes are attached.\n\n\
+                 The Board Office\n"
+                    .into(),
+            );
+            draft.attachments = vec![
+                Part::attachment(
+                    "board-pack-october.pdf",
+                    "application/pdf",
+                    filler(b"%PDF-1.4\n", 4_400_000),
+                ),
+                Part::attachment(
+                    "minutes-september.txt",
+                    "text/plain",
+                    filler(b"Minutes\n", 12_000),
+                ),
+            ];
+            draft
+        }
+        _ => return None,
+    };
+    Some(draft)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

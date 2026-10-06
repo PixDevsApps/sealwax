@@ -4,9 +4,10 @@
 //! body and the attachment cards. The banner is [`super::remote`]'s, the cards
 //! [`super::attachments`]'s and a plain-text body [`super::plain`]'s (M5's owners).
 
+use super::Reader;
 use super::attachments::attachment_cards;
 use super::format;
-use super::remote::{Banner, banner};
+use super::remote::{Banner, Notice, banner, sender_note};
 use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::glib;
@@ -32,7 +33,12 @@ pub struct Header<'a> {
     pub now: i64,
 }
 
-pub fn build(header: &Header<'_>, attachments: &[Attachment], remote_images: bool) -> PageWidgets {
+pub fn build(
+    reader: &Reader,
+    header: &Header<'_>,
+    attachments: &[Attachment],
+    remote: Notice,
+) -> PageWidgets {
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(16)
@@ -52,9 +58,15 @@ pub fn build(header: &Header<'_>, attachments: &[Attachment], remote_images: boo
     heading.set_wrap(true);
     heading.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     root.append(&heading);
-    let banner = remote_images.then(banner);
+    let banner = match &remote {
+        Notice::Hidden(sender) => Some(banner(reader, sender)),
+        Notice::None | Notice::SenderAllowed(_) => None,
+    };
     if let Some(banner) = &banner {
         root.append(&banner.root);
+    }
+    if let Notice::SenderAllowed(sender) = &remote {
+        root.append(&sender_note(reader, sender));
     }
     let card = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -70,7 +82,11 @@ pub fn build(header: &Header<'_>, attachments: &[Attachment], remote_images: boo
     body.set_widget_name("reader-body");
     card.append(&body);
     if !attachments.is_empty() {
-        card.append(&attachment_cards(attachments));
+        card.append(&attachment_cards(
+            reader,
+            header.detail.summary.id,
+            attachments,
+        ));
     }
     root.append(&card);
     PageWidgets {

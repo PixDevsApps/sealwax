@@ -256,7 +256,7 @@ pub(crate) fn rebuild(root: &Node, sections: &HashMap<String, Vec<u8>>) -> Vec<u
 
 /// The IMAP section of each part of a raw message by its mail-parser index: `1`, `2.1`…, or
 /// `TEXT` for the body of a message that isn't multipart.
-pub(crate) fn part_sections(raw: &[u8]) -> HashMap<u32, String> {
+pub fn part_sections(raw: &[u8]) -> HashMap<u32, String> {
     let mut out = HashMap::new();
     let Some(parsed) = MessageParser::default().parse(raw) else {
         return out;
