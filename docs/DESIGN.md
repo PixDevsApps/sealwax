@@ -52,7 +52,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Account status as a small round dot: accent synced, plain syncing, warning offline, error needs sign-in; account headings are upper-cased, letter-spaced captions.
 - A footer with the accounts' summary and `config.toml`. The main menu sits at the end of the list's bar (the welcome page's while there is no account): in the footer it cut off the summary (M1, a change from the mock; kept by the user at the M1 gate, 2026-10-05).
 - **Rail** (900–1279 px): compose, All Inboxes (an addition to the mock, kept by the user at the M1 gate, 2026-10-05), the shown account's role folders with an accent badge at the top-right of those with unread mail, the other accounts as initial and unread count (a dot only when offline or signed out), `config.toml` at the bottom.
-- *As built in M3 (ML-048, [report](m3/status.md)); proposed, for the user at the M3 gate:* every state the engine reports has a dot and words. Accent "synced", plain "syncing…", warning "offline" and "mailbox full" (Sealwax keeps trying, or still syncs), error "needs sign-in" and "bad certificate" (Sealwax stopped until the user acts). The rail marks every state but synced and syncing on the other accounts, and its tooltip and accessible label say the state in words. The footer's summary names the most important state in the banner's order.
+- *As built in M3 (ML-048, [report](m3/status.md)); kept by the user at the M3 gate, 2026-10-06 ("keep the banners"):* every state the engine reports has a dot and words. Accent "synced", plain "syncing…", warning "offline" and "mailbox full" (Sealwax keeps trying, or still syncs), error "needs sign-in" and "bad certificate" (Sealwax stopped until the user acts). The rail marks every state but synced and syncing on the other accounts, and its tooltip and accessible label say the state in words. The footer's summary names the most important state in the banner's order.
 
 **Message list**
 - Search field and filter chips on top, then sections (Today, Yesterday, This week, This month, Older).
@@ -116,7 +116,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Banners for persistent states: offline, needs sign-in, certificate changed, quota full, no keyring.
 - Empty states: no accounts (starts the assistant), empty folder, no search results.
 
-*As built in M3 (ML-048, [report](m3/status.md)); the order, the tints and the texts are proposals for the M3 gate:*
+*As built in M3 (ML-048, [report](m3/status.md)); the order, the tints, the texts and the ten differences from the mock were kept by the user at the M3 gate, 2026-10-06 ("keep the banners"):*
 - **One banner** across the window's top (ML-032's strip, generalised) shows the most important state and counts the rest: "1 more account needs it too" when the others are the same kind, else "2 more problems wait after this one". Resolving or dismissing the one shown brings the next.
 - **Order:** no keyring; each account whose certificate no longer verifies; each that needs a sign-in; each whose mailbox is full (accounts in the sidebar's order); offline.
 - **No keyring** (the card's tint, the lock in the accent, as the mock): "No keyring found", passwords and sign-ins stay in memory until Sealwax quits; Dismiss hides it for the session.

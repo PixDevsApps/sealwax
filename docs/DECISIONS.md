@@ -324,6 +324,20 @@ Built in M3 ([report](m3/actor.md)).
   - a 30-minute soak (four accounts, 2,548 changes, six faults) matched the servers at every check.
 - **Not built:** a limit on IDLE's silence. A silently dead IDLE connection without `Reconnect` lasts until TCP keepalive ends it (about two minutes on a real network), meanwhile the 2-minute STATUS backstop keeps INBOX current.
 
+### ADR-006 amendment — M3 gate decisions (2026-10-06)
+
+**Status:** the proposals of M3's sync core and actor are accepted by the user ("accept the defaults", 2026-10-06), and a windowed folder shows the server's counts ("Show server counts").
+- **Folders that sync by themselves:** INBOX, Sent, Drafts, Archive, Junk and Trash, and any folder opened once; other folders show STATUS counts until opened; `\All` never.
+- **The first-sync window:** the newest 90 days, at most 5,000 and at least 200 messages per folder; older mail 200 at a time.
+- **The actor:**
+  - an account pass every 2 minutes, with INBOX's STATUS as the backstop;
+  - the opened folder at once and every 30 s; INBOX every 60 s without IDLE;
+  - IDLE re-issued every 25 minutes;
+  - NOOP before reusing a connection unused for 30 s;
+  - reconnect at once, then a backoff from 1 s to 5 minutes, jittered;
+  - progress at most 10 events a second per account.
+- **Counts:** a folder with older mail left on the server shows the server's totals: the store's own counts plus the messages and unread messages under the floor, from the account pass's STATUS (ADR-005, schema v6).
+
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
 **Status:** Proposed. S7 confirms the output in Gmail web, Outlook web and Thunderbird.
@@ -447,6 +461,10 @@ Built in M2 ([m2/accounts.md](m2/accounts.md)).
 ### ADR-009 amendment — `[storage]` in config.toml (ML-044, M3, 2026-10-05)
 
 Built in M3 ([report](m3/bodies.md)): `cache_size` (a size such as `"2 GiB"` or `"500 MB"`, at least 100 MiB, or `"unlimited"`) and `prefetch_days` (0–365; 0 turns prefetching off). The defaults, 2 GiB and 14 days, are proposals for the user. The section is read like the rest of the file and sent to the engine with `Command::Storage`; a file with a mistake at startup sends the defaults.
+
+### ADR-009 amendment — `[storage]` defaults accepted (M3 gate, 2026-10-06)
+
+The user accepted the proposed defaults ("accept the defaults"): `cache_size = "2 GiB"` and `prefetch_days = 14`, with whole messages up to 10 MiB.
 
 ## ADR-010 — Name and app-id (2026-10-04)
 
