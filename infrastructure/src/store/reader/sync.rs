@@ -38,11 +38,13 @@ impl Reader {
         }
     }
 
+    /// The server's flags, whatever pending ops show.
     fn folder_messages(&self, folder: FolderId) -> Result<Vec<StoredMessage>, StoreError> {
         Ok(self
             .conn
             .prepare_cached(
-                "SELECT id, uid, flags, keywords FROM messages WHERE folder_id = ?1 ORDER BY uid",
+                "SELECT id, uid, coalesce(server_flags, flags), keywords FROM messages \
+                 WHERE folder_id = ?1 ORDER BY uid",
             )?
             .query_map([folder.0], |row| {
                 Ok(StoredMessage {

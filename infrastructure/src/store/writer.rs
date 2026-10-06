@@ -23,6 +23,8 @@ use std::time::Instant;
 
 mod accounts;
 mod bodies;
+pub(crate) mod ops;
+pub(crate) mod overlay;
 pub(crate) mod sync;
 
 /// Messages per header transaction (S3: 500 held the writer for up to 258 ms with text).
@@ -98,6 +100,7 @@ pub(crate) enum WriteJob {
         reply: Sender<Removed>,
     },
     Sync(sync::SyncJob),
+    Ops(ops::OpsJob),
     UpgradeBody {
         upgrade: Box<BodyUpgrade>,
         reply: Sender<Upgraded>,
@@ -324,6 +327,7 @@ impl Writer {
                 let _ = reply.try_send(self.reset_folder(folder, uidvalidity));
             }
             WriteJob::Sync(job) => self.sync_job(job),
+            WriteJob::Ops(job) => self.ops_job(job),
             WriteJob::UpgradeBody { upgrade, reply } => {
                 let _ = reply.try_send(self.upgrade_body(&upgrade));
             }
@@ -421,9 +425,10 @@ impl Writer {
             } => tx.execute(
                 "UPDATE folders SET uidvalidity = ?2, sync_state = 'initial', initial_top = ?3, \
                    initial_modseq = ?4, sync_floor = ?3, below_floor = 0, below_unread = 0, \
-                   total_count = (SELECT count(*) FROM messages WHERE folder_id = ?1), \
+                   total_count = (SELECT count(*) FROM messages \
+                     WHERE folder_id = ?1 AND flags & 264 = 0), \
                    unread_count = (SELECT count(*) FROM messages \
-                     WHERE folder_id = ?1 AND flags & 1 = 0) \
+                     WHERE folder_id = ?1 AND flags & 265 = 0) \
                  WHERE id = ?1 AND sync_state = 'new'",
                 params![folder.0, uidvalidity, top, modseq as i64],
             )?,
@@ -441,6 +446,14 @@ impl Writer {
         };
         if changed == 0 {
             return Err(StoreError::SyncState(folder));
+        }
+        if matches!(step, FirstSyncStep::Finish { .. }) {
+            // Ops whose messages left with a UIDVALIDITY change and didn't come back.
+            let mut refusals = overlay::Refusals::default();
+            for (account, ops) in overlay::waiting(&tx, folder)? {
+                refusals.refuse(&tx, account, folder, &ops)?;
+            }
+            refusals.record(&tx)?;
         }
         // Messages left below the floor join the counts the sidebar shows.
         let counted = match step {
@@ -460,6 +473,9 @@ impl Writer {
         self.state.commit(tx, event)
     }
 
+    /// The folder's pending ops survive: they wait for its next sync to bring their messages
+    /// back, found by Message-ID (`overlay::attach_waiting`), and are refused at the end of its
+    /// first sync if they don't come. A pending read below the floor is refused at once.
     fn reset_folder(&mut self, folder: FolderId, uidvalidity: u32) -> Result<Removed, StoreError> {
         self.state.account(folder)?;
         let ids = self
@@ -467,10 +483,16 @@ impl Writer {
             .prepare_cached("SELECT id FROM messages WHERE folder_id = ?1")?
             .query_map([folder.0], |row| Ok(MessageId(row.get(0)?)))?
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        let removed = self.remove(&ids)?;
+        let removed = self.remove_rows(&ids, true)?;
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut refusals = overlay::Refusals::default();
+        for (op, account, below) in overlay::reads_below(&tx, folder)? {
+            tx.execute("DELETE FROM ops WHERE id = ?1", [op.0])?;
+            refusals.add(account, crate::store::RefusedChange::FolderRead, below);
+        }
+        refusals.record(&tx)?;
         let below = below_counts(&tx, folder)?;
         tx.execute(
             "UPDATE folders SET uidvalidity = ?2, sync_state = 'new', uidnext = 1, \
@@ -668,6 +690,7 @@ impl Writer {
         let mut threads = BTreeSet::new();
         let mut merged_threads = Vec::new();
         let mut folders = BTreeSet::new();
+        let mut waiting = HashMap::new();
         for message in batch {
             let account = self.state.account(message.folder)?;
             let Some(uid) = free_uid(&tx, message)? else {
@@ -680,6 +703,7 @@ impl Writer {
                 into: thread,
             }));
             let id = insert_message(&tx, thread, uid, message)?;
+            let flags = overlay_new(&tx, &mut waiting, message, id, uid)?;
             ids.push(Some(id));
             threads.insert(thread);
             folders.insert(message.folder);
@@ -688,7 +712,7 @@ impl Writer {
                 folder: message.folder,
                 date: message.date,
                 before: None,
-                after: Some((message.flags.bits(), message.has_attachments)),
+                after: Some((flags, message.has_attachments)),
             });
             docs.push(fts_doc(id, message));
         }
@@ -715,6 +739,8 @@ impl Writer {
         Ok((version, ids, docs))
     }
 
+    /// The server's flags changed: `add` and `remove` apply to its flags, and what is shown
+    /// keeps any pending op.
     fn set_flags(
         &mut self,
         ids: &[MessageId],
@@ -724,170 +750,122 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut rows = Vec::new();
-        {
-            let mut select = tx.prepare_cached(
-                "SELECT folder_id, date, flags, has_attachments FROM messages WHERE id = ?1",
-            )?;
-            for id in ids {
-                let Some((folder, date, flags, has_attachments)) = select
-                    .query_row([id.0], |row| {
-                        Ok((
-                            FolderId(row.get(0)?),
-                            row.get::<_, i64>(1)?,
-                            row.get::<_, u32>(2)?,
-                            row.get::<_, bool>(3)?,
-                        ))
-                    })
-                    .optional()?
-                else {
-                    continue;
-                };
-                let new = Flags::from_bits(flags).union(add).difference(remove).bits();
-                if new != flags && !rows.iter().any(|row: &RowChange| row.id == *id) {
-                    rows.push(RowChange {
-                        id: *id,
-                        folder,
-                        date,
-                        before: Some((flags, has_attachments)),
-                        after: Some((new, has_attachments)),
-                    });
-                }
+        let mut plans = Vec::new();
+        let mut seen = BTreeSet::new();
+        for id in ids {
+            if !seen.insert(*id) {
+                continue;
             }
+            let Some(row) = overlay::row(&tx, *id)? else {
+                continue;
+            };
+            let server = Flags::from_bits(row.server)
+                .union(add)
+                .difference(remove)
+                .bits();
+            if server == row.server {
+                continue;
+            }
+            let flags = overlay::shown(&tx, &row, server)?;
+            plans.push(overlay::RowPlan {
+                after: overlay::After::Stay { flags, server },
+                row,
+            });
         }
-        if rows.is_empty() {
+        if plans.is_empty() {
             return Ok(StoreVersion(self.state.version));
         }
-        let shared = Arc::clone(&self.state.shared);
-        let open = shared.registry.lock();
-        let removed = removed_positions(&tx, &open.open, &rows)?;
-        let mut folders = BTreeSet::new();
-        {
-            let mut update = tx.prepare_cached("UPDATE messages SET flags = ?2 WHERE id = ?1")?;
-            let mut counts = tx.prepare_cached(
-                "UPDATE folders SET unread_count = unread_count + ?2 WHERE id = ?1",
-            )?;
-            for row in &rows {
-                let (before, _) = row.before.expect("flag changes have a before");
-                let (after, _) = row.after.expect("flag changes have an after");
-                update.execute(params![row.id.0, after])?;
-                let unread = |flags: u32| i64::from(flags & Flags::SEEN.bits() == 0);
-                let delta = unread(after) - unread(before);
-                if delta != 0 {
-                    counts.execute(params![row.folder.0, delta])?;
-                }
-                folders.insert(row.folder);
-            }
-        }
-        let views = view_changes(&tx, &open.open, &rows, &removed)?;
-        let event = ChangeEvent {
-            changed: rows.iter().map(|row| row.id).collect(),
-            folders: folder_counts(&tx, &folders)?,
-            views,
-            ..ChangeEvent::default()
-        };
-        let version = self.state.commit(tx, event)?;
-        drop(open);
-        Ok(version)
+        Ok(self.state.commit_rows(tx, &plans, BTreeSet::new())?.version)
     }
 
     fn remove(&mut self, ids: &[MessageId]) -> Result<Removed, StoreError> {
+        self.remove_rows(ids, false)
+    }
+
+    /// Removes rows the server expunged, whose pending ops end as `overlay::vanished` says; or,
+    /// with `retarget`, rows a UIDVALIDITY change took, whose pending ops wait for their messages
+    /// to come back (`overlay::detach`).
+    fn remove_rows(&mut self, ids: &[MessageId], retarget: bool) -> Result<Removed, StoreError> {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut rows = Vec::new();
-        let mut threads = BTreeSet::new();
-        let mut blobs = BTreeSet::new();
-        {
-            let mut select = tx.prepare_cached(
-                "SELECT folder_id, date, flags, has_attachments, thread_id, blob_key \
-                 FROM messages WHERE id = ?1",
-            )?;
-            for id in ids {
-                let Some((row, thread, blob)) = select
-                    .query_row([id.0], |row| {
-                        Ok((
-                            RowChange {
-                                id: *id,
-                                folder: FolderId(row.get(0)?),
-                                date: row.get(1)?,
-                                before: Some((row.get(2)?, row.get(3)?)),
-                                after: None,
-                            },
-                            ThreadId(row.get(4)?),
-                            row.get::<_, Option<Vec<u8>>>(5)?,
-                        ))
-                    })
-                    .optional()?
-                else {
-                    continue;
-                };
-                if rows.iter().any(|known: &RowChange| known.id == *id) {
-                    continue;
-                }
-                rows.push(row);
-                threads.insert(thread);
-                blobs.extend(blob.and_then(|key| BlobKey::from_slice(&key)));
+        let mut plans = Vec::new();
+        let mut seen = BTreeSet::new();
+        let mut refusals = overlay::Refusals::default();
+        for id in ids {
+            if !seen.insert(*id) {
+                continue;
             }
+            let Some(row) = overlay::row(&tx, *id)? else {
+                continue;
+            };
+            if retarget {
+                overlay::detach(&tx, &row, &mut refusals)?;
+            } else {
+                overlay::vanished(&tx, row.id, row.account, row.folder, &mut refusals)?;
+            }
+            plans.push(overlay::RowPlan {
+                row,
+                after: overlay::After::Deleted,
+            });
         }
-        if rows.is_empty() {
+        if plans.is_empty() {
             return Ok(Removed {
                 version: StoreVersion(self.state.version),
                 ..Removed::default()
             });
         }
-        let shared = Arc::clone(&self.state.shared);
-        let open = shared.registry.lock();
-        let removed = removed_positions(&tx, &open.open, &rows)?;
-        let mut folders = BTreeSet::new();
-        {
-            let mut delete = tx.prepare_cached("DELETE FROM messages WHERE id = ?1")?;
-            let mut unindex = tx.prepare_cached("DELETE FROM message_fts WHERE rowid = ?1")?;
-            let mut counts = tx.prepare_cached(
-                "UPDATE folders SET total_count = total_count - 1, \
-                 unread_count = unread_count - ?2 WHERE id = ?1",
-            )?;
-            for row in &rows {
-                let (flags, _) = row.before.expect("removed rows have a before");
-                delete.execute([row.id.0])?;
-                unindex.execute([row.id.0])?;
-                counts.execute(params![
-                    row.folder.0,
-                    i64::from(flags & Flags::SEEN.bits() == 0)
-                ])?;
-                folders.insert(row.folder);
-            }
-        }
-        for thread in &threads {
-            recompute_thread(&tx, *thread)?;
-        }
-        let mut orphaned_blobs = Vec::new();
-        {
-            let mut used = tx.prepare_cached(
-                "SELECT EXISTS(SELECT 1 FROM messages INDEXED BY messages_blob WHERE blob_key = ?1)",
-            )?;
-            for key in blobs {
-                if !used.query_row([key.0.as_slice()], |row| row.get::<_, bool>(0))? {
-                    orphaned_blobs.push(key);
-                }
-            }
-        }
-        let views = view_changes(&tx, &open.open, &rows, &removed)?;
-        let event = ChangeEvent {
-            removed: rows.iter().map(|row| row.id).collect(),
-            folders: folder_counts(&tx, &folders)?,
-            threads: thread_counts(&tx, &threads)?,
-            views,
-            ..ChangeEvent::default()
-        };
-        let version = self.state.commit(tx, event)?;
-        drop(open);
+        refusals.record(&tx)?;
+        let removed = plans.iter().map(|plan| plan.row.id).collect();
+        let committed = self.state.commit_rows(tx, &plans, BTreeSet::new())?;
         Ok(Removed {
-            version,
-            removed: rows.iter().map(|row| row.id).collect(),
-            orphaned_blobs,
+            version: committed.version,
+            removed,
+            orphaned_blobs: committed.orphaned_blobs,
         })
     }
+}
+
+/// Gives a new row the ops waiting in its folder for its Message-ID and the folder's pending
+/// read below the floor, when the folder has either (`waiting` caches that per batch); returns
+/// the flags the row shows.
+pub(crate) fn overlay_new(
+    tx: &Connection,
+    waiting: &mut HashMap<FolderId, bool>,
+    message: &NewMessage,
+    id: MessageId,
+    uid: i64,
+) -> rusqlite::Result<u32> {
+    let flags = message.flags.bits();
+    let folder = message.folder;
+    let has = match waiting.get(&folder) {
+        Some(has) => *has,
+        None => *waiting
+            .entry(folder)
+            .or_insert(overlay::has_waiting(tx, folder)?),
+    };
+    if !has {
+        return Ok(flags);
+    }
+    let uid = uid as u32;
+    let uidvalidity: u32 = tx
+        .prepare_cached("SELECT coalesce(uidvalidity, 0) FROM folders WHERE id = ?1")?
+        .query_row([folder.0], |row| row.get(0))?;
+    overlay::attach_waiting(
+        tx,
+        folder,
+        id,
+        message.headers.message_id.as_deref(),
+        uid,
+        uidvalidity,
+    )?;
+    let shown = overlay::shown_at(tx, id, folder, uidvalidity, uid, flags)?;
+    if shown != flags {
+        tx.prepare_cached("UPDATE messages SET flags = ?2, server_flags = ?3 WHERE id = ?1")?
+            .execute(params![id.0, shown, overlay::server_column(shown, flags)])?;
+        overlay::count_delta(tx, folder, Some(flags), Some(shown))?;
+    }
+    Ok(shown)
 }
 
 /// Upserts folders by `(account, name_raw)`; returns their ids in input order and the folders
@@ -1172,14 +1150,7 @@ fn insert_message(
         message.date,
         base_subject(&headers.subject)
     ])?;
-    tx.prepare_cached(
-        "UPDATE folders SET total_count = total_count + 1, unread_count = unread_count + ?2 \
-         WHERE id = ?1",
-    )?
-    .execute(params![
-        message.folder.0,
-        i64::from(!message.flags.is_seen())
-    ])?;
+    overlay::count_delta(tx, message.folder, None, Some(message.flags.bits()))?;
     Ok(id)
 }
 
@@ -1243,14 +1214,15 @@ fn below_counts(tx: &Connection, folder: FolderId) -> rusqlite::Result<(u32, u32
 }
 
 /// The counts the sidebar shows: the store's own plus what a windowed folder leaves below its
-/// floor (ML-043).
+/// floor (ML-043), whose unread a pending "mark folder read" already counts as read.
 fn folder_counts(
     tx: &Connection,
     folders: &BTreeSet<FolderId>,
 ) -> rusqlite::Result<Vec<FolderCounts>> {
-    let mut select = tx.prepare_cached(
-        "SELECT total_count + below_floor, unread_count + below_unread FROM folders WHERE id = ?1",
-    )?;
+    let mut select = tx.prepare_cached(&format!(
+        "SELECT total_count + below_floor, {} FROM folders WHERE id = ?1",
+        crate::store::overlay::UNREAD_SQL
+    ))?;
     folders
         .iter()
         .map(|folder| {

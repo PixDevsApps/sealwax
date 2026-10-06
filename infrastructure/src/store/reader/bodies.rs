@@ -62,7 +62,7 @@ impl Reader {
     }
 
     /// Messages without a body that arrived since `since` in the Inboxes of server accounts
-    /// (`accounts.toml` lists them), newest first.
+    /// (`accounts.toml` lists them), newest first; hidden ones are left out.
     pub(super) fn body_candidates(
         &self,
         since: i64,
@@ -75,7 +75,7 @@ impl Reader {
                  FROM folders f JOIN accounts a ON a.id = f.account_id \
                    JOIN messages m ON m.folder_id = f.id \
                  WHERE f.role = 'inbox' AND a.key IS NOT NULL AND a.detached = 0 \
-                   AND m.blob_key IS NULL AND m.date >= ?1 \
+                   AND m.blob_key IS NULL AND m.date >= ?1 AND m.flags & 264 = 0 \
                  ORDER BY m.date DESC, m.id DESC LIMIT ?2",
             )?
             .query_map(rusqlite::params![since, limit], |row| {

@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 6;
+pub const VERSION: i64 = 7;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -174,6 +174,77 @@ ALTER TABLE message_parts ADD COLUMN section TEXT;
 /// never a reason to store or drop a row.
 const V6: &str = "
 ALTER TABLE folders ADD COLUMN below_unread INTEGER NOT NULL DEFAULT 0;
+";
+
+/// M4's op queue (ML-051, ADR-015). `messages.flags` becomes what the user sees: the server's
+/// flags with the pending ops applied, plus bit 256 while a pending move or expunge takes the
+/// message out of its folder. `server_flags` keeps the server's flags where they differ from
+/// what is shown, NULL otherwise. Rows hidden by that bit or flagged `\Deleted` (8) are in no
+/// view and no count, so every list index leaves them out and the counts are recounted. An op
+/// is one change to one message (or, for a folder marked read, to the server's unread below its
+/// floor), in FIFO order per message; done ops stay with their batch, for Undo. Refusals the
+/// sync paths decide wait in `op_refusals` for the account's op runner.
+const V7: &str = "
+ALTER TABLE messages ADD COLUMN server_flags INTEGER;
+DROP INDEX messages_folder_date;
+DROP INDEX messages_unread;
+DROP INDEX messages_flagged;
+DROP INDEX messages_attachments;
+DROP INDEX messages_date;
+CREATE INDEX messages_folder_date ON messages(folder_id, date) WHERE flags & 264 = 0;
+CREATE INDEX messages_unread ON messages(folder_id, date, id, flags) WHERE flags & 265 = 0;
+CREATE INDEX messages_flagged ON messages(folder_id, date, id, flags) WHERE flags & 268 = 4;
+CREATE INDEX messages_attachments ON messages(folder_id, date, id, has_attachments)
+    WHERE has_attachments <> 0 AND flags & 264 = 0;
+CREATE INDEX messages_date ON messages(date, id, folder_id) WHERE flags & 264 = 0;
+CREATE INDEX messages_special ON messages(folder_id)
+    WHERE server_flags IS NOT NULL OR flags & 8 <> 0;
+UPDATE folders SET
+    total_count = (SELECT count(*) FROM messages WHERE folder_id = folders.id AND flags & 264 = 0),
+    unread_count = (SELECT count(*) FROM messages WHERE folder_id = folders.id AND flags & 265 = 0)
+WHERE id IN (SELECT folder_id FROM messages WHERE flags & 8 <> 0);
+
+CREATE TABLE op_batches(
+    id INTEGER PRIMARY KEY,
+    kind INTEGER NOT NULL,
+    undone INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE ops(
+    id INTEGER PRIMARY KEY,
+    batch INTEGER NOT NULL REFERENCES op_batches(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    kind INTEGER NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0,
+    message INTEGER REFERENCES messages(id) ON DELETE SET NULL,
+    folder_id INTEGER NOT NULL,
+    uidvalidity INTEGER NOT NULL DEFAULT 0,
+    uid INTEGER NOT NULL DEFAULT 0,
+    message_id TEXT,
+    add_flags INTEGER NOT NULL DEFAULT 0,
+    remove_flags INTEGER NOT NULL DEFAULT 0,
+    target INTEGER,
+    prior_folder INTEGER NOT NULL,
+    prior_flags INTEGER NOT NULL DEFAULT 0,
+    below INTEGER NOT NULL DEFAULT 0,
+    not_before INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    target_uidnext INTEGER,
+    new_uid INTEGER
+);
+CREATE INDEX ops_message ON ops(message, id);
+CREATE INDEX ops_batch ON ops(batch);
+CREATE INDEX ops_pending ON ops(account_id, not_before) WHERE done = 0;
+CREATE INDEX ops_folder ON ops(folder_id) WHERE done = 0;
+CREATE INDEX ops_target ON ops(target) WHERE done = 0 AND target IS NOT NULL;
+
+CREATE TABLE op_refusals(
+    id INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    change INTEGER NOT NULL,
+    messages INTEGER NOT NULL
+);
+CREATE INDEX op_refusals_account ON op_refusals(account_id);
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

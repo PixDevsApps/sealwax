@@ -9,6 +9,8 @@ mod check;
 mod codec;
 pub mod fts;
 mod maintenance;
+mod ops_api;
+mod overlay;
 mod reader;
 mod schema;
 mod sync_api;
@@ -36,6 +38,7 @@ mod body_tests;
 mod count_tests;
 
 pub use api::*;
+pub use ops_api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
 pub use sync_api::*;
 pub use views::ViewHandle;
@@ -402,7 +405,8 @@ impl Store {
     }
 
     /// Removes every message of a folder whose UIDVALIDITY changed and makes it new again,
-    /// under the new UIDVALIDITY.
+    /// under the new UIDVALIDITY. Pending ops of its messages find them again by Message-ID as
+    /// the folder syncs again; those still unmatched when its first sync finishes are refused.
     pub fn reset_folder(&self, folder: FolderId, uidvalidity: u32) -> Reply<Removed> {
         self.write(|reply| WriteJob::ResetFolder {
             folder,
@@ -417,8 +421,9 @@ impl Store {
         self.write(|reply| WriteJob::Ingest { messages, reply })
     }
 
-    /// Adds and removes flags; the reply carries the version of the commit, or the current one
-    /// when nothing changed.
+    /// Adds and removes flags as the server reports them; what is shown keeps any pending op.
+    /// The reply carries the version of the commit, or the current one when nothing shown
+    /// changed.
     pub fn set_flags(&self, ids: Vec<MessageId>, add: Flags, remove: Flags) -> Reply<StoreVersion> {
         self.write(|reply| WriteJob::SetFlags {
             ids,
@@ -428,7 +433,8 @@ impl Store {
         })
     }
 
-    /// Removes messages (an EXPUNGE or VANISHED).
+    /// Removes messages (an EXPUNGE or VANISHED). A pending move or expunge of one counts as
+    /// done (S1).
     pub fn remove(&self, ids: Vec<MessageId>) -> Reply<Removed> {
         self.write(|reply| WriteJob::Remove { ids, reply })
     }

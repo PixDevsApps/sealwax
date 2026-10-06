@@ -24,13 +24,14 @@ pub struct FlagUpdate {
 pub struct StoredMessage {
     pub id: MessageId,
     pub uid: u32,
+    /// The server's flags, without the pending ops' overlay.
     pub flags: Flags,
     pub keywords: Vec<String>,
 }
 
 /// What one step of a pass changes in a folder whose first sync is done, by UID. The writer
-/// applies it in one transaction with one change event: what the server says, nothing else
-/// (overlays are the op queue's, M4).
+/// applies it in one transaction with one change event: what the server says goes to the
+/// server's columns, and what is shown keeps the pending ops' overlay (ADR-015).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct FolderChanges {
     /// New messages; a UID the folder holds already is skipped.
