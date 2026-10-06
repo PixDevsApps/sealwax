@@ -22,7 +22,7 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 - Always through `tools/headless.sh <display> <cmd...>`: Broadway backend, a private D-Bus bus that starts no services, `GSETTINGS_BACKEND=memory`, `ADW_DISABLE_PORTAL=1`, a time limit (`SEALWAX_HEADLESS_TIMEOUT`, default 300 s).
 - The app exits by itself after `SEALWAX_EXIT_AFTER_MS`; the CI smoke run greps for `first-frame`.
 - Parallel agents use different display numbers; CI uses `SEALWAX_CI_DISPLAY` (default 19).
-- `sealwax --self-test <script>` (ported from Stet) runs the real app on Broadway and a `.sealwax-test` script against it, printing TAP; the commands are in [m1/shell.md](m1/shell.md#self-test-commands-sealwax-test). `tools/ci.sh --ui` runs every `tests/selftest/*.sealwax-test` except `preview*`, which write the gate's screenshots into `tools/progress/public/`. The harness attaches a stand-in Broadway client reporting a 2560×1600 screen (without one Broadway clamps windows to 1024×768), switches `GTK_A11Y=none` to `test` so accessible labels can be checked, turns animations off and waits for a painted frame after every step.
+- `sealwax --self-test <script>` (ported from Stet) runs the real app on Broadway and a `.sealwax-test` script against it, printing TAP; the commands are in [m1/shell.md](m1/shell.md#self-test-commands-sealwax-test). `tools/ci.sh --ui` runs every `tests/selftest/*.sealwax-test` except `preview*`, which write the gate's screenshots into `tools/progress/public/`. The harness attaches a stand-in Broadway client reporting a 2560×1600 screen (without one Broadway clamps windows to 1024×768), switches `GTK_A11Y=none` to `test` so accessible labels can be checked, turns animations off and waits for a painted frame after every step. Since M4 its clicks go to the surface under the point (a popover's over the window's), in surface coordinates, with the crossing events and grab replies `broadway.js` sends, so buttons, checkboxes and popover items take real clicks.
 - Self-tests read a scratch Omarchy state (`SEALWAX_OMARCHY_STATE` under the run's scratch root), never the desktop's: the built-in palette until a script runs `theme NAME` (a stock palette from `tests/theme/`, swapped in as `omarchy-theme-set` does); `corners auto|PX` sets the corner radius. Look assertions compare what GTK draws with the applied theme: `assert-color`, `assert-contrast`, `assert-radius`, `assert-font`, `assert-height`, `assert-tooltip` ([m1/polish.md](m1/polish.md)).
 - Body downloads (ML-044) run the app's own reader against the same fake engine: `bodies-add` stores synthetic samples as headers and a preview, `engine-expect fetch-bodies` takes the reader's request, `bodies-store` does the engine's store upgrade and `engine-reply body-fetched ok|offline|needs-sign-in|gone|store|other` answers; `assert-body` and `assert-body-text` check the reader (`app/src/selftest/bodies.rs`, `reader-bodies.sealwax-test`).
 - A folder's older mail (ML-042, ML-043) runs the app's own list against the same fake engine: picking a folder sends `folder-opened`, the end of its first-sync window sends `load-older` and shows "Loading older messages…" (`list-older`), and `engine-reply older-loaded FETCHED complete|more` answers (`list-older.sealwax-test`).
@@ -60,6 +60,22 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### M4 integrated: the op runner, the app on the queue, end to end — 2026-10-06
+
+On `main` after every M4 merge (`0b77e23`), development machine, the Docker testbed up since the lead seeded it. Reports: [runner](m4/runner.md), [app, phase B](m4/triage-app.md#phase-b-the-stores-op-queue).
+
+| Check | Result |
+| --- | --- |
+| `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui --testbed`, 09:00–09:33 CEST | 878 passed, 0 failed, 61 ignored; all 32 self-test scripts (`triage-actions` 175, `triage-counts` 55, `triage-frames` 39, `triage-keys` 221, `triage-read` 61, `triage-select` 152, `triage-undo` 95 steps); every testbed suite passed: `actor_testbed` 9 (1,242 s), `ops_testbed` 12 (72 s), `write_testbed` 9, `sync_testbed` 9, `testbed` 5, `bodies_testbed` 1, `password` 1, `log_grep` 1, S1's 8 |
+| `testbed-triage` (lead, 08:59, display 25; user `triage` after `triage_mailbox.py fill dovecot stalwart`) | 229/229; `triage_mailbox.py show`: on both servers INBOX Triage 1, 2, 5, 7 seen and 8 flagged and seen (1 back after an Undo that followed its archive, 2 kept by an Undo inside the window), Archive Triage 6, Prosjekter Triage 3, the Trash empty (Triage 4 deleted for good) |
+| Crash-during-queue replay (`ops_testbed`, the runner's agent): MOVE, COPY, STORE, EXPUNGE; the connection cut or the engine stopped hard after the server got the command, then a new engine on the same store and blobs; three servers, 5 seeds each | 110 runs, 506 messages: 0 duplicates, 0 lost, the store equal to the server every time |
+| Undo window end to end (`ops_testbed`) | Inside the window: no command for those messages on the wire (the proxy recorded every client line), three servers. After the archive ran: the message back in the Inbox, the same row with its downloaded body |
+| Randomized two-client suite with local triage (`ops_testbed`) | 15 runs (5 seeds per server), a UIDVALIDITY reset in each: 0 differences against a model of every action not undone, 0 refused, nothing pending |
+| Runner timing | A move queued with a 1.5 s window reached the server 1.508–1.509 s later |
+| Same frame with the store's queue (`triage-frames`, headless, the app's agent) | Handler → list changed p50 0.33–0.76 ms; one message's p95 ≤ 4.86 ms; three selected archived at once p95 11.15 ms (5 samples); an account with a key p95 ≤ 3.15 ms. Broadway's frame clock is unpaced, so paints aren't judged |
+| Gate previews | `preview-m4`: 17 images in `tools/progress/public/m4-*-2026-10-06.png` |
+| Not verified | The live session and the US and Norwegian layouts live; real providers; a real crash or suspend; the runner with thousands of pending ops |
 
 ### M4 phase A: the op store, the IMAP writes, the app's triage — 2026-10-06
 

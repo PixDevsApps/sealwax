@@ -708,6 +708,14 @@ Built in M4 ([report](m4/runner.md)) on the actor, the store's op queue and the 
 - **A folder marked read:** the store's op for the unread below the floor runs as the write module's `mark_folder_read` up to the floor. Undoing it after its window would need the UIDs it marked kept in the store (a proposal); until then Undo reports them lost.
 - **Measured on the testbed:** the crash replay (MOVE, COPY, STORE, EXPUNGE; the connection cut or the engine stopped hard, then a new engine on the same store; three servers; 110 runs, 506 messages): 0 duplicates, 0 lost, the store equal to the server every time. An Undo inside the window sends nothing (the proxy recorded every client line); one after it brings the same row back with its body. 15 randomized two-client runs with local triage, Undo and a UIDVALIDITY reset each: 0 differences.
 
+### ADR-015 amendment — the app on the op queue (M4 phase B, 2026-10-06)
+
+Built in M4 ([report](m4/triage-app.md)). The app queues every triage action with `Store::queue_triage` (Mark Folder as Read with `mark_folder_read`) and undoes with `Store::undo`, awaiting the replies on the main loop, then sends `Command::OpsQueued` for each account the reply names.
+- **The undo window** is 7 s (a proposal within this ADR's 5–10 s): archive, delete, junk, move and Mark Folder as Read carry it; flag changes run at once. Only the last action is undoable from the toast; `z` and Ctrl+Z undo it after the toast too.
+- **Undo of deleting for good** asks the store, which brings back what hasn't reached the server; a local account (no server) deletes at once and offers no Undo.
+- **The offline banner counts the pending ops** ("3 waiting"), read on the store's reader after each action, Undo or change event and every 3 s while ops wait.
+- **Same frame:** the store's change event arrives within the frame on fixture stores (handler → list changed p50 0.33–0.76 ms, one message's p95 ≤ 4.86 ms, headless), so the list applies the store's events and predicts nothing.
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.
