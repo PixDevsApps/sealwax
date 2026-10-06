@@ -1,0 +1,67 @@
+# Start Sealwax at Login (M7, ML-084), in a sandboxed XDG home: the entry goes to this run's own
+# $TMP/home/.config/autostart, never the user's. The toggle's check mark follows the entry;
+# turning it on says what it writes and asks, Cancel writes nothing, Start at Login writes the
+# entry (`--background`); turning it off deletes that entry and nothing else; an entry hidden
+# with Hidden=true counts as off. Every name is fictional.
+# Run: tools/headless.sh 58 target/debug/sealwax --self-test tests/selftest/background-login.sealwax-test
+
+desktop tiling
+reply-sandbox
+resize 1440 900
+assert-autostart off
+wait-until assert-autostart-toggle false
+
+# On: the question first; Cancel writes nothing.
+action app.start-at-login
+wait-until assert-shown start-at-login true
+assert-login-dialog heading "Start Sealwax at login?"
+assert-login-dialog body "Sealwax will start without a window when you log in"
+assert-login-dialog body "/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop"
+assert-login-dialog body "--background”. Nothing else changes."
+assert-login-dialog body "To undo: turn Start Sealwax at Login off, or delete that file."
+assert-login-dialog body "This is a development build: the entry starts"
+assert-labelled
+setup-respond start-at-login cancel
+assert-autostart off
+assert-autostart-toggle false
+
+# Start at Login: the entry, the check mark, the toast.
+action app.start-at-login
+wait-until assert-shown start-at-login true
+setup-respond start-at-login start-at-login
+wait-until assert-autostart on
+wait-until assert-autostart-toggle true
+assert-toast "Sealwax will start at login"
+assert-file-contains $TMP/home/.config/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop " --background"
+assert-file-contains $TMP/home/.config/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop "TryExec=/"
+assert-file-contains $TMP/home/.config/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop "Name=Sealwax (development build)"
+
+# Off: only Sealwax's entry goes.
+write-file $TMP/home/.config/autostart/other.desktop "[Desktop Entry]\nType=Application\nName=Other\nExec=true\n"
+action app.start-at-login
+wait-until assert-autostart off
+wait-until assert-autostart-toggle false
+assert-toast "Sealwax won't start at login"
+assert-file-contains $TMP/home/.config/autostart/other.desktop "Name=Other"
+
+# An entry written by hand while the check mark was off: on finds it, asks nothing.
+write-file $TMP/home/.config/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop "[Desktop Entry]\nType=Application\nExec=sealwax --background\n"
+assert-autostart-toggle false
+action app.start-at-login
+wait-until assert-autostart-toggle true
+assert-toast "Sealwax already starts at login"
+assert-shown start-at-login false
+action app.start-at-login
+wait-until assert-autostart off
+wait-until assert-autostart-toggle false
+
+# An entry the user hid (Hidden=true) is off; turning it on asks and replaces it.
+write-file $TMP/home/.config/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop "[Desktop Entry]\nHidden=true\n"
+assert-autostart off
+action app.start-at-login
+wait-until assert-shown start-at-login true
+setup-respond start-at-login start-at-login
+wait-until assert-autostart on
+assert-file-lacks $TMP/home/.config/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop "Hidden=true"
+action app.start-at-login
+wait-until assert-autostart off
