@@ -82,9 +82,9 @@ impl Theme {
         let _ = write!(
             css,
             ":root{{color-scheme:{scheme}}}\n\
-             html{{background-color:transparent;color:{fg};font:{size}px/{line} {family}}}\n\
+             html{{background-color:{background};color:{fg};font:{size}px/{line} {family}}}\n\
              body{{margin:0;padding:0;overflow-wrap:anywhere}}\n\
-             a{{color:{accent}}}\n\
+             a{{color:{accent}!important}}\n\
              blockquote{{margin:0 0 0 2px;padding-left:12px;border-left:3px solid {border};color:{secondary}}}\n\
              pre,code,kbd,samp,tt{{font-family:{mono};font-size:{mono_size}px}}\n\
              pre{{white-space:pre-wrap}}\n\
@@ -93,6 +93,7 @@ impl Theme {
              table{{border-collapse:collapse}}\n\
              td,th{{border-color:{border}}}\n\
              ::selection{{background-color:{selection}}}\n",
+            background = p.background,
             fg = p.foreground,
             size = fonts.default_size,
             line = READING_LINE_HEIGHT,
@@ -158,7 +159,7 @@ mod tests {
         for expected in [
             ":root{color-scheme:dark}".to_owned(),
             format!("color:{}", p.foreground),
-            format!("a{{color:{}}}", p.accent),
+            format!("a{{color:{}!important}}", p.accent),
             format!("color:{}}}", theme.mail.secondary_text),
             "font:15px/1.55 \"Test Sans\", sans-serif".to_owned(),
             "font-family:\"Test Mono\", monospace;font-size:13px".to_owned(),
