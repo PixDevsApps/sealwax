@@ -33,7 +33,7 @@ pub use engine::{
 };
 pub use heuristic::{Evidence, Scan, scan as scan_html};
 pub use links::LinkState;
-pub use plain::links_in;
+pub use plain::{links_in, shown_text};
 pub use protection::{ENCRYPTED, SIGNED, Unreadable};
 pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
@@ -64,6 +64,9 @@ use widgets::{BodyBox, Stage};
 
 /// How long a new message may take to lay out before it is shown anyway.
 const READY_TIMEOUT: Duration = Duration::from_secs(3);
+/// How often a body being laid out checks that it is still wanted, so a newer `show` or a
+/// `clear` gives its view back without waiting for its load (a slow `cid:` part, ML-060).
+const STALE_CHECK: Duration = Duration::from_millis(100);
 /// A reader hidden this long gives its view back (ADR-011: views of hidden bodies are released
 /// and re-rendered on return).
 const RELEASE_HIDDEN_AFTER: Duration = Duration::from_secs(3);
@@ -949,7 +952,7 @@ impl Inner {
             if !self.stage.is_mapped() && loaded {
                 break;
             }
-            match glib::future_with_timeout(left, events.recv()).await {
+            match glib::future_with_timeout(left.min(STALE_CHECK), events.recv()).await {
                 Ok(Ok(ViewEvent::Height { width, .. })) => {
                     let allocated = view.web_view().width();
                     sized = width > 1 && (width - allocated).abs() <= 1;
@@ -958,6 +961,7 @@ impl Inner {
                 Ok(Ok(ViewEvent::Failed | ViewEvent::Crashed)) => return false,
                 Ok(Ok(_)) => {}
                 Ok(Err(_)) => return false,
+                Err(_) if Instant::now() < deadline => {}
                 Err(_) => {
                     tracing::warn!(
                         loaded,

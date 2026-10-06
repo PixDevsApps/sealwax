@@ -3226,6 +3226,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "sealwax-dns-canary"
+version = "0.2.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "sealwax-domain"
 version = "0.2.0"
 dependencies = [

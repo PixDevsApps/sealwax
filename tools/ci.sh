@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Usage: tools/ci.sh [--ui] [--testbed]. --ui adds a headless smoke run of the app and the
-# self-test scripts in tests/selftest/ (except preview*, perf-*, live-* and testbed-*), on
+# Usage: tools/ci.sh [--ui] [--testbed]. --ui adds a headless smoke run of the app, the
+# self-test scripts in tests/selftest/ (except preview*, perf-*, live-* and testbed-*) and the
+# hostile-HTML suite with the DNS canary (app/examples/hostile.rs), on
 # Broadway display $SEALWAX_CI_DISPLAY (default 19). --testbed adds every testbed suite: each
 # test file with tests ignored as "needs the testbed", in release, one test at a time. When no
 # testbed container is running it starts and seeds the testbed first and stops it at the end
@@ -66,6 +67,22 @@ if $ui; then
         fi
         echo "self-test $name: $(grep '^# .* steps passed' "$log")"
     done
+    # The hostile-HTML suite (ML-065) against the real reader, with the DNS canary
+    # (devtools/dns-canary) preloaded: every name the app or WebKit looks up is recorded and
+    # refused. It fails when a pass that must be clean isn't, or when a control sees nothing.
+    cargo build -p sealwax --example hostile
+    log=.local/ci-hostile.log
+    started=$SECONDS
+    if ! SEALWAX_HEADLESS_TIMEOUT=900 tools/headless.sh "$display" env \
+        LD_PRELOAD="$PWD/target/debug/libsealwax_dns_canary.so" \
+        SEALWAX_DNS_CANARY_LOG="$PWD/.local/ci-hostile-dns.log" \
+        target/debug/examples/hostile >"$log" 2>&1; then
+        grep -E '^(SUMMARY|MATRIX|CID)' "$log" >&2 || true
+        echo "hostile suite failed; see $log" >&2
+        exit 1
+    fi
+    echo "hostile suite: $(grep '^SUMMARY production_failures' "$log" | cut -c9-)," \
+        "$((SECONDS - started)) s"
 fi
 
 if $testbed; then

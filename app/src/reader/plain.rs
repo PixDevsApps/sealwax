@@ -108,6 +108,26 @@ pub fn message_text(
     view
 }
 
+/// The text a reader shows of the first plain-text body under `widget`, without what is
+/// collapsed or the toggle, for checks.
+pub fn shown_text(widget: &gtk::Widget) -> String {
+    let mut stack = vec![widget.clone()];
+    while let Some(widget) = stack.pop() {
+        if let Some(view) = widget.downcast_ref::<gtk::TextView>() {
+            let buffer = view.buffer();
+            return buffer
+                .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                .to_string();
+        }
+        let mut child = widget.last_child();
+        while let Some(widget) = child {
+            child = widget.prev_sibling();
+            stack.push(widget);
+        }
+    }
+    String::new()
+}
+
 /// The targets of the links in the plain-text bodies under `widget`, in order, for checks.
 pub fn links_in(widget: &gtk::Widget) -> Vec<String> {
     let mut found = Vec::new();
