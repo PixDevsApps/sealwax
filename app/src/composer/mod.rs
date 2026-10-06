@@ -115,7 +115,9 @@ pub fn ensure_stand_in(app: &SealwaxApplication) -> Option<Rc<StandIn>> {
     stand_in()
 }
 
-fn backend(app: &SealwaxApplication) -> Rc<dyn Backend> {
+/// The backend in use, made the stand-in when none is set yet. The quick reply prepares, saves
+/// and queues its replies through it too (M6 phase B).
+pub fn backend(app: &SealwaxApplication) -> Rc<dyn Backend> {
     if let Some(backend) = BACKEND.with(|current| current.borrow().clone()) {
         return backend;
     }

@@ -18,6 +18,7 @@ pub mod menu;
 pub mod monitor;
 pub mod move_to;
 pub mod oauth;
+pub mod outbox;
 pub mod palette;
 pub mod preferences;
 pub mod reader;
