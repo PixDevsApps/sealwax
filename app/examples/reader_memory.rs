@@ -482,7 +482,12 @@ async fn run(
 ) -> Result<Vec<String>, String> {
     let mut failures = Vec::new();
     let reports = support::shown_reports(reader);
-    support::resize(window.window(), WINDOW.0, WINDOW.1).await?;
+    let size = if broadway {
+        support::resize(window.window(), WINDOW.0, WINDOW.1).await?;
+        WINDOW
+    } else {
+        support::settled_size(window.window(), WINDOW.0, WINDOW.1).await
+    };
     support::sleep(1500).await;
     println!(
         "MEMORY ENV build={} backend={} window={}x{} cap={MAX_LIVE_VIEWS}",
@@ -492,8 +497,8 @@ async fn run(
             "release"
         },
         if broadway { "broadway" } else { "live" },
-        WINDOW.0,
-        WINDOW.1
+        size.0,
+        size.1
     );
     report("start", &measure(true));
 
