@@ -1,0 +1,46 @@
+# New mail in background mode, end to end on the testbed (M7 phase B; ML-083, ML-084): Sealwax
+# with the real engine on Stalwart's newmail user, the window closed into background mode, then
+# another IMAP client APPENDs a message to the INBOX. IDLE brings it in, the notification reaches
+# the stand-in server with its sender and subject, and a click builds a new window on it. Run by
+# tools/testbed/notify_e2e.py, which appends when this script has passed the step after its
+# marker comment and times the APPEND's OK to the notification. Every name is fictional.
+# Run: python3 tools/testbed/notify_e2e.py (needs the testbed: tools/testbed/up.sh, seed.sh)
+
+desktop tiling
+resize 1440 900
+engine-start $DIR/../../tools/testbed/certs/ca.pem
+notify-server
+
+setup-click add-account
+setup-type setup-address newmail@example.test
+setup-type setup-name Newmail
+setup-click setup-manual-link
+setup-type setup-imap-host 127.0.0.1
+setup-type setup-imap-port 16993
+setup-type setup-smtp-host 127.0.0.1
+setup-choose setup-smtp-security starttls
+setup-type setup-smtp-port 17025
+setup-type setup-manual-username newmail
+setup-type setup-password testbed-password
+setup-key enter
+wait-until assert-setup open false
+wait-until assert-account-status newmail@example.test synced
+assert-notify-count 0
+
+# Background mode: the window closes, the process and its IDLE stay; the one-time notice is the
+# stand-in's first notification.
+close-window
+assert-window false
+wait-until assert-notify-count 1
+assert-notify 1 summary "Sealwax keeps running"
+# marker: the driver appends now
+wait-until assert-notify-count 2
+assert-notify 2 summary "Ada Example"
+assert-notify 2 body "Testbed end-to-end check"
+assert-window false
+notify-click 2 default
+wait-until assert-window true
+wait-until assert-reader-selected
+assert-list-row 0 subject "Testbed end-to-end check"
+assert-list-selected 0
+assert-reader-page message
