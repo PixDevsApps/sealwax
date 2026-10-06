@@ -230,7 +230,7 @@ pub fn run(window: &Window, app_id: &str) {
                 .await;
             }
             Ok(Err(error)) => {
-                tracing::warn!(%error, "the mailto: handler couldn't be set");
+                tracing::warn!("the mailto: handler couldn't be set");
                 tell(
                     &window,
                     "Sealwax couldn't be made the default mail app",
