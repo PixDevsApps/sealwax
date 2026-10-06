@@ -116,6 +116,8 @@ pub struct HtmlBody {
     pub parts: Rc<InlineParts>,
     pub remote_images: bool,
     pub remote_allowed: bool,
+    /// Its quoted history collapses behind "…" (an earlier message is on the page).
+    pub collapse_quotes: bool,
     /// The height last measured, and the width it was measured at.
     pub measured: Option<(i32, i32)>,
     /// The view's current load has fired its `load` event.
@@ -247,6 +249,15 @@ impl Page {
                 Entry::Fold(fold) => fold.messages.len(),
             })
             .sum()
+    }
+
+    /// Whether an earlier message of the conversation (a row, a card or a fold) comes before
+    /// message `id`: its quoted history then repeats what the page shows, so it collapses.
+    pub fn has_earlier(&self, id: MessageId) -> bool {
+        self.entries
+            .iter()
+            .position(|entry| matches!(entry, Entry::Message(item) if item.id() == id))
+            .is_some_and(|index| index > 0)
     }
 
     /// Expanded items whose card is in the page.

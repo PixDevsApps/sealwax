@@ -1373,3 +1373,46 @@ button.sw-reader-fold:hover .sw-reader-fold-count {
   background: var(--sw-hover-bg-color);
   color: var(--window-fg-color);
 }
+
+/* Rendering and safety (M5: ML-062 link safety, ML-064 encrypted and signed mail, collapsed
+   quotes). The status strip sits in the reader pane's bottom-left corner in the popover colour,
+   with a top and right border and the small radius at its top-right corner (the mock). */
+.sw-link-status {
+  padding: var(--sw-space-xxs) var(--sw-space-lg);
+  background: var(--popover-bg-color);
+  color: var(--popover-fg-color);
+  border-top: var(--sw-control-border-width) solid var(--border-color);
+  border-right: var(--sw-control-border-width) solid var(--border-color);
+  border-top-right-radius: var(--sw-radius-small);
+  font-size: var(--sw-text-small);
+}
+
+popover.sw-link-warning > contents {
+  padding: var(--sw-space-lg) var(--sw-space-xl);
+}
+
+.sw-link-warning-icon {
+  color: var(--error-color);
+}
+
+.sw-reader-protected {
+  padding: var(--sw-space-xl) 0;
+}
+
+.sw-reader-signed {
+  margin-bottom: var(--sw-space-xl);
+}
+
+/* The "…" that collapses a plain-text body's quoted history. */
+button.sw-quote-toggle {
+  min-height: 0;
+  min-width: 0;
+  padding: 0 var(--sw-space-md);
+  border-radius: var(--sw-radius-small);
+  background: var(--sw-hover-bg-color);
+  font-weight: bold;
+}
+
+button.sw-quote-toggle:hover {
+  background: var(--sw-pressed-bg-color);
+}

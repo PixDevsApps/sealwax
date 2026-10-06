@@ -86,24 +86,138 @@ const HEIGHT_JS: &str = r#"(() => {
 /// Hands every link activation to Sealwax instead of letting WebKit navigate: WebKit would
 /// otherwise connect to a clicked link's host (and send `<a ping>`) before `decide-policy` is
 /// asked (S2). Form submissions are cancelled the same way. The link's text goes along for
-/// the link-mismatch check (M5).
+/// the link-mismatch check (ML-062), and the link under the pointer or the keyboard focus is
+/// reported with its box, for the status strip and the warning (nothing is fetched).
 const LINKS_JS: &str = r#"(() => {
-  const follow = (event) => {
-    if (!(event.target instanceof Element)) return;
-    const link = event.target.closest('a[href], area[href], a[*|href]');
-    if (!link) return;
-    event.preventDefault();
-    event.stopImmediatePropagation();
-    if (event.type === 'auxclick' && event.button !== 1) return;
+  const load = SEALWAX_LOAD;
+  const find = (target) =>
+    target instanceof Element ? target.closest('a[href], area[href], a[*|href]') : null;
+  const describe = (link) => {
     const raw = link.getAttribute('href') ?? link.getAttributeNS('http://www.w3.org/1999/xlink', 'href') ?? '';
     let href = raw;
     try { href = new URL(raw, document.baseURI).href; } catch (e) {}
     const text = (link.textContent || '').trim().slice(0, 500);
-    window.webkit.messageHandlers.link.postMessage({href, text});
+    return {href, text};
+  };
+  const follow = (event) => {
+    const link = find(event.target);
+    if (!link) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (event.type === 'auxclick' && event.button !== 1) return;
+    window.webkit.messageHandlers.link.postMessage(describe(link));
+  };
+  let current = null;
+  const hover = (link) => {
+    if (link === current) return;
+    current = link;
+    if (!link) {
+      window.webkit.messageHandlers.hover.postMessage({load, href: null});
+      return;
+    }
+    const box = link.getBoundingClientRect();
+    window.webkit.messageHandlers.hover.postMessage(Object.assign({load,
+      x: box.left, y: box.top, width: box.width, height: box.height}, describe(link)));
   };
   document.addEventListener('click', follow, true);
   document.addEventListener('auxclick', follow, true);
   document.addEventListener('submit', (event) => event.preventDefault(), true);
+  document.addEventListener('mouseover', (event) => hover(find(event.target)), true);
+  document.addEventListener('mouseout', (event) => hover(find(event.relatedTarget)), true);
+  document.addEventListener('focusin', (event) => hover(find(event.target)), true);
+  document.addEventListener('focusout', (event) => hover(find(event.relatedTarget)), true);
+})();"#;
+
+/// Collapses quoted history behind a "…" toggle (DESIGN.md "HTML mail inside the theme"), only
+/// when the page asks for it: the last quote container when no text follows it
+/// (`blockquote[type=cite]`, Gmail's, Yahoo's, Thunderbird's prefix with its quote), and
+/// Outlook's reply header (`#divRplyFwdMsg`, `#appendonsend`, the "From:" block under a top
+/// border) with everything after it. The toggle is Sealwax's own element, handled here;
+/// message scripts stay off. The state goes out as `quotes`; the height follows by itself.
+const QUOTES_JS: &str = r#"(() => {
+  const load = SEALWAX_LOAD;
+  const body = document.body;
+  const post = (blocks, expanded) =>
+    window.webkit.messageHandlers.quotes.postMessage({load, blocks, expanded});
+  if (!body) { post(0, false); return; }
+  const textBetween = (start, end) => {
+    const range = document.createRange();
+    if (start) range.setStartAfter(start); else range.setStart(body, 0);
+    if (end) range.setEndBefore(end); else range.setEnd(body, body.childNodes.length);
+    return range.toString().replace(/[\s\u00a0\u200b-\u200d\ufeff]+/g, '');
+  };
+  const outermost = (nodes) => nodes.filter((node) => !nodes.some((other) => other !== node && other.contains(node)));
+  const following = (node) => {
+    const nodes = [node];
+    for (let at = node; at && at !== body; at = at.parentNode) {
+      for (let next = at.nextSibling; next; next = next.nextSibling) nodes.push(next);
+    }
+    return nodes;
+  };
+  const headers = /^\s*\**(from|fra|från|von|de|van|da|od)\s?:/i;
+  const marker = document.querySelector('#appendonsend, #divRplyFwdMsg')
+    || [...body.querySelectorAll('div[style*="border-top"]')].find((div) => headers.test(div.textContent));
+  let group = null;
+  if (marker && textBetween(null, marker)) {
+    group = following(marker);
+  } else {
+    const quotes = outermost([...body.querySelectorAll(
+      'blockquote[type=cite], .gmail_quote, .yahoo_quoted, .moz-cite-prefix')]);
+    const last = quotes[quotes.length - 1];
+    if (last && !textBetween(last, null) && textBetween(null, last)) {
+      group = [last];
+      const prefix = last.classList.contains('moz-cite-prefix') ? null : last.previousElementSibling;
+      if (prefix && prefix.classList.contains('moz-cite-prefix')) group.unshift(prefix);
+      if (last.classList.contains('moz-cite-prefix')) group.push(...following(last).slice(1));
+    }
+  }
+  if (!group) { post(0, false); return; }
+  const hidden = [];
+  for (let node of group) {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (!node.textContent.trim()) continue;
+      const span = document.createElement('span');
+      node.parentNode.insertBefore(span, node);
+      span.appendChild(node);
+      node = span;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) continue;
+    hidden.push([node, node.style.getPropertyValue('display'), node.style.getPropertyPriority('display')]);
+  }
+  if (!hidden.length) { post(0, false); return; }
+  const toggle = document.createElement('div');
+  toggle.textContent = '…';
+  toggle.setAttribute('role', 'button');
+  toggle.setAttribute('tabindex', '0');
+  toggle.setAttribute('data-sealwax-quote-toggle', '');
+  toggle.style.cssText = 'display:inline-block;margin:6px 0;padding:0 8px;border-radius:4px;' +
+    'background:rgba(128,128,128,.22);color:inherit;font:bold 13px/20px sans-serif;' +
+    'letter-spacing:1px;cursor:pointer;user-select:none';
+  hidden[0][0].parentNode.insertBefore(toggle, hidden[0][0]);
+  let expanded = true;
+  const show = (open) => {
+    expanded = open;
+    for (const [node, display, priority] of hidden) {
+      if (open) node.style.setProperty('display', display, priority);
+      else node.style.setProperty('display', 'none', 'important');
+    }
+    const label = open ? 'Hide quoted text' : 'Show quoted text';
+    toggle.setAttribute('aria-expanded', String(open));
+    toggle.setAttribute('aria-label', label);
+    toggle.title = label;
+    post(hidden.length, open);
+  };
+  toggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    show(!expanded);
+  });
+  toggle.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    show(!expanded);
+  });
+  show(false);
 })();"#;
 
 /// A link the user activated in a message.
@@ -113,6 +227,16 @@ pub struct Link {
     pub uri: String,
     /// The link's text, at most 500 characters. Message content: never log it.
     pub text: String,
+}
+
+/// The link under the pointer or the keyboard focus, and its box in the view's coordinates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Hover {
+    pub link: Link,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
 }
 
 /// Something a message tried and the view refused; counted, never logged with its URL.
@@ -145,6 +269,14 @@ pub enum ViewEvent {
     Finished,
     Failed,
     Link(Link),
+    /// The pointer or the focus entered a link (`Some`) or left the links (`None`).
+    Hover(Option<Hover>),
+    /// The quoted history found and collapsed (`blocks` hidden nodes, 0 when there was none),
+    /// and whether the user expanded it.
+    Quotes {
+        blocks: u32,
+        expanded: bool,
+    },
     Refused(Refused),
     /// The web process ended; the view shows nothing until it loads again.
     Crashed,
@@ -163,6 +295,8 @@ struct State {
     load: Cell<u64>,
     /// The current load committed: resource events belong to it.
     committed: Cell<bool>,
+    /// Loads collapse the quoted history behind "…" (the page's choice per body).
+    collapse_quotes: Cell<bool>,
     handler: RefCell<Option<Handler>>,
     height: Cell<i32>,
 }
@@ -190,7 +324,7 @@ impl MessageView {
         related: Option<&webkit6::WebView>,
     ) -> Self {
         let ucm = webkit6::UserContentManager::new();
-        for name in ["height", "frame", "loaded", "link"] {
+        for name in ["height", "frame", "loaded", "link", "hover", "quotes"] {
             ucm.register_script_message_handler(name, Some(WORLD));
         }
         let settings = hardened_settings(fonts);
@@ -261,6 +395,12 @@ impl MessageView {
         self.start(html);
     }
 
+    /// Whether the next loads collapse the quoted history behind "…": the page sets it for a
+    /// message that repeats an earlier one of the shown conversation. Off for a blank view.
+    pub fn set_collapse_quotes(&self, collapse: bool) {
+        self.state.collapse_quotes.set(collapse);
+    }
+
     /// A new load: fresh helper scripts that tag their reports with its number, and one
     /// navigation decision expected for it.
     fn start(&self, html: &str) {
@@ -268,8 +408,12 @@ impl MessageView {
         self.state.load.set(load);
         self.state.committed.set(false);
         self.ucm.remove_all_scripts();
-        let height = HEIGHT_JS.replace("SEALWAX_LOAD", &load.to_string());
-        for source in [height.as_str(), LINKS_JS] {
+        let tagged = |script: &str| script.replace("SEALWAX_LOAD", &load.to_string());
+        let mut scripts = vec![tagged(HEIGHT_JS), tagged(LINKS_JS)];
+        if self.state.collapse_quotes.get() {
+            scripts.push(tagged(QUOTES_JS));
+        }
+        for source in &scripts {
             self.ucm.add_script(&webkit6::UserScript::for_world(
                 source,
                 webkit6::UserContentInjectedFrames::TopFrame,
@@ -301,6 +445,7 @@ impl MessageView {
     /// stylesheet, unparented.
     pub(super) fn blank(&self, filter: Option<&webkit6::UserContentFilter>) {
         self.state.handler.replace(None);
+        self.state.collapse_quotes.set(false);
         if self.view.parent().is_some() {
             self.view.unparent();
         }
@@ -391,6 +536,66 @@ impl MessageView {
                         uri: text("href"),
                         text: text("text"),
                     }));
+                }
+            ),
+        );
+        self.ucm.connect_script_message_received(
+            Some("hover"),
+            glib::clone!(
+                #[strong]
+                state,
+                move |_, value| {
+                    let number = |name: &str| {
+                        value
+                            .object_get_property(name)
+                            .map_or(-1.0, |value| value.to_double())
+                    };
+                    if number("load") != state.load.get() as f64 {
+                        return;
+                    }
+                    let href = value
+                        .object_get_property("href")
+                        .filter(|value| value.is_string())
+                        .map(|value| value.to_str().to_string());
+                    let hover = href.map(|uri| Hover {
+                        link: Link {
+                            uri,
+                            text: value
+                                .object_get_property("text")
+                                .filter(|value| value.is_string())
+                                .map(|value| value.to_str().to_string())
+                                .unwrap_or_default(),
+                        },
+                        x: number("x").round() as i32,
+                        y: number("y").round() as i32,
+                        width: number("width").round().max(0.0) as i32,
+                        height: number("height").round().max(0.0) as i32,
+                    });
+                    state.emit(ViewEvent::Hover(hover));
+                }
+            ),
+        );
+        self.ucm.connect_script_message_received(
+            Some("quotes"),
+            glib::clone!(
+                #[strong]
+                state,
+                move |_, value| {
+                    let number = |name: &str| {
+                        value
+                            .object_get_property(name)
+                            .map_or(-1.0, |value| value.to_double())
+                    };
+                    if number("load") != state.load.get() as f64 {
+                        return;
+                    }
+                    let expanded = value
+                        .object_get_property("expanded")
+                        .is_some_and(|value| value.to_boolean());
+                    state.emit(ViewEvent::Quotes {
+                        blocks: number("blocks").max(0.0) as u32,
+                        expanded,
+                    });
                 }
             ),
         );

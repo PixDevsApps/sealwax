@@ -4,9 +4,9 @@ expression: "theme.webview_css(BodyStyle::Themed)"
 ---
 html,body{height:max-content!important;min-height:0!important;max-height:none!important}
 :root{color-scheme:dark}
-html{background-color:transparent;color:#d4be98;font:15px/1.55 "Liberation Sans", sans-serif}
+html{background-color:#282828;color:#d4be98;font:15px/1.55 "Liberation Sans", sans-serif}
 body{margin:0;padding:0;overflow-wrap:anywhere}
-a{color:#7daea3}
+a{color:#7daea3!important}
 blockquote{margin:0 0 0 2px;padding-left:12px;border-left:3px solid #48433e;color:#9d8e74}
 pre,code,kbd,samp,tt{font-family:"JetBrainsMono Nerd Font", monospace;font-size:13px}
 pre{white-space:pre-wrap}

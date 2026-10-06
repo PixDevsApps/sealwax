@@ -10,7 +10,8 @@ use super::page::{self, Header};
 use super::prepare::{self, Body, Prepared};
 use super::remote::Notice;
 use super::{
-    Inner, Reader, ShownBody, ViewEvent, download_failure, now, plain, rgba, stylesheet, widgets,
+    Inner, Reader, ShownBody, ViewEvent, download_failure, now, plain, protection, rgba,
+    stylesheet, widgets,
 };
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -94,6 +95,7 @@ impl Inner {
                 Prepared {
                     body: Body::Empty,
                     attachments: Vec::new(),
+                    signed: None,
                 }
             });
         if !self.wanted_load(key, id, token) {
@@ -146,9 +148,15 @@ impl Inner {
             sender,
             remote_images,
         };
+        let collapse_quotes = self
+            .with_page(key, |page| page.has_earlier(id))
+            .unwrap_or(false);
         match download {
             Some(state) => self.download_body(&mut card, &detail, state, key, id),
-            None => self.fill_body(&mut card, id, prepared.body).await,
+            None => {
+                self.fill_body(&mut card, id, prepared, collapse_quotes)
+                    .await;
+            }
         }
         if !self.wanted_load(key, id, token) {
             return;
@@ -211,9 +219,22 @@ impl Inner {
     }
 
     /// The card's body, where the reader builds every body: plain text in a text view, HTML in
-    /// a frame whose view the live views give it, or a notice.
-    async fn fill_body(self: &Rc<Self>, card: &mut Card, id: MessageId, body: Body) {
-        match body {
+    /// a frame whose view the live views give it, or a notice (an encrypted message's among
+    /// them), under the quiet line of a signed message. With `collapse_quotes` (an earlier
+    /// message is on the page) the quoted history collapses behind "…".
+    async fn fill_body(
+        self: &Rc<Self>,
+        card: &mut Card,
+        id: MessageId,
+        prepared: Prepared,
+        collapse_quotes: bool,
+    ) {
+        if let Some(signature) = prepared.signed {
+            card.widgets
+                .body
+                .append(&protection::signed_note(signature));
+        }
+        match prepared.body {
             Body::Html {
                 html,
                 style,
@@ -254,6 +275,7 @@ impl Inner {
                     parts: Rc::new(parts),
                     remote_images,
                     remote_allowed,
+                    collapse_quotes,
                     measured: None,
                     loaded: false,
                     painted: false,
@@ -262,10 +284,14 @@ impl Inner {
                 });
             }
             Body::Plain(text) => {
-                let text = plain::plain_text(&text);
+                let text = plain::message_text(&text, &self.links, &self.theme, collapse_quotes);
                 card.widgets.body.append(&text);
                 card.widgets.focus = Some(text.upcast());
                 card.body = ShownBody::Plain;
+            }
+            Body::Unreadable(unreadable) => {
+                card.widgets.body.append(&protection::notice(unreadable));
+                card.body = ShownBody::Unreadable(unreadable);
             }
             Body::Empty => {
                 card.widgets
@@ -627,7 +653,26 @@ impl Inner {
                     }
                 });
             }
-            ViewEvent::Link(link) => self.open_link(link),
+            ViewEvent::Link(link) => self.links.open(link),
+            ViewEvent::Hover(hover) => {
+                let view = self
+                    .with_page(key, |page| {
+                        page.item(id)?
+                            .card
+                            .as_ref()?
+                            .html
+                            .as_ref()
+                            .filter(|html| ours(html))?
+                            .view
+                            .as_ref()
+                            .map(|view| view.web_view().clone().upcast::<gtk::Widget>())
+                    })
+                    .flatten();
+                if view.is_some() || hover.is_none() {
+                    self.links.hover(view.as_ref(), hover.as_ref());
+                }
+            }
+            ViewEvent::Quotes { .. } => {}
             ViewEvent::Refused(refused) => {
                 tracing::debug!(?refused, "reader: refused what a message asked for");
             }

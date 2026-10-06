@@ -449,6 +449,7 @@ impl Inner {
                     }
                 });
                 self.engine.set_parts(view.page_id(), html.parts.clone());
+                view.set_collapse_quotes(html.collapse_quotes);
                 view.load(
                     &html.html,
                     &stylesheet(&theme, html.style),

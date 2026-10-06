@@ -10,12 +10,54 @@ pub const OK_CID: &str = "ok@hostile.test";
 /// A part that belongs to another message's view; it must not load in a case's view.
 pub const FOREIGN_CID: &str = "secret@other-message.test";
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Case {
     pub id: &'static str,
     pub vector: &'static str,
+    /// The body of an HTML case, which comes with the `ok@hostile.test` part.
     pub html: String,
+    /// A whole message instead (plain text, PGP, S/MIME): the case isn't HTML.
+    pub raw: Option<Vec<u8>>,
     pub click: Option<&'static str>,
+    /// What to put the pointer on before clicking (M5's link hover).
+    pub hover: Option<&'static str>,
+    pub expect: Expect,
+    /// Earlier messages of the case's conversation, oldest first (a name and an HTML body):
+    /// the case replies to the last, so the reader shows them together.
+    pub earlier: Vec<(&'static str, String)>,
+}
+
+impl Case {
+    pub fn is_html(&self) -> bool {
+        self.raw.is_none()
+    }
+}
+
+/// What a case must show beyond S2's criteria (no connection, no request, no TLS hello, no
+/// script trace, no DNS lookup), for M5's surfaces.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Expect {
+    #[default]
+    Clean,
+    /// The status strip shows the hovered link's target (`{canary}` stands for the origin).
+    Status(String),
+    /// The strip and the warning show on hover; a click asks first and opens only on Open.
+    Mismatch(String),
+    /// A plain-text body whose links are exactly these targets, in order.
+    PlainLinks(Vec<String>),
+    /// The quoted history collapses behind Sealwax's toggle, which expands it.
+    Quotes,
+    /// format=flowed: the body reads as this.
+    Flowed(String),
+    /// The body is replaced by the "encrypted" notice and this ciphertext appears nowhere.
+    Unreadable(&'static str),
+    /// A signed message: the content shows, the signature card doesn't.
+    Signed,
+    /// A slow `cid:` part whose view is reused for another message: the answer is dropped.
+    CidCancelled,
+    /// Every expanded body of a conversation is hostile: each stays clean and keeps the
+    /// content filter, also when the selected one's images are allowed.
+    Conversation,
 }
 
 /// JavaScript that sets every script trace for `id`. It contains no double quotes, so it can
@@ -52,6 +94,7 @@ pub fn cases(origin: &str) -> Vec<Case> {
             vector,
             html: document(id, &head, &body_attributes, &body),
             click,
+            ..Case::default()
         });
     };
     let p = |id: &str| payload(id, o);
@@ -564,7 +607,281 @@ pub fn cases(origin: &str) -> Vec<Case> {
              <frameset cols=\"50%,50%\"><frame src=\"{o}/h/frameset/a.html\"><frame src=\"{o}/h/frameset/b.html\">\
              <noframes><img src=\"cid:{OK_CID}\"></noframes></frameset></html>"
         ),
-        click: None,
+        ..Case::default()
     });
+    cases.extend(m5_cases(o));
     cases
+}
+
+/// A part whose answer the suite delays, and the second message that reuses its Content-ID.
+pub const SLOW_CID: &str = "slow@hostile.test";
+pub const REUSED_ID: &str = "cid-cancelled-next";
+/// Two messages of one conversation with the same Content-ID: the earlier one's part decoded,
+/// the later one's slow.
+pub const PAIR: [&str; 2] = ["cid-pair-1", "cid-pair-2"];
+/// When earlier messages of a case's conversation are dated: before every case.
+pub const EARLIER_DATE: i64 = 1_790_000_000;
+/// Ciphertext the encrypted cases carry; it must appear nowhere on the page.
+const CIPHERTEXT: &str = "hQEMA0lvQ1pY2sdpAQf9SealwaxCiphertextMarker";
+
+/// A raw message with CRLF line ends, from `example.test`.
+fn raw(id: &str, headers: &str, body: &str) -> Vec<u8> {
+    format!(
+        "From: Hostile Suite <hostile@example.test>\nTo: Alex Berg <alex.berg@example.test>\n\
+         Subject: {id}\nDate: Tue, 06 Oct 2026 10:00:00 +0000\nMessage-ID: <hostile-{id}@example.test>\n\
+         MIME-Version: 1.0\n{headers}\n\n{body}"
+    )
+    .replace('\n', "\r\n")
+    .into_bytes()
+}
+
+/// M5's surfaces: link hover and the mismatch warning (ML-062), plain-text links, collapsed
+/// quotes, format=flowed and encrypted and signed mail (ML-064), a `cid:` answer for a view
+/// that moved on (ML-060), page-initiated printing, and names the DNS canary watches for.
+fn m5_cases(o: &str) -> Vec<Case> {
+    let html =
+        |id: &str, head: &str, attributes: &str, body: &str| document(id, head, attributes, body);
+    let p = |id: &str| payload(id, o);
+    let status = |url: &str| sealwax_domain::links::status_text(url);
+    vec![
+        Case {
+            id: "link-hover",
+            vector: "a link under the pointer: the strip shows its target, nothing connects",
+            html: html(
+                "link-hover",
+                "",
+                "",
+                &format!(
+                    "<p><a id=\"s2-hover\" href=\"{o}/h/link-hover/target?u=1\">Read more</a></p>"
+                ),
+            ),
+            hover: Some("#s2-hover"),
+            expect: Expect::Status(status(&format!("{o}/h/link-hover/target?u=1"))),
+            ..Case::default()
+        },
+        Case {
+            id: "link-mismatch",
+            vector: "link text naming another domain, hovered then clicked: warning and dialog",
+            html: html(
+                "link-mismatch",
+                "",
+                "",
+                &format!(
+                    "<p><a id=\"s2-click\" href=\"{o}/h/link-mismatch/c/8f3a91\" \
+                     ping=\"{o}/h/link-mismatch/ping\">bank.example</a></p>"
+                ),
+            ),
+            hover: Some("#s2-click"),
+            click: Some("#s2-click"),
+            expect: Expect::Mismatch(status(&format!("{o}/h/link-mismatch/c/8f3a91"))),
+            ..Case::default()
+        },
+        Case {
+            id: "dns-names",
+            vector: "names only the DNS canary sees: dns-prefetch, preconnect, prefetch, images, a hovered and clicked link",
+            html: html(
+                "dns-names",
+                "<meta http-equiv=\"x-dns-prefetch-control\" content=\"on\">\
+                 <link rel=\"dns-prefetch\" href=\"//sealwax-dns-prefetch.test\">\
+                 <link rel=\"preconnect\" href=\"http://sealwax-dns-preconnect.test\">\
+                 <link rel=\"prefetch\" href=\"http://sealwax-dns-prefetch-link.test/p.html\">\
+                 <style>.bg{background:url(http://sealwax-dns-css.test/bg.png)}</style>",
+                "",
+                "<img src=\"http://sealwax-dns-image.test/p.gif\" width=\"1\" height=\"1\">\
+                 <div class=\"bg\">bg</div>\
+                 <p><a id=\"s2-click\" href=\"http://sealwax-dns-link.test/\" \
+                 ping=\"http://sealwax-dns-ping.test/p\">a link</a></p>",
+            ),
+            hover: Some("#s2-click"),
+            click: Some("#s2-click"),
+            ..Case::default()
+        },
+        Case {
+            id: "quote-toggle",
+            vector: "quoted history behind Sealwax's toggle, with handlers and an image inside",
+            html: html(
+                "quote-toggle",
+                "",
+                "",
+                &format!(
+                    "<p>Thanks, see below.</p><div class=\"moz-cite-prefix\">On Monday, \
+                     Ada wrote:</div><blockquote type=\"cite\" onclick=\"{0}\" onmouseover=\"{0}\">\
+                     <p>The original <img src=\"{o}/h/quote-toggle/q.gif\" onerror=\"{0}\" \
+                     width=\"8\" height=\"8\"></p></blockquote>",
+                    p("quote-toggle")
+                ),
+            ),
+            click: Some("[data-sealwax-quote-toggle]"),
+            expect: Expect::Quotes,
+            earlier: vec![(
+                "quote-toggle-earlier",
+                "<p>The original message.</p>".into(),
+            )],
+            ..Case::default()
+        },
+        Case {
+            id: "print-page",
+            vector: "page-initiated printing (onload, script, javascript: link)",
+            html: html(
+                "print-page",
+                "<script>window.print()</script>",
+                " onload=\"window.print()\"",
+                "<p><a id=\"s2-click\" href=\"javascript:window.print()\">print</a></p>",
+            ),
+            click: Some("#s2-click"),
+            ..Case::default()
+        },
+        Case {
+            id: "cid-cancelled",
+            vector: "a slow cid: part, its view reused for another message with the same Content-ID",
+            html: html(
+                "cid-cancelled",
+                "",
+                "",
+                &format!("<p><img id=\"s2-slow\" src=\"cid:{SLOW_CID}\" alt=\"slow\"></p>"),
+            ),
+            expect: Expect::CidCancelled,
+            ..Case::default()
+        },
+        Case {
+            id: "plain-links",
+            vector: "plain text: only http(s) and mailto become links; javascript:, file:, data: stay text",
+            raw: Some(raw(
+                "plain-links",
+                "Content-Type: text/plain; charset=utf-8",
+                &format!(
+                    "Links in plain text:\n{o}/h/plain-links/ok\njavascript:alert(document.domain)\n\
+                     file:///etc/passwd\ndata:text/html,<script>alert(1)</script>\n\
+                     vbscript:msgbox(1)\nrelative/path.html and ../up.html\n\
+                     Write to help@example.test\n"
+                ),
+            )),
+            hover: Some("plain-links/ok"),
+            click: Some("javascript:alert"),
+            expect: Expect::PlainLinks(vec![
+                format!("{o}/h/plain-links/ok"),
+                "mailto:help@example.test".into(),
+            ]),
+            ..Case::default()
+        },
+        Case {
+            id: "plain-quote",
+            vector: "plain text: the trailing quote behind the toggle, a link inside it",
+            raw: Some(raw(
+                "plain-quote",
+                "Content-Type: text/plain; charset=utf-8",
+                &format!(
+                    "Sounds good.\n\nOn Mon, 5 Oct 2026, Ada <ada@example.test> wrote:\n\
+                     > See {o}/h/plain-quote/inside\n> <script>alert(1)</script>\n"
+                ),
+            )),
+            click: Some("toggle"),
+            expect: Expect::Quotes,
+            earlier: vec![("plain-quote-earlier", "<p>See the link below.</p>".into())],
+            ..Case::default()
+        },
+        Case {
+            id: "conversation-three",
+            vector: "a three-message conversation, every expanded body hostile, quotes collapsing in the later two",
+            html: html(
+                "conversation-three",
+                &format!("<link rel=\"stylesheet\" href=\"{o}/h/conversation-three/s.css\">"),
+                &format!(" onload=\"{}\"", p("conversation-three")),
+                &format!(
+                    "<p>Third. <img src=\"{o}/h/conversation-three/p.gif\" width=\"1\" height=\"1\"></p>\
+                     <blockquote type=\"cite\" onclick=\"{0}\"><p>Second, quoted.</p></blockquote>",
+                    p("conversation-three")
+                ),
+            ),
+            expect: Expect::Conversation,
+            earlier: vec![
+                (
+                    "conversation-three-1",
+                    html(
+                        "conversation-three-1",
+                        "",
+                        &format!(" onload=\"{}\"", p("conversation-three-1")),
+                        &format!(
+                            "<p>First. <img src=\"{o}/h/conversation-three-1/p.gif\" width=\"1\" \
+                             height=\"1\"></p><div style=\"background:url({o}/h/conversation-three-1/bg.png)\">\
+                             bg</div><script>{}</script>",
+                            p("conversation-three-1")
+                        ),
+                    ),
+                ),
+                (
+                    "conversation-three-2",
+                    html(
+                        "conversation-three-2",
+                        "<meta http-equiv=\"refresh\" content=\"0;url=https://example.com/\">",
+                        "",
+                        &format!(
+                            "<p>Second. <img src=\"{o}/h/conversation-three-2/p.gif\" width=\"1\" \
+                             height=\"1\" onerror=\"{0}\"></p><blockquote type=\"cite\"><p>First, \
+                             quoted.</p></blockquote>",
+                            p("conversation-three-2")
+                        ),
+                    ),
+                ),
+            ],
+            ..Case::default()
+        },
+        Case {
+            id: "flowed-body",
+            vector: "format=flowed with DelSp, quotes and markup as text",
+            raw: Some(raw(
+                "flowed-body",
+                "Content-Type: text/plain; charset=utf-8; format=flowed; delsp=yes",
+                "<script>alert(1)</script> is ju \nst text.\n\n> A quoted para \n> graph.\nAnd the answ \ner.\n",
+            )),
+            expect: Expect::Flowed(
+                "<script>alert(1)</script> is just text.\n\n> A quoted paragraph.\nAnd the answer."
+                    .into(),
+            ),
+            ..Case::default()
+        },
+        Case {
+            id: "pgp-inline",
+            vector: "an inline PGP message: the notice, never the ciphertext",
+            raw: Some(raw(
+                "pgp-inline",
+                "Content-Type: text/plain; charset=utf-8",
+                &format!(
+                    "-----BEGIN PGP MESSAGE-----\n\n{CIPHERTEXT}\n-----END PGP MESSAGE-----\n"
+                ),
+            )),
+            expect: Expect::Unreadable(CIPHERTEXT),
+            ..Case::default()
+        },
+        Case {
+            id: "pgp-mime",
+            vector: "PGP/MIME (multipart/encrypted): the notice, never the ciphertext",
+            raw: Some(raw(
+                "pgp-mime",
+                "Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"e\"",
+                &format!(
+                    "--e\nContent-Type: application/pgp-encrypted\n\nVersion: 1\n\n\
+                     --e\nContent-Type: application/octet-stream; name=\"encrypted.asc\"\n\
+                     Content-Disposition: inline; filename=\"encrypted.asc\"\n\n\
+                     -----BEGIN PGP MESSAGE-----\n\n{CIPHERTEXT}\n-----END PGP MESSAGE-----\n\n--e--\n"
+                ),
+            )),
+            expect: Expect::Unreadable(CIPHERTEXT),
+            ..Case::default()
+        },
+        Case {
+            id: "smime-signed",
+            vector: "S/MIME multipart/signed: the content, no signature card",
+            raw: Some(raw(
+                "smime-signed",
+                "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\"; micalg=sha-256; boundary=\"s\"",
+                "--s\nContent-Type: text/plain; charset=utf-8\n\nSigned minutes.\n\
+                 --s\nContent-Type: application/pkcs7-signature; name=\"smime.p7s\"\n\
+                 Content-Disposition: attachment; filename=\"smime.p7s\"\n\
+                 Content-Transfer-Encoding: base64\n\nMIAGCSqGSIb3DQEHAqCAMIACAQEx\n--s--\n",
+            )),
+            expect: Expect::Signed,
+            ..Case::default()
+        },
+    ]
 }

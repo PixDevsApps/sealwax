@@ -48,7 +48,12 @@ pub struct WebViewFonts {
 }
 
 impl Theme {
-    /// The user stylesheet for one HTML body. Author styles in the message win over it.
+    /// The user stylesheet for one HTML body. Author styles in the message win over it, except
+    /// that themed links take the accent and paper stays in the light scheme: WebKit would
+    /// paint a dark canvas behind a light design that declares `color-scheme: light dark`.
+    /// Paper paints no background of its own, so a message's body background reaches the
+    /// canvas as in a browser (a dark-mode design fills the card), and the view's white shows
+    /// where the message paints none.
     pub fn webview_css(&self, style: BodyStyle) -> String {
         let mut css = String::with_capacity(1024);
         css.push_str(MEASURE_CSS);
@@ -58,8 +63,8 @@ impl Theme {
             BodyStyle::Paper => {
                 let _ = write!(
                     css,
-                    ":root{{color-scheme:light}}\n\
-                     html{{background-color:{PAPER};color:{PAPER_TEXT}}}\n"
+                    ":root{{color-scheme:light!important}}\n\
+                     html{{color:{PAPER_TEXT}}}\n"
                 );
             }
         }
@@ -82,9 +87,9 @@ impl Theme {
         let _ = write!(
             css,
             ":root{{color-scheme:{scheme}}}\n\
-             html{{background-color:transparent;color:{fg};font:{size}px/{line} {family}}}\n\
+             html{{background-color:{background};color:{fg};font:{size}px/{line} {family}}}\n\
              body{{margin:0;padding:0;overflow-wrap:anywhere}}\n\
-             a{{color:{accent}}}\n\
+             a{{color:{accent}!important}}\n\
              blockquote{{margin:0 0 0 2px;padding-left:12px;border-left:3px solid {border};color:{secondary}}}\n\
              pre,code,kbd,samp,tt{{font-family:{mono};font-size:{mono_size}px}}\n\
              pre{{white-space:pre-wrap}}\n\
@@ -93,6 +98,7 @@ impl Theme {
              table{{border-collapse:collapse}}\n\
              td,th{{border-color:{border}}}\n\
              ::selection{{background-color:{selection}}}\n",
+            background = p.background,
             fg = p.foreground,
             size = fonts.default_size,
             line = READING_LINE_HEIGHT,
@@ -158,7 +164,7 @@ mod tests {
         for expected in [
             ":root{color-scheme:dark}".to_owned(),
             format!("color:{}", p.foreground),
-            format!("a{{color:{}}}", p.accent),
+            format!("a{{color:{}!important}}", p.accent),
             format!("color:{}}}", theme.mail.secondary_text),
             "font:15px/1.55 \"Test Sans\", sans-serif".to_owned(),
             "font-family:\"Test Mono\", monospace;font-size:13px".to_owned(),
@@ -173,8 +179,12 @@ mod tests {
         let theme = theme(Mode::Dark, ReadingFont::Sans);
         let css = theme.webview_css(BodyStyle::Paper);
         assert!(css.starts_with(MEASURE_CSS));
-        assert!(css.contains(":root{color-scheme:light}"));
-        assert!(css.contains("background-color:#ffffff;color:#1f1f1f"));
+        assert!(css.contains(":root{color-scheme:light!important}"));
+        assert!(css.contains("html{color:#1f1f1f}"));
+        assert!(
+            !css.contains("background"),
+            "the message's own body background reaches the canvas"
+        );
         assert!(!css.contains(&theme.palette.foreground.to_string()));
         assert_eq!(theme.webview_background(BodyStyle::Paper), PAPER);
     }

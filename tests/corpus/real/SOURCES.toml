@@ -1,0 +1,889 @@
+# The real-world corpus (M5, ML-059): open-licensed HTML email templates from public
+# repositories, fetched by tools/corpus/fetch.py into .local/corpus/real/ (git-ignored) and
+# rendered through the reader by app/examples/reader_corpus.rs. Only this manifest is
+# committed; the templates are third-party content under the licences below.
+#
+# Every url and licence_url is a raw.githubusercontent.com URL pinned to a full commit SHA, so
+# the bytes never change; sha256 and bytes were computed from the downloaded bytes on
+# 2026-10-06 and are checked on every fetch. The fetch sends anonymous GETs with the
+# User-Agent "mail-dev (automated)" and nothing else.
+#
+# kind: what the template is for. features, found by grepping the bytes (case-insensitive):
+#   dark-mode      prefers-color-scheme, a color-scheme meta (even light only) or
+#                  supported-color-schemes
+#   mso            "<!--[if mso", "[if gte mso" or "mso-"
+#   vml            v:rect, v:roundrect, v:fill, v:image or xmlns:v=
+#   responsive     @media
+#   remote-images  an http(s) <img>, CSS url() (not @import), background attribute or VML src
+#   table-layout   layout tables
+#
+# Repositories checked (verdict, licence source, pinned commit):
+#   ActiveCampaign/postmark-templates        allowed  MIT (LICENSE)
+#       fa73527acb4eb59cf673a54572d213e908f1515c  13 taken from templates-inlined/ (full documents)
+#   mailgun/transactional-email-templates     allowed  MIT (LICENSE)
+#       e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5  6 taken (current embedded-CSS versions + older inlined/)
+#   leemunroe/responsive-html-email-template  allowed  MIT (license.txt)
+#       60b5b6ddf9600e4b7d7e1ef60e5a3a8f1e56e186  2 taken
+#   TedGoas/Cerberus -> redirects to emailmonday/Cerberus   allowed  MIT (LICENSE)
+#       af3cec9dd12fbbea0c6e9a1b0bf82a0479726957  6 taken (3 current patterns + 3 archived versions)
+#   mjmlio/email-templates                    rejected: no licence file and no licence statement in
+#       README; the repo holds only .mjml sources, no compiled HTML
+#       a7230b13086c1746524839768fe0bc15a897d960  0 taken
+#   sendgrid/email-templates                  allowed  MIT (LICENSE)
+#       12f459a7848761c7dba024a5431c0ce468aca82d  9 taken
+#   sendwithus/templates                      allowed  Apache-2.0 (LICENSE; README says all templates are Apache 2.0)
+#       f555e49038ed9ac05a39bf7048a73616f69680ac  15 taken (templates/cerberus/* skipped as copies of Cerberus)
+#   zurb/foundation-emails -> foundation/foundation-emails   licence allowed (MIT, LICENSE.md) but 0 taken:
+#       templates/*.html are Inky sources without <html>/<body> that need the build step
+#       7a37ae4cad4f97068f8257ba92a67a261080e3c5
+#   zurb/foundation-emails-template -> foundation/foundation-emails-template   licence allowed (MIT, LICENSE)
+#       but 0 taken: src/pages are Inky sources plus layouts, no compiled output committed
+#       3b40a8e387fc97785910edffd9cc4feb6d68ac0b
+#   seanpowell/Email-Boilerplate              allowed  MIT (stated with full text in README.markdown; no LICENSE file)
+#       6944456a63323f83f4badde1068706817f4c145f  3 taken
+#   InterNations/antwort-email-boilerplate    404; the project lives at InterNations/antwort
+#   InterNations/antwort                      allowed  MIT (LICENSE.md; README says MIT)
+#       ff8b8d697d687c8e3d0a4e49fcc718dc7568861b  3 taken (compiled build.html files only, not source/)
+#   konsav/email-templates                    allowed  MIT (LICENSE)
+#       f0a29dae21533af2c4737ffcb01863fc8c038046  3 taken
+#   ColorlibHQ/email-templates                allowed  MIT (LICENSE-MIT; README says MIT)
+#       3018557fe943fb1c3e3367aa52d39b2fca44f725  9 taken (MJML-compiled N/index.html; images use relative
+#       paths such as images/product-1.jpg that are not part of the corpus, so they render as broken)
+#   mailchimp/email-blueprints                rejected: README licenses the blueprints under CC BY-SA 3.0
+#       4d4daa85a8107baf128b88dd3baaf16137befb8e  0 taken
+#   maizzle/maizzle                           0 taken: no .html files and no root LICENSE at this commit
+#       (framework starter, sources need a build)
+#       9fd85ab68d848c251da2faa39d4c48d9cf5ea056
+#   Not checked (target already reached): unlayer, Mailjet, emailmonks, dyspatch, rodriguezcommaj, hteumeuleu.
+#
+#
+# Some templates hold {{ }} placeholders and sample names; Colorlib's use relative image
+# paths that aren't part of the corpus, so those images show as missing.
+
+[[template]]
+id = "antwort-single-column"
+url = "https://raw.githubusercontent.com/InterNations/antwort/ff8b8d697d687c8e3d0a4e49fcc718dc7568861b/single-column/build.html"
+sha256 = "1496b09a457dc3c9b68682df62df423af491ffb919ed8ec2cc5bcfc26f619bef"
+bytes = 4915
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/InterNations/antwort/ff8b8d697d687c8e3d0a4e49fcc718dc7568861b/LICENSE.md"
+repo = "https://github.com/InterNations/antwort"
+kind = ["newsletter", "plain-ish"]
+features = ["mso", "vml", "responsive", "table-layout"]
+note = "Antwort single-column fluid layout, compiled build, Outlook VML namespace"
+
+[[template]]
+id = "antwort-three-cols-images"
+url = "https://raw.githubusercontent.com/InterNations/antwort/ff8b8d697d687c8e3d0a4e49fcc718dc7568861b/three-cols-images/build.html"
+sha256 = "b2800fd1535180a5fa8e620ab6aca2c52592aea02e5f6e146dff9ef39a8e8723"
+bytes = 10121
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/InterNations/antwort/ff8b8d697d687c8e3d0a4e49fcc718dc7568861b/LICENSE.md"
+repo = "https://github.com/InterNations/antwort"
+kind = ["newsletter"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Antwort three-column layout with remote images, compiled build"
+
+[[template]]
+id = "antwort-two-cols-simple"
+url = "https://raw.githubusercontent.com/InterNations/antwort/ff8b8d697d687c8e3d0a4e49fcc718dc7568861b/two-cols-simple/build.html"
+sha256 = "21f01852e594ef0bc0e1a7b23a7d5df92ef500a406d09b5fcfbf59b888a7df20"
+bytes = 8052
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/InterNations/antwort/ff8b8d697d687c8e3d0a4e49fcc718dc7568861b/LICENSE.md"
+repo = "https://github.com/InterNations/antwort"
+kind = ["newsletter"]
+features = ["mso", "vml", "responsive", "table-layout"]
+note = "Antwort two-columns-to-rows responsive layout, compiled build"
+
+[[template]]
+id = "cerberus-fluid"
+url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/cerberus-fluid.html"
+sha256 = "d7ef0b4bf32753337ea3802d1505e02ecbea9b447b11c770a47be4b2161e14f6"
+bytes = 22164
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/LICENSE"
+repo = "https://github.com/emailmonday/Cerberus"
+kind = ["marketing"]
+features = ["dark-mode", "mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Cerberus fluid pattern, full-width scaling, Outlook conditionals, placeholder images"
+
+[[template]]
+id = "cerberus-hybrid"
+url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/cerberus-hybrid.html"
+sha256 = "d35d344b64c8475eab0474dde61e14d142f2347bd6158f14c8fdcd9a72a6b01a"
+bytes = 43254
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/LICENSE"
+repo = "https://github.com/emailmonday/Cerberus"
+kind = ["marketing"]
+features = ["dark-mode", "mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Cerberus hybrid (spongy) multi-column pattern, ghost tables, Outlook VML"
+
+[[template]]
+id = "cerberus-responsive"
+url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/cerberus-responsive.html"
+sha256 = "332f87b610c49a7ab5cf12bb99f80c68ef96e8683660a9c87b76c77fa603a04e"
+bytes = 34839
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/LICENSE"
+repo = "https://github.com/emailmonday/Cerberus"
+kind = ["marketing"]
+features = ["dark-mode", "mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Cerberus responsive pattern with media queries and Outlook VML"
+
+[[template]]
+id = "cerberus-v1-default"
+url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/archived-versions/version%201/template-default.html"
+sha256 = "e4157997a332e130094d052507fdcba41f055b8c74b048e0873fd7ffa5fa89c2"
+bytes = 18192
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/LICENSE"
+repo = "https://github.com/emailmonday/Cerberus"
+kind = ["marketing", "newsletter"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Archived Cerberus version 1 default template, fixed width with columns"
+
+[[template]]
+id = "cerberus-v2-media-queries"
+url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/archived-versions/version%202/template-with-media-queries.html"
+sha256 = "17e4d1eb6baaf29726858246d856f6d747d5134662f2dac64f87dcd478bda394"
+bytes = 17703
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/LICENSE"
+repo = "https://github.com/emailmonday/Cerberus"
+kind = ["marketing"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Archived Cerberus version 2 template using media queries"
+
+[[template]]
+id = "cerberus-v2-no-media-queries"
+url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/archived-versions/version%202/template-without-media-queries.html"
+sha256 = "d112d1803b854d56d32828a622d4b6c01882b16d9eb9dbb432a74371064bd9d2"
+bytes = 12752
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/emailmonday/Cerberus/af3cec9dd12fbbea0c6e9a1b0bf82a0479726957/LICENSE"
+repo = "https://github.com/emailmonday/Cerberus"
+kind = ["marketing"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Archived Cerberus version 2 template built without relying on media queries"
+
+[[template]]
+id = "colorlib-06-shopping"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/6/index.html"
+sha256 = "30a8a629192940736020a7858e54b6d7e5cc7ccc951422faa240d088aa594260"
+bytes = 47879
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["marketing"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib fashion product grid, MJML-compiled, relative image paths"
+
+[[template]]
+id = "colorlib-10-verify-email"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/10/index.html"
+sha256 = "0ceb65f62d5c2df6580271a00a703a746cca178e7a17058efe76db2474037e44"
+bytes = 20239
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["transactional"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib verify-your-email message, MJML-compiled, light/dark styles"
+
+[[template]]
+id = "colorlib-12-cart-reminder"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/12/index.html"
+sha256 = "17256964587d8414651032263cb2bb4e24d0995e04e7aef6bee5f90070207544"
+bytes = 32920
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["marketing", "notification"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib abandoned shopping-cart reminder, MJML-compiled"
+
+[[template]]
+id = "colorlib-20-conference"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/20/index.html"
+sha256 = "f910e2fcdd28a6abfe033cf0851b74c3cb10901c6be15b5380e9f0997b26d2fe"
+bytes = 74176
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["event", "marketing"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib developer-conference announcement, MJML-compiled, long layout"
+
+[[template]]
+id = "colorlib-21-welcome"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/21/index.html"
+sha256 = "32f75f3c142acf6d93c06b67175950a05df9489d4ff54769074662ee6f59d220"
+bytes = 24844
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["welcome"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib product welcome email, MJML-compiled, light/dark styles"
+
+[[template]]
+id = "colorlib-22-order-receipt"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/22/index.html"
+sha256 = "1758b5e0dd59802e85b496c063db95836189fed792f6808a0c3cf8ef9769992e"
+bytes = 24304
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["receipt", "transactional"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib order receipt, MJML-compiled, no images"
+
+[[template]]
+id = "colorlib-23-password-reset"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/23/index.html"
+sha256 = "3b849026973ebc96cce31524c32c0ab0ce8a7e1c3a37d53fd097782d2c83bff9"
+bytes = 20318
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["password-reset", "transactional"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib password-reset email, MJML-compiled, light/dark styles"
+
+[[template]]
+id = "colorlib-24-newsletter"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/24/index.html"
+sha256 = "95e72451f25f9bb97b56967a20fe2784de281b4b10c64f8ed365dfae45138aa1"
+bytes = 34798
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["newsletter"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib editorial newsletter issue, MJML-compiled"
+
+[[template]]
+id = "colorlib-26-event-invite"
+url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/26/index.html"
+sha256 = "c74387129e5975a18a38e9680c540663ca5b532292853c0b277b219f59d9f899"
+bytes = 36938
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ColorlibHQ/email-templates/3018557fe943fb1c3e3367aa52d39b2fca44f725/LICENSE-MIT"
+repo = "https://github.com/ColorlibHQ/email-templates"
+kind = ["event"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Colorlib event invitation, MJML-compiled, light/dark styles"
+
+[[template]]
+id = "email-boilerplate-full"
+url = "https://raw.githubusercontent.com/seanpowell/Email-Boilerplate/6944456a63323f83f4badde1068706817f4c145f/email.html"
+sha256 = "47a72d8de93e77efd860da98df71f36d3645103dcccc8033bdbb349620b2c0ce"
+bytes = 12196
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/seanpowell/Email-Boilerplate/6944456a63323f83f4badde1068706817f4c145f/README.markdown"
+repo = "https://github.com/seanpowell/Email-Boilerplate"
+kind = ["plain-ish"]
+features = ["mso", "responsive", "table-layout"]
+note = "HTML Email Boilerplate, heavily commented resets and client fixes"
+
+[[template]]
+id = "email-boilerplate-lite"
+url = "https://raw.githubusercontent.com/seanpowell/Email-Boilerplate/6944456a63323f83f4badde1068706817f4c145f/email_lite.html"
+sha256 = "3806777e69f299b079b95a2bfbda42e421c7ad1aa47f09ded4ecbb721ed3ab40"
+bytes = 6536
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/seanpowell/Email-Boilerplate/6944456a63323f83f4badde1068706817f4c145f/README.markdown"
+repo = "https://github.com/seanpowell/Email-Boilerplate"
+kind = ["plain-ish"]
+features = ["mso", "responsive", "table-layout"]
+note = "HTML Email Boilerplate lite variant, fewer comments"
+
+[[template]]
+id = "email-boilerplate-min"
+url = "https://raw.githubusercontent.com/seanpowell/Email-Boilerplate/6944456a63323f83f4badde1068706817f4c145f/email_min.html"
+sha256 = "56b6b9248696870e28f53efb2b3de01ce6bf1fea715d97462151555e7058293f"
+bytes = 3312
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/seanpowell/Email-Boilerplate/6944456a63323f83f4badde1068706817f4c145f/README.markdown"
+repo = "https://github.com/seanpowell/Email-Boilerplate"
+kind = ["plain-ish"]
+features = ["mso", "table-layout"]
+note = "HTML Email Boilerplate minimal skeleton without comments, very small"
+
+[[template]]
+id = "konsav-explorational"
+url = "https://raw.githubusercontent.com/konsav/email-templates/f0a29dae21533af2c4737ffcb01863fc8c038046/explorational.html"
+sha256 = "4788310d8223743697ad5d3f6697b5623fcd070b65f5acf9f3195f4243a51c26"
+bytes = 22234
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/konsav/email-templates/f0a29dae21533af2c4737ffcb01863fc8c038046/LICENSE"
+repo = "https://github.com/konsav/email-templates"
+kind = ["marketing", "newsletter"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Responsive explorational marketing email, remote images, tracking-parameter placeholders"
+
+[[template]]
+id = "konsav-general"
+url = "https://raw.githubusercontent.com/konsav/email-templates/f0a29dae21533af2c4737ffcb01863fc8c038046/general.html"
+sha256 = "493605122ad2806bfe057cc40828104c4c303a8096d38091a6604c311a343a2b"
+bytes = 18383
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/konsav/email-templates/f0a29dae21533af2c4737ffcb01863fc8c038046/LICENSE"
+repo = "https://github.com/konsav/email-templates"
+kind = ["marketing"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Responsive general-purpose marketing email, remote images, tracking-parameter placeholders"
+
+[[template]]
+id = "konsav-promotional"
+url = "https://raw.githubusercontent.com/konsav/email-templates/f0a29dae21533af2c4737ffcb01863fc8c038046/promotional.html"
+sha256 = "41d2303463e7f06e570d2179c93c2187ab3b633f8651234bf5db483742ff3592"
+bytes = 10268
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/konsav/email-templates/f0a29dae21533af2c4737ffcb01863fc8c038046/LICENSE"
+repo = "https://github.com/konsav/email-templates"
+kind = ["marketing"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Short responsive promotional announcement email, remote images"
+
+[[template]]
+id = "mailgun-action"
+url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/templates/action.html"
+sha256 = "19079aeb7c6124763f7c48f6d87c13ba7837291b1b549dc7cc74d4078c979e9d"
+bytes = 6780
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/LICENSE"
+repo = "https://github.com/mailgun/transactional-email-templates"
+kind = ["transactional"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Mailgun confirm-email action template, embedded CSS, current version"
+
+[[template]]
+id = "mailgun-action-inlined"
+url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/templates/inlined/action.html"
+sha256 = "da08ae9d7551fdbdb85b53838f5b0a7df2052dc99dbf5927e72034a500f373b5"
+bytes = 7168
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/LICENSE"
+repo = "https://github.com/mailgun/transactional-email-templates"
+kind = ["transactional"]
+features = ["responsive", "table-layout"]
+note = "Mailgun confirm-email action, older version with inlined CSS"
+
+[[template]]
+id = "mailgun-alert"
+url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/templates/alert.html"
+sha256 = "57dc3bf915b19b02372f8c4fca4202658f6b816f0ceaf3b25fccc715109c4cfb"
+bytes = 8816
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/LICENSE"
+repo = "https://github.com/mailgun/transactional-email-templates"
+kind = ["notification"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Mailgun usage-limit warning alert, embedded CSS, current version"
+
+[[template]]
+id = "mailgun-alert-inlined"
+url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/templates/inlined/alert.html"
+sha256 = "e5571f3e5d7b3d8d9a90737e965ae853c81c3acbdaeda9adfb56486359e4fc20"
+bytes = 7479
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/LICENSE"
+repo = "https://github.com/mailgun/transactional-email-templates"
+kind = ["notification"]
+features = ["responsive", "table-layout"]
+note = "Mailgun usage-limit warning alert, older version with inlined CSS"
+
+[[template]]
+id = "mailgun-billing"
+url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/templates/billing.html"
+sha256 = "5b1268d33c914d95737deef4f535ddd829df1b2ac39d37c44c8d6d87c17f4e41"
+bytes = 13419
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/LICENSE"
+repo = "https://github.com/mailgun/transactional-email-templates"
+kind = ["invoice", "receipt", "transactional"]
+features = ["dark-mode", "mso", "vml", "responsive", "table-layout"]
+note = "Mailgun billing receipt with invoice table, embedded CSS, current version"
+
+[[template]]
+id = "mailgun-billing-inlined"
+url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/templates/inlined/billing.html"
+sha256 = "2684207b1555b1a213b7e36238c90b6916a1f3f117665f1fc8c20c5671c2a40c"
+bytes = 11969
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/mailgun/transactional-email-templates/e05e59e8c1e0fa7ffbacc7a165a609fd37c590b5/LICENSE"
+repo = "https://github.com/mailgun/transactional-email-templates"
+kind = ["invoice", "receipt", "transactional"]
+features = ["responsive", "table-layout"]
+note = "Mailgun billing receipt, older version with inlined CSS"
+
+[[template]]
+id = "postmark-basic-comment-notification"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/comment-notification/content.html"
+sha256 = "4a832530943de4c055cb3f48e535ec6ba92032badc9d36d26354131e60d619a5"
+bytes = 14918
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["notification", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark comment notification, basic layout, inlined CSS, light/dark styles"
+
+[[template]]
+id = "postmark-basic-dunning"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/dunning/content.html"
+sha256 = "48eeeda4b6d341d569097ae5efc03dd9f04c66b49a9fae51cdcbb7ccc9bf45ec"
+bytes = 18447
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["transactional", "invoice"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark failed-payment (dunning) notice, basic layout, inlined CSS"
+
+[[template]]
+id = "postmark-basic-example"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/example/content.html"
+sha256 = "594b4cc2b9a391c06a246c907c444452e6262a148f61c42f6501bcfd627322cf"
+bytes = 28905
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark kitchen-sink example of all content components, basic layout"
+
+[[template]]
+id = "postmark-basic-full-receipt"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic-full/receipt/content.html"
+sha256 = "2cd608cf1e8b4ee8fbeb320c0c63e64fe7c28f644e134de8223f8c8950414cee"
+bytes = 24158
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["receipt", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark receipt, basic-full (full-width) layout, inlined CSS"
+
+[[template]]
+id = "postmark-basic-invoice"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/invoice/content.html"
+sha256 = "06a7ec4fd5f5cf12e0ee0a94634945b6961751f3924f7e7a3676ce9dd20d32a0"
+bytes = 22856
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["invoice", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark invoice with line-item table, basic layout, inlined CSS"
+
+[[template]]
+id = "postmark-basic-password-reset"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/password-reset/content.html"
+sha256 = "07b63a08544e152690464e4ebe37f44b31b7a39c3de010052eea9f8968970a17"
+bytes = 16998
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["password-reset", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark password reset with button, basic layout, inlined CSS"
+
+[[template]]
+id = "postmark-basic-password-reset-help"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/password-reset-help/content.html"
+sha256 = "873f9d89651fee2c54b7388407526b23ce5a85ea98a8d57561a02f95c6ebe14f"
+bytes = 17117
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["password-reset", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark password-reset help message, basic layout, inlined CSS"
+
+[[template]]
+id = "postmark-basic-receipt"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/receipt/content.html"
+sha256 = "f6372bf25bb3aa981bb53745efd69fd95d50d3e4d0833fff9e2c2c473c83d48c"
+bytes = 24034
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["receipt", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark receipt, basic layout, inlined CSS"
+
+[[template]]
+id = "postmark-basic-trial-expired"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/trial-expired/content.html"
+sha256 = "035339285495d9120ca70e81c9611c349ab8d7fcb92e30583fb502c624b230e7"
+bytes = 20194
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["notification", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark trial-expired notice, basic layout, inlined CSS"
+
+[[template]]
+id = "postmark-basic-user-invitation"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/user-invitation/content.html"
+sha256 = "76974a77179541f0f39c92810fefa07668f264038ea3337e6fd78bac77644061"
+bytes = 17419
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["transactional", "notification"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark user invitation with call-to-action button, basic layout"
+
+[[template]]
+id = "postmark-basic-welcome"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/basic/welcome/content.html"
+sha256 = "bd7dee1608c2e2ae179d86f7a1d80356f21a9a7a805b607757a46712365331a7"
+bytes = 20845
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["welcome", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark welcome email, basic layout, inlined CSS"
+
+[[template]]
+id = "postmark-plain-invoice"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/plain/invoice/content.html"
+sha256 = "e4ad76d392c6e253521cc6baf2c93dd2313f9196a70233f5204aadd81df98c9d"
+bytes = 22529
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["invoice", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark invoice, plain layout variant, inlined CSS"
+
+[[template]]
+id = "postmark-plain-welcome"
+url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/templates-inlined/plain/welcome/content.html"
+sha256 = "e20dee851724fe73f43c4c6c091fb85730402f66787695dda14d2e96a7d50d79"
+bytes = 20509
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/ActiveCampaign/postmark-templates/fa73527acb4eb59cf673a54572d213e908f1515c/LICENSE"
+repo = "https://github.com/ActiveCampaign/postmark-templates"
+kind = ["welcome", "transactional"]
+features = ["dark-mode", "mso", "responsive", "table-layout"]
+note = "Postmark welcome email, plain layout variant, inlined CSS"
+
+[[template]]
+id = "responsive-template-email"
+url = "https://raw.githubusercontent.com/leemunroe/responsive-html-email-template/60b5b6ddf9600e4b7d7e1ef60e5a3a8f1e56e186/email.html"
+sha256 = "82746a980f6cd26f81292ec19ebf7af2615b2e630c5c6a13014ab46ec17da6e7"
+bytes = 8903
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/leemunroe/responsive-html-email-template/60b5b6ddf9600e4b7d7e1ef60e5a3a8f1e56e186/license.txt"
+repo = "https://github.com/leemunroe/responsive-html-email-template"
+kind = ["transactional", "plain-ish"]
+features = ["mso", "responsive", "table-layout"]
+note = "Simple responsive transactional email with one button, embedded CSS"
+
+[[template]]
+id = "responsive-template-email-inlined"
+url = "https://raw.githubusercontent.com/leemunroe/responsive-html-email-template/60b5b6ddf9600e4b7d7e1ef60e5a3a8f1e56e186/email-inlined.html"
+sha256 = "ad7e5a8733ff609e034186ce985c83814ab9d17d6601862645e2eb40a74f958c"
+bytes = 7708
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/leemunroe/responsive-html-email-template/60b5b6ddf9600e4b7d7e1ef60e5a3a8f1e56e186/license.txt"
+repo = "https://github.com/leemunroe/responsive-html-email-template"
+kind = ["transactional", "plain-ish"]
+features = ["mso", "responsive", "table-layout"]
+note = "Same simple responsive transactional email with CSS inlined"
+
+[[template]]
+id = "sendgrid-dynamic-call-to-action"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/dynamic-templates/transactional-actions/call_to_action.html"
+sha256 = "727953b3b0cb490f366f206f362f73a072fefcca2d3c56ae81b748f946f09859"
+bytes = 14011
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["transactional", "notification"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid dynamic call-to-action template with Handlebars placeholders"
+
+[[template]]
+id = "sendgrid-dynamic-different-languages"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/dynamic-templates/different-languages/different_languages.html"
+sha256 = "99d0c5f1e76e77ae52ae572d3b943d9c10a377a0fb0e9a08e1193727f401f690"
+bytes = 14715
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["transactional"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid dynamic template switching languages with Handlebars conditionals"
+
+[[template]]
+id = "sendgrid-dynamic-newsletter"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/dynamic-templates/newsletter/news_feed.html"
+sha256 = "6690d4ca563c128bd123879e733788c6c684a95657acf02b44f22e2d205ff8f0"
+bytes = 17009
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["newsletter"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid dynamic news-feed newsletter with Handlebars each loop"
+
+[[template]]
+id = "sendgrid-dynamic-receipt"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/dynamic-templates/receipt/receipt.html"
+sha256 = "371842208dafefae5e5dc36cc2006f4a41b4091d063544eacc6a1f4106fb69f1"
+bytes = 16217
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["receipt", "transactional"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid dynamic receipt with Handlebars line items"
+
+[[template]]
+id = "sendgrid-dynamic-special-sale"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/dynamic-templates/special-sale/special_sale.html"
+sha256 = "c8fb8da56f4e88d3f69c3ef97e3725e34fe892c9d92f8710e48ffa3052c881a4"
+bytes = 28538
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["marketing"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid dynamic special-sale promotion with nested Handlebars conditionals"
+
+[[template]]
+id = "sendgrid-merriweather-digest"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/merriweather-templates/digest.html"
+sha256 = "1da42eda24408f7a48bf36257be5881350ce6a822cd42d8d12eadc0a8b03c47c"
+bytes = 10297
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["newsletter"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid Merriweather-style weekly digest, embedded CSS, remote images"
+
+[[template]]
+id = "sendgrid-merriweather-password-reset"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/merriweather-templates/password-reset.html"
+sha256 = "44f07fccab5b010703fa2a08d3c3ea9aebc3d233073ffd1fb456afc3a4b422f8"
+bytes = 8951
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["password-reset", "transactional"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid Merriweather-style password reset, embedded CSS"
+
+[[template]]
+id = "sendgrid-paste-email-confirmation"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/paste-templates/email-confirmation.html"
+sha256 = "7b4cb3795e202bd7d6854380787634f2dee64420114d29645f9ab977c4e1caed"
+bytes = 9187
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["transactional"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid Paste-style email-address confirmation, embedded CSS"
+
+[[template]]
+id = "sendgrid-paste-welcome"
+url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/paste-templates/welcome.html"
+sha256 = "d0f1a83f97f49b630a0663fe27c5569d6e2f2468da2a9bcd19f7eae092c72187"
+bytes = 8694
+licence = "MIT"
+licence_url = "https://raw.githubusercontent.com/sendgrid/email-templates/12f459a7848761c7dba024a5431c0ce468aca82d/LICENSE"
+repo = "https://github.com/sendgrid/email-templates"
+kind = ["welcome", "transactional"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "SendGrid Paste-style welcome email, embedded CSS"
+
+[[template]]
+id = "sendwithus-airmail-invoice"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/airmail/invoice.html"
+sha256 = "ed472ef0be1605f71248c4a32b128383168c56d13147f11266cbccae24dcbed1"
+bytes = 10878
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["invoice", "transactional"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Airmail theme invoice, MSO markup, remote images"
+
+[[template]]
+id = "sendwithus-cleave-survey"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/cleave/survey.html"
+sha256 = "0428f5a932579f2df4f574edb9db688cd9b68ac29646590dcd75b9781499de2f"
+bytes = 20010
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["marketing"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Cleave theme customer-satisfaction survey, Jinja first-name tag"
+
+[[template]]
+id = "sendwithus-go-confirm"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/go/confirm.html"
+sha256 = "d508863978c4b9500de035c6150d38e17348f5be397fa3ebae998a8480a235db"
+bytes = 9615
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["transactional", "notification"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Go theme order-shipped confirmation with details table"
+
+[[template]]
+id = "sendwithus-goldstar-birthday"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/goldstar/birthday.html"
+sha256 = "2b91c0d712cf67837f6fecac5ba9ce8e7e09b9c21db7b0cd626a185a5de5bb8b"
+bytes = 24439
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["marketing"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Goldstar theme birthday discount promotion, image heavy"
+
+[[template]]
+id = "sendwithus-goldstar-invoice"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/goldstar/invoice.html"
+sha256 = "4fc98e89d816e08062fa8b844213e948631d5a6cb34fbd23ec96366218eb37e4"
+bytes = 49376
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["invoice", "transactional"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Goldstar theme invoice, long table layout"
+
+[[template]]
+id = "sendwithus-mantra-coupon"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/mantra/coupon.html"
+sha256 = "20af09e49337c6af2a69f8c37d017a136becab71561138deb948de74539974cd"
+bytes = 18085
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["marketing"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Mantra theme win-back coupon email"
+
+[[template]]
+id = "sendwithus-mantra-receipt"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/mantra/receipt.html"
+sha256 = "75fb6451238ef1f8a5f62df69a2f22a53f5b2e2f2013149a5047536b0f90c979"
+bytes = 32926
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["receipt", "transactional"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Mantra theme order receipt, MSO markup, remote images"
+
+[[template]]
+id = "sendwithus-mantra-shipped"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/mantra/shipped.html"
+sha256 = "7acf8d95f2cee04fbb07dbacd1e36e5b8e7bfd6188c55c94a4f21dbdda46ada4"
+bytes = 23347
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["notification", "transactional"]
+features = ["mso", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Mantra theme order-shipped notification"
+
+[[template]]
+id = "sendwithus-meow-digest-left"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/meow/digest-left.html"
+sha256 = "e46e3c479b072b39ece8297b7c336fe0ea80d87cc6ee5966a5302d673729e80e"
+bytes = 38538
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["newsletter"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Meow theme digest with left-aligned feature blocks"
+
+[[template]]
+id = "sendwithus-meow-receipt"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/meow/receipt.html"
+sha256 = "c0a401186dfab29d6e99870bde3bc13d963e5937f9d650aa94986fc4539a7ba0"
+bytes = 42985
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["receipt", "transactional"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Meow theme receipt, VML and remote images"
+
+[[template]]
+id = "sendwithus-narrative-progress"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/narrative/progress.html"
+sha256 = "72dbbf05a72e1072e5779b241251ee020fa745ca5f1b38b36be187c0fde7f8e1"
+bytes = 22430
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["notification"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Narrative theme account-update progress steps"
+
+[[template]]
+id = "sendwithus-neopolitan-welcome"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/neopolitan/welcome.html"
+sha256 = "ded824f9d88934fac33cb2e2303587d4dc434b20114276a809307f058f3498d8"
+bytes = 8703
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["welcome"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Neopolitan theme welcome email"
+
+[[template]]
+id = "sendwithus-oxygen-upsell"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/oxygen/upsell.html"
+sha256 = "e76c769d50b9a7b2be57d5370a75722bb08d217337d4039c1f3c853dddfb7fa5"
+bytes = 16075
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["marketing"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Oxygen theme upgrade upsell offer"
+
+[[template]]
+id = "sendwithus-plain-jane"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/plain-jane/plain.html"
+sha256 = "9d20a3be1123a038287937493a4f7cd0591ccdbdedf263712f54e497361d0b5a"
+bytes = 10419
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["plain-ish", "newsletter"]
+features = ["mso", "table-layout"]
+note = "Sendwithus Plain Jane text-centric template, no media queries"
+
+[[template]]
+id = "sendwithus-zen-flat-ping"
+url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/templates/zen-flat/ping.html"
+sha256 = "2e6c760d28cc8a188b96e0ecdb444e4b30d1056bb9cee0c2287918d500040368"
+bytes = 7539
+licence = "Apache-2.0"
+licence_url = "https://raw.githubusercontent.com/sendwithus/templates/f555e49038ed9ac05a39bf7048a73616f69680ac/LICENSE"
+repo = "https://github.com/sendwithus/templates"
+kind = ["notification"]
+features = ["mso", "vml", "responsive", "remote-images", "table-layout"]
+note = "Sendwithus Zen Flat theme account-settings-changed ping"

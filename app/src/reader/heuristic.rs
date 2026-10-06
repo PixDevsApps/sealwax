@@ -11,6 +11,42 @@ pub struct Scan {
     pub own_colours: bool,
     /// An image, a background or a poster comes from an `http:` or `https:` URL.
     pub remote_images: bool,
+    /// The first thing that made it [`Scan::own_colours`], for the corpus report.
+    pub evidence: Option<Evidence>,
+}
+
+/// What gave an HTML body colours of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Evidence {
+    /// A `style` attribute sets a text or background colour.
+    StyleAttribute,
+    /// A `<style>` block does.
+    StyleBlock,
+    BgcolorAttribute,
+    BackgroundAttribute,
+    FontColor,
+    /// `text`, `link`, `vlink` or `alink` on `<body>`.
+    BodyColours,
+}
+
+impl Evidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Evidence::StyleAttribute => "style-attribute",
+            Evidence::StyleBlock => "style-block",
+            Evidence::BgcolorAttribute => "bgcolor",
+            Evidence::BackgroundAttribute => "background-attribute",
+            Evidence::FontColor => "font-color",
+            Evidence::BodyColours => "body-colours",
+        }
+    }
+}
+
+impl Scan {
+    fn found(&mut self, evidence: Evidence) {
+        self.own_colours = true;
+        self.evidence.get_or_insert(evidence);
+    }
 }
 
 pub fn scan(html: &str) -> Scan {
@@ -34,15 +70,17 @@ pub fn scan(html: &str) -> Scan {
         }
         for (name, value) in &attributes {
             match name.as_str() {
-                "bgcolor" => scan.own_colours = true,
+                "bgcolor" => scan.found(Evidence::BgcolorAttribute),
                 "background" if !value.trim().is_empty() => {
-                    scan.own_colours = true;
+                    scan.found(Evidence::BackgroundAttribute);
                     scan.remote_images |= is_remote(value);
                 }
-                "color" if tag == "font" => scan.own_colours = true,
-                "text" | "link" | "vlink" | "alink" if tag == "body" => scan.own_colours = true,
+                "color" if tag == "font" => scan.found(Evidence::FontColor),
+                "text" if tag == "body" => scan.found(Evidence::BodyColours),
                 "style" => {
-                    scan.own_colours |= css_sets_colours(value);
+                    if declarations_set_colours(value, tag == "a") {
+                        scan.found(Evidence::StyleAttribute);
+                    }
                     scan.remote_images |= css_has_remote_url(value);
                 }
                 "src" | "poster" | "lowsrc" => scan.remote_images |= is_remote(value),
@@ -58,7 +96,9 @@ pub fn scan(html: &str) -> Scan {
                 .find("</style")
                 .map_or(lower.len(), |end| at + end);
             let css = &lower[at..close];
-            scan.own_colours |= css_sets_colours(css);
+            if sheet_sets_colours(css) {
+                scan.found(Evidence::StyleBlock);
+            }
             scan.remote_images |= css_has_remote_url(css);
             at = close;
         }
@@ -130,7 +170,9 @@ fn scan_tag(bytes: &[u8], mut at: usize) -> (String, Vec<(String, String)>, usiz
     }
 }
 
-const NEUTRAL: [&str; 9] = [
+/// Values that set no colour of their own; `windowtext` is the system's text colour, which
+/// follows the colour scheme (Outlook writes it on every reply).
+const NEUTRAL: [&str; 10] = [
     "",
     "inherit",
     "initial",
@@ -140,20 +182,83 @@ const NEUTRAL: [&str; 9] = [
     "none",
     "currentcolor",
     "auto",
+    "windowtext",
 ];
 
-fn css_sets_colours(css: &str) -> bool {
-    css.split([';', '{', '}']).any(|declaration| {
+/// Selectors that match only links. A text colour set for them alone isn't a design of the
+/// message's own: themed bodies give every link the accent (M5, from Outlook's replies, which
+/// colour `a:link` and `span.MsoHyperlink` and nothing else).
+const LINK_SELECTORS: [&str; 10] = [
+    "a",
+    "a:link",
+    "a:visited",
+    "a:hover",
+    "a:active",
+    "a:focus",
+    "span.msohyperlink",
+    "span.msohyperlinkfollowed",
+    ".msohyperlink",
+    ".msohyperlinkfollowed",
+];
+
+/// Whether declarations (a `style` attribute or a rule's block) set a text or background
+/// colour; with `links_only`, a text colour doesn't count.
+fn declarations_set_colours(declarations: &str, links_only: bool) -> bool {
+    declarations.split(';').any(|declaration| {
         let Some((property, value)) = declaration.split_once(':') else {
             return false;
         };
-        let property = property.trim();
-        let value = value.replace("!important", "");
-        matches!(
-            property,
-            "color" | "background" | "background-color" | "background-image"
-        ) && !NEUTRAL.contains(&value.trim())
+        let colour = match property.trim() {
+            "color" => !links_only,
+            "background" | "background-color" | "background-image" => true,
+            _ => false,
+        };
+        colour && !NEUTRAL.contains(&value.replace("!important", "").trim())
     })
+}
+
+/// Whether a style sheet (lower case) sets a colour in any rule, nested ones included; the
+/// text colour of rules for links alone doesn't count.
+fn sheet_sets_colours(css: &str) -> bool {
+    let css = without_comments(css);
+    let mut open: Vec<(usize, &str)> = Vec::new();
+    let mut prelude = 0;
+    for (index, byte) in css.bytes().enumerate() {
+        match byte {
+            b'{' => {
+                open.push((index + 1, css[prelude..index].trim()));
+                prelude = index + 1;
+            }
+            b'}' => {
+                if let Some((start, selectors)) = open.pop() {
+                    let block = &css[start..index];
+                    let links_only = selectors
+                        .split(',')
+                        .all(|selector| LINK_SELECTORS.contains(&selector.trim()));
+                    if !block.contains('}') && declarations_set_colours(block, links_only) {
+                        return true;
+                    }
+                }
+                prelude = index + 1;
+            }
+            b';' if open.is_empty() => prelude = index + 1,
+            _ => {}
+        }
+    }
+    false
+}
+
+fn without_comments(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        out.push_str(&rest[..start]);
+        rest = rest[start + 2..]
+            .find("*/")
+            .map_or("", |end| &rest[start + 2 + end + 2..]);
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A URL (lower case) that the network would serve; `//host` doesn't resolve against the
@@ -195,6 +300,47 @@ mod tests {
     }
 
     #[test]
+    fn link_colours_alone_take_the_theme() {
+        for html in [
+            "<style><!--\np.MsoNormal {margin:0cm; font-family:\"Calibri\",sans-serif;}\n\
+             a:link, span.MsoHyperlink {mso-style-priority:99; color:#0563C1;}\n\
+             a:visited, span.MsoHyperlinkFollowed {color:#954F72;}\n\
+             span.EmailStyle17 {font-family:\"Calibri\",sans-serif; color:windowtext;}\n--></style>\
+             <body lang=EN-US link=\"#0563C1\" vlink=\"#954F72\"><p class=MsoNormal>Hi</p></body>",
+            "<style>@media screen { a { color: #1155cc } }</style><p>x</p>",
+            "<p><a href=\"https://example.test\" style=\"color:rgb(17,85,204)\">x</a></p>",
+            "<style>/* a { } p { color: red } */ a:hover{color:red}</style>",
+        ] {
+            assert_eq!(scan(html).evidence, None, "{html}");
+        }
+        for (html, evidence) in [
+            (
+                "<style>a { color: #1155cc } p { color: #222 }</style>",
+                Evidence::StyleBlock,
+            ),
+            (
+                "<style>a.button { color: #fff; background: #22bc66 }</style>",
+                Evidence::StyleBlock,
+            ),
+            (
+                "<style>a, p { color: #1155cc }</style>",
+                Evidence::StyleBlock,
+            ),
+            (
+                "<style>@media (prefers-color-scheme: dark) { body { background: #333 } }</style>",
+                Evidence::StyleBlock,
+            ),
+            (
+                "<a href=\"#\" style=\"background:#22bc66\">x</a>",
+                Evidence::StyleAttribute,
+            ),
+            ("<body text=\"#000000\">x</body>", Evidence::BodyColours),
+        ] {
+            assert_eq!(scan(html).evidence, Some(evidence), "{html}");
+        }
+    }
+
+    #[test]
     fn neutral_values_and_comments_are_ignored() {
         let html = "<!-- <p style='color:red'><img src='https://example.test/a.png'> -->\
                     <p style=\"color: inherit; background: transparent\">x</p>\
@@ -210,7 +356,8 @@ mod tests {
             scan(html),
             Scan {
                 own_colours: true,
-                remote_images: true
+                remote_images: true,
+                evidence: Some(Evidence::FontColor),
             }
         );
     }

@@ -222,6 +222,7 @@ pub(super) fn body_name(body: Option<&ShownBody>) -> &'static str {
         Some(ShownBody::Downloading) => "downloading",
         Some(ShownBody::DownloadFailed(_)) => "download-failed",
         Some(ShownBody::Missing) => "missing",
+        Some(ShownBody::Unreadable(_)) => "unreadable",
     }
 }
 
@@ -355,7 +356,14 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
                     .unwrap_or_default()
             };
             let (background, text) = (at(0), at(1));
-            let mut follows = css_rgb_near(&background, theme.webview_background(style));
+            let paper_canvas = style == BodyStyle::Paper
+                && background == "rgba(0, 0, 0, 0)"
+                && opened.reader.web_view().is_some_and(|view| {
+                    let color = webkit6::prelude::WebViewExt::background_color(&view);
+                    (color.red(), color.green(), color.blue()) == (1.0, 1.0, 1.0)
+                });
+            let mut follows =
+                paper_canvas || css_rgb_near(&background, theme.webview_background(style));
             if style == BodyStyle::Themed {
                 follows &= css_rgb_near(&text, theme.palette.foreground);
             }

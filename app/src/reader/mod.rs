@@ -27,6 +27,7 @@ mod live;
 mod page;
 mod plain;
 mod prepare;
+mod protection;
 mod remote;
 pub mod samples;
 mod show;
@@ -37,12 +38,19 @@ mod widgets;
 
 pub use attachments::CardState;
 pub use conversation::{COLLAPSE_OVER, GAP_STEP, KEEP_LATEST};
-pub use engine::{CONTENT_SECURITY_POLICY, CidRequest, MAX_LIVE_VIEWS, NETWORK_FEATURES};
+pub use engine::{
+    CONTENT_SECURITY_POLICY, CidOutcome, CidRequest, InlinePart, MAX_LIVE_VIEWS, NETWORK_FEATURES,
+    PartLoader,
+};
 pub use export::{ORIGINAL_SHOWN, OriginalDialog, original_dialog};
 pub use files::FileChoice;
+pub use heuristic::{Evidence, Scan, scan as scan_html};
+pub use links::LinkState;
+pub use plain::{links_in, shown_text};
+pub use protection::{ENCRYPTED, SIGNED, Unreadable};
 pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
-pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
+pub use view::{Hover, Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
 
 use crate::actions::{self, ScopedShortcuts};
 use crate::engine_link::{EngineLink, Subscription};
@@ -115,14 +123,21 @@ pub enum ShownBody {
     DownloadFailed(BodyError),
     /// The store no longer has the message, or couldn't read it.
     Missing,
+    /// Encrypted, or sealed in an S/MIME signature: a notice instead (ML-064).
+    Unreadable(Unreadable),
 }
 
 impl ShownBody {
-    /// The message's own text is on screen (not a notice in its place).
+    /// The message's own text is on screen (not a notice in its place); an encrypted message's
+    /// notice is all there is of it.
     pub fn is_shown(&self) -> bool {
         matches!(
             self,
-            ShownBody::Html { .. } | ShownBody::Plain | ShownBody::TextFallback | ShownBody::Empty
+            ShownBody::Html { .. }
+                | ShownBody::Plain
+                | ShownBody::TextFallback
+                | ShownBody::Empty
+                | ShownBody::Unreadable(_)
         )
     }
 }
@@ -185,8 +200,6 @@ type OpenedListener = Rc<dyn Fn(&Opened)>;
 type SizeListener = Rc<dyn Fn(usize)>;
 type EventListener = Rc<dyn Fn(MessageId, &ViewEvent)>;
 
-type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
-type LinkCheck = Rc<dyn Fn(&Link) -> bool>;
 /// Asks for the bodies of messages; `false` when nothing can download them.
 type Fetcher = Rc<dyn Fn(&[MessageId]) -> bool>;
 
@@ -217,8 +230,8 @@ struct Inner {
     /// Messages whose view's web process ended; a second time, they are shown as text.
     crashed: RefCell<HashMap<MessageId, u32>>,
     listener: Cell<Option<ListenerId>>,
-    opener: RefCell<Opener>,
-    link_check: RefCell<Option<LinkCheck>>,
+    /// The status strip, the warning and the vetted opener (ML-062); its overlay is the root.
+    links: Rc<links::Links>,
     on_shown: RefCell<Vec<ShownListener>>,
     on_opened: RefCell<Vec<OpenedListener>>,
     on_size: RefCell<Vec<SizeListener>>,
@@ -263,6 +276,7 @@ impl Reader {
         let toolbar = Toolbar::new(keymap);
         let keys = actions::install_scoped(&stage, Scope::Reader, keymap);
         keys.attach(toolbar.widget(), gtk::PropagationPhase::Bubble);
+        let links = links::Links::new(&stage, Rc::new(launch));
         let inner = Rc::new(Inner {
             store,
             theme,
@@ -278,8 +292,7 @@ impl Reader {
             remote: remote::Policy::default(),
             crashed: RefCell::new(HashMap::new()),
             listener: Cell::new(None),
-            opener: RefCell::new(Rc::new(launch)),
-            link_check: RefCell::new(None),
+            links,
             on_shown: RefCell::new(Vec::new()),
             on_opened: RefCell::new(Vec::new()),
             on_size: RefCell::new(Vec::new()),
@@ -309,9 +322,9 @@ impl Reader {
         Reader { inner }
     }
 
-    /// For `Window::set_reader`.
+    /// For `Window::set_reader`: the page with the link status strip over it.
     pub fn widget(&self) -> gtk::Widget {
-        self.inner.stage.clone().upcast()
+        self.inner.links.root().clone().upcast()
     }
 
     /// For `Window::set_reader_toolbar`.
@@ -461,13 +474,29 @@ impl Reader {
 
     /// Replaces how vetted links open (`gtk::UriLauncher` by default), for tests.
     pub fn set_link_opener(&self, opener: impl Fn(&gtk::Widget, &str) + 'static) {
-        self.inner.opener.replace(Rc::new(opener));
+        self.inner.links.set_opener(Rc::new(opener));
     }
 
-    /// The link-mismatch check's place (M5): called before a vetted link opens; `false` keeps
-    /// it closed.
+    /// Replaces the link-mismatch check (ML-062): called before a vetted link opens; `false`
+    /// keeps it closed. By default a link whose text names another domain than its target
+    /// asks first, in a dialog with Cancel as the default.
     pub fn set_link_check(&self, check: impl Fn(&Link) -> bool + 'static) {
-        self.inner.link_check.replace(Some(Rc::new(check)));
+        self.inner.links.set_check(Some(Rc::new(check)));
+    }
+
+    /// The link status strip, the warning and the dialogs shown, for checks.
+    pub fn link_state(&self) -> LinkState {
+        self.inner.links.state()
+    }
+
+    /// The link warning dialog on screen, for checks that answer it.
+    pub fn link_dialog(&self) -> Option<libadwaita::AlertDialog> {
+        self.inner.links.dialog()
+    }
+
+    /// Where `cid:` parts the store doesn't hold come from (ML-060; phase B: `FetchPart`).
+    pub fn set_part_loader(&self, loader: Option<PartLoader>) {
+        self.inner.engine.set_part_loader(loader);
     }
 
     /// The WebView of the selected message's HTML body, while it holds one.
@@ -679,18 +708,10 @@ fn rgba(color: Rgb) -> gdk::RGBA {
     )
 }
 
-/// The body's user stylesheet: the theme's, with the themed root painted in the theme's
-/// background. With `color-scheme: dark` and a transparent root, WebKit paints its own dark
-/// canvas (#1e1e1e) rather than the view's background colour.
+/// The body's user stylesheet (since M5 `Theme::webview_css` paints the themed root in the
+/// theme's background itself).
 fn stylesheet(theme: &Theme, style: BodyStyle) -> String {
-    let mut css = theme.webview_css(style);
-    if style == BodyStyle::Themed {
-        css.push_str(&format!(
-            "html{{background-color:{}}}\n",
-            theme.webview_background(style)
-        ));
-    }
-    css
+    theme.webview_css(style)
 }
 
 fn now() -> i64 {
@@ -799,21 +820,6 @@ impl Inner {
         for listener in listeners {
             listener(id, event);
         }
-    }
-
-    fn open_link(&self, link: &Link) {
-        let Some(uri) = openable(&link.uri) else {
-            tracing::debug!("reader: a link that isn't http(s) or mailto stays closed");
-            return;
-        };
-        let check = self.link_check.borrow().clone();
-        if let Some(check) = check
-            && !check(link)
-        {
-            return;
-        }
-        let opener = self.opener.borrow().clone();
-        opener(self.stage.upcast_ref(), &uri);
     }
 
     /// The theme changed: every live body takes its new stylesheet, background and fonts in

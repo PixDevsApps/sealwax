@@ -205,6 +205,10 @@ async fn print_message(
             plain_document("The rest of this message hasn't been downloaded yet."),
             InlineParts::default(),
         ),
+        Body::Unreadable(unreadable) => (
+            plain_document(super::protection::text(unreadable)),
+            InlineParts::default(),
+        ),
     };
     let filter = inner
         .engine

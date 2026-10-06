@@ -3,14 +3,22 @@
 //! compiled content filter, the `cid:` scheme answered from each view's own message, and a pool
 //! of hardened views that all share one web process (`related-view`). At most
 //! [`MAX_LIVE_VIEWS`] views exist at a time (ADR-011's memory decision).
+//!
+//! `cid:` requests are answered asynchronously (ML-060): from the parts `prepare` decoded, or,
+//! for a part the store doesn't hold, from the [`PartLoader`]. An answer is given only while
+//! its view still shows the load that asked; a view released, blanked or loaded again in the
+//! meantime gets its request ended unanswered.
 
 use super::view::MessageView;
 use gtk4::{gio, glib};
+use sealwax_domain::model::MessageId;
 use sealwax_domain::theme::WebViewFonts;
 use sealwax_infrastructure::xdg::ensure_private_dir;
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::rc::Rc;
 use webkit6::prelude::*;
 
@@ -56,24 +64,56 @@ pub struct InlinePart {
     pub data: glib::Bytes,
 }
 
+/// Where an inline part comes from.
+#[derive(Debug, Clone)]
+enum Source {
+    /// Decoded from the stored message.
+    Ready(InlinePart),
+    /// Not stored (a large message kept as its text parts, ML-044): the [`PartLoader`] fetches
+    /// part `part` (a mail-parser index) of the message when the body asks for it.
+    Fetch { part: u32 },
+}
+
 /// A message's inline parts by Content-ID (without angle brackets).
 #[derive(Debug, Clone, Default)]
 pub struct InlineParts {
-    parts: HashMap<String, InlinePart>,
+    message: Option<MessageId>,
+    parts: HashMap<String, Source>,
 }
 
 impl InlineParts {
+    pub fn new(message: MessageId) -> Self {
+        Self {
+            message: Some(message),
+            parts: HashMap::new(),
+        }
+    }
+
     pub fn insert(&mut self, content_id: String, part: InlinePart) {
-        self.parts.insert(content_id, part);
+        self.parts.insert(content_id, Source::Ready(part));
+    }
+
+    /// A part the store doesn't hold, fetched by the [`PartLoader`] when the body asks for it.
+    pub fn insert_missing(&mut self, content_id: String, part: u32) {
+        self.parts.insert(content_id, Source::Fetch { part });
     }
 
     pub fn len(&self) -> usize {
         self.parts.len()
     }
 
+    /// Parts left to the [`PartLoader`].
+    #[cfg(test)]
+    pub fn missing(&self) -> usize {
+        self.parts
+            .values()
+            .filter(|source| matches!(source, Source::Fetch { .. }))
+            .count()
+    }
+
     /// The part a `cid:` URL names: exactly, else ignoring ASCII case, as some mailers change
     /// it between the header and the HTML.
-    pub fn find(&self, content_id: &str) -> Option<&InlinePart> {
+    fn find(&self, content_id: &str) -> Option<&Source> {
         self.parts.get(content_id).or_else(|| {
             self.parts
                 .iter()
@@ -81,13 +121,75 @@ impl InlineParts {
                 .map(|(_, part)| part)
         })
     }
+
+    /// A decoded part by Content-ID, for checks.
+    #[cfg(test)]
+    pub fn ready(&self, content_id: &str) -> Option<&InlinePart> {
+        match self.find(content_id)? {
+            Source::Ready(part) => Some(part),
+            Source::Fetch { .. } => None,
+        }
+    }
 }
 
-/// What a `cid:` request found, for the hostile suite's checks.
+/// Fetches part `part` (a mail-parser index) of a message the store keeps as its text parts:
+/// in the app, `Command::FetchPart` (phase B). `None` when it can't be had.
+pub type PartLoader =
+    Rc<dyn Fn(MessageId, u32) -> Pin<Box<dyn Future<Output = Option<InlinePart>>>>>;
+
+/// What became of a `cid:` request, for the hostile suite and the self-tests.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CidOutcome {
+    /// Not answered yet: a part being fetched.
+    Pending,
+    Served,
+    /// No such part in the requesting view's message, or it couldn't be fetched.
+    NotFound,
+    /// The view moved on (released, blanked or loaded again) before the answer was ready, so
+    /// the request ended unanswered.
+    Dropped,
+}
+
+/// A `cid:` request, for checks.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CidRequest {
     pub page: u64,
+    /// The requesting view's message has a part by that Content-ID.
     pub found: bool,
+    pub outcome: CidOutcome,
+}
+
+/// The parts each view may load, with the load they belong to: a new set of parts (another
+/// message, or the same one loaded again) starts a new epoch, and an answer is given only in
+/// the epoch of its request.
+#[derive(Default)]
+struct Pages {
+    parts: HashMap<u64, (u64, Rc<InlineParts>)>,
+    epochs: u64,
+}
+
+/// What [`Pages::lookup`] finds: the epoch, the part's source and the message.
+type Found = (u64, Option<Source>, Option<MessageId>);
+
+impl Pages {
+    fn set(&mut self, page: u64, parts: Rc<InlineParts>) -> u64 {
+        self.epochs += 1;
+        self.parts.insert(page, (self.epochs, parts));
+        self.epochs
+    }
+
+    fn clear(&mut self, page: u64) {
+        self.parts.remove(&page);
+    }
+
+    fn lookup(&self, page: u64, content_id: &str) -> Option<Found> {
+        let (epoch, parts) = self.parts.get(&page)?;
+        Some((*epoch, parts.find(content_id).cloned(), parts.message))
+    }
+
+    fn current(&self, page: u64, epoch: u64) -> bool {
+        self.parts.get(&page).is_some_and(|(now, _)| *now == epoch)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -109,7 +211,8 @@ pub struct Engine {
     filter_state: Rc<RefCell<Filter>>,
     /// Closed once the filter compiled or failed; waiters see the channel close.
     filter_done: async_channel::Receiver<()>,
-    parts: Rc<RefCell<HashMap<u64, Rc<InlineParts>>>>,
+    pages: Rc<RefCell<Pages>>,
+    loader: Rc<RefCell<Option<PartLoader>>>,
     cid_log: Rc<RefCell<Vec<CidRequest>>>,
     downloads: Rc<RefCell<u32>>,
     /// The first view: every later view is built with it as `related-view`, so all of them
@@ -147,16 +250,19 @@ impl Engine {
                 tracing::debug!("reader: a download was refused");
             }
         ));
-        let parts: Rc<RefCell<HashMap<u64, Rc<InlineParts>>>> = Rc::default();
+        let pages: Rc<RefCell<Pages>> = Rc::default();
+        let loader: Rc<RefCell<Option<PartLoader>>> = Rc::default();
         let cid_log: Rc<RefCell<Vec<CidRequest>>> = Rc::default();
         context.register_uri_scheme(
             "cid",
             glib::clone!(
                 #[strong]
-                parts,
+                pages,
+                #[strong]
+                loader,
                 #[strong]
                 cid_log,
-                move |request| serve_cid(request, &parts, &cid_log)
+                move |request| serve_cid(request, &pages, &loader, &cid_log)
             ),
         );
         let (done, filter_done) = async_channel::bounded(1);
@@ -166,7 +272,8 @@ impl Engine {
             filter: RefCell::new(None),
             filter_state: Rc::new(RefCell::new(Filter::Compiling)),
             filter_done,
-            parts,
+            pages,
+            loader,
             cid_log,
             downloads,
             root: RefCell::new(None),
@@ -216,13 +323,20 @@ impl Engine {
         &self.session
     }
 
-    /// The inline parts `page` (a view's `page_id`) may load; any other `cid:` it asks for fails.
+    /// The inline parts `page` (a view's `page_id`) may load from now on; any other `cid:` it
+    /// asks for fails, and requests of its earlier loads end unanswered.
     pub fn set_parts(&self, page: u64, parts: Rc<InlineParts>) {
-        self.parts.borrow_mut().insert(page, parts);
+        self.pages.borrow_mut().set(page, parts);
     }
 
     pub fn clear_parts(&self, page: u64) {
-        self.parts.borrow_mut().remove(&page);
+        self.pages.borrow_mut().clear(page);
+    }
+
+    /// Where parts the store doesn't hold come from (phase B: `Command::FetchPart`). Without
+    /// one, they don't load.
+    pub fn set_part_loader(&self, loader: Option<PartLoader>) {
+        self.loader.replace(loader);
     }
 
     /// Every `cid:` request so far (page and whether it was served), for the hostile suite.
@@ -309,35 +423,70 @@ async fn compile_filter(directory: &Path) -> Result<webkit6::UserContentFilter, 
 
 /// Serves `cid:<content-id>` from the parts of the message loaded in the requesting view, and
 /// nothing else: a part of another message, or of an earlier message in the same view, fails.
+/// The answer comes from the main loop, never inside WebKit's call: a decoded part at once,
+/// a part the store doesn't hold once the loader has it. If the view has moved on by then,
+/// the request ends unanswered.
 fn serve_cid(
     request: &webkit6::URISchemeRequest,
-    parts: &Rc<RefCell<HashMap<u64, Rc<InlineParts>>>>,
+    pages: &Rc<RefCell<Pages>>,
+    loader: &Rc<RefCell<Option<PartLoader>>>,
     log: &Rc<RefCell<Vec<CidRequest>>>,
 ) {
     let uri = request.uri().map(String::from).unwrap_or_default();
     let content_id = percent_decode(uri.get(4..).unwrap_or_default());
     let page = request.web_view().map_or(0, |view| view.page_id());
-    let part = parts
-        .borrow()
-        .get(&page)
-        .and_then(|parts| parts.find(&content_id).cloned());
-    log.borrow_mut().push(CidRequest {
-        page,
-        found: part.is_some(),
-    });
+    let found = pages.borrow().lookup(page, &content_id);
+    let (epoch, source, message) = found.unwrap_or((0, None, None));
+    let entry = {
+        let mut log = log.borrow_mut();
+        log.push(CidRequest {
+            page,
+            found: source.is_some(),
+            outcome: CidOutcome::Pending,
+        });
+        log.len() - 1
+    };
+    let loader = loader.borrow().clone();
+    let fetch = match (&source, message, loader) {
+        (Some(Source::Fetch { part }), Some(message), Some(loader)) => Some(loader(message, *part)),
+        _ => None,
+    };
     let request = request.clone();
-    glib::idle_add_local_once(move || match part {
-        Some(part) => {
+    let pages = pages.clone();
+    let log = log.clone();
+    glib::spawn_future_local(async move {
+        let part = match (source, fetch) {
+            (Some(Source::Ready(part)), _) => Some(part),
+            (_, Some(fetch)) => fetch.await,
+            _ => None,
+        };
+        let outcome = if !pages.borrow().current(page, epoch) {
+            request.finish_error(&mut glib::Error::new(
+                gio::IOErrorEnum::Cancelled,
+                "the view shows another load",
+            ));
+            tracing::debug!(
+                page,
+                "reader: a cid: answer for a view that moved on was dropped"
+            );
+            CidOutcome::Dropped
+        } else if let Some(part) = part {
             let length = part.data.len() as i64;
             let stream = gio::MemoryInputStream::from_bytes(&part.data);
             let response = webkit6::URISchemeResponse::new(&stream, length);
             response.set_content_type(&part.mime_type);
             request.finish_with_response(&response);
+            CidOutcome::Served
+        } else {
+            request.finish_error(&mut glib::Error::new(
+                gio::IOErrorEnum::NotFound,
+                "no such part in this message",
+            ));
+            CidOutcome::NotFound
+        };
+        if let Some(entry) = log.borrow_mut().get_mut(entry) {
+            entry.outcome = outcome;
         }
-        None => request.finish_error(&mut glib::Error::new(
-            gio::IOErrorEnum::NotFound,
-            "no such part in this message",
-        )),
     });
 }
 
@@ -384,11 +533,53 @@ mod tests {
         };
         parts.insert("Logo@Example.test".into(), part("a"));
         parts.insert("logo@example.test".into(), part("b"));
-        assert_eq!(parts.find("logo@example.test").unwrap().data.as_ref(), b"b");
-        assert_eq!(parts.find("Logo@Example.test").unwrap().data.as_ref(), b"a");
+        assert_eq!(
+            parts.ready("logo@example.test").unwrap().data.as_ref(),
+            b"b"
+        );
+        assert_eq!(
+            parts.ready("Logo@Example.test").unwrap().data.as_ref(),
+            b"a"
+        );
         assert!(parts.find("LOGO@EXAMPLE.TEST").is_some());
         assert!(parts.find("other@example.test").is_none());
         assert_eq!(parts.len(), 2);
+    }
+
+    #[test]
+    fn answers_belong_to_the_load_that_asked() {
+        let mut first = InlineParts::new(MessageId(1));
+        first.insert(
+            "image001.png@01D9".into(),
+            InlinePart {
+                mime_type: "image/png".into(),
+                data: glib::Bytes::from_static(b"png"),
+            },
+        );
+        let mut second = InlineParts::new(MessageId(2));
+        second.insert_missing("image001.png@01D9".into(), 3);
+        assert_eq!((second.len(), second.missing()), (1, 1));
+        let mut pages = Pages::default();
+        let epoch = pages.set(7, Rc::new(first));
+        let (asked, source, message) = pages.lookup(7, "image001.png@01D9").unwrap();
+        assert_eq!((asked, message), (epoch, Some(MessageId(1))));
+        assert!(matches!(source, Some(Source::Ready(_))));
+        assert!(pages.current(7, asked));
+        let again = pages.set(7, Rc::new(second));
+        assert!(
+            !pages.current(7, asked),
+            "the view shows another message now"
+        );
+        let (_, source, message) = pages.lookup(7, "IMAGE001.PNG@01d9").unwrap();
+        assert!(matches!(source, Some(Source::Fetch { part: 3 })));
+        assert_eq!(message, Some(MessageId(2)));
+        assert!(
+            pages.lookup(8, "image001.png@01D9").is_none(),
+            "another view"
+        );
+        pages.clear(7);
+        assert!(!pages.current(7, again), "released");
+        assert!(pages.lookup(7, "image001.png@01D9").is_none());
     }
 
     #[test]
