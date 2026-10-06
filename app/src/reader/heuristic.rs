@@ -11,6 +11,42 @@ pub struct Scan {
     pub own_colours: bool,
     /// An image, a background or a poster comes from an `http:` or `https:` URL.
     pub remote_images: bool,
+    /// The first thing that made it [`Scan::own_colours`], for the corpus report.
+    pub evidence: Option<Evidence>,
+}
+
+/// What gave an HTML body colours of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Evidence {
+    /// A `style` attribute sets a text or background colour.
+    StyleAttribute,
+    /// A `<style>` block does.
+    StyleBlock,
+    BgcolorAttribute,
+    BackgroundAttribute,
+    FontColor,
+    /// `text`, `link`, `vlink` or `alink` on `<body>`.
+    BodyColours,
+}
+
+impl Evidence {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Evidence::StyleAttribute => "style-attribute",
+            Evidence::StyleBlock => "style-block",
+            Evidence::BgcolorAttribute => "bgcolor",
+            Evidence::BackgroundAttribute => "background-attribute",
+            Evidence::FontColor => "font-color",
+            Evidence::BodyColours => "body-colours",
+        }
+    }
+}
+
+impl Scan {
+    fn found(&mut self, evidence: Evidence) {
+        self.own_colours = true;
+        self.evidence.get_or_insert(evidence);
+    }
 }
 
 pub fn scan(html: &str) -> Scan {
@@ -34,15 +70,19 @@ pub fn scan(html: &str) -> Scan {
         }
         for (name, value) in &attributes {
             match name.as_str() {
-                "bgcolor" => scan.own_colours = true,
+                "bgcolor" => scan.found(Evidence::BgcolorAttribute),
                 "background" if !value.trim().is_empty() => {
-                    scan.own_colours = true;
+                    scan.found(Evidence::BackgroundAttribute);
                     scan.remote_images |= is_remote(value);
                 }
-                "color" if tag == "font" => scan.own_colours = true,
-                "text" | "link" | "vlink" | "alink" if tag == "body" => scan.own_colours = true,
+                "color" if tag == "font" => scan.found(Evidence::FontColor),
+                "text" | "link" | "vlink" | "alink" if tag == "body" => {
+                    scan.found(Evidence::BodyColours);
+                }
                 "style" => {
-                    scan.own_colours |= css_sets_colours(value);
+                    if css_sets_colours(value) {
+                        scan.found(Evidence::StyleAttribute);
+                    }
                     scan.remote_images |= css_has_remote_url(value);
                 }
                 "src" | "poster" | "lowsrc" => scan.remote_images |= is_remote(value),
@@ -58,7 +98,9 @@ pub fn scan(html: &str) -> Scan {
                 .find("</style")
                 .map_or(lower.len(), |end| at + end);
             let css = &lower[at..close];
-            scan.own_colours |= css_sets_colours(css);
+            if css_sets_colours(css) {
+                scan.found(Evidence::StyleBlock);
+            }
             scan.remote_images |= css_has_remote_url(css);
             at = close;
         }
@@ -210,7 +252,8 @@ mod tests {
             scan(html),
             Scan {
                 own_colours: true,
-                remote_images: true
+                remote_images: true,
+                evidence: Some(Evidence::FontColor),
             }
         );
     }

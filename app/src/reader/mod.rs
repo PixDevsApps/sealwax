@@ -19,6 +19,7 @@ mod links;
 mod page;
 mod plain;
 mod prepare;
+mod protection;
 mod remote;
 pub mod samples;
 mod source;
@@ -26,10 +27,17 @@ mod toolbar;
 mod view;
 mod widgets;
 
-pub use engine::{CONTENT_SECURITY_POLICY, CidRequest, MAX_LIVE_VIEWS, NETWORK_FEATURES};
+pub use engine::{
+    CONTENT_SECURITY_POLICY, CidOutcome, CidRequest, InlinePart, MAX_LIVE_VIEWS, NETWORK_FEATURES,
+    PartLoader,
+};
+pub use heuristic::{Evidence, Scan, scan as scan_html};
+pub use links::LinkState;
+pub use plain::links_in;
+pub use protection::{ENCRYPTED, SIGNED, Unreadable};
 pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
-pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
+pub use view::{Hover, Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
 
 use crate::actions::{self, ScopedShortcuts};
 use crate::engine_link::{EngineLink, Subscription};
@@ -97,6 +105,8 @@ pub enum ShownBody {
     DownloadFailed(BodyError),
     /// The store no longer has the message, or couldn't read it.
     Missing,
+    /// Encrypted, or sealed in an S/MIME signature: a notice instead (ML-064).
+    Unreadable(Unreadable),
 }
 
 /// The reader's state, for checks.
@@ -116,8 +126,6 @@ pub struct ReaderState {
 type ShownListener = Rc<dyn Fn(&Shown)>;
 type EventListener = Rc<dyn Fn(MessageId, &ViewEvent)>;
 
-type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
-type LinkCheck = Rc<dyn Fn(&Link) -> bool>;
 /// Asks for the bodies of messages; `false` when nothing can download them.
 type Fetcher = Rc<dyn Fn(&[MessageId]) -> bool>;
 
@@ -172,8 +180,11 @@ struct Inner {
     /// Messages whose view's web process ended; a second time, they are shown as text.
     crashed: RefCell<HashMap<MessageId, u32>>,
     listener: Cell<Option<ListenerId>>,
-    opener: RefCell<Opener>,
-    link_check: RefCell<Option<LinkCheck>>,
+    /// The status strip, the warning and the vetted opener (ML-062); its overlay is the root.
+    links: Rc<links::Links>,
+    /// Bodies collapse their quoted history (a stand-in for the conversation's choice per
+    /// body, ML-057).
+    collapse_quotes: Cell<bool>,
     on_shown: RefCell<Vec<ShownListener>>,
     on_event: RefCell<Vec<EventListener>>,
     hidden_timer: RefCell<Option<glib::SourceId>>,
@@ -208,6 +219,7 @@ impl Reader {
         let toolbar = Toolbar::new(keymap);
         let keys = actions::install_scoped(&stage, Scope::Reader, keymap);
         keys.attach(toolbar.widget(), gtk::PropagationPhase::Bubble);
+        let links = links::Links::new(&stage, Rc::new(launch));
         let inner = Rc::new(Inner {
             store,
             theme,
@@ -221,8 +233,8 @@ impl Reader {
             remote: remote::Policy::default(),
             crashed: RefCell::new(HashMap::new()),
             listener: Cell::new(None),
-            opener: RefCell::new(Rc::new(launch)),
-            link_check: RefCell::new(None),
+            links,
+            collapse_quotes: Cell::new(false),
             on_shown: RefCell::new(Vec::new()),
             on_event: RefCell::new(Vec::new()),
             hidden_timer: RefCell::new(None),
@@ -245,9 +257,9 @@ impl Reader {
         Reader { inner }
     }
 
-    /// For `Window::set_reader`.
+    /// For `Window::set_reader`: the page with the link status strip over it.
     pub fn widget(&self) -> gtk::Widget {
-        self.inner.stage.clone().upcast()
+        self.inner.links.root().clone().upcast()
     }
 
     /// For `Window::set_reader_toolbar`.
@@ -400,13 +412,35 @@ impl Reader {
 
     /// Replaces how vetted links open (`gtk::UriLauncher` by default), for tests.
     pub fn set_link_opener(&self, opener: impl Fn(&gtk::Widget, &str) + 'static) {
-        self.inner.opener.replace(Rc::new(opener));
+        self.inner.links.set_opener(Rc::new(opener));
     }
 
-    /// The link-mismatch check's place (M5): called before a vetted link opens; `false` keeps
-    /// it closed.
+    /// Replaces the link-mismatch check (ML-062): called before a vetted link opens; `false`
+    /// keeps it closed. By default a link whose text names another domain than its target
+    /// asks first, in a dialog with Cancel as the default.
     pub fn set_link_check(&self, check: impl Fn(&Link) -> bool + 'static) {
-        self.inner.link_check.replace(Some(Rc::new(check)));
+        self.inner.links.set_check(Some(Rc::new(check)));
+    }
+
+    /// The link status strip, the warning and the dialogs shown, for checks.
+    pub fn link_state(&self) -> LinkState {
+        self.inner.links.state()
+    }
+
+    /// The link warning dialog on screen, for checks that answer it.
+    pub fn link_dialog(&self) -> Option<libadwaita::AlertDialog> {
+        self.inner.links.dialog()
+    }
+
+    /// Whether bodies shown from now on collapse their quoted history behind "…". The
+    /// conversation decides it per body (ML-057); off by default.
+    pub fn set_collapse_quotes(&self, collapse: bool) {
+        self.inner.collapse_quotes.set(collapse);
+    }
+
+    /// Where `cid:` parts the store doesn't hold come from (ML-060; phase B: `FetchPart`).
+    pub fn set_part_loader(&self, loader: Option<PartLoader>) {
+        self.inner.engine.set_part_loader(loader);
     }
 
     /// The WebView of the shown HTML body, for checks.
@@ -624,6 +658,7 @@ impl Inner {
                 Prepared {
                     body: Body::Empty,
                     attachments: Vec::new(),
+                    signed: None,
                 }
             });
         if self.stale(generation) {
@@ -664,6 +699,11 @@ impl Inner {
             self.present(page, started, fetched, prepared_at);
             return;
         }
+        if let Some(signature) = prepared.signed {
+            page.widgets
+                .body
+                .append(&protection::signed_note(signature));
+        }
         match prepared.body {
             Body::Html {
                 html,
@@ -697,10 +737,19 @@ impl Inner {
                 }
             }
             Body::Plain(text) => {
-                let text = plain::plain_text(&text);
+                let text = plain::message_text(
+                    &text,
+                    &self.links,
+                    &self.theme,
+                    self.collapse_quotes.get(),
+                );
                 page.widgets.body.append(&text);
                 page.widgets.focus = Some(text.upcast());
                 page.body = ShownBody::Plain;
+            }
+            Body::Unreadable(unreadable) => {
+                page.widgets.body.append(&protection::notice(unreadable));
+                page.body = ShownBody::Unreadable(unreadable);
             }
             Body::Empty => {
                 page.widgets
@@ -830,6 +879,7 @@ impl Inner {
             }
         });
         let remote_allowed = self.remote.allows(page.id, &page.sender);
+        view.set_collapse_quotes(self.collapse_quotes.get());
         self.engine.set_parts(view.page_id(), parts.clone());
         self.stage.stage(&page.widgets.root);
         self.staged.replace(Some((view.clone(), style)));
@@ -1007,6 +1057,7 @@ impl Inner {
     }
 
     fn release_page(&self, mut page: Page) {
+        self.links.hover(None, None);
         if let Some(html) = page.html.take() {
             self.engine.release(html.view);
         }
@@ -1014,7 +1065,11 @@ impl Inner {
 
     fn view_event(self: &Rc<Self>, id: MessageId, event: &ViewEvent) {
         match event {
-            ViewEvent::Link(link) => self.open_link(link),
+            ViewEvent::Link(link) => self.links.open(link),
+            ViewEvent::Hover(hover) => {
+                let view = self.web_view_of(id);
+                self.links.hover(view.as_ref(), hover.as_ref());
+            }
             ViewEvent::Refused(refused) => {
                 tracing::debug!(?refused, "reader: refused what a message asked for");
             }
@@ -1045,19 +1100,21 @@ impl Inner {
         });
     }
 
-    fn open_link(&self, link: &Link) {
-        let Some(uri) = openable(&link.uri) else {
-            tracing::debug!("reader: a link that isn't http(s) or mailto stays closed");
-            return;
-        };
-        let check = self.link_check.borrow().clone();
-        if let Some(check) = check
-            && !check(link)
-        {
-            return;
-        }
-        let opener = self.opener.borrow().clone();
-        opener(self.stage.upcast_ref(), &uri);
+    /// The WebView showing `id`, on screen or being laid out.
+    fn web_view_of(&self, id: MessageId) -> Option<gtk::Widget> {
+        let shown = self
+            .shown
+            .borrow()
+            .as_ref()
+            .filter(|page| page.id == id)
+            .and_then(|page| page.html.as_ref())
+            .map(|html| html.view.web_view().clone().upcast());
+        shown.or_else(|| {
+            self.staged
+                .borrow()
+                .as_ref()
+                .map(|(view, _)| view.web_view().clone().upcast())
+        })
     }
 
     fn allow_remote(self: &Rc<Self>, id: MessageId) {

@@ -176,6 +176,7 @@ fn kind(body: &ShownBody) -> &'static str {
         ShownBody::Downloading => "downloading",
         ShownBody::DownloadFailed(_) => "download-failed",
         ShownBody::Missing => "missing",
+        ShownBody::Unreadable(_) => "unreadable",
     }
 }
 

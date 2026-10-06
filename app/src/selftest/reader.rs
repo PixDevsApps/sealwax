@@ -215,6 +215,7 @@ pub(super) fn body_name(body: Option<&ShownBody>) -> &'static str {
         Some(ShownBody::Downloading) => "downloading",
         Some(ShownBody::DownloadFailed(_)) => "download-failed",
         Some(ShownBody::Missing) => "missing",
+        Some(ShownBody::Unreadable(_)) => "unreadable",
     }
 }
 
