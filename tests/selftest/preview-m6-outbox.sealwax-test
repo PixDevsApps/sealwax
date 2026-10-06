@@ -1,0 +1,70 @@
+# Previews for the M6 gate, the outbox in the main window (ML-076): the "Message queued" toast
+# with Undo, the toast of a send that failed for good with Open, and the banner of a send that
+# may have gone out with its question, in a dark and a light stock theme (matte-black with square
+# corners, catppuccin-latte rounded). Sends are played on the app's store and the fake engine.
+# Every name, address and message is fictional.
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/preview-m6-outbox.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+conversation-add trip
+triage-account Work work
+outbox-draft one Work
+outbox-draft two Work
+outbox-draft three Work
+outbox-draft four Work
+outbox-draft five Work
+focus list
+conversation-show trip-6
+
+# Queued, with Undo.
+outbox-queue one
+assert-toast "Message queued"
+screenshot $DIR/../../tools/progress/public/m6-outbox-queued-matte-black-square-2026-10-06.png
+
+# Failed for good, with Open.
+outbox-queue two
+sleep 7500
+outbox-engine start two
+outbox-engine failed two recipients-refused
+wait-until assert-toast "Your message wasn't sent: the server refused 2 recipients. It's back in your drafts."
+screenshot $DIR/../../tools/progress/public/m6-outbox-failed-matte-black-square-2026-10-06.png
+
+# May have gone out: the banner, and its question.
+outbox-queue three
+outbox-engine start three
+outbox-engine uncertain three
+wait-until assert-setup banner-queue uncertain
+sleep 11000
+screenshot $DIR/../../tools/progress/public/m6-outbox-uncertain-matte-black-square-2026-10-06.png
+click banner-primary
+wait-until assert-shown uncertain-send true
+screenshot $DIR/../../tools/progress/public/m6-outbox-uncertain-question-matte-black-square-2026-10-06.png
+setup-respond uncertain-send later
+
+# The same in a light theme with rounded corners, the dark part's toasts gone.
+setup-dismiss-toasts
+theme catppuccin-latte
+corners 8
+outbox-queue four
+assert-toast "Message queued"
+screenshot $DIR/../../tools/progress/public/m6-outbox-queued-catppuccin-latte-rounded-2026-10-06.png
+outbox-queue five
+sleep 7500
+outbox-engine start five
+outbox-engine failed five refused
+wait-until assert-toast "Your message wasn't sent: the server refused it. It's back in your drafts."
+screenshot $DIR/../../tools/progress/public/m6-outbox-failed-catppuccin-latte-rounded-2026-10-06.png
+sleep 11000
+screenshot $DIR/../../tools/progress/public/m6-outbox-uncertain-catppuccin-latte-rounded-2026-10-06.png
+click banner-primary
+wait-until assert-shown uncertain-send true
+screenshot $DIR/../../tools/progress/public/m6-outbox-uncertain-question-catppuccin-latte-rounded-2026-10-06.png
+setup-respond uncertain-send later
+assert-conversation criticals 0

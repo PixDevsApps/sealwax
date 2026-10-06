@@ -20,6 +20,10 @@ pub(crate) enum ComposeRead {
         message: MessageId,
         reply: Sender<Option<DraftId>>,
     },
+    ReplyDraft {
+        message: MessageId,
+        reply: Sender<Option<StoredDraft>>,
+    },
     Outbox {
         account: Option<AccountId>,
         reply: Sender<Vec<OutboxEntry>>,
@@ -38,6 +42,7 @@ impl ComposeRead {
             ComposeRead::Draft { reply, .. } => reply.is_closed(),
             ComposeRead::OpenDrafts { reply } => reply.is_closed(),
             ComposeRead::DraftForMessage { reply, .. } => reply.is_closed(),
+            ComposeRead::ReplyDraft { reply, .. } => reply.is_closed(),
             ComposeRead::Outbox { reply, .. } => reply.is_closed(),
             ComposeRead::Recipients { reply, .. } => reply.is_closed(),
         }
@@ -55,6 +60,9 @@ impl Reader {
             }
             ComposeRead::DraftForMessage { message, reply } => {
                 let _ = reply.try_send(self.draft_for_message(message));
+            }
+            ComposeRead::ReplyDraft { message, reply } => {
+                let _ = reply.try_send(self.reply_draft(message));
             }
             ComposeRead::Outbox { account, reply } => {
                 let _ = reply.try_send(self.outbox(account));
@@ -92,6 +100,24 @@ impl Reader {
             )?
             .query_row([message.0], |row| row.get(0).map(DraftId))
             .optional()?)
+    }
+
+    /// The newest closed, editable draft that replies to `message` (the quick reply's).
+    fn reply_draft(&self, message: MessageId) -> Result<Option<StoredDraft>, StoreError> {
+        let id: Option<i64> = self
+            .conn
+            .prepare_cached(
+                "SELECT d.id FROM drafts d INDEXED BY drafts_source \
+                 WHERE d.source_message = ?1 AND d.source_kind = 0 AND d.open = 0 \
+                   AND NOT EXISTS (SELECT 1 FROM outbox WHERE draft = d.id) \
+                 ORDER BY d.saved DESC, d.id DESC LIMIT 1",
+            )?
+            .query_row([message.0], |row| row.get(0))
+            .optional()?;
+        match id {
+            Some(id) => Ok(compose::read(&self.conn, DraftId(id))?),
+            None => Ok(None),
+        }
     }
 
     fn outbox(&self, account: Option<AccountId>) -> Result<Vec<OutboxEntry>, StoreError> {

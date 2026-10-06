@@ -111,6 +111,7 @@ fn arity(command: &str) -> Option<(usize, usize)> {
         .chain(super::perf::COMMANDS)
         .chain(super::reader::COMMANDS)
         .chain(super::reply::COMMANDS)
+        .chain(super::outbox::COMMANDS)
         .chain(super::setup::COMMANDS)
         .chain(super::triage::COMMANDS)
         .find(|(name, _, _)| *name == command)

@@ -49,7 +49,9 @@ pub use heuristic::{Evidence, Scan, scan as scan_html};
 pub use links::LinkState;
 pub use plain::{links_in, shown_text};
 pub use protection::{ENCRYPTED, SIGNED, Unreadable};
-pub use reply::{PLACEHOLDER, QuickReport, QuickState, expand_hint, reply_label, reply_target};
+pub use reply::{
+    Local, PLACEHOLDER, QuickReport, QuickState, expand_hint, reply_label, reply_target,
+};
 pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
 pub use view::{Hover, Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};

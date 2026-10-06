@@ -144,9 +144,16 @@ impl fmt::Debug for QuickReport {
 
 type ComposeListener = Rc<dyn Fn(ComposeRequest)>;
 type StateListener = Rc<dyn Fn(QuickState)>;
+/// A future that resolves on the GTK thread.
+pub type Local<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T>>>;
 /// Sends a quick reply's text as a reply to the message; `true` when it was taken (queued), so
-/// the box empties.
-pub type QuickSend = Rc<dyn Fn(MessageId, &str) -> bool>;
+/// the box empties, `false` to keep the text (it was refused, and the app said why).
+pub type QuickSend = Rc<dyn Fn(MessageId, String) -> Local<bool>>;
+/// Hears every change of a quick reply's text, with the message it answers (to keep it as a
+/// draft).
+type TextListener = Rc<dyn Fn(MessageId, &str)>;
+/// Finds what a quick reply held for a message in an earlier session (its draft).
+pub type QuickFinder = Rc<dyn Fn(MessageId) -> Local<Option<String>>>;
 
 /// The reader's side of replying: the quick replies' texts, and where requests go.
 #[derive(Default)]
@@ -157,6 +164,8 @@ pub struct Quick {
     send: RefCell<Option<QuickSend>>,
     on_state: RefCell<Vec<StateListener>>,
     state: Cell<QuickState>,
+    on_text: RefCell<Vec<TextListener>>,
+    finder: RefCell<Option<QuickFinder>>,
 }
 
 /// One conversation's quick reply.
@@ -169,6 +178,8 @@ pub struct QuickReply {
     send: gtk::Button,
     send_keys: gtk::Label,
     target: Cell<MessageId>,
+    /// Its text is on its way to the send seam: Send waits, the text stays put.
+    sending: Cell<bool>,
 }
 
 impl QuickReply {
@@ -263,6 +274,7 @@ impl QuickReply {
             send,
             send_keys,
             target: Cell::new(target),
+            sending: Cell::new(false),
         });
         quick.update_keys(keymap);
         quick
@@ -285,6 +297,11 @@ impl QuickReply {
 
     fn set_text(&self, text: &str) {
         self.view.buffer().set_text(text);
+    }
+
+    fn set_sending(&self, sending: bool) {
+        self.sending.set(sending);
+        self.view.set_editable(!sending);
     }
 
     fn retarget(&self, target: MessageId, label: &str, text: &str) {
@@ -350,10 +367,32 @@ impl Reader {
             .push(Rc::new(listener));
     }
 
-    /// What the quick reply's Send does with its text (phase B: planned as a reply, saved and
-    /// queued with Undo send). Without one, Send keeps the text.
-    pub fn set_quick_send(&self, send: impl Fn(MessageId, &str) -> bool + 'static) {
+    /// What the quick reply's Send does with its text (M6 phase B: prepared as a reply, saved
+    /// and queued with Undo send). Without one, Send keeps the text.
+    pub fn set_quick_send(&self, send: impl Fn(MessageId, String) -> Local<bool> + 'static) {
         self.inner.quick.send.replace(Some(Rc::new(send)));
+    }
+
+    /// Runs `listener` with every change of a quick reply's text and the message it answers
+    /// (the app keeps it as a draft at most 5 s behind the typing).
+    pub fn connect_quick_text(&self, listener: impl Fn(MessageId, &str) + 'static) {
+        self.inner
+            .quick
+            .on_text
+            .borrow_mut()
+            .push(Rc::new(listener));
+    }
+
+    /// Where a quick reply that holds nothing this session looks for what it held before (its
+    /// draft, after a restart).
+    pub fn set_quick_finder(&self, finder: impl Fn(MessageId) -> Local<Option<String>> + 'static) {
+        self.inner.quick.finder.replace(Some(Rc::new(finder)));
+    }
+
+    /// Puts `text` back in the quick reply that answers `message` (Undo send): in the box when
+    /// it shows and is empty, and for when the conversation shows again.
+    pub fn restore_quick_reply(&self, message: MessageId, text: String) {
+        self.inner.restore_quick_reply(message, text);
     }
 
     /// Runs `listener` when the quick reply on screen comes or goes, or gets or loses its text.
@@ -532,6 +571,47 @@ impl Inner {
         if self.is_shown(key) {
             self.quick_changed();
         }
+        if text.is_empty() {
+            self.find_quick_text(&quick);
+        }
+    }
+
+    /// Asks the finder for what the quick reply held before; it fills the box if it is still
+    /// empty and answers the same message.
+    fn find_quick_text(self: &Rc<Self>, quick: &Rc<QuickReply>) {
+        let Some(finder) = self.quick.finder.borrow().clone() else {
+            return;
+        };
+        let target = quick.target();
+        let found = finder(target);
+        let weak = Rc::downgrade(quick);
+        let inner = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let (Some(text), Some(quick), Some(inner)) =
+                (found.await, weak.upgrade(), inner.upgrade())
+            else {
+                return;
+            };
+            if quick.target() == target && quick.text().is_empty() && !text.is_empty() {
+                inner.quick.texts.borrow_mut().insert(target, text.clone());
+                quick.set_text(&text);
+            }
+        });
+    }
+
+    fn restore_quick_reply(&self, message: MessageId, text: String) {
+        let shown = self.shown_quick().filter(|quick| quick.target() == message);
+        match shown {
+            Some(quick) if quick.text().is_empty() => quick.set_text(&text),
+            Some(_) => {}
+            None => {
+                self.quick.texts.borrow_mut().insert(message, text.clone());
+                let listeners = self.quick.on_text.borrow().clone();
+                for listener in listeners {
+                    listener(message, &text);
+                }
+            }
+        }
     }
 
     fn wire_quick_reply(self: &Rc<Self>, key: u64, quick: &Rc<QuickReply>) {
@@ -605,8 +685,12 @@ impl Inner {
             if text.is_empty() {
                 texts.remove(&quick.target());
             } else {
-                texts.insert(quick.target(), text);
+                texts.insert(quick.target(), text.clone());
             }
+        }
+        let listeners = self.quick.on_text.borrow().clone();
+        for listener in listeners {
+            listener(quick.target(), &text);
         }
         if self.is_shown(key) {
             self.quick_changed();
@@ -627,7 +711,7 @@ impl Inner {
             .shown_quick()
             .map_or(QuickState::default(), |quick| QuickState {
                 shown: true,
-                has_text: quick.has_text(),
+                has_text: quick.has_text() && !quick.sending.get(),
             });
         if self.quick.state.replace(state) == state {
             return;
@@ -697,32 +781,71 @@ impl Inner {
         }
     }
 
+    /// What the quick reply holds goes to a composer window; with nothing typed, a plain reply.
     fn expand_quick_reply(&self) {
         let Some(quick) = self.shown_quick() else {
             return;
         };
-        let request = ComposeRequest::QuickReply {
-            message: quick.target(),
-            text: quick.text(),
+        if quick.sending.get() {
+            return;
+        }
+        let (message, text) = (quick.target(), quick.text());
+        let request = if text.trim().is_empty() {
+            ComposeRequest::Reply {
+                message,
+                kind: ReplyKind::Reply,
+            }
+        } else {
+            ComposeRequest::QuickReply { message, text }
         };
         quick.set_text("");
         self.compose(request);
     }
 
-    fn send_quick_reply(&self) {
+    fn send_quick_reply(self: &Rc<Self>) {
         let Some(quick) = self.shown_quick() else {
             return;
         };
-        if !quick.has_text() {
+        if !quick.has_text() || quick.sending.get() {
             return;
         }
         let Some(send) = self.quick.send.borrow().clone() else {
             tracing::warn!("reader: the quick reply has nowhere to send to; its text stays");
             return;
         };
-        if send(quick.target(), &quick.text()) {
-            quick.set_text("");
-        }
+        let (target, text) = (quick.target(), quick.text());
+        quick.set_sending(true);
+        self.quick_changed();
+        let taken = send(target, text.clone());
+        let weak = Rc::downgrade(&quick);
+        let inner = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let taken = taken.await;
+            let Some(inner) = inner.upgrade() else {
+                return;
+            };
+            match weak.upgrade() {
+                Some(quick) => {
+                    quick.set_sending(false);
+                    if taken && quick.target() == target && quick.text() == text {
+                        quick.set_text("");
+                    }
+                }
+                None if taken => {
+                    let mut texts = inner.quick.texts.borrow_mut();
+                    if texts.get(&target) == Some(&text) {
+                        texts.remove(&target);
+                    }
+                    drop(texts);
+                    let listeners = inner.quick.on_text.borrow().clone();
+                    for listener in listeners {
+                        listener(target, "");
+                    }
+                }
+                None => {}
+            }
+            inner.quick_changed();
+        });
     }
 
     /// Escape in the quick reply: the focus goes to the message it answers, else the selected

@@ -1089,3 +1089,46 @@ fn v9_migrates_a_v8_store_with_mail_and_fills_the_contacts() {
     let store = Store::open(&path, StoreOptions::default()).unwrap();
     assert_eq!(held_ids(&store, inbox).len(), 9);
 }
+
+#[test]
+fn a_quick_reply_finds_its_closed_reply_draft_again() {
+    let cx = server();
+    let store = &cx.store;
+    let source = arrive(store, cx.inbox, vec![message(cx.inbox, 7, Flags::SEEN)])[0];
+    let reply = |kind| Draft {
+        source: Some(DraftSource {
+            message: source,
+            kind,
+        }),
+        ..draft(cx.account, 1)
+    };
+    let found = |store: &Store| {
+        store
+            .reply_draft(source)
+            .recv_blocking()
+            .unwrap()
+            .map(|stored| stored.id)
+    };
+    // Open in a composer window, a forward, or no source: not the quick reply's.
+    let open = save(store, None, reply(ReplyKind::Reply), true);
+    save(store, None, reply(ReplyKind::Forward), false);
+    save(store, None, draft(cx.account, 2), false);
+    assert_eq!(found(store), None);
+    // Closed replies: the newest; one in the outbox doesn't count.
+    let older = save(store, None, reply(ReplyKind::Reply), false);
+    assert_eq!(found(store), Some(older));
+    let newer = save(store, None, reply(ReplyKind::Reply), false);
+    assert_eq!(found(store), Some(newer));
+    store
+        .queue_send(newer, NOW + 7_000)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(found(store), Some(older));
+    // Closing the composer's draft makes it a candidate; the newest saved (then the highest id)
+    // still wins.
+    store.set_draft_open(open, false).recv_blocking().unwrap();
+    assert_eq!(found(store), Some(older));
+    store.undo_send(newer).recv_blocking().unwrap();
+    store.set_draft_open(newer, false).recv_blocking().unwrap();
+    assert_eq!(found(store), Some(newer));
+}

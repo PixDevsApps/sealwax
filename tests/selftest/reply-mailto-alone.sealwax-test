@@ -1,0 +1,18 @@
+# A mailto: link with no main window shown (M6 phase B, ML-078): a browser's link starts Sealwax
+# through the bus (the private test bus whose only service is Sealwax's own), and the started
+# Sealwax opens a composer window alone, without the main window. The address is fictional.
+# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/reply-mailto-alone.sealwax-test
+
+desktop tiling
+test-bus-start
+test-bus-spawn first "mailto:leah@example.test?subject=Invoice"
+wait-process first 0
+assert-bus-owner true
+wait-until assert-file-contains $TMP/testbus/daemon.err "compose requested kind=Mailto"
+wait-until assert-file-contains $TMP/testbus/daemon.err "composer: spell checking"
+sleep 500
+assert-file-lacks $TMP/testbus/daemon.err first-frame
+assert-file-lacks $TMP/testbus/daemon.err leah
+test-bus-signal TERM
+wait-until assert-bus-owner false
+test-bus-stop
