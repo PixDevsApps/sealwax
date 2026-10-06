@@ -1,7 +1,8 @@
 //! ADR-018's log-grep test for M2's, M3's and M4's code: the login check, the folder list, the
 //! first sync, account passes over the windowed folders of the rand account, older mail, and
-//! the op queue's writes (flags, a move retried, deleting for good, a folder marked read) as
-//! the ops account run on the testbed at trace level under the app's own subscriber, and the
+//! the op queue's writes (flags, a move retried, deleting for good, a folder marked read) and
+//! the op runner (triage queued in the store and run by the engine's actor) as the ops account
+//! run on the testbed at trace level under the app's own subscriber, and the
 //! captured log holds no password, AUTH line, address, user name, folder name, subject or
 //! Message-ID. A control run without the protocol-crate caps shows the grep would catch
 //! async-imap's trace of the AUTHENTICATE line. Its own test binary, because it installs the
@@ -13,18 +14,22 @@
 mod common;
 mod snapshot;
 mod testbed_client;
+mod testbed_engine;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use common::*;
 use sealwax_domain::account::Security;
-use sealwax_domain::model::Flags;
+use sealwax_domain::model::{Flags, FolderRole};
 use sealwax_domain::sync::Window;
-use sealwax_engine::api::Password;
+use sealwax_domain::triage::Triage;
+use sealwax_engine::api::{Command, Password};
 use sealwax_engine::imap::write::{self, Move, Moving, OpFolder};
 use sealwax_engine::imap::{self, FolderLocks, SyncOptions};
+use sealwax_engine::service::SyncConfig;
 use sealwax_engine::verify::verify;
 use sealwax_infrastructure::logging;
+use sealwax_infrastructure::store::QueueTriage;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -115,6 +120,7 @@ async fn flows() {
     }
     for server in SERVERS {
         writes(server).await;
+        runner(server).await;
     }
     tokio::time::sleep(Duration::from_millis(300)).await;
     let account = settings(
@@ -190,6 +196,85 @@ async fn writes(server: Server) {
     test.logout().await;
 }
 
+/// The op runner as `ops`: read, archive, delete to the Trash and for good, and a folder marked
+/// read, queued in the store and run by the engine's actor.
+async fn runner(server: Server) {
+    let folders = ["INBOX", "Arkiv", "Papirkurv"];
+    let mut test = testbed_client::Client::connect(server.tls, &ca(), "ops")
+        .await
+        .unwrap();
+    for folder in folders {
+        test.create(folder).await.unwrap();
+        test.empty(folder).await.unwrap();
+    }
+    let mut rng = snapshot::Rng(5);
+    for n in 0..4 {
+        let raw = testbed_client::message(&format!("runner.{n}@example.test"), &mut rng);
+        test.append("INBOX", "", &raw).await.unwrap();
+    }
+    let mut engine = testbed_engine::TestEngine::start(SyncConfig {
+        account_pass: Duration::from_secs(3),
+        ..SyncConfig::default()
+    });
+    let account = engine.add(1, "ops", server.tls).await;
+    engine.settled(account, Duration::from_secs(30)).await;
+    let store = engine.store.clone();
+    let inbox = store
+        .account_folders(account)
+        .recv()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|folder| folder.role == FolderRole::Inbox)
+        .unwrap()
+        .folder;
+    let ids: Vec<_> = store
+        .folder_messages(inbox)
+        .recv()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|message| message.id)
+        .collect();
+    for (action, messages) in [
+        (Triage::Read(true), vec![ids[0], ids[1]]),
+        (Triage::Archive, vec![ids[2]]),
+        (Triage::Delete, vec![ids[3]]),
+        (Triage::Delete, vec![ids[3]]),
+    ] {
+        let queued = store
+            .queue_triage(QueueTriage {
+                action,
+                messages,
+                not_before: 0,
+            })
+            .recv()
+            .await
+            .unwrap();
+        for account in queued.accounts {
+            engine.send(Command::OpsQueued { account });
+        }
+        let drained = testbed_engine::until(Duration::from_secs(30), || async {
+            store.pending_ops(account).recv().await.unwrap() == 0
+        })
+        .await;
+        assert!(drained.is_some(), "{}: {action:?} ran", server.name);
+    }
+    let read = store.mark_folder_read(inbox, 0).recv().await.unwrap();
+    for account in read.accounts {
+        engine.send(Command::OpsQueued { account });
+    }
+    testbed_engine::until(Duration::from_secs(30), || async {
+        store.pending_ops(account).recv().await.unwrap() == 0
+    })
+    .await;
+    drop(engine);
+    for folder in folders {
+        test.empty(folder).await.unwrap();
+    }
+    test.logout().await;
+}
+
 #[test]
 #[ignore = "needs the testbed: tools/testbed/up.sh && tools/testbed/seed.sh"]
 fn trace_logs_hold_no_credentials_addresses_or_names() {
@@ -209,6 +294,7 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "folder pass done",
         "older mail loaded",
         "imap write done",
+        "op group ran",
     ] {
         assert!(log.contains(event), "the capture holds {event}");
     }
@@ -222,6 +308,7 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "nobody",
         "example.test",
         "logs.",
+        "runner.",
         "$Junk",
         "\\Deleted",
         "UID MOVE",
