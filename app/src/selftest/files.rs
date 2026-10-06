@@ -9,15 +9,17 @@
 //!
 //! | Command | What it does |
 //! | --- | --- |
-//! | `files-add NAME…` | Stores the named samples whole in the first account's Inbox, the first one newest |
+//! | `files-add NAME…` | Stores the named samples whole in the first account's Inbox, the first one newest; `files-thread` stores that conversation's four messages (`files-thread-1` … `-4`) |
+//! | `files-show NAME` | Selects NAME's row in the list and waits until the reader shows its conversation |
 //! | `files-add-text NAME` | Stores a sample as a large message's text parts: its attachments empty, their sections recorded, `BodyState::Text` |
 //! | `files-hooks` | Opens attachments under `$TMP/files-open` and records them; Save answers `$TMP/files-saved/<name>`, Download all `$TMP/files-folder` |
 //! | `files-answer save\|folder PATH\|cancel` | The next answers of the Save or the folder chooser |
 //! | `files-click N open\|save\|cancel\|retry` | A real click on card N's button (scrolled into view first) |
-//! | `files-click download-all\|show-images\|always\|hide\|original-save\|original-save-rest\|original-retry\|original-close` | A real click on that button of the shown message or the Show Original dialog |
+//! | `files-click download-all\|show-images\|always\|hide [NAME]` | A real click on that button of the selected message's card, or of NAME's |
+//! | `files-click original-save\|original-save-rest\|original-retry\|original-close` | A real click on that button of the Show Original dialog |
 //! | `files-print PATH` | Print through the registry, into a PDF at PATH; waits until it is written |
-//! | `assert-files message NAME` | The reader shows the sample NAME |
-//! | `assert-files cards N` | The shown message has N attachment cards |
+//! | `assert-files message NAME` | The reader's selected message is the sample NAME |
+//! | `assert-files cards N` | The selected message has N attachment cards |
 //! | `assert-files card N name\|size\|danger\|open\|busy\|failure\|warning VALUE` | What card N shows (`failure`, `warning`: its text contains VALUE; `failure none`) |
 //! | `assert-files opened N` | N attachments were handed to the opener |
 //! | `assert-files opened-file NAME SAMPLE INDEX` | The last one: a 0600 file named NAME in a 0700 folder holding the sample's attachment INDEX |
@@ -25,8 +27,8 @@
 //! | `assert-files eml PATH SAMPLE` | PATH holds the sample's message byte for byte |
 //! | `assert-files folder N` | The Download all folder holds N files |
 //! | `assert-files missing PATH` | Nothing was written at PATH |
-//! | `assert-files banner\|note BOOL` | The shown message's banner, or its "always shown" line |
-//! | `assert-files remote-allowed BOOL` | The shown HTML body loads remote images |
+//! | `assert-files banner\|note BOOL [NAME]` | The selected message's card (or NAME's) shows the banner, or the "always shown" line |
+//! | `assert-files remote-allowed BOOL [NAME]` | The selected message's HTML body (or NAME's) loads remote images |
 //! | `assert-files sender ADDRESS BOOL` | The reader's list holds ADDRESS |
 //! | `assert-files stored-sender ADDRESS BOOL` | The store's list holds ADDRESS |
 //! | `assert-files toggle NAME BOOL` | The window action NAME's state (a toggle) |
@@ -41,7 +43,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use sealwax_domain::message;
-use sealwax_domain::model::{FolderRole, MessageId};
+use sealwax_domain::model::{Flags, FolderRole, MessageId};
 use sealwax_infrastructure::ingest::{self, RawMessage};
 use sealwax_infrastructure::store::{BodyState, BodyUpgrade, NewMessage};
 use std::cell::RefCell;
@@ -54,6 +56,7 @@ use std::time::{Duration, Instant};
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("files-add", 1, usize::MAX),
     ("files-add-text", 1, 1),
+    ("files-show", 1, 1),
     ("files-hooks", 0, 0),
     ("files-answer", 2, 2),
     ("files-click", 1, 2),
@@ -116,6 +119,18 @@ fn sample_raw(name: &str, date: i64) -> Result<Vec<u8>, String> {
         .ok_or_else(|| format!("no sample {name}"))
 }
 
+fn added_id(name: &str) -> Result<MessageId, String> {
+    ADDED
+        .with(|added| {
+            added
+                .borrow()
+                .iter()
+                .find(|added| added.name == name)
+                .map(|added| added.id)
+        })
+        .ok_or_else(|| format!("files-add {name} first"))
+}
+
 fn added_raw(name: &str) -> Result<Vec<u8>, String> {
     ADDED
         .with(|added| {
@@ -163,6 +178,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
     let arg = |index: usize| args[index].as_str();
     match command {
         "files-add" => add(harness, args).await,
+        "files-show" => show(harness, arg(0)).await,
         "files-add-text" => add_text(harness, arg(0)).await,
         "files-hooks" => install_hooks(harness),
         "files-answer" => {
@@ -196,32 +212,66 @@ async fn add(harness: &Harness, names: &[String]) -> StepResult {
     let store = mailbox.shared_store().ok_or("the store is not open")?;
     let blobs = mailbox.blobs().ok_or("the blob store is not open")?;
     let now = glib::real_time() / 1_000_000;
-    let mut raws = Vec::new();
+    let mut samples = Vec::new();
     for (index, name) in names.iter().enumerate() {
-        raws.push(sample_raw(name, now - 60 * index as i64)?);
+        if name == "files-thread" {
+            samples.extend(
+                samples::files_thread(now - 60 * index as i64)
+                    .into_iter()
+                    .map(|message| (message.name, message.raw, message.read)),
+            );
+        } else {
+            samples.push((
+                name.clone(),
+                sample_raw(name, now - 60 * index as i64)?,
+                false,
+            ));
+        }
     }
-    let messages: Vec<RawMessage> = raws
+    let messages: Vec<RawMessage> = samples
         .iter()
-        .map(|raw| RawMessage {
+        .map(|(_, raw, read)| RawMessage {
             folder: folder.id,
             raw: raw.clone(),
+            flags: if *read { Flags::SEEN } else { Flags::NONE },
             ..RawMessage::default()
         })
         .collect();
     let ingested = blocking(move || ingest::ingest_raw(&store, &blobs, messages))
         .await?
         .map_err(|error| error.to_string())?;
-    for ((name, raw), id) in names.iter().zip(raws).zip(ingested.ids) {
+    for ((name, raw, _), id) in samples.into_iter().zip(ingested.ids) {
         let id = id.ok_or_else(|| format!("the store already held {name}"))?;
         ADDED.with(|added| {
-            added.borrow_mut().push(Added {
-                name: name.clone(),
-                id,
-                raw,
-            });
+            added.borrow_mut().push(Added { name, id, raw });
         });
     }
     super::mail::settled(harness).await
+}
+
+/// `files-show NAME`: selects NAME's row in the list; waits until the reader shows it.
+async fn show(harness: &Harness, name: &str) -> StepResult {
+    let id = added_id(name)?;
+    let list = super::mail::list(harness)?;
+    let started = Instant::now();
+    let position = loop {
+        if let Some((position, _)) = list.position(id) {
+            break position;
+        }
+        if started.elapsed() > WAIT {
+            return Err(format!("{name} isn't in the list"));
+        }
+        glib::timeout_future(Duration::from_millis(20)).await;
+    };
+    list.select_position(position - 1);
+    let reader = reader(harness)?;
+    while reader.message() != Some(id) || reader.message_card(id).is_none() {
+        if started.elapsed() > WAIT {
+            return Err(format!("the reader never showed {name}"));
+        }
+        glib::timeout_future(Duration::from_millis(10)).await;
+    }
+    harness.wait_frames(2).await
 }
 
 /// `files-add-text NAME`: what a download of a large message leaves: the headers, then the
@@ -366,6 +416,17 @@ async fn click_widget(harness: &Harness, widget: &gtk::Widget) -> StepResult {
     super::triage::click_button(harness, button).await
 }
 
+/// The card of the sample `name` in the shown conversation, or the selected message's.
+fn card(reader: &Reader, name: Option<&str>) -> Result<gtk::Widget, String> {
+    let id = match name {
+        Some(name) => added_id(name)?,
+        None => reader.message().ok_or("the reader shows nothing")?,
+    };
+    reader
+        .message_card(id)
+        .ok_or_else(|| format!("{} has no card", name.unwrap_or("the selected message")))
+}
+
 /// The first widget named `name` under `root`.
 fn find(root: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
     if root.widget_name() == name {
@@ -383,7 +444,19 @@ fn find(root: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
 
 async fn click(harness: &Harness, args: &[String]) -> StepResult {
     let reader = reader(harness)?;
+    let remote = |which: &str| match which {
+        "download-all" => Some("reader-download-all"),
+        "show-images" => Some("reader-show-images"),
+        "always" => Some("reader-always-show-images"),
+        "hide" => Some("reader-hide-images"),
+        _ => None,
+    };
     let widget = match (args[0].as_str(), args.get(1).map(String::as_str)) {
+        (which, of) if remote(which).is_some() => {
+            let name = remote(which).unwrap_or_default();
+            find(&card(&reader, of)?, name)
+                .ok_or_else(|| format!("{} has no {name}", of.unwrap_or("the selected message")))?
+        }
         (index, Some(which)) => {
             let name = match which {
                 "open" => "reader-attachment-open",
@@ -410,20 +483,7 @@ async fn click(harness: &Harness, args: &[String]) -> StepResult {
                 other => return Err(format!("no button {other}")),
             }
         }
-        (which, None) => {
-            let name = match which {
-                "download-all" => "reader-download-all",
-                "show-images" => "reader-show-images",
-                "always" => "reader-always-show-images",
-                "hide" => "reader-hide-images",
-                other => return Err(format!("no button {other}")),
-            };
-            let page = reader
-                .widget()
-                .first_child()
-                .ok_or("the reader shows nothing")?;
-            find(&page, name).ok_or_else(|| format!("the shown message has no {name}"))?
-        }
+        (other, None) => return Err(format!("no button {other}")),
     };
     click_widget(harness, &widget).await
 }
@@ -464,19 +524,11 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
     };
     let reader = reader(harness)?;
     match args[0].as_str() {
-        "message" => {
-            let name = arg(1)?;
-            let id = ADDED
-                .with(|added| {
-                    added
-                        .borrow()
-                        .iter()
-                        .find(|added| added.name == name)
-                        .map(|added| added.id)
-                })
-                .ok_or_else(|| format!("files-add {name} first"))?;
-            equal("the message shown", reader.message(), Some(id))
-        }
+        "message" => equal(
+            "the message shown",
+            reader.message(),
+            Some(added_id(arg(1)?)?),
+        ),
         "cards" => equal("cards", reader.attachment_cards().len(), number(arg(1)?)?),
         "card" => {
             let index = number(arg(1)?)?;
@@ -556,24 +608,26 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 .count();
             equal("files in the folder", count, number(arg(1)?)?)
         }
-        "banner" => equal("banner", reader.state().banner, boolean(arg(1)?)?),
-        "note" => {
-            let shown = reader
-                .widget()
-                .first_child()
-                .and_then(|page| find(&page, "reader-sender-note"))
-                .is_some_and(|note| note.is_visible());
-            equal("the sender's line", shown, boolean(arg(1)?)?)
+        "banner" | "note" => {
+            let name = if args[0] == "banner" {
+                "reader-banner"
+            } else {
+                "reader-sender-note"
+            };
+            let shown = find(&card(&reader, args.get(2).map(String::as_str))?, name)
+                .is_some_and(|widget| widget.is_visible());
+            equal(name, shown, boolean(arg(1)?)?)
         }
         "remote-allowed" => {
-            let allowed = matches!(
-                reader.state().body,
-                Some(crate::reader::ShownBody::Html {
-                    remote_allowed: true,
-                    ..
-                })
-            );
-            equal("remote images allowed", allowed, boolean(arg(1)?)?)
+            let id = match args.get(2) {
+                Some(name) => added_id(name)?,
+                None => reader.message().ok_or("the reader shows nothing")?,
+            };
+            equal(
+                "remote images allowed",
+                reader.remote_allowed(id),
+                boolean(arg(1)?)?,
+            )
         }
         "sender" => {
             let started = Instant::now();

@@ -349,6 +349,19 @@ impl Reader {
     pub fn remote_sender_allowed(&self, sender: &str) -> bool {
         self.inner.remote.sender_allowed(sender)
     }
+
+    /// Whether message `id`'s HTML body, expanded in the shown conversation, loads its remote
+    /// images, for checks.
+    pub fn remote_allowed(&self, id: MessageId) -> bool {
+        self.inner
+            .shown
+            .borrow()
+            .as_ref()
+            .and_then(|page| page.item(id))
+            .and_then(|item| item.card.as_ref())
+            .and_then(|card| card.html.as_ref())
+            .is_some_and(|html| html.remote_allowed)
+    }
 }
 
 #[cfg(test)]

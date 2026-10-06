@@ -717,6 +717,52 @@ pub fn files_draft(name: &str, date: i64) -> Option<Draft> {
     Some(draft)
 }
 
+/// `drafts`, oldest first, each with whether it is read, as one conversation: each answers the
+/// one before it, named `name-1`, `name-2`, …
+pub fn files_conversation(name: &str, drafts: Vec<(Draft, bool)>) -> Vec<Threaded> {
+    thread(
+        name,
+        drafts
+            .into_iter()
+            .map(|(draft, read)| (draft, read, false))
+            .collect(),
+    )
+}
+
+/// The newsletter sender of [`files_thread`] and the café that answers in it.
+pub const FILES_THREAD_SENDER: (&str, &str) = ("Fjord Weekly", "news@fjordweekly.example.test");
+pub const FILES_THREAD_OTHER: (&str, &str) = ("Harbour Café", "hello@harbourcafe.example.test");
+
+/// `files-thread`, a conversation with remote images in every message (ML-058): the sender's
+/// first issue, read (a collapsed row); its second issue, unread; the café's answer, unread;
+/// the sender's third issue, unread and latest. The images point at [`REMOTE_ORIGIN`].
+pub fn files_thread(now: i64) -> Vec<Threaded> {
+    let issue = |from: (&str, &str), number: usize, date: i64| {
+        let subject = if number == 1 {
+            "Fjord Weekly: the autumn issue".to_owned()
+        } else {
+            "Re: Fjord Weekly: the autumn issue".to_owned()
+        };
+        let mut draft = Draft::new(from, &subject, date, &format!("files-thread-{number}"));
+        draft.html = Some(format!(
+            "<p>{} {number}.</p><p><img src=\"{REMOTE_ORIGIN}/thread/{number}.png\" \
+             width=\"120\" height=\"40\" alt=\"Picture {number}\"></p><p>A fictional \
+             message.</p>",
+            from.0
+        ));
+        draft
+    };
+    files_conversation(
+        "files-thread",
+        vec![
+            (issue(FILES_THREAD_SENDER, 1, now - 4 * 3_600), true),
+            (issue(FILES_THREAD_SENDER, 2, now - 3 * 3_600), false),
+            (issue(FILES_THREAD_OTHER, 3, now - 2 * 3_600), false),
+            (issue(FILES_THREAD_SENDER, 4, now - 3_600), false),
+        ],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,7 +1,7 @@
 # Previews for the M5 gate, files and remote content (ML-058, ML-061, ML-063): attachment cards
 # with Open, Save and Download all; the warning of attachments that are never opened; the
 # remote-content banner with Always for this sender; the quiet line of a sender whose images
-# always load; Show Original; an attachment of a large message downloading, and failed with
+# always load, also in a conversation beside another sender's banner; Show Original; an attachment of a large message downloading, and failed with
 # Retry; in a dark and a light stock theme (matte-black with square corners, catppuccin-latte
 # rounded). The engine is scripted; every name, address and message is fictional.
 # Not run by CI: it writes into tools/progress/public/.
@@ -16,8 +16,9 @@ triage-mark-read-on-open false
 mail-account Personal
 files-add attachments files-danger newsletter files-remote-again
 files-add-text files-large
+files-add files-thread
 files-hooks
-assert-list-count 5
+assert-list-count 9
 
 # Attachment cards: Open, Save and Download all.
 list-select 1
@@ -37,7 +38,8 @@ wait-until assert-files message newsletter
 wait-until assert-files banner true
 screenshot $DIR/../../tools/progress/public/m5-files-banner-matte-black-square-2026-10-06.png
 
-# A sender whose images always load: the quiet line with Hide.
+# A sender whose images always load: the quiet line with Hide; then in a conversation, the
+# sender's two cards with it and another sender's card with its banner.
 list-select 4
 wait-until assert-files message files-remote-again
 wait-until assert-files banner true
@@ -46,6 +48,17 @@ wait-until assert-files note true
 screenshot $DIR/../../tools/progress/public/m5-files-sender-note-matte-black-square-2026-10-06.png
 files-click hide
 wait-until assert-files banner true
+files-show files-thread-4
+wait-until assert-files banner true
+wait-until assert-files banner true files-thread-3
+files-click always
+wait-until assert-files note true
+wait-until assert-files note true files-thread-2
+conversation-scroll 0.55
+screenshot $DIR/../../tools/progress/public/m5-files-conversation-matte-black-square-2026-10-06.png
+files-click hide
+wait-until assert-files banner true
+wait-until assert-files banner true files-thread-2
 
 # Show Original.
 list-select 1
@@ -91,6 +104,17 @@ wait-until assert-files note true
 screenshot $DIR/../../tools/progress/public/m5-files-sender-note-catppuccin-latte-rounded-2026-10-06.png
 files-click hide
 wait-until assert-files banner true
+files-show files-thread-4
+wait-until assert-files banner true
+wait-until assert-files banner true files-thread-3
+files-click always
+wait-until assert-files note true
+wait-until assert-files note true files-thread-2
+conversation-scroll 0.55
+screenshot $DIR/../../tools/progress/public/m5-files-conversation-catppuccin-latte-rounded-2026-10-06.png
+files-click hide
+wait-until assert-files banner true
+wait-until assert-files banner true files-thread-2
 list-select 1
 wait-until assert-files message attachments
 action win.show-original

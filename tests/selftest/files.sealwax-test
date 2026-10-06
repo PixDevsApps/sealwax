@@ -141,6 +141,56 @@ assert-files note false
 assert-action-enabled win.show-images false
 assert-files sender news@northwind.example.test false
 
+# A conversation with remote images in every message: the newsletter's first issue read (a
+# row), its second and fourth issues and a cafe's answer unread (cards). Always for this sender
+# in the selected card loads both of the sender's cards and says so in each; the cafe's card
+# keeps its banner; the sender's row takes the policy when expanded. Show images in the cafe's
+# card loads that card alone. Hide in another of the sender's cards forgets the sender in all
+# of them.
+files-add files-thread
+files-show files-thread-4
+assert-conversation messages 4
+assert-conversation expanded 3
+assert-conversation collapsed 1
+wait-until assert-files banner true
+assert-files banner true files-thread-2
+assert-files banner true files-thread-3
+assert-files remote-allowed false
+assert-files remote-allowed false files-thread-2
+assert-files toggle always-show-images false
+files-click always
+wait-until assert-files note true
+wait-until assert-files note true files-thread-2
+wait-until assert-files remote-allowed true
+assert-files remote-allowed true files-thread-2
+assert-files banner false
+assert-files banner false files-thread-2
+assert-files banner true files-thread-3
+assert-files note false files-thread-3
+assert-files remote-allowed false files-thread-3
+assert-files toggle always-show-images true
+assert-action-enabled win.show-images false
+wait-until assert-files stored-sender news@fjordweekly.example.test true
+conversation-click-row 0
+wait-until assert-files note true files-thread-1
+assert-files remote-allowed true files-thread-1
+files-click show-images files-thread-3
+wait-until assert-files remote-allowed true files-thread-3
+assert-files banner false files-thread-3
+assert-files note false files-thread-3
+files-click hide files-thread-2
+wait-until assert-files banner true files-thread-2
+wait-until assert-files banner true
+wait-until assert-files banner true files-thread-1
+assert-files remote-allowed false
+assert-files remote-allowed false files-thread-1
+assert-files remote-allowed false files-thread-2
+assert-files note false files-thread-2
+assert-files remote-allowed true files-thread-3
+assert-files toggle always-show-images false
+assert-action-enabled win.show-images true
+wait-until assert-files stored-sender news@fjordweekly.example.test false
+
 # Print to a PDF: a plain-text and an HTML message, each with its header.
 list-select 0
 wait-until assert-files message attachments
@@ -192,7 +242,7 @@ assert-action-enabled win.print true
 # A message stored as its text parts: sizes are estimates, attachments come by their section,
 # with Downloading…, Cancel, failures and Retry.
 files-add-text files-large
-assert-list-count 7
+assert-list-count 11
 list-select 0
 wait-until assert-files message files-large
 wait-until assert-files cards 2
