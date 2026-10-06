@@ -1,0 +1,7 @@
+# The kill -9 exit criterion (PRD C5), second run on the first run's folders: the draft left
+# open reopens after the first frame; its text goes to recovered.txt for the harness.
+desktop tiling
+resize 1440 900
+wait-until assert-composer count 1
+composer-wait
+composer-write-text $TMP/recovered.txt

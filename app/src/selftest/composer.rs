@@ -1,5 +1,7 @@
 //! Self-test commands for the composer window (M6: ML-067, ML-071, ML-072, ML-079), against the
-//! app's own composer on the phase A stand-in backend. Keys and typing go through Broadway as
+//! app's own composer, on the store's backend (the app's) or, after `composer-backend stand-in`,
+//! phase A's in-memory stand-in, whose records the `sent`, `saves`, `stored` … checks read; the
+//! `db`, `outbox` and `open-drafts` checks read the store. Keys and typing go through Broadway as
 //! real key presses to the composer window (`broadway.rs`); `composer-insert` types through the
 //! editor's helper instead. Toolbar buttons are clicked with `emit_clicked` (Broadway's clicks
 //! aim at the main window's surface). Every name, address and message is fictional; the
@@ -7,8 +9,10 @@
 //!
 //! | Command | What it does |
 //! | --- | --- |
-//! | `composer-open new\|reply\|reply-all\|forward\|server-draft` | Opens a composer for that request (messages are the stand-in's) |
-//! | `composer-open mailto URI`, `quick-reply TEXT`, `draft N` | The same with what the request carries |
+//! | `composer-backend store\|stand-in` | The backend new composers use |
+//! | `composer-store-message plans\|elsewhere inbox\|drafts` | Stores that fictional message whole in the first account's folder of that role, under its name |
+//! | `composer-open new\|reply\|reply-all\|forward\|server-draft [NAME]` | Opens a composer for that request; NAME a stored message (message 1 without) |
+//! | `composer-open mailto URI`, `quick-reply TEXT`, `quick-reply-to NAME TEXT`, `draft N\|last` | The same with what the request carries (`last`: the draft `composer-close` closed last) |
 //! | `composer-wait` | Waits until the newest composer's body is loaded |
 //! | `composer-pick N` | Later commands act on composer N (0 the oldest); the newest by default |
 //! | `composer-insert TEXT` | Types TEXT at the caret through the helper (`insertText`) |
@@ -46,6 +50,11 @@
 //! | `assert-composer theme` | The body's background is the theme's |
 //! | `assert-composer eval SCRIPT VALUE` | SCRIPT, run in the helper's world, gives VALUE |
 //! | `assert-composer stored ID FIELD TEXT` | The stand-in's draft ID holds TEXT in FIELD |
+//! | `assert-composer db current\|last\|N FIELD TEXT` | The store's draft holds TEXT in FIELD: `to`, `cc`, `bcc`, `subject`, `from`, `html`, `in-reply-to`, `references`, `message-id`, `parts`, `inline`, `attached`, `open`, `sending` |
+//! | `assert-composer db-gone current\|last\|N` | The store has no such draft |
+//! | `assert-composer outbox N`, `open-drafts N` | The store's outbox entries; drafts marked open |
+//! | `composer-type-log PATH EVERY COUNT` | Types a letter through the helper every EVERY ms, COUNT times, logging `index unix-ms` after a `pid` line (the kill -9 harness) |
+//! | `composer-write-text PATH` | Writes the draft's id and the body's text to PATH (the kill -9 harness) |
 //! | `assert-composer title\|subject\|from\|style TEXT` | The header's title, the subject, the sender's address, the style menu |
 //! | `assert-composer chips FIELD A,B\|none` | The valid recipients of `to`, `cc` or `bcc` |
 //! | `assert-composer invalid FIELD N` | Error chips in FIELD |
@@ -93,7 +102,11 @@ use std::time::{Duration, Instant};
 
 /// The commands this module adds to the script format, with their argument counts.
 pub const COMMANDS: &[(&str, usize, usize)] = &[
-    ("composer-open", 1, 2),
+    ("composer-open", 1, 3),
+    ("composer-backend", 1, 1),
+    ("composer-store-message", 2, 2),
+    ("composer-type-log", 3, 3),
+    ("composer-write-text", 1, 1),
     ("composer-wait", 0, 0),
     ("composer-pick", 1, 1),
     ("composer-insert", 1, 1),
@@ -149,6 +162,12 @@ struct Canary {
 
 thread_local! {
     static PICKED: Cell<Option<usize>> = const { Cell::new(None) };
+    /// The stand-in is the backend (`composer-backend stand-in`); the app starts on the store.
+    static STAND_IN_ACTIVE: Cell<bool> = const { Cell::new(false) };
+    /// Messages `composer-store-message` stored, by name.
+    static MESSAGES: RefCell<Vec<(String, MessageId)>> = const { RefCell::new(Vec::new()) };
+    /// The draft of the composer `composer-close` closed last.
+    static LAST_ID: Cell<Option<DraftId>> = const { Cell::new(None) };
     static CANARY: RefCell<Option<Canary>> = const { RefCell::new(None) };
     static RAN_SEEN: Cell<usize> = const { Cell::new(0) };
     static RELEASES: RefCell<Option<Watched>> = const { RefCell::new(None) };
@@ -181,30 +200,39 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
     let arg = |index: usize| args[index].as_str();
     match command {
         "composer-open" => {
-            let message = MessageId(1);
-            let request = match (arg(0), args.get(1).map(String::as_str)) {
-                ("new", None) => ComposeRequest::New { account: None },
-                ("reply", None) => ComposeRequest::Reply {
-                    message,
-                    kind: ReplyKind::Reply,
-                },
-                ("reply-all", None) => ComposeRequest::Reply {
-                    message,
-                    kind: ReplyKind::ReplyAll,
-                },
-                ("forward", None) => ComposeRequest::Reply {
-                    message,
-                    kind: ReplyKind::Forward,
-                },
-                ("server-draft", None) => ComposeRequest::ServerDraft(message),
-                ("quick-reply", Some(text)) => ComposeRequest::QuickReply {
-                    message,
+            let named = |name: Option<&String>| match name {
+                None => Ok(MessageId(1)),
+                Some(name) => message_named(name),
+            };
+            let reply = |kind| -> Result<ComposeRequest, String> {
+                Ok(ComposeRequest::Reply {
+                    message: named(args.get(1))?,
+                    kind,
+                })
+            };
+            let request = match (arg(0), args.get(1).map(String::as_str), args.get(2)) {
+                ("new", None, None) => ComposeRequest::New { account: None },
+                ("reply", _, None) => reply(ReplyKind::Reply)?,
+                ("reply-all", _, None) => reply(ReplyKind::ReplyAll)?,
+                ("forward", _, None) => reply(ReplyKind::Forward)?,
+                ("server-draft", _, None) => ComposeRequest::ServerDraft(named(args.get(1))?),
+                ("quick-reply", Some(text), None) => ComposeRequest::QuickReply {
+                    message: MessageId(1),
                     text: text.to_owned(),
                 },
-                ("mailto", Some(uri)) => ComposeRequest::Mailto(
+                ("quick-reply-to", Some(name), Some(text)) => ComposeRequest::QuickReply {
+                    message: message_named(name)?,
+                    text: text.to_owned(),
+                },
+                ("mailto", Some(uri), None) => ComposeRequest::Mailto(
                     sealwax_domain::mailto::parse(uri).map_err(|error| error.to_string())?,
                 ),
-                ("draft", Some(id)) => ComposeRequest::Draft(DraftId(number(id)? as i64)),
+                ("draft", Some("last"), None) => ComposeRequest::Draft(
+                    LAST_ID
+                        .with(Cell::get)
+                        .ok_or("no composer was closed yet")?,
+                ),
+                ("draft", Some(id), None) => ComposeRequest::Draft(DraftId(number(id)? as i64)),
                 _ => return Err("composer-open: unknown request".to_owned()),
             };
             PICKED.with(|picked| picked.set(None));
@@ -437,7 +465,54 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 "none" => None,
                 bytes => Some(number(bytes)? as u64),
             };
-            setup_stand_in(harness)?.set_limit(limit);
+            if STAND_IN_ACTIVE.with(Cell::get) {
+                setup_stand_in(harness)?.set_limit(limit);
+            } else {
+                composer::store_backend()
+                    .ok_or("the store backend isn't set")?
+                    .set_limit(limit);
+            }
+            Ok(())
+        }
+        "composer-backend" => {
+            match arg(0) {
+                "stand-in" => {
+                    composer::use_stand_in(&harness.app);
+                    STAND_IN_ACTIVE.with(|active| active.set(true));
+                }
+                "store" => {
+                    composer::use_store(&harness.app);
+                    STAND_IN_ACTIVE.with(|active| active.set(false));
+                }
+                other => return Err(format!("use stand-in or store, not {other}")),
+            }
+            Ok(())
+        }
+        "composer-store-message" => store_message(harness, arg(0), arg(1)).await,
+        "composer-type-log" => {
+            type_log(
+                harness,
+                arg(0),
+                Duration::from_millis(number(arg(1))? as u64),
+                number(arg(2))?,
+            )
+            .await
+        }
+        "composer-write-text" => {
+            let composer = composer()?;
+            let text = composer
+                .editor()
+                .eval("sealwaxComposer.text()")
+                .await?
+                .to_str()
+                .to_string();
+            let path = scratch(harness, arg(0))?;
+            let id = composer.id().map_or(0, |id| id.0);
+            std::fs::write(&path, format!("{id}\n{text}")).map_err(|error| error.to_string())?;
+            println!(
+                "  # draft {id}: {} characters recovered",
+                text.trim().chars().count()
+            );
             Ok(())
         }
         "composer-identity" => {
@@ -451,7 +526,9 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         // Broadway, unlike a compositor, gives the focus back to no window when one closes.
         "composer-close" => {
-            composer()?.window().close();
+            let composer = composer()?;
+            LAST_ID.with(|last| last.set(composer.id()));
+            composer.window().close();
             if let Ok(main) = harness.window() {
                 main.window().present();
             }
@@ -853,6 +930,9 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
     if what == "canary" {
         return equal("canary hits", canary_hits(), number(arg(1))?);
     }
+    if matches!(what, "db" | "db-gone" | "outbox" | "open-drafts") {
+        return check_store(harness, what, &args[1..]).await;
+    }
     let composer = composer()?;
     match what {
         "loaded" => equal("loaded", composer.is_loaded(), boolean(arg(1))?),
@@ -1210,4 +1290,229 @@ fn short(text: &str) -> String {
         out.push('…');
     }
     out
+}
+
+/// The stored message named `name` (`composer-store-message`).
+fn message_named(name: &str) -> Result<MessageId, String> {
+    MESSAGES.with(|messages| {
+        messages
+            .borrow()
+            .iter()
+            .find(|(known, _)| known == name)
+            .map(|(_, id)| *id)
+            .ok_or_else(|| format!("no stored message {name}"))
+    })
+}
+
+/// A fictional message for the store-backed tests: `plans` (an HTML message with an inline
+/// image and a PDF, in a thread) or `elsewhere` (a draft another client wrote).
+fn fixture_message(name: &str) -> Result<Vec<u8>, String> {
+    let png = glib::base64_encode(TINY_PNG);
+    let pdf = glib::base64_encode(b"%PDF-1.4\n% a fictional report\n%%EOF\n");
+    let raw = match name {
+        "plans" => format!(
+            "From: Grace Hopper <grace@example.test>\r\nTo: Work <work@example.test>\r\n\
+             Cc: Ada Lovelace <ada@example.test>\r\nSubject: The quarterly figures\r\n\
+             Date: Mon, 05 Oct 2026 14:02:00 +0200\r\nMessage-ID: <plans-1@example.test>\r\n\
+             In-Reply-To: <root-1@example.test>\r\nReferences: <root-1@example.test>\r\n\
+             MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"mixed\"\r\n\r\n\
+             --mixed\r\nContent-Type: multipart/related; boundary=\"related\"\r\n\r\n\
+             --related\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
+             <p>Here are the quarterly figures.</p><p><img src=\"cid:chart-1@example.test\" \
+             alt=\"chart\"></p>\r\n\
+             --related\r\nContent-Type: image/png\r\nContent-ID: <chart-1@example.test>\r\n\
+             Content-Disposition: inline; filename=\"chart.png\"\r\n\
+             Content-Transfer-Encoding: base64\r\n\r\n{png}\r\n--related--\r\n\
+             --mixed\r\nContent-Type: application/pdf; name=\"report.pdf\"\r\n\
+             Content-Disposition: attachment; filename=\"report.pdf\"\r\n\
+             Content-Transfer-Encoding: base64\r\n\r\n{pdf}\r\n--mixed--\r\n"
+        ),
+        "elsewhere" => "From: Work <work@example.test>\r\nTo: Ola Nordmann <ola@example.org>\r\n\
+             Subject: Notes for Thursday\r\nDate: Mon, 05 Oct 2026 16:00:00 +0200\r\n\
+             Message-ID: <elsewhere-1@other-client.example>\r\nMIME-Version: 1.0\r\n\
+             Content-Type: text/html; charset=utf-8\r\n\r\n\
+             <p>Notes written elsewhere.</p>\r\n"
+            .to_owned(),
+        other => return Err(format!("no fixture message {other}")),
+    };
+    Ok(raw.into_bytes())
+}
+
+/// `composer-store-message NAME inbox|drafts`: stores the fixture NAME whole in the first
+/// account's folder of that role.
+async fn store_message(harness: &Harness, name: &str, role: &str) -> StepResult {
+    use sealwax_domain::model::FolderRole;
+    use sealwax_infrastructure::ingest::{self, RawMessage};
+    let role = match role {
+        "inbox" => FolderRole::Inbox,
+        "drafts" => FolderRole::Drafts,
+        other => return Err(format!("use inbox or drafts, not {other}")),
+    };
+    let mailbox = harness.state.mailbox();
+    let account = mailbox
+        .accounts()
+        .first()
+        .map(|account| account.id)
+        .ok_or("there is no account")?;
+    let folder = mailbox
+        .folders()
+        .into_iter()
+        .find(|folder| folder.account == account && folder.role == role)
+        .ok_or("the account has no folder of that role")?
+        .id;
+    let store = mailbox.shared_store().ok_or("the store is not open")?;
+    let blobs = mailbox.blobs().ok_or("the store is not open")?;
+    let raw = fixture_message(name)?;
+    let ingested = super::blocking(move || {
+        ingest::ingest_raw(
+            &store,
+            &blobs,
+            vec![RawMessage {
+                folder,
+                raw,
+                ..RawMessage::default()
+            }],
+        )
+        .map_err(|error| error.to_string())
+    })
+    .await??;
+    let id = ingested
+        .ids
+        .first()
+        .copied()
+        .flatten()
+        .ok_or("the message wasn't stored")?;
+    MESSAGES.with(|messages| messages.borrow_mut().push((name.to_owned(), id)));
+    println!("  # stored {name} as message {}", id.0);
+    super::mail::settled(harness).await
+}
+
+/// `composer-type-log PATH EVERY COUNT`: types one character through the helper every EVERY
+/// into the body, COUNT times, appending `index unix-ms` to PATH after each, after a first
+/// line with this process's id (the kill -9 harness reads both).
+async fn type_log(harness: &Harness, path: &str, every: Duration, count: usize) -> StepResult {
+    let composer = composer()?;
+    let path = scratch(harness, path)?;
+    let mut log = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|error| error.to_string())?;
+    writeln!(log, "pid {}", std::process::id()).map_err(|error| error.to_string())?;
+    const LETTERS: &[u8] = b"abcdefghijklmnopqrstuvwxyz";
+    for index in 0..count {
+        let letter = char::from(LETTERS[index % LETTERS.len()]);
+        composer.editor().insert_text(&letter.to_string()).await;
+        let now = glib::real_time() / 1_000;
+        writeln!(log, "{index} {now}").map_err(|error| error.to_string())?;
+        glib::timeout_future(every).await;
+    }
+    Ok(())
+}
+
+/// The draft named by `id`: `current` (the picked composer's), `last` (the last closed), or
+/// a number.
+fn draft_named(id: &str) -> Result<DraftId, String> {
+    match id {
+        "current" => composer()?
+            .id()
+            .ok_or_else(|| "the draft has no id yet".to_owned()),
+        "last" => LAST_ID
+            .with(Cell::get)
+            .ok_or_else(|| "no composer was closed yet".to_owned()),
+        number => number
+            .parse::<i64>()
+            .map(DraftId)
+            .map_err(|_| format!("no draft {number}")),
+    }
+}
+
+async fn check_store(harness: &Harness, what: &str, args: &[String]) -> StepResult {
+    let arg = |index: usize| args.get(index).map(String::as_str).unwrap_or_default();
+    let store = harness
+        .state
+        .mailbox()
+        .shared_store()
+        .ok_or("the store is not open")?;
+    match what {
+        "outbox" => {
+            let entries = store
+                .outbox(None)
+                .recv()
+                .await
+                .map_err(|error| error.to_string())?;
+            equal("outbox entries", entries.len(), number(arg(0))?)
+        }
+        "open-drafts" => {
+            let open = store
+                .open_drafts()
+                .recv()
+                .await
+                .map_err(|error| error.to_string())?;
+            equal("drafts left open", open.len(), number(arg(0))?)
+        }
+        "db-gone" => {
+            let id = draft_named(arg(0))?;
+            let stored = store
+                .draft(id)
+                .recv()
+                .await
+                .map_err(|error| error.to_string())?;
+            equal("the draft is gone", stored.is_none(), true)
+        }
+        _ => {
+            let id = draft_named(arg(0))?;
+            let stored = store
+                .draft(id)
+                .recv()
+                .await
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| format!("the store has no draft {}", id.0))?;
+            let draft = &stored.draft;
+            let join = |list: &[sealwax_domain::model::Address]| {
+                list.iter()
+                    .map(|address| address.email.clone())
+                    .collect::<Vec<_>>()
+                    .join(",")
+            };
+            let value = match arg(1) {
+                "to" => join(&draft.to),
+                "cc" => join(&draft.cc),
+                "bcc" => join(&draft.bcc),
+                "subject" => draft.subject.clone(),
+                "from" => draft.from.email.clone(),
+                "html" => draft.html.clone(),
+                "in-reply-to" => draft.in_reply_to.clone().unwrap_or_default(),
+                "references" => draft.references.join(" "),
+                "message-id" => draft.message_id.clone(),
+                "parts" => draft.parts.len().to_string(),
+                "inline" => draft
+                    .parts
+                    .iter()
+                    .filter(|part| part.content_id.is_some())
+                    .count()
+                    .to_string(),
+                "attached" => draft
+                    .parts
+                    .iter()
+                    .filter(|part| part.content_id.is_none())
+                    .map(|part| part.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                "open" => stored.open.to_string(),
+                "sending" => stored.send.is_some().to_string(),
+                other => return Err(format!("no field {other}")),
+            };
+            if value.contains(arg(2)) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{}: {:?} lacks {:?}",
+                    arg(1),
+                    short(&value),
+                    arg(2)
+                ))
+            }
+        }
+    }
 }

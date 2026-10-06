@@ -3249,6 +3249,7 @@ version = "0.2.0"
 dependencies = [
  "async-channel 2.5.0",
  "clap",
+ "getrandom 0.4.3",
  "gio",
  "glib-unix",
  "gtk4",

@@ -144,6 +144,8 @@
         copy.setAttribute(name, value);
       } else if (tag === 'OL' && name === 'start' && /^-?\d{1,6}$/.test(value)) {
         copy.setAttribute(name, value);
+      } else if (own && tag === 'DIV' && name === 'class' && value.split(/\s+/).includes('sw-signature')) {
+        copy.setAttribute('class', 'sw-signature');
       } else if (tag === 'BLOCKQUOTE' && name === 'type' && value.toLowerCase() === 'cite') {
         copy.setAttribute('type', 'cite');
       } else if (tag === 'BLOCKQUOTE' && name === 'style') {
@@ -531,6 +533,35 @@
     loadedImages: () => Array.from(document.querySelectorAll('img'))
       .filter((image) => image.complete && image.naturalWidth > 0).length,
     insertText: (text) => document.execCommand('insertText', false, text),
+    // The sender's signature in place of the one shown (its HTML comes from the compose
+    // rules, cleaned here like everything else); before the quote when there is none yet.
+    setSignature: (html) => {
+      const current = document.querySelector('div.sw-signature');
+      const cleaned = clean(html, true).html;
+      if (current) {
+        if (cleaned) {
+          current.outerHTML = cleaned;
+        } else {
+          current.remove();
+        }
+        return true;
+      }
+      if (!cleaned) {
+        return false;
+      }
+      const quote = document.querySelector('blockquote[type=cite]');
+      const anchor = quote && quote.previousElementSibling ? quote.previousElementSibling : quote;
+      const holder = document.createElement('div');
+      holder.innerHTML = `<div><br></div>${cleaned}`;
+      for (const node of Array.from(holder.childNodes)) {
+        if (anchor) {
+          anchor.parentNode.insertBefore(node, anchor);
+        } else {
+          document.body.appendChild(node);
+        }
+      }
+      return true;
+    },
     insertImage: (cid, name) => document.execCommand('insertHTML', false,
       `<img src="cid:${escapeAttribute(cid)}" alt="${escapeAttribute(name.slice(0, 200))}">`),
     // A link on the selection, or the address itself as a link where nothing is selected.

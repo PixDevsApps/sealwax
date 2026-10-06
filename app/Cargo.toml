@@ -23,6 +23,7 @@ libadwaita.workspace = true
 gio.workspace = true
 glib-unix.workspace = true
 async-channel.workspace = true
+getrandom.workspace = true
 clap.workspace = true
 tracing.workspace = true
 webkit6.workspace = true

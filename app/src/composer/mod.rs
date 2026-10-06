@@ -14,10 +14,12 @@ pub mod backend;
 pub mod editor;
 mod js;
 pub mod recipients;
+pub mod store_backend;
 pub mod window;
 
 use crate::application::SealwaxApplication;
 use backend::{Backend, StandIn};
+use gtk4::prelude::ObjectExt;
 use sealwax_domain::compose::ReplyKind;
 use sealwax_domain::mailto::Mailto;
 use sealwax_domain::model::{AccountId, DraftId, MessageId};
@@ -26,6 +28,7 @@ use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
+use store_backend::StoreBackend;
 pub use window::{Composer, Ending};
 
 /// What a composer window starts from.
@@ -69,6 +72,7 @@ thread_local! {
     static OPEN: RefCell<Vec<Composer>> = const { RefCell::new(Vec::new()) };
     static BACKEND: RefCell<Option<Rc<dyn Backend>>> = const { RefCell::new(None) };
     static STAND_IN: RefCell<Option<Rc<StandIn>>> = const { RefCell::new(None) };
+    static STORE: RefCell<Option<Rc<StoreBackend>>> = const { RefCell::new(None) };
     static CHOOSER: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
     static KEYS_FOLLOWED: Cell<bool> = const { Cell::new(false) };
 }
@@ -113,6 +117,62 @@ pub fn stand_in() -> Option<Rc<StandIn>> {
 pub fn ensure_stand_in(app: &SealwaxApplication) -> Option<Rc<StandIn>> {
     backend(app);
     stand_in()
+}
+
+/// Makes phase A's in-memory stand-in the backend (self-tests that check its records).
+pub fn use_stand_in(app: &SealwaxApplication) -> Rc<StandIn> {
+    let stand_in = StandIn::new(&app.state());
+    STAND_IN.with(|current| current.replace(Some(stand_in.clone())));
+    set_backend(stand_in.clone());
+    stand_in
+}
+
+/// Makes the store's backend the one new composer windows use: the app does at startup.
+pub fn use_store(app: &SealwaxApplication) -> Rc<StoreBackend> {
+    let store = StoreBackend::new(&app.state());
+    STORE.with(|current| current.replace(Some(store.clone())));
+    set_backend(store.clone());
+    store
+}
+
+/// The store's backend, when the app set it.
+pub fn store_backend() -> Option<Rc<StoreBackend>> {
+    STORE.with(|store| store.borrow().clone())
+}
+
+/// Reopens the drafts whose windows were open when Sealwax last stopped (a crash, a kill, a
+/// logout): after the first frame, once the store is ready. Drafts a window shows already are
+/// left alone.
+pub fn reopen_drafts(app: &SealwaxApplication) {
+    let ready = app.state().mailbox().wait_ready();
+    let app = app.downgrade();
+    gtk4::glib::spawn_future_local(async move {
+        ready.await;
+        let Some(app) = app.upgrade() else {
+            return;
+        };
+        let Some(store) = app.state().mailbox().shared_store() else {
+            return;
+        };
+        let Ok(open_ids) = store.open_drafts().recv().await else {
+            tracing::warn!("composer: the drafts left open couldn't be read");
+            return;
+        };
+        let shown: Vec<DraftId> = composers().iter().filter_map(Composer::id).collect();
+        let reopened: Vec<DraftId> = open_ids
+            .into_iter()
+            .filter(|id| !shown.contains(id))
+            .collect();
+        if !reopened.is_empty() {
+            tracing::info!(
+                drafts = reopened.len(),
+                "composer: reopening drafts left open"
+            );
+        }
+        for id in reopened {
+            open(&app, ComposeRequest::Draft(id));
+        }
+    });
 }
 
 /// The backend in use, made the stand-in when none is set yet. The quick reply prepares, saves

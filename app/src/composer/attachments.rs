@@ -1,8 +1,8 @@
 //! The footer's attachments (ML-072, C4): a card for each file with its type badge, the name it
 //! is sent under (made safe by `domain::attachment`), its size and × to remove it. A file is
 //! read, typed and written into the blob store on a thread of its own, so a large one never
-//! freezes the window; its card says "Adding…" until then. The total encoded size is checked
-//! against the account's submission limit.
+//! freezes the window; its card says "Adding…" until then. The window checks the draft's size
+//! (`compose::mime::estimate`) against the account's submission limit.
 
 use super::backend::Local;
 use crate::window::panes::{classed, named};
@@ -16,21 +16,6 @@ use sealwax_infrastructure::blobs::BlobStore;
 use std::cell::{Cell, RefCell};
 use std::path::PathBuf;
 use std::rc::Rc;
-
-/// Bytes a message needs for `size` bytes of attachment: base64 in 76-character lines.
-pub fn encoded(size: u64) -> u64 {
-    let base64 = size.div_ceil(3) * 4;
-    base64 + base64.div_ceil(76) * 2
-}
-
-/// Headers, MIME boundaries and part headers, roughly, on top of the parts and the body.
-const OVERHEAD: u64 = 4 * 1024;
-
-/// The message's size as sent: the parts base64-encoded, the HTML body and its plain-text
-/// alternative (quoted-printable, at most about the HTML's length each), and the headers.
-pub fn message_size(parts: impl IntoIterator<Item = u64>, html_len: usize) -> u64 {
-    parts.into_iter().map(encoded).sum::<u64>() + 2 * html_len as u64 + OVERHEAD
-}
 
 /// What a file became: a part of the draft, or why it couldn't be added.
 pub type Added = Result<DraftPart, String>;
@@ -348,17 +333,6 @@ impl Tray {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn sizes_count_the_encoding() {
-        assert_eq!(encoded(0), 0);
-        assert_eq!(encoded(3), 4 + 2);
-        assert_eq!(encoded(57), 76 + 2);
-        assert_eq!(encoded(58), 80 + 4);
-        let mb = 1_000_000;
-        let total = message_size([10 * mb, 5 * mb], 2_000);
-        assert!(total > 20 * mb && total < 21 * mb, "{total}");
-    }
 
     #[test]
     fn badges_name_the_type() {

@@ -188,10 +188,23 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
 /// A scratch directory, removed when dropped.
 struct TempRoot {
     path: PathBuf,
+    /// Given by [`ROOT_ENV`]: kept after the run, for a second run on the same folders.
+    kept: bool,
 }
+
+/// A scratch directory to use, and keep, instead of a fresh one: the kill -9 harness
+/// (`tools/kill9-compose.sh`) runs Sealwax twice on the same store.
+pub const ROOT_ENV: &str = "SEALWAX_SELFTEST_ROOT";
 
 impl TempRoot {
     fn create() -> std::io::Result<Self> {
+        if let Some(path) = std::env::var_os(ROOT_ENV) {
+            fs::create_dir_all(&path)?;
+            return Ok(Self {
+                path: fs::canonicalize(&path)?,
+                kept: true,
+            });
+        }
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.subsec_nanos());
@@ -200,13 +213,16 @@ impl TempRoot {
         fs::create_dir_all(&path)?;
         Ok(Self {
             path: fs::canonicalize(&path)?,
+            kept: false,
         })
     }
 }
 
 impl Drop for TempRoot {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
+        if !self.kept {
+            let _ = fs::remove_dir_all(&self.path);
+        }
     }
 }
 

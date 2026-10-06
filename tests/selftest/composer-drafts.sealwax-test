@@ -9,8 +9,9 @@
 desktop tiling
 resize 1440 900
 mail-account Work
+composer-backend stand-in
 
-# New (draft 1): empty, the focus in To.
+# New (draft 1): empty, the focus in To; closed untouched, it is discarded, not kept.
 composer-open new
 composer-wait
 assert-composer title "New message"
@@ -20,7 +21,8 @@ assert-composer from work@example.test
 assert-composer saved false
 composer-close
 wait-until assert-composer count 0
-assert-composer closed 1
+assert-composer discarded 1
+assert-composer closed 0
 
 # Reply (draft 2): the quote with its attribution, the caret above it.
 composer-open reply
@@ -95,18 +97,18 @@ composer-click composer-discard
 wait-until assert-composer dialog discard true
 composer-discard-answer cancel
 assert-composer count 1
-assert-composer discarded 0
+assert-composer discarded 1
 composer-action discard-draft
 wait-until assert-composer dialog discard true
 composer-discard-answer discard
 wait-until assert-composer count 0
-assert-composer discarded 1
+assert-composer discarded 2
 # An empty draft goes without asking.
 composer-open new
 composer-wait
 composer-action discard-draft
 wait-until assert-composer count 0
-assert-composer discarded 2
+assert-composer discarded 3
 
 # Quit saves every open draft first (`composer::save_all`, which Quit runs).
 composer-open new

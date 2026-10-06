@@ -630,6 +630,15 @@ impl AppState {
     fn startup(self: &Rc<Self>, app: &SealwaxApplication) {
         gtk4::Window::set_default_icon_name(ICON_NAME);
         self.start_settings(app);
+        // Composer windows draft into the store; the ones open when Sealwax last stopped
+        // reopen once the first frame is painted.
+        composer::use_store(app);
+        let reopen = app.downgrade();
+        self.run_after_first_frame(move || {
+            if let Some(app) = reopen.upgrade() {
+                composer::reopen_drafts(&app);
+            }
+        });
         let weak = Rc::downgrade(self);
         self.mailbox.connect_folders_changed(move || {
             let Some(state) = weak.upgrade() else {

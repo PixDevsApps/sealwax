@@ -9,6 +9,7 @@
 desktop tiling
 resize 1440 900
 mail-account Work
+composer-backend stand-in
 composer-identity Support "Work Support" support@example.test
 composer-open new
 composer-wait

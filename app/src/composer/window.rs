@@ -28,7 +28,7 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::actions::{ActionId, Scope};
-use sealwax_domain::compose::{Draft, DraftPart};
+use sealwax_domain::compose::{Draft, DraftPart, mime};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{AccountId, DraftId};
 use std::cell::{Cell, RefCell};
@@ -161,6 +161,7 @@ struct Widgets {
     style_label: gtk::Label,
     format: Vec<(ActionId, gtk::Button)>,
     body: gtk::Stack,
+    loading: gtk::Label,
     problem: gtk::Label,
     tray: Rc<Tray>,
     warning: gtk::Label,
@@ -202,6 +203,8 @@ struct Inner {
     adopting: RefCell<HashSet<String>>,
     /// The window's resources are let go (`finish`).
     released: Cell<bool>,
+    /// A new draft: closed before anything was typed, it is discarded rather than kept.
+    fresh: Cell<bool>,
 }
 
 impl Composer {
@@ -275,6 +278,7 @@ impl Composer {
             theme_listener: Cell::new(None),
             adopting: RefCell::new(HashSet::new()),
             released: Cell::new(false),
+            fresh: Cell::new(false),
         });
         if let Some(controller) = theme_controller {
             let weak = Rc::downgrade(&inner);
@@ -715,11 +719,19 @@ fn build(
             .build(),
         &["sw-composer-problem"],
     );
-    let body = gtk::Stack::builder().vexpand(true).hexpand(true).build();
-    body.add_named(
-        &gtk::Box::new(gtk::Orientation::Vertical, 0),
-        Some("loading"),
+    let loading = named(
+        classed(
+            gtk::Label::builder()
+                .wrap(true)
+                .justify(gtk::Justification::Center)
+                .valign(gtk::Align::Center)
+                .build(),
+            &["sw-composer-problem"],
+        ),
+        "composer-loading",
     );
+    let body = gtk::Stack::builder().vexpand(true).hexpand(true).build();
+    body.add_named(&loading, Some("loading"));
     body.add_named(editor.view(), Some("editor"));
     body.add_named(&problem, Some("problem"));
     body.set_visible_child_name("loading");
@@ -817,6 +829,7 @@ fn build(
         style_label,
         format,
         body,
+        loading,
         problem,
         tray,
         warning,
@@ -952,6 +965,15 @@ impl Inner {
     }
 
     async fn start(self: Rc<Self>, request: ComposeRequest) {
+        match request {
+            ComposeRequest::Reply { .. }
+            | ComposeRequest::QuickReply { .. }
+            | ComposeRequest::ServerDraft(_) => {
+                self.widgets.loading.set_label("Getting the message…");
+            }
+            ComposeRequest::New { .. } => self.fresh.set(true),
+            _ => {}
+        }
         let prepared = self.backend.prepare(request).await;
         let filter = self.editor.engine().filter().await;
         let prepared = match (prepared, filter) {
@@ -1055,11 +1077,30 @@ impl Inner {
     }
 
     fn choose_sender(self: &Rc<Self>, index: usize) {
-        if index < self.senders.borrow().len() && index != self.sender.get() {
-            self.sender.set(index);
-            self.show_sender();
-            self.changed();
+        let Some(sender) = self.senders.borrow().get(index).cloned() else {
+            return;
+        };
+        if index == self.sender.get() {
+            return;
         }
+        self.sender.set(index);
+        self.show_sender();
+        if let Some(base) = self.base.borrow_mut().as_mut()
+            && !super::store_backend::same_domain(&base.message_id, &sender.address.email)
+        {
+            base.message_id = super::store_backend::message_id(&sender.address.email);
+        }
+        let signature = sender
+            .signature
+            .as_deref()
+            .and_then(sealwax_domain::compose::identity::signature)
+            .map(|signature| signature.html)
+            .unwrap_or_default();
+        self.editor.eval_detached(&format!(
+            "sealwaxComposer.setSignature({})",
+            super::js::literal(&signature)
+        ));
+        self.changed();
     }
 
     fn editor_event(self: &Rc<Self>, event: EditorEvent) {
@@ -1561,15 +1602,20 @@ impl Inner {
     }
 
     fn size(&self) -> u64 {
-        let images = self.editor.parts();
-        let parts = self
-            .widgets
-            .tray
-            .parts()
-            .into_iter()
-            .map(|part| part.size)
-            .chain(images.values().map(|image| image.size));
-        attachments::message_size(parts, 0)
+        let mut parts = self.widgets.tray.parts();
+        parts.extend(self.editor.parts().into_values().map(|image| DraftPart {
+            name: image.name,
+            mime_type: image.mime_type,
+            size: image.size,
+            blob: image.blob,
+            content_id: None,
+        }));
+        let draft = Draft {
+            subject: self.widgets.subject.text().to_string(),
+            parts,
+            ..Draft::default()
+        };
+        mime::estimate(&draft)
     }
 
     // Send, discard and close.
@@ -1601,8 +1647,7 @@ impl Inner {
         let Some(draft) = self.collect().await else {
             return;
         };
-        let size =
-            attachments::message_size(draft.parts.iter().map(|part| part.size), draft.html.len());
+        let size = mime::estimate(&draft);
         if let Some(limit) = self.limit.get().filter(|limit| size > *limit) {
             self.update_size();
             self.toast(&format!(
@@ -1756,11 +1801,20 @@ impl Inner {
         let hold = self.app.upgrade().map(|app| app.hold());
         let inner = self.clone();
         glib::spawn_future_local(async move {
-            if inner.base.borrow().is_some() {
-                inner.save().await;
-            }
-            if let Some(id) = inner.id.get() {
-                inner.backend.close(id);
+            let untouched = inner.fresh.get() && inner.edits.borrow().is_empty();
+            match inner.id.get() {
+                Some(id) if untouched => {
+                    if inner.backend.discard(id).await.is_err() {
+                        inner.backend.close(id);
+                    }
+                }
+                Some(id) => {
+                    if inner.base.borrow().is_some() {
+                        inner.save().await;
+                    }
+                    inner.backend.close(id);
+                }
+                None => {}
             }
             inner.ending.set(Ending::Closed);
             inner.finish();
