@@ -9,7 +9,7 @@
 //! connection silently dead.
 //! For the op queue's writes (M4): SELECT read-write (or READ-ONLY by mailbox) with
 //! PERMANENTFLAGS, UID STORE, UID MOVE and UID COPY with COPYUID untagged, tagged or absent, UID
-//! EXPUNGE, EXPUNGE and CLOSE, UID SEARCH UNSEEN; MOVE and UIDPLUS switched on and off; a command
+//! EXPUNGE, EXPUNGE and CLOSE, UID SEARCH UNSEEN and UNDELETED; MOVE and UIDPLUS switched on and off; a command
 //! refused with a given reply, or cut off before it runs or after it ran with its reply lost.
 //! A STORE in an EXAMINEd mailbox is answered OK and ignored, as Dovecot does (S1).
 //! Synthetic data only.
@@ -118,6 +118,9 @@ pub struct World {
     pub uidplus: bool,
     /// Where MOVE and COPY put COPYUID, with UIDPLUS.
     pub copyuid: CopyUid,
+    /// MOVE and COPY give the target UIDs in reverse order and still write both of COPYUID's
+    /// sets ascending, so its pairs swap messages: what Stalwart 0.16 does.
+    pub copyuid_unordered: bool,
     /// Mailboxes SELECT opens read-only.
     pub read_only: BTreeSet<String>,
     /// PERMANENTFLAGS of a read-write SELECT.
@@ -178,6 +181,7 @@ impl World {
             moves: false,
             uidplus: flavor != Flavor::Rev1,
             copyuid: CopyUid::Untagged,
+            copyuid_unordered: false,
             read_only: BTreeSet::new(),
             permanent_flags: "\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*".into(),
             faults: Vec::new(),
@@ -935,6 +939,7 @@ fn uid_command(
         let mut set = None;
         let mut since = None;
         let mut unseen = false;
+        let mut undeleted = false;
         let mut i = 0;
         while i < tokens.len() {
             match tokens[i].to_ascii_uppercase().as_str() {
@@ -947,6 +952,7 @@ fn uid_command(
                     i += 1;
                 }
                 "UNSEEN" => unseen = true,
+                "UNDELETED" => undeleted = true,
                 _ => {}
             }
             i += 1;
@@ -961,6 +967,7 @@ fn uid_command(
                     .filter(|(uid, _)| set.as_ref().is_none_or(|set| in_set(set, **uid)))
                     .filter(|(_, message)| since.is_none_or(|since| message.date >= since))
                     .filter(|(_, message)| !unseen || !has_flag(message, "\\Seen"))
+                    .filter(|(_, message)| !undeleted || !has_flag(message, "\\Deleted"))
                     .map(|(uid, _)| uid.to_string())
                     .collect()
             }
@@ -1235,12 +1242,15 @@ fn transfer(
     }
     let star = world.mailboxes[name].messages.keys().last().copied();
     let set = parse_set(set_text, star.unwrap_or(0));
-    let picked: Vec<(u32, Message)> = world.mailboxes[name]
+    let mut picked: Vec<(u32, Message)> = world.mailboxes[name]
         .messages
         .iter()
         .filter(|(uid, _)| in_set(&set, **uid))
         .map(|(uid, message)| (*uid, message.clone()))
         .collect();
+    if world.copyuid_unordered {
+        picked.reverse();
+    }
     let (mut sources, mut targets) = (Vec::new(), Vec::new());
     for (uid, message) in picked {
         targets.push(world.put(&target, message));
@@ -1250,6 +1260,10 @@ fn transfer(
         }
     }
     world.changed();
+    if world.copyuid_unordered {
+        sources.sort_unstable();
+        targets.sort_unstable();
+    }
     let code =
         (!sources.is_empty() && world.uidplus && world.copyuid != CopyUid::Absent).then(|| {
             format!(

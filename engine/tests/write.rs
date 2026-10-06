@@ -353,6 +353,63 @@ fn uid_move_keeps_copyuid_from_an_untagged_or_the_tagged_ok() {
 }
 
 #[test]
+fn copyuid_pairs_that_swap_messages_are_paired_again_by_message_id() {
+    runtime().block_on(async {
+        for moves in [true, false] {
+            let fake = fake(Flavor::Qresync, moves, true).await;
+            fake.world().copyuid_unordered = true;
+            fake.world().append("Arkiv", 1, &[]);
+            for _ in 0..4 {
+                fake.world().append("INBOX", 1, &[]);
+            }
+            let messages = listed(&fake, "INBOX");
+            let mut conn = fake.connect().await;
+            let done = write::move_messages(
+                &mut conn,
+                request(
+                    folder(&fake, "INBOX"),
+                    "Arkiv",
+                    &moving(&messages),
+                    None,
+                    false,
+                ),
+            )
+            .await
+            .unwrap();
+            // COPYUID said 1:4 → 2:5; the server put 1 at 5, 2 at 4, 3 at 3 and 4 at 2.
+            assert_eq!(done.moved, [(1, 5), (2, 4), (3, 3), (4, 2)], "MOVE {moves}");
+            for (source, target) in &done.moved {
+                let id = &messages.iter().find(|(uid, _)| uid == source).unwrap().1;
+                assert_eq!(
+                    &fake.world().mailboxes["Arkiv"].messages[target].message_id,
+                    id
+                );
+            }
+        }
+
+        // Without Message-IDs to check them by, swapped pairs aren't reported at all.
+        let fake = fake(Flavor::Qresync, true, true).await;
+        fake.world().copyuid_unordered = true;
+        fake.world().append_many("INBOX", 3, |_| 1);
+        let unknown: Vec<Moving<'_>> = (1..=3)
+            .map(|uid| Moving {
+                uid,
+                message_id: None,
+            })
+            .collect();
+        let mut conn = fake.connect().await;
+        let done = write::move_messages(
+            &mut conn,
+            request(folder(&fake, "INBOX"), "Arkiv", &unknown, None, false),
+        )
+        .await
+        .unwrap();
+        assert!(done.moved.is_empty() && done.gone.is_empty());
+        assert_eq!(fake.world().mailboxes["Arkiv"].messages.len(), 3);
+    });
+}
+
+#[test]
 fn a_move_of_uids_already_gone_counts_as_done() {
     runtime().block_on(async {
         let fake = fake(Flavor::Qresync, true, true).await;
@@ -443,6 +500,8 @@ fn without_move_it_copies_flags_deleted_and_expunges_by_uid() {
                 "UID COPY 1,3 \"Arkiv\"",
                 "UID STORE 1,3 +FLAGS.SILENT (\\Deleted)",
                 "UID EXPUNGE 1,3",
+                "EXAMINE \"Arkiv\" (CONDSTORE)",
+                "UID FETCH 1:2 (UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])",
             ]
         );
         // Another client's \Deleted message stays: only the op's UIDs are expunged.
@@ -567,6 +626,8 @@ fn a_folder_marked_read_marks_every_unseen_message_and_lists_them() {
             let flags: &[&str] = if n % 3 == 0 { &["\\Seen"] } else { &[] };
             fake.world().append("INBOX", 400 - n, flags);
         }
+        // Flagged \Deleted and so hidden: left as it is.
+        let hidden = fake.world().append("INBOX", 1, &["\\Deleted"]);
         let mut conn = fake.connect().await;
         let inbox = folder(&fake, "INBOX");
         let done = write::mark_folder_read(&mut conn, inbox, Some(250))
@@ -577,7 +638,7 @@ fn a_folder_marked_read_marks_every_unseen_message_and_lists_them() {
         assert!(
             fake.world()
                 .commands
-                .contains(&"UID SEARCH UNSEEN UID 1:250".to_owned())
+                .contains(&"UID SEARCH UNSEEN UNDELETED UID 1:250".to_owned())
         );
         let unseen = |fake: &Fake| {
             fake.world().mailboxes["INBOX"]
@@ -593,7 +654,7 @@ fn a_folder_marked_read_marks_every_unseen_message_and_lists_them() {
             .unwrap();
         let later: Vec<u32> = (251..=300).filter(|uid| (uid - 1) % 3 != 0).collect();
         assert_eq!(done.marked, later);
-        assert!(unseen(&fake).is_empty());
+        assert_eq!(unseen(&fake), [hidden]);
         let from = sent(&fake);
         let again = write::mark_folder_read(&mut conn, inbox, None)
             .await
@@ -601,7 +662,7 @@ fn a_folder_marked_read_marks_every_unseen_message_and_lists_them() {
         assert!(again.marked.is_empty());
         assert_eq!(
             commands(&fake, from),
-            ["SELECT \"INBOX\"", "UID SEARCH UNSEEN"]
+            ["SELECT \"INBOX\"", "UID SEARCH UNSEEN UNDELETED"]
         );
         let from = sent(&fake);
         let empty = folder(&fake, "Arkiv");

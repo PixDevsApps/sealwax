@@ -13,9 +13,11 @@
 //!   `UID EXPUNGE` (UIDPLUS), or the messages stay flagged `\Deleted`. A retry first looks for
 //!   the messages by Message-ID among the target's UIDs from the [`Mark`] up and moves or copies
 //!   only what isn't there (S1: a blind replay of a COPY-based move made two copies, and
-//!   Stalwart never matches `SEARCH HEADER Message-ID`).
+//!   Stalwart never matches `SEARCH HEADER Message-ID`). COPYUID's pairs are checked against
+//!   the target's Message-IDs before they are reported: Stalwart 0.16 lists both of its sets in
+//!   ascending order whatever order it copied in.
 //! - [`expunge`]: `\Deleted`, then `UID EXPUNGE` with UIDPLUS; otherwise left flagged.
-//! - [`mark_folder_read`]: `UID SEARCH UNSEEN`, then `\Seen` on exactly those.
+//! - [`mark_folder_read`]: `UID SEARCH UNSEEN UNDELETED`, then `\Seen` on exactly those.
 
 use super::connection::Connection;
 use super::error::ImapError;
@@ -415,16 +417,16 @@ async fn delete(conn: &mut Connection, uids: &[u32], done: &mut Done) -> Result<
     Ok(())
 }
 
-/// What COPYUIDs say about a batch: its pairs, and its UIDs they don't name, which the server
-/// didn't find.
-fn record(done: &mut Done, batch: &[u32], copies: Vec<CopyUid>) {
+/// What COPYUIDs say about a batch: its pairs (into `copied`, still to be checked), and its UIDs
+/// they don't name, which the server didn't find.
+fn record(done: &mut Done, copied: &mut Vec<(u32, u32)>, batch: &[u32], copies: Vec<CopyUid>) {
     let asked: HashSet<u32> = batch.iter().copied().collect();
     let mut named = HashSet::new();
     for copy in copies {
         done.target_uidvalidity = Some(copy.uidvalidity);
         for (source, target) in copy.pairs {
             if asked.contains(&source) && named.insert(source) {
-                done.moved.push((source, target));
+                copied.push((source, target));
             }
         }
     }
@@ -433,13 +435,15 @@ fn record(done: &mut Done, batch: &[u32], copies: Vec<CopyUid>) {
 }
 
 /// `UID MOVE` (`moves`) or `UID COPY` of `uids` to `to`, batch by batch, keeping COPYUID from an
-/// untagged OK or the tagged one (both occur). A MOVE that expunged nothing found nothing.
+/// untagged OK or the tagged one (both occur) in `copied`. A MOVE that expunged nothing found
+/// nothing.
 async fn transfer(
     conn: &mut Connection,
     moves: bool,
     uids: &[u32],
     to: &str,
     done: &mut Done,
+    copied: &mut Vec<(u32, u32)>,
 ) -> Result<(), ImapError> {
     let verb = if moves { "MOVE" } else { "COPY" };
     let to = quote(to)?;
@@ -469,7 +473,7 @@ async fn transfer(
             copies.push(copy);
         }
         if !copies.is_empty() {
-            record(done, &batch.uids, copies);
+            record(done, copied, &batch.uids, copies);
         } else if moves && expunged == 0 {
             done.gone.extend_from_slice(&batch.uids);
         }
@@ -552,16 +556,17 @@ async fn window(conn: &mut Connection, to: &str, mark: Option<Mark>) -> Result<W
     })
 }
 
-/// Pairs messages with target UIDs that carry their Message-ID, each target UID once: messages
-/// no longer in the source first (an earlier attempt moved them), then the others, by UID.
+/// Pairs messages with target UIDs (`entries`, with their Message-IDs) that carry their
+/// Message-ID, each target UID once: messages no longer in the source first (an earlier attempt
+/// moved them), then the others, by UID.
 fn assign(
     messages: &[Moving<'_>],
     present: &BTreeSet<u32>,
-    window: &Window,
+    entries: &[(u32, String)],
     claimed: &mut HashSet<u32>,
 ) -> Vec<(u32, u32)> {
     let mut by_id: HashMap<&str, VecDeque<u32>> = HashMap::new();
-    for (uid, id) in &window.entries {
+    for (uid, id) in entries {
         if !claimed.contains(uid) {
             by_id.entry(id.as_str()).or_default().push_back(*uid);
         }
@@ -583,6 +588,71 @@ fn assign(
         }
     }
     pairs
+}
+
+/// COPYUID's pairs, checked against the Message-IDs of the target UIDs it names. Stalwart 0.16
+/// writes both of COPYUID's sets in ascending order whatever order it copied in, so its pairs can
+/// swap messages: where a pair disagrees, the messages are paired again by Message-ID among
+/// COPYUID's target UIDs, and a pair with no Message-ID to check is kept only when every checked
+/// pair agreed. A single pair needs no check.
+async fn checked(
+    conn: &mut Connection,
+    to: &str,
+    messages: &[Moving<'_>],
+    copied: Vec<(u32, u32)>,
+    claimed: &mut HashSet<u32>,
+) -> Result<Vec<(u32, u32)>, ImapError> {
+    let targets: Vec<u32> = copied.iter().map(|(_, target)| *target).collect();
+    if copied.len() < 2 {
+        claimed.extend(targets);
+        return Ok(copied);
+    }
+    view::examine(conn, to).await?;
+    let mut entries = Vec::new();
+    for batch in batches(&targets) {
+        let command = format!(
+            "UID FETCH {} (UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])",
+            batch.set
+        );
+        raw::run(&mut conn.session, &command, |response| {
+            if let Response::Fetch(_, attributes) = response
+                && let Some(entry) = fetched_id(attributes)
+            {
+                entries.push(entry);
+            }
+        })
+        .await?;
+    }
+    entries.sort_unstable();
+    entries.dedup_by_key(|(uid, _)| *uid);
+    let theirs: HashMap<u32, &str> = entries
+        .iter()
+        .map(|(uid, id)| (*uid, id.as_str()))
+        .collect();
+    let ours: HashMap<u32, String> = messages
+        .iter()
+        .filter_map(|message| Some((message.uid, message::normalize_id(message.message_id?)?)))
+        .collect();
+    let checks: Vec<bool> = copied
+        .iter()
+        .filter_map(|(source, target)| Some(ours.get(source)? == theirs.get(target)?))
+        .collect();
+    if !checks.is_empty() && checks.iter().all(|agrees| *agrees) {
+        claimed.extend(targets);
+        return Ok(copied);
+    }
+    tracing::debug!(
+        pairs = copied.len(),
+        checked = checks.len(),
+        "COPYUID unconfirmed by the target; paired by Message-ID"
+    );
+    let sources: HashSet<u32> = copied.iter().map(|(source, _)| *source).collect();
+    let moved: Vec<Moving<'_>> = messages
+        .iter()
+        .filter(|message| sources.contains(&message.uid))
+        .copied()
+        .collect();
+    Ok(assign(&moved, &BTreeSet::new(), &entries, claimed))
 }
 
 fn logged(op: &'static str, messages: usize, done: &Done, started: Instant) {
@@ -631,8 +701,11 @@ pub async fn store_flags(
 ///
 /// A retry first looks for the messages by Message-ID among the target's UIDs from the mark up
 /// (a MOVE retry only with a mark: a replayed UID MOVE of a gone UID is harmless, S1). What it
-/// finds there stays, and only its source copy is deleted; the rest is moved or copied. Without
-/// COPYUID (no UIDPLUS) the target UIDs are found the same way after the move.
+/// finds there stays, and only its source copy is deleted; the rest is moved or copied.
+///
+/// The target UIDs in [`Done::moved`] are checked: COPYUID's pairs against the target's
+/// Message-IDs (Stalwart's can swap messages), and where COPYUID is missing the target's new
+/// UIDs from the mark up are matched by Message-ID.
 pub async fn move_messages(conn: &mut Connection, request: Move<'_>) -> Result<Done, WriteError> {
     let started = Instant::now();
     let mut done = Done::default();
@@ -658,7 +731,7 @@ pub async fn move_messages(conn: &mut Connection, request: Move<'_>) -> Result<D
             .copied()
             .collect();
         done.target_uidvalidity = Some(look.uidvalidity);
-        done.moved = assign(request.messages, &present, look, &mut claimed);
+        done.moved = assign(request.messages, &present, &look.entries, &mut claimed);
         let found: HashSet<u32> = done.moved.iter().map(|(source, _)| *source).collect();
         (stale, remaining) = present.iter().copied().partition(|uid| found.contains(uid));
     }
@@ -669,27 +742,38 @@ pub async fn move_messages(conn: &mut Connection, request: Move<'_>) -> Result<D
         .union(request.remove)
         .difference(add.union(remove));
     store(conn, &remaining, &names(add), &names(remove)).await?;
-    transfer(conn, moves, &remaining, request.to, &mut done).await?;
+    let mut copied = Vec::new();
+    transfer(conn, moves, &remaining, request.to, &mut done, &mut copied).await?;
     if moves {
         delete(conn, &stale, &mut done).await?;
     } else {
-        let copied = unique(remaining.iter().chain(&stale).copied());
-        delete(conn, &copied, &mut done).await?;
+        let sources = unique(remaining.iter().chain(&stale).copied());
+        delete(conn, &sources, &mut done).await?;
     }
-    if !conn.caps().has("UIDPLUS")
-        && let Some(mark) = request.mark
-    {
-        let mapped: HashSet<u32> = done.moved.iter().map(|(source, _)| *source).collect();
+    let pairs = checked(conn, request.to, request.messages, copied, &mut claimed).await?;
+    done.moved.extend(pairs);
+    if let Some(mark) = request.mark {
+        let sent: HashSet<u32> = remaining.iter().copied().collect();
+        let known: HashSet<u32> = done
+            .moved
+            .iter()
+            .map(|(source, _)| *source)
+            .chain(done.gone.iter().copied())
+            .collect();
         let unmapped: Vec<Moving<'_>> = request
             .messages
             .iter()
-            .filter(|message| !mapped.contains(&message.uid) && message.message_id.is_some())
+            .filter(|message| {
+                sent.contains(&message.uid)
+                    && !known.contains(&message.uid)
+                    && message.message_id.is_some()
+            })
             .copied()
             .collect();
         if !unmapped.is_empty() {
             let look = window(conn, request.to, Some(mark)).await?;
             done.target_uidvalidity = Some(look.uidvalidity);
-            let found = assign(&unmapped, &BTreeSet::new(), &look, &mut claimed);
+            let found = assign(&unmapped, &BTreeSet::new(), &look.entries, &mut claimed);
             done.moved.extend(found);
         }
     }
@@ -722,10 +806,10 @@ pub async fn expunge(
 }
 
 /// Marks every message of `folder` read on the server, whatever the store holds of it (a
-/// windowed folder's older messages too): `UID SEARCH UNSEEN`, then `+FLAGS.SILENT (\Seen)` on
-/// exactly those, listed in [`Done::marked`] for an Undo after the window. With `up_to`, only
-/// UIDs up to it: the newest message the user had when they asked, so mail arriving meanwhile
-/// stays unread.
+/// windowed folder's older messages too): `UID SEARCH UNSEEN UNDELETED` (messages flagged
+/// `\Deleted` are hidden), then `+FLAGS.SILENT (\Seen)` on exactly those, listed in
+/// [`Done::marked`] for an Undo after the window. With `up_to`, only UIDs up to it: the newest
+/// message the user had when they asked, so mail arriving meanwhile stays unread.
 pub async fn mark_folder_read(
     conn: &mut Connection,
     folder: OpFolder<'_>,
@@ -743,8 +827,8 @@ pub async fn mark_folder_read(
     }
     if selected.exists > 0 {
         let criteria = match up_to {
-            Some(last) => format!("UNSEEN UID 1:{last}"),
-            None => "UNSEEN".to_owned(),
+            Some(last) => format!("UNSEEN UNDELETED UID 1:{last}"),
+            None => "UNSEEN UNDELETED".to_owned(),
         };
         let unseen = view::uid_search(conn, &criteria, &mut View::default()).await?;
         store(conn, &unseen, &["\\Seen"], &[]).await?;

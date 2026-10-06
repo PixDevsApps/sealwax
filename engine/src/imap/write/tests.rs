@@ -140,14 +140,11 @@ fn a_window_pairs_gone_messages_first_and_each_target_once() {
             message_id: Some("<elsewhere@example.test>"),
         },
     ];
-    let window = Window {
-        uidvalidity: 3,
-        entries: vec![
-            (40, "twin@example.test".into()),
-            (41, "single@example.test".into()),
-            (42, "unrelated@example.test".into()),
-        ],
-    };
+    let window = [
+        (40, "twin@example.test".to_owned()),
+        (41, "single@example.test".to_owned()),
+        (42, "unrelated@example.test".to_owned()),
+    ];
     // 6 is gone from the source: it is the twin an earlier attempt moved; 5 is still there.
     let present = BTreeSet::from([5, 7, 8, 9]);
     let mut claimed = HashSet::new();

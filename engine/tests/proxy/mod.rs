@@ -3,7 +3,9 @@
 //! relays plaintext, so a rule can match IMAP text. A cut drops both TCP connections without a
 //! TLS close_notify, like a dead network. A black hole (M3) is a network that stopped answering:
 //! every open connection goes silent for good, and connections made meanwhile are never
-//! answered, as after a suspend or on a lost route; lifted, new connections work again.
+//! answered, as after a suspend or on a lost route; lifted, new connections work again. For the
+//! op queue's writes (M4), rules on what the client sends: the reply to a command lost after the
+//! server acted on it, or the connection cut as the command goes out (S1).
 
 #![allow(dead_code)]
 
@@ -37,6 +39,48 @@ enum Phase {
 #[derive(Default)]
 struct State {
     armed: Option<(Rule, Option<u64>, Phase)>,
+    sent: Option<Sent>,
+}
+
+/// A one-shot rule on a command the client sends.
+struct Sent {
+    needle: Vec<u8>,
+    /// Cut as the command goes out, before the server sees it; otherwise let it through and lose
+    /// the server's reply.
+    before: bool,
+    /// The connection that sent it.
+    owner: Option<u64>,
+}
+
+impl State {
+    /// Whether to cut instead of forwarding a client chunk.
+    fn judge_sent(&mut self, connection: u64, chunk: &[u8]) -> bool {
+        let Some(sent) = self.sent.as_mut() else {
+            return false;
+        };
+        if sent.owner.is_some() || find(chunk, &sent.needle, 0).is_none() {
+            return false;
+        }
+        if sent.before {
+            self.sent = None;
+            return true;
+        }
+        sent.owner = Some(connection);
+        false
+    }
+
+    /// Whether a server chunk is the reply to lose: anything but a continuation request, once
+    /// the command went out on this connection.
+    fn loses(&mut self, connection: u64, chunk: &[u8]) -> bool {
+        let lost = self
+            .sent
+            .as_ref()
+            .is_some_and(|sent| sent.owner == Some(connection) && !chunk.starts_with(b"+"));
+        if lost {
+            self.sent = None;
+        }
+        lost
+    }
 }
 
 /// Faults on every connection: cuts and black holes so far, and whether one is in place.
@@ -167,6 +211,37 @@ impl Proxy {
         self.state.lock().unwrap().armed = Some((rule, None, Phase::Counting(0)));
     }
 
+    /// Once the client sends `needle`, the server's next data other than a continuation request
+    /// is dropped and the connection cut: the server acted, and the client never hears how.
+    pub fn lose_reply(&self, needle: &str) {
+        self.state.lock().unwrap().sent = Some(Sent {
+            needle: needle.as_bytes().to_vec(),
+            before: false,
+            owner: None,
+        });
+    }
+
+    /// The connection is cut as the client sends `needle`, before the server sees it.
+    pub fn cut_on_send(&self, needle: &str) {
+        self.state.lock().unwrap().sent = Some(Sent {
+            needle: needle.as_bytes().to_vec(),
+            before: true,
+            owner: None,
+        });
+    }
+
+    /// Whether a rule on what the client sends is still waiting.
+    pub fn sent_armed(&self) -> bool {
+        self.state.lock().unwrap().sent.is_some()
+    }
+
+    /// Drops a rule that never fired.
+    pub fn disarm(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.sent = None;
+        state.armed = None;
+    }
+
     /// Cuts made so far, by rules and by `cut_all`.
     pub fn fired(&self) -> usize {
         self.fired.load(Ordering::SeqCst)
@@ -290,15 +365,19 @@ async fn relay(
     let (mut client_read, mut client_write) = tokio::io::split(client);
     let (mut server_read, mut server_write) = tokio::io::split(server);
     let inbound = frozen.clone();
+    let sending = state.clone();
     let to_server = async move {
         let mut buf = vec![0u8; 64 * 1024];
         loop {
             let n = client_read.read(&mut buf).await?;
             if n == 0 {
-                return std::io::Result::Ok(());
+                return std::io::Result::Ok(false);
             }
             if inbound.load(Ordering::SeqCst) {
                 continue;
+            }
+            if sending.lock().unwrap().judge_sent(id, &buf[..n]) {
+                return Ok(true);
             }
             server_write.write_all(&buf[..n]).await?;
             server_write.flush().await?;
@@ -317,6 +396,9 @@ async fn relay(
             if n == 0 {
                 return std::io::Result::Ok(false);
             }
+            if state.lock().unwrap().loses(id, &buf[..n]) {
+                return Ok(true);
+            }
             let (forward, cut) = state.lock().unwrap().judge(id, &buf[..n]);
             client_write.write_all(&buf[..forward]).await?;
             client_write.flush().await?;
@@ -326,7 +408,7 @@ async fn relay(
         }
     };
     let cut = tokio::select! {
-        _ = to_server => false,
+        result = to_server => result.unwrap_or(false),
         result = to_client => result.unwrap_or(false),
     };
     if cut { End::Cut } else { End::Closed }
