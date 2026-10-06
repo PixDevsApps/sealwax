@@ -305,8 +305,15 @@ impl Run {
             Duration::from_secs(10)
         };
         if !wait_until(limit, || notify::clicks().len() > clicks_before).await {
+            let signals = self
+                .invoked
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .len()
+                - invoked_before;
             return Err(format!(
-                "step {number}: no click within {} s",
+                "step {number}: no click within {} s ({signals} ActionInvoked signals reached \
+                 the app)",
                 limit.as_secs()
             ));
         }
