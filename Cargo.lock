@@ -3230,6 +3230,7 @@ name = "sealwax-domain"
 version = "0.2.0"
 dependencies = [
  "html2text",
+ "idna",
  "insta",
  "mail-parser",
  "proptest",
