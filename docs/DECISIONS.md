@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-Synced: 2026-10-05
+Synced: 2026-10-06
 
 The repository docs are the canonical project memory ([ADR-012](#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Dated entries describe the state at that date; newer entries and amendments take precedence. ADRs written before the naming decision call the app "Mail", its working name; it is **Sealwax** ([ADR-010](#adr-010-accepted--sealwax-2026-10-04)).
 
@@ -8,14 +8,14 @@ The repository docs are the canonical project memory ([ADR-012](#adr-012--reposi
 
 Use this page for decisions with meaningful long-term cost. Keep each entry short, dated and explicit about alternatives. Change an accepted decision with a dated `###` amendment under it; do not rewrite history. Status moves Proposed → Accepted when the user decides or a spike provides the evidence; say which. Library facts below were checked against crates.io and the crate sources on 2026-10-04 ([RESEARCH.md](RESEARCH.md#library-verification-2026-10-04)).
 
-| ADR | Title | Status (2026-10-05) |
+| ADR | Title | Status (2026-10-06) |
 | --- | --- | --- |
 | 001 | Standalone native application | Accepted (user request) |
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
 | 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6, the application shell built in M1, the engine service and autodetect built in M2 |
 | 004 | Follow the live Omarchy theme | Accepted (user request); built in M1 |
-| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2 |
-| 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2 |
+| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2; v3–v6 in M3; v7 (the op queue, the overlay in the rows) in M4 |
+| 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2; the sync core and actor in M3; the op queue's writes in M4 |
 | 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending); the SMTP login check built in M2 |
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism accepted on S5's evidence (GO, 2026-10-05); secrets keyed by the account key in M2 |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2 |
@@ -24,7 +24,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
-| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules) |
+| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules); the store side and the IMAP writes built in M4's phase A |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
@@ -255,6 +255,15 @@ Built at the user's choice ("Show server counts"; [report](m3/counts.md)).
 - **Older mail** moves its messages and unread from below the floor into the store in one transaction, so the counts shown stay.
 - **They remain hints:** never a reason to store or drop a row, recounted by the UID diff and the next STATUS. A new folder keeps showing STATUS counts until its first sync; a complete folder has nothing below.
 
+### ADR-005 amendment — schema v7: the op queue and hidden rows (M4, 2026-10-06)
+
+Built in M4's phase A ([report](m4/ops-store.md)).
+- **The overlay lives in the rows:** `messages.flags` is what the user sees, the server's flags with pending ops applied, plus bit 256 while a pending move or expunge takes the message out of its folder. `messages.server_flags` holds the server's flags where they differ (NULL otherwise) and is what the sync engine reads and writes.
+- **Hidden rows:** a row with bit 256 or `\Deleted` (whoever set it) is in no view, count or search. The five list indexes are partial on that and hold `flags`, so their walks stay covering.
+- **New tables:** `op_batches`, `ops` (one change to one message, or to the server's unread below a folder's floor) and `op_refusals`.
+- **Measured at 100,000 messages** (release): S3's bars hold (folder open ≤ 12.8 ms cold, the one-insert diff p99 4.66 ms, pages as before); a flag change costs about 0.4 ms more at p99 because the date indexes hold `flags`; the migration takes about 1 s on the first start and leaves the file about 7 MiB larger.
+- **Rejected:** an overlay table beside unchanged rows. Its anti-join made a deep page and every position count 6–7 ms slower, a frame's budget at 144 Hz on its own.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -346,6 +355,16 @@ Built in M3 ([report](m3/actor.md)).
   - reconnect at once, then a backoff from 1 s to 5 minutes, jittered;
   - progress at most 10 events a second per account.
 - **Counts:** a folder with older mail left on the server shows the server's totals: the store's own counts plus the messages and unread messages under the floor, from the account pass's STATUS (ADR-005, schema v6).
+
+### ADR-006 amendment — the op queue's writes as built (M4 phase A, 2026-10-06)
+
+Built in M4 ([report](m4/imap-writes.md)) on S1's raw layer, without the store.
+- **Every write SELECTs its folder read-write** and checks its UIDVALIDITY first (a different one is reported for re-targeting); `[READ-ONLY]` is refused. The passes keep EXAMINEing. CLOSE and a plain EXPUNGE are never sent.
+- **Flags:** `UID STORE +FLAGS.SILENT` and `-FLAGS.SILENT` in UID sets of at most 1,000 UIDs and 4,000 bytes, pipelined; keywords only where PERMANENTFLAGS keeps them (all three testbed servers list `\*`).
+- **Moves:** UID MOVE where offered; else UID COPY, `\Deleted` and UID EXPUNGE with UIDPLUS; without UIDPLUS the source copies stay `\Deleted` (and hidden). COPYUID is read from the tagged or an untagged OK and **checked against the target's Message-IDs** before it is reported: Stalwart 0.16.24 writes both sets in ascending order whatever order it copied in, which would put the wrong body on a moved row. The check costs two round trips per move. A quirk switch (`ConnectOptions::moves`) takes the COPY path on servers with MOVE.
+- **Refusals** keep their response code for classification only: retry (a lost connection, timeout, BYE, `[UNAVAILABLE]`, `[INUSE]`, a NO without a code), refuse (`[TRYCREATE]`, `[NONEXISTENT]`, `[READ-ONLY]`, `[CANNOT]`, `[NOPERM]`, BAD), quota full (`[OVERQUOTA]`).
+- **Server behaviour found:** Stalwart keeps a message once across mailboxes (a COPY into a folder that holds it adds nothing; flags are shared between the copies). IMAP4rev1-only Dovecot answers COPY with COPYUID without advertising UIDPLUS.
+- **Measured** (release, testbed): flags on 500 messages p50 11.9–14.0 ms; a move of 500 p50 32.1 ms (Stalwart, MOVE), 60.9 ms (Dovecot, MOVE), 68.4 ms (IMAP4rev1 Dovecot, COPY).
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
@@ -661,6 +680,20 @@ From the fault-injection runs ([S1 report](spikes/S1-imap.md)):
 - Replaying a MOVE of a UID that no longer exists is harmless. A COPY-based move (servers without MOVE) is **not** idempotent — a blind replay made two copies — so it goes through the same UIDNEXT check.
 - Without UIDPLUS, EXPUNGE removes every `\Deleted` message in the mailbox, not just the op's. The queue expunges only with `UID EXPUNGE` (UIDPLUS); otherwise it leaves the message flagged `\Deleted` and hidden locally.
 - STORE runs in a read-write SELECT: Dovecot answers "OK Store ignored" in an EXAMINEd mailbox.
+
+### ADR-015 amendment — the op queue's store side and writes as built (M4 phase A, 2026-10-06)
+
+Built in M4's phase A ([store](m4/ops-store.md), [writes](m4/imap-writes.md)); the runner on the actor is phase B.
+- **Ops:** one per message per action, FIFO per message, each recording the folder, UIDVALIDITY, UID and Message-ID, the flags and folder the user saw (for Undo), `not_before`, attempts and, for moves, the target's UIDVALIDITY and UIDNEXT before the first attempt (the "mark"). Written with the overlay and the counts in one transaction and one change event, at the writer's interactive priority: one message's change event p99 ≤ 3.85 ms at 100,000 messages.
+- **Planning** is `domain::triage` (M4's contract): the store groups an action's messages by folder and plans each group with the account's folders.
+- **Due:** a message's not-started ops whose `not_before` has passed fold into one action (flags merge, flags before a move travel with it, move chains collapse, A→B→A is done without the server); a started run is retried as it was. Groups per folder and action carry UID sets.
+- **Outcomes:** done turns the overlay into the server's state in the same transaction (a move with a confirmed new UID re-homes the row, body and full text kept; without one the target's sync fetches it); transient failures keep the overlay; permanent ones drop the ops, show the server's state and are reported (`Event::OpsRefused`). A MOVE of a UID that no longer exists counts as done, as does a pending move or expunge of a row sync saw go.
+- **Retries are idempotent:** an attempt that may have done part of the change first reads the Message-IDs of the target's UIDs from the mark up, keeps what is already there and removes only its source copy, then moves or copies the rest. Measured: 250 runs with the reply of MOVE, COPY, the `\Deleted` STORE or UID EXPUNGE lost or the connection cut on send, 2,325 messages moved, 0 duplicates, 0 lost; a blind replay duplicated 5 of 5 on both Dovecots.
+- **Undo:** ops not started are dropped (nothing reaches the server); otherwise inverse ops from the state at queue time, without a window. Deleted for good, or moved where no UID was reported and no copy is found, is reported lost.
+- **UIDVALIDITY:** a reset folder's ops wait for its next sync and find their messages by Message-ID; those still waiting when its first sync finishes are refused.
+- **A folder marked read:** the messages the store holds as per-message ops, and the server's unread below a windowed folder's floor as one op; the writes search `UNSEEN UNDELETED` first so the UIDs they mark are known.
+- **Local accounts** have no server: their ops and Undo apply at once.
+- **The runner** (phase B) holds the source's and the target's pass locks, in folder order, while it runs a group and records it.
 
 ## ADR-016 — Conversation threading (2026-10-04)
 
