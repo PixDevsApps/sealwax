@@ -6,18 +6,25 @@
 //! and gets a NOOP before it is used again after sitting idle. The disk cap is enforced when
 //! `Command::Storage` arrives and after every batch; after a pass that stored new mail the
 //! actor queues the background prefetch behind the reader's requests.
+//!
+//! M5 adds the downloads that store nothing (ML-061, ML-063): `Command::FetchPart`, one part of
+//! a message stored as its text parts by the section the store recorded, and
+//! `Command::FetchOriginal`, a message whole as the server has it. The same worker serves them
+//! on the same connection, before any body batch (the reader waits for them; the prefetch
+//! doesn't), one at a time, each answered with one `Event::PartFetched` or
+//! `Event::OriginalFetched`; asking again while one is out asks nothing more.
 
 use super::actor::Signal;
 use super::{Shared, log_in_with_password, log_in_with_token};
-use crate::api::{BodyError, Event, SyncStatus};
+use crate::api::{BodyError, Event, FetchedPart, Original, SyncStatus};
 use crate::bodies::{enforce_cap, prefetch_ids};
-use crate::imap::bodies::{BodyFetchError, Sink, fetch_bodies};
+use crate::imap::bodies::{BodyFetchError, Sink, fetch_bodies, fetch_original, fetch_part};
 use crate::imap::{Connection, ImapError};
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
 use sealwax_domain::config::Storage;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
-use sealwax_infrastructure::store::{BodyState, BodyTarget};
-use std::collections::{HashMap, VecDeque};
+use sealwax_infrastructure::store::{BodyState, BodyTarget, FolderSync, PartSource};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::{Notify, watch};
@@ -32,10 +39,73 @@ struct State {
     asked: HashMap<MessageId, bool>,
     /// Per account, the messages waiting, most wanted first.
     queues: HashMap<AccountId, VecDeque<BodyTarget>>,
+    /// Per account, the parts and originals waiting, in the order asked; served before bodies.
+    extras: HashMap<AccountId, VecDeque<Extra>>,
+    /// Parts (message and mail-parser index) and originals asked for and not answered yet.
+    parts: HashSet<(MessageId, u32)>,
+    originals: HashSet<MessageId>,
     workers: HashMap<AccountId, tokio::task::AbortHandle>,
     /// Wakes a worker that waits for more work with its connection open.
     wakers: HashMap<AccountId, Arc<Notify>>,
     storage: Option<Storage>,
+}
+
+/// A download the reader waits for that stores nothing (M5).
+enum Extra {
+    /// One part of a message stored as its text parts (ML-061).
+    Part { source: PartSource, part: u32 },
+    /// A message whole, for Show Original and Save as .eml (ML-063).
+    Original { target: BodyTarget },
+}
+
+/// What an [`Extra`] brought back.
+enum Fetched {
+    Part(FetchedPart),
+    Original(Original),
+}
+
+impl Extra {
+    fn folder(&self) -> FolderId {
+        match self {
+            Extra::Part { source, .. } => source.folder,
+            Extra::Original { target } => target.folder,
+        }
+    }
+
+    /// Its one answer.
+    fn answer(&self, shared: &Shared, result: Result<Fetched, BodyError>) {
+        match self {
+            Extra::Part { source, part } => {
+                let result = result.and_then(|fetched| match fetched {
+                    Fetched::Part(part) => Ok(part),
+                    Fetched::Original(_) => Err(BodyError::Other),
+                });
+                answer_part(shared, source.message, *part, result);
+            }
+            Extra::Original { target } => {
+                let result = result.and_then(|fetched| match fetched {
+                    Fetched::Original(original) => Ok(original),
+                    Fetched::Part(_) => Err(BodyError::Other),
+                });
+                answer_original(shared, target.message, result);
+            }
+        }
+    }
+
+    async fn fetch(
+        &self,
+        conn: &mut Connection,
+        folder: &FolderSync,
+    ) -> Result<Result<Fetched, BodyError>, ImapError> {
+        Ok(match self {
+            Extra::Part { source, .. } => {
+                fetch_part(conn, folder, source).await?.map(Fetched::Part)
+            }
+            Extra::Original { target } => fetch_original(conn, folder, target.uid)
+                .await?
+                .map(|bytes| Fetched::Original(Original(bytes))),
+        })
+    }
 }
 
 #[derive(Default)]
@@ -140,6 +210,83 @@ pub(super) fn request(shared: &Arc<Shared>, messages: Vec<MessageId>, announce: 
     });
 }
 
+fn answer_part(
+    shared: &Shared,
+    message: MessageId,
+    part: u32,
+    result: Result<FetchedPart, BodyError>,
+) {
+    shared.bodies.state().parts.remove(&(message, part));
+    shared.send(Event::PartFetched {
+        message,
+        part,
+        result,
+    });
+}
+
+fn answer_original(shared: &Shared, message: MessageId, result: Result<Original, BodyError>) {
+    shared.bodies.state().originals.remove(&message);
+    shared.send(Event::OriginalFetched { message, result });
+}
+
+/// Where `message` is on the server, if the store still holds it.
+async fn stored(shared: &Shared, message: MessageId) -> Result<Option<BodyTarget>, BodyError> {
+    match shared.store.body_targets(vec![message]).recv().await {
+        Ok(mut targets) => Ok(targets.pop()),
+        Err(error) => {
+            tracing::warn!(%error, "the message to download couldn't be read");
+            Err(BodyError::Store)
+        }
+    }
+}
+
+/// Queues the part at mail-parser index `part` of `message` (M5, ML-061), by the section the
+/// store recorded for it; answered with one `PartFetched`. A message the store doesn't hold is
+/// `Gone`; a part without a section (its bytes are in the stored message) is `Other`.
+pub(super) fn request_part(shared: &Arc<Shared>, message: MessageId, part: u32) {
+    if !shared.bodies.state().parts.insert((message, part)) {
+        return;
+    }
+    let shared = shared.clone();
+    tokio::spawn(async move {
+        let target = match stored(&shared, message).await {
+            Ok(Some(target)) => target,
+            Ok(None) => return answer_part(&shared, message, part, Err(BodyError::Gone)),
+            Err(error) => return answer_part(&shared, message, part, Err(error)),
+        };
+        let source = match shared.store.part_source(message, part).recv().await {
+            Ok(Some(source)) => source,
+            Ok(None) => {
+                tracing::info!(id = message.0, part, "the part has no section to fetch");
+                return answer_part(&shared, message, part, Err(BodyError::Other));
+            }
+            Err(error) => {
+                tracing::warn!(%error, "the part to download couldn't be read");
+                return answer_part(&shared, message, part, Err(BodyError::Store));
+            }
+        };
+        enqueue_extra(&shared, target.account, Extra::Part { source, part });
+    });
+}
+
+/// Queues `message` whole (M5, ML-063); answered with one `OriginalFetched`. A message the
+/// store doesn't hold is `Gone`.
+pub(super) fn request_original(shared: &Arc<Shared>, message: MessageId) {
+    if !shared.bodies.state().originals.insert(message) {
+        return;
+    }
+    let shared = shared.clone();
+    tokio::spawn(async move {
+        match stored(&shared, message).await {
+            Ok(Some(target)) => {
+                enqueue_extra(&shared, target.account, Extra::Original { target });
+            }
+            Ok(None) => answer_original(&shared, message, Err(BodyError::Gone)),
+            Err(error) => answer_original(&shared, message, Err(error)),
+        }
+    });
+}
+
 /// Moves a queued message to the front of its account's queue.
 fn promote(state: &mut State, message: MessageId) {
     for queue in state.queues.values_mut() {
@@ -166,6 +313,17 @@ fn queue_in(queue: &mut VecDeque<BodyTarget>, targets: Vec<BodyTarget>, front: b
 fn enqueue(shared: &Arc<Shared>, account: AccountId, targets: Vec<BodyTarget>, front: bool) {
     let mut state = shared.bodies.state();
     queue_in(state.queues.entry(account).or_default(), targets, front);
+    start(shared, &mut state, account);
+}
+
+fn enqueue_extra(shared: &Arc<Shared>, account: AccountId, extra: Extra) {
+    let mut state = shared.bodies.state();
+    state.extras.entry(account).or_default().push_back(extra);
+    start(shared, &mut state, account);
+}
+
+/// Wakes the account's worker, or starts one.
+fn start(shared: &Arc<Shared>, state: &mut State, account: AccountId) {
     let running = state
         .workers
         .get(&account)
@@ -193,9 +351,20 @@ fn take_batch(queue: &mut VecDeque<BodyTarget>) -> Option<(FolderId, Vec<BodyTar
     Some((folder, batch))
 }
 
-/// The next batch of `account`, if any.
-fn next_batch(shared: &Shared, account: AccountId) -> Option<(FolderId, Vec<BodyTarget>)> {
-    take_batch(shared.bodies.state().queues.get_mut(&account)?)
+/// What a worker does next: a part or an original first, else a batch of bodies.
+enum Work {
+    Extra(Extra),
+    Bodies(FolderId, Vec<BodyTarget>),
+}
+
+/// The next work of `account`, if any.
+fn next_work(shared: &Shared, account: AccountId) -> Option<Work> {
+    let mut state = shared.bodies.state();
+    if let Some(extra) = state.extras.get_mut(&account).and_then(VecDeque::pop_front) {
+        return Some(Work::Extra(extra));
+    }
+    let (folder, batch) = take_batch(state.queues.get_mut(&account)?)?;
+    Some(Work::Bodies(folder, batch))
 }
 
 /// Ends the worker if its queue is still empty, under the same lock that `enqueue` takes, so a
@@ -206,10 +375,15 @@ fn retire(shared: &Shared, account: AccountId) -> bool {
         .queues
         .get(&account)
         .is_some_and(|queue| !queue.is_empty())
+        || state
+            .extras
+            .get(&account)
+            .is_some_and(|extras| !extras.is_empty())
     {
         return false;
     }
     state.queues.remove(&account);
+    state.extras.remove(&account);
     state.workers.remove(&account);
     state.wakers.remove(&account);
     true
@@ -241,17 +415,21 @@ async fn reconnected(mut signals: watch::Receiver<Signal>, seen: u64) {
 
 /// Answers everything `account` has queued with `error`, and ends its worker.
 fn fail_all(shared: &Shared, account: AccountId, error: BodyError) {
-    let waiting: Vec<MessageId> = {
+    let (waiting, extras): (Vec<MessageId>, VecDeque<Extra>) = {
         let mut state = shared.bodies.state();
         state.workers.remove(&account);
-        state
+        let waiting = state
             .queues
             .remove(&account)
             .map(|queue| queue.into_iter().map(|target| target.message).collect())
-            .unwrap_or_default()
+            .unwrap_or_default();
+        (waiting, state.extras.remove(&account).unwrap_or_default())
     };
     for message in waiting {
         answer(shared, message, Err(error));
+    }
+    for extra in extras {
+        extra.answer(shared, Err(error));
     }
 }
 
@@ -292,7 +470,7 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
     let mut connection: Option<Connection> = None;
     let mut used = Instant::now();
     loop {
-        let Some((folder, batch)) = next_batch(&shared, account) else {
+        let Some(work) = next_work(&shared, account) else {
             let woken =
                 tokio::time::timeout(shared.sync.body_linger, waker(&shared, account).notified())
                     .await;
@@ -316,6 +494,26 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
                 connection = None;
             }
         }
+        let (folder, batch) = match work {
+            Work::Bodies(folder, batch) => (folder, batch),
+            Work::Extra(extra) => {
+                let ran = run_extra(
+                    &shared,
+                    &settings,
+                    signals.as_ref(),
+                    &mut seen,
+                    &mut connection,
+                    extra,
+                )
+                .await;
+                used = Instant::now();
+                if let Err(error) = ran {
+                    fail_all(&shared, account, error);
+                    return;
+                }
+                continue;
+            }
+        };
         let Some(sync) = shared.store.folder_sync(folder).recv().await.ok().flatten() else {
             for target in &batch {
                 answer(&shared, target.message, Err(BodyError::Gone));
@@ -379,6 +577,75 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
     if let Some(connection) = connection {
         connection.logout().await;
     }
+}
+
+/// One part or original on the worker's connection, tried once more on a new connection after
+/// a cut or a reconnect. `Err` when the login failed: the account's other work fails with it.
+async fn run_extra(
+    shared: &Shared,
+    settings: &AccountSettings,
+    signals: Option<&watch::Receiver<Signal>>,
+    seen: &mut u64,
+    connection: &mut Option<Connection>,
+    extra: Extra,
+) -> Result<(), BodyError> {
+    let Some(folder) = shared
+        .store
+        .folder_sync(extra.folder())
+        .recv()
+        .await
+        .ok()
+        .flatten()
+    else {
+        extra.answer(shared, Err(BodyError::Gone));
+        return Ok(());
+    };
+    for attempt in 1..=2 {
+        let conn = match connection.as_mut() {
+            Some(conn) => conn,
+            None => match log_in(shared, settings).await {
+                Ok(conn) => connection.insert(conn),
+                Err(error) => {
+                    extra.answer(shared, Err(error));
+                    return Err(error);
+                }
+            },
+        };
+        let fetch = extra.fetch(conn, &folder);
+        let fetched = match signals {
+            Some(signals) => tokio::select! {
+                fetched = fetch => fetched,
+                () = reconnected(signals.clone(), *seen) => {
+                    *seen = signals.borrow().reconnects;
+                    Err(ImapError::ConnectionLost)
+                }
+            },
+            None => fetch.await,
+        };
+        match fetched {
+            Ok(result) => {
+                extra.answer(shared, result);
+                return Ok(());
+            }
+            Err(error) => {
+                let lost = error.is_connection();
+                if lost {
+                    *connection = None;
+                }
+                if !lost || attempt == 2 {
+                    tracing::info!(%error, "a part or an original couldn't be downloaded");
+                    let answer = if lost {
+                        BodyError::Offline
+                    } else {
+                        BodyError::Other
+                    };
+                    extra.answer(shared, Err(answer));
+                    return Ok(());
+                }
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Enforces the disk cap once the settings are known, sparing `keep`.
