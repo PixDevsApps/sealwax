@@ -24,7 +24,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
-| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules); the store side and the IMAP writes built in M4's phase A |
+| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Proposed; S1 amendment (idempotence rules); the store side and the IMAP writes built in M4's phase A, the runner in phase B |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
@@ -366,6 +366,10 @@ Built in M4 ([report](m4/imap-writes.md)) on S1's raw layer, without the store.
 - **Server behaviour found:** Stalwart keeps a message once across mailboxes (a COPY into a folder that holds it adds nothing; flags are shared between the copies). IMAP4rev1-only Dovecot answers COPY with COPYUID without advertising UIDPLUS.
 - **Measured** (release, testbed): flags on 500 messages p50 11.9–14.0 ms; a move of 500 p50 32.1 ms (Stalwart, MOVE), 60.9 ms (Dovecot, MOVE), 68.4 ms (IMAP4rev1 Dovecot, COPY).
 
+### ADR-006 amendment — new mail refreshes the flags of rows already held (M4 phase B, 2026-10-06)
+
+Found by M4's randomized triage suite ([report](m4/runner.md#the-flag-refresh-fix)): the folder pass's new-mail fetch also updates the flags and keywords of fetched UIDs the store already holds. These are rows the op runner re-homed into a target above its stored UIDNEXT, which the flag scan doesn't reach; before the fix, a flag another client set just before the move never reached the store.
+
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
 **Status:** Proposed. S7 confirms the output in Gmail web, Outlook web and Thunderbird.
@@ -694,6 +698,15 @@ Built in M4's phase A ([store](m4/ops-store.md), [writes](m4/imap-writes.md)); t
 - **A folder marked read:** the messages the store holds as per-message ops, and the server's unread below a windowed folder's floor as one op; the writes search `UNSEEN UNDELETED` first so the UIDs they mark are known.
 - **Local accounts** have no server: their ops and Undo apply at once.
 - **The runner** (phase B) holds the source's and the target's pass locks, in folder order, while it runs a group and records it.
+
+### ADR-015 amendment — the op runner as built (M4 phase B, 2026-10-06)
+
+Built in M4 ([report](m4/runner.md)) on the actor, the store's op queue and the write module.
+- **The runner** lives on the account's command connection and runs before its passes: after every login, on `OpsQueued`, and when the next undo window or retry ends (`DueOps.next`). Never on the IDLE connection.
+- **A group** (one folder, one action, a UID set) holds its folders' pass locks (the source's, a move's target's, in folder order) from before its first command until its outcome is recorded. A move takes the target's mark before its first attempt; every attempt is counted in the store before it starts, so a cut, `Reconnect`, a stop or a crash leaves it to run again as a retry.
+- **Failures:** retried with the actor's backoff up to 5 attempts, then refused (a proposal); refusals for good put the messages back and reach the app as `OpsRefused`, those the sync paths made too; a full mailbox keeps the ops and shows quota full until a move or delete gets through; a changed UIDVALIDITY hands the folder to its pass, and the store re-targets by Message-ID.
+- **A folder marked read:** the store's op for the unread below the floor runs as the write module's `mark_folder_read` up to the floor. Undoing it after its window would need the UIDs it marked kept in the store (a proposal); until then Undo reports them lost.
+- **Measured on the testbed:** the crash replay (MOVE, COPY, STORE, EXPUNGE; the connection cut or the engine stopped hard, then a new engine on the same store; three servers; 110 runs, 506 messages): 0 duplicates, 0 lost, the store equal to the server every time. An Undo inside the window sends nothing (the proxy recorded every client line); one after it brings the same row back with its body. 15 randomized two-client runs with local triage, Undo and a UIDVALIDITY reset each: 0 differences.
 
 ## ADR-016 — Conversation threading (2026-10-04)
 
