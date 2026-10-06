@@ -19,6 +19,7 @@ folder archive Personal
 notify-mail first Personal:inbox "Hyttetur i oktober" "from=Ingrid Solberg"
 notify-arrive first
 wait-until assert-notify-count 1
+assert-notify-latency 1 1000
 assert-notify 1 app-name Sealwax
 assert-notify 1 summary "Ingrid Solberg"
 assert-notify 1 body "Hyttetur i oktober"

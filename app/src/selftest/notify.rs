@@ -20,6 +20,7 @@
 //! | `assert-notify-settings on\|off sender\|count` | `[notifications]` as Sealwax applies it |
 //! | `assert-notify-opened NAME [had-window\|new-window]` | The last click selected NAME in the list and the reader painted it (with the window there before the click, or built by it); prints the times |
 //! | `assert-message NAME read\|unread\|gone` | The message as the store holds it |
+//! | `assert-notify-latency N MS` | Notification N reached the stand-in at most MS after the last `notify-arrive` handed its event to the app; prints the time |
 
 mod server;
 
@@ -50,6 +51,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-notify-settings", 2, 2),
     ("assert-notify-opened", 1, 2),
     ("assert-message", 2, 2),
+    ("assert-notify-latency", 2, 2),
 ];
 
 thread_local! {
@@ -57,6 +59,8 @@ thread_local! {
     /// The script's messages by name.
     static MESSAGES: RefCell<HashMap<String, (MessageId, FolderId)>> =
         RefCell::new(HashMap::new());
+    /// When the last `notify-arrive` handed its event to the app.
+    static ARRIVED: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
 }
 
 pub fn handles(command: &str) -> bool {
@@ -237,6 +241,23 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             };
             equal(&format!("{} in the store", arg(0)), state, arg(1))
         }
+        "assert-notify-latency" => {
+            let notification = nth(arg(0))?;
+            let arrived = ARRIVED
+                .with(std::cell::Cell::get)
+                .ok_or("no notify-arrive yet")?;
+            let ms = notification
+                .at
+                .saturating_duration_since(arrived)
+                .as_secs_f64()
+                * 1000.0;
+            println!("  # NewMail handed to the app → Notify at the server: {ms:.1} ms");
+            if ms <= number(arg(1))? as f64 {
+                Ok(())
+            } else {
+                Err(format!("{ms:.1} ms, over {} ms", arg(1)))
+            }
+        }
         other => Err(format!("unknown command {other}")),
     }
 }
@@ -353,6 +374,7 @@ async fn arrive(harness: &Harness, names: &[String]) -> StepResult {
             None => events.push((folder, vec![id])),
         }
     }
+    ARRIVED.with(|arrived| arrived.set(Some(Instant::now())));
     for (folder, messages) in events {
         let account = harness
             .state
