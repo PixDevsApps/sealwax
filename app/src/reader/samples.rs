@@ -1188,6 +1188,50 @@ fn crc32(data: &[u8]) -> u32 {
     !crc
 }
 
+/// `count` messages that are each a conversation of their own, as a mailbox mixes them: a
+/// styled newsletter every third, simple HTML every third, plain text the rest; `single-1`
+/// newest, an hour apart, all read.
+pub fn singles(count: usize, now: i64) -> Vec<Threaded> {
+    (0..count)
+        .map(|n| {
+            let date = now - (n as i64 + 1) * 3_600;
+            let id = format!("single-{}", n + 1);
+            let people = [INGRID, TOMAS, SANA, MARIUS];
+            let draft = match n % 3 {
+                0 => issue_draft(n, date, &id),
+                1 => {
+                    let mut draft = Draft::new(people[n % 4], "Notes from today", date, &id);
+                    draft.text = Some("See the HTML part.\n".into());
+                    draft.html = Some(format!(
+                        "<p>Notes from today, number {}:</p><ul><li>the budget is agreed</li>\
+                         <li>the next meeting is on Thursday</li></ul><p>— {}</p>",
+                        n + 1,
+                        people[n % 4].0
+                    ));
+                    draft
+                }
+                _ => reply(
+                    people[n % 4],
+                    "Quick question",
+                    date,
+                    &id,
+                    &format!(
+                        "Hi,\n\nCould you send me the file from yesterday? It's number {} on \
+                         the list.\n\nThanks!\n",
+                        n + 1
+                    ),
+                ),
+            };
+            Threaded {
+                name: id,
+                raw: draft.render(),
+                read: true,
+                sent: false,
+            }
+        })
+        .collect()
+}
+
 /// Where [`fill_conversation`] put a conversation's messages, by name.
 #[derive(Debug, Clone, Default)]
 pub struct Filed {
