@@ -276,13 +276,16 @@ impl Reader {
         Ok(Versioned { version, value })
     }
 
+    /// The counts are the server's where the store knows them: its own plus what a windowed
+    /// folder leaves below its floor (ML-043).
     fn folders(&self) -> Result<Versioned<Vec<Folder>>, StoreError> {
         let tx = self.conn.unchecked_transaction()?;
         let version = version(&tx)?;
         let value = tx
             .prepare_cached(
-                "SELECT id, account_id, name, role, total_count, unread_count FROM folders \
-                 ORDER BY account_id, id",
+                "SELECT id, account_id, name, role, total_count + below_floor, \
+                   unread_count + below_unread \
+                 FROM folders ORDER BY account_id, id",
             )?
             .query_map([], |row| {
                 Ok(Folder {

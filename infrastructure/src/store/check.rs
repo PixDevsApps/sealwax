@@ -1,7 +1,8 @@
 //! Recounts what the writer maintains and lists disagreements: folder counts, conversation
 //! sizes (each Message-ID once) and dates, aliases, empty conversations, foreign keys and
 //! full-text rows without a message. A new folder without messages may show the server's
-//! STATUS counts instead (`FolderSpec::server_counts`), so its counts aren't recounted.
+//! STATUS counts instead (`FolderSpec::server_counts`), so its counts aren't recounted. The
+//! server's counts below a windowed folder's floor are hints; only their bounds are checked.
 
 use super::writer::THREAD_INDEX_ALIAS;
 use rusqlite::Connection;
@@ -27,7 +28,7 @@ SELECT count(*) FROM keys k
 LEFT JOIN thread_aliases a ON a.account_id = k.account AND a.message_id = k.key
 WHERE a.thread_id IS NOT k.thread";
 
-const CHECKS: [(&str, &str); 6] = [
+const CHECKS: [(&str, &str); 7] = [
     (
         "folder counts",
         "SELECT count(*) FROM folders f LEFT JOIN \
@@ -35,6 +36,11 @@ const CHECKS: [(&str, &str); 6] = [
            ON c.folder_id = f.id \
          WHERE (f.total_count <> coalesce(c.n, 0) OR f.unread_count <> coalesce(c.u, 0)) \
            AND NOT (f.sync_state = 'new' AND c.n IS NULL)",
+    ),
+    (
+        "counts below the floor",
+        "SELECT count(*) FROM folders \
+         WHERE below_floor < 0 OR below_unread < 0 OR below_unread > below_floor",
     ),
     (
         "conversation sizes and dates",

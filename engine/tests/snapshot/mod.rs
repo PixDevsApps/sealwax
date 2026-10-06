@@ -1,13 +1,14 @@
 //! The cache against a server, for the sync suites: every synced folder must hold exactly what
 //! the server holds from the folder's floor up (UID, flags, keywords and Message-ID) under the
 //! same UIDVALIDITY, and nothing below the floor. Folders the policy leaves unsynced are only
-//! checked for presence. Names are the testbed's and the fake server's synthetic ones.
+//! checked for presence. The counts a synced folder shows must be the server's, below the floor
+//! included. Names are the testbed's and the fake server's synthetic ones.
 
 #![allow(dead_code)]
 
 use sealwax_domain::model::{AccountId, Flags};
 use sealwax_infrastructure::store::{Store, SyncState};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 /// Flags, keywords and Message-ID.
 pub type Entry = (Flags, Vec<String>, Option<String>);
@@ -93,6 +94,56 @@ pub fn diff(server: &BTreeMap<String, Folder>, local: &BTreeMap<String, Folder>)
     }
     for name in local.keys().filter(|name| !server.contains_key(*name)) {
         out.push(format!("{name}: only local"));
+    }
+    out
+}
+
+/// The counts the sidebar shows for the account's folders, keyed by wire name: total and unread.
+pub async fn shown(store: &Store, account: AccountId) -> BTreeMap<String, (u32, u32)> {
+    let names: HashMap<_, _> = store
+        .account_folders(account)
+        .recv()
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|state| (state.folder, state.name_raw))
+        .collect();
+    store
+        .folders()
+        .recv()
+        .await
+        .unwrap()
+        .value
+        .into_iter()
+        .filter_map(|folder| {
+            let name = names.get(&folder.id)?;
+            Some((name.clone(), (folder.total, folder.unread)))
+        })
+        .collect()
+}
+
+/// Synced folders whose shown counts aren't the server's: all its messages, and those without
+/// `\Seen`.
+pub fn count_diff(
+    server: &BTreeMap<String, Folder>,
+    local: &BTreeMap<String, Folder>,
+    shown: &BTreeMap<String, (u32, u32)>,
+) -> Vec<String> {
+    let mut out = Vec::new();
+    for (name, theirs) in server {
+        if !local.get(name).is_some_and(|ours| ours.synced) {
+            continue;
+        }
+        let unread = theirs
+            .messages
+            .values()
+            .filter(|(flags, ..)| !flags.is_seen())
+            .count();
+        let expected = (theirs.messages.len() as u32, unread as u32);
+        let got = shown.get(name).copied();
+        if got != Some(expected) {
+            out.push(format!("{name}: server counts {expected:?}, shown {got:?}"));
+        }
     }
     out
 }

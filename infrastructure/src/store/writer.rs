@@ -420,7 +420,7 @@ impl Writer {
                 modseq,
             } => tx.execute(
                 "UPDATE folders SET uidvalidity = ?2, sync_state = 'initial', initial_top = ?3, \
-                   initial_modseq = ?4, sync_floor = ?3, below_floor = 0, \
+                   initial_modseq = ?4, sync_floor = ?3, below_floor = 0, below_unread = 0, \
                    total_count = (SELECT count(*) FROM messages WHERE folder_id = ?1), \
                    unread_count = (SELECT count(*) FROM messages \
                      WHERE folder_id = ?1 AND flags & 1 = 0) \
@@ -442,7 +442,13 @@ impl Writer {
         if changed == 0 {
             return Err(StoreError::SyncState(folder));
         }
-        if !matches!(step, FirstSyncStep::Start { .. }) {
+        // Messages left below the floor join the counts the sidebar shows.
+        let counted = match step {
+            FirstSyncStep::Start { .. } => true,
+            FirstSyncStep::Floor(_) => false,
+            FirstSyncStep::Finish { below } => below > 0,
+        };
+        if !counted {
             tx.commit()?;
             self.state.after_commit();
             return Ok(StoreVersion(self.state.version));
@@ -465,16 +471,25 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let below = below_counts(&tx, folder)?;
         tx.execute(
             "UPDATE folders SET uidvalidity = ?2, sync_state = 'new', uidnext = 1, \
                highestmodseq = 0, initial_top = NULL, initial_modseq = NULL, sync_floor = NULL, \
-               below_floor = 0 \
+               below_floor = 0, below_unread = 0 \
              WHERE id = ?1",
             params![folder.0, uidvalidity],
         )?;
-        tx.commit()?;
-        self.state.after_commit();
-        Ok(removed)
+        if below == (0, 0) {
+            tx.commit()?;
+            self.state.after_commit();
+            return Ok(removed);
+        }
+        let event = ChangeEvent {
+            folders: folder_counts(&tx, &BTreeSet::from([folder]))?,
+            ..ChangeEvent::default()
+        };
+        let version = self.state.commit(tx, event)?;
+        Ok(Removed { version, ..removed })
     }
 
     /// Commits the next batch of headers; returns the batch's full-text work.
@@ -1221,12 +1236,21 @@ fn recompute_thread(tx: &Connection, thread: ThreadId) -> rusqlite::Result<()> {
     Ok(())
 }
 
+/// A folder's messages and unread messages below its floor, as last counted.
+fn below_counts(tx: &Connection, folder: FolderId) -> rusqlite::Result<(u32, u32)> {
+    tx.prepare_cached("SELECT below_floor, below_unread FROM folders WHERE id = ?1")?
+        .query_row([folder.0], |row| Ok((row.get(0)?, row.get(1)?)))
+}
+
+/// The counts the sidebar shows: the store's own plus what a windowed folder leaves below its
+/// floor (ML-043).
 fn folder_counts(
     tx: &Connection,
     folders: &BTreeSet<FolderId>,
 ) -> rusqlite::Result<Vec<FolderCounts>> {
-    let mut select =
-        tx.prepare_cached("SELECT total_count, unread_count FROM folders WHERE id = ?1")?;
+    let mut select = tx.prepare_cached(
+        "SELECT total_count + below_floor, unread_count + below_unread FROM folders WHERE id = ?1",
+    )?;
     folders
         .iter()
         .map(|folder| {

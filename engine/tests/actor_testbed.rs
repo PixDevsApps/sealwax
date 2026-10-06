@@ -33,7 +33,7 @@ use snapshot::Rng;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use testbed_engine::{TestEngine, converge, statuses, tally, until};
+use testbed_engine::{TestEngine, converge, counts_converge, statuses, tally, until};
 use tokio::sync::watch;
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -165,6 +165,8 @@ struct Report {
     local_messages: usize,
     mutation: Duration,
     quiescence: Option<Duration>,
+    /// From the cache matching until the counts shown were the server's too.
+    counts: Option<Duration>,
     asked: Asked,
     events: BTreeMap<&'static str, usize>,
     stop: Duration,
@@ -173,7 +175,7 @@ struct Report {
 /// Runs one seed end to end: reset and seed the account, add it to an engine with an empty
 /// store, make `ops` random changes (one of them a delete-and-recreate) while the user opens
 /// folders and asks for older mail, then wait until the cache matches an independent read of
-/// the server.
+/// the server, and then until the counts shown are its counts.
 async fn randomized(variant: Variant, seed: u64, ops: usize) -> Report {
     let mut rng = Rng(seed);
     let mut mutator = client(variant.server.tls, "rand").await;
@@ -276,6 +278,12 @@ async fn randomized(variant: Variant, seed: u64, ops: usize) -> Report {
         Ok(_) => report.quiescence = Some(quiet.elapsed()),
         Err(differences) => report.divergences = differences,
     }
+    if report.divergences.is_empty() {
+        match counts_converge(&engine.store, account, &server, Duration::from_secs(30)).await {
+            Ok(settled) => report.counts = Some(settled),
+            Err(differences) => report.divergences = differences,
+        }
+    }
     stop_tx.send(true).unwrap();
     report.asked = user.await.unwrap();
     engine.drain();
@@ -299,8 +307,8 @@ fn randomized_suite(variant: Variant) {
             let report = randomized(variant, seed, 1000).await;
             println!(
                 "{} seed {seed}: {} divergences; server {} / local {} messages; mutation {:.1} s, \
-                 quiescence {}; opened {} / older {} asked; events {:?}; stop {:.0} ms; ops {:?}; \
-                 UIDVALIDITY {:?}",
+                 quiescence {}, counts {}; opened {} / older {} asked; events {:?}; stop {:.0} ms; \
+                 ops {:?}; UIDVALIDITY {:?}",
                 variant.name(),
                 report.divergences.len(),
                 report.server_messages,
@@ -309,6 +317,9 @@ fn randomized_suite(variant: Variant) {
                 report
                     .quiescence
                     .map_or("none".to_owned(), |q| format!("{:.2} s", q.as_secs_f64())),
+                report
+                    .counts
+                    .map_or("none".to_owned(), |c| format!("+{:.2} s", c.as_secs_f64())),
                 report.asked.opened,
                 report.asked.older,
                 report.events,

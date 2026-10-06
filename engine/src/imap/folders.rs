@@ -1,7 +1,8 @@
 //! The folder list (ML-036): LIST with SPECIAL-USE and STATUS return options where offered,
 //! names decoded from modified UTF-7, roles by SPECIAL-USE and then the name table, the
-//! server's MESSAGES and UNSEEN for folders the store hasn't synced yet, and UIDNEXT,
-//! UIDVALIDITY and HIGHESTMODSEQ for the account pass's change check (ML-041).
+//! server's MESSAGES and UNSEEN for folders the store hasn't synced yet and for what a windowed
+//! folder leaves below its floor (ML-043), and UIDNEXT, UIDVALIDITY and HIGHESTMODSEQ for the
+//! account pass's change check (ML-041).
 
 use super::connection::Connection;
 use super::error::{ImapError, SyncError};
@@ -9,7 +10,7 @@ use super::raw::{self, quote};
 use super::{mutf7, roles};
 use async_imap::imap_proto::{MailboxDatum, NameAttribute, Response, StatusAttribute};
 use sealwax_domain::model::{AccountId, FolderId, FolderRole};
-use sealwax_infrastructure::store::{FolderSpec, ServerCounts, Store};
+use sealwax_infrastructure::store::{FolderSpec, ServerCounts, ServerStatus, Store};
 use std::collections::HashMap;
 
 /// One folder as LIST and STATUS reported it.
@@ -44,6 +45,16 @@ impl FolderStatus {
         Some(ServerCounts {
             total: self.messages?,
             unread: self.unseen?,
+        })
+    }
+
+    /// What the store needs to count a windowed folder's messages below its floor.
+    pub fn server(&self) -> Option<ServerStatus> {
+        Some(ServerStatus {
+            uidvalidity: self.uidvalidity?,
+            uidnext: self.uidnext?,
+            highestmodseq: self.highestmodseq,
+            counts: self.counts()?,
         })
     }
 }

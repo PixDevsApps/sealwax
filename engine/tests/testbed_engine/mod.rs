@@ -237,6 +237,30 @@ pub async fn converge(
     }
 }
 
+/// Polls the counts the synced folders of `account` show until they are the server's, for at
+/// most `within`; returns how long that took, or the differences left. They follow STATUS, so
+/// they settle with an account pass.
+pub async fn counts_converge(
+    store: &Store,
+    account: AccountId,
+    server: &BTreeMap<String, Folder>,
+    within: Duration,
+) -> Result<Duration, Vec<String>> {
+    let started = Instant::now();
+    loop {
+        let local = snapshot::local(store, account).await;
+        let shown = snapshot::shown(store, account).await;
+        let differences = snapshot::count_diff(server, &local, &shown);
+        if differences.is_empty() {
+            return Ok(started.elapsed());
+        }
+        if started.elapsed() > within {
+            return Err(differences);
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
 /// Polls until `check` holds, every 5 ms, for at most `within`; returns how long it took.
 pub async fn until<F: std::future::Future<Output = bool>>(
     within: Duration,

@@ -330,9 +330,10 @@ fn a_step_needs_a_ready_folder_and_state_alone_publishes_nothing() {
         event.folders,
         vec![FolderCounts {
             folder: inbox,
-            total: 20,
+            total: 35,
             unread: 10
-        }]
+        }],
+        "20 stored and 15 below the floor"
     );
     let again = step(FolderChanges {
         new: vec![message(inbox, 35, Flags::NONE, None)],
@@ -342,6 +343,20 @@ fn a_step_needs_a_ready_folder_and_state_alone_publishes_nothing() {
     })
     .unwrap();
     assert_eq!(again.inserted, 0, "a UID the folder holds is skipped");
+    let event = events.recv_blocking().unwrap();
+    assert_eq!(
+        (event.version, event.inserted.len(), &event.folders),
+        (
+            again.version,
+            0,
+            &vec![FolderCounts {
+                folder: inbox,
+                total: 20,
+                unread: 10
+            }]
+        ),
+        "nothing left below the floor: the counts alone"
+    );
     let state = store.folder_sync(inbox).recv_blocking().unwrap().unwrap();
     assert_eq!((state.floor, state.below, state.messages), (Some(1), 0, 20));
     assert!(state.complete());

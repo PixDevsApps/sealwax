@@ -2,14 +2,15 @@
 //! in one round trip, pipelined behind an UNSELECT so no STATUS comes from the connection's own
 //! selected mailbox (Dovecot answers that from a stale view, S1); the store's folder list made
 //! the server's, so folders gone from it leave with their messages; then a folder pass for
-//! every folder the policy syncs whose STATUS differs from the store.
+//! every folder the policy syncs whose STATUS differs from the store, and for a folder that
+//! keeps only its newest mail, the server's counts below its floor from that STATUS (ML-043).
 
 use super::folder::sync_folder;
 use super::{FolderLocks, SyncOptions, SyncReport};
 use crate::imap::connection::Connection;
 use crate::imap::error::{ImapError, SyncError};
 use crate::imap::first_sync::Progress;
-use crate::imap::folders::{self, FolderStatus};
+use crate::imap::folders::{self, FolderStatus, ListedFolder};
 use sealwax_domain::model::{AccountId, FolderId};
 use sealwax_domain::sync::{Facts, Plan, plan};
 use sealwax_infrastructure::store::{FolderSync, Store, SyncState};
@@ -50,31 +51,31 @@ pub async fn sync_account(
         let Some(state) = states.get(&id) else {
             continue;
         };
-        let facts = Facts {
-            role: folder.role,
-            attributes: &folder.attributes,
-            selectable: folder.selectable,
-            synced_before: state.uidvalidity.is_some(),
-        };
-        if plan(facts) != Plan::Sync {
-            continue;
+        let mut passed = false;
+        if wanted(id, folder, state, options) {
+            if folder
+                .status
+                .is_some_and(|status| unchanged(state, &status))
+            {
+                report.stats.status_skips += 1;
+            } else {
+                match sync_folder(conn, store, id, options, locks, |p| progress(id, p)).await {
+                    Ok(done) => {
+                        report.add(done);
+                        passed = true;
+                    }
+                    Err(SyncError::Imap(ImapError::No(_))) => report.stats.skipped_missing += 1,
+                    Err(error) => return Err(error),
+                }
+            }
         }
-        if let Some(elsewhere) = options.elsewhere.filter(|elsewhere| elsewhere.folder == id)
-            && (!elsewhere.backstop || folder.status.is_none())
+        // Whether or not it synced, a windowed folder's counts follow the server's.
+        let windowed = state.state == SyncState::Ready && !state.complete();
+        if let Some(status) = folder.status.and_then(|status| status.server())
+            && (passed || windowed)
+            && store.count_below(id, status).recv().await?.value
         {
-            continue;
-        }
-        if folder
-            .status
-            .is_some_and(|status| unchanged(state, &status))
-        {
-            report.stats.status_skips += 1;
-            continue;
-        }
-        match sync_folder(conn, store, id, options, locks, |p| progress(id, p)).await {
-            Ok(done) => report.add(done),
-            Err(SyncError::Imap(ImapError::No(_))) => report.stats.skipped_missing += 1,
-            Err(error) => return Err(error),
+            report.stats.below_counts += 1;
         }
     }
     tracing::debug!(
@@ -82,11 +83,27 @@ pub async fn sync_account(
         folders = listed.len(),
         passes = report.stats.passes,
         status_skips = report.stats.status_skips,
+        below_counts = report.stats.below_counts,
         removed_folders = report.stats.folders_removed,
         ms = started.elapsed().as_secs_f64() * 1000.0,
         "account pass done"
     );
     Ok(report)
+}
+
+/// The policy syncs the folder here, not on another connection (unless STATUS is the backstop).
+fn wanted(id: FolderId, folder: &ListedFolder, state: &FolderSync, options: &SyncOptions) -> bool {
+    let facts = Facts {
+        role: folder.role,
+        attributes: &folder.attributes,
+        selectable: folder.selectable,
+        synced_before: state.uidvalidity.is_some(),
+    };
+    plan(facts) == Plan::Sync
+        && options
+            .elsewhere
+            .filter(|elsewhere| elsewhere.folder == id)
+            .is_none_or(|elsewhere| elsewhere.backstop && folder.status.is_some())
 }
 
 /// STATUS shows nothing the store doesn't hold. Without HIGHESTMODSEQ a flag change can't

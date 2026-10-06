@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 5;
+pub const VERSION: i64 = 6;
 
-const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -166,6 +166,14 @@ BEGIN
         AND NOT EXISTS (SELECT 1 FROM messages WHERE blob_key = old.blob_key);
 END;
 ALTER TABLE message_parts ADD COLUMN section TEXT;
+";
+
+/// The server's counts for a windowed folder (the M3 gate, 2026-10-06): `below_unread` counts
+/// the server's unread messages under the floor, as `below_floor` counts all of them, from the
+/// account pass's STATUS. The counts the sidebar shows add both to the store's own; a hint,
+/// never a reason to store or drop a row.
+const V6: &str = "
+ALTER TABLE folders ADD COLUMN below_unread INTEGER NOT NULL DEFAULT 0;
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

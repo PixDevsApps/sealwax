@@ -32,6 +32,9 @@ mod unified_tests;
 #[cfg(test)]
 mod body_tests;
 
+#[cfg(test)]
+mod count_tests;
+
 pub use api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
 pub use sync_api::*;

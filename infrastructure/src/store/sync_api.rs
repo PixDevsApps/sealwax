@@ -1,10 +1,13 @@
 //! The sync engine's requests (ML-041, ML-043): a folder's changes by UID in one transaction,
-//! the folder list made to match the server's, and the reads the passes compare with.
+//! the folder list made to match the server's, the counts below a windowed folder's floor, and
+//! the reads the passes compare with.
 
 use super::reader::{ReadJob, SyncRead};
 use super::writer::WriteJob;
 use super::writer::sync::SyncJob;
-use super::{FolderSpec, FolderSync, NewMessage, Reply, Store, StoreVersion};
+use super::{
+    FolderSpec, FolderSync, NewMessage, Reply, ServerCounts, Store, StoreVersion, Versioned,
+};
 use sealwax_domain::model::{AccountId, BlobKey, Flags, FolderId, MessageId};
 
 /// A message's flags and keywords as the server reports them.
@@ -39,9 +42,11 @@ pub struct FolderChanges {
     /// Every UID below it is stored; it only ever rises.
     pub uidnext: Option<u32>,
     pub highestmodseq: Option<u64>,
-    /// The new floor: lower after older mail loaded, 1 once none is left.
+    /// The new floor: lower after older mail loaded, 1 once none is left. The unread messages
+    /// stored from below the old floor leave the server's unread count below it.
     pub floor: Option<u32>,
-    /// Messages the server holds below the floor, as just counted.
+    /// Messages the server holds below the floor, as just counted. The unread ones below it
+    /// never count more.
     pub below: Option<u32>,
 }
 
@@ -56,6 +61,17 @@ pub struct FolderSynced {
     pub removed: u32,
     /// Raw messages no remaining row refers to; the caller deletes them from the blob store.
     pub orphaned_blobs: Vec<BlobKey>,
+}
+
+/// A folder's STATUS as the account pass read it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ServerStatus {
+    pub uidvalidity: u32,
+    pub uidnext: u32,
+    /// `None` without CONDSTORE.
+    pub highestmodseq: Option<u64>,
+    /// MESSAGES and UNSEEN.
+    pub counts: ServerCounts,
 }
 
 /// The writer's reply to [`Store::replace_folders`].
@@ -96,6 +112,23 @@ impl Store {
             WriteJob::Sync(SyncJob::ReplaceFolders {
                 account,
                 folders,
+                reply,
+            })
+        })
+    }
+
+    /// Counts what a `Ready` folder with a floor above 1 leaves on the server below its floor,
+    /// from its STATUS and the store's own rows, in one transaction: MESSAGES less the stored
+    /// messages, and of those, UNSEEN less the stored unread ones. The sidebar shows them added
+    /// to the store's counts, so a windowed folder shows the server's (ML-043). A hint: a
+    /// STATUS older than what the store holds (a lower UIDNEXT or HIGHESTMODSEQ, another
+    /// UIDVALIDITY) is ignored, and other folders are left alone. Replies whether the counts
+    /// changed; only then is there a change event.
+    pub fn count_below(&self, folder: FolderId, status: ServerStatus) -> Reply<Versioned<bool>> {
+        self.write(|reply| {
+            WriteJob::Sync(SyncJob::CountBelow {
+                folder,
+                status,
                 reply,
             })
         })
