@@ -87,14 +87,21 @@ assert-action-log win.move-to
 assert-move-to open true
 key Escape
 
-# Compose and the replies (M6), in the list.
+# Compose and the replies (M6), in the list. Each opens a composer, which takes the focus.
 key c
+composer-close
 key r
+composer-close
 key a
+composer-close
 key f
+composer-close
 key <Control>r
+composer-close
 key <Control><Shift>r
+composer-close
 key <Control>l
+composer-close
 assert-action-log win.compose,win.reply,win.reply-all,win.forward,win.reply,win.reply-all,win.forward
 
 # g waits for its second key; a mistyped sequence runs nothing, and s after g doesn't star.
@@ -238,9 +245,13 @@ focus reader
 # Compose and the replies (M6) in the reader; the rest not built yet; x and Space and Enter are
 # the list's alone.
 key c
+composer-close
 key r
+composer-close
 key a
+composer-close
 key f
+composer-close
 assert-action-log win.compose,win.reply,win.reply-all,win.forward
 key u
 key Escape
