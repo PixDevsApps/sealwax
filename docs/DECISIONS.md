@@ -26,7 +26,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06); the composer in its own window (user decision, M6 start); built in M6, its live typing and scrolling measured |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send built in M6 |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start); built in M5 |
-| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate), M5's keys accepted (M5 gate) |
+| 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate), M5's keys accepted (M5 gate), M6's keys accepted (M6 gate) |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2; the HTML parser capped in M6 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 
@@ -877,6 +877,10 @@ Accepted by the user at the M4 gate ("Keep all four", 2026-10-06). Beside the re
 ### ADR-017 amendment — M5's keys accepted (M5 gate, 2026-10-06)
 
 Accepted by the user at the M5 gate ("Ctrl+U: Show Original", "Ctrl+S: Save as .eml", "n / p in conversations", 2026-10-06), beside Print's Ctrl+P from the approved mock. Show Original takes Ctrl+U and Save as .eml Ctrl+S, scoped to the list and the reader like the other message commands' Ctrl keys (the composer's own Ctrl+U, ADR-014, is in another scope). Two registry commands are new: Next Message in Conversation (`n`) and Previous Message in Conversation (`p`), in the list and the reader; `j` and `k` stay the list's next and previous. All four keys pass the audit (no AltGr, unshifted on US and Norwegian). Expand and Collapse All Messages, Show Images and Always Show Images from This Sender keep no default key.
+
+### ADR-017 amendment — M6's keys accepted (M6 gate, 2026-10-06)
+
+Accepted by the user at the M6 gate ("Keep both", 2026-10-06): Paste as Plain Text takes Ctrl+Shift+V in the composer (Move to…'s Ctrl+Shift+V is in the list's and the reader's scope), and Open Reply in Composer takes the approved mock's Ctrl+Shift+E in the reader (IBus uses it for emoji typing; fcitx5, Omarchy's input method, doesn't by default). The composer's other keys are the approved mock's (Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+K, Ctrl+Z, Ctrl+Enter) and ADR-014's (Ctrl+Shift+Z and Ctrl+Y for redo). No Close Composer command: Hyprland's own close closes a composer and keeps its draft. Quick Reply, Edit Draft, Attach File…, Add Cc and Bcc, Discard Draft, the other formatting commands and Make Sealwax the Default Mail App… keep no default key. Enter, `o` and a double click on a message of a Drafts folder open it in the composer (the user's choice at the same gate, "Open in the composer").
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 
