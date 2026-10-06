@@ -17,9 +17,9 @@ wait-until assert-shown start-at-login true
 assert-login-dialog heading "Start Sealwax at login?"
 assert-login-dialog body "Sealwax will start without a window when you log in"
 assert-login-dialog body "/autostart/io.github.pixdevsapps.Sealwax.Devel.SelfTest.desktop"
-assert-login-dialog body "--background”. Nothing else changes."
+assert-login-dialog body "which runs this build with --background. Nothing else changes."
 assert-login-dialog body "To undo: turn Start Sealwax at Login off, or delete that file."
-assert-login-dialog body "This is a development build: the entry starts"
+assert-login-dialog body "This is a development build: the entry starts it where it is now"
 assert-labelled
 setup-respond start-at-login cancel
 assert-autostart off

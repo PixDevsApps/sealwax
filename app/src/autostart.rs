@@ -203,24 +203,27 @@ fn shown(path: &Path) -> String {
 }
 
 /// The question before the entry is written: what changes, where, and how to undo it.
+/// A build not on `PATH` is named, not shown by its path: the path is in the entry.
 pub fn question(probe: &Probe) -> (String, String) {
-    let command = format!("{} {BACKGROUND_OPTION}", probe.program.text());
+    let runs = match probe.program {
+        Program::Installed => format!("runs “{PROGRAM} {BACKGROUND_OPTION}”"),
+        Program::Path(_) => format!("runs this build with {BACKGROUND_OPTION}"),
+    };
     let mut body = format!(
         "Sealwax will start without a window when you log in, so mail syncs and new mail is \
          notified from the start. Open Sealwax as usual to see its window.\n\nSealwax writes \
-         {}, which runs “{command}”. Nothing else changes.\n\nTo undo: turn Start Sealwax at \
-         Login off, or delete that file.",
+         {}, which {runs}. Nothing else changes.\n\nTo undo: turn Start Sealwax at Login off, \
+         or delete that file.",
         shown(&probe.path),
     );
-    if let Program::Path(path) = &probe.program {
+    if let Program::Path(_) = &probe.program {
         let build = if probe.development {
             "This is a development build"
         } else {
             "This Sealwax isn't the one installed"
         };
         body.push_str(&format!(
-            "\n\n{build}: the entry starts {} and does nothing once that file is gone.",
-            path.display()
+            "\n\n{build}: the entry starts it where it is now, and does nothing once it is gone."
         ));
     }
     ("Start Sealwax at login?".to_owned(), body)
@@ -488,11 +491,14 @@ mod tests {
         probe.development = true;
         let (_, body) = question(&probe);
         assert!(
-            body.contains(
-                "This is a development build: the entry starts /src/target/debug/sealwax"
-            ),
+            body.contains("which runs this build with --background."),
             "{body}"
         );
+        assert!(
+            body.contains("This is a development build: the entry starts it where it is now"),
+            "{body}"
+        );
+        assert!(!body.contains("/src/target"), "{body}");
     }
 
     #[test]

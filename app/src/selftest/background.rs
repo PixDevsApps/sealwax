@@ -7,7 +7,7 @@
 //! | Command | What it does |
 //! | --- | --- |
 //! | `background-spawn NAME [ARGS…]` | As `spawn-bg` (its own id and folders under `$TMP/NAME/`, output in `$TMP/NAME.err`), and it closes its main window 300 ms after its first frame (`SEALWAX_CLOSE_WINDOW_AFTER_MS`) |
-//! | `background-menu` | Opens the main window's menu (for screenshots) |
+//! | `background-menu [close]` | Opens (or closes) the main window's menu, for screenshots |
 //! | `background-measure N` | N times: closes the main window, waits until it is gone, calls D-Bus `Activate` on this instance and times it to the new window's first frame; prints every run, p50, p95 and the rows bound at that frame |
 //! | `background-watch [composer]` | Watches the main window, its list and its reader (or the newest composer window) for `assert-freed` |
 //! | `assert-freed` | What `background-watch` watched is gone: nothing holds it after its window closed |
@@ -42,7 +42,7 @@ use std::time::{Duration, Instant};
 
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("background-spawn", 1, usize::MAX),
-    ("background-menu", 0, 0),
+    ("background-menu", 0, 1),
     ("background-measure", 1, 1),
     ("background-memory", 1, 1),
     ("background-watch", 0, 1),
@@ -84,7 +84,11 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 .widget("list-menu")?
                 .downcast::<gtk::MenuButton>()
                 .map_err(|_| "list-menu isn't a menu button".to_owned())?;
-            menu.popup();
+            match args.first().map(String::as_str) {
+                None => menu.popup(),
+                Some("close") => menu.popdown(),
+                Some(other) => return Err(format!("use background-menu [close], not {other}")),
+            }
             harness.wait_until_settled().await;
             Ok(())
         }
