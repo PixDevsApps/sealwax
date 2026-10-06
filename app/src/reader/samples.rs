@@ -673,3 +673,670 @@ mod tests {
         }
     }
 }
+
+// Conversations (ML-057): threaded samples for the reader's conversation view, its self-tests,
+// previews and the memory harness. Every message replies to the one before it (In-Reply-To and
+// References), so the store files them as one conversation.
+
+/// One message of a sample conversation, rendered.
+#[derive(Debug, Clone)]
+pub struct Threaded {
+    pub name: String,
+    pub raw: Vec<u8>,
+    /// Already read.
+    pub read: bool,
+    /// The user's own message, filed in Sent.
+    pub sent: bool,
+}
+
+/// The sample conversations: `trip` (six messages, plain and simple HTML, one with
+/// attachments), `letters` (eight styled newsletters), `long` (150 short messages), `typical`
+/// (ten: six plain or simple HTML, three styled newsletters, one with attachments).
+pub const CONVERSATIONS: [&str; 4] = ["trip", "letters", "long", "typical"];
+
+/// The messages of conversation `name`, oldest first, the latest dated a little before `now`.
+pub fn conversation(name: &str, now: i64) -> Vec<Threaded> {
+    match name {
+        "trip" => trip(now),
+        "letters" => letters(now),
+        "long" => long(now),
+        _ => typical(now),
+    }
+}
+
+const INGRID: (&str, &str) = ("Ingrid Solberg", "ingrid@example.test");
+const TOMAS: (&str, &str) = ("Tomas Berg", "tomas@example.test");
+const SANA: (&str, &str) = ("Sana Malik", "sana@example.test");
+const MARIUS: (&str, &str) = ("Marius Dahl", "marius@example.test");
+
+/// `drafts` as one conversation: each answers the one before it, the root first.
+fn thread(name: &str, drafts: Vec<(Draft, bool, bool)>) -> Vec<Threaded> {
+    let mut ids: Vec<String> = Vec::new();
+    drafts
+        .into_iter()
+        .enumerate()
+        .map(|(index, (draft, read, sent))| {
+            let mut raw = String::from_utf8_lossy(&draft.render()).into_owned();
+            if let Some(parent) = ids.last() {
+                let references: Vec<String> = ids.iter().map(|id| format!("<{id}>")).collect();
+                let marker = format!("Message-ID: <{}>{CRLF}", draft.message_id);
+                let threading = format!(
+                    "{marker}In-Reply-To: <{parent}>{CRLF}References: {}{CRLF}",
+                    references.join(" ")
+                );
+                raw = raw.replacen(&marker, &threading, 1);
+            }
+            ids.push(draft.message_id.clone());
+            Threaded {
+                name: format!("{name}-{}", index + 1),
+                raw: raw.into_bytes(),
+                read,
+                sent,
+            }
+        })
+        .collect()
+}
+
+fn reply(from: (&str, &str), subject: &str, date: i64, id: &str, text: &str) -> Draft {
+    let mut draft = Draft::new(from, subject, date, id);
+    if from.1 == ME.1 {
+        draft.to = vec![(INGRID.0.into(), INGRID.1.into())];
+    }
+    draft.text = Some(text.into());
+    draft
+}
+
+fn trip(now: i64) -> Vec<Threaded> {
+    let subject = "Cabin trip in November?";
+    let at = |hours: i64| now - hours * 3_600;
+    let mut sana = Draft::new(SANA, &format!("Re: {subject}"), at(30), "trip-4");
+    sana.html = Some(
+        "<div>Count me in! I can drive from Oslo on Friday afternoon and bring:</div><ul>\
+         <li>the big pot for soup</li><li>two pairs of spare skis</li></ul>\
+         <div>— Sana</div>"
+            .into(),
+    );
+    let mut plan = reply(
+        INGRID,
+        &format!("Re: {subject}"),
+        at(5),
+        "trip-5",
+        "Hi all,\n\nThe cabin is booked for the 14th–16th. The map and the packing list are \
+         attached; the key is under the green bucket by the woodshed.\n\nIngrid\n",
+    );
+    plan.attachments = vec![
+        Part::attachment(
+            "cabin-map.png",
+            "image/png",
+            picture(320, 180, [40, 90, 70], [220, 200, 150]),
+        ),
+        Part::attachment(
+            "packing-list.pdf",
+            "application/pdf",
+            filler(b"%PDF-1.4\n", 84_000),
+        ),
+    ];
+    let re = format!("Re: {subject}");
+    thread(
+        "trip",
+        vec![
+            (
+                reply(
+                    INGRID,
+                    subject,
+                    at(52),
+                    "trip-1",
+                    "Hi everyone,\n\nShall we take the cabin in Hemsedal again in November? \
+                     Mid-month works best for me.\n\nIngrid\n",
+                ),
+                true,
+                false,
+            ),
+            (
+                reply(
+                    TOMAS,
+                    &re,
+                    at(49),
+                    "trip-2",
+                    "Yes please. Any weekend but the first.\n",
+                ),
+                true,
+                false,
+            ),
+            (
+                reply(
+                    ME,
+                    &re,
+                    at(40),
+                    "trip-3",
+                    "Sounds great — I'll bring the board games and the coffee grinder.\n",
+                ),
+                true,
+                true,
+            ),
+            (sana, true, false),
+            (plan, false, false),
+            (
+                reply(
+                    TOMAS,
+                    &re,
+                    at(1),
+                    "trip-6",
+                    "Perfect. I'll pick up firewood on the way; see you Friday.\n",
+                ),
+                false,
+                false,
+            ),
+        ],
+    )
+}
+
+fn letters(now: i64) -> Vec<Threaded> {
+    let drafts = (0..8)
+        .map(|issue| {
+            let date = now - (8 - issue as i64) * 7 * 86_400 - 600;
+            let draft = issue_draft(issue, date, &format!("letters-{}", issue + 1));
+            (draft, issue < 7, false)
+        })
+        .collect();
+    thread("letters", drafts)
+}
+
+fn long(now: i64) -> Vec<Threaded> {
+    const POINTS: [&str; 5] = [
+        "the notes are reviewed",
+        "the screenshots are new",
+        "the translations can wait",
+        "the changelog is in order",
+        "the download links work",
+    ];
+    let people = [INGRID, TOMAS, SANA, MARIUS, ME];
+    let drafts = (0..150)
+        .map(|n| {
+            let from = people[(n + 1) % people.len()];
+            let date = now - (150 - n as i64) * 1_800;
+            let text = format!(
+                "Point {} of the release checklist: {}.\n",
+                n + 1,
+                POINTS[n % POINTS.len()]
+            );
+            let id = format!("long-{}", n + 1);
+            let draft = reply(from, "Re: Release checklist", date, &id, &text);
+            (draft, n < 149, from.1 == ME.1)
+        })
+        .collect();
+    thread("long", drafts)
+}
+
+fn typical(now: i64) -> Vec<Threaded> {
+    let subject = "Re: Spring workshop plans";
+    let at = |hours: i64| now - hours * 3_600;
+    let plain = |from, hours, n: usize, text: &str| {
+        reply(from, subject, at(hours), &format!("typical-{n}"), text)
+    };
+    let simple = |from, hours, n: usize, html: &str| {
+        let mut draft = Draft::new(from, subject, at(hours), &format!("typical-{n}"));
+        draft.text = Some("See the HTML part.\n".into());
+        draft.html = Some(html.into());
+        draft
+    };
+    let issue = |variant: usize, hours, n: usize| {
+        let mut draft = issue_draft(variant, at(hours), &format!("typical-{n}"));
+        draft.subject = subject.into();
+        draft
+    };
+    let mut files = plain(
+        MARIUS,
+        1,
+        10,
+        "Final agenda and the venue's floor plan attached. See you Thursday.\n",
+    );
+    files.attachments = vec![
+        Part::attachment(
+            "agenda.pdf",
+            "application/pdf",
+            filler(b"%PDF-1.4\n", 96_000),
+        ),
+        Part::attachment(
+            "floor-plan.png",
+            "image/png",
+            picture(400, 260, [30, 60, 110], [230, 230, 240]),
+        ),
+    ];
+    thread(
+        "typical",
+        vec![
+            (
+                plain(
+                    MARIUS,
+                    70,
+                    1,
+                    "Hi all,\n\nTime to plan the spring workshop. Dates, venue and speakers \
+                     below; reply with what you can take on.\n\nMarius\n",
+                ),
+                true,
+                false,
+            ),
+            (
+                simple(
+                    INGRID,
+                    66,
+                    2,
+                    "<p>I can take the venue. Two options:</p><ol><li>The library's big room \
+                     (40 seats)</li><li>The co-op hall (60 seats, a small kitchen)</li></ol>",
+                ),
+                true,
+                false,
+            ),
+            (issue(1, 60, 3), false, false),
+            (
+                plain(ME, 50, 4, "I'll write to the speakers this week.\n"),
+                true,
+                true,
+            ),
+            (issue(4, 40, 5), false, false),
+            (
+                simple(
+                    SANA,
+                    30,
+                    6,
+                    "<p>Catering quote is in: <b>coffee and lunch for 50</b>, with a vegetarian \
+                     option. I'll book it Friday unless someone objects.</p>",
+                ),
+                true,
+                false,
+            ),
+            (
+                plain(TOMAS, 20, 7, "No objection. The co-op hall it is?\n"),
+                true,
+                false,
+            ),
+            (issue(7, 10, 8), false, false),
+            (
+                plain(INGRID, 5, 9, "Booked the co-op hall for the 12th.\n"),
+                true,
+                false,
+            ),
+            (files, false, false),
+        ],
+    )
+}
+
+/// Brand palettes for the newsletters: name, primary, accent, outer background.
+const BRANDS: [(&str, &str, &str, &str); 8] = [
+    ("Harbor & Pine", "#1b4d3e", "#e07a1f", "#f2efe9"),
+    ("Lumen Weekly", "#23395b", "#d1495b", "#eef2f7"),
+    ("Fjordline Travel", "#0b5563", "#f4a261", "#e9f5f5"),
+    ("Copperleaf Market", "#7a3e1d", "#2a9d8f", "#faf3ea"),
+    ("Northbound Digest", "#2b2d42", "#ef233c", "#edf2f4"),
+    ("Kestrel Cycles", "#3d405b", "#81b29a", "#f4f1de"),
+    ("Bramble Books", "#5f0f40", "#fb8b24", "#fdf6ec"),
+    ("Orbit Coffee", "#432818", "#bb9457", "#f6eee3"),
+];
+
+const TOPICS: [(&str, &str); 6] = [
+    (
+        "The season's quiet trails",
+        "Three walks that stay empty even in high season, with the places to stop for coffee \
+         and the views worth the extra climb.",
+    ),
+    (
+        "What the workshop taught us",
+        "Twelve people, one long table and a weekend of mending: notes from the repair café, \
+         and what we will do differently next time.",
+    ),
+    (
+        "New arrivals on the shelf",
+        "Hand-picked this month: two travel memoirs, a cookbook built around one pot, and a \
+         field guide to the birds of the coast.",
+    ),
+    (
+        "Behind the counter",
+        "Meet the roaster who starts at five every morning, and learn why the beans rest for \
+         three days before they reach the shop.",
+    ),
+    (
+        "Readers write back",
+        "Your letters on slow travel, small gardens and the best way to keep bread fresh, \
+         answered by the people who know.",
+    ),
+    (
+        "Events near you",
+        "Talks, markets and an open studio weekend: everything happening within an hour of \
+         the city this month, sorted by date.",
+    ),
+];
+
+/// One newsletter issue on its brand's paper (S2's corpus, smaller): a `cid:` logo and hero,
+/// three articles, a product grid with `cid:` pictures, and a footer with remote icons and a
+/// tracking pixel at the closed port.
+fn issue_draft(variant: usize, date: i64, id: &str) -> Draft {
+    let (brand, primary, accent, background) = BRANDS[variant % BRANDS.len()];
+    let domain = brand
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let sender = format!("news@{domain}.example.test");
+    let subject = format!("{brand} — issue {}", 40 + variant);
+    let mut draft = Draft::new((brand, &sender), &subject, date, id);
+    let cid = |name: &str| format!("{name}-{id}@{domain}.example.test");
+    let mut html = format!(
+        "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>\
+         body{{margin:0;background:{background}}} a{{color:{primary}}}\
+         @media screen and (max-width:620px){{.container{{width:100%!important}}}}\
+         </style></head><body style=\"margin:0;background:{background}\">\
+         <table role=\"presentation\" width=\"100%\" bgcolor=\"{background}\" cellpadding=\"0\" \
+         cellspacing=\"0\"><tr><td align=\"center\" style=\"padding:24px 0\">\
+         <table role=\"presentation\" class=\"container\" width=\"600\" bgcolor=\"#ffffff\" \
+         cellpadding=\"0\" cellspacing=\"0\" style=\"border-radius:6px\">\
+         <tr><td align=\"center\" style=\"padding:16px 24px;border-bottom:4px solid {accent}\">\
+         <img src=\"cid:{}\" width=\"180\" height=\"50\" alt=\"{brand}\" \
+         style=\"display:block\"></td></tr>\
+         <tr><td><img src=\"cid:{}\" width=\"600\" height=\"260\" alt=\"\" \
+         style=\"display:block;width:100%;height:auto\"></td></tr>",
+        cid("logo"),
+        cid("hero")
+    );
+    for article in 0..3 {
+        let (title, text) = TOPICS[(variant + article) % TOPICS.len()];
+        html.push_str(&format!(
+            "<tr><td style=\"padding:24px 32px;font-family:Georgia,serif\">\
+             <h2 style=\"margin:0 0 12px;font-size:22px;line-height:28px;color:{primary}\">\
+             {title}</h2><p style=\"margin:0 0 16px;font-size:16px;line-height:24px;\
+             color:#333333\">{text} {text}</p><table role=\"presentation\" cellpadding=\"0\" \
+             cellspacing=\"0\"><tr><td bgcolor=\"{accent}\" style=\"border-radius:4px\">\
+             <a href=\"https://example.test/{domain}/{article}\" style=\"display:inline-block;\
+             padding:12px 24px;font:bold 15px Arial,sans-serif;color:#ffffff;\
+             text-decoration:none\">Read more</a></td></tr></table></td></tr>"
+        ));
+    }
+    html.push_str(
+        "<tr><td style=\"padding:8px 24px 24px\"><table role=\"presentation\" \
+         width=\"100%\"><tr>",
+    );
+    for product in 0..3 {
+        html.push_str(&format!(
+            "<td width=\"33%\" valign=\"top\" style=\"padding:6px;font:14px/20px \
+             Helvetica,Arial,sans-serif;color:#444444\"><img src=\"cid:{}\" width=\"170\" \
+             height=\"170\" alt=\"\" style=\"display:block;width:100%;height:auto\">\
+             <b>Item {}</b><br>From 249 kr</td>",
+            cid(&format!("item{product}")),
+            product + 1
+        ));
+    }
+    html.push_str("</tr></table></td></tr>");
+    let mut icons = String::new();
+    for network in ["social-a", "social-b", "social-c"] {
+        icons.push_str(&format!(
+            "<img src=\"{REMOTE_ORIGIN}/{domain}/{network}.png\" width=\"24\" height=\"24\" \
+             alt=\"{network}\" style=\"display:inline-block;margin:0 6px\">"
+        ));
+    }
+    html.push_str(&format!(
+        "<tr><td align=\"center\" style=\"padding:24px;background:#f0f0f0;font:12px/18px \
+         Arial,sans-serif;color:#777777\">{icons}<p style=\"margin:12px 0 4px\">{brand} · \
+         1 Example Street · Exampleville</p><p style=\"margin:0\">You receive this because you \
+         subscribed on example.test. <a href=\"https://example.test/{domain}/unsubscribe\" \
+         style=\"color:#777777\">Unsubscribe</a></p><img \
+         src=\"{REMOTE_ORIGIN}/{domain}/open.gif\" width=\"1\" height=\"1\" alt=\"\">\
+         </td></tr></table></td></tr></table></body></html>"
+    ));
+    draft.html = Some(html);
+    let tint = |seed: usize| {
+        let base = [
+            (seed * 53 % 200) as u8 + 30,
+            (seed * 97 % 200) as u8 + 30,
+            (seed * 31 % 200) as u8 + 30,
+        ];
+        (
+            base,
+            [255 - base[0] / 2, 255 - base[1] / 3, 255 - base[2] / 4],
+        )
+    };
+    let (from, to) = tint(variant + 1);
+    draft.inline = vec![
+        Part::inline(&cid("logo"), "image/png", picture(180, 50, from, to)),
+        Part::inline(&cid("hero"), "image/png", picture(600, 260, to, from)),
+    ];
+    for product in 0..3 {
+        let (from, to) = tint(variant * 3 + product + 2);
+        draft.inline.push(Part::inline(
+            &cid(&format!("item{product}")),
+            "image/png",
+            picture(170, 170, from, to),
+        ));
+    }
+    draft
+}
+
+/// A synthetic picture (S2's): a diagonal gradient with stripes and a block, so no two rows
+/// look alike, as an 8-bit RGB PNG with stored deflate blocks.
+pub fn picture(width: u32, height: u32, from: [u8; 3], to: [u8; 3]) -> Vec<u8> {
+    let mut raw = Vec::with_capacity((width as usize * 3 + 1) * height as usize);
+    let span = (width + height).max(1) as f32;
+    for y in 0..height {
+        raw.push(0);
+        for x in 0..width {
+            let t = (x + y) as f32 / span;
+            let stripe = (x / 12 + y / 12) % 7 == 0;
+            let block = x > width / 3 && x < width / 2 && y > height / 3 && y < height * 2 / 3;
+            for channel in 0..3 {
+                let base = f32::from(from[channel]) * (1.0 - t) + f32::from(to[channel]) * t;
+                let value = if block {
+                    255.0 - base
+                } else if stripe {
+                    base * 0.8
+                } else {
+                    base
+                };
+                raw.push(value as u8);
+            }
+        }
+    }
+    let mut header = Vec::with_capacity(13);
+    header.extend_from_slice(&width.to_be_bytes());
+    header.extend_from_slice(&height.to_be_bytes());
+    header.extend_from_slice(&[8, 2, 0, 0, 0]);
+    let mut out = b"\x89PNG\r\n\x1a\n".to_vec();
+    png_chunk(&mut out, b"IHDR", &header);
+    png_chunk(&mut out, b"IDAT", &zlib_stored(&raw));
+    png_chunk(&mut out, b"IEND", &[]);
+    out
+}
+
+fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
+    out.extend_from_slice(&(data.len() as u32).to_be_bytes());
+    let start = out.len();
+    out.extend_from_slice(kind);
+    out.extend_from_slice(data);
+    let crc = crc32(&out[start..]);
+    out.extend_from_slice(&crc.to_be_bytes());
+}
+
+fn zlib_stored(data: &[u8]) -> Vec<u8> {
+    let mut out = vec![0x78, 0x01];
+    let mut blocks = data.chunks(usize::from(u16::MAX)).peekable();
+    while let Some(block) = blocks.next() {
+        out.push(u8::from(blocks.peek().is_none()));
+        let len = block.len() as u16;
+        out.extend_from_slice(&len.to_le_bytes());
+        out.extend_from_slice(&(!len).to_le_bytes());
+        out.extend_from_slice(block);
+    }
+    let (mut a, mut b) = (1u32, 0u32);
+    for byte in data {
+        a = (a + u32::from(*byte)) % 65_521;
+        b = (b + a) % 65_521;
+    }
+    out.extend_from_slice(&((b << 16) | a).to_be_bytes());
+    out
+}
+
+fn crc32(data: &[u8]) -> u32 {
+    let mut crc = !0u32;
+    for &byte in data {
+        crc ^= u32::from(byte);
+        for _ in 0..8 {
+            crc = if crc & 1 == 1 {
+                (crc >> 1) ^ 0xedb8_8320
+            } else {
+                crc >> 1
+            };
+        }
+    }
+    !crc
+}
+
+/// `count` messages that are each a conversation of their own, as a mailbox mixes them: a
+/// styled newsletter every third, simple HTML every third, plain text the rest; `single-1`
+/// newest, an hour apart, all read.
+pub fn singles(count: usize, now: i64) -> Vec<Threaded> {
+    (0..count)
+        .map(|n| {
+            let date = now - (n as i64 + 1) * 3_600;
+            let id = format!("single-{}", n + 1);
+            let people = [INGRID, TOMAS, SANA, MARIUS];
+            let draft = match n % 3 {
+                0 => issue_draft(n, date, &id),
+                1 => {
+                    let mut draft = Draft::new(people[n % 4], "Notes from today", date, &id);
+                    draft.text = Some("See the HTML part.\n".into());
+                    draft.html = Some(format!(
+                        "<p>Notes from today, number {}:</p><ul><li>the budget is agreed</li>\
+                         <li>the next meeting is on Thursday</li></ul><p>— {}</p>",
+                        n + 1,
+                        people[n % 4].0
+                    ));
+                    draft
+                }
+                _ => reply(
+                    people[n % 4],
+                    "Quick question",
+                    date,
+                    &id,
+                    &format!(
+                        "Hi,\n\nCould you send me the file from yesterday? It's number {} on \
+                         the list.\n\nThanks!\n",
+                        n + 1
+                    ),
+                ),
+            };
+            Threaded {
+                name: id,
+                raw: draft.render(),
+                read: true,
+                sent: false,
+            }
+        })
+        .collect()
+}
+
+/// Where [`fill_conversation`] put a conversation's messages, by name.
+#[derive(Debug, Clone, Default)]
+pub struct Filed {
+    pub ids: Vec<(String, MessageId)>,
+}
+
+impl Filed {
+    pub fn id(&self, name: &str) -> Option<MessageId> {
+        self.ids
+            .iter()
+            .find(|(sample, _)| sample == name)
+            .map(|(_, id)| *id)
+    }
+}
+
+/// Files `messages` into `inbox` (the user's own into `sent`) through `ingest_raw`, read or
+/// unread as each says. Blocks: run it off the GTK thread.
+pub fn fill_conversation(
+    store: &Store,
+    blobs: &BlobStore,
+    inbox: FolderId,
+    sent: FolderId,
+    messages: Vec<Threaded>,
+) -> Result<Filed, IngestError> {
+    let names: Vec<String> = messages
+        .iter()
+        .map(|message| message.name.clone())
+        .collect();
+    let raw = messages
+        .into_iter()
+        .map(|message| RawMessage {
+            folder: if message.sent { sent } else { inbox },
+            flags: if message.read {
+                sealwax_domain::model::Flags::SEEN
+            } else {
+                sealwax_domain::model::Flags::NONE
+            },
+            raw: message.raw,
+            ..RawMessage::default()
+        })
+        .collect();
+    let ingested = ingest::ingest_raw(store, blobs, raw)?;
+    let ids = names
+        .into_iter()
+        .zip(ingested.ids)
+        .filter_map(|(name, id)| id.map(|id| (name, id)))
+        .collect();
+    Ok(Filed { ids })
+}
+
+#[cfg(test)]
+mod conversation_tests {
+    use super::*;
+    use sealwax_domain::message;
+    use sealwax_domain::model::BodyKind;
+
+    #[test]
+    fn each_conversation_threads_and_stays_fictional() {
+        let now = 1_791_115_200;
+        for name in CONVERSATIONS {
+            let messages = conversation(name, now);
+            assert!(messages.len() >= 6, "{name}");
+            let mut previous: Option<String> = None;
+            for threaded in &messages {
+                let parsed = message::parse(&threaded.raw);
+                let id = parsed.headers.message_id.clone().unwrap();
+                match &previous {
+                    Some(parent) => {
+                        assert_eq!(
+                            parsed.headers.in_reply_to,
+                            std::slice::from_ref(parent),
+                            "{}",
+                            threaded.name
+                        );
+                        assert!(parsed.headers.references.contains(parent));
+                    }
+                    None => assert!(parsed.headers.in_reply_to.is_empty()),
+                }
+                previous = Some(id);
+                let text = String::from_utf8_lossy(&threaded.raw);
+                for host in text.split("://").skip(1) {
+                    assert!(
+                        host.starts_with("example.test") || host.starts_with("127.0.0.1:2/"),
+                        "{}: {}",
+                        threaded.name,
+                        &host[..host.len().min(30)]
+                    );
+                }
+            }
+        }
+        let typical = conversation("typical", now);
+        let html = typical
+            .iter()
+            .filter(|threaded| message::parse(&threaded.raw).body_kind == BodyKind::Html)
+            .count();
+        assert_eq!((typical.len(), html), (10, 3));
+        assert_eq!(conversation("long", now).len(), 150);
+        assert_eq!(conversation("letters", now).len(), 8);
+    }
+
+    #[test]
+    fn pictures_are_pngs() {
+        let png = picture(4, 3, [0, 0, 0], [255, 255, 255]);
+        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+        assert_eq!(crc32(b"IEND"), 0xae42_6082);
+        assert_eq!(&png[png.len() - 8..png.len() - 4], b"IEND");
+    }
+}

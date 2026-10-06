@@ -31,6 +31,30 @@ pub fn date_line(date: i64, now: i64, zone: &glib::TimeZone) -> String {
     }
 }
 
+/// A collapsed message's time (the approved mock's rows): `09:30` today, `Yesterday`, `Mon`
+/// within the week, `4 Sep` this year, `30 Aug 2025` before; a date in the future gets the
+/// last form.
+pub fn short_date(date: i64, now: i64, zone: &glib::TimeZone) -> String {
+    let (Some(then), Some(today)) = (local(date, zone), local(now, zone)) else {
+        return String::new();
+    };
+    let format = |pattern: &str| {
+        then.format(pattern)
+            .map(|text| text.to_string())
+            .unwrap_or_default()
+    };
+    if date > now + MINUTE {
+        return format("%-d %b %Y");
+    }
+    match day_number(&today) - day_number(&then) {
+        0 => format("%H:%M"),
+        1 => "Yesterday".to_owned(),
+        2..=6 => format("%a"),
+        _ if then.year() == today.year() => format("%-d %b"),
+        _ => format("%-d %b %Y"),
+    }
+}
+
 /// The date in the expanded details: `Sunday 4 October 2026, 09:30 (+02:00)`.
 pub fn full_date(date: i64, zone: &glib::TimeZone) -> String {
     local(date, zone)
@@ -178,6 +202,17 @@ mod tests {
         assert_eq!(line(NOW - 30 * 24 * HOUR), "4 Sep, 12:00");
         assert_eq!(line(NOW - 400 * 24 * HOUR), "30 Aug 2025");
         assert_eq!(line(NOW + 2 * 24 * HOUR), "6 Oct 2026, 12:00");
+    }
+
+    #[test]
+    fn collapsed_rows_take_a_short_time() {
+        let short = |date: i64| short_date(date, NOW, &utc());
+        assert_eq!(short(NOW - 25 * MINUTE), "11:35");
+        assert_eq!(short(NOW - 13 * HOUR), "Yesterday");
+        assert_eq!(short(NOW - 3 * 24 * HOUR), "Thu");
+        assert_eq!(short(NOW - 30 * 24 * HOUR), "4 Sep");
+        assert_eq!(short(NOW - 400 * 24 * HOUR), "30 Aug 2025");
+        assert_eq!(short(NOW + 2 * 24 * HOUR), "6 Oct 2026");
     }
 
     #[test]

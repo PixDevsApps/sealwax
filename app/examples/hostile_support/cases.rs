@@ -22,6 +22,9 @@ pub struct Case {
     /// What to put the pointer on before clicking (M5's link hover).
     pub hover: Option<&'static str>,
     pub expect: Expect,
+    /// Earlier messages of the case's conversation, oldest first (a name and an HTML body):
+    /// the case replies to the last, so the reader shows them together.
+    pub earlier: Vec<(&'static str, String)>,
 }
 
 impl Case {
@@ -52,6 +55,9 @@ pub enum Expect {
     Signed,
     /// A slow `cid:` part whose view is reused for another message: the answer is dropped.
     CidCancelled,
+    /// Every expanded body of a conversation is hostile: each stays clean and keeps the
+    /// content filter, also when the selected one's images are allowed.
+    Conversation,
 }
 
 /// JavaScript that sets every script trace for `id`. It contains no double quotes, so it can
@@ -610,6 +616,11 @@ pub fn cases(origin: &str) -> Vec<Case> {
 /// A part whose answer the suite delays, and the second message that reuses its Content-ID.
 pub const SLOW_CID: &str = "slow@hostile.test";
 pub const REUSED_ID: &str = "cid-cancelled-next";
+/// Two messages of one conversation with the same Content-ID: the earlier one's part decoded,
+/// the later one's slow.
+pub const PAIR: [&str; 2] = ["cid-pair-1", "cid-pair-2"];
+/// When earlier messages of a case's conversation are dated: before every case.
+pub const EARLIER_DATE: i64 = 1_790_000_000;
 /// Ciphertext the encrypted cases carry; it must appear nowhere on the page.
 const CIPHERTEXT: &str = "hQEMA0lvQ1pY2sdpAQf9SealwaxCiphertextMarker";
 
@@ -702,6 +713,10 @@ fn m5_cases(o: &str) -> Vec<Case> {
             ),
             click: Some("[data-sealwax-quote-toggle]"),
             expect: Expect::Quotes,
+            earlier: vec![(
+                "quote-toggle-earlier",
+                "<p>The original message.</p>".into(),
+            )],
             ..Case::default()
         },
         Case {
@@ -762,6 +777,53 @@ fn m5_cases(o: &str) -> Vec<Case> {
             )),
             click: Some("toggle"),
             expect: Expect::Quotes,
+            earlier: vec![("plain-quote-earlier", "<p>See the link below.</p>".into())],
+            ..Case::default()
+        },
+        Case {
+            id: "conversation-three",
+            vector: "a three-message conversation, every expanded body hostile, quotes collapsing in the later two",
+            html: html(
+                "conversation-three",
+                &format!("<link rel=\"stylesheet\" href=\"{o}/h/conversation-three/s.css\">"),
+                &format!(" onload=\"{}\"", p("conversation-three")),
+                &format!(
+                    "<p>Third. <img src=\"{o}/h/conversation-three/p.gif\" width=\"1\" height=\"1\"></p>\
+                     <blockquote type=\"cite\" onclick=\"{0}\"><p>Second, quoted.</p></blockquote>",
+                    p("conversation-three")
+                ),
+            ),
+            expect: Expect::Conversation,
+            earlier: vec![
+                (
+                    "conversation-three-1",
+                    html(
+                        "conversation-three-1",
+                        "",
+                        &format!(" onload=\"{}\"", p("conversation-three-1")),
+                        &format!(
+                            "<p>First. <img src=\"{o}/h/conversation-three-1/p.gif\" width=\"1\" \
+                             height=\"1\"></p><div style=\"background:url({o}/h/conversation-three-1/bg.png)\">\
+                             bg</div><script>{}</script>",
+                            p("conversation-three-1")
+                        ),
+                    ),
+                ),
+                (
+                    "conversation-three-2",
+                    html(
+                        "conversation-three-2",
+                        "<meta http-equiv=\"refresh\" content=\"0;url=https://example.com/\">",
+                        "",
+                        &format!(
+                            "<p>Second. <img src=\"{o}/h/conversation-three-2/p.gif\" width=\"1\" \
+                             height=\"1\" onerror=\"{0}\"></p><blockquote type=\"cite\"><p>First, \
+                             quoted.</p></blockquote>",
+                            p("conversation-three-2")
+                        ),
+                    ),
+                ),
+            ],
             ..Case::default()
         },
         Case {

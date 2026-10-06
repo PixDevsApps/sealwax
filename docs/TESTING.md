@@ -287,7 +287,7 @@ Release builds, 16:00–16:18 CEST: 18 self-closing live runs on Hyprland under 
 | --- | --- | --- |
 | First frame with a cached 10k INBOX ≤ 400 ms | Process start → first frame with rows on screen, fullscreen 3440×1440, Vulkan: warm p50 467 / p95 490 ms (20 runs); cold-ish p50 570 / p95 580 ms (12 runs); with the first frame limited to 40 rows, warm p50 326–330 / p95 341–361 ms (two batches of 6) | **Fail as built**; passes warm with the first-frame trim (cold with the trim not measured) |
 | Second-instance `mailto:` ≤ 100 ms | p50 50.8 / p95 52.7 ms (20 runs); `attach` and `attachment` dropped in 5 of 5 runs; D-Bus `Open` 0.5 ms | Pass |
-| A notification click focuses the window and opens the message | omarchy-shell accepts a notification in 0.8 ms; headless, the click path works (default action → `app.open-message` in 0.05 ms); live, `present()` refocuses an unfocused window in 2.2–3.9 ms (3 of 3) | Pending the user's click (`bash spikes/s6-desktop/manual-check.sh`) |
+| A notification click focuses the window and opens the message | omarchy-shell accepts a notification in 0.8 ms; headless, the click path works (default action → `app.open-message` in 0.05 ms); live, `present()` refocuses an unfocused window in 2.2–3.9 ms (3 of 3) | **Pass** in the user's run (2026-10-06): message painted 16.4 ms after the action with the window open but unfocused, 194.3 ms from background mode (window active at 197.8 ms); focused both times, no server activation token |
 | Background mode keeps IDLE alive | APPEND → notification sent p50 1.3 ms (Stalwart), 492 ms (Dovecot's own IDLE delay); 16 cut connections back in IDLE in ~14 ms; a 330 s hold crossed one IDLE restart without a disconnect | Pass (minutes on the testbed; hours not verified) |
 | Reconnect after resume ≤ 10 s | A silently frozen connection went unnoticed for 10 s; after a resume signal, idling again in p50 14.0 ms (Stalwart) / 14.5 ms (Dovecot) on localhost | Pending the user's suspend (`bash spikes/s6-desktop/manual-resume.sh`) |
 | GDK_SCALE=2 doesn't change the scale | Same scale factors, sizes and timing with it set or unset | Pass — GTK 4 on Wayland ignores it |
@@ -357,7 +357,7 @@ Release builds; four headless runs (display 23) and five self-closing live runs 
 | Undo | every format; a typed run and a paste each undo in one step | Pass (the app must bind Ctrl+Z, Ctrl+Shift+Z/Ctrl+Y, Ctrl+U) |
 | Paste cleaned | hostile HTML stripped to the allowlist, 0 canary requests | Pass |
 | Typing < 16 ms | accelerated p95 16.0–24.1 ms; `hardware-acceleration-policy = NEVER` p95 9.9–11.9 ms | Pass without acceleration only |
-| fcitx5 and Norwegian dead keys | `bash spikes/s7-composer/manual-check.sh` | Pending the user |
+| fcitx5 and Norwegian dead keys | `bash spikes/s7-composer/manual-check.sh`, the user, 2026-10-06 | Approved by the user: p95 10.51 ms (æ/ø/å 11.24 ms) with fcitx5; 1 of 5 lines typed exactly, € ô ü not exercised |
 | Round trip through mail-parser | 12 `.eml` files | Pass |
 | No Bcc in the transmitted copy; no hostname | 0 hits | Pass |
 | Gmail web / Outlook web / Thunderbird | samples ready | Pending test accounts |

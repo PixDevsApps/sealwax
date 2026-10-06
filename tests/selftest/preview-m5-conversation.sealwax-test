@@ -1,0 +1,52 @@
+# Previews for the M5 gate, the conversation view (ML-057): a conversation with collapsed rows and
+# two expanded messages (one with attachments), a 150-message conversation with its middle folded,
+# and a conversation of newsletters with the expanded one on its paper card behind the remote
+# content banner, in a dark and a light stock theme (matte-black with square corners,
+# catppuccin-latte rounded). Messages aren't marked read, so the unread marks stay. Every name,
+# address and message is fictional (app/src/reader/samples.rs).
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 32 target/debug/sealwax --self-test tests/selftest/preview-m5-conversation.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+conversation-add trip
+conversation-add long
+conversation-add letters
+focus list
+
+# Collapsed rows, and the unread message and the latest expanded.
+conversation-show trip-6
+assert-conversation expanded trip-5,trip-6
+conversation-scroll top
+screenshot $DIR/../../tools/progress/public/m5-conversation-rows-matte-black-square-2026-10-06.png
+
+# 150 messages: the first, the fold, the latest ten.
+conversation-show long-150
+assert-conversation folded 139
+conversation-scroll top
+screenshot $DIR/../../tools/progress/public/m5-conversation-long-matte-black-square-2026-10-06.png
+
+# Newsletters: the rows, and the latest on paper with its images hidden.
+conversation-show letters-8
+conversation-scroll top
+assert-conversation blank 0
+screenshot $DIR/../../tools/progress/public/m5-conversation-newsletter-matte-black-square-2026-10-06.png
+
+# The same in a light theme with rounded corners.
+theme catppuccin-latte
+corners 8
+conversation-show trip-6
+conversation-scroll top
+screenshot $DIR/../../tools/progress/public/m5-conversation-rows-catppuccin-latte-rounded-2026-10-06.png
+conversation-show long-150
+conversation-scroll top
+screenshot $DIR/../../tools/progress/public/m5-conversation-long-catppuccin-latte-rounded-2026-10-06.png
+conversation-show letters-8
+conversation-scroll top
+assert-conversation blank 0
+screenshot $DIR/../../tools/progress/public/m5-conversation-newsletter-catppuccin-latte-rounded-2026-10-06.png
+assert-conversation criticals 0

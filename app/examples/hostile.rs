@@ -34,7 +34,7 @@ mod cases;
 mod support;
 
 use canary::{Canary, Log};
-use cases::{Case, Expect, FOREIGN_CID, OK_CID, REUSED_ID, SLOW_CID};
+use cases::{Case, EARLIER_DATE, Expect, FOREIGN_CID, OK_CID, PAIR, REUSED_ID, SLOW_CID};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
@@ -173,30 +173,65 @@ impl Dns {
     }
 }
 
+/// `raw` (whose Message-ID is `hostile-<name>@example.test`) as a reply to the messages
+/// `ancestors` names, oldest first, so the store files them as one conversation.
+fn thread_onto(raw: Vec<u8>, name: &str, ancestors: &[&str]) -> Vec<u8> {
+    let Some(parent) = ancestors.last() else {
+        return raw;
+    };
+    let marker = format!("Message-ID: <hostile-{name}@example.test>\r\n");
+    let references: Vec<String> = ancestors
+        .iter()
+        .map(|ancestor| format!("<hostile-{ancestor}@example.test>"))
+        .collect();
+    let threading = format!(
+        "{marker}In-Reply-To: <hostile-{parent}@example.test>\r\nReferences: {}\r\n",
+        references.join(" ")
+    );
+    String::from_utf8_lossy(&raw)
+        .replacen(&marker, &threading, 1)
+        .into_bytes()
+}
+
+/// An HTML message of the suite, with the `ok@hostile.test` part (and `extra` parts).
+fn html_message(name: &str, html: &str, date: i64, extra: Vec<Part>) -> Vec<u8> {
+    let mut draft = Draft::new(
+        ("Hostile Suite", "hostile@example.test"),
+        name,
+        date,
+        &format!("hostile-{name}"),
+    );
+    draft.html = Some(html.to_owned());
+    draft.inline = vec![Part::inline(
+        OK_CID,
+        "image/png",
+        glib::base64_decode(samples::LOGO_PNG_BASE64),
+    )];
+    draft.inline.extend(extra);
+    draft.render()
+}
+
 fn messages(cases: &[Case], now: i64) -> Vec<(&'static str, Vec<u8>)> {
     let ok = glib::base64_decode(samples::LOGO_PNG_BASE64);
-    let mut messages: Vec<(&'static str, Vec<u8>)> = cases
-        .iter()
-        .map(|case| {
-            if let Some(raw) = &case.raw {
-                return (case.id, raw.clone());
+    let dot = || Part::inline(SLOW_CID, "image/png", glib::base64_decode(DOT_PNG_BASE64));
+    let slow = || Part::inline(SLOW_CID, "image/png", Vec::new());
+    let mut messages: Vec<(&'static str, Vec<u8>)> = Vec::new();
+    for case in cases {
+        let mut ancestors: Vec<&str> = Vec::new();
+        for (index, (name, html)) in case.earlier.iter().enumerate() {
+            let raw = html_message(name, html, EARLIER_DATE + index as i64 * 60, Vec::new());
+            messages.push((name, thread_onto(raw, name, &ancestors)));
+            ancestors.push(name);
+        }
+        let raw = match &case.raw {
+            Some(raw) => raw.clone(),
+            None if case.expect == Expect::CidCancelled => {
+                html_message(case.id, &case.html, now - 60, vec![slow()])
             }
-            let mut draft = Draft::new(
-                ("Hostile Suite", "hostile@example.test"),
-                case.id,
-                now - 60,
-                &format!("hostile-{}", case.id),
-            );
-            draft.html = Some(case.html.clone());
-            draft.inline = vec![Part::inline(OK_CID, "image/png", ok.clone())];
-            if case.expect == Expect::CidCancelled {
-                draft
-                    .inline
-                    .push(Part::inline(SLOW_CID, "image/png", Vec::new()));
-            }
-            (case.id, draft.render())
-        })
-        .collect();
+            None => html_message(case.id, &case.html, now - 60, Vec::new()),
+        };
+        messages.push((case.id, thread_onto(raw, case.id, &ancestors)));
+    }
     let mut other = Draft::new(
         ("Another Sender", "other@example.test"),
         "The message the foreign part belongs to",
@@ -206,21 +241,19 @@ fn messages(cases: &[Case], now: i64) -> Vec<(&'static str, Vec<u8>)> {
     other.html = Some(format!("<p><img src=\"cid:{FOREIGN_CID}\"></p>"));
     other.inline = vec![Part::inline(FOREIGN_CID, "image/png", ok)];
     messages.push(("other-message", other.render()));
-    let mut next = Draft::new(
-        ("Another Sender", "other@example.test"),
-        "The message that reuses the slow part's Content-ID",
-        now - 180,
-        "hostile-next",
-    );
-    next.html = Some(format!(
-        "<p><img id=\"s2-next\" src=\"cid:{SLOW_CID}\" alt=\"next\"></p>"
+    let next =
+        |name: &str| format!("<p><img id=\"s2-next\" src=\"cid:{SLOW_CID}\" alt=\"{name}\"></p>");
+    messages.push((
+        REUSED_ID,
+        html_message(REUSED_ID, &next(REUSED_ID), now - 180, vec![dot()]),
     ));
-    next.inline = vec![Part::inline(
-        SLOW_CID,
-        "image/png",
-        glib::base64_decode(DOT_PNG_BASE64),
-    )];
-    messages.push((REUSED_ID, next.render()));
+    messages.push((
+        PAIR[0],
+        html_message(PAIR[0], &next(PAIR[0]), EARLIER_DATE, vec![dot()]),
+    ));
+    let later = format!("<p><img id=\"s2-slow\" src=\"cid:{SLOW_CID}\" alt=\"slow\"></p>");
+    let raw = html_message(PAIR[1], &later, now - 240, vec![slow()]);
+    messages.push((PAIR[1], thread_onto(raw, PAIR[1], &[PAIR[0]])));
     messages
 }
 
@@ -302,7 +335,6 @@ fn main() -> glib::ExitCode {
                 support::reader(&scratch, &theme),
             ];
             for reader in &readers {
-                reader.set_collapse_quotes(true);
                 reader.set_link_opener(glib::clone!(
                     #[strong]
                     recorder,
@@ -449,7 +481,15 @@ async fn run(context: &Context, cases: &[Case], filled: &samples::Filled) -> boo
             let outcome = if case.expect == Expect::CidCancelled {
                 cid_cancelled(context, &reports[context.current.get()], id, filled).await
             } else {
-                run_case(context, &reports[context.current.get()], case, id, pass).await
+                run_case(
+                    context,
+                    &reports[context.current.get()],
+                    case,
+                    id,
+                    pass,
+                    filled,
+                )
+                .await
             };
             network += usize::from(outcome.network());
             scripts += usize::from(outcome.script());
@@ -575,8 +615,15 @@ async fn run_case(
     case: &Case,
     id: MessageId,
     pass: Pass,
+    filled: &samples::Filled,
 ) -> Outcome {
     let reader = context.reader();
+    let conversation: Vec<MessageId> = case
+        .earlier
+        .iter()
+        .filter_map(|(name, _)| filled.id(name))
+        .chain([id])
+        .collect();
     let mut outcome = Outcome::default();
     let before = context.canary.snapshot();
     let dns_before = context.dns_snapshot();
@@ -671,7 +718,7 @@ async fn run_case(
             shots(context, case, "expanded").await;
         }
     }
-    expectations(context, case, pass, &mut outcome).await;
+    expectations(context, case, pass, &conversation, &mut outcome).await;
     if case.hover.is_some() {
         let left = match (case.is_html(), pass) {
             (_, Pass::RealClicks) => context.input.motion(2.0, 2.0).map_err(|e| e.to_string()),
@@ -718,7 +765,7 @@ async fn run_case(
     {
         let recorder = context.recorder.borrow();
         for (event_id, event) in &recorder.events {
-            if *event_id != id {
+            if !conversation.contains(event_id) {
                 continue;
             }
             match event {
@@ -790,8 +837,15 @@ async fn shots(context: &Context, case: &Case, moment: &str) {
     }
 }
 
-/// M5's expectations, checked after the hover and the click.
-async fn expectations(context: &Context, case: &Case, pass: Pass, outcome: &mut Outcome) {
+/// M5's expectations, checked after the hover and the click. `conversation` is the case's
+/// conversation, oldest first, the case's message last.
+async fn expectations(
+    context: &Context,
+    case: &Case,
+    pass: Pass,
+    conversation: &[MessageId],
+    outcome: &mut Outcome,
+) {
     let reader = context.reader();
     let origin = context.canary.origin();
     let short = |text: &str| text.replace(&origin, "{canary}");
@@ -887,6 +941,7 @@ async fn expectations(context: &Context, case: &Case, pass: Pass, outcome: &mut 
                     .push("the ciphertext showed, or the notice didn't".into());
             }
         }
+        Expect::Conversation => conversation_check(context, pass, conversation, outcome).await,
         Expect::Signed => {
             let shown = all_text(&reader.widget());
             if reader.state().attachments != 0
@@ -904,8 +959,104 @@ async fn expectations(context: &Context, case: &Case, pass: Pass, outcome: &mut 
     }
 }
 
+/// Every body of a hostile conversation: each loaded and clean (no script trace, its `cid:`
+/// image in), the quotes of the later ones collapsed and the first's not, and no remote load
+/// in any body but the selected one, whose images `shown` allows: every other live view kept
+/// the content filter.
+async fn conversation_check(
+    context: &Context,
+    pass: Pass,
+    conversation: &[MessageId],
+    outcome: &mut Outcome,
+) {
+    let reader = context.reader();
+    let loaded = |id: &MessageId| {
+        context
+            .recorder
+            .borrow()
+            .events
+            .iter()
+            .any(|(event_id, event)| event_id == id && *event == ViewEvent::Loaded)
+    };
+    if !support::wait_until(Duration::from_secs(5), || conversation.iter().all(loaded)).await {
+        outcome
+            .failures
+            .push("not every body of the conversation loaded".into());
+    }
+    let selected = conversation.last().copied();
+    let mut live = 0;
+    for id in conversation {
+        if reader.view_of(*id).is_none() {
+            continue;
+        }
+        live += 1;
+        match reader.eval_in(*id, PROBE_JS).await {
+            Ok(value) => {
+                let text = |key: &str| {
+                    value
+                        .object_get_property(key)
+                        .map(|value| value.to_str().to_string())
+                        .unwrap_or_default()
+                };
+                let number = |key: &str| {
+                    value
+                        .object_get_property(key)
+                        .map_or(0.0, |value| value.to_double())
+                };
+                if !text("pwned").is_empty() {
+                    outcome.pwned = text("pwned");
+                }
+                if number("okImages") != number("okLoaded") {
+                    outcome.cid_ok = Some(false);
+                }
+            }
+            Err(error) => outcome.failures.push(format!("probe of {}: {error}", id.0)),
+        }
+    }
+    let recorder = context.recorder.borrow();
+    let quotes = |id: &MessageId| {
+        recorder.events.iter().any(|(event_id, event)| {
+            event_id == id && matches!(event, ViewEvent::Quotes { blocks, .. } if *blocks > 0)
+        })
+    };
+    let collapsed: Vec<bool> = conversation.iter().map(quotes).collect();
+    let remote: Vec<i64> = recorder
+        .events
+        .iter()
+        .filter(|(event_id, event)| {
+            Some(*event_id) != selected
+                && conversation.contains(event_id)
+                && matches!(event, ViewEvent::Resource(uri) if uri.starts_with("http"))
+        })
+        .map(|(event_id, _)| event_id.0)
+        .collect();
+    println!(
+        "CONVERSATION pass={} bodies={} live={live} quotes_collapsed={collapsed:?} \
+         remote_loads_in_other_bodies={}",
+        pass.name(),
+        conversation.len(),
+        remote.len()
+    );
+    if collapsed.first() != Some(&false) || !collapsed[1..].iter().all(|collapsed| *collapsed) {
+        outcome.failures.push(format!(
+            "quotes collapsed {collapsed:?}: only the later messages' should"
+        ));
+    }
+    if !remote.is_empty() {
+        outcome.failures.push(format!(
+            "remote loads in bodies whose images weren't allowed: {remote:?}"
+        ));
+    }
+    if live < 2 {
+        outcome
+            .failures
+            .push(format!("{live} bodies held a view at the end"));
+    }
+}
+
 /// A slow `cid:` part, its view reused for another message with the same Content-ID: the
-/// slow answer must be dropped, and the next message must show its own part.
+/// slow answer must be dropped, and the next message must show its own part. First, two
+/// messages of one conversation with the same Content-ID each show their own part.
 async fn cid_cancelled(
     context: &Context,
     reports: &async_channel::Receiver<Shown>,
@@ -927,6 +1078,39 @@ async fn cid_cancelled(
             })
         })
     })));
+    if let (Some(earlier), Some(later)) = (filled.id(PAIR[0]), filled.id(PAIR[1])) {
+        if let Err(error) = support::show(reader, reports, later).await {
+            outcome.failures.push(error);
+        }
+        support::sleep(SLOW_PART.as_millis() as u64 + 600).await;
+        let width = async |id: MessageId, element: &str| {
+            reader
+                .eval_in(
+                    id,
+                    &format!(
+                        "const i = document.getElementById('{element}'); \
+                         return i ? i.naturalWidth : -1;"
+                    ),
+                )
+                .await
+                .map(|value| value.to_int32())
+                .unwrap_or(-1)
+        };
+        let (first, second) = (
+            width(earlier, "s2-next").await,
+            width(later, "s2-slow").await,
+        );
+        println!("CID-PAIR earlier_width={first} later_width={second}");
+        if (first, second) != (1, 120) {
+            outcome.failures.push(format!(
+                "two bodies with one Content-ID showed {first} and {second} px, not 1 and 120"
+            ));
+        }
+    } else {
+        outcome
+            .failures
+            .push("the conversation pair wasn't stored".into());
+    }
     let asked = reader.cid_requests().len();
     reader.show(id);
     let requested = support::wait_until(Duration::from_secs(3), || {

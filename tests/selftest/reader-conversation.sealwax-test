@@ -1,0 +1,135 @@
+# The conversation view (ML-057) on the app's own list and reader: selecting a row shows its
+# whole conversation, older messages as one-line rows, the selected, unread and latest messages
+# expanded; a real click through Broadway expands a row, a click on a card's header collapses it
+# (the only expanded message stays); Expand All and Collapse All through their actions; the
+# expanded unread messages are marked read (in the Unread view once the selection leaves); the
+# column opens at the selected message; a reply arriving and a message moved away change the
+# conversation in place; a 150-message conversation folds its middle and reveals it in steps.
+# Every message is fictional (app/src/reader/samples.rs). Run:
+#   tools/headless.sh 31 target/debug/sealwax --self-test tests/selftest/reader-conversation.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Personal
+mail-add inbox 3d "A message on its own" read
+conversation-add trip
+
+# The latest message: six messages, the unread one and the latest expanded, four rows.
+conversation-show trip-6
+assert-conversation messages 6
+assert-conversation selected trip-6
+assert-conversation expanded trip-5,trip-6
+assert-conversation cards 2
+assert-conversation collapsed 4
+assert-label reader-subject "Re: Cabin trip in November?"
+assert-conversation labelled
+assert-labelled
+assert-action-enabled win.expand-all true
+assert-action-enabled win.collapse-all true
+# Mark read on open: both expanded unread messages are read, nothing else changes.
+wait-until assert-conversation read trip-5 true
+wait-until assert-conversation read trip-6 true
+assert-conversation read trip-1 true
+
+# A real click on the first row expands it, in place; a click on its header collapses it.
+conversation-click-row 0
+assert-conversation expanded trip-1,trip-5,trip-6
+assert-conversation collapsed 3
+conversation-click-header trip-1
+assert-conversation expanded trip-5,trip-6
+assert-conversation collapsed 4
+
+# Expand All and Collapse All, through the window's actions.
+action win.expand-all
+wait-until assert-conversation cards 6
+assert-conversation expanded 6
+assert-conversation collapsed 0
+action win.collapse-all
+wait-until assert-conversation cards 1
+assert-conversation expanded trip-6
+assert-conversation collapsed 5
+# The only expanded message stays expanded.
+conversation-click-header trip-6
+assert-conversation expanded trip-6
+
+# An older message selected: its conversation opens at it, expanded with the latest.
+conversation-show trip-2
+assert-conversation selected trip-2
+assert-conversation expanded trip-2,trip-6
+assert-conversation top-of trip-2
+
+# A reply arrives while the conversation is shown: it joins in place as an unread row, and stays
+# unread until it is opened; a click expands it and reads it.
+conversation-show trip-6
+conversation-reply trip
+wait-until assert-conversation messages 7
+assert-conversation expanded trip-6
+assert-conversation collapsed 6
+assert-conversation selected trip-6
+sleep 300
+assert-conversation read trip-reply-1 false
+conversation-click-row 5
+assert-conversation expanded trip-6,trip-reply-1
+wait-until assert-conversation read trip-reply-1 true
+# A message moved to the Trash leaves the conversation.
+conversation-delete trip-4
+wait-until assert-conversation messages 6
+assert-conversation collapsed 4
+screenshot $DIR/../../.local/selftest/reader-conversation-trip.png
+
+# A message on its own: Expand All and Collapse All don't apply.
+list-select 5
+wait-until assert-conversation messages 1
+assert-action-enabled win.expand-all false
+assert-action-enabled win.collapse-all false
+
+# A ten-message conversation: three newsletters and the latest unread; the column opens at the
+# selected message, below the expanded newsletters.
+conversation-add typical
+conversation-show typical-10
+assert-conversation messages 10
+assert-conversation expanded typical-3,typical-5,typical-8,typical-10
+assert-conversation html-bodies 3
+assert-conversation top-of typical-10
+assert-conversation at-top false
+assert-conversation blank 0
+assert-conversation live-at-most 4
+wait-until assert-conversation read typical-3 true
+wait-until assert-conversation read typical-8 true
+screenshot $DIR/../../.local/selftest/reader-conversation-typical.png
+
+# In the Unread view the expanded unread messages stay unread until the selection leaves.
+mail-account Work
+conversation-add trip Work
+folder inbox Work
+chip unread
+conversation-show trip-6
+assert-conversation expanded trip-5,trip-6
+sleep 300
+assert-conversation read trip-5 false
+assert-conversation read trip-6 false
+chip all
+list-select 4
+wait-until assert-conversation read trip-5 true
+wait-until assert-conversation read trip-6 true
+
+# 150 messages: the first, the latest ten and the expanded ones show; the middle folds into
+# "N earlier messages", revealed 50 at a time by real clicks, the last step whole.
+folder inbox Personal
+conversation-add long
+conversation-show long-150
+assert-conversation messages 150
+assert-conversation folds 1
+assert-conversation folded 139
+assert-conversation collapsed 10
+screenshot $DIR/../../.local/selftest/reader-conversation-long.png
+conversation-click-fold
+assert-conversation folded 89
+conversation-click-fold
+assert-conversation folded 39
+conversation-click-fold
+assert-conversation folded 0
+assert-conversation folds 0
+assert-conversation collapsed 149
+assert-conversation labelled
+assert-conversation criticals 0

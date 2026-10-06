@@ -115,12 +115,19 @@ async fn open(harness: &Harness) -> StepResult {
     })
     .await??;
     let store = Arc::try_unwrap(store).map_err(|_| "the store is still shared")?;
+    let changes = store.subscribe();
     let reader = Reader::new(
         Rc::new(store),
         theme,
         &keymap,
         &harness.state.config().dirs.cache,
     );
+    let forward = reader.clone();
+    glib::spawn_future_local(async move {
+        while let Ok(event) = changes.recv().await {
+            forward.store_changed(&event);
+        }
+    });
     let links: Rc<RefCell<Vec<String>>> = Rc::default();
     reader.set_link_opener(glib::clone!(
         #[strong]

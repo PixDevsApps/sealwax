@@ -52,6 +52,7 @@ pub struct Links {
     dialogs: Cell<u32>,
     dialog: RefCell<Option<adw::AlertDialog>>,
     scrolling: RefCell<Option<(glib::WeakRef<gtk::Adjustment>, glib::SignalHandlerId)>>,
+    anchor: RefCell<Option<(glib::WeakRef<gtk::Widget>, glib::SignalHandlerId)>>,
 }
 
 impl Links {
@@ -86,6 +87,7 @@ impl Links {
             dialogs: Cell::new(0),
             dialog: RefCell::new(None),
             scrolling: RefCell::new(None),
+            anchor: RefCell::new(None),
         });
         let weak = Rc::downgrade(&links);
         links
@@ -142,6 +144,9 @@ impl Links {
             return;
         };
         self.follow_scrolling();
+        if let Some(anchor) = anchor {
+            self.follow_anchor(anchor);
+        }
         self.status.set_text(&links::status_text(&hover.link.uri));
         self.strip.set_visible(true);
         self.overlay.queue_allocate();
@@ -312,6 +317,33 @@ impl Links {
     }
 }
 
+impl Links {
+    /// The strip and the warning go when the body they describe leaves the screen (a card
+    /// collapsed, a view released off screen, another conversation shown): its page no longer
+    /// reports the pointer leaving.
+    fn follow_anchor(&self, anchor: &gtk::Widget) {
+        let followed = self
+            .anchor
+            .borrow()
+            .as_ref()
+            .and_then(|(widget, _)| widget.upgrade())
+            .is_some_and(|widget| widget == *anchor);
+        if followed {
+            return;
+        }
+        let (strip, popover) = (self.strip.clone(), self.warning.popover.clone());
+        let handler = anchor.connect_unmap(move |_| {
+            strip.set_visible(false);
+            popover.popdown();
+        });
+        if let Some((old, handler)) = self.anchor.replace(Some((anchor.downgrade(), handler)))
+            && let Some(old) = old.upgrade()
+        {
+            old.disconnect(handler);
+        }
+    }
+}
+
 impl Drop for Links {
     fn drop(&mut self) {
         self.warning.popover.unparent();
@@ -319,6 +351,11 @@ impl Drop for Links {
             && let Some(adjustment) = adjustment.upgrade()
         {
             adjustment.disconnect(handler);
+        }
+        if let Some((anchor, handler)) = self.anchor.take()
+            && let Some(anchor) = anchor.upgrade()
+        {
+            anchor.disconnect(handler);
         }
     }
 }
