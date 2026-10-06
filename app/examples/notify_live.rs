@@ -472,7 +472,7 @@ fn main() -> glib::ExitCode {
             }
         }
     };
-    // Headless, a stand-in Broadway client, without which GDK paints once a second.
+    // Headless, the reader examples' stand-in Broadway client (a large screen for the window).
     let _client = if live {
         None
     } else {
@@ -512,8 +512,8 @@ fn main() -> glib::ExitCode {
             let (events, received) = async_channel::unbounded::<Event>();
             app.state().engine().attach(commands, received);
             if !live {
-                // Broadway paints about once a second while nothing else wakes the main loop
-                // (seen in this dry run: 1.4 s to a painted message without it, 41 ms with it).
+                // Without a fast timer this dry run's frames came about 1.4 s after the reader
+                // had the message (not explained further); with it, 42 ms. Headless only.
                 glib::timeout_add_local(DRY_TICK, || glib::ControlFlow::Continue);
             }
             let invoked = watch_invoked(&app);
