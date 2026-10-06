@@ -3,7 +3,7 @@
 //! their reads here: the conversation (ML-057) and the senders whose images load (ML-058).
 
 use sealwax_domain::model::{Account, MessageDetail, MessageId};
-use sealwax_infrastructure::store::{Reply, Store, Versioned};
+use sealwax_infrastructure::store::{Conversation, Reply, Store, Versioned};
 
 /// Where the reader sends its requests.
 pub trait MessageSource {
@@ -25,6 +25,11 @@ pub trait MessageSource {
 
     /// Images from `address` are hidden again until allowed (ML-058).
     fn forget_remote_sender(&self, _address: &str) {}
+
+    /// The conversation of `id` as the reader shows it (ML-057); `None` while no store is open.
+    fn conversation(&self, _id: MessageId) -> Option<Reply<Versioned<Option<Conversation>>>> {
+        None
+    }
 }
 
 /// The replies to [`MessageSource::read`].
@@ -46,6 +51,10 @@ impl MessageSource for Store {
     fn opened(&self, id: MessageId, at: i64) {
         let _ = self.touch_body(id, at);
     }
+
+    fn conversation(&self, id: MessageId) -> Option<Reply<Versioned<Option<Conversation>>>> {
+        Some(Store::conversation(self, id))
+    }
 }
 
 impl MessageSource for crate::mailbox::Mailbox {
@@ -58,5 +67,10 @@ impl MessageSource for crate::mailbox::Mailbox {
         if let Some(store) = self.store() {
             MessageSource::opened(&*store, id, at);
         }
+    }
+
+    fn conversation(&self, id: MessageId) -> Option<Reply<Versioned<Option<Conversation>>>> {
+        self.store()
+            .and_then(|store| MessageSource::conversation(&*store, id))
     }
 }

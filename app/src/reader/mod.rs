@@ -1,31 +1,40 @@
-//! The reader (ML-027; ADR-011 approach A; DESIGN.md "Reader" and "HTML mail inside the
-//! theme"): one message at a time, its header, banner and attachment cards drawn by GTK, a
-//! plain-text body in a text view, an HTML body in a pooled, hardened WebView (see [`view`])
-//! styled from the live theme. Everything is read from the store off the GTK thread; the
-//! message appears once its body has its height. Conversations are M5.
+//! The reader (ML-027, ML-057; ADR-011 approach A; DESIGN.md "Reader" and "HTML mail inside the
+//! theme"): the conversation of the selected message, its subject as the heading and its
+//! messages oldest first, the selected one, the unread ones and the latest expanded as cards
+//! (header, banner and attachment cards drawn by GTK, a plain-text body in a text view, an HTML
+//! body in a pooled, hardened WebView, see [`view`], styled from the live theme), the others as
+//! one-line rows ([`conversation`]). Everything is read from the store off the GTK thread; the
+//! conversation appears once the bodies the first screen needs have their heights, scrolled to
+//! the selected message. At most [`MAX_LIVE_VIEWS`] bodies hold a view ([`live`]).
 //!
 //! The lead wires it: `Reader::new` with the store and the theme, `widget()` into
 //! `Window::set_reader`, `toolbar()` into `Window::set_reader_toolbar`, the list's selection
-//! into [`Reader::show`], and the list's position into [`Reader::set_position`] with
-//! [`Reader::connect_previous`] and [`Reader::connect_next`].
+//! into [`Reader::show`], the store's change events into [`Reader::store_changed`], and the
+//! list's position into [`Reader::set_position`] with [`Reader::connect_previous`] and
+//! [`Reader::connect_next`].
 
 mod attachments;
+mod cards;
 pub mod commands;
+mod conversation;
 mod engine;
 mod export;
 mod format;
 mod heuristic;
 mod links;
+mod live;
 mod page;
 mod plain;
 mod prepare;
 mod remote;
 pub mod samples;
+mod show;
 mod source;
 mod toolbar;
 mod view;
 mod widgets;
 
+pub use conversation::{COLLAPSE_OVER, GAP_STEP, KEEP_LATEST};
 pub use engine::{CONTENT_SECURITY_POLICY, CidRequest, MAX_LIVE_VIEWS, NETWORK_FEATURES};
 pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
@@ -34,29 +43,28 @@ pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_featur
 use crate::actions::{self, ScopedShortcuts};
 use crate::engine_link::{EngineLink, Subscription};
 use crate::theme::{ListenerId, ThemeController};
-use engine::{Engine, InlineParts};
+use conversation::{Entry, Page};
+use engine::Engine;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
-use page::PageWidgets;
-use prepare::{Body, Prepared};
 use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
-use sealwax_domain::model::{MessageDetail, MessageId};
+use sealwax_domain::model::{MessageId, MessageSummary};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
 use sealwax_engine::api::{BodyError, Command, Event};
+use sealwax_infrastructure::store::ChangeEvent;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use toolbar::Toolbar;
-use view::MessageView;
-use widgets::{BodyBox, Stage};
+use widgets::Stage;
 
-/// How long a new message may take to lay out before it is shown anyway.
+/// How long a new conversation may take to lay out before it is shown anyway.
 const READY_TIMEOUT: Duration = Duration::from_secs(3);
-/// A reader hidden this long gives its view back (ADR-011: views of hidden bodies are released
+/// A reader hidden this long gives its views back (ADR-011: views of hidden bodies are released
 /// and re-rendered on return).
 const RELEASE_HIDDEN_AFTER: Duration = Duration::from_secs(3);
 /// Keys a focused message body keeps from the Reader scope: WebKitGTK 2.52 and the plain-text
@@ -67,13 +75,19 @@ const KEPT_KEYS: [gdk::Key; 1] = [gdk::Key::Delete];
 #[derive(Debug, Clone, PartialEq)]
 pub struct Shown {
     pub id: MessageId,
+    /// The selected message's body.
     pub body: ShownBody,
-    /// From `show` to the stored message and its raw bytes.
+    /// From `show` to the conversation read.
     pub fetched: Duration,
-    /// To the body prepared off the GTK thread.
+    /// To the expanded messages read and their bodies prepared off the GTK thread.
     pub prepared: Duration,
-    /// To the page on screen (an HTML body laid out at its width, its images in).
+    /// To the conversation on screen (the bodies its first screen shows laid out at their
+    /// width, their images in).
     pub ready: Duration,
+    /// Messages in the conversation, folded ones included.
+    pub messages: usize,
+    /// Messages shown expanded.
+    pub expanded: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -85,8 +99,8 @@ pub enum ShownBody {
         inline_parts: usize,
     },
     Plain,
-    /// HTML shown as text because no WebView could show it safely (no content filter, no
-    /// free view, or the web process ended).
+    /// HTML shown as text because no WebView could show it safely (no content filter, or the
+    /// web process ended twice).
     TextFallback,
     Empty,
     /// The body isn't stored and nothing can download it (no engine).
@@ -99,21 +113,72 @@ pub enum ShownBody {
     Missing,
 }
 
-/// The reader's state, for checks.
+impl ShownBody {
+    /// The message's own text is on screen (not a notice in its place).
+    pub fn is_shown(&self) -> bool {
+        matches!(
+            self,
+            ShownBody::Html { .. } | ShownBody::Plain | ShownBody::TextFallback | ShownBody::Empty
+        )
+    }
+}
+
+/// Bodies the reader put on screen (ML-057), for marking them read: at `show`, every expanded
+/// message whose body is shown; later, a message the user expanded, or whose body arrived.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Opened {
+    /// The message the reader was asked to show.
+    pub selected: MessageId,
+    pub messages: Vec<MessageSummary>,
+}
+
+/// The reader's state, for checks. The first fields describe the selected message.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReaderState {
     pub message: Option<MessageId>,
     pub body: Option<ShownBody>,
     pub banner: bool,
     pub attachments: usize,
-    /// The HTML view's height (px) and its allocated width, when an HTML body is shown.
+    /// The selected message's HTML view: its height (px) and allocated width.
     pub view_size: Option<(i32, i32)>,
-    /// The shown message's view went back to the pool while the reader was hidden.
+    /// The selected message's view went back to the pool while the reader was hidden, and
+    /// hasn't been rendered again.
     pub released: bool,
+    /// Views alive in the process, idle ones included.
     pub live_views: usize,
+    /// Messages in the conversation, folded ones included.
+    pub messages: usize,
+    /// Expanded messages, in order.
+    pub expanded: Vec<MessageId>,
+    /// Messages shown as one-line rows, in order.
+    pub collapsed: Vec<MessageId>,
+    /// "N earlier messages" rows, and the messages they hold.
+    pub folds: usize,
+    pub folded: usize,
+    /// Expanded HTML bodies, and those that hold a view now.
+    pub html_bodies: usize,
+    pub live_bodies: Vec<MessageId>,
+}
+
+/// An expanded HTML body of the shown conversation, for checks: where the column shows it (px
+/// from the top of its visible part), whether it holds a view, and its heights.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BodyReport {
+    pub id: MessageId,
+    pub top: f64,
+    pub bottom: f64,
+    pub live: bool,
+    /// The view's current load fired its `load` event and painted a frame.
+    pub loaded: bool,
+    pub painted: bool,
+    /// The height last measured, and the height its box has now.
+    pub measured: Option<i32>,
+    pub height: i32,
 }
 
 type ShownListener = Rc<dyn Fn(&Shown)>;
+type OpenedListener = Rc<dyn Fn(&Opened)>;
+type SizeListener = Rc<dyn Fn(usize)>;
 type EventListener = Rc<dyn Fn(MessageId, &ViewEvent)>;
 
 type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
@@ -126,36 +191,6 @@ pub struct Reader {
     inner: Rc<Inner>,
 }
 
-struct Html {
-    view: MessageView,
-    style: BodyStyle,
-    html: Rc<str>,
-    parts: Rc<InlineParts>,
-    remote_images: bool,
-    remote_allowed: bool,
-}
-
-struct Page {
-    id: MessageId,
-    /// The sender's address, for the senders whose images load (ML-058).
-    sender: String,
-    widgets: PageWidgets,
-    html: Option<Html>,
-    body: ShownBody,
-    attachments: usize,
-    /// The view went back to the pool while the reader was hidden.
-    released: bool,
-}
-
-impl Page {
-    fn focus_target(&self) -> Option<gtk::Widget> {
-        match &self.html {
-            Some(html) => Some(html.view.web_view().clone().upcast()),
-            None => self.widgets.focus.clone(),
-        }
-    }
-}
-
 struct Inner {
     store: Rc<dyn MessageSource>,
     theme: Rc<ThemeController>,
@@ -163,10 +198,16 @@ struct Inner {
     stage: Stage,
     toolbar: Rc<Toolbar>,
     keys: ScopedShortcuts,
+    /// The conversation on screen.
     shown: RefCell<Option<Page>>,
-    /// The view of the page being laid out, for restyling; its load owns the page.
-    staged: RefCell<Option<(MessageView, BodyStyle)>>,
+    /// The conversation being read and laid out unseen; it replaces the shown one when ready.
+    pending: RefCell<Option<Page>>,
+    /// Bumped by every `show` and `clear`; a page's key is the `show` it came from.
     generation: Cell<u64>,
+    /// Tags card loads and view loads, so late answers are dropped.
+    tokens: Cell<u64>,
+    /// The compiled content filter, once the engine has it.
+    filter: RefCell<Option<webkit6::UserContentFilter>>,
     /// Whose remote images load: messages allowed this session, and senders (ML-058).
     remote: remote::Policy,
     /// Messages whose view's web process ended; a second time, they are shown as text.
@@ -175,6 +216,8 @@ struct Inner {
     opener: RefCell<Opener>,
     link_check: RefCell<Option<LinkCheck>>,
     on_shown: RefCell<Vec<ShownListener>>,
+    on_opened: RefCell<Vec<OpenedListener>>,
+    on_size: RefCell<Vec<SizeListener>>,
     on_event: RefCell<Vec<EventListener>>,
     hidden_timer: RefCell<Option<glib::SourceId>>,
     /// The window whose focus the reader follows, and the handler.
@@ -183,11 +226,17 @@ struct Inner {
     fetcher: RefCell<Option<Fetcher>>,
     /// Bodies asked for and not answered yet.
     fetching: RefCell<HashSet<MessageId>>,
-    /// The engine's answer for the message about to be shown again, read by its next load.
+    /// The engine's answer for a message whose card loads again, read by that load.
     answers: RefCell<HashMap<MessageId, Result<(), BodyError>>>,
     /// The message the newest `show` is for.
     target: Cell<Option<MessageId>>,
     engine_events: RefCell<Option<Subscription>>,
+    /// The live views' scheduling and the column's scroll ([`live`]).
+    scheduling: live::Scheduling,
+    /// A change to the shown conversation waits for its re-read.
+    refresh_queued: Cell<bool>,
+    /// Woken by every body event, for the layout wait of a new conversation.
+    progress: (async_channel::Sender<()>, async_channel::Receiver<()>),
 }
 
 impl Reader {
@@ -216,14 +265,18 @@ impl Reader {
             toolbar,
             keys,
             shown: RefCell::new(None),
-            staged: RefCell::new(None),
+            pending: RefCell::new(None),
             generation: Cell::new(0),
+            tokens: Cell::new(0),
+            filter: RefCell::new(None),
             remote: remote::Policy::default(),
             crashed: RefCell::new(HashMap::new()),
             listener: Cell::new(None),
             opener: RefCell::new(Rc::new(launch)),
             link_check: RefCell::new(None),
             on_shown: RefCell::new(Vec::new()),
+            on_opened: RefCell::new(Vec::new()),
+            on_size: RefCell::new(Vec::new()),
             on_event: RefCell::new(Vec::new()),
             hidden_timer: RefCell::new(None),
             focus_window: RefCell::new(None),
@@ -232,6 +285,9 @@ impl Reader {
             answers: RefCell::new(HashMap::new()),
             target: Cell::new(None),
             engine_events: RefCell::new(None),
+            scheduling: live::Scheduling::default(),
+            refresh_queued: Cell::new(false),
+            progress: async_channel::unbounded(),
         });
         let weak = Rc::downgrade(&inner);
         let id = inner.theme.connect_changed(move |theme| {
@@ -266,20 +322,21 @@ impl Reader {
         self.inner.toolbar.update_keys(keymap);
     }
 
-    /// Shows the message `id`. Returns at once; the page replaces the shown one when it is
-    /// ready. A newer `show` or [`Reader::clear`] cancels it.
+    /// Shows the conversation of the message `id`, scrolled to it. Returns at once; the
+    /// conversation replaces the shown one when it is ready. A newer `show` or
+    /// [`Reader::clear`] cancels it.
     pub fn show(&self, id: MessageId) {
         self.inner.target.set(Some(id));
         self.inner.answers.borrow_mut().remove(&id);
         let generation = self.inner.next_generation();
         let inner = self.inner.clone();
-        glib::spawn_future_local(async move { inner.load(id, generation, Instant::now()).await });
+        glib::spawn_future_local(async move { inner.load(id, generation).await });
     }
 
     /// Downloads the bodies the store doesn't hold through `fetch` (ML-044): the reader asks
-    /// for the shown message's body, shows "Downloading…" meanwhile, and the message once
-    /// [`Reader::messages_changed`] or [`Reader::body_fetched`] says it is there. `fetch`
-    /// returns `false` when nothing can download it.
+    /// for the expanded messages' bodies, shows "Downloading…" meanwhile, and each message once
+    /// [`Reader::store_changed`] or [`Reader::body_fetched`] says it is there. `fetch` returns
+    /// `false` when nothing can download them.
     pub fn set_body_fetcher(&self, fetch: impl Fn(&[MessageId]) -> bool + 'static) {
         self.inner.fetcher.replace(Some(Rc::new(fetch)));
     }
@@ -308,57 +365,41 @@ impl Reader {
     /// message unless the store's change event already did.
     pub fn body_fetched(&self, id: MessageId, result: Result<(), BodyError>) {
         self.inner.fetching.borrow_mut().remove(&id);
-        if self.inner.target.get() != Some(id) {
-            return;
-        }
-        let waiting = self
-            .inner
-            .shown
-            .borrow()
-            .as_ref()
-            .is_none_or(|page| page.id != id || matches!(page.body, ShownBody::Downloading));
-        if waiting {
-            self.inner.answers.borrow_mut().insert(id, result);
-            self.inner.reshow(id);
-        }
+        self.inner.body_answered(id, result);
     }
 
-    /// Messages a store commit changed: one waiting for its body, or whose download failed, is
-    /// shown again, with its body if it came; a failure stays rather than asking again.
+    /// A store commit (ADR-003's change events): the shown conversation is read again when the
+    /// commit touched it (a reply arrived, flags changed, a message moved away or was expunged,
+    /// two conversations merged), keeping its bodies and its scroll; a message waiting for its
+    /// body, or whose download failed, loads again, a failure staying rather than asking again.
+    pub fn store_changed(&self, event: &ChangeEvent) {
+        self.inner.store_changed(event);
+    }
+
+    /// Messages a store commit changed (M3's hook): [`Reader::store_changed`] for those alone.
     pub fn messages_changed(&self, ids: &[MessageId]) {
-        let waiting = self.inner.shown.borrow().as_ref().and_then(|page| {
-            if !ids.contains(&page.id) || self.inner.target.get() != Some(page.id) {
-                return None;
-            }
-            match page.body {
-                ShownBody::Downloading => Some((page.id, None)),
-                ShownBody::DownloadFailed(error) => Some((page.id, Some(error))),
-                _ => None,
-            }
+        self.inner.store_changed(&ChangeEvent {
+            changed: ids.to_vec(),
+            ..ChangeEvent::default()
         });
-        let Some((id, failure)) = waiting else {
-            return;
-        };
-        if let Some(error) = failure {
-            self.inner.answers.borrow_mut().insert(id, Err(error));
-        }
-        self.inner.reshow(id);
     }
 
     /// Shows nothing and gives every view back.
     pub fn clear(&self) {
         self.inner.target.set(None);
         self.inner.next_generation();
-        self.inner.stage.unstage();
+        self.inner.discard_pending();
         self.inner.stage.show(None::<&gtk::Widget>, None);
         if let Some(page) = self.inner.shown.take() {
             self.inner.release_page(page);
         }
+        self.inner.size_changed();
     }
 
-    /// The message shown, if any.
+    /// The selected message: the one the reader was asked to show, once its conversation is on
+    /// screen. Print, Show Original and Save as .eml act on it.
     pub fn message(&self) -> Option<MessageId> {
-        self.inner.shown.borrow().as_ref().map(|page| page.id)
+        self.inner.shown.borrow().as_ref().map(|page| page.selected)
     }
 
     /// "n of N" in the toolbar, or nothing; previous and next follow it.
@@ -379,7 +420,7 @@ impl Reader {
         self.inner.toolbar.connect_next(callback);
     }
 
-    /// Shows the shown message's remote images (https only), in this reader until Sealwax
+    /// Shows the selected message's remote images (https only), in this reader until Sealwax
     /// quits; the same as its banner's "Show images".
     pub fn show_remote_images(&self) {
         if let Some(id) = self.message() {
@@ -387,9 +428,20 @@ impl Reader {
         }
     }
 
-    /// Runs after every message shown.
+    /// Runs after every conversation shown.
     pub fn connect_shown(&self, listener: impl Fn(&Shown) + 'static) {
         self.inner.on_shown.borrow_mut().push(Rc::new(listener));
+    }
+
+    /// Runs when message bodies come on screen ([`Opened`]), for marking them read.
+    pub fn connect_opened(&self, listener: impl Fn(&Opened) + 'static) {
+        self.inner.on_opened.borrow_mut().push(Rc::new(listener));
+    }
+
+    /// Runs when the shown conversation's size changes (0 when nothing is shown), for Expand
+    /// All and Collapse All.
+    pub fn connect_size(&self, listener: impl Fn(usize) + 'static) {
+        self.inner.on_size.borrow_mut().push(Rc::new(listener));
     }
 
     /// Every event of the views that show messages (links, refusals, resource loads): for the
@@ -409,46 +461,106 @@ impl Reader {
         self.inner.link_check.replace(Some(Rc::new(check)));
     }
 
-    /// The WebView of the shown HTML body, for checks.
+    /// The WebView of the selected message's HTML body, while it holds one.
     pub fn web_view(&self) -> Option<webkit6::WebView> {
-        self.inner
-            .shown
-            .borrow()
-            .as_ref()
-            .and_then(|page| page.html.as_ref())
-            .map(|html| html.view.web_view().clone())
+        self.view_of(self.message()?)
     }
 
-    /// Runs `body` (a function body) in Sealwax's isolated world of the shown HTML body.
+    /// The WebView of message `id`'s HTML body in the shown conversation, while it holds one.
+    pub fn view_of(&self, id: MessageId) -> Option<webkit6::WebView> {
+        self.inner.shown.borrow().as_ref().and_then(|page| {
+            page.item(id)
+                .and_then(|item| item.card.as_ref())
+                .and_then(|card| card.html.as_ref())
+                .and_then(|html| html.view.as_ref())
+                .map(|view| view.web_view().clone())
+        })
+    }
+
+    /// Runs `body` (a function body) in Sealwax's isolated world of the selected message's
+    /// HTML body.
     pub async fn eval(&self, body: &str) -> Result<webkit6::javascriptcore::Value, String> {
+        let id = self.message().ok_or("no message is shown")?;
+        self.eval_in(id, body).await
+    }
+
+    /// [`Reader::eval`] in message `id`'s HTML body.
+    pub async fn eval_in(
+        &self,
+        id: MessageId,
+        body: &str,
+    ) -> Result<webkit6::javascriptcore::Value, String> {
         let view = self
             .inner
             .shown
             .borrow()
             .as_ref()
-            .and_then(|page| page.html.as_ref())
-            .map(|html| html.view.clone())
-            .ok_or("no HTML body is shown")?;
+            .and_then(|page| page.item(id))
+            .and_then(|item| item.card.as_ref())
+            .and_then(|card| card.html.as_ref())
+            .and_then(|html| html.view.clone())
+            .ok_or("no HTML body with a view is shown for that message")?;
         view.eval(body).await.map_err(|error| error.to_string())
     }
 
     pub fn state(&self) -> ReaderState {
         let shown = self.inner.shown.borrow();
-        ReaderState {
-            message: shown.as_ref().map(|page| page.id),
-            body: shown.as_ref().map(|page| page.body.clone()),
-            banner: shown
-                .as_ref()
-                .and_then(|page| page.widgets.banner.as_ref())
+        let page = shown.as_ref();
+        let card = page.and_then(Page::selected_card);
+        let html = card.and_then(|card| card.html.as_ref());
+        let mut state = ReaderState {
+            message: page.map(|page| page.selected),
+            body: page.map(|page| {
+                if page.missing {
+                    ShownBody::Missing
+                } else {
+                    card.map_or(ShownBody::Empty, |card| card.body.clone())
+                }
+            }),
+            banner: card
+                .and_then(|card| card.widgets.banner.as_ref())
                 .is_some_and(|banner| banner.root.parent().is_some()),
-            attachments: shown.as_ref().map_or(0, |page| page.attachments),
-            view_size: shown
-                .as_ref()
-                .and_then(|page| page.html.as_ref())
-                .map(|html| (html.view.height(), html.view.web_view().width())),
-            released: shown.as_ref().is_some_and(|page| page.released),
+            attachments: card.map_or(0, |card| card.attachments),
+            view_size: html
+                .and_then(|html| html.view.as_ref())
+                .map(|view| (view.height(), view.web_view().width())),
+            released: html.is_some_and(|html| html.released),
             live_views: self.inner.engine.live_views(),
+            messages: page.map_or(0, Page::message_count),
+            expanded: Vec::new(),
+            collapsed: Vec::new(),
+            folds: 0,
+            folded: 0,
+            html_bodies: 0,
+            live_bodies: page.map(Page::live_bodies).unwrap_or_default(),
+        };
+        for entry in page.map_or(&[][..], |page| &page.entries[..]) {
+            match entry {
+                Entry::Message(item) if item.expanded => {
+                    state.expanded.push(item.id());
+                    if item.card.as_ref().is_some_and(|card| card.html.is_some()) {
+                        state.html_bodies += 1;
+                    }
+                }
+                Entry::Message(item) => state.collapsed.push(item.id()),
+                Entry::Fold(fold) => {
+                    state.folds += 1;
+                    state.folded += fold.messages.len();
+                }
+            }
         }
+        state
+    }
+
+    /// The shown conversation's expanded HTML bodies, where the column shows them.
+    pub fn bodies(&self) -> Vec<BodyReport> {
+        self.inner.body_reports()
+    }
+
+    /// Where message `id`'s row or card starts in the column, px from the top of what the
+    /// column shows; `None` when it isn't in the shown conversation (or folded).
+    pub fn message_top(&self, id: MessageId) -> Option<f64> {
+        self.inner.message_top(id)
     }
 
     /// Every `cid:` request the process's views made so far.
@@ -481,16 +593,42 @@ impl Reader {
         export::save_message(self);
     }
 
-    /// Expands every message of the conversation the reader shows (ML-057).
-    pub fn expand_all(&self) {}
+    /// Expands every message of the shown conversation, folded ones excepted (ML-057).
+    pub fn expand_all(&self) {
+        self.inner.expand_all();
+    }
 
-    /// Collapses the conversation the reader shows to its latest message (ML-057).
-    pub fn collapse_all(&self) {}
+    /// Collapses every message of the shown conversation but the selected one (ML-057).
+    pub fn collapse_all(&self) {
+        self.inner.collapse_all();
+    }
+
+    /// Expands message `id` of the shown conversation, as a click on its row does.
+    pub fn expand(&self, id: MessageId) {
+        self.inner.expand(id);
+    }
+
+    /// Collapses message `id` of the shown conversation, as a click on its header does; the
+    /// only expanded message stays.
+    pub fn collapse(&self, id: MessageId) {
+        self.inner.collapse(id);
+    }
+
+    /// Reveals one step of the shown conversation's first "N earlier messages" row.
+    pub fn unfold(&self) {
+        self.inner.unfold_first();
+    }
 
     /// Images from the shown message's sender load from now on (`true`) or are hidden again
     /// (`false`) (ML-058).
     pub fn set_always_show_images(&self, on: bool) {
         remote::set_always(self, on);
+    }
+
+    /// The shown conversation's bodies whose images the remote-content policy now allows load
+    /// them (ML-058: after a sender was allowed).
+    pub fn refresh_remote_images(&self) {
+        self.inner.refresh_remote();
     }
 }
 
@@ -576,473 +714,82 @@ impl Inner {
         self.generation.get() != generation
     }
 
-    async fn load(self: Rc<Self>, id: MessageId, generation: u64, started: Instant) {
-        let Some(reads) = self.store.read(id) else {
-            self.show_missing(id, started);
-            return;
-        };
-        let detail = reads.detail.recv().await;
-        let accounts = reads.accounts.recv().await;
-        let raw = reads.raw.recv().await.ok().flatten();
-        if self.stale(generation) {
-            return;
-        }
-        let detail = match detail {
-            Ok(versioned) => versioned.value,
-            Err(error) => {
-                tracing::warn!(message = id.0, %error, "reader: the message couldn't be read");
-                None
-            }
-        };
-        let Some(detail) = detail else {
-            self.show_missing(id, started);
-            return;
-        };
-        let mine: Vec<String> = accounts
-            .map(|accounts| {
-                accounts
-                    .value
-                    .into_iter()
-                    .map(|account| account.address)
-                    .collect()
-            })
-            .unwrap_or_default();
-        let fetched = started.elapsed();
-        let answer = self.answers.borrow_mut().remove(&id);
-        let download = match &raw {
-            None => self.download(id, answer),
-            Some(_) => {
-                self.store.opened(id, now());
-                None
-            }
-        };
-        let for_worker = detail.clone();
-        let prepared = gio::spawn_blocking(move || prepare::prepare(&for_worker, raw.as_deref()))
-            .await
-            .unwrap_or_else(|_| {
-                tracing::error!(message = id.0, "reader: preparing the message failed");
-                Prepared {
-                    body: Body::Empty,
-                    attachments: Vec::new(),
-                }
-            });
-        if self.stale(generation) {
-            return;
-        }
-        let prepared_at = started.elapsed();
-        let header = page::Header {
-            detail: &detail,
-            mine: &mine,
-            now: now(),
-        };
-        let sender = detail
-            .headers
-            .from
-            .first()
-            .map(|from| from.email.to_lowercase())
-            .unwrap_or_default();
-        let remote_images = matches!(
-            &prepared.body,
-            Body::Html {
-                remote_images: true,
-                ..
-            }
-        ) && !self.remote.allows(id, &sender);
-        let widgets = page::build(&header, &prepared.attachments, remote_images);
-        let attachments = prepared.attachments.len();
-        let mut page = Page {
-            id,
-            sender,
-            widgets,
-            html: None,
-            body: ShownBody::Empty,
-            attachments,
-            released: false,
-        };
-        if let Some(state) = download {
-            self.download_page(&mut page, &detail, state);
-            self.present(page, started, fetched, prepared_at);
-            return;
-        }
-        match prepared.body {
-            Body::Html {
-                html,
-                style,
-                remote_images,
-                parts,
-            } => {
-                let html: Rc<str> = Rc::from(html);
-                let parts = Rc::new(parts);
-                let crashes = self.crashed.borrow().get(&id).copied().unwrap_or(0);
-                if crashes >= 2
-                    || !self
-                        .clone()
-                        .stage_html(
-                            &mut page,
-                            html.clone(),
-                            style,
-                            remote_images,
-                            parts,
-                            generation,
-                        )
-                        .await
-                {
-                    if self.stale(generation) {
-                        return;
-                    }
-                    self.text_fallback(&mut page, html).await;
-                    if self.stale(generation) {
-                        return;
-                    }
-                }
-            }
-            Body::Plain(text) => {
-                let text = plain::plain_text(&text);
-                page.widgets.body.append(&text);
-                page.widgets.focus = Some(text.upcast());
-                page.body = ShownBody::Plain;
-            }
-            Body::Empty => {
-                page.widgets
-                    .body
-                    .append(&page::notice("This message has no text."));
-                page.body = ShownBody::Empty;
-            }
-            Body::NotDownloaded => {
-                let snippet = &detail.summary.snippet;
-                page.widgets.body.append(&page::notice(
-                    "The rest of this message hasn't been downloaded yet.",
-                ));
-                if !snippet.is_empty() {
-                    let snippet = plain::plain_text(snippet);
-                    page.widgets.body.append(&snippet);
-                    page.widgets.focus = Some(snippet.upcast());
-                }
-                page.body = ShownBody::NotDownloaded;
-            }
-        }
-        self.present(page, started, fetched, prepared_at);
+    fn next_token(&self) -> u64 {
+        let token = self.tokens.get() + 1;
+        self.tokens.set(token);
+        token
     }
 
-    /// What a message whose body isn't stored shows (ML-044): `None` without a fetcher (M1's
-    /// "not downloaded yet"), else the engine's failure, "Downloading…" while a request is out,
-    /// or a new request.
-    fn download(&self, id: MessageId, answer: Option<Result<(), BodyError>>) -> Option<ShownBody> {
-        let fetch = self.fetcher.borrow().clone()?;
-        match answer {
-            Some(Err(error)) => return Some(ShownBody::DownloadFailed(error)),
-            // Answered, and still no body: asking again would only loop.
-            Some(Ok(())) => return Some(ShownBody::DownloadFailed(BodyError::Other)),
-            None => {}
+    /// Runs `apply` on the page `key` names, shown or being laid out.
+    fn with_page<R>(&self, key: u64, apply: impl FnOnce(&mut Page) -> R) -> Option<R> {
+        let mut shown = self.shown.borrow_mut();
+        if let Some(page) = shown.as_mut().filter(|page| page.key == key) {
+            return Some(apply(page));
         }
-        if self.fetching.borrow().contains(&id) {
-            return Some(ShownBody::Downloading);
-        }
-        if fetch(&[id]) {
-            self.fetching.borrow_mut().insert(id);
-            Some(ShownBody::Downloading)
-        } else {
-            Some(ShownBody::DownloadFailed(BodyError::Other))
-        }
+        drop(shown);
+        let mut pending = self.pending.borrow_mut();
+        pending.as_mut().filter(|page| page.key == key).map(apply)
     }
 
-    /// The snippet under a quiet "Downloading…", or under why the download failed with Retry.
-    fn download_page(self: &Rc<Self>, page: &mut Page, detail: &MessageDetail, state: ShownBody) {
-        let id = page.id;
-        if let ShownBody::DownloadFailed(error) = &state {
-            let row = gtk::Box::builder().spacing(12).build();
-            let notice = page::notice(download_failure(*error));
-            notice.set_hexpand(true);
-            row.append(&notice);
-            let retry = gtk::Button::builder()
-                .label("Retry")
-                .valign(gtk::Align::Center)
-                .css_classes(["sw-control"])
-                .build();
-            retry.set_widget_name("reader-retry");
-            let weak = Rc::downgrade(self);
-            retry.connect_clicked(move |_| {
-                if let Some(inner) = weak.upgrade() {
-                    inner.retry(id);
-                }
-            });
-            row.append(&retry);
-            page.widgets.body.append(&row);
-        } else {
-            page.widgets.body.append(&page::notice("Downloading…"));
-        }
-        let snippet = &detail.summary.snippet;
-        if !snippet.is_empty() {
-            let snippet = plain::plain_text(snippet);
-            page.widgets.body.append(&snippet);
-            page.widgets.focus = Some(snippet.upcast());
-        }
-        page.body = state;
-    }
-
-    /// Retry: the shown message asks for its body again.
-    fn retry(self: &Rc<Self>, id: MessageId) {
-        if self.target.get() == Some(id) {
-            self.answers.borrow_mut().remove(&id);
-            self.reshow(id);
-        }
-    }
-
-    /// Lays an HTML body out unseen in a pooled view until it has its width, its height and
-    /// its images. `false` when no view can show it safely; the page then gets the text.
-    async fn stage_html(
-        self: Rc<Self>,
-        page: &mut Page,
-        html: Rc<str>,
-        style: BodyStyle,
-        remote_images: bool,
-        parts: Rc<InlineParts>,
-        generation: u64,
-    ) -> bool {
-        let Some(filter) = self.engine.filter().await else {
-            return false;
-        };
-        if self.stale(generation) {
-            return false;
-        }
-        let theme = self.theme.theme();
-        let Some(view) = self.engine.acquire(&theme.webview_fonts()) else {
-            return false;
-        };
-        let frame = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .overflow(gtk::Overflow::Hidden)
-            .css_classes([match style {
-                BodyStyle::Paper => "sw-paper",
-                BodyStyle::Themed => "sw-themed-body",
-            }])
-            .build();
-        frame.set_widget_name("reader-frame");
-        frame.append(&BodyBox::new(view.web_view()));
-        page.widgets.body.append(&frame);
-        let (events, received) = async_channel::unbounded::<ViewEvent>();
-        let weak = Rc::downgrade(&self);
-        let id = page.id;
-        view.set_handler(move |event| {
-            let _ = events.try_send(event.clone());
-            if let Some(inner) = weak.upgrade() {
-                inner.view_event(id, event);
-            }
-        });
-        let remote_allowed = self.remote.allows(page.id, &page.sender);
-        self.engine.set_parts(view.page_id(), parts.clone());
-        self.stage.stage(&page.widgets.root);
-        self.staged.replace(Some((view.clone(), style)));
-        view.load(
-            &html,
-            &stylesheet(&theme, style),
-            &rgba(theme.webview_background(style)),
-            (!remote_allowed).then_some(&filter),
-        );
-        if let Some(banner) = &page.widgets.banner {
-            let weak = Rc::downgrade(&self);
-            banner.show_images.connect_clicked(move |_| {
-                if let Some(inner) = weak.upgrade() {
-                    inner.allow_remote(id);
-                }
-            });
-        }
-        page.html = Some(Html {
-            view: view.clone(),
-            style,
-            html,
-            parts: parts.clone(),
-            remote_images,
-            remote_allowed,
-        });
-        page.body = ShownBody::Html {
-            style,
-            remote_images,
-            remote_allowed,
-            inline_parts: parts.len(),
-        };
-        let ready = self.wait_until_laid_out(&view, &received, generation).await;
-        let ours = self
-            .staged
+    /// Whether page `key` is the one on screen.
+    fn is_shown(&self, key: u64) -> bool {
+        self.shown
             .borrow()
             .as_ref()
-            .is_some_and(|(staged, _)| staged.page_id() == view.page_id());
-        if ours {
-            self.staged.replace(None);
+            .is_some_and(|page| page.key == key)
+    }
+
+    /// Gives every view of `page` back to the pool.
+    fn release_page(&self, mut page: Page) {
+        for item in page.items_mut() {
+            if let Some(view) = item
+                .card
+                .as_mut()
+                .and_then(|card| card.html.as_mut())
+                .and_then(|html| html.view.take())
+            {
+                self.engine.release(view);
+            }
         }
-        let stale = self.stale(generation);
-        if stale || !ready {
-            if ours {
+    }
+
+    /// Drops the conversation being laid out, if any.
+    fn discard_pending(&self) {
+        if let Some(page) = self.pending.take() {
+            if self
+                .stage
+                .staged()
+                .is_some_and(|staged| staged == *page.root.upcast_ref::<gtk::Widget>())
+            {
                 self.stage.unstage();
             }
-            if let Some(html) = page.html.take() {
-                self.engine.release(html.view);
-            }
-            page.widgets.body.remove(&frame);
-            return false;
+            self.release_page(page);
         }
-        true
     }
 
-    /// Waits for the body's `load` event and a height measured at the view's allocated width.
-    /// `false` when the load failed or the web process ended.
-    async fn wait_until_laid_out(
-        &self,
-        view: &MessageView,
-        events: &async_channel::Receiver<ViewEvent>,
-        generation: u64,
-    ) -> bool {
-        let deadline = Instant::now() + READY_TIMEOUT;
-        let (mut loaded, mut sized) = (false, false);
-        while !(loaded && sized) {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if !self.stage.is_mapped() && loaded {
-                break;
-            }
-            match glib::future_with_timeout(left, events.recv()).await {
-                Ok(Ok(ViewEvent::Height { width, .. })) => {
-                    let allocated = view.web_view().width();
-                    sized = width > 1 && (width - allocated).abs() <= 1;
-                }
-                Ok(Ok(ViewEvent::Loaded)) => loaded = true,
-                Ok(Ok(ViewEvent::Failed | ViewEvent::Crashed)) => return false,
-                Ok(Ok(_)) => {}
-                Ok(Err(_)) => return false,
-                Err(_) => {
-                    tracing::warn!(
-                        loaded,
-                        sized,
-                        "reader: the body took over {} s to lay out; shown as it is",
-                        READY_TIMEOUT.as_secs()
-                    );
-                    break;
-                }
-            }
-            if self.stale(generation) {
-                return true;
-            }
-        }
-        true
-    }
-
-    /// The HTML as text, when no WebView may show it.
-    async fn text_fallback(&self, page: &mut Page, html: Rc<str>) {
-        let html = html.to_string();
-        let text = gio::spawn_blocking(move || sealwax_domain::message::html_to_text(&html))
-            .await
-            .unwrap_or_default();
-        page.widgets.body.append(&page::notice(
-            "This message is shown as text: its formatted view isn't available.",
-        ));
-        let text = plain::plain_text(&text);
-        page.widgets.body.append(&text);
-        page.widgets.focus = Some(text.upcast());
-        page.body = ShownBody::TextFallback;
-    }
-
-    fn show_missing(&self, id: MessageId, started: Instant) {
-        let root = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .build();
-        root.append(&page::notice("This message is no longer here."));
-        let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        let page = Page {
-            id,
-            sender: String::new(),
-            widgets: PageWidgets {
-                root,
-                body,
-                banner: None,
-                focus: None,
-            },
-            html: None,
-            body: ShownBody::Missing,
-            attachments: 0,
-            released: false,
-        };
-        let elapsed = started.elapsed();
-        self.present(page, started, elapsed, elapsed);
-    }
-
-    /// Puts `page` on screen in place of the shown one, which gives its view back. A focus in
-    /// the shown page moves to the new one's body.
-    fn present(&self, page: Page, started: Instant, fetched: Duration, prepared: Duration) {
-        let focus = page.focus_target();
-        if page.html.is_some() {
-            self.stage.promote(focus.as_ref());
-        } else {
-            self.stage.unstage();
-            self.stage.show(Some(&page.widgets.root), focus.as_ref());
-        }
-        let old = self.shown.replace(None);
-        if old.as_ref().is_none_or(|old| old.id != page.id)
-            && let Some(column) = self
-                .stage
-                .ancestor(gtk::ScrolledWindow::static_type())
-                .and_downcast::<gtk::ScrolledWindow>()
-        {
-            column.vadjustment().set_value(0.0);
-        }
-        if let Some(old) = old {
-            self.release_page(old);
-        }
-        let shown = Shown {
-            id: page.id,
-            body: page.body.clone(),
-            fetched,
-            prepared,
-            ready: started.elapsed(),
-        };
-        tracing::debug!(
-            message = page.id.0,
-            body = ?shown.body,
-            ms = shown.ready.as_secs_f64() * 1000.0,
-            "reader: shown"
-        );
-        self.shown.replace(Some(page));
-        let listeners = self.on_shown.borrow().clone();
+    fn size_changed(&self) {
+        let size = self.shown.borrow().as_ref().map_or(0, Page::message_count);
+        let listeners = self.on_size.borrow().clone();
         for listener in listeners {
-            listener(&shown);
+            listener(size);
         }
     }
 
-    fn release_page(&self, mut page: Page) {
-        if let Some(html) = page.html.take() {
-            self.engine.release(html.view);
+    fn opened(&self, opened: Opened) {
+        if opened.messages.is_empty() {
+            return;
+        }
+        let listeners = self.on_opened.borrow().clone();
+        for listener in listeners {
+            listener(&opened);
         }
     }
 
     fn view_event(self: &Rc<Self>, id: MessageId, event: &ViewEvent) {
-        match event {
-            ViewEvent::Link(link) => self.open_link(link),
-            ViewEvent::Refused(refused) => {
-                tracing::debug!(?refused, "reader: refused what a message asked for");
-            }
-            ViewEvent::Crashed
-                if self
-                    .shown
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|page| page.id == id && page.html.is_some()) =>
-            {
-                *self.crashed.borrow_mut().entry(id).or_default() += 1;
-                self.reshow(id);
-            }
-            _ => {}
-        }
         let listeners = self.on_event.borrow().clone();
         for listener in listeners {
             listener(id, event);
         }
-    }
-
-    /// Shows `id` again, as after the web process ended or the reader was hidden.
-    fn reshow(self: &Rc<Self>, id: MessageId) {
-        let generation = self.next_generation();
-        let inner = self.clone();
-        glib::spawn_future_local(async move {
-            inner.load(id, generation, Instant::now()).await;
-        });
     }
 
     fn open_link(&self, link: &Link) {
@@ -1060,58 +807,23 @@ impl Inner {
         opener(self.stage.upcast_ref(), &uri);
     }
 
-    fn allow_remote(self: &Rc<Self>, id: MessageId) {
-        self.remote.allow_message(id);
-        let theme = self.theme.theme();
-        let mut shown = self.shown.borrow_mut();
-        let Some(page) = shown.as_mut().filter(|page| page.id == id) else {
-            return;
-        };
-        if let Some(banner) = &page.widgets.banner
-            && banner.root.parent().is_some()
-        {
-            widgets::hand_over_focus(&banner.root, page.focus_target().as_ref());
-            page.widgets.root.remove(&banner.root);
-        }
-        let Some(html) = page.html.as_mut() else {
-            return;
-        };
-        if html.remote_allowed {
-            return;
-        }
-        html.remote_allowed = true;
-        self.engine
-            .set_parts(html.view.page_id(), html.parts.clone());
-        html.view.load(
-            &html.html,
-            &stylesheet(&theme, html.style),
-            &rgba(theme.webview_background(html.style)),
-            None,
-        );
-        page.body = ShownBody::Html {
-            style: html.style,
-            remote_images: html.remote_images,
-            remote_allowed: true,
-            inline_parts: html.parts.len(),
-        };
-        tracing::debug!(
-            message = id.0,
-            "reader: remote images allowed for a message"
-        );
-    }
-
     /// The theme changed: every live body takes its new stylesheet, background and fonts in
     /// place. GTK restyles the rest itself.
     fn restyle(&self, theme: &Theme) {
         let fonts = theme.webview_fonts();
-        let shown = self
-            .shown
-            .borrow()
-            .as_ref()
-            .and_then(|page| page.html.as_ref())
-            .map(|html| (html.view.clone(), html.style));
-        let staged = self.staged.borrow().clone();
-        for (view, style) in [shown, staged].into_iter().flatten() {
+        let mut views = Vec::new();
+        for pages in [&self.shown, &self.pending] {
+            if let Some(page) = pages.borrow().as_ref() {
+                for item in page.items() {
+                    if let Some(html) = item.card.as_ref().and_then(|card| card.html.as_ref())
+                        && let Some(view) = &html.view
+                    {
+                        views.push((view.clone(), html.style));
+                    }
+                }
+            }
+        }
+        for (view, style) in views {
             view.set_fonts(&fonts);
             view.set_style(
                 &stylesheet(theme, style),
@@ -1175,8 +887,8 @@ impl Inner {
         inner.stage.add_controller(keys);
     }
 
-    /// Releases the view of a reader hidden for [`RELEASE_HIDDEN_AFTER`], and shows its
-    /// message again when it comes back.
+    /// Releases the views of a reader hidden for [`RELEASE_HIDDEN_AFTER`]; they come back when
+    /// it is shown again. While it is shown, the column's scroll and layout drive the views.
     fn follow_visibility(inner: &Rc<Inner>) {
         let weak = Rc::downgrade(inner);
         inner.stage.connect_unmap(glib::clone!(
@@ -1186,6 +898,7 @@ impl Inner {
                 let Some(inner) = weak.upgrade() else {
                     return;
                 };
+                inner.unwatch_column();
                 let timer_owner = weak.clone();
                 let timer = glib::timeout_add_local_once(RELEASE_HIDDEN_AFTER, move || {
                     if let Some(inner) = timer_owner.upgrade() {
@@ -1206,15 +919,8 @@ impl Inner {
                 timer.remove();
             }
             inner.follow_focus();
-            let released = inner
-                .shown
-                .borrow()
-                .as_ref()
-                .filter(|page| page.released)
-                .map(|page| page.id);
-            if let Some(id) = released {
-                inner.reshow(id);
-            }
+            inner.watch_column();
+            inner.schedule();
             let engine = inner.engine.clone();
             let fonts = inner.theme.theme().webview_fonts();
             glib::idle_add_local_once(move || {
@@ -1271,20 +977,37 @@ impl Inner {
         }
     }
 
+    /// The reader has been hidden for a while: every view goes back to the pool, the bodies
+    /// keeping their heights.
     fn release_hidden(&self) {
         if self.stage.is_mapped() {
             return;
         }
-        self.next_generation();
-        self.stage.unstage();
-        let mut shown = self.shown.borrow_mut();
-        if let Some(page) = shown.as_mut()
-            && let Some(html) = page.html.take()
-        {
-            widgets::hand_over_focus(&page.widgets.root, None);
-            self.engine.release(html.view);
-            page.released = true;
-            tracing::debug!("reader: hidden, so its view went back to the pool");
+        for pages in [&self.shown, &self.pending] {
+            let mut released = Vec::new();
+            if let Some(page) = pages.borrow_mut().as_mut() {
+                widgets::hand_over_focus(&page.root, None);
+                for item in page.items_mut() {
+                    if let Some(html) = item.card.as_mut().and_then(|card| card.html.as_mut())
+                        && let Some(view) = html.view.take()
+                    {
+                        html.holder.set_placeholder(
+                            html.measured.map_or(view.height(), |(height, _)| height),
+                        );
+                        html.released = true;
+                        released.push(view);
+                    }
+                }
+            }
+            if !released.is_empty() {
+                tracing::debug!(
+                    views = released.len(),
+                    "reader: hidden, so its views went back to the pool"
+                );
+            }
+            for view in released {
+                self.engine.release(view);
+            }
         }
     }
 }
@@ -1301,6 +1024,10 @@ impl Drop for Inner {
             && let Some(window) = window.upgrade()
         {
             window.disconnect(handler);
+        }
+        self.unwatch_column();
+        if let Some(page) = self.pending.take() {
+            self.release_page(page);
         }
         if let Some(page) = self.shown.take() {
             self.release_page(page);
