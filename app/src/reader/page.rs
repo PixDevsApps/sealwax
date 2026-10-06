@@ -1,9 +1,12 @@
 //! The GTK side of one message (DESIGN.md "Reader", the approved mock): the subject as a
 //! heading, the remote-content banner, and a card with the sender block (avatar, name and
 //! address, "to me" or the recipients, the date with relative time, expandable details), the
-//! body and the attachment cards. Display only: Open, Save and Download All are M5.
+//! body and the attachment cards. The banner is [`super::remote`]'s, the cards
+//! [`super::attachments`]'s and a plain-text body [`super::plain`]'s (M5's owners).
 
+use super::attachments::attachment_cards;
 use super::format;
+use super::remote::{Banner, banner};
 use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::glib;
@@ -20,11 +23,6 @@ pub struct PageWidgets {
     /// What takes the focus when the reader keeps it across messages: the body once it has
     /// one, else the details button.
     pub focus: Option<gtk::Widget>,
-}
-
-pub struct Banner {
-    pub root: gtk::Box,
-    pub show_images: gtk::Button,
 }
 
 pub struct Header<'a> {
@@ -219,134 +217,6 @@ fn details_grid(detail: &MessageDetail, date: i64, zone: &glib::TimeZone) -> gtk
         grid.attach(&value, 1, row, 1, 1);
     }
     grid
-}
-
-/// "Images are hidden" with Show images; "Always for this sender" is M5.
-fn banner() -> Banner {
-    let root = gtk::Box::builder()
-        .spacing(12)
-        .css_classes(["sw-banner", "sw-reader-banner"])
-        .build();
-    root.set_widget_name("reader-banner");
-    root.update_property(&[gtk::accessible::Property::Label("Remote images")]);
-    let image = icon(&["image-missing-symbolic", "image-x-generic-symbolic"]);
-    image.add_css_class("sw-accent");
-    root.append(&image);
-    let text = gtk::Label::builder()
-        .label("Images are hidden so the sender can't tell you opened this.")
-        .xalign(0.0)
-        .wrap(true)
-        .hexpand(true)
-        .build();
-    root.append(&text);
-    let show_images = gtk::Button::builder()
-        .label("Show images")
-        .valign(gtk::Align::Center)
-        .css_classes(["sw-control"])
-        .build();
-    show_images.set_widget_name("reader-show-images");
-    root.append(&show_images);
-    let always = gtk::Button::builder()
-        .label("Always for this sender")
-        .valign(gtk::Align::Center)
-        .sensitive(false)
-        .tooltip_text("Not available yet")
-        .css_classes(["sw-control"])
-        .build();
-    root.append(&always);
-    Banner { root, show_images }
-}
-
-fn attachment_cards(attachments: &[Attachment]) -> gtk::Box {
-    let section = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(10)
-        .css_classes(["sw-reader-attachments"])
-        .build();
-    section.set_widget_name("reader-attachments");
-    section.append(&label(
-        &format::attachment_count(attachments.len()),
-        &["sw-secondary"],
-    ));
-    let cards = gtk::FlowBox::builder()
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .min_children_per_line(1)
-        .max_children_per_line(3)
-        .column_spacing(10)
-        .row_spacing(10)
-        .build();
-    for attachment in attachments {
-        let card = attachment_card(attachment);
-        let child = gtk::FlowBoxChild::builder()
-            .child(&card)
-            .focusable(false)
-            .build();
-        cards.append(&child);
-    }
-    section.append(&cards);
-    section
-}
-
-fn attachment_card(attachment: &Attachment) -> gtk::Box {
-    let name = attachment
-        .name
-        .clone()
-        .unwrap_or_else(|| "Unnamed attachment".to_owned());
-    let kind = format::type_label(attachment.name.as_deref(), &attachment.mime_type);
-    let size = format::size(attachment.size);
-    let card = gtk::Box::builder()
-        .spacing(10)
-        .css_classes(["sw-attachment-card"])
-        .build();
-    card.set_widget_name("reader-attachment");
-    card.update_property(&[gtk::accessible::Property::Label(&format!(
-        "{name}, {kind}, {size}"
-    ))]);
-    let badge = gtk::Label::builder()
-        .label(&kind)
-        .halign(gtk::Align::Center)
-        .valign(gtk::Align::Center)
-        .css_classes(["sw-attachment-type"])
-        .build();
-    card.append(&badge);
-    let text = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .valign(gtk::Align::Center)
-        .hexpand(true)
-        .build();
-    let title = label(&name, &["sw-attachment-name"]);
-    title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-    title.set_tooltip_text(Some(&name));
-    text.append(&title);
-    text.append(&label(&size, &["sw-attachment-meta"]));
-    card.append(&text);
-    card
-}
-
-/// A plain-text body in the reading font, selectable, wrapped, with no WebView.
-pub fn plain_text(text: &str) -> gtk::TextView {
-    let view = gtk::TextView::builder()
-        .editable(false)
-        .cursor_visible(false)
-        .accepts_tab(false)
-        .wrap_mode(gtk::WrapMode::WordChar)
-        .css_classes(["sw-reading", "sw-reader-plain"])
-        .build();
-    view.set_widget_name("reader-plain");
-    view.update_property(&[gtk::accessible::Property::Label("Message text")]);
-    view.buffer().set_text(text.trim_end());
-    // GTK 4.22 leaves a text view that holds a single line at no height until something
-    // resizes it, so a one-paragraph message showed no text (M1 gate previews). A resize once
-    // it is on screen, after its first validation, gives it its height.
-    view.connect_map(|view| {
-        glib::idle_add_local_once(glib::clone!(
-            #[weak]
-            view,
-            move || view.queue_resize()
-        ));
-    });
-    view
 }
 
 /// A short line in place of a body: no text, not downloaded yet, or not readable.

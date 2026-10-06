@@ -202,11 +202,18 @@ pub enum ActionId {
     MarkFolderRead,
     Select,
     Undo,
+    Print,
+    ShowOriginal,
+    SaveMessage,
     Compose,
     Reply,
     ReplyAll,
     Forward,
     Send,
+    ExpandAll,
+    CollapseAll,
+    ShowImages,
+    AlwaysShowImages,
     Refresh,
     ToggleSidebar,
     CommandPalette,
@@ -219,7 +226,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 33] = [
+    pub const ALL: [Self; 40] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::OpenMessage,
@@ -239,11 +246,18 @@ impl ActionId {
         Self::MarkFolderRead,
         Self::Select,
         Self::Undo,
+        Self::Print,
+        Self::ShowOriginal,
+        Self::SaveMessage,
         Self::Compose,
         Self::Reply,
         Self::ReplyAll,
         Self::Forward,
         Self::Send,
+        Self::ExpandAll,
+        Self::CollapseAll,
+        Self::ShowImages,
+        Self::AlwaysShowImages,
         Self::Refresh,
         Self::ToggleSidebar,
         Self::CommandPalette,
@@ -329,6 +343,11 @@ impl ActionId {
             },
             // Undoes the last mail action. Its keys are scoped, so text fields keep Ctrl+Z.
             Self::Undo => command("undo", "Undo", Messages, Scope::List, &["z", "<Control>z"]),
+            // The message the reader shows (ML-063). Ctrl+P is the approved mock's; Show Original
+            // and Save as .eml have no default key until the user picks one.
+            Self::Print => on_selection("print", "Print…", Messages, &["<Control>p"]),
+            Self::ShowOriginal => on_selection("show-original", "Show Original", Messages, &[]),
+            Self::SaveMessage => on_selection("save-message", "Save as .eml…", Messages, &[]),
             Self::Compose => command(
                 "compose",
                 "Compose",
@@ -351,6 +370,35 @@ impl ActionId {
                 Scope::Composer,
                 &["<Control>Return"],
             ),
+            // The conversation the reader shows (ML-057) and its remote content (ML-058). No
+            // default keys until the user picks them; the reader's More menu and the palette
+            // reach them.
+            Self::ExpandAll => command(
+                "expand-all",
+                "Expand All Messages",
+                View,
+                Scope::Reader,
+                &[],
+            ),
+            Self::CollapseAll => command(
+                "collapse-all",
+                "Collapse All Messages",
+                View,
+                Scope::Reader,
+                &[],
+            ),
+            Self::ShowImages => command("show-images", "Show Images", View, Scope::Reader, &[]),
+            // On while the shown message's sender is on the list of senders whose images load.
+            Self::AlwaysShowImages => ActionSpec {
+                kind: ActionKind::Toggle,
+                ..command(
+                    "always-show-images",
+                    "Always Show Images from This Sender",
+                    View,
+                    Scope::Reader,
+                    &[],
+                )
+            },
             // Every F-key action has a key without one: the F-row sends media keys without Fn.
             Self::Refresh => ActionSpec {
                 menu: Some(MenuSection::View),
@@ -622,6 +670,9 @@ mod tests {
                 ActionId::Star,
                 ActionId::MarkRead,
                 ActionId::MarkUnread,
+                ActionId::Print,
+                ActionId::ShowOriginal,
+                ActionId::SaveMessage,
                 ActionId::Reply,
                 ActionId::ReplyAll,
                 ActionId::Forward,
@@ -676,5 +727,17 @@ mod tests {
         // No default key until the user picks one (ADR-017: keys wait for the user).
         assert!(keys(ActionId::AddAccount).is_empty());
         assert!(keys(ActionId::MarkFolderRead).is_empty());
+        assert_eq!(keys(ActionId::Print), ["<Control>p"]);
+        for id in [
+            ActionId::ShowOriginal,
+            ActionId::SaveMessage,
+            ActionId::ExpandAll,
+            ActionId::CollapseAll,
+            ActionId::ShowImages,
+            ActionId::AlwaysShowImages,
+        ] {
+            assert!(keys(id).is_empty(), "{id:?}");
+        }
+        assert_eq!(ActionId::AlwaysShowImages.kind(), ActionKind::Toggle);
     }
 }

@@ -2,7 +2,8 @@
 //! (ADR-003). M2 covers account setup and the first sync; M3 adds the sync engine's commands:
 //! folders opened, older mail, bodies, reconnecting, a new password, and the account's status.
 //! M4 adds the op queue's: the app queues triage in the store and wakes the account, and hears
-//! when the server refuses a change for good.
+//! when the server refuses a change for good. M5 adds downloads the reader asks for: one part of
+//! a large message, or a message whole as the server has it.
 
 use sealwax_domain::account::{
     AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure, OAuthProvider,
@@ -86,6 +87,14 @@ pub enum Command {
     LoadOlder { folder: FolderId },
     /// Download the bodies of `messages`, most wanted first: the reader's message (ML-044).
     FetchBodies { messages: Vec<MessageId> },
+    /// Download the part at mail-parser index `part` of `message` by the IMAP section the store
+    /// recorded (M5, ML-061): an attachment, or an inline image, of a message stored as its text
+    /// parts (`BodyState::Text`). Answered with one `PartFetched`; nothing is stored.
+    FetchPart { message: MessageId, part: u32 },
+    /// Download `message` whole as the server has it (M5, ML-063), for Show Original and Save
+    /// as .eml of a message stored as its text parts. Answered with one `OriginalFetched`;
+    /// nothing is stored.
+    FetchOriginal { message: MessageId },
     /// `config.toml`'s `[storage]` (ML-044), after the engine starts and after every read that
     /// changes it. The disk cap is enforced once it arrives, and after every download.
     Storage { storage: Storage },
@@ -159,6 +168,17 @@ pub enum Event {
         message: MessageId,
         result: Result<(), BodyError>,
     },
+    /// The answer to `FetchPart`.
+    PartFetched {
+        message: MessageId,
+        part: u32,
+        result: Result<FetchedPart, BodyError>,
+    },
+    /// The answer to `FetchOriginal`: the message's bytes as the server sent them.
+    OriginalFetched {
+        message: MessageId,
+        result: Result<Original, BodyError>,
+    },
     /// `LoadOlder` stored `fetched` older headers; `complete` when the folder has none left.
     OlderLoaded {
         folder: FolderId,
@@ -178,6 +198,34 @@ pub enum Event {
         change: Refused,
         messages: u32,
     },
+}
+
+/// A part downloaded for `FetchPart`, its transfer encoding decoded. Message content: its
+/// `Debug` prints only the type and the length.
+#[derive(Clone, PartialEq, Eq)]
+pub struct FetchedPart {
+    /// Lower case, `type/subtype`, from the part's MIME header.
+    pub mime_type: String,
+    pub data: Vec<u8>,
+}
+
+impl fmt::Debug for FetchedPart {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("FetchedPart")
+            .field("mime_type", &self.mime_type)
+            .field("len", &self.data.len())
+            .finish()
+    }
+}
+
+/// A message downloaded whole for `FetchOriginal`. Its `Debug` prints only the length.
+#[derive(Clone, PartialEq, Eq)]
+pub struct Original(pub Vec<u8>);
+
+impl fmt::Debug for Original {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Original({} bytes)", self.0.len())
+    }
 }
 
 /// What kind of change the server refused, for the app's message.

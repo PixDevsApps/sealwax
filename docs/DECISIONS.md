@@ -25,7 +25,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
 | 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send waits for M6 |
-| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1 |
+| 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start) |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate) |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
@@ -748,6 +748,16 @@ Built in M3 ([report](m3/threading.md)).
 - **Removals never split a conversation:** its aliases stay until its last message goes, so a moved message rejoins it and a merge outlives the message that caused it.
 - **Checked:** a property test (64 cases per CI run; 5,000 passed once) ingests random corpora over three accounts in any order and batch size, with resends, expunges and moves, and compares the conversations and their sizes with the connected components of the alias graph. `Store::check` verifies that every threading key of every message aliases its conversation.
 - Still not built: collapsing threads over 100 messages and per-folder conversation rows (ML-057).
+
+### ADR-016 amendment — the conversation view is the reader's (M5 start, 2026-10-06)
+
+**Status:** Accepted — user decision at M5's start, 2026-10-06 ("Reader shows conversation").
+
+**Decision:** the message list keeps one row per message, with the conversation's size on the row (M1). Selecting a row shows the row's whole conversation in the reader: older messages collapsed to one line, unread messages and the latest expanded, the middle of a conversation over 100 messages collapsed (ML-057). Triage keeps acting on the selected messages (M4).
+
+**Alternative rejected:** one list row per conversation (Gmail's grouping), which would rework the store's views, counts, sections and change events at 100,000 messages and make triage act on whole conversations; about 4–6 days more.
+
+**Consequence:** "per-folder conversation rows", listed as not built in the M1 and M3 amendments above, aren't built in 1.0.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 

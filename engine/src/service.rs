@@ -11,7 +11,7 @@
 //! lane stops that actor before it removes the account or replaces its token.
 
 use crate::accounts::{Accounts, secret_label};
-use crate::api::{AccountError, Command, Event, Password, RequestId};
+use crate::api::{AccountError, BodyError, Command, Event, Password, RequestId};
 use crate::autoconfig::{self, DetectOptions};
 use crate::imap::{self, Credentials, ImapError, Stop};
 use crate::net::Trust;
@@ -422,6 +422,24 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
             }
             Command::FetchBodies { messages } => {
                 bodies::request(&shared, messages, true);
+                continue;
+            }
+            // M5 phase A builds these (ML-061, ML-063); until then the reader hears "failed".
+            Command::FetchPart { message, part } => {
+                tracing::debug!(message = message.0, part, "fetching a part isn't built yet");
+                shared.send(Event::PartFetched {
+                    message,
+                    part,
+                    result: Err(BodyError::Other),
+                });
+                continue;
+            }
+            Command::FetchOriginal { message } => {
+                tracing::debug!(message = message.0, "fetching an original isn't built yet");
+                shared.send(Event::OriginalFetched {
+                    message,
+                    result: Err(BodyError::Other),
+                });
                 continue;
             }
             Command::Storage { storage } => {

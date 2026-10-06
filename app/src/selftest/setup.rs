@@ -617,6 +617,19 @@ fn fields(
                 ("count", messages.len().to_string()),
             ],
         ),
+        Command::FetchPart { message, part } => (
+            "fetch-part",
+            None,
+            vec![
+                ("message", message.0.to_string()),
+                ("part", part.to_string()),
+            ],
+        ),
+        Command::FetchOriginal { message } => (
+            "fetch-original",
+            None,
+            vec![("message", message.0.to_string())],
+        ),
         Command::Storage { storage } => (
             "storage",
             None,

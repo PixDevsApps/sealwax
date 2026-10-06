@@ -84,6 +84,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   - **A message the reader shows is marked read** (no toast, not undoable from the toast); in the Unread view once the selection leaves it, and in one pane at a time once the reader is on screen. Behind `triage::MARK_READ_ON_OPEN`, on in this build.
 
 **Reader**
+- *Decided at M5's start (user, 2026-10-06, [ADR-016](DECISIONS.md#adr-016-amendment--the-conversation-view-is-the-readers-m5-start-2026-10-06)):* the list keeps one row per message; selecting one shows its whole conversation here, as the mock's reader does.
 - Toolbar: archive, delete, junk, move, mark unread, star, more; position "n of N" with previous and next.
 - Subject as a heading; per message: avatar, name and address, "to me" or recipients, date with relative time; collapsed older messages as one-line rows.
 - Body in a WebView (HTML) or a text view (plain text); attachment cards (type icon, name, size; Open, Save, Download All); remote-content banner ("Images are hidden — Show / Always for this sender").

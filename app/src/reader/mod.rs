@@ -9,17 +9,25 @@
 //! into [`Reader::show`], and the list's position into [`Reader::set_position`] with
 //! [`Reader::connect_previous`] and [`Reader::connect_next`].
 
+mod attachments;
+pub mod commands;
 mod engine;
+mod export;
 mod format;
 mod heuristic;
+mod links;
 mod page;
+mod plain;
 mod prepare;
+mod remote;
 pub mod samples;
+mod source;
 mod toolbar;
 mod view;
 mod widgets;
 
 pub use engine::{CONTENT_SECURITY_POLICY, CidRequest, MAX_LIVE_VIEWS, NETWORK_FEATURES};
+pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
 pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
 
@@ -34,10 +42,9 @@ use page::PageWidgets;
 use prepare::{Body, Prepared};
 use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
-use sealwax_domain::model::{Account, MessageDetail, MessageId};
+use sealwax_domain::model::{MessageDetail, MessageId};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
 use sealwax_engine::api::{BodyError, Command, Event};
-use sealwax_infrastructure::store::{Reply, Store, Versioned};
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -109,50 +116,6 @@ pub struct ReaderState {
 type ShownListener = Rc<dyn Fn(&Shown)>;
 type EventListener = Rc<dyn Fn(MessageId, &ViewEvent)>;
 
-/// Where the reader sends its requests: the app's mailbox, whose store opens at startup and
-/// closes at shutdown, or a store of its own (examples and self-tests).
-pub trait MessageSource {
-    /// The reads one message needs, sent together; `None` while no store is open.
-    fn read(&self, id: MessageId) -> Option<Reads>;
-
-    /// The reader showed the body of `id` at `at` (Unix seconds): the disk cap keeps the bodies
-    /// opened last (ML-044).
-    fn opened(&self, _id: MessageId, _at: i64) {}
-}
-
-/// The replies to [`MessageSource::read`].
-pub struct Reads {
-    pub detail: Reply<Versioned<Option<MessageDetail>>>,
-    pub accounts: Reply<Versioned<Vec<Account>>>,
-    pub raw: Reply<Option<Vec<u8>>>,
-}
-
-impl MessageSource for Store {
-    fn read(&self, id: MessageId) -> Option<Reads> {
-        Some(Reads {
-            detail: self.message(id),
-            accounts: self.accounts(),
-            raw: self.raw_message(id),
-        })
-    }
-
-    fn opened(&self, id: MessageId, at: i64) {
-        let _ = self.touch_body(id, at);
-    }
-}
-
-impl MessageSource for crate::mailbox::Mailbox {
-    fn read(&self, id: MessageId) -> Option<Reads> {
-        self.store()
-            .and_then(|store| MessageSource::read(&*store, id))
-    }
-
-    fn opened(&self, id: MessageId, at: i64) {
-        if let Some(store) = self.store() {
-            MessageSource::opened(&*store, id, at);
-        }
-    }
-}
 type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
 type LinkCheck = Rc<dyn Fn(&Link) -> bool>;
 /// Asks for the bodies of messages; `false` when nothing can download them.
@@ -174,6 +137,8 @@ struct Html {
 
 struct Page {
     id: MessageId,
+    /// The sender's address, for the senders whose images load (ML-058).
+    sender: String,
     widgets: PageWidgets,
     html: Option<Html>,
     body: ShownBody,
@@ -202,8 +167,8 @@ struct Inner {
     /// The view of the page being laid out, for restyling; its load owns the page.
     staged: RefCell<Option<(MessageView, BodyStyle)>>,
     generation: Cell<u64>,
-    /// Messages whose remote images the user allowed this session (nothing is stored).
-    allowed: RefCell<HashSet<MessageId>>,
+    /// Whose remote images load: messages allowed this session, and senders (ML-058).
+    remote: remote::Policy,
     /// Messages whose view's web process ended; a second time, they are shown as text.
     crashed: RefCell<HashMap<MessageId, u32>>,
     listener: Cell<Option<ListenerId>>,
@@ -253,7 +218,7 @@ impl Reader {
             shown: RefCell::new(None),
             staged: RefCell::new(None),
             generation: Cell::new(0),
-            allowed: RefCell::new(HashSet::new()),
+            remote: remote::Policy::default(),
             crashed: RefCell::new(HashMap::new()),
             listener: Cell::new(None),
             opener: RefCell::new(Rc::new(launch)),
@@ -495,6 +460,38 @@ impl Reader {
     pub fn refused_downloads(&self) -> u32 {
         self.inner.engine.refused_downloads()
     }
+
+    /// What the reader reads through, for the commands on the shown message (M5).
+    pub fn source(&self) -> Rc<dyn MessageSource> {
+        self.inner.store.clone()
+    }
+
+    /// Prints the message the reader shows (ML-063).
+    pub fn print(&self) {
+        export::print(self);
+    }
+
+    /// Shows the raw source of the message the reader shows (ML-063).
+    pub fn show_original(&self) {
+        export::show_original(self);
+    }
+
+    /// Saves the message the reader shows as a `.eml` file (ML-063).
+    pub fn save_message(&self) {
+        export::save_message(self);
+    }
+
+    /// Expands every message of the conversation the reader shows (ML-057).
+    pub fn expand_all(&self) {}
+
+    /// Collapses the conversation the reader shows to its latest message (ML-057).
+    pub fn collapse_all(&self) {}
+
+    /// Images from the shown message's sender load from now on (`true`) or are hidden again
+    /// (`false`) (ML-058).
+    pub fn set_always_show_images(&self, on: bool) {
+        remote::set_always(self, on);
+    }
 }
 
 /// Whether a link may open, and as what: absolute http(s) with a host, or mailto.
@@ -638,17 +635,24 @@ impl Inner {
             mine: &mine,
             now: now(),
         };
+        let sender = detail
+            .headers
+            .from
+            .first()
+            .map(|from| from.email.to_lowercase())
+            .unwrap_or_default();
         let remote_images = matches!(
             &prepared.body,
             Body::Html {
                 remote_images: true,
                 ..
             }
-        ) && !self.allowed.borrow().contains(&id);
+        ) && !self.remote.allows(id, &sender);
         let widgets = page::build(&header, &prepared.attachments, remote_images);
         let attachments = prepared.attachments.len();
         let mut page = Page {
             id,
+            sender,
             widgets,
             html: None,
             body: ShownBody::Empty,
@@ -693,7 +697,7 @@ impl Inner {
                 }
             }
             Body::Plain(text) => {
-                let text = page::plain_text(&text);
+                let text = plain::plain_text(&text);
                 page.widgets.body.append(&text);
                 page.widgets.focus = Some(text.upcast());
                 page.body = ShownBody::Plain;
@@ -710,7 +714,7 @@ impl Inner {
                     "The rest of this message hasn't been downloaded yet.",
                 ));
                 if !snippet.is_empty() {
-                    let snippet = page::plain_text(snippet);
+                    let snippet = plain::plain_text(snippet);
                     page.widgets.body.append(&snippet);
                     page.widgets.focus = Some(snippet.upcast());
                 }
@@ -769,7 +773,7 @@ impl Inner {
         }
         let snippet = &detail.summary.snippet;
         if !snippet.is_empty() {
-            let snippet = page::plain_text(snippet);
+            let snippet = plain::plain_text(snippet);
             page.widgets.body.append(&snippet);
             page.widgets.focus = Some(snippet.upcast());
         }
@@ -825,7 +829,7 @@ impl Inner {
                 inner.view_event(id, event);
             }
         });
-        let remote_allowed = self.allowed.borrow().contains(&page.id);
+        let remote_allowed = self.remote.allows(page.id, &page.sender);
         self.engine.set_parts(view.page_id(), parts.clone());
         self.stage.stage(&page.widgets.root);
         self.staged.replace(Some((view.clone(), style)));
@@ -930,7 +934,7 @@ impl Inner {
         page.widgets.body.append(&page::notice(
             "This message is shown as text: its formatted view isn't available.",
         ));
-        let text = page::plain_text(&text);
+        let text = plain::plain_text(&text);
         page.widgets.body.append(&text);
         page.widgets.focus = Some(text.upcast());
         page.body = ShownBody::TextFallback;
@@ -944,6 +948,7 @@ impl Inner {
         let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let page = Page {
             id,
+            sender: String::new(),
             widgets: PageWidgets {
                 root,
                 body,
@@ -1056,7 +1061,7 @@ impl Inner {
     }
 
     fn allow_remote(self: &Rc<Self>, id: MessageId) {
-        self.allowed.borrow_mut().insert(id);
+        self.remote.allow_message(id);
         let theme = self.theme.theme();
         let mut shown = self.shown.borrow_mut();
         let Some(page) = shown.as_mut().filter(|page| page.id == id) else {

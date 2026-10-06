@@ -1724,6 +1724,9 @@ impl AppState {
                 }
             }
         });
+        if let Some(actions) = self.win_actions.borrow().as_ref() {
+            crate::reader::commands::connect(actions, &reader);
+        }
         self.reader.replace(Some(reader));
         self.refresh_commands();
     }

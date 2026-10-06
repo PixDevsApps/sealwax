@@ -2,10 +2,13 @@
 //! bound to the registry's window actions, which are sensitive where they apply to the selected
 //! messages (M4), then the position "n of N" with previous and next. Each tooltip names the
 //! command, its keys, and why it doesn't apply when it doesn't; in a Junk folder Move to Junk
-//! is Not Junk.
+//! is Not Junk. M5 adds Print and a More menu (the approved mock's): Show Original, Save as
+//! .eml, Expand All and Collapse All Messages, Show Images and Always Show Images from This
+//! Sender; each insensitive until its command is built.
 
 use crate::window::panes::{icon, icon_button};
 use gtk4 as gtk;
+use gtk4::gio;
 use gtk4::prelude::*;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
@@ -17,7 +20,7 @@ use std::rc::Rc;
 const NOT_JUNK_ICONS: &[&str] = &["mail-mark-notjunk-symbolic", "mail-mark-junk-symbolic"];
 
 /// The message commands on the toolbar, in the mock's order; a separator follows Move to.
-const ACTIONS: [(ActionId, &[&str]); 6] = [
+const ACTIONS: [(ActionId, &[&str]); 7] = [
     (
         ActionId::Archive,
         &["mail-archive-symbolic", "folder-documents-symbolic"],
@@ -30,6 +33,18 @@ const ACTIONS: [(ActionId, &[&str]); 6] = [
     (ActionId::MoveTo, &["mail-move-symbolic", "folder-symbolic"]),
     (ActionId::MarkUnread, &["mail-unread-symbolic"]),
     (ActionId::Star, &["starred-symbolic"]),
+    (
+        ActionId::Print,
+        &["printer-symbolic", "document-print-symbolic"],
+    ),
+];
+
+/// The More menu's sections (the approved mock's "Show original, Save as .eml", then M5's
+/// conversation and remote-content commands).
+const MORE: [&[ActionId]; 3] = [
+    &[ActionId::ShowOriginal, ActionId::SaveMessage],
+    &[ActionId::ExpandAll, ActionId::CollapseAll],
+    &[ActionId::ShowImages, ActionId::AlwaysShowImages],
 ];
 
 /// Where the shown message is in its list.
@@ -84,6 +99,7 @@ impl Toolbar {
                 );
             }
         }
+        root.append(&more_button());
         let position = gtk::Label::builder()
             .hexpand(true)
             .xalign(1.0)
@@ -224,6 +240,28 @@ impl Toolbar {
         self.next
             .set_sensitive(has_next && !self.on_next.borrow().is_empty());
     }
+}
+
+/// The More menu, bound to the registry's window actions.
+fn more_button() -> gtk::MenuButton {
+    let menu = gio::Menu::new();
+    for section in MORE {
+        let items = gio::Menu::new();
+        for id in section {
+            items.append(Some(id.title()), Some(&id.detailed_name()));
+        }
+        menu.append_section(None, &items);
+    }
+    let button = gtk::MenuButton::builder()
+        .icon_name("view-more-symbolic")
+        .tooltip_text("More")
+        .menu_model(&menu)
+        .valign(gtk::Align::Center)
+        .css_classes(["flat", "sw-icon-button"])
+        .build();
+    button.set_widget_name("reader-more");
+    button.update_property(&[gtk::accessible::Property::Label("More")]);
+    button
 }
 
 /// "Archive (e, y)", and why it doesn't apply: "Archive (e, y) — already archived".
