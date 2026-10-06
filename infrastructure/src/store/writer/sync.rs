@@ -404,22 +404,6 @@ impl Writer {
         let orphaned_blobs = overlay::orphaned(&tx, blobs)?;
         let shared = Arc::clone(&self.state.shared);
         let open = shared.registry.lock();
-        let mut views = Vec::new();
-        for (view, spec) in &open.open {
-            let affected = match spec.scope {
-                ViewScope::Folder(folder) => gone.contains(&folder),
-                ViewScope::UnifiedInbox => true,
-            };
-            if affected {
-                let folders = views::folders(&tx, spec.scope)?;
-                views.push(ViewChange {
-                    view: *view,
-                    diff: ViewDiff::Reload {
-                        total: views::count(&tx, &folders, spec.filter)?,
-                    },
-                });
-            }
-        }
         // Messages whose move into a folder now gone was refused show again where they are.
         let rows: Vec<RowChange> = back
             .iter()
@@ -461,6 +445,22 @@ impl Writer {
                         changed.push(plan.row.id);
                     }
                 }
+            }
+        }
+        let mut views = Vec::new();
+        for (view, spec) in &open.open {
+            let affected = match spec.scope {
+                ViewScope::Folder(folder) => gone.contains(&folder),
+                ViewScope::UnifiedInbox => true,
+            };
+            if affected {
+                let folders = views::folders(&tx, spec.scope)?;
+                views.push(ViewChange {
+                    view: *view,
+                    diff: ViewDiff::Reload {
+                        total: views::count(&tx, &folders, spec.filter)?,
+                    },
+                });
             }
         }
         let reloaded: BTreeSet<_> = views.iter().map(|change| change.view).collect();

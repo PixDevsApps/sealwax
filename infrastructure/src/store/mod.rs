@@ -37,6 +37,11 @@ mod body_tests;
 #[cfg(test)]
 mod count_tests;
 
+#[cfg(test)]
+mod ops_prop_tests;
+#[cfg(test)]
+mod ops_tests;
+
 pub use api::*;
 pub use ops_api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
