@@ -12,6 +12,7 @@
 use sealwax_domain::model::Attachment;
 use sealwax_domain::search::{Query, Term};
 use std::borrow::Cow;
+use std::fmt;
 
 fn is_cjk(c: char) -> bool {
     matches!(
@@ -110,7 +111,8 @@ pub fn body_text<'a>(body: &'a str, attachments: &[Attachment]) -> Cow<'a, str> 
 pub const MIN_PREFIX: usize = 2;
 
 /// A query's FTS5 expressions. Every term is quoted, so no input is an FTS5 syntax error.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// `Debug` prints lengths only: the expressions hold the search text (ADR-018).
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Expression {
     /// What a message must match: the words anywhere and the operators' words in their
     /// columns, all of them.
@@ -119,6 +121,17 @@ pub struct Expression {
     pub excluded: Option<String>,
     /// Whether either holds a prefix.
     pub prefix: bool,
+}
+
+impl fmt::Debug for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let length = |text: &Option<String>| text.as_ref().map(|text| text.chars().count());
+        f.debug_struct("Expression")
+            .field("matching", &length(&self.matching))
+            .field("excluded", &length(&self.excluded))
+            .field("prefix", &self.prefix)
+            .finish()
+    }
 }
 
 impl Expression {
@@ -295,6 +308,15 @@ mod tests {
         );
         assert!(!expression.prefix);
         assert!(Expression::of(&parse("-utk*")).prefix);
+    }
+
+    #[test]
+    fn debug_prints_no_text() {
+        let printed = format!("{:?}", Expression::of(&parse("anna -hemmelig")));
+        assert!(
+            !printed.contains("anna") && !printed.contains("hemmelig"),
+            "{printed}"
+        );
     }
 
     #[test]

@@ -787,9 +787,18 @@ fn meta(conn: &Connection) -> Option<i64> {
     .ok()
 }
 
+/// The index passes FTS5's check, and its automatic merging is on again (FTS5's default, 4).
 fn integrity(conn: &Connection) {
     conn.execute_batch("INSERT INTO message_fts(message_fts) VALUES ('integrity-check')")
         .unwrap();
+    let automerge: i64 = conn
+        .query_row(
+            "SELECT v FROM message_fts_config WHERE k = 'automerge'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(automerge, 4);
 }
 
 #[test]
@@ -1029,6 +1038,7 @@ fn v10_indexes_every_message_once() {
     assert_eq!(find(&store, "talt 7", None, 100), [ids[7]]);
     let conn = Connection::open(&path).unwrap();
     assert_eq!(meta(&conn), None);
+    integrity(&conn);
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();

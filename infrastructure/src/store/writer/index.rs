@@ -9,10 +9,16 @@
 //! message done under `fts_rebuild_through`, so a rebuild cut short when the store closes goes
 //! on when it opens again; schema v10 sets it to 0, which indexes every message once with M7's
 //! folding and attachment names.
+//!
+//! FTS5's automatic merging is off while the key is there: replacing entries all through the
+//! index made it merge large segments inside single commits, which held the writer for up to
+//! 0.7 s at 100,000 messages. Each step merges a few pages itself instead, and once every
+//! message is done the index is merged into one segment, a few pages a commit, which takes the
+//! replaced entries out (a search ran about twice as slow before that).
 
 use super::{FtsDoc, Sender, Writer, people};
 use crate::store::{IndexProgress, IndexRebuilt, StoreError, codec, fts};
-use rusqlite::{OptionalExtension, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::message;
 use sealwax_domain::model::{Address, BlobKey, MessageId};
 use std::io;
@@ -21,10 +27,16 @@ use std::time::{Duration, Instant};
 /// Messages a step reads at most.
 const STEP_MESSAGES: i64 = 64;
 /// Reading and parsing bodies stops after this long, and the step commits what it has, so a
-/// write that arrives waits about this long at most.
+/// write that arrives meanwhile waits about this long, plus the commit.
 const STEP_BUDGET: Duration = Duration::from_millis(8);
+/// Pages of FTS5's merge work a step does, among segments of one level.
+const STEP_MERGE: i64 = 32;
+/// Pages of the final merge into one segment, a commit each.
+const FINAL_MERGE: i64 = 32;
+/// FTS5's default `automerge`, restored when a rebuild ends.
+const AUTOMERGE: i64 = 4;
 /// The `meta` key that holds the last message done while a rebuild runs.
-pub(crate) const THROUGH: &str = "fts_rebuild_through";
+const THROUGH: &str = "fts_rebuild_through";
 
 pub(crate) struct Rebuild {
     replies: Vec<Sender<IndexRebuilt>>,
@@ -33,6 +45,8 @@ pub(crate) struct Rebuild {
     through: i64,
     /// The newest message when the rebuild started; later ones are indexed as they come.
     last: i64,
+    /// Every message is done; the index is being merged.
+    merging: bool,
     result: IndexRebuilt,
     progress: IndexProgress,
 }
@@ -85,18 +99,25 @@ impl Writer {
     }
 
     fn begin_rebuild(&mut self, through: i64) -> Result<Rebuild, StoreError> {
-        let (last, total, done): (i64, i64, i64) = self.conn.query_row(
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let (last, total, done): (i64, i64, i64) = tx.query_row(
             "SELECT coalesce(max(id), 0), count(*), count(*) FILTER (WHERE id <= ?1) \
              FROM messages",
             [through],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )?;
-        self.conn
-            .prepare_cached(
-                "INSERT INTO meta(key, value) VALUES (?1, ?2) \
-                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            )?
-            .execute(params![THROUGH, through])?;
+        tx.prepare_cached(
+            "INSERT INTO meta(key, value) VALUES (?1, ?2) \
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )?
+        .execute(params![THROUGH, through])?;
+        tx.execute(
+            "INSERT INTO message_fts(message_fts, rank) VALUES ('automerge', 0)",
+            [],
+        )?;
+        tx.commit()?;
         self.state.after_commit();
         let progress = IndexProgress {
             done: done as u64,
@@ -112,6 +133,7 @@ impl Writer {
             started: Instant::now(),
             through,
             last,
+            merging: false,
             result: IndexRebuilt::default(),
             progress,
         })
@@ -125,12 +147,17 @@ impl Writer {
         }
     }
 
-    /// Indexes the next few messages, or finishes.
+    /// Indexes the next few messages, merges a few pages, or finishes.
     pub(super) fn rebuild_step(&mut self) {
-        if self.rebuild.is_none() {
+        let Some(rebuild) = &self.rebuild else {
             return;
-        }
-        if let Err(error) = self.try_rebuild_step() {
+        };
+        let step = if rebuild.merging {
+            self.merge_step()
+        } else {
+            self.index_step()
+        };
+        if let Err(error) = step {
             tracing::warn!(%error, "search index rebuild failed");
             if let Some(rebuild) = self.rebuild.take() {
                 self.publish_progress(None);
@@ -146,7 +173,7 @@ impl Writer {
         }
     }
 
-    fn try_rebuild_step(&mut self) -> Result<(), StoreError> {
+    fn index_step(&mut self) -> Result<(), StoreError> {
         let Some(rebuild) = &self.rebuild else {
             return Ok(());
         };
@@ -178,7 +205,7 @@ impl Writer {
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;
         if stored.is_empty() {
-            return self.finish_rebuild();
+            return self.end_walk();
         }
         let blobs = self.state.shared.blobs.clone();
         let mut docs = Vec::new();
@@ -214,6 +241,7 @@ impl Writer {
                 break;
             }
         }
+        let prepared = started.elapsed();
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -237,10 +265,20 @@ impl Writer {
             }
         }
         let orphans = orphans(&tx, from, Some(through))?;
+        merge(&tx, STEP_MERGE)?;
         tx.prepare_cached("UPDATE meta SET value = ?2 WHERE key = ?1")?
             .execute(params![THROUGH, through])?;
+        let written = started.elapsed();
         tx.commit()?;
         self.state.after_commit();
+        tracing::debug!(
+            messages = walked,
+            indexed = docs.len(),
+            read_ms = prepared.as_secs_f64() * 1000.0,
+            write_ms = (started.elapsed() - prepared).as_secs_f64() * 1000.0,
+            commit_ms = (started.elapsed() - written).as_secs_f64() * 1000.0,
+            "search index rebuild step"
+        );
         let Some(rebuild) = &mut self.rebuild else {
             return Ok(());
         };
@@ -254,7 +292,9 @@ impl Writer {
         Ok(())
     }
 
-    fn finish_rebuild(&mut self) -> Result<(), StoreError> {
+    /// Every message is done: entries above the last one whose message is gone are deleted,
+    /// and the merge begins.
+    fn end_walk(&mut self) -> Result<(), StoreError> {
         let Some(rebuild) = &self.rebuild else {
             return Ok(());
         };
@@ -263,15 +303,52 @@ impl Writer {
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let orphans = orphans(&tx, last, None)?;
+        tx.commit()?;
+        self.state.after_commit();
+        if let Some(rebuild) = &mut self.rebuild {
+            rebuild.result.removed += orphans;
+            rebuild.merging = true;
+            rebuild.progress.done = rebuild.progress.total;
+            let progress = rebuild.progress;
+            self.publish_progress(Some(progress));
+        }
+        Ok(())
+    }
+
+    /// A few pages of the merge into one segment, in a commit of their own; finishes once FTS5
+    /// has nothing left to merge.
+    fn merge_step(&mut self) -> Result<(), StoreError> {
+        let before = self.conn.total_changes();
+        let started = Instant::now();
+        merge(&self.conn, -FINAL_MERGE)?;
+        self.state.after_commit();
+        tracing::debug!(
+            ms = started.elapsed().as_secs_f64() * 1000.0,
+            "search index merge step"
+        );
+        // FTS5's documented test: a merge that did no work changes fewer than two rows.
+        if self.conn.total_changes() - before < 2 {
+            self.finish_rebuild()?;
+        }
+        Ok(())
+    }
+
+    fn finish_rebuild(&mut self) -> Result<(), StoreError> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
         tx.prepare_cached("DELETE FROM meta WHERE key = ?1")?
             .execute([THROUGH])?;
+        tx.execute(
+            "INSERT INTO message_fts(message_fts, rank) VALUES ('automerge', ?1)",
+            [AUTOMERGE],
+        )?;
         tx.commit()?;
         self.state.after_commit();
         let Some(mut rebuild) = self.rebuild.take() else {
             return Ok(());
         };
         self.publish_progress(None);
-        rebuild.result.removed += orphans;
         rebuild.result.elapsed = rebuild.started.elapsed();
         tracing::info!(
             messages = rebuild.result.messages,
@@ -296,8 +373,16 @@ impl Writer {
     }
 }
 
+/// FTS5's incremental merge: up to `pages` pages among segments of one level, or of all
+/// segments into one when negative.
+fn merge(conn: &Connection, pages: i64) -> rusqlite::Result<()> {
+    conn.prepare_cached("INSERT INTO message_fts(message_fts, rank) VALUES ('merge', ?1)")?
+        .execute([pages])?;
+    Ok(())
+}
+
 /// Deletes the entries after `from` (up to `through`) whose message is gone; returns how many.
-fn orphans(tx: &rusqlite::Connection, from: i64, through: Option<i64>) -> Result<u64, StoreError> {
+fn orphans(tx: &Connection, from: i64, through: Option<i64>) -> Result<u64, StoreError> {
     let through = through.unwrap_or(i64::MAX);
     let gone = tx
         .prepare_cached(
