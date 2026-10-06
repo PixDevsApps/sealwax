@@ -11,6 +11,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use libadwaita as adw;
+use sealwax_domain::compose::address;
 use sealwax_domain::model::Address;
 use sealwax_domain::theme::{avatar_class, initials};
 use std::cell::{Cell, RefCell};
@@ -26,7 +27,8 @@ const MAX_SUGGESTIONS: usize = 6;
 pub type Parsed = (Address, bool);
 
 /// Splits a typed or pasted list at commas, semicolons and line breaks outside quotes and
-/// angle brackets, and parses each item (`Name <address>`, `"Name" <address>` or `address`).
+/// angle brackets, and reads each item with the compose rules (`compose::address`): the
+/// addresses Sealwax can send to are valid chips, anything else is an error chip.
 pub fn parse_list(text: &str) -> Vec<Parsed> {
     let (mut items, rest) = split(text);
     items.push(rest);
@@ -34,7 +36,7 @@ pub fn parse_list(text: &str) -> Vec<Parsed> {
         .iter()
         .map(|item| item.trim())
         .filter(|item| !item.is_empty())
-        .map(parse_one)
+        .flat_map(parse_item)
         .collect()
 }
 
@@ -68,47 +70,22 @@ pub fn split(text: &str) -> (Vec<String>, String) {
     (items, current)
 }
 
-fn parse_one(item: &str) -> Parsed {
-    let (name, email) = match (item.rfind('<'), item.ends_with('>')) {
-        (Some(open), true) => (
-            item[..open].trim().trim_matches('"').trim().to_owned(),
-            item[open + 1..item.len() - 1].trim().to_owned(),
-        ),
-        _ => (
-            String::new(),
-            item.trim_matches(['<', '>']).trim().to_owned(),
-        ),
-    };
-    let valid = valid_address(&email);
-    (Address::new(name, email), valid)
+fn parse_item(item: &str) -> Vec<Parsed> {
+    let list = address::parse_list(item);
+    let valid = list.addresses.into_iter().map(|address| {
+        let ok = address::is_valid(&address.email);
+        (address, ok)
+    });
+    let invalid = list
+        .rest
+        .into_iter()
+        .map(|rest| (Address::new("", rest.trim()), false));
+    valid.chain(invalid).collect()
 }
 
-/// A plausible address: one `@`, a local part without spaces or brackets, and a domain of at
-/// least two dot-separated labels (letters, digits, hyphens or any non-ASCII letter).
+/// An address Sealwax can send to (`compose::address::is_valid`).
 pub fn valid_address(email: &str) -> bool {
-    let Some((local, domain)) = email.rsplit_once('@') else {
-        return false;
-    };
-    let local_ok = !local.is_empty()
-        && local.len() <= 64
-        && !local.starts_with('.')
-        && !local.ends_with('.')
-        && !local.contains("..")
-        && local
-            .chars()
-            .all(|c| !c.is_whitespace() && !c.is_control() && !"<>()[]\\,;:@\"".contains(c));
-    let labels: Vec<&str> = domain.split('.').collect();
-    let domain_ok = labels.len() >= 2
-        && domain.len() <= 253
-        && labels.iter().all(|label| {
-            !label.is_empty()
-                && !label.starts_with('-')
-                && !label.ends_with('-')
-                && label
-                    .chars()
-                    .all(|c| c.is_alphanumeric() || c == '-' || !c.is_ascii())
-        });
-    local_ok && domain_ok
+    address::is_valid(email)
 }
 
 type Query = Rc<dyn Fn(String) -> Local<Vec<Suggestion>>>;
@@ -456,7 +433,7 @@ impl RecipientField {
                     .iter()
                     .map(|item| item.trim())
                     .filter(|item| !item.is_empty())
-                    .map(parse_one)
+                    .flat_map(parse_item)
                     .collect();
                 field.set_entry_text(rest.trim_start());
                 let added = !complete.is_empty();
@@ -823,14 +800,7 @@ mod tests {
 
     #[test]
     fn invalid_addresses_are_kept_and_marked() {
-        for bad in [
-            "bob",
-            "bob@",
-            "@example.com",
-            "bob@example",
-            "a b@example.com",
-            "x@-a.com",
-        ] {
+        for bad in ["bob", "bob@", "@example.com", "a b@example.com", "x@-a.com"] {
             assert!(!valid_address(bad), "{bad}");
         }
         for good in [

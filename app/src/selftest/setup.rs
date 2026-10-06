@@ -477,8 +477,8 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
 }
 
 /// A banner entry as `assert-setup banner-queue` names it: `keyring`, `certificate:KEY`,
-/// `sign-in:KEY` (Microsoft), `password:KEY`, `quota:KEY`, `offline` (no network) or
-/// `unreachable` (no server answers).
+/// `sign-in:KEY` (Microsoft), `password:KEY`, `quota:KEY`, `uncertain` (a send that may have
+/// gone out, M6), `offline` (no network) or `unreachable` (no server answers).
 fn waiting_name(waiting: &Waiting) -> String {
     let kind = match &waiting.attention {
         Attention::NoKeyring => "keyring",
@@ -486,6 +486,7 @@ fn waiting_name(waiting: &Waiting) -> String {
         Attention::SignIn { browser: true, .. } => "sign-in",
         Attention::SignIn { browser: false, .. } => "password",
         Attention::QuotaFull { .. } => "quota",
+        Attention::UncertainSend { .. } => "uncertain",
         Attention::Offline { network: true, .. } => "offline",
         Attention::Offline { .. } => "unreachable",
     };
@@ -870,6 +871,27 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
         _ => return Err(format!("no reply {}", args.join(" "))),
     };
     send_event(harness, &fake, event).await
+}
+
+/// Hands `event` to the app as the fake engine (`engine-attach` first), for other modules'
+/// commands (M6: the sends' outcomes).
+pub(super) async fn emit(harness: &Harness, event: Event) -> StepResult {
+    let fake = fake()?;
+    send_event(harness, &fake, event).await
+}
+
+/// The app's next command to the fake engine, as `engine-expect` names it, or `None` when it
+/// sent nothing more.
+pub(super) fn next_command() -> Result<Option<String>, String> {
+    let fake = fake()?;
+    Ok(fake.commands.try_recv().ok().map(|command| {
+        let (kind, _, fields) = fields(&command, None);
+        let shown: Vec<String> = fields
+            .iter()
+            .map(|(key, value)| format!("{key}={value}"))
+            .collect();
+        format!("{kind} {}", shown.join(" ")).trim().to_owned()
+    }))
 }
 
 async fn send_event(harness: &Harness, fake: &Fake, event: Event) -> StepResult {

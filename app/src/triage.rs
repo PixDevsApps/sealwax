@@ -624,6 +624,14 @@ impl Controller {
         self.inner.last.get()
     }
 
+    /// Another action became the last one (M6: a send queued with Undo): this one's Undo no
+    /// longer works (ADR-015: only the last action).
+    pub fn forget_last(&self) {
+        if self.inner.last.get().is_some() {
+            self.set_last(None);
+        }
+    }
+
     fn set_last(&self, last: Option<BatchId>) {
         self.inner.last.set(last);
         let listeners = self.inner.changed.borrow().clone();

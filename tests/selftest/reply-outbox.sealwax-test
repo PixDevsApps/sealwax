@@ -1,0 +1,126 @@
+# The outbox in the main window (M6 phase B, ML-076), with the app's store and the fake engine:
+# a send queued as the composer's backend queues it shows "Message queued" with Undo for the undo
+# window and becomes the last action, so the toast's Undo and `z` take it back to a composer
+# window (and wake the account); after the window Undo has nothing to take back; a send the
+# engine started is too late to undo; Sent says so; a send that failed for good says why (never
+# its recipients) and Open opens its draft; a send that may have gone out puts the banner up,
+# after the sign-ins and before the full mailboxes, and each of its three answers is recorded;
+# the offline banner counts the sends waiting. Every name, address and text is fictional.
+# Run: tools/headless.sh 43 target/debug/sealwax --self-test tests/selftest/reply-outbox.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-undo-window 3000
+triage-account Work work
+outbox-draft first Work
+outbox-draft second Work
+outbox-draft third Work
+outbox-draft fourth Work
+outbox-draft fifth Work
+focus list
+
+# Queued: the toast with Undo; the send is the last action; Undo reopens it in a composer.
+outbox-queue first
+assert-toast "Message queued"
+assert-outbox first queued
+assert-action-enabled win.undo true
+wait-until assert-outbox-entries 1
+toast-click Undo
+wait-until assert-outbox first draft
+outbox-expect outbox-queued
+wait-until assert-compose-draft first
+wait-until assert-toast "Sending undone"
+assert-action-enabled win.undo false
+wait-until assert-outbox-entries 0
+composer-close
+
+# z takes it back too, while it is the last action.
+focus list
+outbox-queue first
+assert-action-enabled win.undo true
+key z
+wait-until assert-outbox first draft
+wait-until assert-compose-draft first
+composer-close
+
+# After the undo window Undo has nothing to take back, and the send stays queued.
+focus list
+outbox-queue first
+sleep 3300
+assert-action-enabled win.undo false
+assert-outbox first queued
+
+# The engine started it inside the window: too late to undo. Then the server took it.
+outbox-queue second
+outbox-engine start second
+assert-outbox second sending
+toast-click Undo
+wait-until assert-toast "Too late to undo: the message is being sent"
+assert-outbox second sending
+outbox-engine sent second
+wait-until assert-toast "Message sent"
+assert-outbox second sent
+
+# Failed for good: the toast says why without the recipients; Open opens the draft.
+outbox-queue third
+outbox-engine start third
+outbox-engine failed third recipients-refused
+wait-until assert-toast "Your message wasn't sent: the server refused 2 recipients. It's back in your drafts."
+assert-outbox third draft
+toast-click Open
+wait-until assert-compose-draft third
+composer-close
+
+# May have gone out: the banner, and Send Again.
+outbox-queue fourth
+outbox-engine start fourth
+outbox-engine uncertain fourth
+wait-until assert-setup banner-queue uncertain
+assert-label banner-title "A message may have been sent"
+assert-text-contains banner-body "Sealwax stopped while it was sending a message from Work"
+assert-label banner-primary "Choose…"
+assert-color banner-strip background warning-soft
+click banner-primary
+wait-until assert-shown uncertain-send true
+setup-respond uncertain-send send-again
+wait-until assert-outbox fourth queued
+outbox-expect outbox-queued
+wait-until assert-toast "Sending it again"
+wait-until assert-setup banner-queue none
+
+# Again uncertain: It Was Sent files it as sent (its Sent copy follows).
+outbox-engine start fourth
+outbox-engine uncertain fourth
+wait-until assert-setup banner-queue uncertain
+click banner-primary
+wait-until assert-shown uncertain-send true
+setup-respond uncertain-send was-sent
+wait-until assert-outbox fourth sent
+outbox-expect outbox-queued
+wait-until assert-toast "Filed as sent"
+wait-until assert-setup banner-queue none
+
+# Back to Drafts opens it; Later changes nothing.
+outbox-queue fifth
+outbox-engine start fifth
+outbox-engine uncertain fifth
+wait-until assert-setup banner-queue uncertain
+click banner-primary
+wait-until assert-shown uncertain-send true
+setup-respond uncertain-send later
+assert-outbox fifth uncertain
+click banner-primary
+wait-until assert-shown uncertain-send true
+setup-respond uncertain-send back-to-draft
+wait-until assert-outbox fifth draft
+wait-until assert-compose-draft fifth
+composer-close
+wait-until assert-setup banner-queue none
+
+# Offline, the banner counts the send that waits (first, still queued).
+desktop-network down
+wait-until assert-label banner-waiting "1 waiting"
+desktop-network up
+wait-until assert-shown banner false
+assert-labelled

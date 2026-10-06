@@ -1,0 +1,133 @@
+# The composer on the real store (M6 phase B: ML-069, ML-071, ML-072, ML-074): drafts saved
+# into the store's drafts table and reopened, discarded, suggestions from the store's contacts,
+# a reply with its quote, In-Reply-To and References, a quick reply, a forward with the
+# original's attachment and inline image, Edit Draft of a message another client left in the
+# Drafts folder, and Send refused for the size and for an account without a server. The
+# messages are fictional, stored whole; the account is local (no server).
+# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/composer-store.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Work
+composer-backend store
+composer-store-message plans inbox
+composer-store-message elsewhere drafts
+
+# A new draft is in the store, open, from the first save on.
+composer-open new
+composer-wait
+assert-composer db current open true
+assert-composer db current from work@example.test
+assert-composer db current message-id "@example.test"
+
+# Suggestions come from the store's contacts (the addresses of stored mail).
+composer-type "gr"
+wait-until assert-composer suggestions 1
+composer-key Return
+assert-composer chips to grace@example.test
+composer-focus subject
+composer-type "Kvartalstall"
+composer-focus body
+composer-insert "Hei Grace, æøå."
+wait-until assert-composer saved true
+wait-until assert-composer db current subject Kvartalstall
+assert-composer db current to grace@example.test
+assert-composer db current html "Hei Grace, æøå."
+
+# Closed, it stays in the store, no longer open; Draft reopens it as it was.
+composer-close
+wait-until assert-composer count 0
+wait-until assert-composer db last open false
+assert-composer open-drafts 0
+composer-open draft last
+composer-wait
+assert-composer subject Kvartalstall
+assert-composer chips to grace@example.test
+assert-composer html-has "Hei Grace, æøå."
+assert-composer db current open true
+
+# Send from an account without a server is refused, and the draft stays; then Discard
+# deletes it from the store.
+composer-action send
+wait-until assert-composer toast "no mail server"
+assert-composer count 1
+assert-composer outbox 0
+assert-composer db current open true
+composer-action discard-draft
+wait-until assert-composer dialog discard true
+composer-discard-answer discard
+wait-until assert-composer count 0
+wait-until assert-composer db-gone last
+
+# A reply: the sender, the subject, the quote with its attribution, In-Reply-To and
+# References, the original's inline image as a part served through cid:.
+composer-open reply plans
+composer-wait
+assert-composer title Reply
+assert-composer from work@example.test
+assert-composer chips to grace@example.test
+assert-composer subject "Re: The quarterly figures"
+assert-composer html-has "Here are the quarterly figures."
+assert-composer html-has "<blockquote type=\"cite\""
+assert-composer html-has "cid:chart-1@example.test"
+assert-composer focus body
+assert-composer db current in-reply-to plans-1@example.test
+assert-composer db current references "root-1@example.test plans-1@example.test"
+assert-composer db current inline 1
+wait-until assert-composer cid-served 1
+composer-close
+wait-until assert-composer count 0
+
+# Reply All adds the Cc.
+composer-open reply-all plans
+composer-wait
+assert-composer chips to grace@example.test
+assert-composer chips cc ada@example.test
+composer-close
+wait-until assert-composer count 0
+
+# A quick reply's text, escaped, above the quote.
+composer-open quick-reply-to plans "Takk <3, sees i morgen"
+composer-wait
+assert-composer html-has "Takk &lt;3, sees i morgen"
+assert-composer html-has "<blockquote type=\"cite\""
+composer-close
+wait-until assert-composer count 0
+
+# A forward: the original's attachment in the footer, its inline image kept.
+composer-open forward plans
+composer-wait
+assert-composer title Forward
+assert-composer subject "Fwd: The quarterly figures"
+assert-composer chips to none
+assert-composer attachments 1
+assert-composer attachment 0 name=report.pdf
+assert-composer attachment 0 type=application/pdf
+assert-composer db current attached report.pdf
+assert-composer db current inline 1
+assert-composer labelled
+
+# Send refused for the size: the server's limit below the message's estimate.
+composer-type "ola@example.org,"
+composer-limit 1000
+composer-action send
+wait-until assert-composer toast "Not sent:"
+assert-composer count 1
+assert-composer outbox 0
+composer-limit none
+composer-close
+wait-until assert-composer count 0
+
+# Edit Draft of a message another client left in the Drafts folder: a new local draft from it.
+composer-open server-draft elsewhere
+composer-wait
+assert-composer title Draft
+assert-composer subject "Notes for Thursday"
+assert-composer chips to ola@example.org
+assert-composer html-has "Notes written elsewhere."
+assert-composer db current subject "Notes for Thursday"
+assert-composer db current from work@example.test
+assert-composer db current message-id "@example.test"
+composer-close
+wait-until assert-composer count 0
+wait-until assert-composer db last open false

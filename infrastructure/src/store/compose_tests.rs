@@ -721,17 +721,22 @@ fn drafts_upload_when_quiet_or_closed_and_replace_their_copy() {
             .is_empty()
     );
 
-    // Changed and closed: due at once; an attempt cut short is retried from its mark.
+    // Changed and closed: due once it has been quiet a little while (the quick reply keeps its
+    // draft closed while the user types); an attempt cut short is retried from its mark.
     let mut edited = draft(cx.account, 1);
     edited.subject = "Edited".into();
     save(store, Some(id), edited, false);
-    let second = store.due_drafts(cx.account, NOW).recv_blocking().unwrap();
+    let closed = store.due_drafts(cx.account, NOW).recv_blocking().unwrap();
+    assert!(closed.uploads.is_empty());
+    assert_eq!(closed.next, Some(NOW + CLOSED_DRAFT_QUIET_MS));
+    let quiet = NOW + CLOSED_DRAFT_QUIET_MS;
+    let second = store.due_drafts(cx.account, quiet).recv_blocking().unwrap();
     assert_eq!(second.uploads.len(), 1);
     store
         .draft_upload_started(id, 2, cx.drafts, UIDVALIDITY, 11)
         .recv_blocking()
         .unwrap();
-    let retry = store.due_drafts(cx.account, NOW).recv_blocking().unwrap();
+    let retry = store.due_drafts(cx.account, quiet).recv_blocking().unwrap();
     assert_eq!(retry.uploads[0].retry_from, Some(11));
     assert_eq!(retry.uploads[0].attempts, 1);
     assert_eq!(retry.uploads[0].replaces.unwrap().uid, Some(10));
@@ -1088,4 +1093,47 @@ fn v9_migrates_a_v8_store_with_mail_and_fills_the_contacts() {
     drop(conn);
     let store = Store::open(&path, StoreOptions::default()).unwrap();
     assert_eq!(held_ids(&store, inbox).len(), 9);
+}
+
+#[test]
+fn a_quick_reply_finds_its_closed_reply_draft_again() {
+    let cx = server();
+    let store = &cx.store;
+    let source = arrive(store, cx.inbox, vec![message(cx.inbox, 7, Flags::SEEN)])[0];
+    let reply = |kind| Draft {
+        source: Some(DraftSource {
+            message: source,
+            kind,
+        }),
+        ..draft(cx.account, 1)
+    };
+    let found = |store: &Store| {
+        store
+            .reply_draft(source)
+            .recv_blocking()
+            .unwrap()
+            .map(|stored| stored.id)
+    };
+    // Open in a composer window, a forward, or no source: not the quick reply's.
+    let open = save(store, None, reply(ReplyKind::Reply), true);
+    save(store, None, reply(ReplyKind::Forward), false);
+    save(store, None, draft(cx.account, 2), false);
+    assert_eq!(found(store), None);
+    // Closed replies: the newest; one in the outbox doesn't count.
+    let older = save(store, None, reply(ReplyKind::Reply), false);
+    assert_eq!(found(store), Some(older));
+    let newer = save(store, None, reply(ReplyKind::Reply), false);
+    assert_eq!(found(store), Some(newer));
+    store
+        .queue_send(newer, NOW + 7_000)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(found(store), Some(older));
+    // Closing the composer's draft makes it a candidate; the newest saved (then the highest id)
+    // still wins.
+    store.set_draft_open(open, false).recv_blocking().unwrap();
+    assert_eq!(found(store), Some(older));
+    store.undo_send(newer).recv_blocking().unwrap();
+    store.set_draft_open(newer, false).recv_blocking().unwrap();
+    assert_eq!(found(store), Some(newer));
 }

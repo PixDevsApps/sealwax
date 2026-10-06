@@ -12,6 +12,7 @@ mod composer;
 mod conversation;
 mod files;
 mod mail;
+mod outbox;
 mod perf;
 mod probe;
 mod processes;
@@ -188,10 +189,23 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
 /// A scratch directory, removed when dropped.
 struct TempRoot {
     path: PathBuf,
+    /// Given by [`ROOT_ENV`]: kept after the run, for a second run on the same folders.
+    kept: bool,
 }
+
+/// A scratch directory to use, and keep, instead of a fresh one: the kill -9 harness
+/// (`tools/kill9-compose.sh`) runs Sealwax twice on the same store.
+pub const ROOT_ENV: &str = "SEALWAX_SELFTEST_ROOT";
 
 impl TempRoot {
     fn create() -> std::io::Result<Self> {
+        if let Some(path) = std::env::var_os(ROOT_ENV) {
+            fs::create_dir_all(&path)?;
+            return Ok(Self {
+                path: fs::canonicalize(&path)?,
+                kept: true,
+            });
+        }
         let nanos = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |elapsed| elapsed.subsec_nanos());
@@ -200,13 +214,16 @@ impl TempRoot {
         fs::create_dir_all(&path)?;
         Ok(Self {
             path: fs::canonicalize(&path)?,
+            kept: false,
         })
     }
 }
 
 impl Drop for TempRoot {
     fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
+        if !self.kept {
+            let _ = fs::remove_dir_all(&self.path);
+        }
     }
 }
 
@@ -410,6 +427,7 @@ impl Harness {
             }
             command if reader::handles(command) => reader::step(self, command, args).await,
             command if reply::handles(command) => reply::step(self, command, args).await,
+            command if outbox::handles(command) => outbox::step(self, command, args).await,
             command if bodies::handles(command) => bodies::step(self, command, args).await,
             command if setup::handles(command) => setup::step(self, command, args).await,
             command if triage::handles(command) => triage::step(self, command, args).await,
@@ -723,6 +741,7 @@ impl Harness {
             assertion if triage::handles(assertion) => triage::step(self, assertion, args).await,
             assertion if files::handles(assertion) => files::step(self, assertion, args).await,
             assertion if reply::handles(assertion) => reply::step(self, assertion, args).await,
+            assertion if outbox::handles(assertion) => outbox::step(self, assertion, args).await,
             assertion if composer::handles(assertion) => {
                 composer::step(self, assertion, args).await
             }

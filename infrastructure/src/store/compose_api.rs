@@ -26,8 +26,12 @@ use sealwax_domain::compose::Draft;
 use sealwax_domain::model::{AccountId, BlobKey, DraftId, FolderId, MessageId};
 
 /// How long a draft that changed must stay unchanged before its Drafts-folder copy is replaced
-/// while its window is open (a proposal for the gate); a closed draft is uploaded at once.
+/// while its window is open (a proposal for the gate).
 pub const DRAFT_QUIET_MS: i64 = 30_000;
+/// The same for a draft with no window open: a closed composer's draft goes up shortly after
+/// its last save, and the quick reply, which keeps its draft closed while the user types, goes
+/// up once the typing pauses rather than after every save.
+pub const CLOSED_DRAFT_QUIET_MS: i64 = 10_000;
 
 /// Saves a draft.
 #[derive(Clone, Debug)]
@@ -425,6 +429,12 @@ impl Store {
         self.read(|reply| ReadJob::Compose(ComposeRead::DraftForMessage { message, reply }))
     }
 
+    /// The newest closed, editable draft that replies to `message` with Reply (M6 phase B: the
+    /// quick reply's text kept as a draft, found again after a restart).
+    pub fn reply_draft(&self, message: MessageId) -> Reply<Option<StoredDraft>> {
+        self.read(|reply| ReadJob::Compose(ComposeRead::ReplyDraft { message, reply }))
+    }
+
     /// Queues a draft to send from `not_before` (the end of the undo window). Refused for local
     /// accounts, which have no server.
     pub fn queue_send(&self, id: DraftId, not_before: i64) -> Reply<SendQueued> {
@@ -564,8 +574,9 @@ impl Store {
     }
 
     /// The account's Drafts-folder uploads and deletions due at `now`. A draft is due when it
-    /// changed since its last upload and either its window is closed or it was saved at least
-    /// [`DRAFT_QUIET_MS`] ago; drafts in the outbox aren't uploaded. Local accounts have none.
+    /// changed since its last upload and was saved at least [`DRAFT_QUIET_MS`] ago while its
+    /// window is open, or [`CLOSED_DRAFT_QUIET_MS`] ago when none is; drafts in the outbox aren't
+    /// uploaded. Local accounts have none.
     pub fn due_drafts(&self, account: AccountId, now: i64) -> Reply<DueDrafts> {
         self.write(|reply| {
             WriteJob::Compose(ComposeJob::DueDrafts {
