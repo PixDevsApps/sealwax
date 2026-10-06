@@ -69,6 +69,17 @@ SEALWAX_HEADLESS_TIMEOUT=600 tools/headless.sh 31 target/release/examples/reader
 
 The fetch makes anonymous HTTPS GETs of public files with a generic User-Agent; the templates stay out of the repository (`tests/corpus/real/SOURCES.toml` lists them with their licences). Both harnesses write only under `.local/`. On the live session they run only under a live-window authorization (`reader_memory --live`), and measure at the window size the compositor gives.
 
+## Composer measurements (M6)
+
+```sh
+tools/kill9-compose.sh 46 10        # kill -9 while composing: seconds of typing lost per run (bar 5 s)
+cargo build --release -p sealwax --example composer_live
+tools/headless.sh 45 target/release/examples/composer_live          # dry run (Broadway)
+target/release/examples/composer_live --live                        # authorized live runs only
+```
+
+`kill9-compose.sh` (debug build first: `cargo build`) runs Sealwax headless on a scratch store under `.local/kill9/`, types into a composer every 200 ms, kills it with SIGKILL at a random moment, starts it again on the same folders and reads the reopened draft; about 12 s a run, so it isn't in `tools/ci.sh`. `composer_live` times an edit to the painted frame in the real composer's editor (S7's method: WebKit's `InsertText`, a paint probe, no key events) in a small document and above a 199 KB quoted thread, then scrolls the quote; it makes no input, uses scratch XDG folders, writes its report under `.local/reader/`, and ends by itself. The testbed's sending suites (`send_testbed`, `append_testbed`, `outbox_testbed`) run under `tools/ci.sh --testbed`; `SEALWAX_OUTBOX_SEEDS` sets the outbox suite's seeds (2 by default).
+
 ## Headless GTK runs
 
 `tools/headless.sh <display> <cmd...>` starts `gtk4-broadwayd` on `127.0.0.1:<8080 + display>`, runs the command with `GDK_BACKEND=broadway`, a private D-Bus bus from `tools/headless-dbus.conf` (no service directories, so no portal, gvfs or at-spi can start and reach the live session), `GSETTINGS_BACKEND=memory` and `ADW_DISABLE_PORTAL=1`, and cleans up the daemon and its socket. It refuses a display that is already in use. Every run gets scratch XDG folders under `.local/headless-<display>/` (config, cache, data, state), so nothing it writes — WebKit's data included — lands in the user's home. Never replace it with a plain `dbus-run-session`.

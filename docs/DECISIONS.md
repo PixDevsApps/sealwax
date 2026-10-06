@@ -14,20 +14,20 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 002 | GTK4 + libadwaita + WebKitGTK 6 | Accepted (S2 and S7 evidence) |
 | 003 | Layering with an engine crate; tokio only there | Proposed; store pattern measured in S3, desktop integration in S6, the application shell built in M1, the engine service and autodetect built in M2 |
 | 004 | Follow the live Omarchy theme | Accepted (user request); built in M1 |
-| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2; v3–v6 in M3; v7 (the op queue, the overlay in the rows) in M4; v8 (the senders whose images load) in M5 |
+| 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2; v3–v6 in M3; v7 (the op queue, the overlay in the rows) in M4; v8 (the senders whose images load) in M5; v9 (drafts, the outbox, contacts) in M6 |
 | 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2; the sync core and actor in M3; the op queue's writes in M4; parts and originals on demand in M5 |
-| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments; the SMTP login check built in M2; interop checked on the testbed, rendering in real clients the user's own test (user decision, M6 start) |
+| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments; the SMTP login check built in M2; interop checked on the testbed, rendering in real clients the user's own test (user decision, M6 start); the builder, submission and APPEND built in M6 |
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism accepted on S5's evidence (GO, 2026-10-05); secrets keyed by the account key in M2 |
-| 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2 |
+| 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2, its signatures and identities in M6 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1; conversations, links, remote content per sender and print in M5; memory measured live in M5, NVIDIA's mappings counted in the GPU budget (user decision, M5 gate) |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
-| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06); the composer in its own window (user decision, M6 start) |
-| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send waits for M6 |
+| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06); the composer in its own window (user decision, M6 start); built in M6, its live typing and scrolling measured |
+| 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send built in M6 |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start); built in M5 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate), M5's keys accepted (M5 gate) |
-| 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2 |
+| 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2; the HTML parser capped in M6 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 
 ## ADR-001 — Standalone native application (2026-10-04)
@@ -268,6 +268,16 @@ Built in M4's phase A ([report](m4/ops-store.md)).
 
 Built as [m5/files.md](m5/files.md) records. Migration v8 adds `remote_senders(address PRIMARY KEY, added) WITHOUT ROWID`: lower-case addresses whose remote images load without asking (ML-058), with when each was added. The list is the user's, not an account's: it stays when an account is removed. Its writes bump no store version and send no change event. The conversation view (ML-057) added no migration: `Store::conversation` walks v1's `messages_thread (thread_id, date)` index (≤ 1.66 ms cold for 150 messages at 100,000).
 
+### ADR-005 amendment — schema v9: drafts, the outbox and contacts (M6, 2026-10-06)
+
+Built in M6's phase A ([report](m6/drafts-store.md)). Migration v9 adds:
+- `drafts` (the composer's draft, its revision, whether its window is open, its Drafts-folder copy and the upload under way) and `draft_parts`;
+- `draft_blobs` (every blob a draft ever named), which the disk cap's eviction and every orphan sweep leave alone, as they do the outbox's built messages;
+- `outbox` (one send per draft: queued, sending, uncertain, sent; the built bytes, the envelope and the Sent copy's mark) and `draft_deletions` (server copies the store holds no row for);
+- `contacts` and `contact_terms`, filled from the stored messages in the migration's transaction (0.74–0.82 s at 100,000 messages, +0.42 MiB) and kept on ingest (header transactions about 20–35 % slower).
+
+Draft saves bump no version and send no event (p99 1.24 ms for a 200 KB body at 100,000 messages); outbox writes send one with `ChangeEvent::outbox`. Contacts are found by prefixes of the address, its domain and the name's words, folded (p95 ≤ 0.6 ms with the fixture's contacts, ≤ 13.2 ms with 50,000 more). `Store::reply_draft` (phase B) finds a quick reply's closed draft by the message it answers. A draft is uploaded to the Drafts folder 30 s after its last save while its window is open and 10 s after it when none is (phase B's integration: the quick reply keeps its draft closed while the user types).
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -414,6 +424,14 @@ Built in M2 ([m2/imap.md](m2/imap.md)).
 
 **Status:** user decision at M6's start ("Mailpit + your test (Recommended)", 2026-10-06). S7's interop check, rendering Sealwax's mail in Gmail web, Outlook web and Thunderbird, needed test accounts and send approvals; real accounts became the user's own test once the app is finished (2026-10-05), and Thunderbird isn't installed here. So M6's exit criterion is met on the testbed: every message Sealwax sends in the testbed suites is caught by Mailpit (or delivered by Stalwart's submission port), round-tripped through mail-parser, and scanned for a Bcc header and the host name. Rendering in the three clients moves to the user's own test (a P1 follow-up in PLAN.md).
 
+### ADR-007 amendment — the MIME builder and submission as built (M6, 2026-10-06)
+
+Built in M6 ([compose rules](m6/compose-domain.md), [sending](m6/send.md)).
+- **The builder** (`domain::compose::mime`, from S7): three copies of a draft: the transmitted copy (never a Bcc header; `To: "undisclosed-recipients":;` when only Bcc), the Sent copy (the transmitted bytes plus one `Bcc:` field), and the Drafts folder's copy (Bcc kept). The envelope lists To, Cc and Bcc once each, in ASCII; international domains go as punycode, non-ASCII local parts are refused (no SMTPUTF8 in 1.0). The Message-ID is the draft's, made from 128 random bits on the From's domain, and the builder refuses one on another domain, so a change of sender to another domain makes a new one. No User-Agent, X-Mailer, Sender or Received field; `Date:` in UTC. Replies carry In-Reply-To and up to 20 References (the root and the 19 most recent); forwards carry neither. `estimate` gives the encoded size for the SIZE check without reading the parts.
+- **Submission** (`engine::smtp::submit`): two steps, MAIL FROM and every RCPT TO, then (after the store's durable start, ADR-015) DATA; Sealwax answers XOAUTH2 itself (lettre can't answer the error challenge) and refreshes a refused token once; EHLO SIZE is checked before MAIL and sent as `SIZE=`. One refused recipient refuses the whole send (RSET, nothing sent). Every reply is definite; a connection lost before the message's bytes go out is retried, one lost while they go out or before the reply to their end is uncertain.
+- **APPEND** (`engine::imap::write::append`) takes the folder's mark first; a retry reads the Message-IDs from the mark up (S1: Stalwart never matches `SEARCH HEADER Message-ID`) and appends only what isn't there; a draft's new revision is appended before the old copy is removed (left `\Deleted` without UIDPLUS).
+- **Measured on the testbed:** 240 cut APPENDs on three servers, 0 duplicates, 0 lost; S7's six fixtures arrived byte for byte at Stalwart (14 deliveries) and Mailpit (6).
+
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
 **Status:** OAuth2 sign-in for Google and Microsoft in 1.0 is accepted — user decision, 2026-10-04. The mechanism is proposed; S5 is the go/no-go.
@@ -509,6 +527,10 @@ Built in M3 ([report](m3/bodies.md)): `cache_size` (a size such as `"2 GiB"` or 
 ### ADR-009 amendment — `[storage]` defaults accepted (M3 gate, 2026-10-06)
 
 The user accepted the proposed defaults ("accept the defaults"): `cache_size = "2 GiB"` and `prefetch_days = 14`, with whole messages up to 10 MiB.
+
+### ADR-009 amendment — signatures and identities in accounts.toml (M6, 2026-10-06)
+
+Built in M6's phase A ([report](m6/compose-domain.md)). `signature = """…"""` on an `[[account]]` table and `[[account.identity]]` tables (an alias: `address`, an optional `name` that defaults to the account's, an optional `signature`) are read with the file's error style (spans, did-you-mean, secrets refused, an address listed twice refused); the setup assistant writes neither. Signatures are plain text, inserted below what the user types and above the quote after a `-- ` line, at most 10,000 characters (a proposal for the gate). The default file documents both in comments.
 
 ## ADR-010 — Name and app-id (2026-10-04)
 
@@ -707,6 +729,15 @@ The user ran S7's manual check on the live session with fcitx5 and approved it (
 
 Still open from S7: the 60 Hz re-measure (the user's; it changes the monitor's settings). Typing in the real composer and long-quote scrolling without acceleration are measured live in M6 (authorized 2026-10-06).
 
+### ADR-014 amendment — the composer as built (M6, 2026-10-06)
+
+Built in M6 ([composer](m6/composer.md), [compose rules](m6/compose-domain.md), [reply](m6/reply.md)).
+- **The window:** one application window per draft, shown at once and filled when the draft is ready; S7's hardened editable view in a web context and process of its own, with every layer S7 proved and `hardware-acceleration-policy` NEVER; the toolbar follows the editor's state; every Composer command is a `win.` action of the composer window, its keys installed on the window and before WebKit on the body, so Ctrl+B and Ctrl+I toggle once and Ctrl+Z never reaches the main window's mail Undo. Pasted and dropped images become `cid:` parts in the blob store, served only to the view that holds them.
+- **Drafts** save to the store 1.5 s after the typing stops and at most 4 s after the first unsaved change; drafts left open reopen after the first frame. A `kill -9` while typing lost at most 3.51 s in 12 runs (the agent's) and 3.34 s in 6 (the lead's, load average about 19); every reopened draft held exactly the start of what was typed.
+- **Quoted HTML cleaned in Rust:** HTML that enters a draft without the paste cleaner (a quoted or forwarded original, which the quick reply sends without a WebView, and a draft read back from the Drafts folder) goes through `domain::compose::clean`: an html5ever 0.39 pre-pass with S7's presentational rules, then **ammonia** (pinned `~4.1.5`, sharing html5ever with html2text) as the allowlist with S7's rules (links only http(s) and mailto; images only `https:`, `cid:` and typed base64 `data:`). Remote images in a quote are kept as the original had them and never loaded in the composer (a proposal for the gate).
+- **Live, on the user's session** (authorized at M6's start; `app/examples/composer_live.rs`, 144 Hz, the window tiled 1709×1400): an edit to the painted frame in the real composer's editor, p50 8.15 ms and p95 9.94 ms in a small document (n=80) and p50 10.15 ms, p95 12.35 ms above a 199 KB quoted thread (n=40); scrolling that thread at 1,500 px/s, frame interval p95 14.62 ms over 282 frames. S7's open items "typing in the real composer" and "long-quote scrolling without acceleration" are closed; the 60 Hz re-measure stays the user's.
+- **Spell check** stays off without a dictionary (this machine has none).
+
 ## ADR-015 — Op queue: optimistic overlay, Undo, at-most-once send (2026-10-04)
 
 **Status:** Proposed.
@@ -765,6 +796,15 @@ Built in M4 ([report](m4/triage-app.md)). The app queues every triage action wit
 **Status:** accepted for triage by the user at the M4 gate ("Accept all", 2026-10-06); the at-most-once send stays M6's.
 - **The defaults as built:** the undo window 7 s; no toast for one message's read or star change; a message marked read when it opens; the next message selected after an action; deleting from the Trash asks nothing and can be undone only while it hasn't reached the server; Mark Folder as Read waits for the window too; done ops kept for Undo from the newest 50 actions; 5 attempts, then a change is refused; moves and deletions retried while the mailbox is full; the offline banner counts the changes waiting.
 - **Not built:** Undo of a folder marked read after its window (a proposal, P2 in PLAN.md).
+
+### ADR-015 amendment — the outbox as built (M6, 2026-10-06)
+
+Built in M6 ([store](m6/drafts-store.md), [sending](m6/send.md), [reply](m6/reply.md)); the at-most-once send this ADR left to M6.
+- **States** (the store): queued until `not_before` (the undo window, 7 s like triage's: a proposal), sending (from just before DATA, committed with a full sync, with the built bytes and envelope), uncertain, sent. Each step is a compare-and-set: only a queued entry starts, so an Undo between the due list and the start wins and nothing is sent. Before DATA, or on a 4xx, it is queued again with the same bytes; a 5xx or a refusal puts it back as an editable draft with the reason.
+- **At most once:** at the engine's start every sending entry becomes uncertain (`Event::SendUncertain`) and is never sent again until the user says send again (the same bytes and Message-ID), it was sent, or back to a draft. A property test over random queues, Undo, outcomes, stops and the user's answers passed 3,000 cases, and a planted fault that lets uncertain sends go again fails it.
+- **The runner** (the account's actor, after the op runner): one SMTP connection per round of due sends; the store's start before DATA; a stop or `Reconnect` while the data goes out records the send uncertain first; offline or a login the user must fix keeps it queued. On Stalwart through the fault proxy, cuts and hard stops at five steps (4 seeds, 40 runs): the 20 that couldn't have delivered went exactly once, the 20 uncertain ones were never resent before the answer, "send again" sent once more (10 of 10), "it was sent" nothing (10 of 10), and an Undo inside the window put no MAIL FROM on the wire.
+- **After the send**, one transaction records it, queues the source's `\Answered` or `$Forwarded` in the op queue and the draft's Drafts copies for deletion. The Sent copy is skipped for servers that save their own (Microsoft, Gmail); otherwise it is looked for from the mark taken before the send and appended `\Seen` when absent.
+- **The app:** "Message queued" with Undo for the window (the send becomes the last action, so `z` and Ctrl+Z undo it too), "Message sent", a 10 s toast when a send fails for good with Open, and the window's banner for a send that may have gone ("Was the message sent?": Send Again, It Was Sent, Back to Drafts, Later); the offline banner's count includes waiting sends.
 
 ## ADR-016 — Conversation threading (2026-10-04)
 
@@ -855,6 +895,10 @@ S1 found that async-imap's trace logging prints the LOGIN password. The engine t
 Built in M2 ([m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md)).
 - **Caps:** `infrastructure::logging` holds `async_imap`, `imap_proto`, `lettre`, `rustls`, `tokio_rustls`, `hickory`, `reqwest` and `zbus` at `warn` with a `Targets` filter beside `RUST_LOG`'s, so no directive lifts them; they weren't capped before M2. The log-grep test (`engine/tests/log_grep.rs`) runs M2's testbed flows at trace level, with a control that proves async-imap's AUTHENTICATE line reaches the log without the caps.
 - **Autodetect's requests:** the full address goes only to `https://autoconfig.<domain>/` as the `emailaddress` parameter; the ISPDB, MX, SRV, CNAME and the MX operator's autoconfig carry the domain only. HTTPS only. Redirects are followed at most three times, to the same host or inside the requested domain, and never when the target would carry the address to a host other than the one first asked (checked after percent-decoding). One hickory resolver serves DNS, HTTPS and the TLS checks, and a host with a non-public address is neither fetched nor probed; environment proxies aren't used, so that check always applies. The User-Agent is generic. The TLS check sends only CAPABILITY, STARTTLS and `EHLO [127.0.0.1]`. Error texts that might quote a URL are dropped, and logs carry only the winning source's name and the time. Measured 2026-10-05: 2,711 requests in five runs, 0 violations.
+
+### ADR-018 amendment — the HTML parser capped (M6, 2026-10-06)
+
+`html5ever`, `markup5ever`, `html2text` and `mail_builder` are capped at `warn` like the protocol crates: html5ever's debug output carries the text it parses, and the log grep caught a draft's body in it while the MIME builder made the plain part ([report](m6/send.md)). The default `info` filter never showed it; `RUST_LOG=debug` would have, in the reader too.
 
 ## ADR-019 — Corner radius follows Hyprland (2026-10-04)
 
