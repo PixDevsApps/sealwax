@@ -72,6 +72,7 @@ wait-until assert-toast "Rebuilding the search index…"
 screenshot $DIR/../../tools/progress/public/m7-search-rebuild-matte-black-square-2026-10-06.png
 search-rebuild-release
 wait-until assert-search-rebuilding false
+wait-until assert-toasts 0
 
 # The same in a light theme with rounded corners.
 theme catppuccin-latte
