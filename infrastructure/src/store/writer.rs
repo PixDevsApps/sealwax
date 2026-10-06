@@ -9,7 +9,7 @@ use super::api::{
     Versioned, ViewChange, ViewDiff, ViewFilter, ViewId, ViewScope, ViewSpec,
 };
 use super::maintenance::Maintenance;
-use super::{Removed, RemovedAccount, Shared, StoreError, codec, fts, views};
+use super::{RefusedChange, Removed, RemovedAccount, Shared, StoreError, codec, fts, views};
 use rusqlite::hooks::Wal;
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use sealwax_domain::account::AccountKey;
@@ -490,7 +490,7 @@ impl Writer {
         let mut refusals = overlay::Refusals::default();
         for (op, account, below) in overlay::reads_below(&tx, folder)? {
             tx.execute("DELETE FROM ops WHERE id = ?1", [op.0])?;
-            refusals.add(account, crate::store::RefusedChange::FolderRead, below);
+            refusals.add(account, RefusedChange::FolderRead, below);
         }
         refusals.record(&tx)?;
         let below = below_counts(&tx, folder)?;
@@ -1221,7 +1221,7 @@ fn folder_counts(
 ) -> rusqlite::Result<Vec<FolderCounts>> {
     let mut select = tx.prepare_cached(&format!(
         "SELECT total_count + below_floor, {} FROM folders WHERE id = ?1",
-        crate::store::overlay::UNREAD_SQL
+        super::overlay::UNREAD_SQL
     ))?;
     folders
         .iter()

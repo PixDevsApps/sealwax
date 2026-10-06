@@ -304,7 +304,7 @@ pub fn run(options: &Options) -> Result<()> {
     );
     println!("  Undo → event: {}", summary(&undone));
 
-    // Pending overlays: messages hidden by pending moves, and as many marked read.
+    // Pending overlays: messages hidden by pending moves, and as many starred.
     let mut hidden = Vec::new();
     let mut flagged = Vec::new();
     let every = (total / (2 * options.overlays.max(1) as u32)).max(1);
@@ -346,6 +346,32 @@ pub fn run(options: &Options) -> Result<()> {
     );
     let pending = store.pending_ops(account).recv_blocking()?;
     println!("- pending ops now {pending}");
+    // What `count_below` adds to count the rows as the server holds them.
+    let conn = rusqlite::Connection::open_with_flags(
+        &options.store,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    )?;
+    let mut correction = conn.prepare(
+        "SELECT count(*) FILTER (WHERE flags & 264 <> 0), \
+           coalesce(sum((coalesce(server_flags, flags) & 1 = 0) - (flags & 265 = 0)), 0) \
+         FROM messages INDEXED BY messages_special \
+         WHERE folder_id = ?1 AND (server_flags IS NOT NULL OR flags & 8 <> 0)",
+    )?;
+    let mut samples = Vec::new();
+    let mut found = (0i64, 0i64);
+    for _ in 0..options.warm {
+        let started = Instant::now();
+        found = correction.query_row([inbox.0], |row| Ok((row.get(0)?, row.get(1)?)))?;
+        samples.push(started.elapsed());
+    }
+    println!(
+        "- the server-side count of hidden and overlaid rows ({} hidden, unread {:+}): warm {}",
+        found.0,
+        found.1,
+        summary(&samples)
+    );
+    drop(correction);
+    drop(conn);
     drop(handles);
     drop(events);
     store = reads(
