@@ -1,15 +1,16 @@
 //! The folder pass: S1's `sync_folder`, `incremental`, `fetch_new` and `uid_diff` on the
 //! production store, within the folder's window. Local rows are expected only from the floor
 //! up: the count check subtracts the messages the server holds below it, the UID diff searches
-//! from it, and flag FETCHes cover the floor's range only.
+//! from it, and flag FETCHes cover the floor's range only. The rows a step stores at or above
+//! the UIDNEXT the store held when the pass began are new mail ([`Arrived`]).
 
 use super::view::{self, View};
-use super::{FolderLocks, SyncOptions, SyncReport, count, load_state};
+use super::{Arrived, FolderLocks, SyncOptions, SyncReport, count, load_state};
 use crate::imap::connection::Connection;
 use crate::imap::error::SyncError;
 use crate::imap::first_sync::{self, BATCH, Progress};
 use crate::imap::raw;
-use sealwax_domain::model::{Flags, FolderId};
+use sealwax_domain::model::{Flags, FolderId, MessageId};
 use sealwax_infrastructure::store::{
     FlagUpdate, FolderChanges, FolderSync, NewMessage, Store, SyncState,
 };
@@ -70,28 +71,81 @@ pub(super) async fn pass(
         report.orphaned_blobs.extend(removed.orphaned_blobs);
         state = load_state(store, folder).await?;
     }
-    if state.state != SyncState::Ready {
+    let fresh = state.state != SyncState::Ready;
+    if fresh {
         let first = first_sync::run(conn, store, &state, &mut view, options, progress).await?;
         report.stats.first_sync_batches += first.batches;
         report.stats.stored += first.fetched;
         state = load_state(store, folder).await?;
     }
-    incremental(conn, store, &state, &mut view, report).await
+    let arrivals = Arrivals {
+        from: (!fresh).then_some(state.uidnext),
+        sink: options.arrivals.as_ref(),
+    };
+    incremental(conn, store, &state, &mut view, arrivals, report).await
 }
 
-/// Commits one step and counts what it did.
+/// Where a pass reports new mail: the rows it stores at or above `from`, the UIDNEXT the store
+/// held when it began. `None` once the pass ran a first sync: those rows are nobody's new mail.
+#[derive(Clone, Copy)]
+struct Arrivals<'a> {
+    from: Option<u32>,
+    sink: Option<&'a async_channel::Sender<Arrived>>,
+}
+
+impl Arrivals<'_> {
+    /// The rows of a committed step that are new mail: `uids` are the step's new rows in order,
+    /// `inserted` the rows the store added for them (it skips the UIDs it holds already).
+    fn add(
+        &self,
+        folder: FolderId,
+        uids: &[u32],
+        inserted: Vec<MessageId>,
+        report: &mut SyncReport,
+    ) {
+        let Some(from) = self.from else {
+            return;
+        };
+        let messages: Vec<MessageId> = if uids.iter().all(|uid| *uid >= from) {
+            inserted
+        } else if uids.len() == inserted.len() {
+            uids.iter()
+                .zip(inserted)
+                .filter(|(uid, _)| **uid >= from)
+                .map(|(_, id)| id)
+                .collect()
+        } else {
+            tracing::debug!(%folder, "new rows not matched to their UIDs; no new mail reported");
+            return;
+        };
+        if messages.is_empty() {
+            return;
+        }
+        let arrived = Arrived { folder, messages };
+        if let Some(sink) = self.sink {
+            let _ = sink.try_send(arrived.clone());
+        }
+        report.arrived.push(arrived);
+    }
+}
+
+/// Commits one step and counts what it did; returns the rows it inserted.
 async fn commit(
     store: &Store,
     folder: FolderId,
     changes: FolderChanges,
     report: &mut SyncReport,
-) -> Result<(), SyncError> {
+) -> Result<Vec<MessageId>, SyncError> {
     let synced = store.sync_changes(folder, changes).recv().await?;
     report.stats.stored += synced.inserted;
     report.stats.flag_changes += synced.changed;
     report.stats.removed += synced.removed;
     report.orphaned_blobs.extend(synced.orphaned_blobs);
-    Ok(())
+    Ok(synced.new_messages)
+}
+
+fn row_uids(rows: &[NewMessage]) -> Vec<u32> {
+    rows.iter().filter_map(|row| row.uid).collect()
 }
 
 /// The stored flags and keywords by UID.
@@ -134,6 +188,7 @@ async fn incremental(
     store: &Store,
     state: &FolderSync,
     view: &mut View,
+    arrivals: Arrivals<'_>,
     report: &mut SyncReport,
 ) -> Result<(), SyncError> {
     let folder = state.folder;
@@ -148,7 +203,7 @@ async fn incremental(
         return Ok(());
     }
     if view.uidnext.is_none_or(|next| next > known_next) {
-        fetch_new(conn, store, folder, known_next, view, report).await?;
+        fetch_new(conn, store, folder, known_next, view, arrivals, report).await?;
     }
     let mut changes = FolderChanges::default();
     if known_next > floor {
@@ -192,13 +247,24 @@ async fn incremental(
     changes.removed.extend(vanished);
     changes.highestmodseq = modseq;
     commit(store, folder, changes, report).await?;
-    count_check(conn, store, folder, floor, state.below, view, report).await
+    count_check(
+        conn,
+        store,
+        folder,
+        floor,
+        state.below,
+        view,
+        arrivals,
+        report,
+    )
+    .await
 }
 
 /// S1's count check: the stored count plus the messages below the floor must equal the
 /// server's EXISTS, kept current through the pass. Too few first fetches new UIDs again;
 /// anything else falls back to the UID diff, which also counts the messages below the floor
 /// again.
+#[allow(clippy::too_many_arguments)]
 async fn count_check(
     conn: &mut Connection,
     store: &Store,
@@ -206,6 +272,7 @@ async fn count_check(
     floor: u32,
     mut below: u32,
     view: &mut View,
+    arrivals: Arrivals<'_>,
     report: &mut SyncReport,
 ) -> Result<(), SyncError> {
     for _ in 0..3 {
@@ -216,13 +283,13 @@ async fn count_check(
         }
         report.stats.count_mismatches += 1;
         if expected < view.exists {
-            fetch_new(conn, store, folder, state.uidnext, view, report).await?;
+            fetch_new(conn, store, folder, state.uidnext, view, arrivals, report).await?;
             let state = load_state(store, folder).await?;
             if state.messages.saturating_add(below) == view.exists {
                 return Ok(());
             }
         }
-        below = uid_diff(conn, store, folder, floor, view, report).await?;
+        below = uid_diff(conn, store, folder, floor, view, arrivals, report).await?;
     }
     Ok(())
 }
@@ -251,6 +318,7 @@ async fn fetch_new(
     folder: FolderId,
     from: u32,
     view: &mut View,
+    arrivals: Arrivals<'_>,
     report: &mut SyncReport,
 ) -> Result<(), SyncError> {
     let gap = view.uidnext.map(|next| next.saturating_sub(from) as usize);
@@ -263,13 +331,16 @@ async fn fetch_new(
             .filter_map(|row| row.uid)
             .max()
             .map_or(from, |uid| uid + 1);
+        let fetched = row_uids(&rows);
         let changes = FolderChanges {
             flags: refreshed(&rows),
             new: rows,
             uidnext: Some(top.max(view.uidnext.unwrap_or(from))),
             ..FolderChanges::default()
         };
-        return commit(store, folder, changes, report).await;
+        let inserted = commit(store, folder, changes, report).await?;
+        arrivals.add(folder, &fetched, inserted, report);
+        return Ok(());
     }
     let mut uids = view::uid_search(conn, &format!("UID {from}:*"), view).await?;
     uids.retain(|&uid| uid >= from);
@@ -278,13 +349,15 @@ async fn fetch_new(
         let set = raw::uid_set(chunk);
         let rows = view::fetch_rows(conn, folder, &set, |uid| wanted.contains(&uid), view).await?;
         report.stats.new_mail_fetches += 1;
+        let fetched = row_uids(&rows);
         let changes = FolderChanges {
             flags: refreshed(&rows),
             new: rows,
             uidnext: chunk.last().map(|uid| uid + 1),
             ..FolderChanges::default()
         };
-        commit(store, folder, changes, report).await?;
+        let inserted = commit(store, folder, changes, report).await?;
+        arrivals.add(folder, &fetched, inserted, report);
     }
     if let Some(next) = view.uidnext.filter(|&next| next > from) {
         let changes = FolderChanges {
@@ -304,6 +377,7 @@ async fn uid_diff(
     folder: FolderId,
     floor: u32,
     view: &mut View,
+    arrivals: Arrivals<'_>,
     report: &mut SyncReport,
 ) -> Result<u32, SyncError> {
     report.stats.uid_diffs += 1;
@@ -334,7 +408,9 @@ async fn uid_diff(
         let set = raw::uid_set(chunk);
         changes.new =
             view::fetch_rows(conn, folder, &set, |uid| wanted.contains(&uid), view).await?;
-        commit(store, folder, std::mem::take(&mut changes), report).await?;
+        let fetched = row_uids(&changes.new);
+        let inserted = commit(store, folder, std::mem::take(&mut changes), report).await?;
+        arrivals.add(folder, &fetched, inserted, report);
     }
     changes.uidnext = server.last().map(|uid| uid + 1);
     changes.below = Some(below);

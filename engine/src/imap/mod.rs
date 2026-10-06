@@ -29,8 +29,8 @@ pub use folders::{FolderStatus, ListedFolder, SyncedFolders, list, sync_folders}
 pub use idle::{IDLE_COMMAND_TIMEOUT, Idled, Stop, Wake};
 pub use raw::READ_TIMEOUT;
 pub use sync::{
-    Elsewhere, FolderLocks, Older, Stats, SyncOptions, SyncReport, load_older, sync_account,
-    sync_folder,
+    Arrived, Elsewhere, FolderLocks, Older, Stats, SyncOptions, SyncReport, load_older,
+    sync_account, sync_folder,
 };
 
 pub(crate) type Stream = tokio_rustls::client::TlsStream<tokio::net::TcpStream>;
