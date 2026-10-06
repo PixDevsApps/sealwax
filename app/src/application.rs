@@ -24,7 +24,7 @@ use crate::shortcuts;
 use crate::status::{self, Waiting};
 use crate::theme::{self, ThemeController};
 use crate::triage::{
-    self, Controller, Directory, MARK_READ_ON_OPEN, Notice, Origin, StoreBackend, Target,
+    self, Controller, Directory, MARK_READ_ON_OPEN, Notice, OpsBackend, Origin, Target,
 };
 use crate::window::{self, Attention, BannerAction, Pane, Window};
 use gtk4::{gio, glib};
@@ -65,6 +65,13 @@ const SETTINGS_WAIT: Duration = Duration::from_millis(150);
 /// How long the first window waits for the store's first rows (S6: at most 300 ms), so its
 /// first frame never shows an empty list. The store opens in about 2 ms.
 const FIRST_ROWS_WAIT: Duration = Duration::from_millis(300);
+
+/// How long the pending-op count waits after an action, an Undo or a change event, so a burst
+/// of them is one count.
+const PENDING_COUNT_DELAY: Duration = Duration::from_millis(200);
+
+/// How often the pending-op count is read again while ops wait.
+const PENDING_RECHECK: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 pub struct AppConfig {
@@ -212,6 +219,9 @@ impl SealwaxApplication {
             read_on_leave: Cell::new(None),
             read_when_shown: Cell::new(None),
             triage_started: Cell::new(None),
+            pending_ops: Cell::new(0),
+            pending_queued: Cell::new(false),
+            pending_recheck: Cell::new(false),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -294,6 +304,10 @@ pub struct AppState {
     read_when_shown: Cell<Option<MessageId>>,
     /// When the last mail command's handler ran, and the window's frame then (measurements).
     triage_started: Cell<Option<(Instant, i64)>>,
+    /// The ops waiting for a server, for the offline banner.
+    pending_ops: Cell<u32>,
+    pending_queued: Cell<bool>,
+    pending_recheck: Cell<bool>,
 }
 
 impl AppState {
@@ -390,6 +404,7 @@ impl AppState {
             &accounts,
             self.keyring_missing.get() && !self.keyring_dismissed.get(),
             self.network.get(),
+            self.pending_ops.get(),
         )
     }
 
@@ -1034,11 +1049,12 @@ impl AppState {
 
     /// The mail actions (ML-052 to ML-055): the registry's commands on the list's selection,
     /// the rows' quick actions and the sidebar's Mark Folder as Read, through a
-    /// [`triage::Controller`] over phase A's [`StoreBackend`]; toasts for its notices.
+    /// [`triage::Controller`] over the store's op queue ([`OpsBackend`]); toasts for its
+    /// notices.
     fn install_triage(self: &Rc<Self>, window: &Window, list: &MessageList, actions: &ActionSet) {
         let directory: Rc<dyn Directory> = self.mailbox.clone();
         let controller = Controller::new(
-            Rc::new(StoreBackend::new(self.mailbox.clone())),
+            Rc::new(OpsBackend::new(self.mailbox.clone())),
             directory,
             self.engine.clone(),
         );
@@ -1052,6 +1068,12 @@ impl AppState {
         controller.connect_changed(move || {
             if let Some(state) = weak.upgrade() {
                 state.refresh_commands();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        controller.connect_answered(move || {
+            if let Some(state) = weak.upgrade() {
+                state.queue_pending_count();
             }
         });
         for id in triage::COMMANDS {
@@ -1081,7 +1103,9 @@ impl AppState {
                 triage.undo(None);
             }
         });
-        // Escape on the batch page leaves the select mode, as it does in the list.
+        // Escape leaves the select mode wherever the focus is, as it does in the list: on the
+        // batch page, or nowhere once a button there went insensitive under it. Text fields and
+        // dialogs take their Escape first.
         let escape = gtk4::EventControllerKey::new();
         let target = list.clone();
         escape.connect_key_pressed(move |_, key, _, state| {
@@ -1092,7 +1116,7 @@ impl AppState {
                 glib::Propagation::Proceed
             }
         });
-        window.batch_page().widget.add_controller(escape);
+        window.window().add_controller(escape);
         let weak = Rc::downgrade(self);
         list.connect_quick_action(move |id, target| {
             if let Some(state) = weak.upgrade() {
@@ -1119,9 +1143,77 @@ impl AppState {
         self.mailbox.connect_event(move |_| {
             if let Some(state) = weak.upgrade() {
                 state.refresh_commands();
+                state.queue_pending_count();
             }
         });
+        // Mark Folder as Read follows the folder shown, also when no selection changes with it.
+        let weak = Rc::downgrade(self);
+        window.connect_folder_selected(move |_, _| {
+            let weak = weak.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade() {
+                    state.refresh_commands();
+                }
+            });
+        });
         self.triage.replace(Some(controller));
+        self.queue_pending_count();
+    }
+
+    /// Counts the ops waiting for a server, for the offline banner's "3 waiting", a moment
+    /// after the last action, Undo or change event: one read per account with a server, on the
+    /// store's reader, the replies awaited on the main loop.
+    fn queue_pending_count(self: &Rc<Self>) {
+        if self.pending_queued.replace(true) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        glib::timeout_add_local_once(PENDING_COUNT_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_queued.set(false);
+            let Some(triage) = state.triage() else {
+                return;
+            };
+            let backend = triage.backend();
+            let counts: Vec<_> = state
+                .mailbox
+                .accounts()
+                .into_iter()
+                .filter(|account| account.key.is_some())
+                .map(|account| backend.pending(account.id))
+                .collect();
+            let weak = Rc::downgrade(&state);
+            glib::spawn_future_local(async move {
+                let mut total = 0;
+                for count in counts {
+                    total += count.await.unwrap_or(0);
+                }
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                if state.pending_ops.replace(total) != total {
+                    state.update_banner();
+                }
+                // An op the server carried out without changing what is shown (a flag the
+                // overlay showed already) makes no change event: count again while any wait.
+                if total > 0 && !state.pending_recheck.replace(true) {
+                    let weak = Rc::downgrade(&state);
+                    glib::timeout_add_local_once(PENDING_RECHECK, move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.pending_recheck.set(false);
+                            state.queue_pending_count();
+                        }
+                    });
+                }
+            });
+        });
+    }
+
+    /// The ops waiting for a server, as last counted.
+    pub fn pending_ops(&self) -> u32 {
+        self.pending_ops.get()
     }
 
     /// The mail actions, once there is a window.
@@ -1162,10 +1254,19 @@ impl AppState {
             Err(_) => {
                 let weak = Rc::downgrade(self);
                 glib::spawn_future_local(async move {
-                    if let Some(targets) = list.wait_targets().await
-                        && let Some(state) = weak.upgrade()
-                    {
-                        state.triage_targets(id, targets);
+                    let targets = list.wait_targets().await;
+                    let Some(state) = weak.upgrade() else {
+                        return;
+                    };
+                    match targets {
+                        Some(targets) => state.triage_targets(id, targets),
+                        None => state.show_notice(
+                            &Notice::plain(
+                                "Some selected messages didn't load in time; nothing changed"
+                                    .to_owned(),
+                            ),
+                            true,
+                        ),
                     }
                 });
             }

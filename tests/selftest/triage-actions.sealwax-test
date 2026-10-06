@@ -3,9 +3,10 @@
 # take it out of the list, select the next message and show a toast with Undo; Not Junk in the
 # Junk folder, Archive insensitive in the Archive folder, deleting for good from the Trash, Mark
 # Folder as Read from the command and the sidebar's menu, and a change the server refused. The
-# account has a key, so every action wakes its op runner (OpsQueued) on the fake engine. Phase
-# A's backend takes moved messages out of the store, so their Undo says it can't bring them
-# back. Every message is fictional.
+# account has a key, so every action queues ops in the store and wakes its op runner
+# (OpsQueued) on the fake engine, which runs none: a moved message is hidden from both folders
+# until the server has it, and Undo before it runs puts it back where it was, counts included.
+# Every message is fictional.
 # Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-actions.sealwax-test
 
 desktop tiling
@@ -77,17 +78,26 @@ assert-list-count 2
 assert-list-row 0 subject Nyhetsbrev
 engine-expect ops-queued
 
-# Junk with !: the toast says where; phase A's Undo can't bring a moved message back.
+# Junk with !: the toast says where; z before the op runs brings the message back to its place
+# and the Inbox's count, and wakes nothing, since nothing is left to send.
+assert-sidebar-count Work:inbox 2
 key exclam
 assert-list-count 1
 assert-toast "Moved 1 message to Junk"
+assert-sidebar-count Work:inbox 1
 engine-expect ops-queued
 key z
-assert-toast "Can't bring back 1 message yet"
+assert-toast Undone
 assert-undoable false
-engine-expect ops-queued
+assert-list-count 2
+assert-list-row 0 subject Nyhetsbrev
+assert-sidebar-count Work:inbox 2
+engine-expect none
 
-# The last message: after it leaves nothing is selected.
+# The last messages: after they leave nothing is selected.
+key <Control>j
+assert-list-count 1
+engine-expect ops-queued
 key <Control>j
 assert-list-count 0
 assert-list-selection none
@@ -176,7 +186,8 @@ assert-action-enabled win.mark-folder-read false
 toast-undo
 assert-toast Undone
 assert-sidebar-count Work:inbox 2
-engine-expect ops-queued
+engine-expect none
+focus list
 sidebar-menu Work:inbox
 assert-sidebar-menu enabled
 sidebar-menu-click
@@ -184,10 +195,13 @@ assert-sidebar-menu closed
 assert-toast "Marked 2 messages in Inbox as read"
 assert-sidebar-count Work:inbox 0
 engine-expect ops-queued
+# The focus goes back to the list once the sidebar shows the new count.
+wait-until assert-focus list
 sidebar-menu Work:inbox
 assert-sidebar-menu disabled
 key Escape
 assert-sidebar-menu closed
+wait-until assert-focus list
 
 # The server refused a change for good: the toast says what didn't happen.
 engine-reply ops-refused work@example.test move 3

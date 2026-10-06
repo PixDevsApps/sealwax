@@ -25,8 +25,13 @@ pub enum Attention {
     SignIn { name: String, browser: bool },
     /// The server says the account's mailbox is full.
     QuotaFull { name: String },
-    /// The desktop has no network (`network`), or no account's server answers.
-    Offline { network: bool, accounts: usize },
+    /// The desktop has no network (`network`), or no account's server answers; `waiting`
+    /// changes wait for a server.
+    Offline {
+        network: bool,
+        accounts: usize,
+        waiting: u32,
+    },
 }
 
 /// What a banner button asks for.
@@ -115,12 +120,33 @@ impl Attention {
                                        bounce, and changes can't be saved. Delete mail you \
                                        don't need, or ask your provider for more space."
                 .to_owned(),
-            Self::Offline { network: true, .. } => {
+            Self::Offline {
+                network: true,
+                waiting: 0,
+                ..
+            } => {
                 "Sealwax shows the mail it has and syncs again when the network is back.".to_owned()
             }
-            Self::Offline { .. } => "Sealwax shows the mail it has and tries again by itself. \
-                                     Check your connection, or try another network."
+            Self::Offline { network: true, .. } => "Sealwax shows the mail it has, keeps your \
+                                                    changes and sends them when the network is \
+                                                    back."
                 .to_owned(),
+            Self::Offline { waiting: 0, .. } => "Sealwax shows the mail it has and tries again \
+                                                 by itself. Check your connection, or try \
+                                                 another network."
+                .to_owned(),
+            Self::Offline { .. } => "Sealwax shows the mail it has, keeps your changes and tries \
+                                     again by itself. Check your connection, or try another \
+                                     network."
+                .to_owned(),
+        }
+    }
+
+    /// The changes waiting for a server, as the offline strip counts them ("3 waiting").
+    pub fn waiting(&self) -> Option<String> {
+        match self {
+            Self::Offline { waiting, .. } if *waiting > 0 => Some(format!("{waiting} waiting")),
+            _ => None,
         }
     }
 
@@ -179,6 +205,8 @@ pub(super) struct Banner {
     icon: gtk::Image,
     title: gtk::Label,
     body: gtk::Label,
+    /// The offline strip's "3 waiting".
+    waiting: gtk::Label,
     secondary: gtk::Button,
     primary: gtk::Button,
     /// What each button does for the state shown.
@@ -219,6 +247,16 @@ impl Banner {
         );
         text.append(&title);
         text.append(&body);
+        let waiting = named(
+            classed(
+                gtk::Label::builder()
+                    .valign(gtk::Align::Center)
+                    .visible(false)
+                    .build(),
+                &["sw-banner-waiting"],
+            ),
+            "banner-waiting",
+        );
         let button = |name: &str, classes: &[&str]| {
             named(
                 classed(
@@ -241,6 +279,7 @@ impl Banner {
         );
         strip.append(&icon);
         strip.append(&text);
+        strip.append(&waiting);
         strip.append(&secondary);
         strip.append(&primary);
         let root = named(
@@ -265,6 +304,7 @@ impl Banner {
             icon,
             title,
             body,
+            waiting,
             secondary,
             primary,
             actions: Rc::new([Cell::new(None), Cell::new(None)]),
@@ -288,6 +328,10 @@ impl Banner {
         let title = shown.title();
         self.title.set_label(&title);
         self.body.set_label(&body(shown, rest));
+        let waiting = shown.waiting();
+        self.waiting
+            .set_label(waiting.as_deref().unwrap_or_default());
+        self.waiting.set_visible(waiting.is_some());
         self.icon
             .set_from_gicon(&gio::ThemedIcon::from_names(shown.icons()));
         for (tone, class) in [(Tone::Error, "sw-error"), (Tone::Warning, "sw-warning")] {
@@ -375,6 +419,7 @@ mod tests {
         let offline = Attention::Offline {
             network: true,
             accounts: 2,
+            waiting: 0,
         };
         assert!(
             body(&Attention::NoKeyring, std::slice::from_ref(&offline))
@@ -398,14 +443,17 @@ mod tests {
             Attention::Offline {
                 network: true,
                 accounts: 1,
+                waiting: 0,
             },
             Attention::Offline {
                 network: false,
                 accounts: 1,
+                waiting: 0,
             },
             Attention::Offline {
                 network: false,
                 accounts: 2,
+                waiting: 0,
             },
         ];
         let titles: Vec<String> = states.iter().map(Attention::title).collect();
@@ -457,5 +505,21 @@ mod tests {
             ]
         );
         assert!(tones[5..].iter().all(|tone| *tone == Tone::Warning));
+    }
+
+    #[test]
+    fn the_offline_strip_counts_the_changes_waiting() {
+        let offline = |network, waiting| Attention::Offline {
+            network,
+            accounts: 1,
+            waiting,
+        };
+        assert_eq!(offline(true, 0).waiting(), None);
+        assert_eq!(offline(true, 3).waiting().as_deref(), Some("3 waiting"));
+        assert_eq!(offline(false, 1).waiting().as_deref(), Some("1 waiting"));
+        assert!(offline(true, 3).body().contains("keeps your changes"));
+        assert!(offline(false, 1).body().contains("keeps your changes"));
+        assert!(!offline(true, 0).body().contains("changes"));
+        assert_eq!(Attention::NoKeyring.waiting(), None);
     }
 }

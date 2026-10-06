@@ -826,6 +826,11 @@ button.sw-banner-secondary:active {
   background: var(--sw-pressed-bg-color);
 }
 
+/* The offline strip's "3 waiting" (M4): the mock's quiet count at the strip's end. */
+.sw-banner-waiting {
+  color: var(--sw-secondary-fg-color);
+}
+
 /* Empty states: no accounts, no message, empty folder, no search results. */
 .sw-empty-state {
   padding: var(--sw-space-huge);

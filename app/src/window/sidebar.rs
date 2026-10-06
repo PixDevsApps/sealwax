@@ -577,7 +577,23 @@ impl Sidebar {
             "folder-menu",
         );
         popover.set_parent(row);
-        popover.connect_closed(|popover| popover.unparent());
+        // The focus goes back where it was (the list, or the row for Menu and Shift+F10), once
+        // the sidebar has been rebuilt for the new counts.
+        let before = row
+            .root()
+            .and_then(|root| root.focus())
+            .map(|widget| widget.downgrade());
+        popover.connect_closed(move |popover| {
+            popover.unparent();
+            let before = before.clone();
+            glib::idle_add_local_once(move || {
+                if let Some(widget) = before.and_then(|widget| widget.upgrade())
+                    && widget.root().is_some()
+                {
+                    widget.grab_focus();
+                }
+            });
+        });
         let key = key.to_owned();
         button.connect_clicked(glib::clone!(
             #[weak]
@@ -727,6 +743,8 @@ impl Sidebar {
 
     fn rebuild_list(&self) {
         self.close_menu();
+        // New counts rebuild the rows; a row that had the keyboard focus keeps it.
+        let focused = self.focused_kind();
         self.list.remove_all();
         let model = self.model.borrow();
         let expanded = self.expanded.borrow();
@@ -772,8 +790,25 @@ impl Sidebar {
         }
         drop(expanded);
         drop(model);
+        if let Some(kind) = focused
+            && let Some(row) = rows.iter().find(|row| row.kind == kind)
+        {
+            row.widget.grab_focus();
+        }
         self.rows.replace(rows);
         self.sync_selection();
+    }
+
+    /// The kind of the row that has the keyboard focus, if one has.
+    fn focused_kind(&self) -> Option<RowKind> {
+        let focus = self.list.root()?.focus()?;
+        self.rows
+            .borrow()
+            .iter()
+            .find(|row| {
+                focus == *row.widget.upcast_ref::<gtk::Widget>() || focus.is_ancestor(&row.widget)
+            })
+            .map(|row| row.kind.clone())
     }
 
     /// Marks the row of the folder shown. The list has no selection of its own: GTK's follows

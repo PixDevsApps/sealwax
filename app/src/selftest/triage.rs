@@ -36,7 +36,7 @@ use crate::move_to;
 use gtk4 as gtk;
 use gtk4::glib::translate::IntoGlib;
 use gtk4::prelude::*;
-use gtk4::{gio, glib};
+use gtk4::{gdk, gio, glib};
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::actions::{ActionId, ActionKind, Scope};
 use sealwax_domain::model::FolderRole;
@@ -54,6 +54,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("check-row", 1, 1),
     ("hover-row", 1, 1),
     ("click-quick", 2, 2),
+    ("click", 1, 2),
     ("triage-account", 2, 2),
     ("triage-mark-read-on-open", 1, 1),
     ("triage-undo-window", 1, 1),
@@ -67,6 +68,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-select-mode", 1, 1),
     ("assert-reader-page", 1, 1),
     ("assert-undoable", 1, 1),
+    ("assert-pending", 1, 1),
     ("assert-toasts", 1, 1),
     ("assert-row-check", 2, 2),
     ("assert-row-quick", 2, 2),
@@ -117,12 +119,13 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "check-row" => {
             let row = row_widget(harness, arg(0))?;
-            if row.check_state().is_none() {
-                return Err(format!("row {} shows no checkbox", arg(0)));
-            }
-            row.toggle_check();
+            let check = row
+                .check_button()
+                .ok_or_else(|| format!("row {} shows no checkbox", arg(0)))?;
+            let before = check.is_active();
+            click_widget(harness, check.upcast_ref(), 0, 1).await?;
             harness.wait_until_settled().await;
-            Ok(())
+            clicked(row.check_state() != Some(before), "the checkbox")
         }
         "hover-row" => {
             let row = row_widget(harness, arg(0))?;
@@ -143,9 +146,19 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 .quick_button(quick)
                 .filter(|button| button.is_mapped())
                 .ok_or("the row shows no quick actions")?;
-            button.emit_clicked();
-            harness.wait_until_settled().await;
-            Ok(())
+            click_button(harness, &button).await
+        }
+        "click" => {
+            let widget = harness.widget(arg(0))?;
+            let state = modifiers(args.get(1).map_or("none", String::as_str))?;
+            match widget.downcast_ref::<gtk::Button>() {
+                Some(button) if state == 0 => click_button(harness, button).await,
+                _ => {
+                    click_widget(harness, &widget, state, 1).await?;
+                    harness.wait_until_settled().await;
+                    Ok(())
+                }
+            }
         }
         "triage-account" => add_account(harness, arg(0), arg(1)).await,
         "triage-mark-read-on-open" => {
@@ -167,21 +180,30 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 .into_iter()
                 .find(|button| button.label().as_deref() == Some("Undo"))
                 .ok_or("no toast offers Undo")?;
-            button.emit_clicked();
-            harness.wait_until_settled().await;
-            Ok(())
+            click_button(harness, &button).await
         }
         "sidebar-menu" => {
             let key = super::mail::folder_key_for(harness, arg(0))?;
-            let row = harness.widget(&format!("folder:{key}"))?;
+            let name = format!("folder:{key}");
+            harness.wait_until_settled().await;
+            let row = harness.widget(&name)?;
             click_widget(harness, &row, 0, 3).await?;
-            if harness.window()?.sidebar().menu().is_some() {
-                return Ok(());
+            let window = harness.window()?;
+            let sidebar = window.sidebar();
+            match sidebar.menu() {
+                Some(menu) if menu.parent().is_some_and(|row| row.widget_name() == name) => {
+                    return Ok(());
+                }
+                Some(menu) => {
+                    println!("  # the right click opened another folder's menu");
+                    menu.popdown();
+                }
+                // Buttons that act on release don't take Broadway's synthetic clicks headless
+                // (docs/m4/triage-app.md); the menu opens as the row's gesture opens it, and
+                // the step says so.
+                None => println!("  # the right click opened no menu"),
             }
-            // Buttons that act on release don't take Broadway's synthetic clicks headless
-            // (docs/m4/triage-app.md); the menu opens as the row's gesture opens it, and the
-            // step says so.
-            println!("  # the right click opened no menu; opened as the gesture does");
+            println!("  # opened as the gesture does");
             if !harness.window()?.sidebar().open_menu(&key) {
                 return Err(format!("no folder row {key}"));
             }
@@ -204,9 +226,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             if !button.is_sensitive() {
                 return Err("Mark Folder as Read is insensitive".to_owned());
             }
-            button.emit_clicked();
-            harness.wait_until_settled().await;
-            Ok(())
+            click_button(harness, &button).await
         }
         "action-log" => start_log(harness),
         "measure-triage" => measure(harness, arg(0), number(arg(1))?).await,
@@ -253,6 +273,11 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             "reader page",
             harness.window()?.reader_page().as_str(),
             arg(0),
+        ),
+        "assert-pending" => equal(
+            "ops waiting for a server",
+            harness.state.pending_ops(),
+            number(arg(0))? as u32,
         ),
         "assert-undoable" => equal(
             "undoable",
@@ -385,17 +410,27 @@ fn modifiers(spec: &str) -> Result<u32, String> {
 }
 
 /// The centre of `widget` in the window's coordinates.
+/// Where `widget`'s centre is on Broadway's screen: its surface's place there (a popover's
+/// relative to the window's), the window's shadow, which the surface includes, and the widget's
+/// place in its window or popover.
 fn centre(harness: &Harness, widget: &gtk::Widget) -> Result<(f64, f64), String> {
-    let window = harness.window()?;
+    harness.window()?;
     if !widget.is_mapped() {
         return Err(format!("{} isn't on screen", widget.widget_name()));
     }
+    let native = widget.native().ok_or("the widget is in no window")?;
     let bounds = widget
-        .compute_bounds(window.window())
+        .compute_bounds(&native)
         .ok_or("the widget has no bounds")?;
+    let (mut left, mut top) = broadway::window_origin().map_err(|error| error.to_string())?;
+    if let Some(popup) = native.surface().and_downcast::<gdk::Popup>() {
+        left += f64::from(popup.position_x());
+        top += f64::from(popup.position_y());
+    }
+    let (shadow_x, shadow_y) = native.surface_transform();
     Ok((
-        f64::from(bounds.x() + bounds.width() / 2.0),
-        f64::from(bounds.y() + bounds.height() / 2.0),
+        left + shadow_x + f64::from(bounds.x() + bounds.width() / 2.0),
+        top + shadow_y + f64::from(bounds.y() + bounds.height() / 2.0),
     ))
 }
 
@@ -410,6 +445,32 @@ async fn click_widget(
     broadway::click(x, y, state, button).map_err(|error| error.to_string())?;
     delivered(harness, watch, 1).await;
     Ok(())
+}
+
+/// A real click on `button` through Broadway; the step fails unless the button saw it.
+async fn click_button(harness: &Harness, button: &gtk::Button) -> StepResult {
+    let seen = Rc::new(Cell::new(false));
+    let mark = seen.clone();
+    let handler = button.connect_clicked(move |_| mark.set(true));
+    let result = click_widget(harness, button.upcast_ref(), 0, 1).await;
+    let started = Instant::now();
+    while result.is_ok() && !seen.get() && started.elapsed() < Duration::from_millis(500) {
+        glib::timeout_future(Duration::from_millis(2)).await;
+    }
+    if button.parent().is_some() {
+        button.disconnect(handler);
+    }
+    result?;
+    harness.wait_until_settled().await;
+    clicked(seen.get(), &format!("the button {}", button.widget_name()))
+}
+
+fn clicked(seen: bool, what: &str) -> StepResult {
+    if seen {
+        Ok(())
+    } else {
+        Err(format!("{what} didn't take the click"))
+    }
 }
 
 /// Waits until the pointer's arrival over `row` shows its quick actions (or half a second).

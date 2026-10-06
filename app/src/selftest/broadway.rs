@@ -5,7 +5,7 @@
 //! ([`key`], [`click`]): the events reach GTK as real key and button presses through GDK's
 //! Broadway backend, with the keysym already chosen, so no keyboard layout applies.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -37,14 +37,20 @@ const OP_UPLOAD_TEXTURE: u8 = 13;
 const OP_RELEASE_TEXTURE: u8 = 14;
 const OP_SET_NODES: u8 = 15;
 const OP_ROUNDTRIP: u8 = 16;
+const EVENT_ENTER: i64 = 0;
+const EVENT_LEAVE: i64 = 1;
 const EVENT_POINTER_MOVE: i64 = 2;
 const EVENT_BUTTON_PRESS: i64 = 3;
 const EVENT_BUTTON_RELEASE: i64 = 4;
 const EVENT_KEY_PRESS: i64 = 7;
 const EVENT_KEY_RELEASE: i64 = 8;
+const EVENT_GRAB_NOTIFY: i64 = 9;
+const EVENT_UNGRAB_NOTIFY: i64 = 10;
 const EVENT_CONFIGURE_NOTIFY: i64 = 11;
 const EVENT_SCREEN_SIZE_CHANGED: i64 = 12;
 const EVENT_ROUNDTRIP_NOTIFY: i64 = 14;
+/// `GDK_CROSSING_NORMAL`.
+const CROSSING_NORMAL: i64 = 0;
 
 fn invalid(message: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.to_owned())
@@ -55,6 +61,10 @@ struct Shared {
     writer: Mutex<TcpStream>,
     serial: AtomicU32,
     surfaces: Mutex<HashMap<u16, [i64; 4]>>,
+    /// The surfaces shown now.
+    shown: Mutex<HashSet<u16>>,
+    /// The surface the pointer is over, and where it is.
+    pointer: Mutex<Option<(u16, [i64; 2])>>,
     started: Instant,
     /// Milliseconds added to the events' times after each click, so two clicks never make a
     /// double click.
@@ -90,6 +100,8 @@ pub fn connect() -> io::Result<()> {
         writer: Mutex::new(stream.try_clone()?),
         serial: AtomicU32::new(0),
         surfaces: Mutex::new(HashMap::new()),
+        shown: Mutex::new(HashSet::new()),
+        pointer: Mutex::new(None),
         started: Instant::now(),
         skew: AtomicU32::new(0),
     });
@@ -116,18 +128,18 @@ pub fn key(keysym: u32, state: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Moves the pointer to `(x, y)` in the window and clicks `button` there (1 the primary, 3 the
-/// secondary), holding the modifiers in `state`.
+/// Where the window's surface is on Broadway's screen.
+pub fn window_origin() -> io::Result<(f64, f64)> {
+    let (_, [left, top, _, _]) = shared()?.window()?;
+    Ok((left as f64, top as f64))
+}
+
+/// Moves the pointer to `(x, y)` on Broadway's screen and clicks `button` there (1 the
+/// primary, 3 the secondary), holding the modifiers in `state`: on the topmost surface shown
+/// there, a popover's over the window's.
 pub fn click(x: f64, y: f64, state: u32, button: u32) -> io::Result<()> {
     let shared = shared()?;
-    let (id, [left, top, _, _]) = shared.window()?;
-    let (x, y) = (x.round() as i64, y.round() as i64);
-    let id = i64::from(id);
-    let at = [id, id, left + x, top + y, x, y];
-    let mut moved = vec![EVENT_POINTER_MOVE];
-    moved.extend(at);
-    moved.push(i64::from(state));
-    shared.send(&moved)?;
+    let at = shared.move_to(x, y, state)?;
     // As broadway.js: the press carries the button's mask, the release no longer does.
     let held = BUTTON1 << (button.clamp(1, 5) - 1);
     for (event, state) in [
@@ -143,13 +155,9 @@ pub fn click(x: f64, y: f64, state: u32, button: u32) -> io::Result<()> {
     Ok(())
 }
 
-/// Moves the pointer to `(x, y)` in the window, as hovering does.
+/// Moves the pointer to `(x, y)` on Broadway's screen, as hovering does.
 pub fn hover(x: f64, y: f64) -> io::Result<()> {
-    let shared = shared()?;
-    let (id, [left, top, _, _]) = shared.window()?;
-    let (x, y) = (x.round() as i64, y.round() as i64);
-    let id = i64::from(id);
-    shared.send(&[EVENT_POINTER_MOVE, id, id, left + x, top + y, x, y, 0])
+    shared()?.move_to(x, y, 0).map(|_| ())
 }
 
 fn shared() -> io::Result<&'static Arc<Shared>> {
@@ -170,6 +178,64 @@ impl Shared {
             .max_by_key(|(_, geometry)| geometry[2] * geometry[3])
             .map(|(id, geometry)| (*id, *geometry))
             .ok_or_else(|| invalid("Broadway shows no surface"))
+    }
+
+    /// Moves the pointer to `(x, y)` on the screen, leaving the surface it was over and entering
+    /// the one there when they differ, as `broadway.js` does: the events' surface ids and
+    /// coordinates, for a press or release there.
+    fn move_to(&self, x: f64, y: f64, state: u32) -> io::Result<[i64; 6]> {
+        let (x, y) = (x.round() as i64, y.round() as i64);
+        let (id, [left, top, _, _]) = self.surface_at(x, y)?;
+        let at = |id: u16, left: i64, top: i64| {
+            let id = i64::from(id);
+            [id, id, x, y, x - left, y - top]
+        };
+        let state = i64::from(state);
+        let before = self
+            .pointer
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replace((id, [left, top]));
+        if before.is_none_or(|(old, _)| old != id) {
+            if let Some((old, [old_left, old_top])) = before {
+                let mut leave = vec![EVENT_LEAVE];
+                leave.extend(at(old, old_left, old_top));
+                leave.extend([state, CROSSING_NORMAL]);
+                self.send(&leave)?;
+            }
+            let mut enter = vec![EVENT_ENTER];
+            enter.extend(at(id, left, top));
+            enter.extend([state, CROSSING_NORMAL]);
+            self.send(&enter)?;
+        }
+        let mut moved = vec![EVENT_POINTER_MOVE];
+        moved.extend(at(id, left, top));
+        moved.push(state);
+        self.send(&moved)?;
+        Ok(at(id, left, top))
+    }
+
+    /// The smallest surface shown at `(x, y)`, a popover's over the window's; the window when
+    /// none is.
+    fn surface_at(&self, x: i64, y: i64) -> io::Result<(u16, [i64; 4])> {
+        let shown = self
+            .shown
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone();
+        let topmost = self
+            .surfaces()
+            .iter()
+            .filter(|(id, _)| shown.contains(id))
+            .filter(|(_, [left, top, width, height])| {
+                (*left..left + width).contains(&x) && (*top..top + height).contains(&y)
+            })
+            .min_by_key(|(_, geometry)| geometry[2] * geometry[3])
+            .map(|(id, geometry)| (*id, *geometry));
+        match topmost {
+            Some(surface) => Ok(surface),
+            None => self.window(),
+        }
     }
 
     /// Sends `[event, last serial, time, args...]` as big-endian 32-bit words in a masked
@@ -257,8 +323,13 @@ impl Client {
             let op = cursor.u8()?;
             self.shared.serial.store(cursor.u32()?, Ordering::Relaxed);
             match op {
-                OP_GRAB_POINTER => cursor.skip(3)?,
-                OP_UNGRAB_POINTER | OP_DISCONNECTED => {}
+                // As broadway.js: the daemon keeps the grab and waits to hear it was taken.
+                OP_GRAB_POINTER => {
+                    cursor.skip(3)?;
+                    self.send(&[EVENT_GRAB_NOTIFY])?;
+                }
+                OP_UNGRAB_POINTER => self.send(&[EVENT_UNGRAB_NOTIFY])?,
+                OP_DISCONNECTED => {}
                 OP_NEW_SURFACE => {
                     let id = cursor.u16()?;
                     let geometry = [
@@ -273,9 +344,17 @@ impl Client {
                 OP_DESTROY_SURFACE => {
                     let id = cursor.u16()?;
                     self.shared.surfaces().remove(&id);
+                    self.shown().remove(&id);
                 }
-                OP_SHOW_SURFACE | OP_HIDE_SURFACE | OP_RAISE_SURFACE | OP_LOWER_SURFACE
-                | OP_SET_SHOW_KEYBOARD => cursor.skip(2)?,
+                OP_SHOW_SURFACE => {
+                    let id = cursor.u16()?;
+                    self.shown().insert(id);
+                }
+                OP_HIDE_SURFACE => {
+                    let id = cursor.u16()?;
+                    self.shown().remove(&id);
+                }
+                OP_RAISE_SURFACE | OP_LOWER_SURFACE | OP_SET_SHOW_KEYBOARD => cursor.skip(2)?,
                 OP_MOVE_RESIZE => {
                     let id = cursor.u16()?;
                     let flags = cursor.u8()?;
@@ -311,6 +390,13 @@ impl Client {
             }
         }
         Ok(())
+    }
+
+    fn shown(&self) -> MutexGuard<'_, HashSet<u16>> {
+        self.shared
+            .shown
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
     }
 
     fn configure(&mut self, id: u16) -> io::Result<()> {

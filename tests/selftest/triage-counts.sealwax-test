@@ -1,0 +1,70 @@
+# Mark Folder as Read drops the counts at once (ML-052, ADR-015): the store writes the ops, their
+# overlay and the folder counts in one transaction with one change event, so by the time the
+# action's answer is in, the sidebar, All Inboxes and the list show the messages read; Undo puts
+# them back. Work has a key, so its ops wait for a server (no engine runs them here) and the
+# offline banner counts them; Personal is local, so its ops apply at once. Every message is
+# fictional.
+# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-counts.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+mail-account Personal
+triage-account Work work
+mail-add Work:inbox 10m "Kvartalsrapport" "from=Ingrid Solberg"
+mail-add Work:inbox 20m "Styremøte torsdag" "from=Marius Dahl"
+mail-add Work:inbox 30m "Kvittering" read "from=Leah Kim"
+mail-add Personal:inbox 15m "Hyttetur i oktober" "from=Ingrid Solberg"
+mail-add Personal:inbox 25m "Lunsj fredag" "from=Leah Kim"
+mail-add Personal:archive 35m "Gammel rapport" "from=Marius Dahl"
+mail-add Personal:archive 45m "Referat" "from=Leah Kim"
+assert-sidebar-count Work:inbox 2
+assert-sidebar-count Personal:inbox 2
+assert-sidebar-count all-inboxes 4
+
+# All Inboxes: every Inbox at once, one batch per folder, so the toast offers no Undo.
+folder all-inboxes
+assert-list-count 5
+assert-list-row 0 unread true
+action win.mark-folder-read
+assert-toast "Marked 4 messages in All Inboxes as read"
+assert-sidebar-count Work:inbox 0
+assert-sidebar-count Personal:inbox 0
+assert-sidebar-count all-inboxes 0
+assert-list-row 0 unread false
+assert-list-row 1 unread false
+assert-list-count 5
+assert-undoable false
+assert-action-enabled win.mark-folder-read false
+
+# One folder from the sidebar's menu; the toast's Undo brings its count back.
+folder archive Personal
+assert-sidebar-count Personal:archive 2
+sidebar-menu Personal:archive
+assert-sidebar-menu enabled
+sidebar-menu-click
+assert-toast "Marked 2 messages in Archive as read"
+assert-sidebar-count Personal:archive 0
+assert-undoable true
+toast-undo
+assert-toast Undone
+assert-sidebar-count Personal:archive 2
+
+# Offline, the banner counts the ops waiting for Work's server: its two messages marked read,
+# then an archive, which Undo takes back before it runs.
+desktop-network down
+wait-until assert-label banner-waiting "2 waiting"
+assert-text-contains banner-body "keeps your changes"
+folder inbox Work
+focus list
+list-select 0
+key e
+assert-toast "Archived 1 message"
+assert-sidebar-count Work:inbox 0
+wait-until assert-label banner-waiting "3 waiting"
+key z
+assert-toast Undone
+assert-list-count 3
+wait-until assert-label banner-waiting "2 waiting"
+desktop-network up
+wait-until assert-shown banner false

@@ -1,9 +1,10 @@
 # Previews for the M4 gate (ML-052 to ML-055): the reader's toolbar with the mail actions
 # active, a row's quick actions, the select mode with several messages selected and the batch
-# page, the Undo toast, Move to…, the sidebar's Mark Folder as Read menu, and a change the
-# server refused, in a dark and a light stock theme (matte-black with square corners,
-# catppuccin-latte rounded). On a scripted engine with phase A's backend; every name, address
-# and message is fictional. Not run by CI: it writes into tools/progress/public/.
+# page, the Undo toast, Move to…, the sidebar's Mark Folder as Read menu, a change the server
+# refused, and the offline banner counting the changes waiting, in a dark and a light stock theme
+# (matte-black with square corners, catppuccin-latte rounded). Through the store's op queue on a
+# scripted engine that runs no ops, so they wait; every name, address and message is fictional.
+# Not run by CI: it writes into tools/progress/public/.
 # Run: tools/headless.sh 24 target/debug/sealwax --self-test tests/selftest/preview-m4.sealwax-test
 
 desktop tiling
@@ -81,6 +82,14 @@ engine-reply ops-refused arbeid@example.test move 3
 assert-toast "The server didn't move 3 messages; they're back where they were"
 screenshot $DIR/../../tools/progress/public/m4-refused-matte-black-square-2026-10-06.png
 
+# Offline: the banner counts the changes waiting for the server.
+setup-dismiss-toasts
+desktop-network down
+wait-until assert-shown banner-waiting true
+screenshot $DIR/../../tools/progress/public/m4-offline-waiting-matte-black-square-2026-10-06.png
+desktop-network up
+wait-until assert-shown banner false
+
 # The same in a light theme with rounded corners.
 theme catppuccin-latte
 corners 8
@@ -115,3 +124,8 @@ sidebar-menu-click
 setup-dismiss-toasts
 engine-reply ops-refused arbeid@example.test flags 2
 screenshot $DIR/../../tools/progress/public/m4-refused-catppuccin-latte-rounded-2026-10-06.png
+setup-dismiss-toasts
+desktop-network down
+wait-until assert-shown banner-waiting true
+screenshot $DIR/../../tools/progress/public/m4-offline-waiting-catppuccin-latte-rounded-2026-10-06.png
+desktop-network up

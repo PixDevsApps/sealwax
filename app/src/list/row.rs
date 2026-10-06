@@ -522,11 +522,10 @@ impl MessageRow {
         })
     }
 
-    /// Ticks or unticks the checkbox, as a click on it does.
-    pub fn toggle_check(&self) {
-        if let Some(parts) = self.imp().parts.get() {
-            parts.check.activate();
-        }
+    /// The checkbox, while the row shows it (the self-test clicks it).
+    pub fn check_button(&self) -> Option<gtk::CheckButton> {
+        let parts = self.imp().parts.get()?;
+        parts.check.is_visible().then(|| parts.check.clone())
     }
 
     /// Whether the row shows its checkbox, and whether it is ticked.
