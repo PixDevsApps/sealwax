@@ -1,0 +1,197 @@
+# The mail actions (ML-052) on one message at a time, with real key presses through Broadway:
+# star, read and unread change the row in place without a toast; archive, delete, junk and move
+# take it out of the list, select the next message and show a toast with Undo; Not Junk in the
+# Junk folder, Archive insensitive in the Archive folder, deleting for good from the Trash, Mark
+# Folder as Read from the command and the sidebar's menu, and a change the server refused. The
+# account has a key, so every action wakes its op runner (OpsQueued) on the fake engine. Phase
+# A's backend takes moved messages out of the store, so their Undo says it can't bring them
+# back. Every message is fictional.
+# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-actions.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-mark-read-on-open false
+triage-account Work work
+mail-add Work:inbox 10m "Kvartalsrapport" "from=Ingrid Solberg"
+mail-add Work:inbox 20m "Styremøte torsdag" "from=Marius Dahl"
+mail-add Work:inbox 30m "Kvittering" read "from=Leah Kim"
+mail-add Work:inbox 40m "Hyttetur i oktober" "from=Ingrid Solberg"
+mail-add Work:inbox 50m "Nyhetsbrev" "from=Marius Dahl"
+mail-add Work:inbox 60m "Lunsj fredag" "from=Leah Kim"
+folder inbox Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+assert-list-count 6
+focus list
+list-select 0
+wait-until assert-reader-page message
+assert-action-enabled win.archive true
+assert-tooltip reader-archive "Archive (e, y)"
+assert-tooltip reader-junk "Move to Junk (!, Ctrl+J)"
+
+# Star and unstar, read and unread: in place, no toast, nothing to undo.
+key s
+assert-list-row 0 starred true
+engine-expect ops-queued
+assert-toasts 0
+assert-undoable false
+key s
+assert-list-row 0 starred false
+engine-expect ops-queued
+key <Shift>i
+assert-list-row 0 unread false
+engine-expect ops-queued
+assert-action-enabled win.mark-read false
+assert-tooltip reader-mark-unread "Mark as Unread (Shift+U)"
+key <Shift>u
+assert-list-row 0 unread true
+engine-expect ops-queued
+assert-action-enabled win.mark-unread false
+assert-tooltip reader-mark-unread "Mark as Unread (Shift+U) — already unread"
+assert-toasts 0
+
+# Archive with e: the row leaves, the next message is selected, the toast offers Undo.
+key e
+assert-list-count 5
+assert-list-selected 0
+assert-list-row 0 subject "Styremøte torsdag"
+assert-toast "Archived 1 message"
+assert-undoable true
+engine-expect ops-queued
+# y archives too.
+key y
+assert-list-count 4
+assert-list-row 0 subject Kvittering
+assert-toast "Archived 1 message"
+engine-expect ops-queued
+
+# Delete with # and with Delete: into the Trash.
+key numbersign
+assert-list-count 3
+assert-toast "Moved 1 message to the Trash"
+engine-expect ops-queued
+key Delete
+assert-list-count 2
+assert-list-row 0 subject Nyhetsbrev
+engine-expect ops-queued
+
+# Junk with !: the toast says where; phase A's Undo can't bring a moved message back.
+key exclam
+assert-list-count 1
+assert-toast "Moved 1 message to Junk"
+engine-expect ops-queued
+key z
+assert-toast "Can't bring back 1 message yet"
+assert-undoable false
+engine-expect ops-queued
+
+# The last message: after it leaves nothing is selected.
+key <Control>j
+assert-list-count 0
+assert-list-selection none
+assert-reader-page empty
+engine-expect ops-queued
+
+# Not Junk in the Junk folder: back to the Inbox.
+mail-add Work:junk 15m "Du har vunnet!" "from=Leah Kim"
+folder junk Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+assert-list-count 1
+focus list
+list-select 0
+assert-tooltip reader-junk "Not Junk (!, Ctrl+J)"
+assert-action-enabled win.junk true
+key exclam
+assert-toast "Moved 1 message to the Inbox as not junk"
+assert-list-count 0
+engine-expect ops-queued
+
+# The Archive folder: Archive doesn't apply, and says why.
+mail-add Work:archive 25m "Gammel rapport" "from=Marius Dahl"
+folder archive Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+focus list
+list-select 0
+assert-action-enabled win.archive false
+assert-tooltip reader-archive "Archive (e, y) — already archived"
+setup-dismiss-toasts
+key e
+assert-list-count 1
+assert-toasts 0
+engine-expect none
+
+# The Trash: Delete deletes for good.
+mail-add Work:trash 35m "Slettet utkast" "from=Ingrid Solberg"
+folder trash Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+focus list
+list-select 0
+key Delete
+assert-toast "Deleted 1 message for good"
+assert-list-count 0
+engine-expect ops-queued
+
+# Move to… with v: type to filter, Enter moves; Escape closes without moving.
+mail-add Work:inbox 5m "Prosjektplan" "from=Leah Kim"
+mail-add Work:inbox 6m "Budsjett" "from=Marius Dahl"
+folder inbox Work
+engine-expect folder-opened
+focus list
+list-select 0
+key v
+assert-move-to open true
+assert-move-to shown "Archive,Drafts,Sent,Junk,Trash"
+assert-focus move-to
+type dr
+assert-move-to selected Drafts
+key Escape
+assert-move-to open false
+assert-list-count 2
+key <Control><Shift>v
+assert-move-to open true
+type tra
+key Return
+assert-move-to open false
+assert-list-count 1
+assert-toast "Moved 1 message to Trash"
+engine-expect ops-queued
+
+# Mark Folder as Read: the command, then the sidebar's menu; Undo brings the unread back.
+mail-add Work:inbox 7m "Velkommen" "from=Ingrid Solberg"
+assert-sidebar-count Work:inbox 2
+assert-action-enabled win.mark-folder-read true
+action win.mark-folder-read
+assert-toast "Marked 2 messages in Inbox as read"
+assert-sidebar-count Work:inbox 0
+engine-expect ops-queued
+assert-action-enabled win.mark-folder-read false
+toast-undo
+assert-toast Undone
+assert-sidebar-count Work:inbox 2
+engine-expect ops-queued
+sidebar-menu Work:inbox
+assert-sidebar-menu enabled
+sidebar-menu-click
+assert-sidebar-menu closed
+assert-toast "Marked 2 messages in Inbox as read"
+assert-sidebar-count Work:inbox 0
+engine-expect ops-queued
+sidebar-menu Work:inbox
+assert-sidebar-menu disabled
+key Escape
+assert-sidebar-menu closed
+
+# The server refused a change for good: the toast says what didn't happen.
+engine-reply ops-refused work@example.test move 3
+assert-toast "The server didn't move 3 messages; they're back where they were"
+engine-reply ops-refused work@example.test flags 1
+assert-toast "The server didn't change 1 message; it's back as it was"
+assert-labelled

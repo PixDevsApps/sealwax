@@ -482,6 +482,17 @@ impl MessageModel {
             .map(|position| position as u32)
     }
 
+    /// How many of `ids` the model holds as loaded rows.
+    pub fn held(&self, ids: &HashSet<MessageId>) -> usize {
+        let state = self.imp().state.borrow();
+        state
+            .slots
+            .iter()
+            .flatten()
+            .filter(|item| item.id().is_some_and(|id| ids.contains(&id)))
+            .count()
+    }
+
     fn item_at(&self, position: u32) -> Option<MessageItem> {
         let (item, pages) = {
             let mut guard = self.imp().state.borrow_mut();

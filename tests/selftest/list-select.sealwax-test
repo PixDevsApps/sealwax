@@ -28,10 +28,11 @@ assert-list-selected 0
 assert-selection-reported 3
 assert-action-enabled win.open-message true
 
-# The other message commands wait for M4, a selection or not.
+# The mail commands apply where they can (M4): this account has only an Inbox, so there is
+# nowhere to archive to; star and select work on any message.
 assert-action-enabled win.archive false
-assert-action-enabled win.star false
-assert-action-enabled win.select false
+assert-action-enabled win.star true
+assert-action-enabled win.select true
 
 # The registry's commands do the same (the reader's j and k use them).
 action win.next-message

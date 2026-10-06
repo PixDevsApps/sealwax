@@ -18,6 +18,7 @@ mod screenshot;
 mod script;
 mod setup;
 mod theme;
+mod triage;
 
 use crate::application::{APP_ID_ENV, AppConfig, AppState, SealwaxApplication};
 use crate::config::APP_ID;
@@ -399,6 +400,7 @@ impl Harness {
             command if reader::handles(command) => reader::step(self, command, args).await,
             command if bodies::handles(command) => bodies::step(self, command, args).await,
             command if setup::handles(command) => setup::step(self, command, args).await,
+            command if triage::handles(command) => triage::step(self, command, args).await,
             command => self.check(command, args).await,
         }
     }
@@ -469,6 +471,16 @@ impl Harness {
     /// Lets GTK lay out and paint what the last step changed, so the next one sees it: steps
     /// that don't wait would otherwise run back to back without the main loop turning.
     async fn settle(&self) {
+        // A mail action's store request answers on the main loop.
+        let started = Instant::now();
+        while self
+            .state
+            .triage()
+            .is_some_and(|triage| triage.in_flight() > 0)
+            && started.elapsed() < WAIT_TIMEOUT
+        {
+            glib::timeout_future(Duration::from_millis(5)).await;
+        }
         self.wait_until_settled().await;
         if self
             .state
@@ -691,6 +703,7 @@ impl Harness {
             "assert-reader" => reader::check(self, args).await,
             assertion if bodies::handles(assertion) => bodies::step(self, assertion, args).await,
             assertion if setup::checks(assertion) => setup::check(self, assertion, args),
+            assertion if triage::handles(assertion) => triage::step(self, assertion, args).await,
             other => Err(format!("unknown command {other}")),
         }
     }

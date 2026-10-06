@@ -18,6 +18,7 @@
 //! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `AccountStatus` for the store's account with ADDRESS: the failure's state, or `Synced` |
 //! | `engine-reply status ADDRESS STATE` | `AccountStatus` for that account: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`, `quota` (ML-048) |
 //! | `engine-reply keyring-unavailable` | `KeyringUnavailable` |
+//! | `engine-reply ops-refused ADDRESS flags\|move\|expunge\|folder-read N` | `OpsRefused` for that account: the server refused N messages' change for good (ML-051) |
 //! | `engine-reply password-updated ok`, `engine-reply password-updated [imap\|smtp] FAILURE` | `PasswordUpdated` for the last command (IMAP when no protocol is named) |
 //! | `desktop-network up\|down`, `desktop-resume` | What the network monitor and logind would report, through the app's own handler |
 //! | `engine-reply body-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `BodyFetched` for the first message of the last `fetch-bodies` taken (its fields: `messages`, `count`); storing the body is `bodies-store`'s (`bodies.rs`) |
@@ -55,7 +56,7 @@ use sealwax_domain::account::{
 };
 use sealwax_domain::model::{FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
-    AccountError, BodyError, Command, Event, Password, RequestId, SyncStatus,
+    AccountError, BodyError, Command, Event, Password, Refused, RequestId, SyncStatus,
 };
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
@@ -70,7 +71,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("engine-detach", 0, 0),
     ("engine-start", 1, 1),
     ("engine-expect", 1, 12),
-    ("engine-reply", 1, 3),
+    ("engine-reply", 1, 4),
     ("engine-reply-stale", 2, 3),
     ("setup-type", 2, 2),
     ("setup-choose", 2, 2),
@@ -864,6 +865,23 @@ fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, Strin
             status: sync_status(state)?,
         }),
         ("keyring-unavailable", []) => Some(Event::KeyringUnavailable),
+        ("ops-refused", [address, change, messages]) => Some(Event::OpsRefused {
+            account: account(address)?,
+            change: match change.as_str() {
+                "flags" => Refused::Flags,
+                "move" => Refused::Move,
+                "expunge" => Refused::Expunge,
+                "folder-read" => Refused::FolderRead,
+                other => {
+                    return Err(format!(
+                        "use flags, move, expunge or folder-read, not {other}"
+                    ));
+                }
+            },
+            messages: messages
+                .parse()
+                .map_err(|_| format!("expected a count, got {messages}"))?,
+        }),
         _ => None,
     })
 }

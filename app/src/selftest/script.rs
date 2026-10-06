@@ -108,6 +108,7 @@ fn arity(command: &str) -> Option<(usize, usize)> {
         .chain(super::perf::COMMANDS)
         .chain(super::reader::COMMANDS)
         .chain(super::setup::COMMANDS)
+        .chain(super::triage::COMMANDS)
         .find(|(name, _, _)| *name == command)
         .map(|&(_, min, max)| (min, max))
 }

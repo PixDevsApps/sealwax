@@ -20,7 +20,7 @@ mod view;
 mod widgets;
 
 pub use engine::{CONTENT_SECURITY_POLICY, CidRequest, MAX_LIVE_VIEWS, NETWORK_FEATURES};
-pub use toolbar::Position;
+pub use toolbar::{Position, tooltip};
 pub use view::{Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
 
 use crate::actions::{self, ScopedShortcuts};
@@ -32,7 +32,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use page::PageWidgets;
 use prepare::{Body, Prepared};
-use sealwax_domain::actions::Scope;
+use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{Account, MessageDetail, MessageId};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
@@ -395,6 +395,11 @@ impl Reader {
     /// "n of N" in the toolbar, or nothing; previous and next follow it.
     pub fn set_position(&self, position: Option<Position>) {
         self.inner.toolbar.set_position(position);
+    }
+
+    /// A toolbar command's title for the selected messages and why it doesn't apply (M4).
+    pub fn set_command(&self, id: ActionId, title: &str, reason: Option<&str>) {
+        self.inner.toolbar.set_command(id, title, reason);
     }
 
     pub fn connect_previous(&self, callback: impl Fn() + 'static) {

@@ -11,17 +11,21 @@ use crate::config;
 use crate::desktop::{self, DesktopEvent, DesktopWatch};
 use crate::engine::{self, EngineOptions};
 use crate::engine_link::{EngineLink, Subscription};
-use crate::list::MessageList;
+use crate::list::{MessageList, Quick, Selected};
 use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
+use crate::move_to;
 use crate::oauth;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
-use crate::reader::{MessageSource, Position, Reader};
+use crate::reader::{self, MessageSource, Position, Reader, Shown, ShownBody};
 use crate::setup::{self, Again, remove::Removable};
 use crate::shortcuts;
 use crate::status::{self, Waiting};
 use crate::theme::{self, ThemeController};
+use crate::triage::{
+    self, Controller, Directory, MARK_READ_ON_OPEN, Notice, Origin, StoreBackend, Target,
+};
 use crate::window::{self, Attention, BannerAction, Pane, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
@@ -31,10 +35,11 @@ use sealwax_domain::account::AccountKey;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
-use sealwax_domain::model::MessageId;
+use sealwax_domain::model::{FolderId, FolderRole, MessageId};
+use sealwax_domain::triage::Triage;
 use sealwax_engine::api::{Command, Event};
 use sealwax_engine::service::Engine;
-use sealwax_infrastructure::store::ViewScope;
+use sealwax_infrastructure::store::{ViewFilter, ViewScope};
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::future::Future;
@@ -201,6 +206,12 @@ impl SealwaxApplication {
             keyring_dismissed: Cell::new(false),
             network: Cell::new(true),
             desktop: RefCell::new(None),
+            triage: RefCell::new(None),
+            toast: RefCell::new(None),
+            mark_read_on_open: Cell::new(MARK_READ_ON_OPEN),
+            read_on_leave: Cell::new(None),
+            read_when_shown: Cell::new(None),
+            triage_started: Cell::new(None),
         });
         let mailbox = state.mailbox.clone();
         let dirs = state.config.dirs.clone();
@@ -269,6 +280,20 @@ pub struct AppState {
     network: Cell<bool>,
     /// logind and the network monitor, watched once this application's engine starts.
     desktop: RefCell<Option<Rc<DesktopWatch>>>,
+    /// The mail actions (ML-052 to ML-055), once there is a window.
+    triage: RefCell<Option<Controller>>,
+    /// The toast of the last action, which a new one replaces.
+    toast: RefCell<Option<adw::Toast>>,
+    /// Whether a message the reader shows is marked read ([`MARK_READ_ON_OPEN`]; the self-test
+    /// turns it off and on).
+    mark_read_on_open: Cell<bool>,
+    /// A message shown in the Unread view, marked read once the selection leaves it.
+    read_on_leave: Cell<Option<Target>>,
+    /// A message the reader showed while it was hidden (one pane at a time), marked read when
+    /// the reader is shown.
+    read_when_shown: Cell<Option<MessageId>>,
+    /// When the last mail command's handler ran, and the window's frame then (measurements).
+    triage_started: Cell<Option<(Instant, i64)>>,
 }
 
 impl AppState {
@@ -610,6 +635,17 @@ impl AppState {
             {
                 list.older_loaded(*folder, *fetched, *complete);
             }
+            if let Event::OpsRefused {
+                account,
+                change,
+                messages,
+            } = event
+                && let Some(triage) = state.triage()
+            {
+                tracing::info!(account = account.0, messages, "the server refused changes");
+                let notice = triage.refused(*account, *change, *messages);
+                state.show_notice(&notice, false);
+            }
         });
         self.engine_events.replace(Some(subscription));
         if let Some(options) = self.config.engine.clone() {
@@ -815,10 +851,12 @@ impl AppState {
             }
             if let Some(list) = self.list() {
                 list.update_keys(&keymap);
+                list.set_quick_tooltips(quick_tooltips(&keymap));
             }
             if let Some(reader) = self.reader() {
                 reader.update_keys(&keymap);
             }
+            self.refresh_commands();
         }
         if update.accounts_changed {
             self.accounts_read.set(true);
@@ -841,9 +879,16 @@ impl AppState {
         let keymap = prefs.keymap();
         let win_actions = actions::install_window_actions(window.window());
         let target = window.window().downgrade();
+        let weak = Rc::downgrade(self);
         win_actions.connect(ActionId::CommandPalette, move || {
-            if let Some(window) = target.upgrade() {
-                palette::present(&window, &prefs.keymap());
+            if let (Some(window), Some(state)) = (target.upgrade(), weak.upgrade()) {
+                let titles = state.command_titles();
+                palette::present_titled(&window, &prefs.keymap(), &move |id| {
+                    titles
+                        .iter()
+                        .find(|(candidate, _)| *candidate == id)
+                        .map(|(_, title)| title.clone())
+                });
             }
         });
         let weak = Rc::downgrade(self);
@@ -885,8 +930,10 @@ impl AppState {
         let list = MessageList::new(self.mailbox.clone());
         list.set_first_rows(self.first_rows.clone());
         list.install_keys(keymap);
+        list.set_quick_tooltips(quick_tooltips(keymap));
         window.set_list(list.widget());
         GtkWindowExt::set_focus(window.window(), Some(list.list_view()));
+        self.install_triage(window, &list, win_actions);
 
         let target = list.clone();
         win_actions.connect(ActionId::NextMessage, move || target.select_next());
@@ -899,15 +946,39 @@ impl AppState {
         let pane = window.clone();
         list.connect_message_opened(move |_| pane.show_pane(Pane::Reader));
         let weak = Rc::downgrade(self);
-        list.connect_message_selected(move |_| {
+        list.connect_message_selected(move |id| {
             if let Some(state) = weak.upgrade() {
+                state.leave_opened(Some(id));
                 state.set_has_selection(true);
+                state.refresh_commands();
             }
         });
         let weak = Rc::downgrade(self);
+        let shown = window.clone();
         list.connect_selection_cleared(move || {
             if let Some(state) = weak.upgrade() {
+                state.leave_opened(None);
                 state.set_has_selection(false);
+                if shown.reader_page() == "batch" {
+                    shown.clear_reader();
+                }
+                state.refresh_commands();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        let shown = window.clone();
+        list.connect_batch_selected(move |count| {
+            if let Some(state) = weak.upgrade() {
+                state.leave_opened(None);
+                if state.reader_shows.take().is_some()
+                    && let Some(reader) = state.reader()
+                {
+                    reader.clear();
+                    reader.set_position(None);
+                }
+                shown.show_batch(count);
+                state.set_has_selection(true);
+                state.refresh_commands();
             }
         });
         let heading = window.clone();
@@ -959,6 +1030,392 @@ impl AppState {
             }
         });
         self.list.replace(Some(list));
+    }
+
+    /// The mail actions (ML-052 to ML-055): the registry's commands on the list's selection,
+    /// the rows' quick actions and the sidebar's Mark Folder as Read, through a
+    /// [`triage::Controller`] over phase A's [`StoreBackend`]; toasts for its notices.
+    fn install_triage(self: &Rc<Self>, window: &Window, list: &MessageList, actions: &ActionSet) {
+        let directory: Rc<dyn Directory> = self.mailbox.clone();
+        let controller = Controller::new(
+            Rc::new(StoreBackend::new(self.mailbox.clone())),
+            directory,
+            self.engine.clone(),
+        );
+        let weak = Rc::downgrade(self);
+        controller.connect_notice(move |notice| {
+            if let Some(state) = weak.upgrade() {
+                state.show_notice(notice, true);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        controller.connect_changed(move || {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_commands();
+            }
+        });
+        for id in triage::COMMANDS {
+            let weak = Rc::downgrade(self);
+            actions.connect(id, move || {
+                if let Some(state) = weak.upgrade() {
+                    state.triage_command(id);
+                }
+            });
+        }
+        let weak = Rc::downgrade(self);
+        actions.connect(ActionId::MarkFolderRead, move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(list) = state.list()
+                && list.query().is_empty()
+            {
+                state.mark_read(list.scope());
+            }
+        });
+        let target = list.clone();
+        actions.connect(ActionId::Select, move || target.toggle_selection());
+        let weak = Rc::downgrade(self);
+        actions.connect(ActionId::Undo, move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(triage) = state.triage()
+            {
+                triage.undo(None);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        list.connect_quick_action(move |id, target| {
+            if let Some(state) = weak.upgrade() {
+                state.mark_started();
+                state.triage_targets(id, vec![target]);
+            }
+        });
+        let (applies, activate) = (Rc::downgrade(self), Rc::downgrade(self));
+        window.sidebar().connect_mark_read(
+            move |key| {
+                applies.upgrade().is_some_and(|state| {
+                    let scope = state.mailbox.scope_for_key(key);
+                    state.unread_in(scope) > 0
+                })
+            },
+            move |key| {
+                if let Some(state) = activate.upgrade() {
+                    let scope = state.mailbox.scope_for_key(key);
+                    state.mark_read(scope);
+                }
+            },
+        );
+        let weak = Rc::downgrade(self);
+        self.mailbox.connect_event(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_commands();
+            }
+        });
+        self.triage.replace(Some(controller));
+    }
+
+    /// The mail actions, once there is a window.
+    pub fn triage(&self) -> Option<Controller> {
+        self.triage.borrow().clone()
+    }
+
+    /// Whether a message shown in the reader is marked read; the self-test switches it.
+    pub fn set_mark_read_on_open(&self, on: bool) {
+        self.mark_read_on_open.set(on);
+    }
+
+    /// When the last mail command's handler ran, and the window's frame counter then.
+    pub fn triage_started(&self) -> Option<(Instant, i64)> {
+        self.triage_started.get()
+    }
+
+    fn mark_started(&self) {
+        let frame = self
+            .window()
+            .and_then(|window| window.window().frame_clock())
+            .map_or(0, |clock| clock.frame_counter());
+        self.triage_started.set(Some((Instant::now(), frame)));
+    }
+
+    /// A triage command on the selected messages; selected rows far down a range load first.
+    fn triage_command(self: &Rc<Self>, id: ActionId) {
+        self.mark_started();
+        let Some(list) = self.list() else {
+            return;
+        };
+        if id == ActionId::MoveTo {
+            self.open_move_to(&list);
+            return;
+        }
+        match list.selected_targets() {
+            Ok(targets) => self.triage_targets(id, targets),
+            Err(_) => {
+                let weak = Rc::downgrade(self);
+                glib::spawn_future_local(async move {
+                    if let Some(targets) = list.wait_targets().await
+                        && let Some(state) = weak.upgrade()
+                    {
+                        state.triage_targets(id, targets);
+                    }
+                });
+            }
+        }
+    }
+
+    fn triage_targets(&self, id: ActionId, targets: Vec<Target>) {
+        let (Some(triage), Some(list)) = (self.triage(), self.list()) else {
+            return;
+        };
+        let action = match id {
+            ActionId::Archive => Triage::Archive,
+            ActionId::Delete => Triage::Delete,
+            ActionId::Junk => Triage::Junk,
+            ActionId::Star => triage::star_action(&targets),
+            ActionId::MarkRead => Triage::Read(true),
+            ActionId::MarkUnread => Triage::Read(false),
+            _ => return,
+        };
+        if matches!(action, Triage::Read(_))
+            && let Some(pending) = self.read_on_leave.get()
+            && targets.iter().any(|target| target.id == pending.id)
+        {
+            self.read_on_leave.set(None);
+        }
+        let ids: Vec<MessageId> = targets.iter().map(|target| target.id).collect();
+        list.advance_after(&ids);
+        triage.queue(action, targets, Origin::User);
+    }
+
+    /// Move to…: the picker over the account's folders; insensitive across accounts.
+    fn open_move_to(self: &Rc<Self>, list: &MessageList) {
+        let (Some(window), Ok(targets)) = (self.window(), list.selected_targets()) else {
+            return;
+        };
+        let folders = self.mailbox.folders();
+        let Ok(choices) = triage::move_choices(&targets, &folders) else {
+            return;
+        };
+        if choices.is_empty() {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let count = targets.len() as u32;
+        move_to::present(window.window(), &choices, count, move |folder| {
+            if let Some(state) = weak.upgrade() {
+                state.move_targets(folder, targets.clone());
+            }
+        });
+    }
+
+    fn move_targets(&self, folder: FolderId, targets: Vec<Target>) {
+        let (Some(triage), Some(list)) = (self.triage(), self.list()) else {
+            return;
+        };
+        self.mark_started();
+        let ids: Vec<MessageId> = targets.iter().map(|target| target.id).collect();
+        list.advance_after(&ids);
+        triage.queue(Triage::MoveTo(folder), targets, Origin::User);
+    }
+
+    /// The folders Mark Folder as Read marks for what the list shows, and its name: a folder,
+    /// or every account's Inbox for All Inboxes.
+    fn read_folders(&self, scope: Option<ViewScope>) -> (Vec<FolderId>, String) {
+        let folders = self.mailbox.folders();
+        match scope {
+            Some(ViewScope::Folder(id)) => (
+                vec![id],
+                folders
+                    .iter()
+                    .find(|folder| folder.id == id)
+                    .map(triage::folder_title)
+                    .unwrap_or_default(),
+            ),
+            Some(ViewScope::UnifiedInbox) => (
+                folders
+                    .iter()
+                    .filter(|folder| folder.role == FolderRole::Inbox)
+                    .map(|folder| folder.id)
+                    .collect(),
+                "All Inboxes".to_owned(),
+            ),
+            None => (Vec::new(), String::new()),
+        }
+    }
+
+    /// Unread messages the sidebar counts for what `scope` shows.
+    fn unread_in(&self, scope: Option<ViewScope>) -> u32 {
+        let (ids, _) = self.read_folders(scope);
+        self.mailbox
+            .folders()
+            .iter()
+            .filter(|folder| ids.contains(&folder.id))
+            .map(|folder| folder.unread)
+            .sum()
+    }
+
+    fn mark_read(&self, scope: Option<ViewScope>) {
+        let Some(triage) = self.triage() else {
+            return;
+        };
+        let (folders, name) = self.read_folders(scope);
+        if !folders.is_empty() {
+            self.mark_started();
+            triage.mark_folders_read(folders, name);
+        }
+    }
+
+    /// Commands' titles where they differ from the registry's, for the palette.
+    fn command_titles(&self) -> Vec<(ActionId, String)> {
+        let Some(list) = self.list() else {
+            return Vec::new();
+        };
+        let targets = loaded_targets(&list);
+        let folders = self.mailbox.folders();
+        triage::COMMANDS
+            .into_iter()
+            .map(|id| (id, triage::availability(id, &targets, &folders).title))
+            .filter(|(id, title)| *title != id.title())
+            .map(|(id, title)| (id, title.to_owned()))
+            .collect()
+    }
+
+    /// Enables the mail commands where they apply to the selection, with their titles and
+    /// reasons in the reader's toolbar and on the batch page (ML-052).
+    fn refresh_commands(&self) {
+        let (Some(list), Some(window)) = (self.list(), self.window()) else {
+            return;
+        };
+        let actions = self.win_actions.borrow();
+        let Some(actions) = actions.as_ref() else {
+            return;
+        };
+        let keymap = self
+            .preferences()
+            .map(|prefs| prefs.keymap())
+            .unwrap_or_default();
+        let targets = loaded_targets(&list);
+        let folders = self.mailbox.folders();
+        let reader = self.reader();
+        for id in triage::COMMANDS {
+            let availability = triage::availability(id, &targets, &folders);
+            actions.set_applies(id, availability.enabled());
+            if let Some(reader) = &reader {
+                reader.set_command(id, availability.title, availability.reason);
+            }
+            window.batch_page().set_command(
+                id,
+                availability.title,
+                &reader::tooltip(&keymap, id, availability.title, availability.reason),
+            );
+        }
+        actions.set_applies(
+            ActionId::OpenMessage,
+            matches!(list.reported(), Selected::One(_)),
+        );
+        actions.set_applies(ActionId::Select, list.model().total() > 0);
+        actions.set_applies(
+            ActionId::MarkFolderRead,
+            list.query().is_empty() && self.unread_in(list.scope()) > 0,
+        );
+        let undo = self.triage().is_some_and(|triage| triage.can_undo());
+        actions.set_applies(ActionId::Undo, undo);
+    }
+
+    /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place
+    /// (ADR-015: only the last action is undoable from the toast).
+    fn show_notice(self: &Rc<Self>, notice: &Notice, replaces: bool) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        if replaces && let Some(previous) = self.toast.take() {
+            previous.dismiss();
+        }
+        let toast = adw::Toast::builder()
+            .title(notice.text.as_str())
+            .use_markup(false)
+            .timeout(notice.shown.as_secs().max(1) as u32)
+            .priority(adw::ToastPriority::High)
+            .build();
+        if let Some(batch) = notice.undo {
+            toast.set_button_label(Some("Undo"));
+            let weak = Rc::downgrade(self);
+            toast.connect_button_clicked(move |_| {
+                if let Some(state) = weak.upgrade()
+                    && let Some(triage) = state.triage()
+                {
+                    triage.undo(Some(batch));
+                }
+            });
+        }
+        window.add_toast(toast.clone());
+        if replaces {
+            self.toast.replace(Some(toast));
+        }
+    }
+
+    /// The reader showed a message's body: it is read now, or in the Unread view once the
+    /// selection leaves it, or when a hidden reader is shown ([`MARK_READ_ON_OPEN`]).
+    fn message_shown(&self, shown: &Shown) {
+        if !self.mark_read_on_open.get()
+            || self.reader_shows.get() != Some(shown.id)
+            || !matches!(
+                shown.body,
+                ShownBody::Html { .. }
+                    | ShownBody::Plain
+                    | ShownBody::TextFallback
+                    | ShownBody::Empty
+            )
+        {
+            return;
+        }
+        let visible = self
+            .reader()
+            .is_some_and(|reader| reader.widget().is_mapped());
+        if visible {
+            self.read_opened(shown.id);
+        } else {
+            self.read_when_shown.set(Some(shown.id));
+        }
+    }
+
+    /// The reader came on screen (one pane at a time): the message it shows is read now.
+    fn reader_mapped(&self) {
+        if let Some(id) = self.read_when_shown.take()
+            && self.reader_shows.get() == Some(id)
+        {
+            self.read_opened(id);
+        }
+    }
+
+    fn read_opened(&self, id: MessageId) {
+        let (Some(list), Some(triage)) = (self.list(), self.triage()) else {
+            return;
+        };
+        let Some(target) = list
+            .position(id)
+            .and_then(|(position, _)| list.target_at(position - 1))
+            .filter(|target| target.id == id && !target.flags.is_seen())
+        else {
+            return;
+        };
+        if list.filter() == ViewFilter::Unread {
+            self.read_on_leave.set(Some(target));
+        } else {
+            triage.queue(Triage::Read(true), vec![target], Origin::Opened);
+        }
+    }
+
+    /// The selection left the message shown in the Unread view: it is read now.
+    fn leave_opened(&self, now: Option<MessageId>) {
+        self.read_when_shown.set(None);
+        let Some(target) = self.read_on_leave.get() else {
+            return;
+        };
+        if now == Some(target.id) {
+            return;
+        }
+        self.read_on_leave.set(None);
+        if let Some(triage) = self.triage() {
+            triage.queue(Triage::Read(true), vec![target], Origin::Opened);
+        }
     }
 
     /// Starts the engine on the open store and attaches it to the app's link. Once
@@ -1130,6 +1587,18 @@ impl AppState {
         let next = list.clone();
         reader.connect_next(move || next.select_next());
         let weak = Rc::downgrade(self);
+        reader.connect_shown(move |shown| {
+            if let Some(state) = weak.upgrade() {
+                state.message_shown(shown);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        reader.widget().connect_map(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.reader_mapped();
+            }
+        });
+        let weak = Rc::downgrade(self);
         self.mailbox.connect_event(move |event| {
             if let Some(state) = weak.upgrade() {
                 state.update_position();
@@ -1139,6 +1608,7 @@ impl AppState {
             }
         });
         self.reader.replace(Some(reader));
+        self.refresh_commands();
     }
 
     /// "n of N" for the message the reader shows; new mail above it moves it.
@@ -1256,6 +1726,25 @@ impl AppState {
             hook(window.clone());
         }
     }
+}
+
+/// The rows' quick actions' tooltips, with their keys.
+fn quick_tooltips(keymap: &Keymap) -> Vec<(Quick, String)> {
+    Quick::ALL
+        .into_iter()
+        .map(|quick| {
+            let id = quick.action();
+            (quick, reader::tooltip(keymap, id, id.title(), None))
+        })
+        .collect()
+}
+
+/// The selected messages whose rows are loaded.
+fn loaded_targets(list: &MessageList) -> Vec<Target> {
+    list.selected_positions()
+        .into_iter()
+        .filter_map(|position| list.target_at(position))
+        .collect()
 }
 
 /// Resolves once both futures have, polling them together.
