@@ -26,11 +26,12 @@ pub struct Options {
 }
 
 /// The shapes measured: a name, the query, and whether it runs in the INBOX only.
-const SHAPES: [(&str, &str, bool); 32] = [
+const SHAPES: [(&str, &str, bool); 35] = [
     ("common Norwegian word", "møte", false),
     ("very common English word", "the", false),
     ("rare word with æøå", "blåbærsyltetøy", false),
     ("the same typed without æøå", "blabaersyltetoy", false),
+    ("a word in 60 subjects", "subject:quokka", false),
     ("no match", "zzqxv", false),
     ("two words", "budsjett kontrakt", false),
     ("phrase", "\"project update\"", false),
@@ -62,7 +63,9 @@ const SHAPES: [(&str, &str, bool); 32] = [
         false,
     ),
     ("an excluded word", "faktura -purring", false),
+    ("an excluded word and a flag", "is:starred -faktura", false),
     ("Chinese word (bigrams)", "会议", false),
+    ("a word in 60 subjects", "subject:quokka", true),
     ("common Norwegian word", "møte", true),
     ("very common English word", "the", true),
     ("no match", "zzqxv", true),
