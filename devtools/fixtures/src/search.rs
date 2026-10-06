@@ -483,7 +483,7 @@ fn date_keyed(bench: &crate::bench::Options, blobs: &BlobStore) -> Result<()> {
     println!("| shape | query | rows | cold p50 / p95 / max ms | warm p50 / p95 / max ms |");
     println!("| --- | --- | --- | --- | --- |");
     for (name, query, inbox_only) in SHAPES {
-        let expression = Expression::of(&search::parse(query));
+        let expression = Expression::of(&search::parse_typed(query));
         let Some(matching) = expression.matching.filter(|_| !inbox_only) else {
             continue;
         };
