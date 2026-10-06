@@ -1258,7 +1258,7 @@ mod conversation_tests {
                     Some(parent) => {
                         assert_eq!(
                             parsed.headers.in_reply_to,
-                            [parent.clone()],
+                            std::slice::from_ref(parent),
                             "{}",
                             threaded.name
                         );
