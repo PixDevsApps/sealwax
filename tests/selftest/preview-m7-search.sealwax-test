@@ -1,0 +1,109 @@
+# Previews for the M7 gate, search in the message list (ML-082): the search field's suggestions
+# (every operator, listed with Down; people after from:), results for an operator query, a
+# search from the Inbox widened to all folders, and Rebuild Search Index's toast, in a dark and a
+# light stock theme (matte-black with square corners, catppuccin-latte rounded). Every name,
+# address and message is fictional.
+# The operator query's results need the search engine's parser (m7-search): run this again after
+# the merge for m7-search-operator-results-*.png.
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/preview-m7-search.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+list-clock 2026-10-06T15:00:00
+triage-mark-read-on-open false
+mail-account Arbeid
+mail-account Personlig
+mail-add Arbeid:inbox 4m "Kvartalsrapport for tredje kvartal" "from=Ingrid Solberg" "text=Her er utkastet til kvartalsrapporten. Si ifra om tallene for september ser riktige ut før fredag." attachment
+mail-add Arbeid:inbox 12m "Styremøte torsdag kl. 14" "from=Marius Dahl" "text=Agendaen ligger i delt mappe. Vi starter med budsjettet og tar ansettelsene til slutt."
+mail-add Arbeid:inbox 35m "Re: Kontorflytting i november" "from=Leah Kim" "text=Flyttebyrået kommer den 14. Pakk ned skrivebordet innen torsdag kveld, takk!" starred
+mail-add Arbeid:inbox 1h "Lunsj fredag?" "from=Nora Berg" "text=Skal vi prøve den nye restauranten ved fjorden? Jeg kan bestille bord til fire." read
+mail-add Arbeid:inbox 2h "Ny versjon av designskissene" "from=Ingrid Solberg" "text=Jeg har oppdatert skissene etter tilbakemeldingene. Se særlig på navigasjonen." attachment
+mail-add Arbeid:inbox 3h "Påminnelse: reiseregning" "from=Økonomi" "text=Husk å levere reiseregningen for september innen mandag." read
+mail-add Arbeid:inbox 4h "Tilbud på konferanselokale" "from=Inger Haugen" "text=Lokalet er ledig 12. november. Prisen inkluderer lunsj og kaffe."
+mail-add Arbeid:inbox 5h "Kundemøte med Fjordpost" "from=Marius Dahl" "text=Kunden ønsker en demo av den nye løsningen neste uke. Hvem kan ta den?"
+mail-add Arbeid:inbox 1d "Budsjettet for 2027" "from=Ingrid Solberg" "text=Vedlagt er budsjettet for neste år, med kommentarer fra styremøtet." attachment read
+mail-add Arbeid:archive 9d "Budsjettet for 2026" "from=Ingrid Solberg" "text=Endelig versjon av budsjettet, godkjent i styremøtet." attachment read
+mail-add Arbeid:archive 20d "Innspill til budsjettet" "from=Marius Dahl" "text=Her er avdelingens innspill til budsjettet for neste år." read
+mail-add Personlig:inbox 2h "Budsjettet for hytteturen" "from=Ingvild Ruud" "text=Jeg har satt opp budsjettet for hytteturen. Si ifra om noe mangler." read
+mail-add Personlig:inbox 1d "Middag lørdag" "from=Ingrid Lunde" "text=Kommer dere på middag lørdag? Vi lager fiskesuppe."
+folder inbox Arbeid
+list-wait
+focus list
+
+# Every operator, listed with Down in the empty field.
+focus search
+key Down
+wait-until assert-suggestions 7
+wait-until assert-contrast list-search-suggestions 4.5
+screenshot $DIR/../../tools/progress/public/m7-search-operators-matte-black-square-2026-10-06.png
+key Escape
+
+# People after from:, the second one chosen.
+type from:in
+wait-until assert-suggestions 2
+key Down
+key Down
+search-wait
+wait-until assert-contrast list-search-suggestions 4.5
+screenshot $DIR/../../tools/progress/public/m7-search-people-matte-black-square-2026-10-06.png
+key Escape
+key Escape
+
+# An operator query's results: Ingrid's messages with attachments.
+search "from:ingrid has:attachment"
+screenshot $DIR/../../tools/progress/public/m7-search-operator-results-matte-black-square-2026-10-06.png
+search-escape
+
+# A word from the Inbox, widened to all folders of every account.
+search budsjettet
+click search-scope-all
+assert-search-scope all
+focus list
+screenshot $DIR/../../tools/progress/public/m7-search-all-folders-matte-black-square-2026-10-06.png
+search-escape
+
+# Rebuild Search Index while it runs.
+search-rebuild-hold
+action app.rebuild-search-index
+wait-until assert-toast "Rebuilding the search index…"
+screenshot $DIR/../../tools/progress/public/m7-search-rebuild-matte-black-square-2026-10-06.png
+search-rebuild-release
+wait-until assert-search-rebuilding false
+
+# The same in a light theme with rounded corners.
+theme catppuccin-latte
+corners 8
+focus list
+focus search
+key Down
+wait-until assert-suggestions 7
+wait-until assert-contrast list-search-suggestions 4.5
+screenshot $DIR/../../tools/progress/public/m7-search-operators-catppuccin-latte-rounded-2026-10-06.png
+key Escape
+type from:in
+wait-until assert-suggestions 2
+key Down
+key Down
+search-wait
+wait-until assert-contrast list-search-suggestions 4.5
+screenshot $DIR/../../tools/progress/public/m7-search-people-catppuccin-latte-rounded-2026-10-06.png
+key Escape
+key Escape
+search "from:ingrid has:attachment"
+screenshot $DIR/../../tools/progress/public/m7-search-operator-results-catppuccin-latte-rounded-2026-10-06.png
+search-escape
+search budsjettet
+click search-scope-all
+assert-search-scope all
+focus list
+screenshot $DIR/../../tools/progress/public/m7-search-all-folders-catppuccin-latte-rounded-2026-10-06.png
+search-escape
+search-rebuild-hold
+action app.rebuild-search-index
+wait-until assert-toast "Rebuilding the search index…"
+screenshot $DIR/../../tools/progress/public/m7-search-rebuild-catppuccin-latte-rounded-2026-10-06.png
+search-rebuild-release
+wait-until assert-search-rebuilding false

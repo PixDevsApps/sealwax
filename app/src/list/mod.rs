@@ -13,11 +13,16 @@
 //!   toggles a row, Shift+click and Shift with the arrows or `j`/`k` extend, and Select (`x`,
 //!   Space) enters a select mode whose rows show checkboxes, where `j`/`k` and the arrows move a
 //!   cursor and Escape leaves.
+//! - Search (ML-082): results follow the field as it is typed ([`SEARCH_DELAY`]); the
+//!   field suggests operators, values, days and people ([`suggestions`]). In a folder a search
+//!   covers that folder, with a scope row to search every folder instead; in the unified inbox
+//!   it covers every folder.
 
 pub mod item;
 pub mod model;
 pub mod row;
 pub mod sections;
+pub mod suggestions;
 
 pub use model::{Change, Content, FIRST_ROWS, GROW_STEP, MessageModel, ModelStats, SEARCH_PAGE};
 
@@ -33,7 +38,8 @@ pub use row::Quick;
 use row::{MessageRow, RowContext, SectionHeader};
 use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
-use sealwax_domain::model::{FolderId, MessageId};
+use sealwax_domain::model::{AccountId, FolderId, MessageId};
+use sealwax_domain::search::Date;
 use sealwax_infrastructure::store::{ChangeEvent, ViewFilter, ViewScope, ViewSpec};
 use sections::{Thresholds, until_next_day};
 use std::cell::{Cell, RefCell};
@@ -41,6 +47,7 @@ use std::collections::HashSet;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use suggestions::Suggestions;
 
 /// Faster than this (px/s), rows skip their text (S3: a scrollbar drag through 100k rows then
 /// holds 144 Hz).
@@ -58,6 +65,13 @@ const DAY_CHECK: Duration = Duration::from_secs(600);
 const LEAVING_WAIT: Duration = Duration::from_secs(10);
 /// How long an action waits for selected rows that aren't loaded yet.
 const TARGETS_WAIT: Duration = Duration::from_secs(3);
+/// How long after the last key in the search field the search runs (GtkSearchEntry's
+/// `search-delay`; GTK's default and M1's was 150 ms). None: at 100,000 messages a key's
+/// results were painted within 63 ms p95 from a folder and 88 ms from All Inboxes (M7,
+/// docs/m7/search-ui.md).
+pub const SEARCH_DELAY: Duration = Duration::ZERO;
+/// The search field's placeholder, the mock's.
+pub const SEARCH_PLACEHOLDER: &str = "Search — from: has:attachment is:unread";
 
 pub const FILTERS: [(ViewFilter, &str); 4] = [
     (ViewFilter::All, "All"),
@@ -80,16 +94,25 @@ pub struct SearchHeading {
     /// More results can be fetched.
     pub more: bool,
     pub searching: bool,
+    /// The list shows a folder and the search covers every folder (the scope row's All
+    /// folders).
+    pub everywhere: bool,
 }
 
 impl SearchHeading {
     pub fn subtitle(&self) -> String {
-        match (self.searching && self.results == 0, self.results, self.more) {
-            (true, _, _) => "Searching…".to_owned(),
+        let counted = match (self.searching && self.results == 0, self.results, self.more) {
+            (true, _, _) if self.everywhere => return "Searching all folders…".to_owned(),
+            (true, _, _) => return "Searching…".to_owned(),
             (_, 0, _) => "No results".to_owned(),
             (_, 1, false) => "1 result".to_owned(),
             (_, count, false) => format!("{count} results"),
             (_, count, true) => format!("{count}+ results"),
+        };
+        if self.everywhere {
+            format!("{counted} in all folders")
+        } else {
+            counted
         }
     }
 }
@@ -159,6 +182,17 @@ struct Inner {
     mailbox: Rc<Mailbox>,
     root: gtk::Box,
     search: gtk::SearchEntry,
+    suggestions: Suggestions,
+    /// The Search command's key at the field's end while it is empty (the mock's `/`).
+    search_key: gtk::Label,
+    /// Under the chips while a search runs from a folder: that folder, or every folder.
+    scope_row: gtk::Box,
+    scope_folder: gtk::ToggleButton,
+    scope_all: gtk::ToggleButton,
+    /// The search covers every folder although the list shows one.
+    everywhere: Cell<bool>,
+    /// Enter in the search field before its results came: the first is selected once they do.
+    select_first: Cell<bool>,
     chips: Vec<(ViewFilter, gtk::ToggleButton)>,
     stack: gtk::Stack,
     empty: empty::EmptyState,
@@ -222,12 +256,24 @@ impl Drop for Inner {
 impl MessageList {
     pub fn new(mailbox: Rc<Mailbox>) -> Self {
         let search = gtk::SearchEntry::builder()
-            .placeholder_text("Search mail")
+            .placeholder_text(SEARCH_PLACEHOLDER)
+            .search_delay(SEARCH_DELAY.as_millis() as u32)
             .hexpand(true)
             .build();
         search.add_css_class("sw-search");
         search.set_widget_name("list-search");
         search.update_property(&[gtk::accessible::Property::Label("Search mail")]);
+        let search_key = gtk::Label::builder()
+            .halign(gtk::Align::End)
+            .valign(gtk::Align::Center)
+            .can_target(false)
+            .visible(false)
+            .build();
+        search_key.add_css_class("sw-search-key");
+        search_key.set_widget_name("list-search-key");
+        let field = gtk::Overlay::builder().child(&search).build();
+        field.add_overlay(&search_key);
+        let suggestions = Suggestions::new(&search, mailbox.clone());
         let chip_row = gtk::Box::builder().spacing(6).build();
         chip_row.add_css_class("sw-chips");
         let mut chips: Vec<(ViewFilter, gtk::ToggleButton)> = Vec::new();
@@ -249,8 +295,10 @@ impl MessageList {
             .spacing(8)
             .build();
         head.add_css_class("sw-list-head");
-        head.append(&search);
+        head.append(&field);
         head.append(&chip_row);
+        let (scope_row, scope_folder, scope_all) = scope_row();
+        head.append(&scope_row);
 
         let model = MessageModel::new(mailbox.clone());
         let selection = gtk::MultiSelection::new(Some(model.clone()));
@@ -352,6 +400,13 @@ impl MessageList {
                 mailbox,
                 root,
                 search,
+                suggestions,
+                search_key,
+                scope_row,
+                scope_folder,
+                scope_all,
+                everywhere: Cell::new(false),
+                select_first: Cell::new(false),
                 chips,
                 stack,
                 empty,
@@ -446,6 +501,30 @@ impl MessageList {
             });
         });
         let weak = self.downgrade();
+        inner.suggestions.set_context(move || {
+            weak.upgrade().map(|inner| {
+                let list = MessageList { inner };
+                (list.today(), list.search_accounts())
+            })
+        });
+        let weak = self.downgrade();
+        inner.search.connect_changed(move |entry| {
+            let empty = entry.text().is_empty();
+            Self::with(&weak, |list| list.show_search_key(empty));
+        });
+        let weak = self.downgrade();
+        inner.scope_folder.connect_toggled(move |chip| {
+            if chip.is_active() {
+                Self::with(&weak, |list| list.set_everywhere(false));
+            }
+        });
+        let weak = self.downgrade();
+        inner.scope_all.connect_toggled(move |chip| {
+            if chip.is_active() {
+                Self::with(&weak, |list| list.set_everywhere(true));
+            }
+        });
+        let weak = self.downgrade();
         inner.search.connect_search_changed(move |entry| {
             let text = entry.text().trim().to_owned();
             Self::with(&weak, |list| {
@@ -462,13 +541,9 @@ impl MessageList {
             });
         });
         let weak = self.downgrade();
-        inner.search.connect_activate(move |_| {
-            Self::with(&weak, |list| {
-                if list.selected_positions().is_empty() && list.inner.model.total() > 0 {
-                    list.select_position(0);
-                }
-                list.inner.view.grab_focus();
-            });
+        inner.search.connect_activate(move |entry| {
+            let text = entry.text().trim().to_owned();
+            Self::with(&weak, |list| list.search_activated(text));
         });
         for (filter, chip) in &inner.chips {
             let filter = *filter;
@@ -657,10 +732,130 @@ impl MessageList {
         self.inner.search.grab_focus();
     }
 
+    /// The search field's suggestions.
+    pub fn suggestions(&self) -> &Suggestions {
+        &self.inner.suggestions
+    }
+
+    /// How long after the last key the search runs ([`SEARCH_DELAY`]; the self-test measures
+    /// others).
+    pub fn set_search_delay(&self, delay: Duration) {
+        self.inner
+            .search
+            .set_search_delay(u32::try_from(delay.as_millis()).unwrap_or(u32::MAX));
+    }
+
+    pub fn search_delay(&self) -> Duration {
+        Duration::from_millis(u64::from(self.inner.search.search_delay()))
+    }
+
+    /// Searches every folder (`true`) or only the folder shown, as the scope row's chips do;
+    /// the search's end goes back to the folder.
+    pub fn set_everywhere(&self, everywhere: bool) {
+        let inner = &self.inner;
+        let chip = if everywhere {
+            &inner.scope_all
+        } else {
+            &inner.scope_folder
+        };
+        if !chip.is_active() {
+            chip.set_active(true);
+            return;
+        }
+        if inner.everywhere.replace(everywhere) != everywhere && !inner.query.borrow().is_empty() {
+            self.reload();
+        }
+    }
+
+    /// Whether the search covers every folder although the list shows one.
+    pub fn is_everywhere(&self) -> bool {
+        self.inner.everywhere.get() && matches!(self.inner.scope.get(), Some(ViewScope::Folder(_)))
+    }
+
+    /// The scope row: shown while a search runs from a folder, naming that folder.
+    pub fn scope_row(&self) -> &gtk::Box {
+        &self.inner.scope_row
+    }
+
+    /// Runs the search shown again, as after the search index was rebuilt.
+    pub fn search_again(&self) {
+        self.inner.model.search_again();
+    }
+
+    /// Enter in the search field: the search runs now, the first result is selected (now, or
+    /// once the results for what was typed come) and the list takes the keyboard focus.
+    fn search_activated(&self, text: String) {
+        self.set_query(text);
+        let model = &self.inner.model;
+        if matches!(model.content(), Content::Search { .. }) && model.is_pending() {
+            self.inner.select_first.set(true);
+        } else if self.selected_positions().is_empty() && model.total() > 0 {
+            self.select_position(0);
+        }
+        self.inner.view.grab_focus();
+    }
+
+    fn today(&self) -> Date {
+        let now = self.now();
+        Date {
+            year: now.year(),
+            month: now.month() as u8,
+            day: now.day_of_month() as u8,
+        }
+    }
+
+    /// The accounts whose people the search field suggests: the folder's while the search
+    /// covers one folder, else every account.
+    fn search_accounts(&self) -> Vec<AccountId> {
+        let mailbox = &self.inner.mailbox;
+        match self.inner.scope.get() {
+            Some(ViewScope::Folder(folder)) if !self.inner.everywhere.get() => mailbox
+                .folder(folder)
+                .map(|folder| vec![folder.account])
+                .unwrap_or_default(),
+            _ => mailbox
+                .accounts()
+                .into_iter()
+                .map(|account| account.id)
+                .collect(),
+        }
+    }
+
+    fn show_search_key(&self, empty: bool) {
+        let key = &self.inner.search_key;
+        key.set_visible(empty && !key.label().is_empty());
+    }
+
+    /// The scope row follows the search: shown from a folder while there is one, back to the
+    /// folder once it ends.
+    fn update_scope(&self) {
+        let inner = &self.inner;
+        let searching = !inner.query.borrow().is_empty();
+        if !searching && inner.everywhere.replace(false) {
+            inner.scope_folder.set_active(true);
+        }
+        let folder = match inner.scope.get() {
+            Some(ViewScope::Folder(folder)) if searching => inner.mailbox.folder(folder),
+            _ => None,
+        };
+        if let Some(folder) = &folder {
+            let title = crate::triage::folder_title(folder);
+            if inner.scope_folder.label().as_deref() != Some(title.as_str()) {
+                inner.scope_folder.set_label(&title);
+                if let Some(label) = inner.scope_folder.child().and_downcast::<gtk::Label>() {
+                    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                    label.set_max_width_chars(18);
+                }
+            }
+        }
+        inner.scope_row.set_visible(folder.is_some());
+    }
+
     fn reload(&self) {
         let inner = &self.inner;
         let thresholds = self.thresholds_now();
         let query = inner.query.borrow().clone();
+        self.update_scope();
         match inner.scope.get() {
             None => inner.model.clear(),
             Some(scope) if query.is_empty() => {
@@ -675,8 +870,8 @@ impl MessageList {
             }
             Some(scope) => {
                 let folder = match scope {
-                    ViewScope::Folder(folder) => Some(folder),
-                    ViewScope::UnifiedInbox => None,
+                    ViewScope::Folder(folder) if !inner.everywhere.get() => Some(folder),
+                    _ => None,
                 };
                 inner
                     .model
@@ -733,12 +928,19 @@ impl MessageList {
                 if let Some(latch) = self.inner.first_rows.borrow().as_ref() {
                     latch.open();
                 }
+                if self.inner.select_first.take()
+                    && matches!(self.inner.model.content(), Content::Search { .. })
+                    && self.inner.model.total() > 0
+                {
+                    self.select_position(0);
+                }
             }
             Change::Rows => {
                 self.select_wanted();
                 self.check_leaving();
             }
             Change::Failed => {
+                self.inner.select_first.set(false);
                 if let Some(latch) = self.inner.first_rows.borrow().as_ref() {
                     latch.open();
                 }
@@ -789,6 +991,7 @@ impl MessageList {
                 results: self.inner.model.total(),
                 more: self.inner.model.has_more_results(),
                 searching: self.inner.model.is_searching(),
+                everywhere: self.is_everywhere(),
             });
         let handlers = self.inner.handlers.search.borrow().clone();
         for handler in handlers {
@@ -1766,6 +1969,7 @@ impl MessageList {
         keys.attach(&self.inner.view, gtk::PropagationPhase::Capture);
         self.inner.keys.replace(Some(keys));
         self.inner.extend_keys.replace(extend_keys(keymap));
+        self.set_search_key(keymap);
     }
 
     /// `keys.toml` changed.
@@ -1774,6 +1978,18 @@ impl MessageList {
             keys.update(keymap);
         }
         self.inner.extend_keys.replace(extend_keys(keymap));
+        self.set_search_key(keymap);
+    }
+
+    /// The Search command's first key at the end of the empty search field.
+    fn set_search_key(&self, keymap: &Keymap) {
+        let key = keymap
+            .shown(ActionId::Search)
+            .first()
+            .map(sealwax_domain::keymap::Binding::display)
+            .unwrap_or_default();
+        self.inner.search_key.set_label(&key);
+        self.show_search_key(self.inner.search.text().is_empty());
     }
 
     pub fn keys(&self) -> Option<std::cell::Ref<'_, ScopedShortcuts>> {
@@ -1896,6 +2112,27 @@ impl MessageList {
     }
 }
 
+/// The scope row: "Search in", the folder shown and All folders, as chips.
+fn scope_row() -> (gtk::Box, gtk::ToggleButton, gtk::ToggleButton) {
+    let caption = gtk::Label::builder().label("Search in").build();
+    caption.add_css_class("sw-search-scope-caption");
+    let folder = gtk::ToggleButton::builder().active(true).build();
+    folder.add_css_class("sw-chip");
+    folder.set_widget_name("search-scope-folder");
+    let all = gtk::ToggleButton::builder().label("All folders").build();
+    all.set_group(Some(&folder));
+    all.add_css_class("sw-chip");
+    all.set_widget_name("search-scope-all");
+    let row = gtk::Box::builder().spacing(6).visible(false).build();
+    row.add_css_class("sw-search-scope");
+    row.set_widget_name("list-search-scope");
+    row.update_property(&[gtk::accessible::Property::Label("Search in")]);
+    row.append(&caption);
+    row.append(&folder);
+    row.append(&all);
+    (row, folder, all)
+}
+
 /// `current` moved by `delta`, kept inside a list of `total` rows.
 fn offset(current: u32, delta: i64, total: u32) -> u32 {
     (i64::from(current) + delta).clamp(0, i64::from(total) - 1) as u32
@@ -1948,12 +2185,29 @@ mod tests {
             results,
             more,
             searching,
+            everywhere: false,
         };
         assert_eq!(heading(0, false, true).subtitle(), "Searching…");
         assert_eq!(heading(0, false, false).subtitle(), "No results");
         assert_eq!(heading(1, false, false).subtitle(), "1 result");
         assert_eq!(heading(12, false, true).subtitle(), "12 results");
         assert_eq!(heading(50, true, false).subtitle(), "50+ results");
+        let everywhere = |results, more, searching| SearchHeading {
+            everywhere: true,
+            ..heading(results, more, searching)
+        };
+        assert_eq!(
+            everywhere(0, false, true).subtitle(),
+            "Searching all folders…"
+        );
+        assert_eq!(
+            everywhere(0, false, false).subtitle(),
+            "No results in all folders"
+        );
+        assert_eq!(
+            everywhere(50, true, false).subtitle(),
+            "50+ results in all folders"
+        );
     }
 
     #[test]

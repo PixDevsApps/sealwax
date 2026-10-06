@@ -1295,6 +1295,11 @@ impl MessageModel {
         }
     }
 
+    /// Runs the search shown again, as a change event does.
+    pub fn search_again(&self) {
+        self.queue_search_refresh();
+    }
+
     fn queue_search_refresh(&self) {
         let generation = {
             let mut state = self.imp().state.borrow_mut();

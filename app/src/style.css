@@ -869,6 +869,68 @@ button.sw-banner-secondary:active {
   border-spacing: var(--sw-space-md);
 }
 
+/* Search (ML-082): the Search key at the end of the empty field (the mock's "/"), the scope row
+   under the chips while a search runs from a folder, and the suggestions under the field. */
+.sw-search-key {
+  margin-right: var(--sw-space-lg);
+  padding: 0 var(--sw-space-md);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  color: var(--sw-secondary-fg-color);
+  font-size: var(--sw-text-caption);
+}
+
+.sw-search-scope-caption {
+  color: var(--sw-secondary-fg-color);
+}
+
+popover.sw-search-suggestions {
+  font-family: var(--sw-font-chrome);
+}
+
+popover.sw-search-suggestions > contents {
+  padding: var(--sw-space-xs);
+  background: var(--popover-bg-color);
+  color: var(--popover-fg-color);
+}
+
+list.sw-search-suggestions-list {
+  background: none;
+}
+
+list.sw-search-suggestions-list > row {
+  padding: var(--sw-space-md) var(--sw-space-lg);
+  border-radius: var(--sw-radius-small);
+}
+
+list.sw-search-suggestions-list > row:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+list.sw-search-suggestions-list > row:selected {
+  background: var(--sw-selected-bg-color);
+  color: var(--popover-fg-color);
+}
+
+.sw-search-suggestion {
+  border-spacing: var(--sw-space-xl);
+}
+
+.sw-search-suggestion-term {
+  font-weight: bold;
+}
+
+.sw-search-suggestion-detail,
+.sw-search-suggestion-example,
+.sw-search-key-hint {
+  color: var(--sw-secondary-fg-color);
+  font-size: var(--sw-text-small);
+}
+
+list.sw-search-suggestions-list > row.sw-search-suggestion-hint .sw-search-suggestion-term {
+  font-weight: normal;
+}
+
 /* Constant row heights: the mock's 1.45 is about 1.1 in GTK (S3), and two lines of snippet are
    kept even for a short one, so rows don't change size as pages fill in. */
 .sw-message-list .sw-snippet {

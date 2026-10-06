@@ -20,14 +20,18 @@ pub fn capture(window: &impl IsA<gtk::Widget>, path: &Path) -> Result<(), String
         f64::from(height),
     );
     if window.is::<gtk::Window>() {
+        // A popup's place is relative to the window's surface, which includes its shadow.
+        let (shadow_x, shadow_y) = window
+            .native()
+            .map_or((0.0, 0.0), |native| native.surface_transform());
         for popover in popovers(window) {
             let Some(popup) = popover.surface().and_downcast::<gdk::Popup>() else {
                 continue;
             };
             snapshot.save();
             snapshot.translate(&graphene::Point::new(
-                popup.position_x() as f32,
-                popup.position_y() as f32,
+                (f64::from(popup.position_x()) - shadow_x) as f32,
+                (f64::from(popup.position_y()) - shadow_y) as f32,
             ));
             gtk::WidgetPaintable::new(Some(&popover)).snapshot(
                 &snapshot,
