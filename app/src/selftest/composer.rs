@@ -35,12 +35,17 @@
 //! | `composer-identity LABEL NAME ADDRESS` | An identity every account can send from |
 //! | `composer-from N` | Picks sender N on the From chip |
 //! | `composer-close` | Closes the composer window as the user would |
+//! | `composer-save-all` | Saves every open draft as Quit does |
 //! | `composer-edit-for MS EVERY` | Types a character through the helper every EVERY ms for MS ms |
 //! | `composer-measure-attach PATH` | Attaches PATH and reports how long the GTK thread went without a turn |
 //! | `composer-typing N` | Types N characters as key presses and reports key → change (Broadway's; informational) |
 //! | `composer-screenshot PATH` | Renders the composer window to PATH |
 //! | `assert-composer count N` | Open composer windows |
 //! | `assert-composer loaded\|spell BOOL` | The body is loaded; spell checking is on |
+//! | `assert-composer labelled` | Every control of the composer window has an accessible name, and icon-only ones a tooltip |
+//! | `assert-composer theme` | The body's background is the theme's |
+//! | `assert-composer eval SCRIPT VALUE` | SCRIPT, run in the helper's world, gives VALUE |
+//! | `assert-composer stored ID FIELD TEXT` | The stand-in's draft ID holds TEXT in FIELD |
 //! | `assert-composer title\|subject\|from\|style TEXT` | The header's title, the subject, the sender's address, the style menu |
 //! | `assert-composer chips FIELD A,B\|none` | The valid recipients of `to`, `cc` or `bcc` |
 //! | `assert-composer invalid FIELD N` | Error chips in FIELD |
@@ -847,6 +852,14 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
     let composer = composer()?;
     match what {
         "loaded" => equal("loaded", composer.is_loaded(), boolean(arg(1))?),
+        "labelled" => {
+            let problems = super::unlabelled(composer.window().upcast_ref());
+            if problems.is_empty() {
+                Ok(())
+            } else {
+                Err(problems.join("\n"))
+            }
+        }
         "theme" => {
             let theme = harness
                 .state

@@ -28,7 +28,7 @@ assert-composer attachment 0 name=Kvartalsrapport.pdf
 assert-composer attachment 0 size=212000
 assert-composer attachment 0 type=application/pdf
 assert-composer attachment 1 type=text/plain
-assert-labelled
+assert-composer labelled
 
 # A name that starts with a dot loses it (domain::attachment's rules).
 composer-attach "$TMP/files/.hidden name.csv"

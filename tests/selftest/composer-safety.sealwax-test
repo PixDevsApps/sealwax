@@ -88,4 +88,4 @@ theme catppuccin-latte
 wait-until assert-composer theme
 theme matte-black
 wait-until assert-composer theme
-assert-labelled
+assert-composer labelled

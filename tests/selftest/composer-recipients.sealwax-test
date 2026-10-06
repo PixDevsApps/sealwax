@@ -16,7 +16,7 @@ assert-composer focus to
 assert-composer from work@example.test
 assert-composer shown composer-cc false
 assert-composer shown composer-bcc false
-assert-labelled
+assert-composer labelled
 
 # Typed addresses: a comma and a semicolon commit; Enter commits; leaving the field commits.
 composer-type "kari@example.com,"
@@ -98,7 +98,7 @@ assert-composer chips cc ole@example.org
 composer-focus bcc
 composer-type "Blind Kopi <blind@example.net>;"
 assert-composer chips bcc blind@example.net
-assert-labelled
+assert-composer labelled
 
 # The From chip lists the account's address and its identities and switches the sender.
 composer-click composer-from

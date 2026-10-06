@@ -30,6 +30,7 @@ assert-composer chips to grace@example.test
 assert-composer subject "Re: The quarterly figures"
 assert-composer html-has "<blockquote type=\"cite\""
 assert-composer html-has "wrote:</div>"
+assert-composer labelled
 assert-composer focus body
 composer-insert "Takk, Grace!"
 assert-composer html-has "<div>Takk, Grace!</div>"

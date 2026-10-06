@@ -17,6 +17,7 @@ assert-composer loaded true
 assert-composer spell false
 assert-composer enabled bold true
 assert-composer enabled composer-undo false
+assert-composer labelled
 
 # Typing through the helper; Norwegian text round-trips.
 composer-focus body
@@ -24,6 +25,13 @@ composer-insert "Blåbærsyltetøy på brødskiva — ÆØÅ æøå"
 assert-composer html-has "Blåbærsyltetøy på brødskiva — ÆØÅ æøå"
 wait-until assert-composer undo true
 assert-composer enabled composer-undo true
+
+# Key presses through Broadway into the body, timed to the helper's input report: Broadway's
+# delivery, not a display's (informational, no bar).
+composer-typing 40
+composer-key <Control>a
+composer-key BackSpace
+composer-insert "Blåbærsyltetøy på brødskiva — ÆØÅ æøå"
 
 # Bold, italic, underline and strikethrough from the toolbar: the state follows the selection.
 composer-select "brødskiva"
