@@ -153,10 +153,22 @@ fn default_root(cache: &Path) -> PathBuf {
     }
 }
 
-/// Takes the engine's answers to `FetchPart` and `FetchOriginal` (`Reader::connect_engine`).
+/// Takes the engine's answers to `FetchPart` and `FetchOriginal` (`Reader::connect_engine`),
+/// and serves the inline images of a message stored as its text parts through `FetchPart`.
 pub(super) fn connect_engine(reader: &Reader, engine: &EngineLink) {
     let files = &reader.inner.files;
     files.engine.replace(Some(engine.clone()));
+    let weak = Rc::downgrade(&reader.inner);
+    reader.set_part_loader(Some(Rc::new(move |message, part| {
+        let weak = weak.clone();
+        Box::pin(async move {
+            let inner = weak.upgrade()?;
+            fetch_part(&inner, message, part)
+                .await
+                .ok()
+                .map(glib::Bytes::from_owned)
+        })
+    })));
     let weak = Rc::downgrade(&reader.inner);
     let subscription = engine.subscribe(move |event| {
         let Some(inner) = weak.upgrade() else {

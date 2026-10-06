@@ -286,6 +286,18 @@ engine-expect fetch-part
 engine-reply part-fetched ok
 wait-until assert-files folder 8
 
+# A large message's inline image isn't stored: the reader asks for it by its section
+# (FetchPart) and serves it as the type the message declares (M5 phase B).
+files-add-text cid
+list-select 0
+wait-until assert-files message cid
+engine-expect fetch-part
+assert-files cid-loaded 0
+engine-reply part-fetched ok
+wait-until assert-files cid-loaded 1
+list-select 1
+wait-until assert-files message files-large
+
 # Its original comes from the server, never the copy rebuilt from its text parts.
 action win.show-original
 engine-expect fetch-original
