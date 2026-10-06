@@ -50,6 +50,8 @@ mod ops_prop_tests;
 mod ops_tests;
 
 #[cfg(test)]
+mod compose_prop_tests;
+#[cfg(test)]
 mod compose_tests;
 
 #[cfg(test)]
