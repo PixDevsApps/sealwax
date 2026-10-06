@@ -280,7 +280,9 @@ async fn run_print(
     operation.connect_finished(move |_| {
         let _ = done.try_send(Ok(()));
     });
-    let subject = detail.headers.subject.trim();
+    // "Print to File" names the file after the subject, made safe as Save as .eml's name is.
+    let basename = eml_file_name(&detail.headers.subject);
+    let basename = basename.trim_end_matches(".eml");
     match target {
         Some(path) => {
             // Only the file printer: a test never asks CUPS or the network for printers.
@@ -299,9 +301,7 @@ async fn run_print(
         }
         None => {
             let settings = gtk::PrintSettings::new();
-            if !subject.is_empty() {
-                settings.set(gtk::PRINT_SETTINGS_OUTPUT_BASENAME, Some(subject));
-            }
+            settings.set(gtk::PRINT_SETTINGS_OUTPUT_BASENAME, Some(basename));
             operation.set_print_settings(&settings);
             let parent = files::window(inner);
             if operation.run_dialog(parent.as_ref()) == webkit6::PrintOperationResponse::Cancel {
@@ -494,7 +494,7 @@ async fn fill_original(
     let bytes = match bytes {
         Ok(bytes) => Rc::new(bytes),
         Err(failure) => {
-            tracing::info!(message = id.0, ?failure, "reader: no original to show");
+            tracing::info!(id = id.0, ?failure, "reader: no original to show");
             open.status.set_text(&format!(
                 "The original couldn't be shown: {}.",
                 failure.reason()
@@ -561,7 +561,7 @@ async fn save(inner: Rc<Inner>, id: MessageId, known: Option<Rc<Vec<u8>>>) {
             match files::original(&inner, id, downloading).await {
                 Ok(bytes) => bytes,
                 Err(failure) => {
-                    tracing::info!(message = id.0, ?failure, "reader: no message to save");
+                    tracing::info!(id = id.0, ?failure, "reader: no message to save");
                     files::toast(
                         &inner,
                         &format!("Couldn't save the message: {}.", failure.reason()),

@@ -960,7 +960,8 @@ fn body_event(args: &[String]) -> Result<Option<Event>, String> {
 /// `part-fetched OUTCOME` and `original-fetched OUTCOME`: the answer to the last `FetchPart` or
 /// `FetchOriginal` taken; `ok` carries the bytes of the message `files.rs` stored.
 fn download_event(args: &[String]) -> Result<Option<Event>, String> {
-    let (kind, [outcome]) = (args[0].as_str(), &args[1..]) else {
+    let (kind @ ("part-fetched" | "original-fetched"), [outcome]) = (args[0].as_str(), &args[1..])
+    else {
         return Ok(None);
     };
     let failure = match outcome.as_str() {

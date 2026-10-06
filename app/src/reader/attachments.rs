@@ -390,7 +390,7 @@ impl Card {
             Ok(bytes) => bytes,
             Err(failure) => {
                 tracing::info!(
-                    message = self.message.0,
+                    id = self.message.0,
                     ?failure,
                     "reader: an attachment wasn't there"
                 );
@@ -401,6 +401,8 @@ impl Card {
         self.idle();
         match target {
             Some(file) => self.save_to(&inner, &file, bytes).await,
+            // An attachment that arrived after the user moved to another message isn't opened.
+            None if self.root.root().is_none() => {}
             None => self.open_from(&inner, bytes).await,
         }
     }
@@ -433,7 +435,7 @@ impl Card {
         .unwrap_or((None, Vec::new()));
         if sniffed.as_deref().is_some_and(rules::dangerous_type) {
             tracing::info!(
-                message = self.message.0,
+                id = self.message.0,
                 "reader: an attachment's content is a program"
             );
             self.set_danger(Some(Danger::Program));
