@@ -1,8 +1,10 @@
 //! ADR-018's log-grep test for M2's, M3's and M4's code: the login check, the folder list, the
 //! first sync, account passes over the windowed folders of the rand account, older mail, and
 //! the op queue's writes (flags, a move retried, deleting for good, a folder marked read) and
-//! the op runner (triage queued in the store and run by the engine's actor) as the ops account
-//! run on the testbed at trace level under the app's own subscriber, and the
+//! the op runner (triage queued in the store and run by the engine's actor) as the ops account,
+//! and M6's sending (a fixture submitted through Stalwart and Mailpit with the size limit read
+//! first; the Sent copy appended, retried and found, and a draft replaced, as the outbox
+//! account) run on the testbed at trace level under the app's own subscriber, and the
 //! captured log holds no password, AUTH line, address, user name, folder name, subject or
 //! Message-ID. A control run without the protocol-crate caps shows the grep would catch
 //! async-imap's trace of the AUTHENTICATE line. Its own test binary, because it installs the
@@ -12,6 +14,7 @@
 //! cargo test -p sealwax-engine --test log_grep -- --ignored
 
 mod common;
+mod outgoing;
 mod snapshot;
 mod testbed_client;
 mod testbed_engine;
@@ -27,6 +30,7 @@ use sealwax_engine::api::{Command, Password};
 use sealwax_engine::imap::write::{self, Move, Moving, OpFolder};
 use sealwax_engine::imap::{self, FolderLocks, SyncOptions};
 use sealwax_engine::service::SyncConfig;
+use sealwax_engine::smtp::submit;
 use sealwax_engine::verify::verify;
 use sealwax_infrastructure::logging;
 use sealwax_infrastructure::store::QueueTriage;
@@ -121,7 +125,9 @@ async fn flows() {
     for server in SERVERS {
         writes(server).await;
         runner(server).await;
+        appends(server).await;
     }
+    submissions().await;
     tokio::time::sleep(Duration::from_millis(300)).await;
     let account = settings(
         imap(DOVECOT, Security::Tls),
@@ -191,6 +197,136 @@ async fn writes(server: Server) {
         .unwrap();
     conn.logout().await;
     for folder in folders {
+        test.empty(folder).await.unwrap();
+    }
+    test.logout().await;
+}
+
+/// S7's plain fixture with a Message-ID of this run: through Stalwart's submission port to bob
+/// and carol, with the limit read first, and through Mailpit; a refused recipient on Stalwart.
+async fn submissions() {
+    let fixture = outgoing::fixtures()
+        .into_iter()
+        .find(|fixture| fixture.name == "plain")
+        .unwrap();
+    let tag = outgoing::run_tag();
+    let to = vec![
+        "bob@example.test".to_owned(),
+        "carol@example.test".to_owned(),
+    ];
+    let alice = imap::Credentials::Password {
+        username: "alice",
+        password: PASSWORD,
+    };
+    for (n, endpoint) in [submission(Security::StartTls), mailpit()]
+        .into_iter()
+        .enumerate()
+    {
+        let bytes = outgoing::with_id(&fixture.transmitted, &format!("logs.{tag}.{n}@example.com"));
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        submit::submission_limit(&endpoint, &trust(), submit::Timeouts::default())
+            .await
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let mut submitter = submit::Submitter::connect(&endpoint, alice, &trust())
+            .await
+            .unwrap();
+        let envelope = submit::Envelope {
+            from: "alice@example.test",
+            to: &to,
+        };
+        submitter
+            .prepare(envelope, &bytes)
+            .await
+            .unwrap()
+            .send()
+            .await
+            .unwrap();
+        let refused = vec!["nobody-here@example.test".to_owned()];
+        let envelope = submit::Envelope {
+            from: "alice@example.test",
+            to: &refused,
+        };
+        let refusal = submitter.prepare(envelope, &bytes).await.err();
+        assert_eq!(refusal.is_some(), n == 0, "only Stalwart refuses it");
+        submitter.quit().await;
+    }
+    outgoing::Mailpit::clear().await;
+    for user in ["bob", "carol"] {
+        let mut test = testbed_client::Client::connect(STALWART.tls, &ca(), user)
+            .await
+            .unwrap();
+        test.empty("INBOX").await.unwrap();
+        test.logout().await;
+    }
+}
+
+/// The Sent copy as `outbox`: appended, retried with its mark and found; a draft replaced.
+async fn appends(server: Server) {
+    let mut test = testbed_client::Client::connect(server.tls, &ca(), "outbox")
+        .await
+        .unwrap();
+    for folder in ["Sendt", "Utkast"] {
+        test.create(folder).await.unwrap();
+        test.empty(folder).await.unwrap();
+    }
+    let tag = outgoing::run_tag();
+    let id = format!("logs.{tag}@example.com");
+    let fixture = outgoing::fixtures().remove(0);
+    let bytes = outgoing::with_id(&fixture.sent_copy, &id);
+    let mut conn = login(server, Security::Tls, "outbox").await;
+    let mark = write::mark_target(&mut conn, "Sendt").await.unwrap();
+    let request = write::Append {
+        folder: "Sendt",
+        message: &bytes,
+        message_id: &id,
+        flags: Flags::SEEN,
+        mark,
+        retry: false,
+    };
+    write::append(&mut conn, request).await.unwrap();
+    let again = write::append(
+        &mut conn,
+        write::Append {
+            retry: true,
+            ..request
+        },
+    )
+    .await
+    .unwrap();
+    assert!(again.earlier, "{}", server.name);
+    write::find(&mut conn, "Sendt", &id, None).await.unwrap();
+    let draft_mark = write::mark_target(&mut conn, "Utkast").await.unwrap();
+    let draft = write::Append {
+        folder: "Utkast",
+        flags: Flags::DRAFT | Flags::SEEN,
+        mark: draft_mark,
+        ..request
+    };
+    let first = write::replace_draft(&mut conn, draft, None)
+        .await
+        .unwrap()
+        .appended
+        .unwrap();
+    let old = [first.uid.unwrap()];
+    let second = outgoing::with_id(&fixture.transmitted, &id);
+    let draft_mark = write::mark_target(&mut conn, "Utkast").await.unwrap();
+    write::replace_draft(
+        &mut conn,
+        write::Append {
+            message: &second,
+            mark: draft_mark,
+            ..draft
+        },
+        Some(write::OldCopies {
+            uidvalidity: first.uidvalidity.unwrap(),
+            uids: &old,
+        }),
+    )
+    .await
+    .unwrap();
+    conn.logout().await;
+    for folder in ["Sendt", "Utkast"] {
         test.empty(folder).await.unwrap();
     }
     test.logout().await;
@@ -295,14 +431,40 @@ fn trace_logs_hold_no_credentials_addresses_or_names() {
         "older mail loaded",
         "imap write done",
         "op group ran",
+        "smtp limit read",
+        "smtp connected",
+        "smtp envelope accepted",
+        "smtp envelope not accepted",
+        "smtp message accepted",
+        "imap append done",
+        "imap find done",
     ] {
         assert!(log.contains(event), "the capture holds {event}");
     }
     let plain = STANDARD.encode(format!("\0alice\0{PASSWORD}"));
+    let outbox = STANDARD.encode(format!("\0outbox\0{PASSWORD}"));
     let forbidden = [
         PASSWORD,
         "wrong-password",
         plain.as_str(),
+        outbox.as_str(),
+        "bob@",
+        "carol@",
+        "nobody-here",
+        "outbox@",
+        "kari",
+        "Nordmann",
+        "example.com",
+        "example.org",
+        "example.net",
+        "Plain alternative",
+        "Hello **world**",
+        "MAIL FROM",
+        "RCPT TO",
+        "AUTH PLAIN",
+        "XOAUTH2",
+        "APPEND",
+        "APPENDUID",
         "alice",
         "rand",
         "nobody",
