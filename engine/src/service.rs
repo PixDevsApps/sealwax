@@ -437,7 +437,14 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 continue;
             }
             Command::OpsQueued { account } => {
-                tracing::debug!(account = account.0, "ops queued; the op runner is M4's");
+                // Without a running actor the ops wait in the store for its start.
+                if let Some(actor) = shared
+                    .actors()
+                    .values()
+                    .find(|actor| actor.account() == Some(account))
+                {
+                    let _ = actor.control.try_send(actor::Control::Ops);
+                }
                 continue;
             }
             Command::Reconnect => {
