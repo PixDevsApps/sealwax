@@ -321,12 +321,17 @@ async fn measure(harness: &Harness, runs: usize) -> StepResult {
         // the minutes before a user comes back.
         glib::timeout_future(Duration::from_millis(300)).await;
         let painted: Rc<Cell<Option<(Instant, usize)>>> = Rc::default();
+        let (built, mapped): (Rc<Cell<Option<Instant>>>, Rc<Cell<Option<Instant>>>) =
+            Default::default();
         let handlers: Rc<RefCell<Vec<glib::SignalHandlerId>>> = Rc::default();
         let added = {
             let (painted, state) = (painted.clone(), harness.state.clone());
+            let (built, mapped) = (built.clone(), mapped.clone());
             harness.app.connect_window_added(move |_, window| {
-                let (painted, state) = (painted.clone(), state.clone());
+                built.set(Some(Instant::now()));
+                let (painted, state, mapped) = (painted.clone(), state.clone(), mapped.clone());
                 window.connect_map(move |window| {
+                    mapped.set(Some(Instant::now()));
                     let Some(clock) = window.frame_clock() else {
                         return;
                     };
@@ -366,8 +371,18 @@ async fn measure(harness: &Harness, runs: usize) -> StepResult {
         }
         call?;
         let (at, rows) = painted.get().ok_or("the new window never painted")?;
-        let ms = at.duration_since(activated).as_secs_f64() * 1000.0;
-        println!("  # run {run}: Activate → first frame {ms:.1} ms, {rows} rows bound");
+        let since = |at: Option<Instant>| {
+            at.map_or(f64::NAN, |at| {
+                at.duration_since(activated).as_secs_f64() * 1000.0
+            })
+        };
+        let ms = since(Some(at));
+        println!(
+            "  # run {run}: Activate → window built {:.1} ms, mapped {:.1} ms, first frame \
+             {ms:.1} ms, {rows} rows bound",
+            since(built.get()),
+            since(mapped.get())
+        );
         times.push(ms);
     }
     times.sort_by(f64::total_cmp);
