@@ -61,9 +61,9 @@ const PREVIEWS: [&str; 6] = [
     "postmark-basic-receipt",
     "cerberus-hybrid",
     "sendwithus-airmail-invoice",
-    "mailgun-action-inlined",
+    "mailgun-action",
     "s2-nl-31",
-    "personal-gmail-reply",
+    "personal-outlook-desktop",
 ];
 /// Bodies scrolled per theme, the tallest first, and the scroll speed (S2's).
 const SCROLLED: usize = 3;

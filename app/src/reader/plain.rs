@@ -188,6 +188,7 @@ fn collapse(view: &gtk::TextView, start: i32) {
     };
     let mut at = buffer.iter_at_offset(start);
     let anchor = buffer.create_child_anchor(&mut at);
+    buffer.insert(&mut at, "\n");
     buffer.apply_tag(
         &hidden,
         &buffer.iter_at_offset(start + 1),

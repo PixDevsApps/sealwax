@@ -640,8 +640,15 @@ async fn run_case(
         let state = reader.link_state();
         outcome.status = state.status.map(|status| short(&status));
         outcome.warning = state.warning.is_some();
+        if pass == Pass::RealClicks {
+            shots(context, case, "hover").await;
+        }
     }
     if let Some(selector) = case.click {
+        let quotes = case.expect == Expect::Quotes && pass == Pass::RealClicks;
+        if quotes {
+            shots(context, case, "collapsed").await;
+        }
         let clicked = match (case.is_html(), pass) {
             (true, Pass::RealClicks) => real_click(context, selector).await,
             (true, _) => dom_click(reader, selector).await,
@@ -660,6 +667,9 @@ async fn run_case(
             outcome.failures.push(format!("click: {error}"));
         }
         support::sleep(700).await;
+        if quotes {
+            shots(context, case, "expanded").await;
+        }
     }
     expectations(context, case, pass, &mut outcome).await;
     if case.hover.is_some() {
@@ -763,6 +773,23 @@ async fn run_case(
     outcome
 }
 
+/// With `SEALWAX_HOSTILE_SHOTS` set, the window (and the link warning, a surface of its own)
+/// as PNGs in `.local/reader/`, to look at the strip, the warning and the dialog.
+async fn shots(context: &Context, case: &Case, moment: &str) {
+    if std::env::var_os("SEALWAX_HOSTILE_SHOTS").is_none() {
+        return;
+    }
+    let _ = support::frames(context.window.window(), 2).await;
+    let window = support::output(&format!("hostile-{}-{moment}.png", case.id));
+    let _ = support::screenshot(context.window.window(), &window);
+    if let Some(warning) = named(&context.reader().widget(), "reader-link-warning")
+        .filter(|warning| warning.is_visible())
+    {
+        let path = support::output(&format!("hostile-{}-{moment}-warning.png", case.id));
+        let _ = support::screenshot(&warning, &path);
+    }
+}
+
 /// M5's expectations, checked after the hover and the click.
 async fn expectations(context: &Context, case: &Case, pass: Pass, outcome: &mut Outcome) {
     let reader = context.reader();
@@ -792,6 +819,9 @@ async fn expectations(context: &Context, case: &Case, pass: Pass, outcome: &mut 
             let dialog =
                 support::wait_until(Duration::from_secs(2), || reader.link_dialog().is_some())
                     .await;
+            if pass == Pass::RealClicks {
+                shots(context, case, "clicked").await;
+            }
             match reader.link_dialog().filter(|_| dialog) {
                 Some(dialog) if pass == Pass::RealClicks => {
                     dialog.emit_by_name::<()>("response", &[&"open"]);
