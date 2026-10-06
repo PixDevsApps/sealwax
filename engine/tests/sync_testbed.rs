@@ -68,7 +68,10 @@ async fn engine_connect(port: u16, user: &str, qresync: bool) -> Result<Connecti
             password: PASSWORD,
         },
         common::trust().client_config().unwrap(),
-        ConnectOptions { qresync },
+        ConnectOptions {
+            qresync,
+            ..ConnectOptions::default()
+        },
     )
     .await
 }

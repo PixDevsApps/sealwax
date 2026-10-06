@@ -161,6 +161,41 @@ impl Client {
         self.finish(&id, on).await
     }
 
+    /// A COPY or MOVE: whether COPYUID came in an untagged OK, and whether in the tagged one.
+    pub async fn copyuid_placement(&mut self, command: &str) -> Result<(bool, bool), Failure> {
+        let id = self.session.run_command(command).await?;
+        let mut untagged = false;
+        loop {
+            let response = tokio::time::timeout(TIMEOUT, self.session.read_response())
+                .await
+                .map_err(|_| Failure::Other("timeout".into()))??
+                .ok_or(Failure::Other("connection lost".into()))?;
+            match response.parsed() {
+                Response::Done {
+                    tag,
+                    status,
+                    outcome,
+                } if *tag == id => {
+                    let tagged = matches!(outcome.code, Some(ResponseCode::CopyUid(..)));
+                    return match status {
+                        Status::Ok => Ok((untagged, tagged)),
+                        Status::No => Err(Failure::No),
+                        _ => Err(Failure::Bad),
+                    };
+                }
+                Response::Data {
+                    status: Status::Ok,
+                    outcome,
+                } if matches!(outcome.code, Some(ResponseCode::CopyUid(..))) => untagged = true,
+                Response::Data {
+                    status: Status::Bye,
+                    ..
+                } => return Err(Failure::Other("BYE".into())),
+                _ => {}
+            }
+        }
+    }
+
     /// APPEND with a non-synchronizing literal where offered.
     pub async fn append(
         &mut self,

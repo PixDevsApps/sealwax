@@ -254,11 +254,17 @@ pub struct ConnectOptions {
     /// ENABLE QRESYNC where offered. Off, a CONDSTORE server is synced without VANISHED (a
     /// quirk switch, and how the tests reach the CONDSTORE-only path on the testbed).
     pub qresync: bool,
+    /// UID MOVE where offered. Off, moves are COPY, `\Deleted` and UID EXPUNGE as without MOVE
+    /// (a quirk switch, and how the tests reach that path on servers that offer MOVE).
+    pub moves: bool,
 }
 
 impl Default for ConnectOptions {
     fn default() -> Self {
-        ConnectOptions { qresync: true }
+        ConnectOptions {
+            qresync: true,
+            moves: true,
+        }
     }
 }
 
@@ -336,7 +342,10 @@ async fn connect_inner(
         None => client_capabilities(&mut client).await?,
     };
     let (mut session, mechanism) = login(client, &caps, credentials).await?;
-    let caps = capabilities(&mut session).await?;
+    let mut caps = capabilities(&mut session).await?;
+    if !options.moves {
+        caps.0.remove("MOVE");
+    }
     if caps.has("ID") {
         let id = format!(
             "ID (\"name\" \"Sealwax\" \"version\" \"{}\")",
