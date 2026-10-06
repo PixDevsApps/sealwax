@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 8;
+pub const VERSION: i64 = 9;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -259,6 +259,138 @@ CREATE TABLE remote_senders(
 ) WITHOUT ROWID;
 ";
 
+/// M6's drafts, outbox and contacts (ML-074, ML-076, ML-077, ML-071; ADR-015's at-most-once
+/// send). A draft is the composer's `domain::compose::Draft` with a revision bumped by every
+/// save, whether a composer window has it open (reopened after a crash), its copy in the
+/// server's Drafts folder and the upload under way (with the folder's UIDNEXT before the first
+/// attempt). `draft_blobs` holds every blob a draft ever referenced, so none is evicted or
+/// reported orphaned before the draft is discarded or sent. An `outbox` row makes a draft a
+/// send: queued (until `not_before`), sending (from just before SMTP DATA, with the built bytes
+/// and envelope), uncertain (sending when Sealwax stopped: never sent again without the user) or
+/// sent, with its Sent copy. `draft_deletions` are server copies to delete that the store holds
+/// no row for. `contacts` are the addresses seen in From, To and Cc per account, with
+/// `contact_terms` (folded address, domain and name words) for prefix suggestions; the Rust step
+/// after this SQL fills them from the stored messages.
+const V9: &str = "
+CREATE TABLE drafts(
+    id INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    message_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    created INTEGER NOT NULL,
+    saved INTEGER NOT NULL,
+    open INTEGER NOT NULL DEFAULT 0,
+    from_name TEXT NOT NULL,
+    from_addr TEXT NOT NULL,
+    to_addrs TEXT NOT NULL,
+    cc_addrs TEXT NOT NULL,
+    bcc_addrs TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    html TEXT NOT NULL,
+    in_reply_to TEXT,
+    refs TEXT NOT NULL,
+    source_message INTEGER REFERENCES messages(id) ON DELETE SET NULL,
+    source_message_id TEXT,
+    source_kind INTEGER,
+    failure INTEGER,
+    copy_folder INTEGER,
+    copy_uidvalidity INTEGER,
+    copy_uid INTEGER,
+    copy_mark INTEGER,
+    copy_revision INTEGER NOT NULL DEFAULT 0,
+    upload_revision INTEGER,
+    upload_folder INTEGER,
+    upload_uidvalidity INTEGER,
+    upload_mark INTEGER,
+    upload_attempts INTEGER NOT NULL DEFAULT 0,
+    upload_not_before INTEGER NOT NULL DEFAULT 0,
+    upload_refused INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX drafts_account ON drafts(account_id);
+CREATE INDEX drafts_message_id ON drafts(message_id);
+CREATE INDEX drafts_source ON drafts(source_message) WHERE source_message IS NOT NULL;
+CREATE INDEX drafts_open ON drafts(open) WHERE open = 1;
+
+CREATE TABLE draft_parts(
+    draft INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+    position INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    mime_type TEXT NOT NULL,
+    size INTEGER NOT NULL,
+    blob_key BLOB NOT NULL,
+    content_id TEXT,
+    PRIMARY KEY(draft, position)
+) WITHOUT ROWID;
+
+CREATE TABLE draft_blobs(
+    draft INTEGER NOT NULL REFERENCES drafts(id) ON DELETE CASCADE,
+    blob_key BLOB NOT NULL,
+    PRIMARY KEY(draft, blob_key)
+) WITHOUT ROWID;
+CREATE INDEX draft_blobs_key ON draft_blobs(blob_key);
+
+CREATE TABLE outbox(
+    draft INTEGER PRIMARY KEY REFERENCES drafts(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    state INTEGER NOT NULL,
+    revision INTEGER NOT NULL,
+    queued INTEGER NOT NULL,
+    not_before INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    message_id TEXT,
+    message_blob BLOB,
+    sent_copy_blob BLOB,
+    size INTEGER,
+    envelope_from TEXT,
+    envelope_to TEXT,
+    started INTEGER,
+    sent INTEGER,
+    copy_state INTEGER NOT NULL DEFAULT 0,
+    copy_folder INTEGER,
+    copy_uidvalidity INTEGER,
+    copy_mark INTEGER,
+    copy_uid INTEGER,
+    copy_attempts INTEGER NOT NULL DEFAULT 0,
+    copy_not_before INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX outbox_account ON outbox(account_id, state);
+CREATE INDEX outbox_message_blob ON outbox(message_blob) WHERE message_blob IS NOT NULL;
+CREATE INDEX outbox_sent_copy_blob ON outbox(sent_copy_blob) WHERE sent_copy_blob IS NOT NULL;
+
+CREATE TABLE draft_deletions(
+    id INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    folder_id INTEGER NOT NULL REFERENCES folders(id) ON DELETE CASCADE,
+    uidvalidity INTEGER NOT NULL,
+    uid INTEGER,
+    message_id TEXT NOT NULL,
+    from_uid INTEGER NOT NULL DEFAULT 1,
+    below_uid INTEGER,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    not_before INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX draft_deletions_account ON draft_deletions(account_id);
+CREATE INDEX draft_deletions_folder ON draft_deletions(folder_id, uidvalidity);
+
+CREATE TABLE contacts(
+    id INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    address TEXT NOT NULL,
+    name TEXT NOT NULL,
+    seen INTEGER NOT NULL DEFAULT 0,
+    written INTEGER NOT NULL DEFAULT 0,
+    last INTEGER NOT NULL DEFAULT 0,
+    UNIQUE(account_id, address)
+);
+
+CREATE TABLE contact_terms(
+    term TEXT NOT NULL,
+    contact INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE,
+    PRIMARY KEY(term, contact)
+) WITHOUT ROWID;
+CREATE INDEX contact_terms_contact ON contact_terms(contact);
+";
+
 /// SQLite 3.43 brought `contentless_delete`.
 const MIN_SQLITE: i32 = 3_043_000;
 
@@ -280,7 +412,8 @@ pub fn user_version(conn: &Connection) -> Result<i64, StoreError> {
     Ok(conn.query_row("PRAGMA user_version", [], |row| row.get(0))?)
 }
 
-/// Applies the missing migrations; refuses a newer schema and leaves it untouched.
+/// Applies the missing migrations; refuses a newer schema and leaves it untouched. v9's
+/// contacts are filled from the stored messages in its transaction.
 pub fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
     let current = user_version(conn)?;
     if current > VERSION {
@@ -293,6 +426,9 @@ pub fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         let version = index as i64 + 1;
         let tx = conn.transaction()?;
         tx.execute_batch(sql)?;
+        if version == 9 {
+            super::contacts::backfill(&tx)?;
+        }
         tx.execute(
             "INSERT INTO schema_migrations(version, applied) VALUES (?1, unixepoch())",
             [version],

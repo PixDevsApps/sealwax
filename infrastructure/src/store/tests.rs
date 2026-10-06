@@ -154,7 +154,7 @@ fn migrates_once_and_refuses_a_newer_schema() {
     let future = dir.path().join("future.sqlite");
     let conn = Connection::open(&future).unwrap();
     conn.execute_batch(
-        "PRAGMA user_version=9; CREATE TABLE later(x); INSERT INTO later VALUES (1);",
+        "PRAGMA user_version=10; CREATE TABLE later(x); INSERT INTO later VALUES (1);",
     )
     .unwrap();
     drop(conn);
@@ -164,7 +164,7 @@ fn migrates_once_and_refuses_a_newer_schema() {
         matches!(
             error,
             StoreError::NewerSchema {
-                found: 9,
+                found: 10,
                 supported: SCHEMA_VERSION
             }
         ),

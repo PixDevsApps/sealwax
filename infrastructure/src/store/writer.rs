@@ -9,7 +9,9 @@ use super::api::{
     Versioned, ViewChange, ViewDiff, ViewFilter, ViewId, ViewScope, ViewSpec,
 };
 use super::maintenance::Maintenance;
-use super::{RefusedChange, Removed, RemovedAccount, Shared, StoreError, codec, fts, views};
+use super::{
+    RefusedChange, Removed, RemovedAccount, Shared, StoreError, codec, contacts, fts, views,
+};
 use rusqlite::hooks::Wal;
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use sealwax_domain::account::AccountKey;
@@ -23,6 +25,7 @@ use std::time::Instant;
 
 mod accounts;
 mod bodies;
+pub(crate) mod compose;
 pub(crate) mod ops;
 pub(crate) mod overlay;
 mod remote;
@@ -102,6 +105,7 @@ pub(crate) enum WriteJob {
     },
     Sync(sync::SyncJob),
     Ops(ops::OpsJob),
+    Compose(compose::ComposeJob),
     UpgradeBody {
         upgrade: Box<BodyUpgrade>,
         reply: Sender<Upgraded>,
@@ -171,6 +175,8 @@ struct State {
     maintenance: async_channel::Sender<Maintenance>,
     checkpoint_frames: c_int,
     inserted_since_optimize: u64,
+    /// Outbox changes of the transaction under way, published with its commit.
+    outbox: Vec<super::OutboxChange>,
 }
 
 impl State {
@@ -180,6 +186,7 @@ impl State {
         tx: Transaction<'_>,
         mut event: ChangeEvent,
     ) -> Result<StoreVersion, StoreError> {
+        event.outbox = std::mem::take(&mut self.outbox);
         let version = self.version + 1;
         tx.prepare_cached("UPDATE store_version SET version = ?1")?
             .execute([version as i64])?;
@@ -230,6 +237,7 @@ impl Writer {
                 maintenance,
                 checkpoint_frames: c_int::try_from(checkpoint_frames).unwrap_or(c_int::MAX),
                 inserted_since_optimize: 0,
+                outbox: Vec::new(),
             },
         })
     }
@@ -338,6 +346,7 @@ impl Writer {
             }
             WriteJob::Sync(job) => self.sync_job(job),
             WriteJob::Ops(job) => self.ops_job(job),
+            WriteJob::Compose(job) => self.compose_job(job),
             WriteJob::UpgradeBody { upgrade, reply } => {
                 let _ = reply.try_send(self.upgrade_body(&upgrade));
             }
@@ -842,9 +851,10 @@ impl Writer {
     }
 }
 
-/// Gives a new row the ops waiting in its folder for its Message-ID and the folder's pending
-/// read below the floor, when the folder has either (`waiting` caches that per batch); returns
-/// the flags the row shows.
+/// Gives a new row the ops waiting in its folder for its Message-ID, the folder's pending read
+/// below the floor, and an expunge when it is a Drafts copy queued for deletion
+/// (`compose::take_deletion`), when the folder has any (`waiting` caches that per batch);
+/// returns the flags the row shows.
 pub(crate) fn overlay_new(
     tx: &Connection,
     waiting: &mut HashMap<FolderId, bool>,
@@ -858,7 +868,7 @@ pub(crate) fn overlay_new(
         Some(has) => *has,
         None => *waiting
             .entry(folder)
-            .or_insert(overlay::has_waiting(tx, folder)?),
+            .or_insert(overlay::has_waiting(tx, folder)? || compose::has_deletions(tx, folder)?),
     };
     if !has {
         return Ok(flags);
@@ -867,14 +877,9 @@ pub(crate) fn overlay_new(
     let uidvalidity: u32 = tx
         .prepare_cached("SELECT coalesce(uidvalidity, 0) FROM folders WHERE id = ?1")?
         .query_row([folder.0], |row| row.get(0))?;
-    overlay::attach_waiting(
-        tx,
-        folder,
-        id,
-        message.headers.message_id.as_deref(),
-        uid,
-        uidvalidity,
-    )?;
+    let message_id = message.headers.message_id.as_deref();
+    overlay::attach_waiting(tx, folder, id, message_id, uid, uidvalidity)?;
+    compose::take_deletion(tx, folder, id, uid, uidvalidity, message_id)?;
     let shown = overlay::shown_at(tx, id, folder, uidvalidity, uid, flags)?;
     if shown != flags {
         tx.prepare_cached("UPDATE messages SET flags = ?2, server_flags = ?3 WHERE id = ?1")?
@@ -1068,6 +1073,37 @@ fn insert_message(
             .query_row(params![message_id, thread.0], |row| row.get::<_, bool>(0))?,
         None => false,
     };
+    let (account, in_sent, own): (i64, bool, String) = tx
+        .prepare_cached(
+            "SELECT f.account_id, f.role = 'sent', a.address FROM folders f \
+             JOIN accounts a ON a.id = f.account_id WHERE f.id = ?1",
+        )?
+        .query_row([message.folder.0], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+    let written = in_sent
+        && match &headers.message_id {
+            Some(message_id) => !tx
+                .prepare_cached(
+                    "SELECT EXISTS(SELECT 1 FROM messages m JOIN folders f ON f.id = m.folder_id \
+                     WHERE m.message_id = ?1 AND f.account_id = ?2 AND f.role = 'sent')",
+                )?
+                .query_row(params![message_id, account], |row| row.get::<_, bool>(0))?,
+            None => true,
+        };
+    contacts::add(
+        tx,
+        &contacts::Seen {
+            account: AccountId(account),
+            own: &own,
+            from: headers.from.first(),
+            to: &headers.to,
+            cc: &headers.cc,
+            date: message.date,
+            first_copy: !duplicate,
+            written,
+        },
+    )?;
     let sender = headers.from.first();
     let id = MessageId(
         tx.prepare_cached(

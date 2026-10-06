@@ -6,11 +6,11 @@ use crate::store::api::{
     ChangeEvent, NewAccount, StoreVersion, Versioned, ViewChange, ViewDiff, ViewId, ViewScope,
     ViewSpec,
 };
-use crate::store::{RemovedAccount, StoreError, views};
+use crate::store::{RemovedAccount, StoreError, compose, views};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::account::AccountKey;
-use sealwax_domain::model::{AccountId, BlobKey, FolderId, MessageId};
-use std::collections::{BTreeMap, HashSet};
+use sealwax_domain::model::{AccountId, BlobKey, DraftId, FolderId, MessageId};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::sync::Arc;
 
 /// Every open view `affected` picks, reopened at its new size.
@@ -166,6 +166,16 @@ impl Writer {
                 }
             }
         }
+        let held_by_drafts: BTreeSet<BlobKey> = tx
+            .prepare_cached("SELECT id FROM drafts WHERE account_id = ?1")?
+            .query_map([account.0], |row| row.get(0).map(DraftId))?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .map(|draft| compose::blobs_of(&tx, draft))
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         let orphaned_blobs: Vec<BlobKey> = tx
             .prepare_cached(
                 "SELECT DISTINCT m.blob_key FROM messages m \
@@ -187,8 +197,16 @@ impl Writer {
                 unindex.execute([id.0])?;
             }
         }
-        // Folders (with their messages and parts), conversations and aliases follow by cascade.
+        // Folders (with their messages and parts), conversations, aliases, drafts, the outbox
+        // and contacts follow by cascade.
         tx.execute("DELETE FROM accounts WHERE id = ?1", [account.0])?;
+        let mut orphaned_blobs: Vec<BlobKey> = orphaned_blobs
+            .into_iter()
+            .filter(|key| !held_by_drafts.contains(key))
+            .map(|key| Ok((!compose::held(&tx, &key)?).then_some(key)))
+            .filter_map(Result::transpose)
+            .collect::<rusqlite::Result<_>>()?;
+        orphaned_blobs.extend(compose::unreferenced(&tx, held_by_drafts)?);
         let shared = Arc::clone(&self.state.shared);
         let open = shared.registry.lock();
         let views = reloads(&tx, &open.open, |scope| match scope {

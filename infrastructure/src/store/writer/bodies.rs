@@ -4,7 +4,7 @@
 
 use super::{RowChange, Writer, people, removed_positions, view_changes};
 use crate::store::api::{BodyState, BodyUpgrade, ChangeEvent, Evicted, StoreVersion, Upgraded};
-use crate::store::{StoreError, codec, fts};
+use crate::store::{StoreError, codec, compose, fts};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::model::{Address, BlobKey, FolderId, MessageId};
 use std::collections::HashSet;
@@ -15,12 +15,14 @@ const EVICT_BATCH: usize = 200;
 /// Opening a message this soon after its body was last used writes nothing.
 const TOUCH_SLACK: i64 = 60;
 
-/// Whether any message still refers to `key`.
+/// Whether any message, draft or outbox entry still refers to `key`.
 fn referenced(tx: &Connection, key: &BlobKey) -> rusqlite::Result<bool> {
-    tx.prepare_cached(
-        "SELECT EXISTS(SELECT 1 FROM messages INDEXED BY messages_blob WHERE blob_key = ?1)",
-    )?
-    .query_row([key.0.as_slice()], |row| row.get(0))
+    Ok(tx
+        .prepare_cached(
+            "SELECT EXISTS(SELECT 1 FROM messages INDEXED BY messages_blob WHERE blob_key = ?1)",
+        )?
+        .query_row([key.0.as_slice()], |row| row.get(0))?
+        || compose::held(tx, key)?)
 }
 
 /// The columns an upgrade reads from the row it replaces.
@@ -212,7 +214,7 @@ impl Writer {
 
     /// While the downloaded bodies take more than `limit` bytes, sends those used longest ago
     /// back to their headers and preview (rows, snippets and full text stay), sparing the
-    /// bodies of `keep`. At most [`EVICT_BATCH`] bodies per call; the reply says whether to
+    /// bodies of `keep` and any blob a draft or the outbox holds. At most [`EVICT_BATCH`] bodies per call; the reply says whether to
     /// call again. Nothing the lists show changes, so no version and no event.
     pub(super) fn evict_bodies(
         &mut self,
@@ -255,7 +257,12 @@ impl Writer {
                     break;
                 };
                 let key: Vec<u8> = row.get(0)?;
-                if kept.contains(&key) {
+                if kept.contains(&key)
+                    || BlobKey::from_slice(&key)
+                        .map(|blob| compose::held(&tx, &blob))
+                        .transpose()?
+                        .unwrap_or(false)
+                {
                     continue;
                 }
                 let size = u64::try_from(row.get::<_, i64>(1)?).unwrap_or(0);

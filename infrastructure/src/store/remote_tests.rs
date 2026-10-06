@@ -148,5 +148,5 @@ fn a_v7_store_migrates_to_an_empty_list() {
         .unwrap()
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 8);
+    assert_eq!(version, SCHEMA_VERSION);
 }
