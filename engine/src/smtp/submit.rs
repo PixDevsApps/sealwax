@@ -184,12 +184,11 @@ impl SubmitError {
             | SubmitError::RecipientsRefused { recipients } => {
                 SendError::RecipientsRefused(named(recipients))
             }
-            SubmitError::TooLarge { limit: Some(limit) } => SendError::TooLarge { limit: *limit },
+            SubmitError::TooLarge { limit } => SendError::TooLarge { limit: *limit },
             SubmitError::InvalidAddress { .. }
             | SubmitError::NeedsSmtpUtf8 { .. }
             | SubmitError::NeedsEightBit
             | SubmitError::Malformed
-            | SubmitError::TooLarge { limit: None }
             | SubmitError::Refused { .. } => SendError::Refused,
             SubmitError::Connect(_) | SubmitError::Auth(_) | SubmitError::Uncertain => {
                 SendError::Other

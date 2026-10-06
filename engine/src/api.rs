@@ -345,9 +345,10 @@ pub enum SendError {
     /// The server refused these recipients' addresses (RCPT TO).
     #[error("the server refused {} recipients", .0.len())]
     RecipientsRefused(Vec<String>),
-    /// Larger than the server takes.
-    #[error("the message is larger than the server's limit of {limit} bytes")]
-    TooLarge { limit: u64 },
+    /// Larger than the server takes: its limit when it named one (EHLO SIZE), `None` when it
+    /// only refused the message as too large (552).
+    #[error("the message is larger than the server takes")]
+    TooLarge { limit: Option<u64> },
     /// The server refused the message itself, or its sender address.
     #[error("the server refused the message")]
     Refused,
@@ -366,7 +367,7 @@ impl fmt::Debug for SendError {
             SendError::RecipientsRefused(recipients) => {
                 write!(f, "RecipientsRefused({})", recipients.len())
             }
-            SendError::TooLarge { limit } => write!(f, "TooLarge {{ limit: {limit} }}"),
+            SendError::TooLarge { limit } => write!(f, "TooLarge {{ limit: {limit:?} }}"),
             SendError::Refused => f.write_str("Refused"),
             SendError::Store => f.write_str("Store"),
             SendError::Other => f.write_str("Other"),
