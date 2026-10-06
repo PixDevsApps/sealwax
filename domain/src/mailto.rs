@@ -11,8 +11,9 @@ const MAX_HEADER_CHARS: usize = 998;
 const MAX_BODY_BYTES: usize = 256 * 1024;
 const MAX_ADDRESSES: usize = 100;
 
-/// A draft's fields from a `mailto:` URI. Its contents are the user's mail: never log them.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// A draft's fields from a `mailto:` URI. Its contents are the user's mail: never log them; its
+/// `Debug` prints counts, lengths and the names of the dropped fields only.
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Mailto {
     pub to: Vec<String>,
     pub cc: Vec<String>,
@@ -22,6 +23,20 @@ pub struct Mailto {
     pub in_reply_to: Option<String>,
     /// Lower-cased names of the header fields that were dropped, plus `invalid-address`.
     pub ignored: Vec<String>,
+}
+
+impl std::fmt::Debug for Mailto {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Mailto")
+            .field("to", &self.to.len())
+            .field("cc", &self.cc.len())
+            .field("bcc", &self.bcc.len())
+            .field("subject_len", &self.subject.as_ref().map(String::len))
+            .field("body_len", &self.body.as_ref().map(String::len))
+            .field("in_reply_to", &self.in_reply_to.is_some())
+            .field("ignored", &self.ignored)
+            .finish()
+    }
 }
 
 impl Mailto {
@@ -224,6 +239,11 @@ mod tests {
         assert_eq!(parsed.subject.as_deref(), Some("x"));
         let debug = format!("{parsed:?}");
         assert!(!debug.contains("passwd") && !debug.contains("ssh") && !debug.contains("file:"));
+        assert!(!debug.contains("a@example.com"), "{debug}");
+        assert!(
+            debug.contains("ignored: [\"attach\", \"attachment\"]"),
+            "{debug}"
+        );
     }
 
     #[test]
