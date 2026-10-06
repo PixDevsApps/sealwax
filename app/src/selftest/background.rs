@@ -321,8 +321,8 @@ async fn measure(harness: &Harness, runs: usize) -> StepResult {
         // the minutes before a user comes back.
         glib::timeout_future(Duration::from_millis(300)).await;
         let painted: Rc<Cell<Option<(Instant, usize)>>> = Rc::default();
-        let (built, mapped): (Rc<Cell<Option<Instant>>>, Rc<Cell<Option<Instant>>>) =
-            Default::default();
+        let built: Rc<Cell<Option<Instant>>> = Rc::default();
+        let mapped: Rc<Cell<Option<Instant>>> = Rc::default();
         let handlers: Rc<RefCell<Vec<glib::SignalHandlerId>>> = Rc::default();
         let added = {
             let (painted, state) = (painted.clone(), harness.state.clone());
