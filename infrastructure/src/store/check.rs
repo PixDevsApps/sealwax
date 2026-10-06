@@ -1,6 +1,7 @@
 //! Recounts what the writer maintains and lists disagreements: folder counts (of shown rows),
 //! conversation sizes (each Message-ID once) and dates, aliases, empty conversations, foreign
-//! keys, full-text rows without a message, and the op queue: every overlay recomputed from the
+//! keys, full-text rows without a message, drafts and the outbox (parts held, bytes recorded
+//! from the start of a send), contacts, and the op queue: every overlay recomputed from the
 //! server's flags and the pending ops, and every pending op at its message. A new folder
 //! without messages may show the server's STATUS counts instead (`FolderSpec::server_counts`),
 //! so its counts aren't recounted. The server's counts below a windowed folder's floor are
@@ -33,7 +34,7 @@ SELECT count(*) FROM keys k
 LEFT JOIN thread_aliases a ON a.account_id = k.account AND a.message_id = k.key
 WHERE a.thread_id IS NOT k.thread";
 
-const CHECKS: [(&str, &str); 11] = [
+const CHECKS: [(&str, &str); 15] = [
     (
         "folder counts",
         "SELECT count(*) FROM folders f LEFT JOIN \
@@ -98,6 +99,27 @@ const CHECKS: [(&str, &str); 11] = [
         "ops without a batch",
         "SELECT count(*) FROM ops o \
          WHERE NOT EXISTS (SELECT 1 FROM op_batches WHERE id = o.batch)",
+    ),
+    (
+        "draft parts not held",
+        "SELECT count(*) FROM draft_parts p WHERE NOT EXISTS \
+           (SELECT 1 FROM draft_blobs b WHERE b.draft = p.draft AND b.blob_key = p.blob_key)",
+    ),
+    (
+        "outbox entries of another account",
+        "SELECT count(*) FROM outbox o JOIN drafts d ON d.id = o.draft \
+         WHERE o.account_id <> d.account_id",
+    ),
+    (
+        "sends started without their bytes",
+        "SELECT count(*) FROM outbox WHERE state NOT IN (0, 1, 2, 3) \
+           OR (state IN (1, 2) AND message_blob IS NULL) \
+           OR (state = 0 AND attempts = 0 AND message_blob IS NOT NULL)",
+    ),
+    (
+        "contacts",
+        "SELECT count(*) FROM contacts c WHERE seen < 0 OR written < 0 \
+           OR NOT EXISTS (SELECT 1 FROM contact_terms t WHERE t.contact = c.id)",
     ),
 ];
 

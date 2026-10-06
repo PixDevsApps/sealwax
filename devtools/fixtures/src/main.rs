@@ -3,6 +3,7 @@
 //! the app's own store is at `SealwaxDirs::from_env().store_file()`.
 
 mod bench;
+mod compose;
 mod conversation;
 mod corpus;
 mod import;
@@ -30,6 +31,7 @@ const USAGE: &str = "usage:
   sealwax-fixtures bench-unified --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
   sealwax-fixtures bench-ops --store PATH [--cold N] [--warm N] [--samples N] [--overlays N] [--now UNIX]
   sealwax-fixtures bench-conversation --store PATH [--blobs DIR] [--cold N] [--warm N] [--now UNIX]
+  sealwax-fixtures bench-compose --store PATH [--samples N] [--contacts N] [--now UNIX]
   sealwax-fixtures check --store PATH
   sealwax-fixtures remove-account --store PATH [--blobs DIR] [--account NAME]
 
@@ -244,6 +246,12 @@ fn main() -> Result<()> {
             warm: args.number("warm", 30)?,
             samples: args.number("samples", 200)?,
             overlays: args.number("overlays", 1_000)?,
+            now: args.now()?,
+        }),
+        "bench-compose" => compose::run(&compose::Options {
+            store: args.path("store")?,
+            samples: args.number("samples", 200)?,
+            contacts: args.number("contacts", 0)?,
             now: args.now()?,
         }),
         "check" => check(&args),
