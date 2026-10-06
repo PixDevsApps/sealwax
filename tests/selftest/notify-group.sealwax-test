@@ -1,0 +1,105 @@
+# New-mail notifications grouped and withdrawn (ML-083): up to three messages get notifications of
+# their own; past that, one notification counts them all ("N new messages", the senders newest
+# first) and the others are withdrawn; more mail replaces the count. A message read anywhere
+# leaves the count, and the count is withdrawn with the last; a message read, or deleted, takes
+# its own notification with it. The focused window showing the message's folder (or All Inboxes)
+# keeps new mail quiet; another folder doesn't. Every name and subject is fictional.
+# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/notify-group.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+notify-server
+mail-account Personal
+folder archive Personal
+
+# Two of their own.
+notify-mail a Personal:inbox "Første" "from=Ingrid Solberg" ago=5
+notify-mail b Personal:inbox "Andre" "from=Marius Dahl" ago=4
+notify-arrive a b
+wait-until assert-notify-count 2
+assert-notified a alone
+assert-notified b alone
+
+# Two more: one notification counts the four, and the two are withdrawn.
+notify-mail c Personal:inbox "Tredje" "from=Leah Kim" ago=3
+notify-mail d Personal:inbox "Fjerde" "from=Kari Nordmann" ago=2
+notify-arrive c d
+wait-until assert-notify-count 3
+assert-notify-closed 1 true
+assert-notify-closed 2 true
+assert-notify 3 summary "4 new messages"
+assert-notify 3 body "Kari Nordmann, Leah Kim, Marius Dahl and 1 other"
+assert-notify 3 actions default
+assert-notified a counted
+assert-notified d counted
+assert-notify-open 1
+
+# One more replaces the count.
+notify-mail e Personal:inbox "Femte" "from=Leah Kim" ago=1
+notify-arrive e
+wait-until assert-notify-count 4
+assert-notify 4 replaces 3
+assert-notify 4 summary "5 new messages"
+assert-notify 4 body "Leah Kim, Kari Nordmann, Marius Dahl and 1 other"
+assert-notify-open 1
+
+# Read in the window, one at a time: each leaves the count, and the last takes it away.
+folder inbox Personal
+assert-list-count 5
+mail-flag 0 +read
+wait-until assert-notified e none
+assert-notify-open 1
+mail-flag 1 +read
+mail-flag 2 +read
+mail-flag 3 +read
+wait-until assert-notified b none
+assert-notify-open 1
+mail-flag 4 +read
+wait-until assert-notified a none
+wait-until assert-notify-open 0
+assert-notify-closed 4 true
+
+# The focused window shows the Inbox: its list shows the new mail, so it stays quiet.
+notify-mail f Personal:inbox "Sjette" "from=Ingrid Solberg"
+notify-arrive f
+sleep 300
+assert-notify-count 4
+assert-notified f none
+folder all-inboxes
+notify-mail g Personal:inbox "Sjuende" "from=Ingrid Solberg"
+notify-arrive g
+sleep 300
+assert-notify-count 4
+assert-notified g none
+
+# Another folder: a notification of its own, withdrawn when its message is read, or deleted.
+folder archive Personal
+notify-mail h Personal:inbox "Åttende" "from=Marius Dahl"
+notify-arrive h
+wait-until assert-notify-count 5
+assert-notified h alone
+notify-mail i Personal:inbox "Niende" "from=Leah Kim"
+notify-arrive i
+wait-until assert-notify-count 6
+folder inbox Personal
+mail-flag 0 +read
+wait-until assert-notify-closed 6 true
+assert-notify-withdrawn i
+assert-notify-closed 5 false
+mail-remove 1
+wait-until assert-notify-closed 5 true
+assert-notify-withdrawn h
+assert-notify-open 0
+
+# Read in the window's reader: withdrawn.
+folder archive Personal
+notify-mail j Personal:inbox "Tiende" "from=Kari Nordmann"
+notify-arrive j
+wait-until assert-notify-count 7
+folder inbox Personal
+triage-mark-read-on-open true
+list-select 0
+wait-until assert-message j read
+wait-until assert-notify-closed 7 true
+assert-notify-withdrawn j

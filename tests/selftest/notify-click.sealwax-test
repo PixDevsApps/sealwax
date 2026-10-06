@@ -1,0 +1,85 @@
+# A click on a new-mail notification (ML-083), through the stand-in notification server on the
+# wrapper's private bus: with the window open it shows the message's Inbox (a search and a chip
+# that hide the message make way), selects the message and opens it in the reader, which marks it
+# read; with the window closed in background mode it builds a new window on that message. The
+# Archive and Mark Read buttons run the window's own triage, with its toast and Undo, and take the
+# notification away; a message that is gone says so. Every name and subject is fictional.
+# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/notify-click.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+notify-server
+triage-account Work work
+triage-mark-read-on-open true
+triage-undo-window 3000
+folder archive Work
+mail-add Work:inbox 3h "Lunsj fredag" "from=Leah Kim"
+mail-add Work:inbox 2h "Budsjett 2027" "from=Marius Dahl"
+
+# The window open on another folder: the click shows the Inbox with the message selected and
+# open in the reader; it is read, and its notification goes.
+notify-mail first Work:inbox "Hyttetur i oktober" "from=Ingrid Solberg" ago=1
+notify-mail second Work:inbox "Styremøte torsdag" "from=Marius Dahl" ago=30
+notify-arrive first second
+wait-until assert-notify-count 2
+assert-notify 2 target second
+notify-click 2 default
+wait-until assert-notify-opened second had-window
+assert-list-count 4
+assert-reader-page message
+wait-until assert-message second read
+assert-notified second none
+assert-notified first alone
+
+# A search and a chip that hide the message make way for it.
+search Budsjett
+chip starred
+assert-list-count 0
+notify-click 1 default
+wait-until assert-notify-opened first had-window
+assert-list-count 4
+wait-until assert-message first read
+assert-notify-open 0
+
+# Archive from the notification: the window's toast and Undo, the notification gone.
+folder archive Work
+notify-mail filed Work:inbox "Kvittering for bestilling" "from=Leah Kim"
+notify-mail marked Work:inbox "Nyhetsbrev uke 41" "from=Marius Dahl"
+notify-arrive filed marked
+wait-until assert-notify-count 4
+notify-click 3 Archive
+wait-until assert-toast "Archived 1 message"
+assert-notified filed none
+assert-notify-withdrawn filed
+assert-undoable true
+outbox-expect ops-queued
+folder inbox Work
+assert-list-count 5
+toast-undo
+wait-until assert-list-count 6
+
+# Mark Read from the notification: no toast, read, the notification gone.
+folder archive Work
+notify-click 4 "Mark Read"
+wait-until assert-message marked read
+assert-notified marked none
+assert-notify-open 0
+
+# A message that is gone by the time of the click.
+action "app.open-message(int64 999999)"
+wait-until assert-toast "The message was moved or deleted"
+
+# Background mode: the window closed, the click builds a new one on the message.
+background true
+close-window
+assert-window false
+notify-mail later Work:inbox "Middag fredag" "from=Leah Kim"
+notify-arrive later
+wait-until assert-notify-count 5
+assert-notify 5 summary "Leah Kim"
+notify-click 5 default
+wait-until assert-window true
+wait-until assert-notify-opened later new-window
+wait-until assert-message later read
+assert-reader-page message

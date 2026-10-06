@@ -1,0 +1,90 @@
+# New-mail notifications (ML-083): what Sealwax sends the notification server, through the stand-in
+# server on the wrapper's private bus. A new unread message in an Inbox gets a notification named
+# Sealwax with the sender as its title and the subject as its body, normal urgency, the mail
+# category, the app-id's desktop entry, a default action and the Archive and Mark Read buttons; a
+# message in Junk, Sent or Archive and one already read stay quiet; markup and direction overrides
+# in a subject reach the server as text; the count mode shows "New mail" and a count; off sends
+# nothing; a change to config.toml applies at once. Every name and subject is fictional.
+# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/notify-content.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+notify-server
+mail-account Personal
+# The window shows the Archive, not the Inbox: new mail there notifies (see notify-group).
+folder archive Personal
+
+# Sender and subject.
+notify-mail first Personal:inbox "Hyttetur i oktober" "from=Ingrid Solberg"
+notify-arrive first
+wait-until assert-notify-count 1
+assert-notify 1 app-name Sealwax
+assert-notify 1 summary "Ingrid Solberg"
+assert-notify 1 body "Hyttetur i oktober"
+assert-notify 1 actions "default,Archive,Mark Read"
+assert-notify 1 urgency 1
+assert-notify 1 category email.arrived
+assert-notify 1 desktop-entry app-id
+assert-notify 1 image io.github.pixdevsapps.Sealwax
+assert-notify 1 target first
+assert-notified first alone
+
+# Quiet: Junk, Sent, Archive, and a message already read.
+notify-mail spam Personal:junk "Du har vunnet!" "from=Premieteamet"
+notify-mail sent Personal:sent "Re: Hyttetur" "from=Selftest"
+notify-mail filed Personal:archive "Kvittering" "from=Leah Kim"
+notify-mail seen Personal:inbox "Allerede lest" read "from=Marius Dahl"
+notify-arrive spam
+notify-arrive sent
+notify-arrive filed
+notify-arrive seen
+sleep 300
+assert-notify-count 1
+assert-notified spam none
+assert-notified seen none
+
+# Hostile text: markup is escaped for a server that reads markup in the body, and a
+# right-to-left override is dropped.
+notify-mail hostile Personal:inbox "<a href=\"https://example.org\">Vinn</a> & mer" "from=Marius Dahl"
+notify-arrive hostile
+wait-until assert-notify-count 2
+assert-notify 2 summary "Marius Dahl"
+assert-notify 2 body "&lt;a href=\"https://example.org\"&gt;Vinn&lt;/a&gt; &amp; mer"
+notify-mail spoof Personal:inbox "Faktura‮fdp.exe" "from=Leah Kim"
+notify-arrive spoof
+wait-until assert-notify-count 3
+assert-notify 3 body "Fakturafdp.exe"
+
+# The count mode: switching withdraws what shows a sender or a subject; then "New mail" and a
+# count, and no buttons.
+write-file $TMP/config/sealwax/config.toml "[notifications]\nshow = \"count\"\n"
+wait-until assert-notify-settings on count
+wait-until assert-notify-open 0
+notify-mail private Personal:inbox "Lønnsslipp" "from=Lønn"
+notify-arrive private
+wait-until assert-notify-count 4
+assert-notify 4 app-name Sealwax
+assert-notify 4 summary "New mail"
+assert-notify 4 body "1 new message"
+assert-notify 4 actions default
+assert-notified private counted
+
+# Off: nothing, and what was shown is withdrawn.
+write-file $TMP/config/sealwax/config.toml "[notifications]\nenabled = false\n"
+wait-until assert-notify-settings off sender
+wait-until assert-notify-open 0
+notify-mail quiet Personal:inbox "Ingen varsling" "from=Ingrid Solberg"
+notify-arrive quiet
+sleep 300
+assert-notify-count 4
+assert-notified quiet none
+
+# On again, sender and subject.
+write-file $TMP/config/sealwax/config.toml ""
+wait-until assert-notify-settings on sender
+notify-mail again Personal:inbox "Middag fredag" "from=Leah Kim"
+notify-arrive again
+wait-until assert-notify-count 5
+assert-notify 5 summary "Leah Kim"
+assert-notify 5 body "Middag fredag"
