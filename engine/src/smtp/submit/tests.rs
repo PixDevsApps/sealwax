@@ -532,7 +532,7 @@ async fn a_dropped_envelope_is_reset_before_the_next() {
         from: "a@example.test",
         to: &recipients,
     };
-    drop(submitter.prepare(envelope, MESSAGE).await.unwrap());
+    let _abandoned = submitter.prepare(envelope, MESSAGE).await.unwrap();
     submitter
         .prepare(envelope, MESSAGE)
         .await

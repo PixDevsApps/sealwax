@@ -104,11 +104,23 @@ pub(crate) fn copy_uid(code: Option<&ResponseCode<'_>>) -> Option<CopyUid> {
 pub(crate) enum Code {
     CopyUid(CopyUid),
     ReadOnly,
+    /// APPENDUID (RFC 4315): the target's UIDVALIDITY and the appended message's UID.
+    AppendUid {
+        uidvalidity: u32,
+        uid: u32,
+    },
 }
 
 fn code(outcome: &Outcome<'_>) -> Option<Code> {
-    match outcome.code {
+    match &outcome.code {
         Some(ResponseCode::ReadOnly) => Some(Code::ReadOnly),
+        Some(ResponseCode::AppendUid(uidvalidity, set)) => match set.as_slice() {
+            [UidSetMember::Uid(uid)] => Some(Code::AppendUid {
+                uidvalidity: *uidvalidity,
+                uid: *uid,
+            }),
+            _ => None,
+        },
         _ => copy_uid(outcome.code.as_ref()).map(Code::CopyUid),
     }
 }
@@ -176,6 +188,76 @@ where
     F: FnMut(&Response<'_>),
 {
     let id = session.run_command(command).await?;
+    finish(session, &id, on_untagged).await
+}
+
+/// What the server said before a literal's data.
+enum Ahead {
+    Go,
+    Done(Result<Option<Code>, ImapError>),
+    More,
+}
+
+/// The slowest a literal may go out before its write times out: 16 KiB a second, and never
+/// less than [`READ_TIMEOUT`].
+fn write_timeout(bytes: usize) -> Duration {
+    READ_TIMEOUT.max(Duration::from_secs((bytes / 16_384) as u64))
+}
+
+/// Runs `command`, which ends in a synchronizing literal (`{n}`), with `literal` as its data:
+/// waits for the continuation, sends the bytes and the line's end, and reads the completion. A
+/// server that refuses before the continuation (too large, over quota) answers here, and
+/// nothing of the literal is sent.
+pub(crate) async fn run_literal<F>(
+    session: &mut Session,
+    command: &str,
+    literal: &[u8],
+    mut on_untagged: F,
+) -> Result<Option<Code>, ImapError>
+where
+    F: FnMut(&Response<'_>),
+{
+    use tokio::io::AsyncWriteExt;
+    let id = session.run_command(command).await?;
+    loop {
+        let ahead = next(session, |response| match response {
+            Response::Continue { .. } => Ahead::Go,
+            Response::Done {
+                tag,
+                status,
+                outcome,
+            } if *tag == id => Ahead::Done(match completion(status, outcome) {
+                Ok(()) => Err(ImapError::Protocol("a literal completed before its data")),
+                Err(error) => Err(error),
+            }),
+            Response::Done { .. } => {
+                Ahead::Done(Err(ImapError::Protocol("a completion for another command")))
+            }
+            Response::Data {
+                status: Status::Bye,
+                outcome,
+            } => Ahead::Done(Err(ImapError::Bye(text(outcome)))),
+            other => {
+                on_untagged(other);
+                Ahead::More
+            }
+        })
+        .await?;
+        match ahead {
+            Ahead::Go => break,
+            Ahead::Done(result) => return result,
+            Ahead::More => {}
+        }
+    }
+    let stream: &mut super::Stream = session.as_mut();
+    let sent = async {
+        stream.write_all(literal).await?;
+        stream.write_all(b"\r\n").await?;
+        stream.flush().await
+    };
+    tokio::time::timeout(write_timeout(literal.len()), sent)
+        .await
+        .map_err(|_| ImapError::Timeout)??;
     finish(session, &id, on_untagged).await
 }
 
@@ -317,6 +399,20 @@ mod tests {
         assert_eq!(code(&huge), None);
         let read_only = outcome(b"A4 OK [READ-ONLY] Examined\r\n");
         assert_eq!(code(&read_only), Some(Code::ReadOnly));
+    }
+
+    #[test]
+    fn appenduid_names_the_new_message() {
+        let tagged = outcome(b"A1 OK [APPENDUID 38505 3955] APPEND completed\r\n");
+        assert_eq!(
+            code(&tagged),
+            Some(Code::AppendUid {
+                uidvalidity: 38505,
+                uid: 3955
+            })
+        );
+        let several = outcome(b"A2 OK [APPENDUID 38505 3955:3956] APPEND completed\r\n");
+        assert_eq!(code(&several), None);
     }
 
     #[test]

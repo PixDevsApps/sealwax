@@ -18,6 +18,14 @@
 //!   ascending order whatever order it copied in.
 //! - [`expunge`]: `\Deleted`, then `UID EXPUNGE` with UIDPLUS; otherwise left flagged.
 //! - [`mark_folder_read`]: `UID SEARCH UNSEEN UNDELETED`, then `\Seen` on exactly those.
+//! - [`append`], [`replace_draft`] and [`find`] (M6): the Sent copy and drafts, appended at most
+//!   once by the same mark.
+
+mod append;
+
+pub use append::{
+    Append, Appended, FIND_SCAN, Found, OldCopies, Replaced, append, find, replace_draft,
+};
 
 use super::connection::Connection;
 use super::error::ImapError;
@@ -185,7 +193,7 @@ impl WriteError {
                     Some("OVERQUOTA") => WriteFailure::QuotaFull,
                     Some(
                         "TRYCREATE" | "NONEXISTENT" | "READ-ONLY" | "CANNOT" | "NOPERM"
-                        | "ALREADYEXISTS" | "CLIENTBUG" | "CONTACTADMIN",
+                        | "ALREADYEXISTS" | "CLIENTBUG" | "CONTACTADMIN" | "TOOBIG",
                     ) => WriteFailure::Refuse,
                     _ => WriteFailure::Retry,
                 }
