@@ -9,6 +9,7 @@
 //! | `background-spawn NAME [ARGS…]` | As `spawn-bg` (its own id and folders under `$TMP/NAME/`, output in `$TMP/NAME.err`), and it closes its main window 300 ms after its first frame (`SEALWAX_CLOSE_WINDOW_AFTER_MS`) |
 //! | `background-menu` | Opens the main window's menu (for screenshots) |
 //! | `background-measure N` | N times: closes the main window, waits until it is gone, calls D-Bus `Activate` on this instance and times it to the new window's first frame; prints every run, p50, p95 and the rows bound at that frame |
+//! | `background-memory LABEL` | Prints this process's proportional set size (PSS, `smaps_rollup`) and its descendant processes' (WebKit's), by name |
 //! | `assert-notices N` | `background.rs` sent N notices in this run |
 //! | `assert-notice title\|body TEXT` | The latest one's title is TEXT, or its body holds TEXT |
 //! | `assert-notice-marker BOOL` | The one-time notice's marker is in this run's state folder |
@@ -41,6 +42,9 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("background-spawn", 1, usize::MAX),
     ("background-menu", 0, 0),
     ("background-measure", 1, 1),
+    ("background-memory", 1, 1),
+    ("background-watch", 0, 0),
+    ("assert-freed", 0, 0),
     ("assert-notices", 1, 1),
     ("assert-notice", 2, 2),
     ("assert-notice-marker", 1, 1),
@@ -52,6 +56,12 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-file-count", 3, 3),
     ("assert-login-dialog", 2, 2),
 ];
+
+thread_local! {
+    /// What `background-watch` watches, for `assert-freed`.
+    static WATCHED: RefCell<Vec<(&'static str, glib::WeakRef<gtk::Widget>)>> =
+        const { RefCell::new(Vec::new()) };
+}
 
 /// How long after its first frame a `background-spawn` Sealwax closes its window.
 const CLOSE_AFTER_MS: &str = "300";
@@ -77,6 +87,39 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             Ok(())
         }
         "background-measure" => measure(harness, number(arg(0))?).await,
+        "background-memory" => {
+            memory(arg(0));
+            Ok(())
+        }
+        "background-watch" => {
+            let window = harness.window()?;
+            let mut watched = vec![(
+                "window",
+                window.window().upcast_ref::<gtk::Widget>().downgrade(),
+            )];
+            if let Some(list) = harness.state.list() {
+                watched.push((
+                    "list",
+                    list.widget().upcast_ref::<gtk::Widget>().downgrade(),
+                ));
+            }
+            if let Some(reader) = harness.state.reader() {
+                watched.push(("reader", reader.widget().downgrade()));
+            }
+            WATCHED.with(|current| current.replace(watched));
+            Ok(())
+        }
+        "assert-freed" => {
+            let alive: Vec<&str> = WATCHED.with(|watched| {
+                watched
+                    .borrow()
+                    .iter()
+                    .filter(|(_, weak)| weak.upgrade().is_some())
+                    .map(|(name, _)| *name)
+                    .collect()
+            });
+            equal("still alive", alive, Vec::<&str>::new())
+        }
         "assert-notices" => equal("notices sent", background::sent().len(), number(arg(0))?),
         "assert-notice" => {
             let last = background::sent().pop().ok_or("no notice was sent")?;
@@ -321,4 +364,66 @@ async fn measure(harness: &Harness, runs: usize) -> StepResult {
         times.last().copied().unwrap_or_default()
     );
     Ok(())
+}
+
+/// A process's proportional set size in KiB, from `/proc/PID/smaps_rollup`.
+fn pss_kib(pid: u32) -> Option<u64> {
+    let text = fs::read_to_string(format!("/proc/{pid}/smaps_rollup")).ok()?;
+    text.lines()
+        .find_map(|line| line.strip_prefix("Pss:"))
+        .and_then(|rest| rest.trim().trim_end_matches("kB").trim().parse().ok())
+}
+
+/// The processes under `pid`, with their names: WebKit's web and network processes, possibly
+/// behind a sandbox launcher.
+fn descendants(pid: u32) -> Vec<(u32, String)> {
+    let Ok(entries) = fs::read_dir("/proc") else {
+        return Vec::new();
+    };
+    let processes: Vec<(u32, u32, String)> = entries
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok())
+        .filter_map(|candidate| {
+            let stat = fs::read_to_string(format!("/proc/{candidate}/stat")).ok()?;
+            let (name, rest) = stat.split_once(" (")?.1.rsplit_once(") ")?;
+            let parent = rest.split_whitespace().nth(1)?.parse().ok()?;
+            Some((candidate, parent, name.to_owned()))
+        })
+        .collect();
+    let mut found = Vec::new();
+    let mut frontier = vec![pid];
+    while let Some(parent) = frontier.pop() {
+        for (child, of, name) in &processes {
+            if *of == parent {
+                found.push((*child, name.clone()));
+                frontier.push(*child);
+            }
+        }
+    }
+    found
+}
+
+fn memory(label: &str) {
+    let own = std::process::id();
+    let mib = |kib: u64| kib as f64 / 1024.0;
+    let own_pss = pss_kib(own).unwrap_or_default();
+    let children: Vec<(String, u64)> = descendants(own)
+        .into_iter()
+        .map(|(pid, name)| (name, pss_kib(pid).unwrap_or_default()))
+        .collect();
+    let total = own_pss + children.iter().map(|(_, kib)| kib).sum::<u64>();
+    let listed: Vec<String> = children
+        .iter()
+        .map(|(name, kib)| format!("{name} {:.1}", mib(*kib)))
+        .collect();
+    println!(
+        "  # {label}: PSS {:.1} MiB in all; sealwax {:.1} MiB; {} processes under it: {}",
+        mib(total),
+        mib(own_pss),
+        children.len(),
+        if listed.is_empty() {
+            "none".to_owned()
+        } else {
+            listed.join(", ")
+        }
+    );
 }

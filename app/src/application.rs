@@ -1092,6 +1092,8 @@ impl AppState {
     /// sidebar, which the store fills and keeps current; its keys move and open the selection.
     fn install_list(self: &Rc<Self>, window: &Window, win_actions: &ActionSet, keymap: &Keymap) {
         let list = MessageList::new(self.mailbox.clone());
+        // Known to the state before anything below runs: the handlers look it up there.
+        self.list.replace(Some(list.clone()));
         list.set_first_rows(self.first_rows.clone());
         list.install_keys(keymap);
         list.set_quick_tooltips(quick_tooltips(keymap));
@@ -1100,21 +1102,30 @@ impl AppState {
         list.keep_focus(window.window());
         self.install_triage(window, &list, win_actions);
 
-        let target = list.clone();
-        win_actions.connect(ActionId::NextMessage, move || target.select_next());
-        let target = list.clone();
-        win_actions.connect(ActionId::PreviousMessage, move || target.select_previous());
-        let target = list.clone();
-        win_actions.connect(ActionId::OpenMessage, move || target.open_selected());
-        let target = list.clone();
-        win_actions.connect(ActionId::Search, move || target.focus_search());
-        let pane = window.clone();
+        // The window's handlers find the window and the list through the state, never by a
+        // clone of their own: a clone would keep a window closed into background mode alive.
+        for (id, run) in [
+            (
+                ActionId::NextMessage,
+                MessageList::select_next as fn(&MessageList),
+            ),
+            (ActionId::PreviousMessage, MessageList::select_previous),
+            (ActionId::OpenMessage, MessageList::open_selected),
+            (ActionId::Search, MessageList::focus_search),
+        ] {
+            let weak = Rc::downgrade(self);
+            win_actions.connect(id, move || {
+                if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                    run(&list);
+                }
+            });
+        }
         let weak = Rc::downgrade(self);
         list.connect_message_opened(move |message| {
-            let edited = weak
-                .upgrade()
-                .is_some_and(|state| compose_actions::open_if_draft(&state, &pane, message));
-            if !edited {
+            if let Some(state) = weak.upgrade()
+                && let Some(pane) = state.window()
+                && !compose_actions::open_if_draft(&state, &pane, message)
+            {
                 pane.show_pane(Pane::Reader);
             }
         });
@@ -1127,19 +1138,19 @@ impl AppState {
             }
         });
         let weak = Rc::downgrade(self);
-        let shown = window.clone();
         list.connect_selection_cleared(move || {
             if let Some(state) = weak.upgrade() {
                 state.leave_opened(None);
                 state.set_has_selection(false);
-                if shown.reader_page() == "batch" {
+                if let Some(shown) = state.window()
+                    && shown.reader_page() == "batch"
+                {
                     shown.clear_reader();
                 }
                 state.refresh_commands();
             }
         });
         let weak = Rc::downgrade(self);
-        let shown = window.clone();
         list.connect_batch_selected(move |count| {
             if let Some(state) = weak.upgrade() {
                 state.leave_opened(None);
@@ -1149,33 +1160,44 @@ impl AppState {
                     reader.clear();
                     reader.set_position(None);
                 }
-                shown.show_batch(count);
+                if let Some(shown) = state.window() {
+                    shown.show_batch(count);
+                }
                 state.set_has_selection(true);
                 state.refresh_commands();
             }
         });
-        let heading = window.clone();
-        list.connect_search_changed(move |search| match search {
-            Some(search) => heading.set_list_heading("Search", &search.subtitle()),
-            None => {
-                let (title, subtitle) = heading
-                    .sidebar()
-                    .heading(&heading.selected_folder())
-                    .unwrap_or_default();
-                heading.set_list_heading(&title, &subtitle);
+        let weak = Rc::downgrade(self);
+        list.connect_search_changed(move |search| {
+            let Some(heading) = weak.upgrade().and_then(|state| state.window()) else {
+                return;
+            };
+            match search {
+                Some(search) => heading.set_list_heading("Search", &search.subtitle()),
+                None => {
+                    let (title, subtitle) = heading
+                        .sidebar()
+                        .heading(&heading.selected_folder())
+                        .unwrap_or_default();
+                    heading.set_list_heading(&title, &subtitle);
+                }
             }
         });
 
         // A folder (not All Inboxes) is synced now and kept current while it is shown (ML-042);
         // at the end of its first-sync window the list asks for older mail (ML-043).
-        let (mailbox, engine) = (self.mailbox.clone(), self.engine.clone());
-        let shown = list.clone();
+        let weak = Rc::downgrade(self);
         window.connect_folder_selected(move |_, key| {
-            let scope = mailbox.scope_for_key(key);
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let scope = state.mailbox.scope_for_key(key);
             if let Some(ViewScope::Folder(folder)) = scope {
-                let _ = engine.send(Command::FolderOpened { folder });
+                let _ = state.engine.send(Command::FolderOpened { folder });
             }
-            shown.show(scope);
+            if let Some(shown) = state.list() {
+                shown.show(scope);
+            }
         });
         let weak = Rc::downgrade(self);
         list.connect_older_wanted(move |folder| {
@@ -1194,15 +1216,16 @@ impl AppState {
         // takes the keymap current by then, since `settings_changed` only updates a reader
         // that exists. A window built again from background mode waits for its own first frame.
         let weak = Rc::downgrade(self);
-        let (target, shown) = (window.clone(), list.clone());
+        let built = window.window().downgrade();
         self.run_after_window_frame(window, move || {
             if let Some(state) = weak.upgrade()
                 && let Some(prefs) = state.preferences()
+                && let (Some(target), Some(shown)) = (state.window(), state.list())
+                && built.upgrade().as_ref() == Some(target.window())
             {
                 state.install_reader(&target, &shown, &prefs.keymap());
             }
         });
-        self.list.replace(Some(list));
     }
 
     /// The mail actions (ML-052 to ML-055): the registry's commands on the list's selection,
@@ -1254,8 +1277,12 @@ impl AppState {
                 state.mark_read(list.scope());
             }
         });
-        let target = list.clone();
-        actions.connect(ActionId::Select, move || target.toggle_selection());
+        let weak = Rc::downgrade(self);
+        actions.connect(ActionId::Select, move || {
+            if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                list.toggle_selection();
+            }
+        });
         let weak = Rc::downgrade(self);
         actions.connect(ActionId::Undo, move || {
             if let Some(state) = weak.upgrade()
@@ -1269,13 +1296,18 @@ impl AppState {
         // batch page, or nowhere once a button there went insensitive under it. Text fields and
         // dialogs take their Escape first.
         let escape = gtk4::EventControllerKey::new();
-        let target = list.clone();
-        escape.connect_key_pressed(move |_, key, _, state| {
-            if key == gtk4::gdk::Key::Escape && state.is_empty() && target.is_select_mode() {
-                target.leave_select_mode();
-                glib::Propagation::Stop
-            } else {
-                glib::Propagation::Proceed
+        let weak = Rc::downgrade(self);
+        escape.connect_key_pressed(move |_, key, _, modifiers| {
+            match weak.upgrade().and_then(|state| state.list()) {
+                Some(target)
+                    if key == gtk4::gdk::Key::Escape
+                        && modifiers.is_empty()
+                        && target.is_select_mode() =>
+                {
+                    target.leave_select_mode();
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
             }
         });
         window.window().add_controller(escape);
@@ -1864,9 +1896,9 @@ impl AppState {
     }
 
     /// The main window closed (into background mode, or before Quit): what only it used goes
-    /// with it, the reader's WebKit view first, so a Sealwax in the background keeps only the
-    /// store, the engine and open composers. A message the reader left to be marked read on
-    /// leaving is left now.
+    /// with it, so the window, its list and its reader are freed (their views back in the
+    /// reader's pool) and a window built again costs no more memory. A message the reader left
+    /// to be marked read on leaving is left now.
     fn main_window_closed(&self) {
         self.leave_opened(None);
         self.window.replace(None);
@@ -1946,12 +1978,11 @@ impl AppState {
             .attach(&window.batch_page().widget, gtk4::PropagationPhase::Bubble);
 
         let weak = Rc::downgrade(self);
-        let target = window.clone();
         list.connect_message_selected(move |id| {
             let Some(state) = weak.upgrade() else {
                 return;
             };
-            let Some(reader) = state.reader() else {
+            let (Some(reader), Some(target)) = (state.reader(), state.window()) else {
                 return;
             };
             if state.reader_shows.replace(Some(id)).is_none() {
@@ -1961,7 +1992,6 @@ impl AppState {
             state.update_position();
         });
         let weak = Rc::downgrade(self);
-        let target = window.clone();
         list.connect_selection_cleared(move || {
             let Some(state) = weak.upgrade() else {
                 return;
@@ -1971,7 +2001,9 @@ impl AppState {
                     reader.clear();
                     reader.set_position(None);
                 }
-                target.clear_reader();
+                if let Some(target) = state.window() {
+                    target.clear_reader();
+                }
             }
         });
         if let Some(id) = list.selected() {
@@ -1979,10 +2011,18 @@ impl AppState {
             window.set_reader(&reader.widget());
             reader.show(id);
         }
-        let previous = list.clone();
-        reader.connect_previous(move || previous.select_previous());
-        let next = list.clone();
-        reader.connect_next(move || next.select_next());
+        let weak = Rc::downgrade(self);
+        reader.connect_previous(move || {
+            if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                list.select_previous();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        reader.connect_next(move || {
+            if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
+                list.select_next();
+            }
+        });
         let weak = Rc::downgrade(self);
         reader.connect_opened(move |opened| {
             if let Some(state) = weak.upgrade() {
@@ -2082,8 +2122,9 @@ impl AppState {
             return window;
         }
         let window = Window::new(app.upcast_ref(), self.config.tiling);
-        self.install_window(app, &window);
+        // Known to the state before its handlers are installed: they look it up there.
         self.window.replace(Some(window.clone()));
+        self.install_window(app, &window);
         self.update_banner();
         window
     }
