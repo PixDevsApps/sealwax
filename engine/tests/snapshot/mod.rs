@@ -2,7 +2,8 @@
 //! the server holds from the folder's floor up (UID, flags, keywords and Message-ID) under the
 //! same UIDVALIDITY, and nothing below the floor. Folders the policy leaves unsynced are only
 //! checked for presence. The counts a synced folder shows must be the server's, below the floor
-//! included. Names are the testbed's and the fake server's synthetic ones.
+//! included, less the `\Deleted` messages it holds. Names are the testbed's and the fake
+//! server's synthetic ones.
 
 #![allow(dead_code)]
 
@@ -123,7 +124,8 @@ pub async fn shown(store: &Store, account: AccountId) -> BTreeMap<String, (u32, 
 }
 
 /// Synced folders whose shown counts aren't the server's: all its messages, and those without
-/// `\Seen`.
+/// `\Seen`, except the `\Deleted` ones the cache holds (from the floor up), which it hides
+/// (M4).
 pub fn count_diff(
     server: &BTreeMap<String, Folder>,
     local: &BTreeMap<String, Folder>,
@@ -131,15 +133,20 @@ pub fn count_diff(
 ) -> Vec<String> {
     let mut out = Vec::new();
     for (name, theirs) in server {
-        if !local.get(name).is_some_and(|ours| ours.synced) {
+        let Some(ours) = local.get(name).filter(|ours| ours.synced) else {
             continue;
-        }
-        let unread = theirs
+        };
+        let counted: Vec<&Entry> = theirs
             .messages
-            .values()
+            .iter()
+            .filter(|(uid, (flags, ..))| **uid < ours.floor || !flags.contains(Flags::DELETED))
+            .map(|(_, entry)| entry)
+            .collect();
+        let unread = counted
+            .iter()
             .filter(|(flags, ..)| !flags.is_seen())
             .count();
-        let expected = (theirs.messages.len() as u32, unread as u32);
+        let expected = (counted.len() as u32, unread as u32);
         let got = shown.get(name).copied();
         if got != Some(expected) {
             out.push(format!("{name}: server counts {expected:?}, shown {got:?}"));

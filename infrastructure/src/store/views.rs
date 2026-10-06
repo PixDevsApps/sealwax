@@ -3,6 +3,7 @@
 //! computes positions in it for change events.
 
 use super::api::{ViewFilter, ViewId, ViewScope, ViewSpec};
+use super::overlay;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use sealwax_domain::model::{FolderId, MessageId, MessageSummary, ThreadId};
 use std::collections::BTreeMap;
@@ -87,24 +88,29 @@ impl Registry {
     }
 }
 
-/// The partial index each filter reads, and the condition that selects it.
+/// The partial index each filter reads, and the condition that selects it. Every index leaves
+/// out rows hidden by a pending move or expunge (256) and rows flagged `\Deleted` (8).
 fn filter_sql(filter: ViewFilter) -> (&'static str, &'static str) {
     match filter {
-        ViewFilter::All => ("messages_folder_date", ""),
-        ViewFilter::Unread => ("messages_unread", " AND flags & 1 = 0"),
-        ViewFilter::Starred => ("messages_flagged", " AND flags & 4 <> 0"),
-        ViewFilter::Attachments => ("messages_attachments", " AND has_attachments <> 0"),
+        ViewFilter::All => ("messages_folder_date", " AND flags & 264 = 0"),
+        ViewFilter::Unread => ("messages_unread", " AND flags & 265 = 0"),
+        ViewFilter::Starred => ("messages_flagged", " AND flags & 268 = 4"),
+        ViewFilter::Attachments => (
+            "messages_attachments",
+            " AND has_attachments <> 0 AND flags & 264 = 0",
+        ),
     }
 }
 
 /// Whether a row with these values passes `filter`.
 pub(crate) fn passes(filter: ViewFilter, flags: u32, has_attachments: bool) -> bool {
-    match filter {
-        ViewFilter::All => true,
-        ViewFilter::Unread => flags & 1 == 0,
-        ViewFilter::Starred => flags & 4 != 0,
-        ViewFilter::Attachments => has_attachments,
-    }
+    overlay::shown(flags)
+        && match filter {
+            ViewFilter::All => true,
+            ViewFilter::Unread => flags & 1 == 0,
+            ViewFilter::Starred => flags & 4 != 0,
+            ViewFilter::Attachments => has_attachments,
+        }
 }
 
 /// The folders a view lists; the unified inbox leaves out detached accounts.
@@ -286,7 +292,8 @@ pub(crate) fn page(
     } else if filter == ViewFilter::All && u64::from(total) * 2 >= stored(conn)? {
         let list: Vec<String> = folders.iter().map(|folder| folder.0.to_string()).collect();
         format!(
-            "SELECT id FROM messages INDEXED BY messages_date WHERE folder_id IN ({}) \
+            "SELECT id FROM messages INDEXED BY messages_date \
+             WHERE folder_id IN ({}) AND flags & 264 = 0 \
              ORDER BY date {order}, id {order} LIMIT ?1 OFFSET ?2",
             list.join(", ")
         )
@@ -326,7 +333,7 @@ fn stored(conn: &Connection) -> rusqlite::Result<u64> {
 }
 
 /// The newest `limit` messages matching an FTS5 expression, walking the date index against the
-/// match set ("date first", S3).
+/// match set ("date first", S3). Hidden rows are left out, as in every view.
 pub(crate) fn search(
     conn: &Connection,
     expression: &str,
@@ -335,12 +342,13 @@ pub(crate) fn search(
 ) -> rusqlite::Result<Vec<MessageSummary>> {
     let inner = match folder {
         None => "SELECT m.id FROM messages m INDEXED BY messages_date \
-                 WHERE m.id IN (SELECT rowid FROM message_fts WHERE message_fts MATCH ?1) \
+                 WHERE m.flags & 264 = 0 \
+                   AND m.id IN (SELECT rowid FROM message_fts WHERE message_fts MATCH ?1) \
                  ORDER BY m.date DESC, m.id DESC LIMIT ?2"
             .to_owned(),
         Some(folder) => format!(
             "SELECT m.id FROM messages m INDEXED BY messages_folder_date \
-             WHERE m.folder_id = {} \
+             WHERE m.folder_id = {} AND m.flags & 264 = 0 \
                AND m.id IN (SELECT rowid FROM message_fts WHERE message_fts MATCH ?1) \
              ORDER BY m.date DESC, m.id DESC LIMIT ?2",
             folder.0

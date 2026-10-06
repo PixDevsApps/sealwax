@@ -82,6 +82,10 @@ pub(crate) enum ReadJob {
     BodyUsage {
         reply: Sender<BodyUsage>,
     },
+    PendingOps {
+        account: AccountId,
+        reply: Sender<u32>,
+    },
 }
 
 impl ReadJob {
@@ -102,6 +106,7 @@ impl ReadJob {
             ReadJob::PartSource { reply, .. } => reply.is_closed(),
             ReadJob::BodyCandidates { reply, .. } => reply.is_closed(),
             ReadJob::BodyUsage { reply } => reply.is_closed(),
+            ReadJob::PendingOps { reply, .. } => reply.is_closed(),
         }
     }
 }
@@ -210,7 +215,17 @@ impl Reader {
             ReadJob::BodyUsage { reply } => {
                 let _ = reply.try_send(self.body_usage());
             }
+            ReadJob::PendingOps { account, reply } => {
+                let _ = reply.try_send(self.pending_ops(account));
+            }
         }
+    }
+
+    fn pending_ops(&self, account: AccountId) -> Result<u32, StoreError> {
+        Ok(self
+            .conn
+            .prepare_cached("SELECT count(*) FROM ops WHERE account_id = ?1 AND done = 0")?
+            .query_row([account.0], |row| row.get(0))?)
     }
 
     fn open_view(&self, request: OpenView) -> Result<ViewOpened, StoreError> {
@@ -276,17 +291,17 @@ impl Reader {
         Ok(Versioned { version, value })
     }
 
-    /// The counts are the server's where the store knows them: its own plus what a windowed
-    /// folder leaves below its floor (ML-043).
+    /// The counts are the server's where the store knows them, with the pending ops applied:
+    /// the shown rows plus what a windowed folder leaves below its floor (ML-043).
     fn folders(&self) -> Result<Versioned<Vec<Folder>>, StoreError> {
         let tx = self.conn.unchecked_transaction()?;
         let version = version(&tx)?;
         let value = tx
-            .prepare_cached(
-                "SELECT id, account_id, name, role, selectable, total_count + below_floor, \
-                   unread_count + below_unread \
+            .prepare_cached(&format!(
+                "SELECT id, account_id, name, role, selectable, total_count + below_floor, {} \
                  FROM folders ORDER BY account_id, id",
-            )?
+                super::overlay::UNREAD_SQL
+            ))?
             .query_map([], |row| {
                 Ok(Folder {
                     id: FolderId(row.get(0)?),
