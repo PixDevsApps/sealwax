@@ -8,11 +8,53 @@
 
 pub mod address;
 pub mod clean;
+pub mod identity;
 pub mod ids;
+pub mod mime;
+pub mod quote;
+pub mod reply;
+pub mod stored;
 pub mod text;
 
+use crate::account::Identity;
 use crate::model::{AccountId, Address, BlobKey, MessageId};
+use identity::Signature;
 use std::fmt;
+
+/// An empty line in the editor's HTML.
+pub const EMPTY_LINE: &str = "<div><br></div>";
+
+/// A draft's HTML: what the user typed (an empty line to type in when nothing yet), then the
+/// signature and the quote, each after an empty line.
+pub fn body(typed_html: &str, signature: Option<&Signature>, quote: Option<&str>) -> String {
+    let mut html = if typed_html.trim().is_empty() {
+        EMPTY_LINE.to_owned()
+    } else {
+        typed_html.to_owned()
+    };
+    if let Some(signature) = signature {
+        html.push_str(EMPTY_LINE);
+        html.push_str(&signature.html);
+    }
+    if let Some(quote) = quote {
+        html.push_str(EMPTY_LINE);
+        html.push_str(quote);
+    }
+    html
+}
+
+/// A new, empty draft from `sender` (one of [`identity::senders`]) with its signature;
+/// `message_id` from [`ids::message_id`].
+pub fn new_draft(account: AccountId, sender: &Identity, message_id: String) -> Draft {
+    let signature = sender.signature.as_deref().and_then(identity::signature);
+    Draft {
+        account,
+        from: identity::from_address(sender),
+        html: body("", signature.as_ref(), None),
+        message_id,
+        ..Draft::default()
+    }
+}
 
 /// A message being written. The composer edits it, the store keeps it at most 5 s behind the
 /// typing (PRD C5), and at send time the MIME builder makes the transmitted copy, the Sent copy

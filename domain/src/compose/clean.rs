@@ -171,10 +171,15 @@ pub fn clean(html: &str) -> Cleaned {
 }
 
 /// `html` through the allowlist; a `cid:` image is kept only when `keep_cid` accepts its
-/// Content-ID (the caller has that part).
+/// Content-ID (the caller has that part). White space around the result (a document's line
+/// breaks between `head` and `body`) is trimmed.
 pub fn clean_with(html: &str, keep_cid: impl Fn(&str) -> bool) -> Cleaned {
     let normalized = normalize(html, &keep_cid);
-    let html = BUILDER.clean(&normalized).to_string();
+    let html = BUILDER
+        .clean(&normalized)
+        .to_string()
+        .trim_matches(|c: char| c.is_ascii_whitespace())
+        .to_owned();
     let mut content_ids: Vec<String> = Vec::new();
     for id in sources(&html, "cid:") {
         if !content_ids.contains(&id) {

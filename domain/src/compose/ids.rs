@@ -63,6 +63,17 @@ pub fn content_id(sender: &str, random: [u8; 16]) -> Option<String> {
     message_id(sender, random)
 }
 
+/// Whether a Message-ID or Content-ID (without angle brackets) can be written into a header as
+/// it is: visible ASCII without brackets, quotes, backslashes or spaces, at most 250 bytes.
+/// Ids from other mail that aren't are left out of what Sealwax writes.
+pub fn is_header_safe(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 250
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_graphic() && !b"<>\"\\".contains(&byte))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
