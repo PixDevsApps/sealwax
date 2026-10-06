@@ -193,7 +193,8 @@ fn thread_onto(raw: Vec<u8>, name: &str, ancestors: &[&str]) -> Vec<u8> {
         .into_bytes()
 }
 
-/// An HTML message of the suite, with the `ok@hostile.test` part (and `extra` parts).
+/// An HTML message of the suite, with the `ok@hostile.test` part when the HTML refers to it
+/// (and `extra` parts).
 fn html_message(name: &str, html: &str, date: i64, extra: Vec<Part>) -> Vec<u8> {
     let mut draft = Draft::new(
         ("Hostile Suite", "hostile@example.test"),
@@ -202,11 +203,13 @@ fn html_message(name: &str, html: &str, date: i64, extra: Vec<Part>) -> Vec<u8> 
         &format!("hostile-{name}"),
     );
     draft.html = Some(html.to_owned());
-    draft.inline = vec![Part::inline(
-        OK_CID,
-        "image/png",
-        glib::base64_decode(samples::LOGO_PNG_BASE64),
-    )];
+    if html.contains(OK_CID) {
+        draft.inline.push(Part::inline(
+            OK_CID,
+            "image/png",
+            glib::base64_decode(samples::LOGO_PNG_BASE64),
+        ));
+    }
     draft.inline.extend(extra);
     draft.render()
 }
@@ -921,7 +924,7 @@ async fn expectations(
             let wanted = case.click.is_some();
             if shows_quote != wanted || !text.contains("Sounds good.") {
                 outcome.failures.push(format!(
-                    "the quote shows: {shows_quote}, wanted {wanted} after the toggle"
+                    "the quote shows: {shows_quote}, wanted {wanted} after the toggle: {text:?}"
                 ));
             }
         }
@@ -1111,6 +1114,8 @@ async fn cid_cancelled(
             .failures
             .push("the conversation pair wasn't stored".into());
     }
+    reader.clear();
+    support::sleep(300).await;
     let asked = reader.cid_requests().len();
     reader.show(id);
     let requested = support::wait_until(Duration::from_secs(3), || {

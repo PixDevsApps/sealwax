@@ -109,11 +109,12 @@ pub fn message_text(
 }
 
 /// The text a reader shows of the first plain-text body under `widget`, without what is
-/// collapsed or the toggle, for checks.
+/// collapsed or the toggle, for checks. WebKit keeps a text view of its own inside each web
+/// view, so only the reader's text views count.
 pub fn shown_text(widget: &gtk::Widget) -> String {
     let mut stack = vec![widget.clone()];
     while let Some(widget) = stack.pop() {
-        if let Some(view) = widget.downcast_ref::<gtk::TextView>() {
+        if let Some(view) = reader_text(&widget) {
             let buffer = view.buffer();
             return buffer
                 .text(&buffer.start_iter(), &buffer.end_iter(), false)
@@ -128,12 +129,18 @@ pub fn shown_text(widget: &gtk::Widget) -> String {
     String::new()
 }
 
+fn reader_text(widget: &gtk::Widget) -> Option<&gtk::TextView> {
+    widget
+        .downcast_ref::<gtk::TextView>()
+        .filter(|view| view.widget_name() == "reader-plain")
+}
+
 /// The targets of the links in the plain-text bodies under `widget`, in order, for checks.
 pub fn links_in(widget: &gtk::Widget) -> Vec<String> {
     let mut found = Vec::new();
     let mut stack = vec![widget.clone()];
     while let Some(widget) = stack.pop() {
-        if let Some(view) = widget.downcast_ref::<gtk::TextView>() {
+        if let Some(view) = reader_text(&widget) {
             let buffer = view.buffer();
             let mut iter = buffer.start_iter();
             loop {
