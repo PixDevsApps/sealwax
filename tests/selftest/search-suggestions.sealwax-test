@@ -1,0 +1,196 @@
+# The search field's suggestions (M7, ML-082): operators by the word typed (two letters on), the
+# values of has: and is:, days after before: and after:, people after from: and to: from the
+# store's contacts; Down and Up choose, Tab takes the row marked, Enter a chosen row (else it goes
+# to the results), a click takes a row; Escape closes the list first and ends the search the
+# second time; the field keeps the focus and every key typed. Keys and clicks are real
+# (Broadway). Every name, address and message is fictional.
+# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/search-suggestions.sealwax-test
+
+desktop tiling
+resize 1440 900
+list-clock 2026-10-07T12:00:00
+mail-account Personal
+folder inbox Personal
+mail-add Personal:inbox 2h "Kvartalsrapport" "from=Anna Berg" "text=Rapporten for tredje kvartal."
+mail-add Personal:inbox 3h "Hyttetur" "from=Anders Lie" attachment
+mail-add Personal:inbox 4h "Lunsj" "from=Kari Nordmann" read
+list-wait
+assert-list-count 3
+
+# The empty field shows the mock's placeholder and the Search key at its end.
+assert-search-key /
+focus search
+assert-focus search
+assert-suggestions closed
+
+# One letter suggests nothing; two letters suggest the operators they start.
+type f
+assert-suggestions closed
+assert-search-key hidden
+type r
+assert-suggestions 1
+assert-suggestion 0 from: "Sender's name or address"
+assert-suggestion-selected none
+assert-suggestion-marked 0 Tab
+assert-focus search
+
+# Tab takes the row marked: the operator, the cursor after its colon, the list closed.
+key Tab
+assert-field list-search from:
+assert-search-cursor 5
+assert-suggestions closed
+assert-focus search
+
+# People after from:, ranked as the composer ranks them (here by the newest message).
+type an
+wait-until assert-suggestions 2
+assert-suggestion 0 "Anna Berg" "annaberg@example.test · 1 message"
+assert-suggestion 1 "Anders Lie" "anderslie@example.test · 1 message"
+assert-suggestion-marked 0 Tab
+assert-focus search
+
+# Down and Up choose; Up from the first leaves the list with nothing chosen.
+key Down
+assert-suggestion-selected 0
+assert-suggestion-marked 0 Enter
+key Down
+assert-suggestion-selected 1
+key Down
+assert-suggestion-selected 1
+key Up
+assert-suggestion-selected 0
+key Up
+assert-suggestion-selected none
+assert-suggestion-marked 0 Tab
+assert-field list-search from:an
+
+# Enter takes a chosen row: the address, then a space for the next word.
+key Down
+key Down
+key Return
+assert-field list-search "from:anderslie@example.test "
+assert-search-cursor 28
+assert-suggestions closed
+assert-focus search
+
+# The values of is: and has:, narrowed as they are typed; a complete one suggests nothing.
+type is:
+assert-suggestions 3
+assert-suggestion 0 is:unread "Unread messages"
+assert-suggestion 1 is:read "Read messages"
+assert-suggestion 2 is:starred "Starred messages"
+type s
+assert-suggestions 1
+key Tab
+assert-field list-search "from:anderslie@example.test is:starred "
+assert-suggestions closed
+
+# Escape closes the list first; the second Escape ends the search and the list has the focus.
+type ha
+assert-suggestions 1
+assert-suggestion 0 has:
+key Escape
+assert-suggestions closed
+assert-focus search
+assert-field list-search "from:anderslie@example.test is:starred ha"
+key Escape
+assert-field list-search ""
+assert-focus list
+assert-label list-title Inbox
+assert-search-key /
+
+# Down with the list closed lists every operator; each letter typed narrows the open list.
+focus search
+key Down
+assert-suggestions 7
+assert-suggestion 0 from: "Sender's name or address"
+assert-suggestion 6 after: "Sent on or after a day"
+assert-suggestion-selected none
+assert-suggestion-marked 0 Tab
+assert-focus search
+type t
+assert-suggestions 1
+assert-suggestion 0 to: "Recipient's name or address"
+key Down
+key Return
+assert-field list-search to:
+type nor
+wait-until assert-suggestions 1
+assert-suggestion 0 "Kari Nordmann" "karinordmann@example.test · 1 message"
+key Tab
+assert-field list-search "to:karinordmann@example.test "
+key Escape
+assert-field list-search ""
+assert-focus list
+
+# Days after before: and after:, from the list's day (Wednesday 2026-10-07); a click takes one.
+focus search
+type af
+assert-suggestion 0 after: "Sent on or after a day"
+click list-search-suggestion-0
+assert-field list-search after:
+# Broadway gives its keyboard focus to the surface clicked, here the popover's, and drops keys
+# for it once the popover hides; a click on the list's title gives it back to the window.
+click list-title
+assert-suggestions 4
+assert-suggestion 0 after:2026-10-07 Today
+assert-suggestion 1 after:2026-09-30 "The last 7 days"
+assert-suggestion 2 after:2026-09-07 "The last month"
+assert-suggestion 3 after:2025-10-07 "The last year"
+assert-focus search
+type 2025
+assert-suggestions 1
+assert-suggestion 0 after:2025-10-07
+type -02
+assert-suggestions 1
+assert-suggestion 0 after:YYYY-MM-DD "A day, such as after:2026-09-01"
+assert-suggestion-marked none
+key Down
+assert-suggestion-selected none
+type -14
+assert-suggestions closed
+assert-field list-search after:2025-02-14
+key Escape
+
+# Nothing inside a phrase, after subject: or in plain words.
+focus search
+type "\"from fr"
+assert-suggestions closed
+key Escape
+focus search
+type subject:in
+assert-suggestions closed
+key Escape
+
+# Typing never loses a key to the list as it opens, narrows and closes.
+focus search
+type "is:unread has:attachment fra hytte"
+assert-field list-search "is:unread has:attachment fra hytte"
+assert-focus search
+key Escape
+assert-field list-search ""
+
+# Plain words search as before, the list shows the results, and Enter selects the first.
+focus search
+type kvartal
+search-wait
+assert-label list-title Search
+assert-list-search 1 false
+assert-list-row 0 subject Kvartalsrapport
+key Return
+assert-focus list
+assert-list-selected 0
+
+# The suggestions follow the theme: the chrome font on the popover's surface.
+focus search
+key <Control>a
+key BackSpace
+type is
+assert-suggestions 1
+assert-font list-search-suggestions chrome
+wait-until assert-contrast list-search-suggestions 4.5
+theme catppuccin-latte
+wait-until assert-contrast list-search-suggestions 4.5
+key Escape
+key Escape
+assert-labelled

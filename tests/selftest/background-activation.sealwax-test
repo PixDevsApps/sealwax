@@ -1,0 +1,29 @@
+# Activation → first frame from background mode (M7, ML-084): the main window closes into
+# background mode and D-Bus Activate, as a launcher calls it, builds a new one on the same store;
+# timed from the call to the new window's first frame, ten times, over 2,000 fictional
+# messages. CI runs it in a debug build; the report's numbers come from a release build.
+# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/background-activation.sealwax-test
+
+desktop tiling
+fixtures --count 2000 --seed 13 --folders single
+resize 1440 900
+list-wait
+assert-list-count 2000
+assert-background true
+wait-until assert-reader-built true
+background-measure 10
+assert-window true
+list-wait
+assert-list-count 2000
+
+# The new window's reader comes after its first frame and shows the selection.
+wait-until assert-reader-built true
+list-select 0
+wait-until assert-reader-selected
+
+# Closing the window releases the reader's WebKit view.
+close-window
+wait-until assert-window false
+assert-reader-built false
+bus-activate
+wait-until assert-reader-built true

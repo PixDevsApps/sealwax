@@ -4,6 +4,7 @@
 pub mod actions;
 pub mod activation;
 pub mod application;
+pub mod autostart;
 pub mod background;
 pub mod cli;
 pub mod compose_actions;

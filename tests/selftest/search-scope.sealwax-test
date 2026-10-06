@@ -1,0 +1,115 @@
+# The search's scope (M7, ML-082): in a folder a search covers that folder, and the scope row under
+# the chips ("Search in", the folder, All folders) widens it to every folder of every account;
+# All folders lasts while the search does and the heading says it; the unified inbox searches
+# every folder and shows no scope row. People suggested after from: come from the folder's
+# account, or every account's once the search covers every folder. Every name, address and
+# message is fictional.
+# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/search-scope.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Personal
+mail-account Work
+mail-add Personal:inbox 2h "Hyttetur i helga" "from=Anna Berg" "text=Vi drar til hytta fredag."
+mail-add Personal:archive 3d "Hyttetur i fjor" "from=Anders Lie" "text=Bilder fra hytta." read
+mail-add Work:inbox 1h "Hyttetur med jobben" "from=Andrea Holm" "text=Avdelingen drar til hytta i oktober."
+folder inbox Personal
+list-wait
+assert-search-scope hidden
+
+# In a folder the search covers that folder; the scope row names it.
+search hytta
+assert-list-search 1 false
+assert-list-row 0 subject "Hyttetur i helga"
+assert-search-scope Inbox
+assert-label list-subtitle "1 result"
+assert-labelled
+
+# All folders: every folder of every account, newest first; the heading says so.
+click search-scope-all
+assert-search-scope all
+assert-list-search 3 false
+assert-list-row 0 subject "Hyttetur med jobben"
+assert-list-row 2 subject "Hyttetur i fjor"
+assert-label list-subtitle "3 results in all folders"
+assert-label list-title Search
+
+# The chips still filter the results.
+chip unread
+assert-list-search 2 false
+assert-label list-subtitle "2 results in all folders"
+chip all
+
+# All folders lasts while the search does: new text keeps it.
+search "hytta fredag"
+assert-search-scope all
+assert-list-search 1 false
+search hytta
+assert-list-search 3 false
+
+# People after from: come from every account while the search covers every folder.
+focus search
+key End
+type " from:an"
+wait-until assert-suggestions 3
+assert-suggestion 0 "Andrea Holm"
+assert-suggestion 1 "Anna Berg"
+assert-suggestion 2 "Anders Lie"
+key Escape
+assert-suggestions closed
+
+# Back to the folder: one result again, and only the folder's account's people.
+click search-scope-folder
+assert-search-scope Inbox
+search hytta
+assert-list-search 1 false
+assert-label list-subtitle "1 result"
+focus search
+key End
+type " from:an"
+wait-until assert-suggestions 2
+assert-suggestion 0 "Anna Berg"
+assert-suggestion 1 "Anders Lie"
+key Escape
+
+# The search's end drops All folders: the next search covers the folder again.
+click search-scope-all
+assert-search-scope all
+focus search
+key Escape
+assert-field list-search ""
+assert-search-scope hidden
+assert-label list-title Inbox
+search hytta
+assert-search-scope Inbox
+assert-list-search 1 false
+
+# Another folder ends the search, and All folders with it.
+click search-scope-all
+assert-search-scope all
+folder inbox Work
+assert-search-scope hidden
+search hytta
+assert-search-scope Inbox
+assert-list-search 1 false
+assert-list-row 0 subject "Hyttetur med jobben"
+focus search
+key End
+type " from:an"
+wait-until assert-suggestions 1
+assert-suggestion 0 "Andrea Holm"
+key Escape
+
+# The unified inbox searches every folder already: no scope row, every account's people.
+folder all-inboxes
+search hytta
+assert-search-scope hidden
+assert-list-search 3 false
+assert-label list-subtitle "3 results"
+focus search
+key End
+type " from:an"
+wait-until assert-suggestions 3
+key Escape
+key Escape
+assert-focus list

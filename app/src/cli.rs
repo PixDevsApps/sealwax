@@ -5,6 +5,10 @@
 //! `--gapplication-service` is GApplication's own option for D-Bus activation (the service file
 //! runs `sealwax --gapplication-service`); it is accepted here, hidden, so that the local parse
 //! lets it through to GApplication.
+//!
+//! `--background` (ML-084) starts Sealwax without a window, as an autostart entry does; given to a
+//! running Sealwax it shows nothing. `--compose` opens a new message; with `mailto:` links, those
+//! messages are opened instead. Both are forwarded to a running Sealwax like the links.
 
 use clap::{Arg, ArgAction, Command, value_parser};
 use sealwax_domain::mailto;
@@ -18,6 +22,10 @@ pub struct Cli {
     pub self_test: Option<PathBuf>,
     /// Run as the D-Bus-activated service.
     pub service: bool,
+    /// Start without a window (autostart, ML-084).
+    pub background: bool,
+    /// Open a new message.
+    pub compose: bool,
 }
 
 pub fn command() -> Command {
@@ -31,6 +39,19 @@ pub fn command() -> Command {
                 .action(ArgAction::Append)
                 .value_parser(mailto_uri)
                 .help("mailto: links to write a message from; attachments in them are ignored"),
+        )
+        .arg(
+            Arg::new("compose")
+                .long("compose")
+                .action(ArgAction::SetTrue)
+                .help("Write a new message"),
+        )
+        .arg(
+            Arg::new("background")
+                .long("background")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["uris", "compose", "self-test"])
+                .help("Start without a window, as at login; mail keeps syncing in the background"),
         )
         .arg(
             Arg::new("gapplication-service")
@@ -72,6 +93,8 @@ where
             .unwrap_or_default(),
         self_test: matches.get_one::<PathBuf>("self-test").cloned(),
         service: matches.get_flag("gapplication-service"),
+        background: matches.get_flag("background"),
+        compose: matches.get_flag("compose"),
     })
 }
 
@@ -150,6 +173,37 @@ mod tests {
             cli.self_test,
             Some(PathBuf::from("tests/selftest/window.sealwax-test"))
         );
+    }
+
+    #[test]
+    fn background_and_compose() {
+        let cli = parse(["sealwax", "--background"]).unwrap();
+        assert!(cli.background && !cli.compose && cli.uris.is_empty());
+        let cli = parse(["sealwax", "--compose"]).unwrap();
+        assert!(cli.compose && !cli.background);
+        let cli = parse(["sealwax", "--compose", "mailto:a@example.com"]).unwrap();
+        assert!(cli.compose);
+        assert_eq!(cli.uris, ["mailto:a@example.com"]);
+        assert!(
+            parse(["sealwax", "--gapplication-service", "--background"])
+                .unwrap()
+                .background
+        );
+        for args in [
+            &["sealwax", "--background", "--compose"][..],
+            &["sealwax", "--background", "mailto:a@example.com"],
+            &["sealwax", "--background", "--self-test", "a.sealwax-test"],
+        ] {
+            let error = parse(args).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::ArgumentConflict, "{args:?}");
+            assert_eq!(error.exit_code(), 2, "{args:?}");
+        }
+        let help = parse(["sealwax", "--help"]).unwrap_err().to_string();
+        assert!(
+            help.contains("--background") && help.contains("--compose"),
+            "{help}"
+        );
+        assert!(help.contains("Write a new message"), "{help}");
     }
 
     #[test]

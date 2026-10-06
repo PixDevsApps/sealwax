@@ -1,0 +1,53 @@
+# Rebuild Search Index (M7, ML-081 and ML-082's app side): the registry's app.rebuild-search-index,
+# without a key, asks the store to index every message again off the GTK thread; a toast says it
+# runs and another what it did; the command is unavailable meanwhile; search results on screen are
+# read again afterwards. The self-test holds the rebuild to see it run; the counts in the result's
+# toast are the store's (the contract's stub answers 0 messages at once). Every message is
+# fictional.
+# Run: tools/headless.sh 54 target/debug/sealwax --self-test tests/selftest/search-rebuild.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Personal
+folder inbox Personal
+mail-add Personal:inbox 2h "Kvartalsrapport" "text=Rapporten for tredje kvartal."
+mail-add Personal:inbox 3h "Lunsj" "text=Kantina har ny meny."
+list-wait
+assert-action-enabled app.rebuild-search-index true
+assert-search-rebuilding false
+search kvartal
+assert-list-search 1 false
+
+# While it runs: a toast, and the command unavailable; search keeps working.
+search-rebuild-hold
+search-mark
+action app.rebuild-search-index
+assert-search-rebuilding true
+assert-action-enabled app.rebuild-search-index false
+wait-until assert-toast "Rebuilding the search index…"
+search meny
+assert-list-search 1 false
+search kvartal
+assert-list-search 1 false
+
+# Done: the result's toast, the command available again, the results read again.
+search-mark
+search-rebuild-release
+wait-until assert-search-rebuilding false
+wait-until assert-search-toast "Search index rebuilt: "
+assert-action-enabled app.rebuild-search-index true
+wait-until assert-searched true
+assert-list-search 1 false
+assert-list-row 0 subject Kvartalsrapport
+
+# Again without a hold, from the folder with no search shown: the toast, nothing searched.
+search-escape
+list-wait
+search-mark
+action app.rebuild-search-index
+wait-until assert-search-rebuilding false
+wait-until assert-search-toast "Search index rebuilt: "
+assert-action-enabled app.rebuild-search-index true
+assert-searched false
+assert-label list-title Inbox
+assert-labelled
