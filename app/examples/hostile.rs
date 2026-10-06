@@ -643,10 +643,25 @@ async fn run_case(
             if pass == Pass::ImagesShown {
                 let loads = loaded_count(context, id);
                 reader.show_remote_images();
-                let reloaded = support::wait_until(Duration::from_secs(3), || {
+                let mut reloaded = support::wait_until(Duration::from_secs(3), || {
                     loaded_count(context, id) > loads
                 })
                 .await;
+                if !reloaded && !reader.remote_allowed(id) {
+                    // A card without the banner (nothing its scan counts as a remote image)
+                    // keeps its view; the permission holds when the card is built again.
+                    reader.clear();
+                    support::sleep(300).await;
+                    let loads = loaded_count(context, id);
+                    if let Err(error) = support::show(reader, reports, id).await {
+                        outcome.failures.push(error);
+                    }
+                    reloaded = support::wait_until(Duration::from_secs(3), || {
+                        loaded_count(context, id) > loads
+                    })
+                    .await
+                        && reader.remote_allowed(id);
+                }
                 if !reloaded {
                     outcome.failures.push("no reload after Show images".into());
                 }
