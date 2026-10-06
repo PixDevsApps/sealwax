@@ -86,6 +86,23 @@ async fn diverged(fake: &Fake, store: &Store, account: AccountId) -> Vec<String>
     snapshot::diff(&server(&mailboxes), &snapshot::local(store, account).await)
 }
 
+/// Synced folders whose shown counts aren't the fake's.
+async fn counts_diverged(fake: &Fake, store: &Store, account: AccountId) -> Vec<String> {
+    let mailboxes = fake.world().mailboxes();
+    snapshot::count_diff(
+        &server(&mailboxes),
+        &snapshot::local(store, account).await,
+        &snapshot::shown(store, account).await,
+    )
+}
+
+/// The counts the sidebar shows for a folder: total and unread.
+async fn shown(store: &Store, folder: FolderId) -> (u32, u32) {
+    let folders = store.folders().recv().await.unwrap().value;
+    let found = folders.iter().find(|f| f.id == folder).unwrap();
+    (found.total, found.unread)
+}
+
 async fn account_pass(
     conn: &mut Connection,
     store: &Store,
@@ -422,6 +439,126 @@ fn the_first_sync_keeps_a_window_and_older_mail_loads_on_request() {
     });
 }
 
+/// The M3 gate's decision (2026-10-06): a folder that keeps only its newest mail shows the
+/// server's counts, its own plus what STATUS leaves below the floor, and they follow the
+/// server: changes below the floor, new mail, older mail loaded, and a `\All` folder that syncs
+/// only when opened. Without UNSELECT the connection's selected folder gets no STATUS (S1), so
+/// its counts wait for an account pass that starts with another folder selected.
+#[test]
+fn a_windowed_folders_counts_follow_status() {
+    runtime().block_on(async {
+        for flavor in Flavor::ALL {
+            let fake = Fake::start(flavor).await;
+            {
+                let mut world = fake.world();
+                world.create("INBOX", &[]);
+                // Listed after INBOX and synced in every pass, so it is the one left selected.
+                world.create("Sendt", &["\\Sent"]);
+                world.append_many("Sendt", 5, |_| 2);
+                world.create("Alt", &["\\All"]);
+                // UIDs 1-400 are 200 days old, every other one unread; 401-600 ten days old,
+                // three in four unread: 350 unread, 150 of them in the window.
+                for n in 0..600 {
+                    let (days, seen) = if n < 400 {
+                        (200, n % 2 == 0)
+                    } else {
+                        (10, n % 4 == 0)
+                    };
+                    let flags: &[&str] = if seen { &["\\Seen"] } else { &[] };
+                    world.append("INBOX", days, flags);
+                }
+                world.append_many("Alt", 300, |_| 200);
+            }
+            let (_dir, store, account) = store();
+            let mut conn = fake.connect().await;
+            let mut options = options();
+            options.older = 150;
+            let locks = FolderLocks::default();
+            let first = account_pass(&mut conn, &store, account, &options).await;
+            let inbox = folder(&store, account, "INBOX").await;
+            assert_eq!(state(&store, inbox).await.messages, 200, "{flavor:?}");
+            assert_eq!(first.stats.below_counts, 1, "{flavor:?}: {:?}", first.stats);
+            assert_eq!(shown(&store, inbox).await, (600, 350), "{flavor:?}");
+            let quiet = account_pass(&mut conn, &store, account, &options).await;
+            assert_eq!(quiet.stats.below_counts, 0, "{flavor:?}: {:?}", quiet.stats);
+
+            // Another client reads ten old messages and deletes five; new mail arrives.
+            {
+                let mut world = fake.world();
+                for uid in (2..=20).step_by(2) {
+                    world.set_flags("INBOX", uid, &["\\Seen"]);
+                }
+                for uid in (1..=9).step_by(2) {
+                    world.expunge("INBOX", uid);
+                }
+                world.append("INBOX", 0, &[]);
+            }
+            let changed = account_pass(&mut conn, &store, account, &options).await;
+            assert_eq!(
+                changed.stats.below_counts, 1,
+                "{flavor:?}: {:?}",
+                changed.stats
+            );
+            assert_eq!(shown(&store, inbox).await, (596, 341), "{flavor:?}");
+
+            // Older mail moves into the store; what is shown stays.
+            let older = load_older(&mut conn, &store, inbox, &options, &locks)
+                .await
+                .unwrap();
+            assert_eq!((older.fetched, older.complete), (150, false), "{flavor:?}");
+            assert_eq!(shown(&store, inbox).await, (596, 341), "{flavor:?}");
+            fake.world().set_flags("INBOX", 22, &["\\Seen"]);
+            account_pass(&mut conn, &store, account, &options).await;
+            if flavor == Flavor::Rev1 {
+                assert_eq!(
+                    shown(&store, inbox).await,
+                    (596, 341),
+                    "INBOX was selected for the older mail: no STATUS for it"
+                );
+                account_pass(&mut conn, &store, account, &options).await;
+            }
+            assert_eq!(
+                shown(&store, inbox).await,
+                (596, 340),
+                "{flavor:?}: a message read below the floor"
+            );
+
+            // `\All` opened once keeps a window and isn't synced by itself again, but its
+            // counts follow STATUS.
+            let all = folder(&store, account, "Alt").await;
+            sync_folder(&mut conn, &store, all, &options, &locks, |_| {})
+                .await
+                .unwrap();
+            assert_eq!(state(&store, all).await.below, 100, "{flavor:?}");
+            assert_eq!(
+                shown(&store, all).await,
+                (300, 200),
+                "{flavor:?}: the unread below the floor wait for the account pass"
+            );
+            fake.world().append_many("Alt", 5, |_| 0);
+            account_pass(&mut conn, &store, account, &options).await;
+            if flavor == Flavor::Rev1 {
+                account_pass(&mut conn, &store, account, &options).await;
+            }
+            assert_eq!(state(&store, all).await.messages, 200, "{flavor:?}");
+            assert_eq!(shown(&store, all).await, (305, 305), "{flavor:?}");
+            sync_folder(&mut conn, &store, all, &options, &locks, |_| {})
+                .await
+                .unwrap();
+            assert_eq!(state(&store, all).await.messages, 205, "{flavor:?}");
+            assert_eq!(shown(&store, all).await, (305, 305), "{flavor:?}");
+
+            assert_eq!(diverged(&fake, &store, account).await, Vec::<String>::new());
+            assert_eq!(
+                counts_diverged(&fake, &store, account).await,
+                Vec::<String>::new()
+            );
+            assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());
+            store.close().unwrap();
+        }
+    });
+}
+
 #[test]
 fn a_cut_first_sync_resumes_without_loss_or_duplication() {
     runtime().block_on(async {
@@ -728,6 +865,16 @@ fn a_short_randomized_run_ends_equal_on_every_flavour() {
                     Vec::<String>::new(),
                     "{flavor:?} seed {seed}: {:?}",
                     report.stats
+                );
+                if flavor == Flavor::Rev1 {
+                    // Without UNSELECT the folder left selected got no STATUS; the last pass
+                    // leaves another one selected.
+                    report.add(account_pass(&mut conn, &store, account, &options).await);
+                }
+                assert_eq!(
+                    counts_diverged(&fake, &store, account).await,
+                    Vec::<String>::new(),
+                    "{flavor:?} seed {seed}: the counts shown are the server's"
                 );
                 assert!(report.stats.resets >= 1, "{flavor:?} seed {seed}");
                 assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());

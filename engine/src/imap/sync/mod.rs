@@ -9,7 +9,7 @@
 //!   the fallback. Every step commits on its own, so a cut pass loses nothing.
 //! - The account pass ([`sync_account`]): LIST with STATUS in one round trip, folders gone from
 //!   the server removed, then a folder pass for each folder the policy syncs whose STATUS
-//!   changed.
+//!   changed; a windowed folder's counts below its floor follow its STATUS.
 //! - Older mail ([`load_older`]): the next batch below a folder's floor.
 //!
 //! Passes over one folder are serialized by [`FolderLocks`], so two connections of an account
@@ -108,6 +108,8 @@ pub struct Stats {
     /// Folders that vanished between LIST and EXAMINE.
     pub skipped_missing: u32,
     pub older_loads: u32,
+    /// Windowed folders whose server counts below the floor changed with STATUS.
+    pub below_counts: u32,
 }
 
 impl Stats {
@@ -129,6 +131,7 @@ impl Stats {
         self.folders_removed += other.folders_removed;
         self.skipped_missing += other.skipped_missing;
         self.older_loads += other.older_loads;
+        self.below_counts += other.below_counts;
     }
 }
 

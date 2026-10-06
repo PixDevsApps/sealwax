@@ -560,6 +560,9 @@ async fn a_refused_login_halts_until_reconnect() {
         run.status(account).await,
         SyncStatus::NeedsSignIn(LoginFailure::WrongPassword)
     );
+    // The IDLE connection logs in again beside the command connection and is refused too; its
+    // AUTHENTICATE can arrive just after the status.
+    tokio::time::sleep(Duration::from_millis(300)).await;
     let logins = fake.world().count("AUTHENTICATE");
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert_eq!(
@@ -664,6 +667,88 @@ async fn older_mail_loads_through_the_actor() {
     }
     assert_eq!(answers, [(200, false), (100, true)]);
     assert_eq!(run.count(inbox).await, 500);
+}
+
+/// The M3 gate's decision (2026-10-06): a windowed INBOX under IDLE shows the server's counts.
+/// New mail counts at once through IDLE; a change below the floor shows with the next account
+/// pass's STATUS; older mail moves into the store without changing them.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_windowed_inbox_shows_the_servers_counts() {
+    let fake = Fake::start(Flavor::Qresync).await;
+    {
+        let mut world = fake.world();
+        world.create("INBOX", &[]);
+        // 300 unread messages 200 days old, then 200 read ones ten days old.
+        world.append_many("INBOX", 300, |_| 200);
+        for _ in 0..200 {
+            world.append("INBOX", 10, &["\\Seen"]);
+        }
+    }
+    let mut sync = config();
+    sync.account_pass = Duration::from_millis(1500);
+    let mut run = running(&fake, sync);
+    let account = run.add(&fake, 1, "counts").await;
+    let inbox = run.folder(account, "INBOX").await;
+    assert_eq!(run.count(inbox).await, 200);
+    let store = run.store.clone();
+    let shown = || async {
+        let folders = store.folders().recv().await.unwrap().value;
+        let found = folders.iter().find(|f| f.id == inbox).unwrap();
+        (found.total, found.unread)
+    };
+    assert_eq!(
+        shown().await,
+        (500, 300),
+        "counted in the first account pass"
+    );
+    within(WAIT, || async { fake.world().count("IDLE") >= 1 }).await;
+
+    fake.world().append("INBOX", 0, &[]);
+    assert!(
+        within(Duration::from_secs(5), || async {
+            shown().await == (501, 301)
+        })
+        .await
+        .is_some(),
+        "new mail through IDLE"
+    );
+    for uid in 1..=20 {
+        fake.world().set_flags("INBOX", uid, &["\\Seen"]);
+    }
+    let started = Instant::now();
+    let caught = within(Duration::from_secs(5), || async {
+        shown().await == (501, 281)
+    })
+    .await;
+    assert!(
+        caught.is_some(),
+        "20 read below the floor: {:?}",
+        shown().await
+    );
+    println!(
+        "counts below the floor: caught after {:?}",
+        started.elapsed()
+    );
+
+    run.send(Command::LoadOlder { folder: inbox });
+    let older = run
+        .event(WAIT, |event| match event {
+            Event::OlderLoaded {
+                folder, fetched, ..
+            } if *folder == inbox => Some(*fetched),
+            _ => None,
+        })
+        .await;
+    assert_eq!(older, 200);
+    assert_eq!(
+        shown().await,
+        (501, 281),
+        "older mail moves, the counts stay"
+    );
+    assert_eq!(
+        run.store.check().recv().await.unwrap(),
+        Vec::<String>::new()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

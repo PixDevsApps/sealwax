@@ -120,7 +120,8 @@ pub struct FolderSpec {
     /// False for `\Noselect` and `\NonExistent` folders, which hold no messages.
     pub selectable: bool,
     /// The server's STATUS counts. The sidebar shows them while the folder is new and empty,
-    /// until its first sync starts; after that the store counts what it holds.
+    /// until its first sync starts; after that the store counts what it holds, plus what a
+    /// windowed folder leaves below its floor ([`Store::count_below`](super::Store::count_below)).
     pub server_counts: Option<ServerCounts>,
 }
 
@@ -286,7 +287,8 @@ pub struct Ingested {
     pub batches: u32,
 }
 
-/// A folder's maintained counts.
+/// A folder's counts as the sidebar shows them: the store's own, plus, for a folder that keeps
+/// only its newest mail (ML-043), the server's messages and unread messages below its floor.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FolderCounts {
     pub folder: FolderId,

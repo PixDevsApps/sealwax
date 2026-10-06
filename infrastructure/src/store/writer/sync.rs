@@ -1,15 +1,20 @@
-//! The writer's sync jobs (ML-041, ML-043): a folder's changes by UID, and the folder list made
-//! to match the server's. Each is one transaction whose change event is exact row by row, as
-//! for `set_flags`, `remove` and `ingest`; new rows get their full text in a second transaction
-//! right after, as an ingest batch does.
+//! The writer's sync jobs (ML-041, ML-043): a folder's changes by UID, the folder list made to
+//! match the server's, and what a windowed folder leaves below its floor. Each is one
+//! transaction whose change event is exact row by row, as for `set_flags`, `remove` and
+//! `ingest`; new rows get their full text in a second transaction right after, as an ingest
+//! batch does.
 
 use super::{
-    RowChange, Writer, folder_counts, free_uid, fts_doc, insert_message, recompute_thread,
-    removed_positions, resolve_thread, thread_counts, upsert_rows, view_changes,
+    RowChange, Writer, below_counts, folder_counts, free_uid, fts_doc, insert_message,
+    recompute_thread, removed_positions, resolve_thread, thread_counts, upsert_rows, view_changes,
 };
 use crate::store::api::ViewScope;
-use crate::store::api::{ChangeEvent, FolderSpec, StoreVersion, ThreadMerge, ViewChange, ViewDiff};
-use crate::store::sync_api::{FlagUpdate, FolderChanges, FolderSynced, FoldersReplaced};
+use crate::store::api::{
+    ChangeEvent, FolderSpec, StoreVersion, ThreadMerge, Versioned, ViewChange, ViewDiff,
+};
+use crate::store::sync_api::{
+    FlagUpdate, FolderChanges, FolderSynced, FoldersReplaced, ServerStatus,
+};
 use crate::store::{StoreError, codec, views};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::model::{AccountId, BlobKey, Flags, FolderId, MessageId, ThreadId};
@@ -28,6 +33,11 @@ pub(crate) enum SyncJob {
         account: AccountId,
         folders: Vec<FolderSpec>,
         reply: Sender<FoldersReplaced>,
+    },
+    CountBelow {
+        folder: FolderId,
+        status: ServerStatus,
+        reply: Sender<Versioned<bool>>,
     },
 }
 
@@ -56,6 +66,13 @@ impl Writer {
             } => {
                 let _ = reply.try_send(self.replace_folders(account, &folders));
             }
+            SyncJob::CountBelow {
+                folder,
+                status,
+                reply,
+            } => {
+                let _ = reply.try_send(self.count_below(folder, &status));
+            }
         }
     }
 
@@ -68,18 +85,19 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let state: Option<String> = tx
+        let state: Option<(String, Option<u32>)> = tx
             .query_row(
-                "SELECT sync_state FROM folders WHERE id = ?1",
+                "SELECT sync_state, sync_floor FROM folders WHERE id = ?1",
                 [folder.0],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        match state.as_deref() {
+        let old_floor = match state {
             None => return Err(StoreError::UnknownFolder(folder)),
-            Some("ready") => {}
+            Some((state, floor)) if state == "ready" => floor.unwrap_or(1),
             Some(_) => return Err(StoreError::SyncState(folder)),
-        }
+        };
+        let below_before = below_counts(&tx, folder)?;
         let gone: BTreeSet<u32> = changes.removed.iter().copied().collect();
         let updates: BTreeMap<u32, &FlagUpdate> = changes
             .flags
@@ -190,6 +208,7 @@ impl Writer {
         let mut inserted = Vec::new();
         let mut docs = Vec::new();
         let mut merged_threads = Vec::new();
+        let mut older_unread = 0;
         for message in changes.new.iter().filter(|message| {
             message.folder == folder && message.uid.is_some_and(|uid| !gone.contains(&uid))
         }) {
@@ -202,6 +221,9 @@ impl Writer {
                 into: thread,
             }));
             let id = insert_message(&tx, thread, uid, message)?;
+            if uid < i64::from(old_floor) {
+                older_unread += unread(message.flags.bits());
+            }
             threads.insert(thread);
             rows.push(RowChange {
                 id,
@@ -232,6 +254,13 @@ impl Writer {
             tx.prepare_cached("UPDATE folders SET below_floor = ?2 WHERE id = ?1")?
                 .execute(params![folder.0, below])?;
         }
+        if changes.below.is_some() || older_unread > 0 {
+            tx.prepare_cached(
+                "UPDATE folders SET below_unread = max(0, min(below_unread - ?2, below_floor)) \
+                 WHERE id = ?1",
+            )?
+            .execute(params![folder.0, older_unread])?;
+        }
         let mut synced = FolderSynced {
             version: StoreVersion(self.state.version),
             inserted: count(inserted.len()),
@@ -239,7 +268,7 @@ impl Writer {
             removed: count(removed.len()),
             orphaned_blobs,
         };
-        if rows.is_empty() {
+        if rows.is_empty() && below_counts(&tx, folder)? == below_before {
             tx.commit()?;
             drop(open);
             self.state.after_commit();
@@ -396,6 +425,56 @@ impl Writer {
             removed_folders: count(gone.len()),
             removed_messages: count(removed.len()),
             orphaned_blobs,
+        })
+    }
+
+    fn count_below(
+        &mut self,
+        folder: FolderId,
+        status: &ServerStatus,
+    ) -> Result<Versioned<bool>, StoreError> {
+        self.state.account(folder)?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let unchanged = Versioned {
+            version: StoreVersion(self.state.version),
+            value: false,
+        };
+        // A windowed folder, and a STATUS no older than what the store holds: one taken before
+        // mail or flags the store has since stored would count them twice, or not at all.
+        let own: Option<(u32, u32)> = tx
+            .query_row(
+                "SELECT total_count, unread_count FROM folders \
+                 WHERE id = ?1 AND sync_state = 'ready' AND sync_floor > 1 \
+                   AND uidvalidity = ?2 AND uidnext <= ?3 \
+                   AND (?4 IS NULL OR highestmodseq <= ?4)",
+                params![
+                    folder.0,
+                    status.uidvalidity,
+                    status.uidnext,
+                    status.highestmodseq.map(|modseq| modseq as i64)
+                ],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        let Some((total, unread)) = own else {
+            return Ok(unchanged);
+        };
+        let below_floor = status.counts.total.saturating_sub(total);
+        let below_unread = status.counts.unread.saturating_sub(unread).min(below_floor);
+        if below_counts(&tx, folder)? == (below_floor, below_unread) {
+            return Ok(unchanged);
+        }
+        tx.prepare_cached("UPDATE folders SET below_floor = ?2, below_unread = ?3 WHERE id = ?1")?
+            .execute(params![folder.0, below_floor, below_unread])?;
+        let event = ChangeEvent {
+            folders: folder_counts(&tx, &BTreeSet::from([folder]))?,
+            ..ChangeEvent::default()
+        };
+        Ok(Versioned {
+            version: self.state.commit(tx, event)?,
+            value: true,
         })
     }
 }

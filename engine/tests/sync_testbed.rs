@@ -86,6 +86,8 @@ struct Report {
     ops: BTreeMap<&'static str, usize>,
     reset: Option<(u32, u32)>,
     divergences: Vec<String>,
+    /// Synced folders whose counts shown aren't the server's.
+    counts: Vec<String>,
     server_messages: usize,
     local_messages: usize,
     mutation: Duration,
@@ -214,9 +216,31 @@ async fn drive(
     driven
 }
 
+/// The counts the synced folders show against the server's, checked again after each completed
+/// round for at most 20 rounds, since they follow the account passes' STATUS; what still
+/// differs.
+async fn counts_settled(
+    store: &Store,
+    account: AccountId,
+    server: &BTreeMap<String, snapshot::Folder>,
+    done: &mut watch::Receiver<Option<Instant>>,
+) -> Vec<String> {
+    let mut rounds = 0;
+    loop {
+        let local = snapshot::local(store, account).await;
+        let left = snapshot::count_diff(server, &local, &snapshot::shown(store, account).await);
+        if left.is_empty() || rounds == 20 {
+            return left;
+        }
+        rounds += 1;
+        let _ = tokio::time::timeout(Duration::from_secs(5), done.changed()).await;
+    }
+}
+
 /// Runs one seed end to end: reset and seed the account, start the driver on an empty store,
 /// make `ops` random changes (one of them a delete-and-recreate), wait for a pass that started
-/// after the last change, then compare the cache with an independent read of the server.
+/// after the last change, then compare the cache with an independent read of the server, and
+/// the counts shown with its counts.
 async fn randomized(variant: Variant, seed: u64, ops: usize, control: Control) -> Report {
     let mut rng = Rng(seed);
     let mut mutator = client(variant.server.tls, "rand").await;
@@ -315,15 +339,18 @@ async fn randomized(variant: Variant, seed: u64, ops: usize, control: Control) -
         let _ = tokio::time::timeout(Duration::from_millis(50), done_rx.changed()).await;
     }
     report.quiescence = quiet.elapsed();
+    let mut verifier = client(variant.server.tls, "rand").await;
+    let server = verifier.snapshot().await.unwrap();
+    verifier.logout().await;
+    if control == Control::None {
+        report.counts = counts_settled(&store, account, &server, &mut done_rx).await;
+    }
     stop_tx.send(true).unwrap();
     let driven = driver.await.unwrap();
     report.stats = driven.stats;
     report.passes = driven.passes;
     report.disconnects = driven.disconnects;
 
-    let mut verifier = client(variant.server.tls, "rand").await;
-    let server = verifier.snapshot().await.unwrap();
-    verifier.logout().await;
     let local = snapshot::local(&store, account).await;
     report.server_messages = server.values().map(|f| f.messages.len()).sum();
     report.local_messages = local.values().map(|f| f.messages.len()).sum();
@@ -345,10 +372,12 @@ fn randomized_suite(variant: Variant) {
         for seed in 1..=10 {
             let report = randomized(variant, seed, 1000, Control::None).await;
             println!(
-                "{} seed {seed}: {} divergences; server {} / local {} messages; mutation {:.1} s, \
-                 quiescence {:.2} s; {} rounds, {} reconnects; ops {:?}; UIDVALIDITY {:?}; {:?}",
+                "{} seed {seed}: {} divergences, {} count mismatches; server {} / local {} \
+                 messages; mutation {:.1} s, quiescence {:.2} s; {} rounds, {} reconnects; \
+                 ops {:?}; UIDVALIDITY {:?}; {:?}",
                 variant.name(),
                 report.divergences.len(),
+                report.counts.len(),
                 report.server_messages,
                 report.local_messages,
                 report.mutation.as_secs_f64(),
@@ -364,8 +393,8 @@ fn randomized_suite(variant: Variant) {
                 "seed {seed}: no UIDVALIDITY change"
             );
             totals.add(&report.stats);
-            if !report.divergences.is_empty() {
-                failures.push((seed, report.divergences));
+            if !report.divergences.is_empty() || !report.counts.is_empty() {
+                failures.push((seed, [report.divergences, report.counts].concat()));
             }
         }
         println!("{} totals: {totals:?}", variant.name());
