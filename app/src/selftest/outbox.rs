@@ -9,6 +9,7 @@
 //! | --- | --- |
 //! | `outbox-draft NAME ACCOUNT` | Saves a draft from ACCOUNT (`triage-account`'s, which has a server) in the store, closed |
 //! | `outbox-queue NAME` | Queues it for the undo window (`queue_send`) and calls `outbox::queued`, as the backend's send does |
+//! | `outbox-quick NAME ACCOUNT MESSAGE TEXT` | A reply to MESSAGE from ACCOUNT, sent from the quick reply with TEXT: saved, marked as the quick reply's, queued |
 //! | `outbox-engine start\|sent\|uncertain NAME` | The engine's step on it: `send_started`; `send_done` and `Event::Sent`; `send_uncertain` and `Event::SendUncertain` |
 //! | `outbox-engine failed NAME ERROR` | `send_failed` (permanent) and `Event::SendFailed`: `recipients-refused` (two), `too-large`, `refused`, `needs-sign-in`, `other` |
 //! | `outbox-expect KIND [KEY=VALUE]` | The app sent KIND to the engine (`outbox-queued`, `ops-queued`, `drafts-changed`) within a second; other commands are passed over |
@@ -16,7 +17,9 @@
 //! | `quick-store-draft MESSAGE TEXT` | A closed reply draft to MESSAGE whose body is TEXT, in the store, as an earlier session's quick reply left it |
 //! | `assert-outbox NAME queued\|sending\|uncertain\|sent\|draft\|gone` | Where the draft stands in the store |
 //! | `assert-outbox-entries N` | The outbox as the window last read it holds N entries |
+//! | `stand-in-mark` | Notes the time, for `assert-stand-in saved-between` |
 //! | `assert-stand-in sent\|discarded\|closed N` | The stand-in backend's count |
+//! | `assert-stand-in saved-between MIN MAX` | A save came MIN to MAX ms after `stand-in-mark`; prints every save's time since |
 //! | `assert-stand-in last-sent TEXT` | The stand-in's last sent draft starts with TEXT's lines |
 //! | `assert-stand-in quick-draft MESSAGE TEXT\|none` | The stand-in's newest kept reply draft to MESSAGE: its body is TEXT (closed), or it was discarded |
 //! | `assert-compose-draft NAME` | The latest `composer::open` request is `Draft(NAME)` |
@@ -41,6 +44,7 @@ use std::time::{Duration, Instant};
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("outbox-draft", 2, 2),
     ("outbox-queue", 1, 1),
+    ("outbox-quick", 4, 4),
     ("outbox-engine", 2, 3),
     ("outbox-expect", 1, 2),
     ("toast-click", 1, 1),
@@ -48,6 +52,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-outbox", 2, 2),
     ("assert-outbox-entries", 1, 1),
     ("assert-stand-in", 2, 3),
+    ("stand-in-mark", 0, 0),
     ("assert-compose-draft", 1, 1),
 ];
 
@@ -55,6 +60,7 @@ thread_local! {
     /// The script's drafts by name, with their accounts.
     static DRAFTS: RefCell<HashMap<String, (DraftId, sealwax_domain::model::AccountId)>> =
         RefCell::new(HashMap::new());
+    static MARK: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
 }
 
 pub fn handles(command: &str) -> bool {
@@ -86,6 +92,13 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
     match command {
         "outbox-draft" => save_draft(harness, arg(0), arg(1)).await,
         "outbox-queue" => queue(harness, arg(0)).await,
+        "outbox-quick" => {
+            save_draft(harness, arg(0), arg(1)).await?;
+            let (id, _) = draft(arg(0))?;
+            let message = super::conversation::id(arg(2))?;
+            outbox::from_quick_reply(id, message, arg(3).to_owned());
+            queue(harness, arg(0)).await
+        }
         "outbox-engine" => engine(harness, args).await,
         "outbox-expect" => expect(harness, arg(0), args.get(1).map(String::as_str)).await,
         "toast-click" => {
@@ -116,6 +129,10 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             equal("outbox entries", outbox::entries().len(), number(arg(0))?)
         }
         "assert-stand-in" => stand_in(harness, args),
+        "stand-in-mark" => {
+            MARK.with(|mark| mark.set(Some(Instant::now())));
+            Ok(())
+        }
         "assert-compose-draft" => {
             let (id, _) = draft(arg(0))?;
             match composer::requests().last() {
@@ -382,6 +399,24 @@ fn stand_in(harness: &Harness, args: &[String]) -> StepResult {
         "sent" => equal("sent", stand_in.sent().len(), number(arg(1))?),
         "discarded" => equal("discarded", stand_in.discarded().len(), number(arg(1))?),
         "closed" => equal("closed", stand_in.closed().len(), number(arg(1))?),
+        "saved-between" => {
+            let mark = MARK
+                .with(std::cell::Cell::get)
+                .ok_or("run stand-in-mark first")?;
+            let (low, high) = (number(arg(1))? as u128, number(arg(2))? as u128);
+            let since: Vec<u128> = stand_in
+                .saves()
+                .iter()
+                .filter(|(_, at)| *at >= mark)
+                .map(|(_, at)| at.duration_since(mark).as_millis())
+                .collect();
+            println!("  # saves after the mark, ms: {since:?}");
+            if since.iter().any(|ms| (low..=high).contains(ms)) {
+                Ok(())
+            } else {
+                Err(format!("no save {low}–{high} ms after the mark"))
+            }
+        }
         "last-sent" => {
             let (_, sent) = stand_in.sent().pop().ok_or("nothing was sent")?;
             let typed = to_html(arg(1));

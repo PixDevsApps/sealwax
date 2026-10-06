@@ -1,0 +1,81 @@
+# The quick reply for real (M6 phase B, ML-068): its text is kept as a draft through the
+# composer's backend (the stand-in here) at most 5 s behind the typing, closed so no composer
+# window reopens it, and discarded once sent; Send prepares the reply, saves it and hands it to
+# the backend's send, and the box empties; Open Reply in Composer on an empty box opens a plain
+# reply; an earlier session's draft fills the box again; Undo send puts a quick reply's text back
+# in its box. Every name, address and text is fictional.
+# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/reply-quick-drafts.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+conversation-add trip
+conversation-add letters
+triage-account Work work
+triage-undo-window 3000
+focus list
+
+# Kept as a draft once the typing rests (2 s), closed.
+conversation-show trip-6
+wait-until assert-quick-reply shown true
+action win.quick-reply
+type "Bringing the waffle iron."
+assert-stand-in closed 0
+wait-until assert-stand-in quick-draft trip-6 "Bringing the waffle iron."
+assert-stand-in closed 1
+
+# While the typing goes on (a key a second, never resting 2 s) it is saved 5 s after the first
+# unsaved change.
+stand-in-mark
+type " And"
+sleep 1000
+type " the"
+sleep 1000
+type " cards"
+sleep 1000
+type " too"
+sleep 1000
+type ","
+sleep 1000
+type " yes"
+sleep 1000
+type "."
+assert-stand-in saved-between 4500 6000
+wait-until assert-stand-in quick-draft trip-6 "Bringing the waffle iron. And the cards too, yes."
+
+# Send: prepared, saved and sent through the backend; the box empties; the kept draft goes.
+key <Control>Return
+wait-until assert-quick-reply text ""
+assert-stand-in sent 1
+assert-stand-in last-sent "Bringing the waffle iron. And the cards too, yes."
+assert-quick-sends 1
+wait-until assert-stand-in quick-draft trip-6 none
+assert-compose-requests 0
+
+# Open Reply in Composer with nothing typed: a plain reply.
+key <Control><Shift>e
+assert-compose-last reply trip-6 reply
+composer-close
+
+# An earlier session's draft (closed, its body the quick reply's text) fills the box again, and
+# goes on being kept in that draft.
+quick-store-draft letters-8 "Thanks for the issue!"
+conversation-show letters-8
+wait-until assert-quick-reply text "Thanks for the issue!"
+action win.quick-reply
+key <Control>End
+type " See you."
+wait-until assert-stand-in quick-draft letters-8 "Thanks for the issue! See you."
+
+# Undo send of a quick reply: the text goes back in its box; its draft (with the quote) goes.
+conversation-show trip-6
+assert-quick-reply text ""
+outbox-quick quick-one Work trip-6 "Back in the box"
+assert-toast "Message queued"
+toast-click Undo
+wait-until assert-quick-reply text "Back in the box"
+wait-until assert-outbox quick-one gone
+wait-until assert-toast "Sending undone: the reply is back under its conversation"
+assert-compose-requests 1
+assert-conversation criticals 0
