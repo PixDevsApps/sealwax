@@ -3,10 +3,12 @@
 //! completion without checking it, so a refused command reads as an empty success, and they
 //! drop untagged responses past a 100-entry buffer. Every command goes through here instead:
 //! it is sent with `run_command`, every response is read by us with a timeout, every untagged
-//! response reaches the caller, and every completion is checked for OK, NO and BAD.
+//! response reaches the caller, and every completion is checked for OK, NO and BAD. A tagged
+//! OK's COPYUID (RFC 4315) or READ-ONLY reaches the caller too.
 
 use super::error::{ImapError, ServerText};
-use async_imap::imap_proto::{RequestId, Response, Status};
+use async_imap::imap_proto::rfc4315::UidSetMember;
+use async_imap::imap_proto::{Outcome, RequestId, Response, ResponseCode, Status};
 use std::time::Duration;
 
 pub(crate) type Session = async_imap::Session<super::Stream>;
@@ -28,33 +30,101 @@ async fn next<R>(
     }
 }
 
-fn text(information: Option<&std::borrow::Cow<'_, str>>) -> ServerText {
-    ServerText(information.map(|text| text.to_string()).unwrap_or_default())
+/// The server's text with its response code in front (`[TRYCREATE] …`): imap-proto parses some
+/// codes out of the text and leaves the others (RFC 5530's) in it, so classifying a refusal sees
+/// every code the same way ([`ServerText::code`]).
+fn text(outcome: &Outcome<'_>) -> ServerText {
+    let code = match outcome.code {
+        Some(ResponseCode::TryCreate) => "[TRYCREATE] ",
+        Some(ResponseCode::ReadOnly) => "[READ-ONLY] ",
+        Some(ResponseCode::Alert) => "[ALERT] ",
+        Some(ResponseCode::Parse) => "[PARSE] ",
+        _ => "",
+    };
+    let information = outcome.information.as_deref().unwrap_or_default();
+    ServerText(format!("{code}{information}"))
 }
 
-fn completion(
-    status: &Status,
-    information: Option<&std::borrow::Cow<'_, str>>,
-) -> Result<(), ImapError> {
+fn completion(status: &Status, outcome: &Outcome<'_>) -> Result<(), ImapError> {
     match status {
         Status::Ok => Ok(()),
-        Status::No => Err(ImapError::No(text(information))),
-        Status::Bad => Err(ImapError::Bad(text(information))),
+        Status::No => Err(ImapError::No(text(outcome))),
+        Status::Bad => Err(ImapError::Bad(text(outcome))),
         _ => Err(ImapError::Protocol("unexpected completion status")),
     }
 }
 
+/// COPYUID (RFC 4315): the target's UIDVALIDITY and each copied message's source and target UID,
+/// pairwise in the server's order.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct CopyUid {
+    pub uidvalidity: u32,
+    pub pairs: Vec<(u32, u32)>,
+}
+
+/// UIDs a COPYUID may name: far more than any command Sealwax sends, so a hostile set can't make
+/// it allocate gigabytes.
+const COPYUID_LIMIT: u64 = 100_000;
+
+fn expand(set: &[UidSetMember]) -> Option<Vec<u32>> {
+    let size: u64 = set
+        .iter()
+        .map(|member| match member {
+            UidSetMember::Uid(_) => 1,
+            UidSetMember::UidRange(range) => u64::from(range.end() - range.start()) + 1,
+        })
+        .sum();
+    if size > COPYUID_LIMIT {
+        return None;
+    }
+    let mut uids = Vec::new();
+    for member in set {
+        match member {
+            UidSetMember::Uid(uid) => uids.push(*uid),
+            UidSetMember::UidRange(range) => uids.extend(range.clone()),
+        }
+    }
+    Some(uids)
+}
+
+/// The COPYUID in a response code; `None` when there is none or its two sets don't pair up.
+pub(crate) fn copy_uid(code: Option<&ResponseCode<'_>>) -> Option<CopyUid> {
+    let Some(ResponseCode::CopyUid(uidvalidity, source, target)) = code else {
+        return None;
+    };
+    let (source, target) = (expand(source)?, expand(target)?);
+    (source.len() == target.len()).then(|| CopyUid {
+        uidvalidity: *uidvalidity,
+        pairs: source.into_iter().zip(target).collect(),
+    })
+}
+
+/// What a tagged OK's response code says, where Sealwax reads it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Code {
+    CopyUid(CopyUid),
+    ReadOnly,
+}
+
+fn code(outcome: &Outcome<'_>) -> Option<Code> {
+    match outcome.code {
+        Some(ResponseCode::ReadOnly) => Some(Code::ReadOnly),
+        _ => copy_uid(outcome.code.as_ref()).map(Code::CopyUid),
+    }
+}
+
 enum Step {
-    Done(Result<(), ImapError>),
+    Done(Result<Option<Code>, ImapError>),
     More,
 }
 
-/// Reads until the tagged completion of `id`, handing every other response to `on_untagged`.
+/// Reads until the tagged completion of `id`, handing every other response to `on_untagged`, and
+/// returns what the tagged OK's response code says.
 pub(crate) async fn finish<F>(
     session: &mut Session,
     id: &RequestId,
     mut on_untagged: F,
-) -> Result<(), ImapError>
+) -> Result<Option<Code>, ImapError>
 where
     F: FnMut(&Response<'_>),
 {
@@ -64,14 +134,14 @@ where
                 tag,
                 status,
                 outcome,
-            } if tag == id => Step::Done(completion(status, outcome.information.as_ref())),
+            } if tag == id => Step::Done(completion(status, outcome).map(|()| code(outcome))),
             Response::Done { .. } => {
                 Step::Done(Err(ImapError::Protocol("a completion for another command")))
             }
             Response::Data {
                 status: Status::Bye,
                 outcome,
-            } => Step::Done(Err(ImapError::Bye(text(outcome.information.as_ref())))),
+            } => Step::Done(Err(ImapError::Bye(text(outcome)))),
             other => {
                 on_untagged(other);
                 Step::More
@@ -90,6 +160,18 @@ pub(crate) async fn run<F>(
     command: &str,
     on_untagged: F,
 ) -> Result<(), ImapError>
+where
+    F: FnMut(&Response<'_>),
+{
+    run_coded(session, command, on_untagged).await.map(drop)
+}
+
+/// [`run`], returning what the tagged OK's response code says (COPYUID, READ-ONLY).
+pub(crate) async fn run_coded<F>(
+    session: &mut Session,
+    command: &str,
+    on_untagged: F,
+) -> Result<Option<Code>, ImapError>
 where
     F: FnMut(&Response<'_>),
 {
@@ -119,14 +201,11 @@ where
                 tag,
                 status,
                 outcome,
-            } => Some(Ok((
-                tag.clone(),
-                completion(status, outcome.information.as_ref()),
-            ))),
+            } => Some(Ok((tag.clone(), completion(status, outcome)))),
             Response::Data {
                 status: Status::Bye,
                 outcome,
-            } => Some(Err(ImapError::Bye(text(outcome.information.as_ref())))),
+            } => Some(Err(ImapError::Bye(text(outcome)))),
             other => {
                 on_untagged(other);
                 None
@@ -211,5 +290,49 @@ mod tests {
         assert_eq!(quote("S&APg-ppelpost").unwrap(), "\"S&APg-ppelpost\"");
         assert_eq!(quote("a\"b\\c").unwrap(), "\"a\\\"b\\\\c\"");
         assert!(quote("a\r\nb").is_err());
+    }
+
+    fn outcome(line: &[u8]) -> Outcome<'_> {
+        match Response::parse(line).unwrap().1 {
+            Response::Done { outcome, .. } | Response::Data { outcome, .. } => outcome,
+            other => panic!("not a status response: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn copyuid_pairs_sources_with_targets() {
+        let tagged = outcome(b"A1 OK [COPYUID 38505 304,319:320 3956:3958] Done\r\n");
+        assert_eq!(
+            code(&tagged),
+            Some(Code::CopyUid(CopyUid {
+                uidvalidity: 38505,
+                pairs: vec![(304, 3956), (319, 3957), (320, 3958)],
+            }))
+        );
+        let untagged = outcome(b"* OK [COPYUID 7 1:2 10:11] Moved\r\n");
+        assert_eq!(copy_uid(untagged.code.as_ref()).unwrap().pairs.len(), 2);
+        let uneven = outcome(b"A2 OK [COPYUID 7 1:3 10:11] Done\r\n");
+        assert_eq!(code(&uneven), None);
+        let huge = outcome(b"A3 OK [COPYUID 7 1:4000000000 1:4000000000] Done\r\n");
+        assert_eq!(code(&huge), None);
+        let read_only = outcome(b"A4 OK [READ-ONLY] Examined\r\n");
+        assert_eq!(code(&read_only), Some(Code::ReadOnly));
+    }
+
+    #[test]
+    fn refusals_keep_their_response_code_in_front() {
+        for (line, expected) in [
+            (
+                &b"A1 NO [TRYCREATE] Mailbox doesn't exist\r\n"[..],
+                "TRYCREATE",
+            ),
+            (b"A1 NO [NONEXISTENT] Unknown Mailbox\r\n", "NONEXISTENT"),
+            (b"A1 NO [OVERQUOTA] Quota exceeded\r\n", "OVERQUOTA"),
+            (b"A1 NO [READ-ONLY] Mailbox is read-only\r\n", "READ-ONLY"),
+            (b"A1 NO [CANNOT] Same mailbox\r\n", "CANNOT"),
+        ] {
+            assert_eq!(text(&outcome(line)).code(), Some(expected));
+        }
+        assert_eq!(text(&outcome(b"A1 NO Something failed\r\n")).code(), None);
     }
 }

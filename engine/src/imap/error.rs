@@ -16,6 +16,14 @@ impl ServerText {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// The response code the text starts with, without its arguments (`TRYCREATE`,
+    /// `OVERQUOTA`, `READ-ONLY`), as the server wrote it.
+    pub fn code(&self) -> Option<&str> {
+        let rest = self.0.trim_start().strip_prefix('[')?;
+        let end = rest.find([']', ' '])?;
+        Some(&rest[..end]).filter(|code| !code.is_empty())
+    }
 }
 
 impl fmt::Debug for ServerText {

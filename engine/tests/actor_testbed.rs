@@ -77,7 +77,10 @@ fn layout(qresync: bool) -> SyncConfig {
         opened_poll: Duration::from_secs(1),
         idle_restart: Duration::from_secs(20),
         reuse_check: Duration::from_secs(5),
-        connect: ConnectOptions { qresync },
+        connect: ConnectOptions {
+            qresync,
+            ..ConnectOptions::default()
+        },
         ..SyncConfig::default()
     }
 }

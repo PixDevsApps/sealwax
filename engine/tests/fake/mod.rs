@@ -7,6 +7,11 @@
 //! during passes, cut a connection in the middle of a FETCH, close every idling connection,
 //! refuse logins or connections, and turn the network into a black hole that leaves every open
 //! connection silently dead.
+//! For the op queue's writes (M4): SELECT read-write (or READ-ONLY by mailbox) with
+//! PERMANENTFLAGS, UID STORE, UID MOVE and UID COPY with COPYUID untagged, tagged or absent, UID
+//! EXPUNGE, EXPUNGE and CLOSE, UID SEARCH UNSEEN; MOVE and UIDPLUS switched on and off; a command
+//! refused with a given reply, or cut off before it runs or after it ran with its reply lost.
+//! A STORE in an EXAMINEd mailbox is answered OK and ignored, as Dovecot does (S1).
 //! Synthetic data only.
 
 #![allow(dead_code)]
@@ -19,7 +24,7 @@ use rustls::ServerConfig;
 use rustls_pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 use sealwax_domain::account::{Endpoint, Security};
 use sealwax_domain::model::Flags;
-use sealwax_engine::imap::{self, Connection, Credentials};
+use sealwax_engine::imap::{self, ConnectOptions, Connection, Credentials};
 use sealwax_engine::net::Trust;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -107,12 +112,43 @@ pub struct World {
     /// Bumped to close every connection idling then, as a server restart would.
     closings: u64,
     changes: watch::Sender<u64>,
+    /// MOVE is offered (off by default).
+    pub moves: bool,
+    /// UIDPLUS is offered (on for the QRESYNC and CONDSTORE flavours).
+    pub uidplus: bool,
+    /// Where MOVE and COPY put COPYUID, with UIDPLUS.
+    pub copyuid: CopyUid,
+    /// Mailboxes SELECT opens read-only.
+    pub read_only: BTreeSet<String>,
+    /// PERMANENTFLAGS of a read-write SELECT.
+    pub permanent_flags: String,
+    faults: Vec<(String, Fault)>,
 }
 
 struct Cut {
     needle: String,
     skip: usize,
     after: usize,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CopyUid {
+    /// In an untagged OK before the expunges (Dovecot's MOVE, RFC 6851).
+    Untagged,
+    /// In the tagged OK.
+    Tagged,
+    Absent,
+}
+
+/// What happens to the next command containing a needle.
+enum Fault {
+    /// Answered with this reply (after the tag) and not run; a reply starting `* BYE` is sent
+    /// untagged and the connection closed.
+    Refuse(String),
+    /// The connection is cut before it runs.
+    CutBefore,
+    /// It runs, and the connection is cut before its reply.
+    LoseReply,
 }
 
 pub const NOW: i64 = 1_791_158_400;
@@ -139,7 +175,54 @@ impl World {
             hole: false,
             closings: 0,
             changes: watch::channel(0).0,
+            moves: false,
+            uidplus: flavor != Flavor::Rev1,
+            copyuid: CopyUid::Untagged,
+            read_only: BTreeSet::new(),
+            permanent_flags: "\\Answered \\Flagged \\Deleted \\Seen \\Draft \\*".into(),
+            faults: Vec::new(),
         }
+    }
+
+    /// The capabilities offered after login.
+    fn caps(&self) -> String {
+        let mut caps: Vec<&str> = self
+            .flavor
+            .caps()
+            .split(' ')
+            .filter(|cap| *cap != "UIDPLUS" || self.uidplus)
+            .collect();
+        if self.uidplus && !caps.contains(&"UIDPLUS") {
+            caps.push("UIDPLUS");
+        }
+        if self.moves {
+            caps.push("MOVE");
+        }
+        caps.join(" ")
+    }
+
+    /// The next command containing `needle` is answered `<tag> <reply>` and not run.
+    pub fn refuse(&mut self, needle: &str, reply: &str) {
+        self.faults
+            .push((needle.to_owned(), Fault::Refuse(reply.to_owned())));
+    }
+
+    /// The connection is cut when the next command containing `needle` arrives, before it runs.
+    pub fn cut_before(&mut self, needle: &str) {
+        self.faults.push((needle.to_owned(), Fault::CutBefore));
+    }
+
+    /// The next command containing `needle` runs, and the connection is cut before its reply.
+    pub fn lose_reply(&mut self, needle: &str) {
+        self.faults.push((needle.to_owned(), Fault::LoseReply));
+    }
+
+    fn fault(&mut self, command: &str) -> Option<Fault> {
+        let at = self
+            .faults
+            .iter()
+            .position(|(needle, _)| command.contains(needle.as_str()))?;
+        Some(self.faults.remove(at).1)
     }
 
     /// Wakes idling sessions to announce what changed.
@@ -205,22 +288,45 @@ impl World {
     pub fn append(&mut self, name: &str, days: i64, flags: &[&str]) -> u32 {
         self.serial += 1;
         let message_id = format!("fake.{}@example.test", self.serial);
+        self.append_id(name, &message_id, days, flags)
+    }
+
+    /// A new message with the given Message-ID (without angle brackets); returns its UID.
+    pub fn append_id(&mut self, name: &str, message_id: &str, days: i64, flags: &[&str]) -> u32 {
+        let message = Message {
+            flags: flags.iter().map(|f| f.to_string()).collect(),
+            modseq: 0,
+            date: NOW - days * 86_400 + 3_600,
+            message_id: message_id.to_owned(),
+        };
+        let uid = self.put(name, message);
+        self.changed();
+        uid
+    }
+
+    /// Stores `message` under the next UID with a new mod-sequence.
+    fn put(&mut self, name: &str, mut message: Message) -> u32 {
         let mailbox = self.mailbox(name);
         let uid = mailbox.uidnext;
         mailbox.uidnext += 1;
         mailbox.modseq += 1;
-        let modseq = mailbox.modseq;
-        mailbox.messages.insert(
-            uid,
-            Message {
-                flags: flags.iter().map(|f| f.to_string()).collect(),
-                modseq,
-                date: NOW - days * 86_400 + 3_600,
-                message_id,
-            },
-        );
-        self.changed();
+        message.modseq = mailbox.modseq;
+        mailbox.messages.insert(uid, message);
         uid
+    }
+
+    /// The Message-IDs of a mailbox's messages, by UID.
+    pub fn ids(&self, name: &str) -> Vec<String> {
+        self.mailboxes[name]
+            .messages
+            .values()
+            .map(|message| message.message_id.clone())
+            .collect()
+    }
+
+    /// A message's flags, as stored.
+    pub fn flags(&self, name: &str, uid: u32) -> Vec<String> {
+        self.mailboxes[name].messages[&uid].flags.clone()
     }
 
     pub fn append_many(&mut self, name: &str, count: usize, days: impl Fn(usize) -> i64) {
@@ -362,13 +468,18 @@ impl Fake {
     }
 
     pub async fn connect(&self) -> Connection {
-        imap::connect(
+        self.connect_with(ConnectOptions::default()).await
+    }
+
+    pub async fn connect_with(&self, options: ConnectOptions) -> Connection {
+        imap::connect_with(
             &self.endpoint(),
             Credentials::Password {
                 username: "test",
                 password: "fake-password",
             },
             self.trust.client_config().unwrap(),
+            options,
         )
         .await
         .unwrap()
@@ -408,6 +519,8 @@ impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
 #[derive(Default)]
 struct Session {
     selected: Option<(String, u32)>,
+    /// Selected by SELECT, not EXAMINE, and not read-only.
+    read_write: bool,
     known: Vec<u32>,
     qresync: bool,
 }
@@ -674,7 +787,7 @@ fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) ->
     let ok = |out: &mut String, text: &str| out.push_str(&format!("{tag} OK {text}\r\n"));
     match verb.as_str() {
         "CAPABILITY" => {
-            out.push_str(&format!("* CAPABILITY {}\r\n", world.flavor.caps()));
+            out.push_str(&format!("* CAPABILITY {}\r\n", world.caps()));
             ok(&mut out, "done");
         }
         "ENABLE" => {
@@ -687,6 +800,7 @@ fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) ->
         "NOOP" => ok(&mut out, "done"),
         "UNSELECT" => {
             session.selected = None;
+            session.read_write = false;
             session.known.clear();
             ok(&mut out, "done");
         }
@@ -730,15 +844,25 @@ fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) ->
                 None => unquote(rest),
             };
             session.selected = None;
+            session.read_write = false;
             session.known.clear();
             let Some(mailbox) = world.mailboxes.get(&name).filter(|m| selectable(m)) else {
                 out.push_str(&format!("{tag} NO [NONEXISTENT] no such mailbox\r\n"));
                 return Reply::Text(out);
             };
+            let read_write = verb == "SELECT" && !world.read_only.contains(&name);
             session.known = mailbox.messages.keys().copied().collect();
             session.selected = Some((name, mailbox.uidvalidity));
+            session.read_write = read_write;
             out.push_str("* FLAGS (\\Answered \\Flagged \\Deleted \\Seen \\Draft)\r\n");
-            out.push_str("* OK [PERMANENTFLAGS ()] read-only\r\n");
+            if read_write {
+                out.push_str(&format!(
+                    "* OK [PERMANENTFLAGS ({})] flags\r\n",
+                    world.permanent_flags
+                ));
+            } else {
+                out.push_str("* OK [PERMANENTFLAGS ()] read-only\r\n");
+            }
             out.push_str(&format!(
                 "* {} EXISTS\r\n* 0 RECENT\r\n",
                 session.known.len()
@@ -750,7 +874,36 @@ fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) ->
             if world.flavor.modseq() {
                 out.push_str(&format!("* OK [HIGHESTMODSEQ {}] ok\r\n", mailbox.modseq));
             }
-            out.push_str(&format!("{tag} OK [READ-ONLY] examined\r\n"));
+            if read_write {
+                out.push_str(&format!("{tag} OK [READ-WRITE] selected\r\n"));
+            } else {
+                out.push_str(&format!("{tag} OK [READ-ONLY] examined\r\n"));
+            }
+        }
+        "EXPUNGE" | "CLOSE" => {
+            let Some((name, _)) = session.selected.clone() else {
+                out.push_str(&format!("{tag} BAD no mailbox selected\r\n"));
+                return Reply::Text(out);
+            };
+            if session.read_write {
+                let deleted: Vec<u32> = world.mailboxes[&name]
+                    .messages
+                    .iter()
+                    .filter(|(_, message)| has_flag(message, "\\Deleted"))
+                    .map(|(uid, _)| *uid)
+                    .collect();
+                for uid in deleted {
+                    world.expunge(&name, uid);
+                }
+            }
+            if verb == "CLOSE" {
+                session.selected = None;
+                session.read_write = false;
+                session.known.clear();
+            } else {
+                notices(world, session, &mut out);
+            }
+            ok(&mut out, "done");
         }
         "UID" => return uid_command(world, session, tag, command, out),
         "LOGOUT" => {
@@ -781,6 +934,7 @@ fn uid_command(
         let tokens: Vec<&str> = rest[6..].split_whitespace().collect();
         let mut set = None;
         let mut since = None;
+        let mut unseen = false;
         let mut i = 0;
         while i < tokens.len() {
             match tokens[i].to_ascii_uppercase().as_str() {
@@ -792,6 +946,7 @@ fn uid_command(
                     since = Some(search_date(tokens[i + 1]));
                     i += 1;
                 }
+                "UNSEEN" => unseen = true,
                 _ => {}
             }
             i += 1;
@@ -805,6 +960,7 @@ fn uid_command(
                     .iter()
                     .filter(|(uid, _)| set.as_ref().is_none_or(|set| in_set(set, **uid)))
                     .filter(|(_, message)| since.is_none_or(|since| message.date >= since))
+                    .filter(|(_, message)| !unseen || !has_flag(message, "\\Seen"))
                     .map(|(uid, _)| uid.to_string())
                     .collect()
             }
@@ -816,6 +972,35 @@ fn uid_command(
         };
         out.push_str(&line);
         out.push_str(&format!("{tag} OK searched\r\n"));
+        return Reply::Text(out);
+    }
+    if upper.starts_with("STORE") {
+        return store(world, session, tag, &name, &rest[5..], out);
+    }
+    if upper.starts_with("MOVE") || upper.starts_with("COPY") {
+        return transfer(world, session, tag, &name, rest, out);
+    }
+    if upper.starts_with("EXPUNGE") {
+        if !world.uidplus {
+            out.push_str(&format!("{tag} BAD UID EXPUNGE without UIDPLUS\r\n"));
+            return Reply::Text(out);
+        }
+        if !session.read_write {
+            out.push_str(&format!("{tag} NO [READ-ONLY] mailbox is read-only\r\n"));
+            return Reply::Text(out);
+        }
+        let set = parse_set(rest[7..].trim(), star.unwrap_or(0));
+        let deleted: Vec<u32> = mailbox
+            .messages
+            .iter()
+            .filter(|(uid, message)| in_set(&set, **uid) && has_flag(message, "\\Deleted"))
+            .map(|(uid, _)| *uid)
+            .collect();
+        for uid in deleted {
+            world.expunge(&name, uid);
+        }
+        notices(world, session, &mut out);
+        out.push_str(&format!("{tag} OK expunged\r\n"));
         return Reply::Text(out);
     }
     if !upper.starts_with("FETCH") {
@@ -938,6 +1123,159 @@ fn uid_command(
     Reply::Text(out)
 }
 
+fn has_flag(message: &Message, flag: &str) -> bool {
+    message.flags.iter().any(|f| f.eq_ignore_ascii_case(flag))
+}
+
+/// `UID STORE <set> (+|-)FLAGS[.SILENT] (<flags>)` on the selected mailbox. In a mailbox that
+/// isn't selected read-write it answers OK and changes nothing, as Dovecot does (S1).
+fn store(
+    world: &mut World,
+    session: &mut Session,
+    tag: &str,
+    name: &str,
+    rest: &str,
+    mut out: String,
+) -> Reply {
+    let (set_text, rest) = rest.trim_start().split_once(' ').unwrap();
+    let (operation, list) = rest.split_once(' ').unwrap();
+    let operation = operation.to_ascii_uppercase();
+    let flags: Vec<String> = group(list)
+        .0
+        .split_whitespace()
+        .map(str::to_owned)
+        .collect();
+    if !session.read_write {
+        out.push_str(&format!(
+            "{tag} OK Store ignored with read-only mailbox.\r\n"
+        ));
+        return Reply::Text(out);
+    }
+    let star = world.mailboxes[name].messages.keys().last().copied();
+    let set = parse_set(set_text, star.unwrap_or(0));
+    let uids: Vec<u32> = world.mailboxes[name]
+        .messages
+        .keys()
+        .copied()
+        .filter(|uid| in_set(&set, *uid))
+        .collect();
+    for uid in uids {
+        let mailbox = world.mailbox(name);
+        let next = mailbox.modseq + 1;
+        let message = mailbox.messages.get_mut(&uid).unwrap();
+        let mut now = message.flags.clone();
+        if operation.starts_with('+') {
+            for flag in &flags {
+                if !now.iter().any(|f| f.eq_ignore_ascii_case(flag)) {
+                    now.push(flag.clone());
+                }
+            }
+        } else if operation.starts_with('-') {
+            now.retain(|f| !flags.iter().any(|flag| flag.eq_ignore_ascii_case(f)));
+        } else {
+            now = flags.clone();
+        }
+        let changed = now != message.flags;
+        if changed {
+            message.flags = now;
+            message.modseq = next;
+        }
+        let line = message.flags.join(" ");
+        if changed {
+            mailbox.modseq = next;
+        }
+        if !operation.ends_with(".SILENT")
+            && let Some(seq) = session.known.iter().position(|known| *known == uid)
+        {
+            out.push_str(&format!(
+                "* {} FETCH (UID {uid} FLAGS ({line}))\r\n",
+                seq + 1
+            ));
+        }
+    }
+    world.changed();
+    out.push_str(&format!("{tag} OK stored\r\n"));
+    Reply::Text(out)
+}
+
+/// `UID MOVE` or `UID COPY <set> <mailbox>`: the messages get the target's next UIDs in UID
+/// order, with COPYUID where [`World::copyuid`] puts it (with UIDPLUS); a MOVE expunges them from
+/// the source and announces that before its tagged OK.
+fn transfer(
+    world: &mut World,
+    session: &mut Session,
+    tag: &str,
+    name: &str,
+    rest: &str,
+    mut out: String,
+) -> Reply {
+    let moving = rest.to_ascii_uppercase().starts_with("MOVE");
+    if moving && !world.moves {
+        out.push_str(&format!("{tag} BAD MOVE isn't offered\r\n"));
+        return Reply::Text(out);
+    }
+    let (set_text, target) = rest[4..].trim_start().split_once(' ').unwrap();
+    let target = unquote(target);
+    if moving && !session.read_write {
+        out.push_str(&format!("{tag} NO [READ-ONLY] mailbox is read-only\r\n"));
+        return Reply::Text(out);
+    }
+    let Some(validity) = world
+        .mailboxes
+        .get(&target)
+        .filter(|mailbox| selectable(mailbox))
+        .map(|mailbox| mailbox.uidvalidity)
+    else {
+        out.push_str(&format!("{tag} NO [TRYCREATE] no such mailbox\r\n"));
+        return Reply::Text(out);
+    };
+    if target == name {
+        out.push_str(&format!("{tag} NO [CANNOT] same mailbox\r\n"));
+        return Reply::Text(out);
+    }
+    let star = world.mailboxes[name].messages.keys().last().copied();
+    let set = parse_set(set_text, star.unwrap_or(0));
+    let picked: Vec<(u32, Message)> = world.mailboxes[name]
+        .messages
+        .iter()
+        .filter(|(uid, _)| in_set(&set, **uid))
+        .map(|(uid, message)| (*uid, message.clone()))
+        .collect();
+    let (mut sources, mut targets) = (Vec::new(), Vec::new());
+    for (uid, message) in picked {
+        targets.push(world.put(&target, message));
+        sources.push(uid);
+        if moving {
+            world.expunge(name, uid);
+        }
+    }
+    world.changed();
+    let code =
+        (!sources.is_empty() && world.uidplus && world.copyuid != CopyUid::Absent).then(|| {
+            format!(
+                "[COPYUID {validity} {} {}]",
+                uid_set(&sources),
+                uid_set(&targets)
+            )
+        });
+    match code {
+        Some(code) if world.copyuid == CopyUid::Untagged => {
+            out.push_str(&format!("* OK {code} done\r\n"));
+            notices(world, session, &mut out);
+            out.push_str(&format!("{tag} OK done\r\n"));
+        }
+        Some(code) => {
+            notices(world, session, &mut out);
+            out.push_str(&format!("{tag} OK {code} done\r\n"));
+        }
+        None => {
+            notices(world, session, &mut out);
+            out.push_str(&format!("{tag} OK done\r\n"));
+        }
+    }
+    Reply::Text(out)
+}
+
 /// Logs a command and runs the actions waiting for it, before it is answered.
 fn arrived(world: &mut World, command: &str) {
     world.commands.push(command.to_owned());
@@ -1050,7 +1388,7 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
     let (caps, mut changes, dead) = {
         let world = world.lock().unwrap_or_else(|e| e.into_inner());
         (
-            world.flavor.caps(),
+            world.caps(),
             world.changes.subscribe(),
             world.dead(epoch) || epoch == 0 && world.hole,
         )
@@ -1113,7 +1451,22 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
         let reply = {
             let mut world = world.lock().unwrap_or_else(|e| e.into_inner());
             arrived(&mut world, command);
-            answer(&mut world, &mut state, tag, command)
+            match world.fault(command) {
+                Some(Fault::Refuse(text)) if text.starts_with("* BYE") => {
+                    Reply::Cut(format!("{text}\r\n"))
+                }
+                Some(Fault::Refuse(text)) => Reply::Text(format!("{tag} {text}\r\n")),
+                Some(Fault::CutBefore) => {
+                    world.cuts += 1;
+                    Reply::Cut(String::new())
+                }
+                Some(Fault::LoseReply) => {
+                    answer(&mut world, &mut state, tag, command);
+                    world.cuts += 1;
+                    Reply::Cut(String::new())
+                }
+                None => answer(&mut world, &mut state, tag, command),
+            }
         };
         match reply {
             Reply::Text(text) => {
