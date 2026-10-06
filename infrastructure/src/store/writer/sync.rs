@@ -283,6 +283,7 @@ impl Writer {
         let mut synced = FolderSynced {
             version: StoreVersion(self.state.version),
             inserted: count(inserted.len()),
+            new_messages: inserted.clone(),
             changed: changed_on_server,
             removed: count(removed.len()),
             orphaned_blobs,

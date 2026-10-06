@@ -532,6 +532,10 @@ The user accepted the proposed defaults ("accept the defaults"): `cache_size = "
 
 Built in M6's phase A ([report](m6/compose-domain.md)). `signature = """…"""` on an `[[account]]` table and `[[account.identity]]` tables (an alias: `address`, an optional `name` that defaults to the account's, an optional `signature`) are read with the file's error style (spans, did-you-mean, secrets refused, an address listed twice refused); the setup assistant writes neither. Signatures are plain text, inserted below what the user types and above the quote after a `-- ` line, at most 10,000 characters (a proposal for the gate). The default file documents both in comments.
 
+### ADR-009 amendment — `[notifications]` and `[background]` in config.toml (M7 contract, 2026-10-06)
+
+Two sections, read with the file's error style, following the user's decisions at M7's start ([ADR-013 amendment](#adr-013-amendment--background-mode-on-by-default-notifications-show-sender-and-subject-m7-start-2026-10-06)): `[notifications]` with `enabled` (default `true`) and `show` (`"sender-and-subject"`, the default, or `"count"`), and `[background]` with `enabled` (default `true`: closing the window keeps Sealwax running). A bare `enabled` at the top level is pointed to both sections. The default file documents them in comments.
+
 ## ADR-010 — Name and app-id (2026-10-04)
 
 **Status:** Open. The user decides during M0; it must be accepted before M0 closes, because the data paths, the D-Bus name, the keyring schema and the OAuth consent screen depend on it.
@@ -690,6 +694,16 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 **Decision:** background mode (PRD D6) moves from P1 to P0; opt-in autostart stays P1. D5 is reworded: a click on a new-mail notification opens the message everywhere; Archive and Mark read appear where the notification server shows buttons, and stay one key away in the reader.
 
 **Reason:** S6 showed that on Omarchy a notification click reaches the app only while it runs — GLib's freedesktop path can't start a stopped app, and omarchy-shell's history entries carry no live actions — and that omarchy-shell 0.3.1 shows no action buttons ([report](spikes/S6-desktop.md)).
+
+### ADR-013 amendment — background mode on by default; notifications show sender and subject (M7 start, 2026-10-06)
+
+**Status:** Accepted — user decisions at M7's start, 2026-10-06.
+
+**Decision:**
+- **Background mode is on by default** ("On by default (Recommended)"): closing the window keeps Sealwax running, so sync, IDLE and notifications go on; Quit (Ctrl+Q) stops it. The first close shows a one-time notice saying so, and `[background]` in `config.toml` can turn it off.
+- **A new-mail notification shows the sender and the subject** ("Sender and subject (Recommended)"). `[notifications]` in `config.toml` can switch to a private mode that shows only that new mail came, with a count.
+
+**Reason:** on Omarchy a notification click reaches Sealwax only while it runs (S6), so background mode is what makes D5 work; the sender and subject are what most mail clients show, and the private mode covers shared screens.
 
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 

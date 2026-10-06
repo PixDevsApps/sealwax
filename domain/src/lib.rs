@@ -17,6 +17,7 @@ pub mod model;
 pub mod palette;
 pub mod quotes;
 pub mod reading;
+pub mod search;
 pub mod snippet;
 pub mod sync;
 pub mod theme;

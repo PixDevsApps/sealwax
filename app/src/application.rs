@@ -6,6 +6,7 @@
 //! GTK thread does nothing but build it. SIGTERM, SIGHUP and SIGINT quit cleanly.
 
 use crate::actions::{self, ActionSet};
+use crate::background;
 use crate::cli;
 use crate::compose_actions;
 use crate::composer::{self, ComposeRequest};
@@ -18,11 +19,13 @@ use crate::list::{MessageList, Quick, Selected};
 use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
 use crate::move_to;
+use crate::notify;
 use crate::oauth;
 use crate::outbox;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{self, MessageSource, Opened, Position, Reader};
+use crate::search;
 use crate::setup::{self, Again, remove::Removable};
 use crate::shortcuts;
 use crate::status::{self, Waiting};
@@ -604,6 +607,11 @@ impl AppState {
         self.prefs.get().cloned()
     }
 
+    /// The application's commands (`app.*`), from `startup` on: M7's modules connect theirs.
+    pub fn app_actions(&self) -> Option<&ActionSet> {
+        self.app_actions.get()
+    }
+
     /// Whether a command is built and usable now, in either action group.
     pub fn is_available(&self, id: ActionId) -> bool {
         self.app_actions
@@ -706,6 +714,9 @@ impl AppState {
         });
         self.engine_events.replace(Some(subscription));
         outbox::install(self);
+        notify::install(self);
+        search::install(self);
+        background::install(app, self);
         if let Some(options) = self.config.engine.clone() {
             let ready = self.mailbox.wait_ready();
             let weak = Rc::downgrade(self);

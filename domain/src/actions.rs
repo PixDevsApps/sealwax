@@ -244,12 +244,14 @@ pub enum ActionId {
     KeyboardShortcuts,
     Preferences,
     CustomizeShortcuts,
+    RebuildSearchIndex,
+    StartAtLogin,
     DefaultMailApp,
     Quit,
 }
 
 impl ActionId {
-    pub const ALL: [Self; 63] = [
+    pub const ALL: [Self; 65] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -311,6 +313,8 @@ impl ActionId {
         Self::KeyboardShortcuts,
         Self::Preferences,
         Self::CustomizeShortcuts,
+        Self::RebuildSearchIndex,
+        Self::StartAtLogin,
         Self::DefaultMailApp,
         Self::Quit,
     ];
@@ -657,6 +661,28 @@ impl ActionId {
                     &[],
                 )
             },
+            // ML-081: indexes every stored message again in the background; search keeps
+            // working on the old index until the new one is done.
+            Self::RebuildSearchIndex => command(
+                "rebuild-search-index",
+                "Rebuild Search Index",
+                General,
+                Scope::App,
+                &[],
+            ),
+            // ML-084, opt-in autostart (PRD D6): on while Sealwax's autostart entry exists. Asks
+            // before it writes the entry, the only file Sealwax puts outside its own folders.
+            Self::StartAtLogin => ActionSpec {
+                kind: ActionKind::Toggle,
+                menu: Some(MenuSection::Settings),
+                ..command(
+                    "start-at-login",
+                    "Start Sealwax at Login",
+                    General,
+                    Scope::App,
+                    &[],
+                )
+            },
             // Asks before it makes Sealwax the desktop's handler for mailto: links (PRD C8): the
             // only change Sealwax makes outside its own folders, and only on the user's word.
             Self::DefaultMailApp => command(
@@ -828,6 +854,7 @@ mod tests {
                 ActionId::KeyboardShortcuts,
                 ActionId::Preferences,
                 ActionId::CustomizeShortcuts,
+                ActionId::StartAtLogin,
                 ActionId::Quit,
             ]
         );
@@ -835,6 +862,8 @@ mod tests {
         assert!(ActionId::AddAccount.spec().palette);
         assert_eq!(ActionId::AddAccount.detailed_name(), "win.add-account");
         assert_eq!(ActionId::ToggleSidebar.kind(), ActionKind::Toggle);
+        assert_eq!(ActionId::StartAtLogin.kind(), ActionKind::Toggle);
+        assert_eq!(ActionId::StartAtLogin.detailed_name(), "app.start-at-login");
     }
 
     #[test]
@@ -953,6 +982,8 @@ mod tests {
             ActionId::Outdent,
             ActionId::ClearFormatting,
             ActionId::DefaultMailApp,
+            ActionId::RebuildSearchIndex,
+            ActionId::StartAtLogin,
         ] {
             assert!(keys(id).is_empty(), "{id:?}");
         }

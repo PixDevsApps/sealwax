@@ -74,7 +74,8 @@ mod tests {
                     "win.remove-account",
                     "app.shortcuts",
                     "app.preferences",
-                    "app.customize-shortcuts"
+                    "app.customize-shortcuts",
+                    "app.start-at-login",
                 ],
                 vec!["app.quit"],
             ]

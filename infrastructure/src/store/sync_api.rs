@@ -57,6 +57,8 @@ pub struct FolderSynced {
     /// The commit's version, or the current one when no row changed.
     pub version: StoreVersion,
     pub inserted: u32,
+    /// The inserted rows, in the order of `FolderChanges::new` (M7: new-mail notifications).
+    pub new_messages: Vec<MessageId>,
     /// Rows whose flags or keywords changed.
     pub changed: u32,
     pub removed: u32,

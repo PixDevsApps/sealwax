@@ -156,6 +156,14 @@ pub struct Removed {
     pub orphaned_blobs: Vec<BlobKey>,
 }
 
+/// The reply to [`Store::rebuild_index`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct IndexRebuilt {
+    /// Messages indexed again.
+    pub messages: u64,
+    pub elapsed: std::time::Duration,
+}
+
 /// The writer's reply to an account's removal.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RemovedAccount {
@@ -355,6 +363,15 @@ impl Store {
             limit,
             reply,
         })
+    }
+
+    /// Indexes every stored message again in the background (ML-081, Rebuild Search Index);
+    /// search keeps answering from the old index until the new one is complete. M7's contract:
+    /// answers at once, without indexing, until phase A builds it.
+    pub fn rebuild_index(&self) -> Reply<IndexRebuilt> {
+        let (sender, reply) = Reply::pair();
+        let _ = sender.try_send(Ok(IndexRebuilt::default()));
+        reply
     }
 
     /// Recounts every maintained aggregate and lists disagreements (a diagnostic).

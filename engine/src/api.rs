@@ -232,6 +232,15 @@ pub enum Event {
     /// Sealwax stopped while `draft` was being sent, after its data may have reached the
     /// server: it may have been sent. It is never sent again without the user (ADR-015).
     SendUncertain { account: AccountId, draft: DraftId },
+    /// Mail that arrived in `folder` after its first sync, above the UIDNEXT the store held,
+    /// sent once the rows are committed (ML-083). Never for a first sync, older mail loaded
+    /// below the floor, or a message Sealwax's own op moved there. Any folder and any flags:
+    /// the app decides what notifies.
+    NewMail {
+        account: AccountId,
+        folder: FolderId,
+        messages: Vec<MessageId>,
+    },
 }
 
 /// A part downloaded for `FetchPart`, its transfer encoding decoded. Message content: its

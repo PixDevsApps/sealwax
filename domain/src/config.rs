@@ -169,17 +169,66 @@ impl Default for Storage {
     }
 }
 
+/// What a new-mail notification shows (ADR-013 amendment, M7 start).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum NotificationContent {
+    /// The sender and the subject: the user's choice at M7's start.
+    #[default]
+    SenderAndSubject,
+    /// Only that new mail came, with a count: nothing readable on a shared screen.
+    Count,
+}
+
+/// `[notifications]`: new-mail notifications (ML-083).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Notifications {
+    pub enabled: bool,
+    pub content: NotificationContent,
+}
+
+impl Default for Notifications {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            content: NotificationContent::default(),
+        }
+    }
+}
+
+/// `[background]`: closing the window keeps Sealwax running, so sync and notifications go on
+/// (ML-084; on by default, ADR-013 amendment, M7 start). Quit stops it either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Background {
+    pub enabled: bool,
+}
+
+impl Default for Background {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
 /// The settings in `config.toml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Config {
     pub appearance: Appearance,
     pub oauth: OAuth,
     pub storage: Storage,
+    pub notifications: Notifications,
+    pub background: Background,
 }
 
 const APPEARANCE_SETTINGS: [&str; 3] = ["corner_radius", "chrome_font", "reading_font"];
 const STORAGE_SETTINGS: [&str; 2] = ["cache_size", "prefetch_days"];
-const SECTIONS: [&str; 3] = ["appearance", "oauth", "storage"];
+const NOTIFICATION_SETTINGS: [&str; 2] = ["enabled", "show"];
+const BACKGROUND_SETTINGS: [&str; 1] = ["enabled"];
+const SECTIONS: [&str; 5] = [
+    "appearance",
+    "oauth",
+    "storage",
+    "notifications",
+    "background",
+];
 const PROVIDERS: [&str; 1] = ["microsoft"];
 
 /// Where a setting written at the top level belongs.
@@ -190,6 +239,10 @@ fn section_of(name: &str) -> Option<&'static str> {
         Some("[oauth.microsoft]")
     } else if STORAGE_SETTINGS.contains(&name) {
         Some("[storage]")
+    } else if name == "enabled" {
+        Some("[notifications] or [background]")
+    } else if NOTIFICATION_SETTINGS.contains(&name) {
+        Some("[notifications]")
     } else {
         None
     }
@@ -413,6 +466,75 @@ impl Reader<'_> {
     }
 }
 
+impl Reader<'_> {
+    /// `true` or `false`, or a mistake.
+    fn boolean(&mut self, name: &str, value: &Spanned<DeValue<'_>>) -> Option<bool> {
+        match value.get_ref() {
+            DeValue::Boolean(on) => Some(*on),
+            other => {
+                self.error(
+                    value.span(),
+                    format!("{name} is true or false, not {}", shown(other)),
+                );
+                None
+            }
+        }
+    }
+
+    fn notifications(&mut self, table: &DeTable<'_>, notifications: &mut Notifications) {
+        for (key, value) in entries(table) {
+            let name = key.get_ref().as_ref();
+            match name {
+                "enabled" => {
+                    if let Some(on) = self.boolean(name, value) {
+                        notifications.enabled = on;
+                    }
+                }
+                "show" => match value.get_ref().as_str() {
+                    Some("sender-and-subject") => {
+                        notifications.content = NotificationContent::SenderAndSubject;
+                    }
+                    Some("count") => notifications.content = NotificationContent::Count,
+                    _ => self.error(
+                        value.span(),
+                        format!(
+                            "show is \"sender-and-subject\" or \"count\", not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
+                _ => self.error(
+                    key.span(),
+                    format!(
+                        "unknown setting {name} in [notifications]{}",
+                        did_you_mean(name, NOTIFICATION_SETTINGS)
+                    ),
+                ),
+            }
+        }
+    }
+
+    fn background(&mut self, table: &DeTable<'_>, background: &mut Background) {
+        for (key, value) in entries(table) {
+            let name = key.get_ref().as_ref();
+            match name {
+                "enabled" => {
+                    if let Some(on) = self.boolean(name, value) {
+                        background.enabled = on;
+                    }
+                }
+                _ => self.error(
+                    key.span(),
+                    format!(
+                        "unknown setting {name} in [background]{}",
+                        did_you_mean(name, BACKGROUND_SETTINGS)
+                    ),
+                ),
+            }
+        }
+    }
+}
+
 fn whole_number(value: &DeValue<'_>) -> Option<i64> {
     match value {
         DeValue::Integer(integer) => i64::from_str_radix(integer.as_str(), integer.radix()).ok(),
@@ -466,6 +588,16 @@ impl Config {
                 "storage" => {
                     if let Some(table) = reader.table(value, name) {
                         reader.storage(table, &mut config.storage);
+                    }
+                }
+                "notifications" => {
+                    if let Some(table) = reader.table(value, name) {
+                        reader.notifications(table, &mut config.notifications);
+                    }
+                }
+                "background" => {
+                    if let Some(table) = reader.table(value, name) {
+                        reader.background(table, &mut config.background);
                     }
                 }
                 _ => match section_of(name) {
@@ -524,7 +656,19 @@ pub fn default_config_file() -> String {
          # cache_size = \"2 GiB\"\n\
          # Inbox messages from this many days download in the background, so they open\n\
          # without waiting; 0 turns it off.\n\
-         # prefetch_days = {DEFAULT_PREFETCH_DAYS}\n"
+         # prefetch_days = {DEFAULT_PREFETCH_DAYS}\n\
+         \n\
+         [notifications]\n\
+         # A notification when new mail comes to an inbox: true or false.\n\
+         # enabled = true\n\
+         # What it shows: \"sender-and-subject\", or \"count\" for only how many new\n\
+         # messages came, so nothing can be read on a shared screen.\n\
+         # show = \"sender-and-subject\"\n\
+         \n\
+         [background]\n\
+         # Closing the window keeps Sealwax running, so mail still syncs and notifications\n\
+         # still come; Quit (Ctrl+Q) stops it. false makes closing the window quit.\n\
+         # enabled = true\n"
     )
 }
 
@@ -749,6 +893,66 @@ mod tests {
         assert_eq!(
             errors("cache_size = \"1 GiB\"\n"),
             ["line 1, column 1: cache_size belongs in [storage]; put it under that line"]
+        );
+    }
+
+    #[test]
+    fn notifications_and_background_mode() {
+        let defaults = Config::default();
+        assert!(defaults.notifications.enabled);
+        assert_eq!(
+            defaults.notifications.content,
+            NotificationContent::SenderAndSubject
+        );
+        assert!(defaults.background.enabled);
+        let config = Config::parse(
+            "[notifications]\nenabled = false\nshow = \"count\"\n\n[background]\nenabled = false\n",
+        )
+        .unwrap();
+        assert_eq!(
+            config.notifications,
+            Notifications {
+                enabled: false,
+                content: NotificationContent::Count,
+            }
+        );
+        assert_eq!(config.background, Background { enabled: false });
+        assert_eq!(
+            Config::parse("notifications.show = \"sender-and-subject\"\n")
+                .unwrap()
+                .notifications
+                .content,
+            NotificationContent::SenderAndSubject
+        );
+        assert_eq!(
+            errors("[notifications]\nshow = \"all\"\n"),
+            ["line 2, column 8: show is \"sender-and-subject\" or \"count\", not \"all\""]
+        );
+        assert_eq!(
+            errors("[background]\nenabled = \"yes\"\n"),
+            ["line 2, column 11: enabled is true or false, not \"yes\""]
+        );
+        assert_eq!(
+            errors("[background]\nenable = true\n"),
+            [
+                "line 2, column 1: unknown setting enable in [background]; did you mean \
+                 enabled?"
+            ]
+        );
+        assert_eq!(
+            errors("[notifications]\nshw = \"count\"\n"),
+            ["line 2, column 1: unknown setting shw in [notifications]; did you mean show?"]
+        );
+        assert_eq!(
+            errors("enabled = true\n"),
+            [
+                "line 1, column 1: enabled belongs in [notifications] or [background]; put it \
+                 under that line"
+            ]
+        );
+        assert_eq!(
+            errors("[notification]\n"),
+            ["line 1, column 2: unknown section notification; did you mean notifications?"]
         );
     }
 
