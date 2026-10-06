@@ -13,6 +13,7 @@
 //! | `click-quick POS archive\|delete\|star` | Hovers a row and clicks its quick action |
 //! | `triage-account NAME KEY` | An account with a key, as `accounts.toml` lists one, and its six role folders (OpsQueued goes to it) |
 //! | `triage-mark-read-on-open true\|false` | Switches marking a message read when the reader shows it |
+//! | `triage-undo-window MS` | Shortens the undo window (the toast shows at least a second) |
 //! | `toast-undo` | Clicks the toast's Undo |
 //! | `sidebar-menu all-inboxes\|[ACCOUNT:]ROLE` | Right-clicks a sidebar folder |
 //! | `sidebar-menu-click` | Clicks the menu's Mark Folder as Read |
@@ -55,6 +56,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("click-quick", 2, 2),
     ("triage-account", 2, 2),
     ("triage-mark-read-on-open", 1, 1),
+    ("triage-undo-window", 1, 1),
     ("toast-undo", 0, 0),
     ("sidebar-menu", 1, 1),
     ("sidebar-menu-click", 0, 0),
@@ -150,6 +152,14 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             harness
                 .state
                 .set_mark_read_on_open(super::script::boolean(arg(0))?);
+            Ok(())
+        }
+        "triage-undo-window" => {
+            let triage = harness
+                .state
+                .triage()
+                .ok_or("there is no triage controller")?;
+            triage.set_window(Duration::from_millis(number(arg(0))? as u64));
             Ok(())
         }
         "toast-undo" => {
@@ -272,8 +282,13 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             match arg(0) {
                 "open" => equal("Move to… open", picker.is_some(), boolean(arg(1))?),
                 "shown" => {
-                    let picker = picker.ok_or("Move to… isn't open")?;
-                    equal("folders shown", picker.shown().join(",").as_str(), arg(1))
+                    let shown = picker.ok_or("Move to… isn't open")?.shown();
+                    let text = if shown.is_empty() {
+                        "none".to_owned()
+                    } else {
+                        shown.join(",")
+                    };
+                    equal("folders shown", text.as_str(), arg(1))
                 }
                 "selected" => {
                     let picker = picker.ok_or("Move to… isn't open")?;
@@ -305,13 +320,15 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             let log = LOG
                 .with(|log| log.borrow().clone())
                 .ok_or("run action-log first")?;
-            let ran = std::mem::take(&mut *log.borrow_mut());
-            let text = if ran.is_empty() {
-                "none".to_owned()
-            } else {
-                ran.join(",")
+            // The log is emptied when it matches, so `wait-until` can wait for a command that
+            // runs late, as keys a WebView hands back do.
+            let text = match log.borrow().as_slice() {
+                [] => "none".to_owned(),
+                ran => ran.join(","),
             };
-            equal("commands run", text.as_str(), arg(0))
+            equal("commands run", text.as_str(), arg(0))?;
+            log.borrow_mut().clear();
+            Ok(())
         }
         other => Err(format!("unknown command {other}")),
     }
@@ -323,11 +340,19 @@ fn focus_target(harness: &Harness, name: &str) -> Result<gtk::Widget, String> {
     match name {
         "list" => Ok(super::mail::list(harness)?.list_view().clone().upcast()),
         "search" => Ok(super::mail::list(harness)?.search_entry().clone().upcast()),
-        "reader" => harness
-            .state
-            .reader()
-            .map(|reader| reader.widget())
-            .ok_or_else(|| "there is no reader".to_owned()),
+        "reader" => {
+            let reader = harness.state.reader().ok_or("there is no reader")?;
+            if let Some(view) = reader.web_view() {
+                return Ok(view.upcast());
+            }
+            let mut plain = None;
+            super::collect(&reader.widget(), &mut |widget| {
+                if plain.is_none() && widget.widget_name() == "reader-plain" {
+                    plain = Some(widget.clone());
+                }
+            });
+            Ok(plain.unwrap_or_else(|| reader.widget()))
+        }
         "move-to" => move_to::current()
             .and_then(|picker| picker.search_entry())
             .map(|entry| entry.upcast())
@@ -658,15 +683,12 @@ async fn measure(harness: &Harness, key: &str, count: usize) -> StepResult {
     }
     let mut frames: Vec<i64> = samples.iter().map(|sample| sample.frames).collect();
     frames.sort_unstable();
-    let percentiles = |mut values: Vec<f64>| {
-        values.sort_by(f64::total_cmp);
-        let at =
-            |p: f64| values[((p * values.len() as f64).ceil() as usize).clamp(1, values.len()) - 1];
+    let summary = |values: Vec<f64>| {
         format!(
             "p50 {:.2}, p95 {:.2}, max {:.2}",
-            at(0.5),
-            at(0.95),
-            at(1.0)
+            nearest_rank(&values, 0.5),
+            nearest_rank(&values, 0.95),
+            nearest_rank(&values, 1.0)
         )
     };
     let same = frames.iter().filter(|frames| **frames <= 1).count();
@@ -675,17 +697,41 @@ async fn measure(harness: &Harness, key: &str, count: usize) -> StepResult {
          handler's {frames:?}",
         samples.len()
     );
+    let to_change: Vec<f64> = samples.iter().map(|sample| sample.to_change).collect();
     println!(
         "  # handler → list changed (ms): {}",
-        percentiles(samples.iter().map(|sample| sample.to_change).collect())
+        summary(to_change.clone())
     );
     println!(
         "  # handler → frame painted (ms): {}",
-        percentiles(samples.iter().map(|sample| sample.to_paint).collect())
+        summary(samples.iter().map(|sample| sample.to_paint).collect())
     );
     println!(
         "  # key sent → handler (ms, Broadway's delivery): {}",
-        percentiles(samples.iter().map(|sample| sample.key_to_handler).collect())
+        summary(samples.iter().map(|sample| sample.key_to_handler).collect())
     );
-    Ok(())
+    // The list must hold the change before the next frame at 60 Hz (PRD: "local result in the
+    // same frame"); Broadway paints unpaced, so its frame counts don't judge it.
+    let p95 = nearest_rank(&to_change, 0.95);
+    if p95 <= FRAME_MS {
+        Ok(())
+    } else {
+        Err(format!(
+            "handler → list changed p95 {p95:.2} ms, over a {FRAME_MS:.1} ms frame"
+        ))
+    }
+}
+
+/// One frame at 60 Hz, in milliseconds.
+const FRAME_MS: f64 = 1000.0 / 60.0;
+
+/// The nearest-rank percentile `p` (0 to 1) of `values`.
+fn nearest_rank(values: &[f64], p: f64) -> f64 {
+    let mut sorted = values.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    if sorted.is_empty() {
+        return f64::NAN;
+    }
+    let rank = ((p * sorted.len() as f64).ceil() as usize).clamp(1, sorted.len());
+    sorted[rank - 1]
 }

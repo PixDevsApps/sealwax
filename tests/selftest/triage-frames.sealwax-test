@@ -1,0 +1,23 @@
+# The same-frame bar for actions (PRD: "Actions: local result in the same frame"), with phase
+# A's backend on a fixture store: each key is pressed through Broadway and timed from the
+# command's handler to the list's change (rows removed, or the row's flags) and to the first
+# frame painted after it. Each step fails when the change's p95 is over a 60 Hz frame
+# (16.7 ms). Broadway paints without vsync, so its frame counts are printed, not judged.
+# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-frames.sealwax-test
+
+desktop tiling
+fixtures --count 400 --seed 13 --folders spread
+resize 1440 900
+triage-mark-read-on-open false
+list-wait
+focus list
+list-select 0
+measure-triage s 20
+measure-triage e 20
+measure-triage numbersign 10
+measure-triage exclam 10
+key <Shift>j 2
+measure-triage s 10
+measure-triage <Shift>u 1
+measure-triage <Shift>i 1
+measure-triage e 5

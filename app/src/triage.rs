@@ -498,6 +498,8 @@ struct Last {
     batch: BatchId,
     /// Deleting for good can be undone only inside the window.
     until: Option<Instant>,
+    /// Messages it applied to.
+    count: u32,
 }
 
 type NoticeHandler = Rc<dyn Fn(&Notice)>;
@@ -520,6 +522,8 @@ struct Inner {
     queued: Cell<u64>,
     /// Actions waiting for the backend's answer.
     in_flight: Cell<u32>,
+    /// [`UNDO_WINDOW`], shorter in the self-test.
+    window: Cell<Duration>,
 }
 
 impl Controller {
@@ -534,8 +538,19 @@ impl Controller {
                 changed: RefCell::new(Vec::new()),
                 queued: Cell::new(0),
                 in_flight: Cell::new(0),
+                window: Cell::new(UNDO_WINDOW),
             }),
         }
+    }
+
+    /// The undo window: how long moves wait and the toast shows.
+    pub fn window(&self) -> Duration {
+        self.inner.window.get()
+    }
+
+    /// Changes the undo window (the self-test waits less).
+    pub fn set_window(&self, window: Duration) {
+        self.inner.window.set(window);
     }
 
     /// Runs `work` on the main loop, counted while it waits for the backend.
@@ -632,7 +647,7 @@ impl Controller {
             .collect();
         let leaves = plans.iter().any(|plan| plan.leaves_folder());
         let not_before = if leaves {
-            SystemTime::now() + UNDO_WINDOW
+            SystemTime::now() + self.window()
         } else {
             SystemTime::now()
         };
@@ -682,12 +697,25 @@ impl Controller {
         }
         self.set_last(Some(Last {
             batch: queued.batch,
-            until: expunge.then(|| Instant::now() + UNDO_WINDOW),
+            until: expunge.then(|| Instant::now() + self.window()),
+            count: queued.applied,
         }));
+        if expunge {
+            // Once the window ends Undo can't run any more: say so to the listeners.
+            let this = self.clone();
+            glib::timeout_add_local_once(self.window(), move || {
+                if this.last_batch() == Some(queued.batch) {
+                    let listeners = this.inner.changed.borrow().clone();
+                    for listener in listeners {
+                        listener();
+                    }
+                }
+            });
+        }
         Some(Notice {
             text: done_text(action, queued, &plans, &folders),
             undo: Some(queued.batch),
-            shown: UNDO_WINDOW,
+            shown: self.window(),
         })
     }
 
@@ -728,12 +756,16 @@ impl Controller {
                 _ => None,
             };
             if let Some(batch) = batch {
-                this.set_last(Some(Last { batch, until: None }));
+                this.set_last(Some(Last {
+                    batch,
+                    until: None,
+                    count: applied,
+                }));
             }
             this.notify(&Notice {
                 text: folder_read_text(applied, &name),
                 undo: batch,
-                shown: UNDO_WINDOW,
+                shown: this.window(),
             });
         });
     }
@@ -750,7 +782,7 @@ impl Controller {
             self.set_last(None);
             self.notify(&Notice::plain(undone_text(Undone {
                 restored: 0,
-                lost: 1,
+                lost: last.count,
                 why: Some(Lost::DeletedForGood),
             })));
             return;
@@ -1064,5 +1096,470 @@ impl Backend for StoreBackend {
 
     fn pending(&self, _account: AccountId) -> Pending<u32> {
         Box::pin(async { Ok(0) })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sealwax_domain::account::AccountKey;
+
+    fn folder(id: i64, account: i64, role: FolderRole, name: &str) -> Folder {
+        Folder {
+            id: FolderId(id),
+            account: AccountId(account),
+            name: name.to_owned(),
+            role,
+            selectable: true,
+            total: 0,
+            unread: 0,
+        }
+    }
+
+    /// Account 1 has every role folder and a folder of its own; account 2 (a server account)
+    /// has an Inbox, All Mail and Trash, as where folders are labels.
+    fn folders() -> Vec<Folder> {
+        vec![
+            folder(1, 1, FolderRole::Inbox, "INBOX"),
+            folder(2, 1, FolderRole::Archive, "Arkiv"),
+            folder(3, 1, FolderRole::Junk, "Søppelpost"),
+            folder(4, 1, FolderRole::Trash, "Papirkurv"),
+            folder(5, 1, FolderRole::Other, "Prosjekter"),
+            folder(6, 1, FolderRole::Sent, "Sendt"),
+            Folder {
+                selectable: false,
+                ..folder(7, 1, FolderRole::Other, "Beholder")
+            },
+            folder(11, 2, FolderRole::Inbox, "INBOX"),
+            folder(12, 2, FolderRole::All, "All Mail"),
+            folder(13, 2, FolderRole::Trash, "Trash"),
+        ]
+    }
+
+    fn accounts() -> Vec<Account> {
+        vec![
+            Account {
+                id: AccountId(1),
+                name: "Personal".into(),
+                address: "personal@example.test".into(),
+                key: None,
+            },
+            Account {
+                id: AccountId(2),
+                name: "Work".into(),
+                address: "work@example.test".into(),
+                key: Some(AccountKey("work".into())),
+            },
+        ]
+    }
+
+    fn target(id: i64, folder: i64, flags: Flags) -> Target {
+        Target {
+            id: MessageId(id),
+            folder: FolderId(folder),
+            flags,
+        }
+    }
+
+    #[test]
+    fn commands_apply_where_the_plan_does_and_say_why_not() {
+        let all = folders();
+        let inbox = [target(1, 1, Flags::NONE)];
+        let archived = [target(2, 2, Flags::SEEN)];
+        let labels = [target(3, 11, Flags::NONE)];
+        assert!(availability(ActionId::Archive, &inbox, &all).enabled());
+        assert!(availability(ActionId::Archive, &labels, &all).enabled());
+        assert_eq!(
+            availability(ActionId::Archive, &archived, &all).reason,
+            Some("already archived")
+        );
+        let no_archive = vec![folder(1, 1, FolderRole::Inbox, "INBOX")];
+        assert_eq!(
+            availability(ActionId::Archive, &inbox, &no_archive).reason,
+            Some("the account has no Archive folder")
+        );
+        assert_eq!(
+            availability(ActionId::Junk, &labels, &all).reason,
+            Some("the account has no Junk folder")
+        );
+        let junk = [target(4, 3, Flags::NONE)];
+        assert_eq!(availability(ActionId::Junk, &junk, &all).title, "Not Junk");
+        assert_eq!(
+            availability(ActionId::Junk, &inbox, &all).title,
+            "Move to Junk"
+        );
+        assert!(availability(ActionId::Delete, &archived, &all).enabled());
+        assert_eq!(
+            availability(ActionId::MarkRead, &archived, &all).reason,
+            Some("already read")
+        );
+        assert_eq!(
+            availability(ActionId::MarkUnread, &inbox, &all).reason,
+            Some("already unread")
+        );
+        let mixed = [target(1, 1, Flags::NONE), target(2, 2, Flags::SEEN)];
+        assert_eq!(availability(ActionId::MarkRead, &mixed, &all).applies, 1);
+        assert_eq!(availability(ActionId::Archive, &mixed, &all).applies, 1);
+        assert_eq!(availability(ActionId::Archive, &[], &all).reason, None);
+        assert!(!availability(ActionId::Archive, &[], &all).enabled());
+    }
+
+    #[test]
+    fn star_stars_all_unless_all_are_starred() {
+        let all = folders();
+        let some = [target(1, 1, Flags::FLAGGED), target(2, 1, Flags::NONE)];
+        let every = [target(1, 1, Flags::FLAGGED), target(2, 1, Flags::FLAGGED)];
+        assert_eq!(star_action(&some), Triage::Star(true));
+        assert_eq!(star_action(&every), Triage::Star(false));
+        assert_eq!(availability(ActionId::Star, &some, &all).title, "Star");
+        assert_eq!(availability(ActionId::Star, &every, &all).title, "Unstar");
+    }
+
+    #[test]
+    fn move_to_offers_the_accounts_other_folders_that_take_messages() {
+        let all = folders();
+        let names = |targets: &[Target]| -> Result<Vec<String>, &'static str> {
+            move_choices(targets, &all).map(|choices| choices.iter().map(folder_title).collect())
+        };
+        assert_eq!(
+            names(&[target(1, 1, Flags::NONE)]).unwrap(),
+            ["Archive", "Sent", "Junk", "Trash", "Prosjekter"]
+        );
+        // Messages from two folders: every folder that takes messages.
+        assert_eq!(
+            names(&[target(1, 1, Flags::NONE), target(2, 2, Flags::NONE)])
+                .unwrap()
+                .len(),
+            6
+        );
+        let across = [target(1, 1, Flags::NONE), target(3, 11, Flags::NONE)];
+        assert_eq!(
+            names(&across),
+            Err("the messages are in more than one account")
+        );
+        assert_eq!(
+            availability(ActionId::MoveTo, &across, &all).reason,
+            Some("the messages are in more than one account")
+        );
+    }
+
+    #[test]
+    fn toasts_say_what_happened() {
+        let all = folders();
+        let queued = |applied, skipped| Queued {
+            batch: BatchId(1),
+            applied,
+            skipped,
+        };
+        let to = |id| Plan::Move {
+            to: FolderId(id),
+            add: Flags::NONE,
+            remove: Flags::NONE,
+        };
+        assert_eq!(
+            done_text(Triage::Archive, queued(1, 0), &[to(2)], &all),
+            "Archived 1 message"
+        );
+        assert_eq!(
+            done_text(Triage::Delete, queued(3, 0), &[to(4); 3], &all),
+            "Moved 3 messages to the Trash"
+        );
+        assert_eq!(
+            done_text(Triage::Delete, queued(2, 0), &[Plan::Expunge; 2], &all),
+            "Deleted 2 messages for good"
+        );
+        let not_junk = Plan::Move {
+            to: FolderId(1),
+            add: Flags::NOT_JUNK,
+            remove: Flags::JUNK,
+        };
+        assert_eq!(
+            done_text(Triage::Junk, queued(1, 0), &[not_junk], &all),
+            "Moved 1 message to the Inbox as not junk"
+        );
+        assert_eq!(
+            done_text(Triage::MoveTo(FolderId(5)), queued(2, 0), &[to(5); 2], &all),
+            "Moved 2 messages to Prosjekter"
+        );
+        assert_eq!(
+            done_text(Triage::Junk, queued(2, 1), &[to(3); 2], &all),
+            "Moved 2 messages to Junk. 1 message was left as it was"
+        );
+        assert_eq!(
+            done_text(Triage::Star(false), queued(4, 0), &[], &all),
+            "Unstarred 4 messages"
+        );
+        assert_eq!(
+            folder_read_text(12, "Inbox"),
+            "Marked 12 messages in Inbox as read"
+        );
+        assert_eq!(folder_read_text(0, "Inbox"), "Nothing in Inbox was unread");
+    }
+
+    #[test]
+    fn undo_and_refusals_say_what_came_back() {
+        let undone = |restored, lost, why| Undone {
+            restored,
+            lost,
+            why,
+        };
+        assert_eq!(undone_text(undone(3, 0, None)), "Undone");
+        assert_eq!(
+            undone_text(undone(0, 1, Some(Lost::DeletedForGood))),
+            "1 message was deleted for good and can't be brought back"
+        );
+        assert_eq!(
+            undone_text(undone(2, 3, Some(Lost::DeletedForGood))),
+            "Undone. 3 messages were deleted for good and can't be brought back"
+        );
+        assert_eq!(
+            undone_text(undone(0, 2, Some(Lost::NotBuilt))),
+            "Can't bring back 2 messages yet"
+        );
+        assert_eq!(
+            refused_text(Refused::Move, 3, None),
+            "The server didn't move 3 messages; they're back where they were"
+        );
+        assert_eq!(
+            refused_text(Refused::Flags, 1, Some("Work")),
+            "Work: the server didn't change 1 message; it's back as it was"
+        );
+        assert_eq!(
+            refused_text(Refused::Expunge, 2, None),
+            "The server didn't delete 2 messages; they're back"
+        );
+        assert_eq!(
+            refused_text(Refused::FolderRead, 12, None),
+            "The server didn't mark 12 messages as read; they're back as they were"
+        );
+    }
+
+    /// Records what it is asked and answers at once.
+    #[derive(Default)]
+    struct Recording {
+        calls: RefCell<Vec<String>>,
+        next: Cell<u64>,
+    }
+
+    impl Recording {
+        fn batch(&self, applied: u32) -> Queued {
+            self.next.set(self.next.get() + 1);
+            Queued {
+                batch: BatchId(self.next.get()),
+                applied,
+                skipped: 0,
+            }
+        }
+    }
+
+    impl Backend for Recording {
+        fn queue(
+            &self,
+            action: Triage,
+            targets: &[Target],
+            not_before: SystemTime,
+        ) -> Pending<Queued> {
+            let waits = not_before > SystemTime::now() + Duration::from_secs(1);
+            self.calls
+                .borrow_mut()
+                .push(format!("{action:?} x{} waits {waits}", targets.len()));
+            let queued = self.batch(targets.len() as u32);
+            Box::pin(async move { Ok(queued) })
+        }
+
+        fn mark_folder_read(&self, folder: FolderId) -> Pending<Queued> {
+            self.calls.borrow_mut().push(format!("read {}", folder.0));
+            let queued = self.batch(2);
+            Box::pin(async move { Ok(queued) })
+        }
+
+        fn undo(&self, batch: BatchId) -> Pending<Undone> {
+            self.calls.borrow_mut().push(format!("undo {}", batch.0));
+            Box::pin(async {
+                Ok(Undone {
+                    restored: 1,
+                    lost: 0,
+                    why: None,
+                })
+            })
+        }
+
+        fn pending(&self, _account: AccountId) -> Pending<u32> {
+            Box::pin(async { Ok(0) })
+        }
+    }
+
+    struct Fixed;
+
+    impl Directory for Fixed {
+        fn folders(&self) -> Vec<Folder> {
+            folders()
+        }
+
+        fn accounts(&self) -> Vec<Account> {
+            accounts()
+        }
+    }
+
+    /// A controller over a recording backend, with an engine link whose commands the test
+    /// reads.
+    fn controller() -> (
+        Controller,
+        Rc<Recording>,
+        async_channel::Receiver<Command>,
+        async_channel::Sender<sealwax_engine::api::Event>,
+    ) {
+        let backend = Rc::new(Recording::default());
+        let link = EngineLink::new();
+        let (commands, engine) = async_channel::unbounded();
+        let (events, receiver) = async_channel::unbounded();
+        link.attach(commands, receiver);
+        let controller = Controller::new(backend.clone(), Rc::new(Fixed), link);
+        (controller, backend, engine, events)
+    }
+
+    fn woken(engine: &async_channel::Receiver<Command>) -> Vec<i64> {
+        std::iter::from_fn(|| engine.try_recv().ok())
+            .filter_map(|command| match command {
+                Command::OpsQueued { account } => Some(account.0),
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn drain(context: &glib::MainContext) {
+        while context.iteration(false) {}
+    }
+
+    #[test]
+    fn notable_actions_become_the_last_and_wake_server_accounts() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let (controller, backend, engine, _events) = controller();
+                // A single star: no toast, not the last action; a local account wakes nothing.
+                let notice = context.block_on(controller.run(
+                    Triage::Star(true),
+                    vec![target(1, 1, Flags::NONE)],
+                    Origin::User,
+                ));
+                assert_eq!(notice, None);
+                assert!(!controller.can_undo());
+                assert!(woken(&engine).is_empty());
+                // Archive on the server account: it waits for the window and wakes the account.
+                let notice = context
+                    .block_on(controller.run(
+                        Triage::Archive,
+                        vec![target(2, 11, Flags::NONE)],
+                        Origin::User,
+                    ))
+                    .expect("a toast");
+                assert_eq!(notice.text, "Archived 1 message");
+                assert_eq!(notice.undo, Some(BatchId(2)));
+                assert_eq!(notice.shown, UNDO_WINDOW);
+                assert_eq!(controller.last_batch(), Some(BatchId(2)));
+                assert_eq!(woken(&engine), [2]);
+                // Two messages read: a toast and the last action, without the window.
+                let notice = context
+                    .block_on(controller.run(
+                        Triage::Read(true),
+                        vec![target(3, 1, Flags::NONE), target(4, 1, Flags::NONE)],
+                        Origin::User,
+                    ))
+                    .expect("a toast");
+                assert_eq!(notice.text, "Marked 2 messages as read");
+                assert_eq!(controller.last_batch(), Some(BatchId(3)));
+                // Opened: never a toast, never the last action.
+                let notice = context.block_on(controller.run(
+                    Triage::Read(true),
+                    vec![target(5, 1, Flags::NONE), target(6, 1, Flags::NONE)],
+                    Origin::Opened,
+                ));
+                assert_eq!(notice, None);
+                assert_eq!(controller.last_batch(), Some(BatchId(3)));
+                assert_eq!(
+                    *backend.calls.borrow(),
+                    [
+                        "Star(true) x1 waits false",
+                        "Archive x1 waits true",
+                        "Read(true) x2 waits false",
+                        "Read(true) x2 waits false",
+                    ]
+                );
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn only_the_last_action_is_undone_and_deleting_for_good_only_in_the_window() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let (controller, backend, engine, _events) = controller();
+                let notices: Rc<RefCell<Vec<Notice>>> = Rc::default();
+                let record = notices.clone();
+                controller.connect_notice(move |notice| record.borrow_mut().push(notice.clone()));
+                for id in [1, 2] {
+                    context.block_on(controller.run(
+                        Triage::Archive,
+                        vec![target(id, 1, Flags::NONE)],
+                        Origin::User,
+                    ));
+                }
+                // The first toast's Undo is no longer the last action's: nothing happens.
+                controller.undo(Some(BatchId(1)));
+                drain(&context);
+                assert!(controller.can_undo());
+                controller.undo(None);
+                drain(&context);
+                assert!(!controller.can_undo());
+                assert_eq!(backend.calls.borrow().last().unwrap(), "undo 2");
+                assert_eq!(notices.borrow().last().unwrap().text, "Undone");
+                // The server account wakes for the undo too.
+                assert_eq!(woken(&engine), [2]);
+                // Deleting for good from the Trash: undoable only inside the window.
+                controller.set_window(Duration::from_millis(20));
+                context.block_on(controller.run(
+                    Triage::Delete,
+                    vec![target(3, 4, Flags::NONE), target(4, 4, Flags::NONE)],
+                    Origin::User,
+                ));
+                assert!(controller.can_undo());
+                std::thread::sleep(Duration::from_millis(30));
+                assert!(!controller.can_undo());
+                controller.undo(Some(BatchId(3)));
+                drain(&context);
+                assert_eq!(
+                    notices.borrow().last().unwrap().text,
+                    "2 messages were deleted for good and can't be brought back"
+                );
+                assert_ne!(backend.calls.borrow().last().unwrap(), "undo 3");
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn marking_folders_read_offers_undo_for_one_folder() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let (controller, backend, engine, _events) = controller();
+                let notices: Rc<RefCell<Vec<Notice>>> = Rc::default();
+                let record = notices.clone();
+                controller.connect_notice(move |notice| record.borrow_mut().push(notice.clone()));
+                controller.mark_folders_read(vec![FolderId(11)], "Inbox".into());
+                drain(&context);
+                let last = notices.borrow().last().cloned().unwrap();
+                assert_eq!(last.text, "Marked 2 messages in Inbox as read");
+                assert!(last.undo.is_some());
+                assert_eq!(woken(&engine), [2]);
+                controller.mark_folders_read(vec![FolderId(1), FolderId(11)], "All Inboxes".into());
+                drain(&context);
+                let last = notices.borrow().last().cloned().unwrap();
+                assert_eq!(last.text, "Marked 4 messages in All Inboxes as read");
+                assert_eq!(last.undo, None);
+                assert_eq!(backend.calls.borrow().len(), 3);
+            })
+            .unwrap();
     }
 }

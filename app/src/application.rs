@@ -1081,6 +1081,18 @@ impl AppState {
                 triage.undo(None);
             }
         });
+        // Escape on the batch page leaves the select mode, as it does in the list.
+        let escape = gtk4::EventControllerKey::new();
+        let target = list.clone();
+        escape.connect_key_pressed(move |_, key, _, state| {
+            if key == gtk4::gdk::Key::Escape && state.is_empty() && target.is_select_mode() {
+                target.leave_select_mode();
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        window.batch_page().widget.add_controller(escape);
         let weak = Rc::downgrade(self);
         list.connect_quick_action(move |id, target| {
             if let Some(state) = weak.upgrade() {
@@ -1331,7 +1343,7 @@ impl AppState {
         let toast = adw::Toast::builder()
             .title(notice.text.as_str())
             .use_markup(false)
-            .timeout(notice.shown.as_secs().max(1) as u32)
+            .timeout(notice.shown.as_millis().div_ceil(1000).max(1) as u32)
             .priority(adw::ToastPriority::High)
             .build();
         if let Some(batch) = notice.undo {
@@ -1547,6 +1559,10 @@ impl AppState {
         let reader = Reader::new(source, theme, keymap, &self.config.dirs.cache);
         reader.connect_engine(&self.engine);
         window.set_reader_toolbar(&reader.toolbar());
+        // The batch page stands in for the reader: the Reader scope's keys work there too.
+        reader
+            .keys()
+            .attach(&window.batch_page().widget, gtk4::PropagationPhase::Bubble);
 
         let weak = Rc::downgrade(self);
         let target = window.clone();

@@ -614,8 +614,14 @@ impl MessageList {
         self.reload();
     }
 
-    /// Ends the search, as Escape in the search field does.
+    /// Ends the search, as Escape in the search field does; text typed within the entry's
+    /// search delay goes too, so it doesn't start a search afterwards.
     pub fn clear_search(&self) {
+        if !self.inner.search.text().is_empty() {
+            self.inner.quiet.set(true);
+            self.inner.search.set_text("");
+            self.inner.quiet.set(false);
+        }
         self.set_query(String::new());
     }
 
@@ -1894,6 +1900,19 @@ mod tests {
         assert_eq!(offset(0, -1, 10), 0);
         assert_eq!(offset(9, 1, 10), 9);
         assert_eq!(offset(4, 1, 10), 5);
+    }
+
+    #[test]
+    fn shift_extends_with_next_and_previous_messages_one_key_keys() {
+        assert_eq!(
+            extend_keys(&Keymap::default()),
+            [(gdk::Key::j, 1), (gdk::Key::k, -1)]
+        );
+        let rebound = Keymap::with_overrides([(
+            ActionId::NextMessage,
+            vec![sealwax_domain::keymap::Binding::parse("n").unwrap()],
+        )]);
+        assert_eq!(extend_keys(&rebound), [(gdk::Key::n, 1), (gdk::Key::k, -1)]);
     }
 
     #[test]

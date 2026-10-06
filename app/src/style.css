@@ -1155,3 +1155,87 @@ button.sw-setup-secondary:hover {
 button.sw-setup-secondary:active {
   background: var(--sw-pressed-bg-color);
 }
+
+/* Triage (M4): the select mode's checkboxes, the rows' quick actions, the reader's batch page
+   and the folder menu, in the theme's roles. Move to… is a palette (sw-palette-*). */
+
+/* The checkbox takes the avatar's place and size, so the row's text doesn't move. */
+.sw-message-row checkbutton.sw-row-check {
+  min-width: var(--sw-size-avatar);
+  min-height: var(--sw-size-avatar);
+  padding: 0;
+}
+
+.sw-message-row checkbutton.sw-row-check > check {
+  margin: 0;
+  border-radius: var(--sw-radius-small);
+}
+
+/* Quick actions stay inside the sender's line, so a hovered row keeps its height. */
+.sw-quick-actions button.sw-quick-action {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 var(--sw-space-xs);
+  border: none;
+  background: none;
+  box-shadow: none;
+  color: var(--sw-hover-secondary-fg-color);
+}
+
+.sw-quick-actions button.sw-quick-action:hover {
+  background: var(--sw-selected-bg-color);
+  color: var(--window-fg-color);
+}
+
+.sw-quick-actions button.sw-quick-action:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+.sw-quick-actions button.sw-quick-action image {
+  -gtk-icon-size: var(--sw-text-body);
+}
+
+listview.sw-message-list > row:selected .sw-quick-actions button.sw-quick-action {
+  color: var(--sw-selected-secondary-fg-color);
+}
+
+/* The reader in the select mode: the batch actions as chips under the count. */
+.sw-batch-actions {
+  margin-top: var(--sw-space-xl);
+}
+
+.sw-batch-actions > flowboxchild {
+  padding: var(--sw-space-xs);
+}
+
+button.sw-batch-action {
+  min-height: calc(var(--sw-size-chip) - 2 * var(--sw-control-border-width));
+  padding: 0 var(--sw-space-xl);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  background: none;
+  box-shadow: none;
+  font-weight: normal;
+}
+
+button.sw-batch-action:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-batch-action:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+/* A sidebar folder's menu (Mark Folder as Read). */
+popover.sw-folder-menu > contents {
+  padding: var(--sw-space-sm);
+}
+
+popover.sw-folder-menu button.sw-menu-item {
+  min-height: var(--sw-space-control-height);
+  padding: 0 var(--sw-space-control-padding-x);
+  font-weight: normal;
+}
+
+popover.sw-folder-menu button.sw-menu-item:hover {
+  background: var(--sw-hover-bg-color);
+}

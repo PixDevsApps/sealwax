@@ -1,0 +1,99 @@
+# The Undo window (ML-053, ADR-015): an action that moves messages or changes several shows a
+# toast with Undo for the undo window; a new one replaces it, so only the last action is
+# undoable from the toast; z and Ctrl+Z undo the last action while it can be undone, also after
+# the toast is gone; a single message's read or star change has no toast and leaves the last
+# action alone; deleting for good can be undone only inside the window, and the toast says so
+# after it. Every message is fictional.
+# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-undo.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+mail-account Personal
+mail-add Personal:inbox 10m "Hyttetur i oktober" "from=Ingrid Solberg"
+mail-add Personal:inbox 20m "Styremøte torsdag" "from=Marius Dahl"
+mail-add Personal:inbox 30m "Kvittering for bestilling" "from=Leah Kim"
+mail-add Personal:inbox 40m "Nyhetsbrev uke 41" "from=Marius Dahl"
+mail-add Personal:inbox 50m "Lunsj fredag" "from=Leah Kim"
+folder inbox Personal
+focus list
+assert-action-enabled win.undo false
+assert-undoable false
+
+# Three selected: star them, then Ctrl+Z and z each undo the last action.
+click-row 0
+key <Shift>j 2
+assert-list-selection 0,1,2
+key s
+assert-toast "Starred 3 messages"
+assert-toasts 1
+assert-undoable true
+assert-action-enabled win.undo true
+key <Control>z
+assert-toast Undone
+assert-list-row 0 starred false
+assert-list-row 2 starred false
+assert-undoable false
+assert-action-enabled win.undo false
+key s
+assert-list-row 1 starred true
+key z
+assert-list-row 1 starred false
+assert-undoable false
+
+# A new action replaces the toast: its Undo takes back that action only.
+key s
+assert-toast "Starred 3 messages"
+key <Shift>i
+assert-toast "Marked 3 messages as read"
+assert-toasts 1
+toast-undo
+assert-toast Undone
+assert-list-row 0 unread true
+assert-list-row 0 starred true
+assert-undoable false
+key z
+assert-list-row 0 starred true
+
+# A single message's star changes in place without a toast; z still undoes the toast's action.
+key <Shift>u
+key <Shift>i
+assert-toast "Marked 3 messages as read"
+key Escape
+assert-select-mode false
+assert-list-selection 2
+key s
+assert-list-row 2 starred false
+assert-toast "Marked 3 messages as read"
+key z
+assert-toast Undone
+assert-list-row 0 unread true
+assert-list-row 2 unread true
+assert-list-row 2 starred false
+
+# The toast lasts the undo window; after it z still undoes a change that can be reversed.
+triage-undo-window 1500
+click-row 3
+key <Shift>j
+key s
+assert-toast "Starred 2 messages"
+sleep 2600
+assert-toasts 0
+assert-undoable true
+key z
+assert-toast Undone
+assert-list-row 3 starred false
+
+# Deleting for good can't be undone once the window is over; the toast's Undo says so.
+mail-add Personal:trash 15m "Gammelt utkast" "from=Ingrid Solberg"
+folder trash Personal
+focus list
+list-select 0
+key Delete
+assert-toast "Deleted 1 message for good"
+assert-undoable true
+sleep 1700
+assert-undoable false
+assert-action-enabled win.undo false
+toast-undo
+assert-toast "1 message was deleted for good and can't be brought back"
