@@ -6,6 +6,11 @@
 //! A draft is the user's mail: its `Debug` prints only counts and lengths, and nothing here
 //! ever logs.
 
+pub mod address;
+pub mod clean;
+pub mod ids;
+pub mod text;
+
 use crate::model::{AccountId, Address, BlobKey, MessageId};
 use std::fmt;
 

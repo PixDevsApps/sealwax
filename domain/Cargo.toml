@@ -7,8 +7,11 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
+ammonia = "~4.1.5"
 html2text.workspace = true
+html5ever = "0.39"
 idna.workspace = true
+mail-builder = { version = "~1.0.0", default-features = false }
 mail-parser.workspace = true
 psl.workspace = true
 quick-xml.workspace = true
