@@ -17,6 +17,7 @@ pub fn connect(actions: &ActionSet, reader: &Reader) {
     conversation(actions, reader);
     files(actions, reader);
     remote_content(actions, reader);
+    quick_reply(actions, reader);
 }
 
 /// Expand All Messages, Collapse All Messages, and Next and Previous Message in Conversation
@@ -111,4 +112,36 @@ fn remote_content(actions: &ActionSet, reader: &Reader) {
             let follow = follow.clone();
             glib::idle_add_local_once(move || follow());
         });
+}
+
+/// Quick Reply, Open Reply in Composer and Send (M6, ML-068), on the quick reply under the shown
+/// conversation: the first two while one is on screen, Send while it holds text (the quick
+/// reply's Send button is bound to it, and its Ctrl+Enter is the Composer scope's).
+fn quick_reply(actions: &ActionSet, reader: &Reader) {
+    for (id, run) in [
+        (ActionId::QuickReply, Reader::focus_quick_reply as Command),
+        (ActionId::ReplyInComposer, Reader::expand_quick_reply),
+        (ActionId::Send, Reader::send_quick_reply),
+    ] {
+        let target = Rc::downgrade(&reader.inner);
+        actions.connect(id, move || {
+            if let Some(inner) = target.upgrade() {
+                run(&Reader { inner });
+            }
+        });
+    }
+    let (Some(quick), Some(expand), Some(send)) = (
+        actions.action(ActionId::QuickReply).cloned(),
+        actions.action(ActionId::ReplyInComposer).cloned(),
+        actions.action(ActionId::Send).cloned(),
+    ) else {
+        return;
+    };
+    let follow = move |state: super::QuickState| {
+        quick.set_enabled(state.shown);
+        expand.set_enabled(state.shown);
+        send.set_enabled(state.has_text);
+    };
+    follow(reader.quick_state());
+    reader.connect_quick_state(follow);
 }

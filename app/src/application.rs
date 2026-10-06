@@ -7,7 +7,10 @@
 
 use crate::actions::{self, ActionSet};
 use crate::cli;
+use crate::compose_actions;
+use crate::composer::{self, ComposeRequest};
 use crate::config;
+use crate::default_handler;
 use crate::desktop::{self, DesktopEvent, DesktopWatch};
 use crate::engine::{self, EngineOptions};
 use crate::engine_link::{EngineLink, Subscription};
@@ -191,7 +194,6 @@ impl SealwaxApplication {
             early_startup: RefCell::new(Vec::new()),
             on_first_window: RefCell::new(None),
             present_gate: RefCell::new(None),
-            compose_requests: RefCell::new(Vec::new()),
             activations: Cell::new(0),
             background: RefCell::new(None),
             quitting: Cell::new(false),
@@ -259,7 +261,6 @@ pub struct AppState {
     early_startup: RefCell<Vec<Hook>>,
     on_first_window: RefCell<Option<WindowHook>>,
     present_gate: RefCell<Option<PresentGate>>,
-    compose_requests: RefCell<Vec<Mailto>>,
     activations: Cell<u32>,
     background: RefCell<Option<gio::ApplicationHoldGuard>>,
     quitting: Cell<bool>,
@@ -548,9 +549,15 @@ impl AppState {
         self.first_frame.get()
     }
 
-    /// The `mailto:` drafts asked for so far, oldest first; the composer (M6) takes them.
+    /// The `mailto:` links handed to the composer so far, oldest first (`composer::requests`).
     pub fn compose_requests(&self) -> Vec<Mailto> {
-        self.compose_requests.borrow().clone()
+        composer::requests()
+            .into_iter()
+            .filter_map(|request| match request {
+                ComposeRequest::Mailto(mailto) => Some(mailto),
+                _ => None,
+            })
+            .collect()
     }
 
     /// How many launches and activations showed the window.
@@ -768,7 +775,7 @@ impl AppState {
         }
         let window = self.window_or_new(app);
         for uri in &parsed.uris {
-            self.compose(uri);
+            compose(app, uri);
         }
         self.present(&window);
         glib::ExitCode::SUCCESS
@@ -779,24 +786,12 @@ impl AppState {
         for file in files {
             let uri = file.uri();
             if mailto::is_mailto(&uri) {
-                self.compose(&uri);
+                compose(app, &uri);
             } else {
                 tracing::warn!("ignored an open request that is not a mailto: link");
             }
         }
         self.present(&window);
-    }
-
-    /// A `mailto:` link to write a message from. The composer comes in M6; until then the
-    /// draft is kept, and only the request is logged, never its contents.
-    fn compose(&self, uri: &str) {
-        match mailto::parse(uri) {
-            Ok(draft) => {
-                tracing::info!("compose requested");
-                self.compose_requests.borrow_mut().push(draft);
-            }
-            Err(error) => tracing::warn!("{error}"),
-        }
     }
 
     /// The theme, the settings files and the application's commands. The theme read blocks
@@ -828,6 +823,14 @@ impl AppState {
         app_actions.connect(ActionId::KeyboardShortcuts, move || {
             if let Some(state) = weak.upgrade() {
                 state.show_shortcuts();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        app_actions.connect(ActionId::DefaultMailApp, move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(window) = state.window()
+            {
+                default_handler::run(&window, &state.config.app_id);
             }
         });
         let weak_app = app.downgrade();
@@ -937,6 +940,7 @@ impl AppState {
         window.set_keymap(&keymap);
         actions::apply_accels(app, &keymap);
         self.install_list(window, &win_actions, &keymap);
+        compose_actions::install(self, window, &win_actions);
         self.win_actions.replace(Some(win_actions));
     }
 
@@ -1437,6 +1441,7 @@ impl AppState {
         );
         let undo = self.triage().is_some_and(|triage| triage.can_undo());
         actions.set_applies(ActionId::Undo, undo);
+        compose_actions::refresh(actions, &list, &targets, &folders);
     }
 
     /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place
@@ -1735,6 +1740,7 @@ impl AppState {
         if let Some(actions) = self.win_actions.borrow().as_ref() {
             crate::reader::commands::connect(actions, &reader);
         }
+        compose_actions::connect_reader(&reader, window);
         self.reader.replace(Some(reader));
         self.refresh_commands();
     }
@@ -1853,6 +1859,15 @@ impl AppState {
         if let Some(hook) = self.on_first_window.take() {
             hook(window.clone());
         }
+    }
+}
+
+/// A `mailto:` link to write a message from (PRD C8): its safe fields go to a composer window
+/// (`domain::mailto` drops `attach` and the rest); only the request's kind is logged.
+fn compose(app: &SealwaxApplication, uri: &str) {
+    match mailto::parse(uri) {
+        Ok(mailto) => composer::open(app, ComposeRequest::Mailto(mailto)),
+        Err(error) => tracing::warn!("{error}"),
     }
 }
 

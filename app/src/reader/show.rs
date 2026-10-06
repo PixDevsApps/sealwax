@@ -83,6 +83,7 @@ impl Inner {
         if self.stale(generation) {
             return;
         }
+        self.attach_quick_reply(generation);
         self.request_bodies(generation);
         let prepared = started.elapsed();
         let staged = self.stage_pending(generation);
@@ -152,6 +153,7 @@ impl Inner {
             members: conversation.members().collect(),
             missing: false,
             current: None,
+            quick: None,
         }
     }
 
@@ -349,6 +351,7 @@ impl Inner {
         }
         self.report_opened(key);
         self.size_changed();
+        self.quick_changed();
         if count > 1 {
             self.stage.announce(
                 &format!(
@@ -410,6 +413,7 @@ impl Inner {
             members: HashSet::from([id]),
             missing: true,
             current: None,
+            quick: None,
         }));
         let elapsed = started.elapsed();
         self.present(generation, false, started, elapsed, elapsed);
@@ -609,6 +613,7 @@ impl Inner {
         }
         tracing::debug!("reader: the shown conversation changed");
         self.size_changed();
+        self.retarget_quick_reply(key);
         self.schedule();
     }
 

@@ -1416,3 +1416,69 @@ button.sw-quote-toggle {
 button.sw-quote-toggle:hover {
   background: var(--sw-pressed-bg-color);
 }
+
+/* Replying from the reader (M6: ML-068, ML-069). The cards' Reply, Reply all and Forward are the
+   flat icon buttons; the quick reply (the .sw-quick-reply box above) holds a two-row text area
+   in the reading font with its placeholder over it, the hint to expand it, and Send in the
+   accent fill with its keys lighter beside the bold title (the mock's). A Send with nothing to
+   send takes the selected chip's pair, as a disabled primary button does. */
+textview.sw-quick-reply-text,
+textview.sw-quick-reply-text > text {
+  background: none;
+  line-height: 1.35;
+}
+
+textview.sw-quick-reply-text {
+  min-height: calc(2 * 1.6 * var(--sw-text-reading));
+}
+
+.sw-quick-reply-placeholder {
+  color: var(--sw-secondary-fg-color);
+}
+
+button.sw-quick-reply-expand {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font-weight: normal;
+}
+
+button.sw-quick-reply-expand:hover label,
+button.sw-quick-reply-expand:focus-visible label {
+  color: var(--window-fg-color);
+}
+
+button.sw-quick-reply-send {
+  min-height: calc(var(--sw-size-chip) + var(--sw-space-xxs));
+  padding: 0 var(--sw-space-xxl);
+  border: none;
+  border-radius: var(--sw-radius);
+  background: var(--accent-bg-color);
+  color: var(--accent-fg-color);
+  box-shadow: none;
+}
+
+button.sw-quick-reply-send:hover {
+  background-image: image(var(--sw-hover-bg-color));
+}
+
+button.sw-quick-reply-send:active {
+  background-image: image(var(--sw-pressed-bg-color));
+}
+
+button.sw-quick-reply-send:disabled {
+  filter: none;
+  background: var(--sw-chip-selected-bg-color);
+  color: var(--sw-chip-selected-fg-color);
+}
+
+button.sw-quick-reply-send .sw-strong {
+  font-weight: bold;
+}
+
+.sw-quick-reply-send-keys {
+  font-weight: normal;
+  opacity: 0.75;
+}

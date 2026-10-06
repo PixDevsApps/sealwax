@@ -148,6 +148,8 @@ pub struct Card {
     pub sender: String,
     /// Its body has remote images (ML-058).
     pub remote_images: bool,
+    /// The header's Reply, Reply all and Forward buttons, or Edit draft (M6).
+    pub replies: Vec<(sealwax_domain::actions::ActionId, gtk::Button)>,
 }
 
 impl Card {
@@ -213,6 +215,8 @@ pub struct Page {
     /// The message Next and Previous Message in Conversation last moved to; the selected one
     /// before they are used.
     pub current: Option<MessageId>,
+    /// The quick reply under the conversation (M6, ML-068), once its messages are read.
+    pub quick: Option<Rc<super::reply::QuickReply>>,
 }
 
 impl Page {
