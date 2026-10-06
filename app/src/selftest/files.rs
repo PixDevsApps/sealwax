@@ -11,7 +11,7 @@
 //! | --- | --- |
 //! | `files-add NAME…` | Stores the named samples whole in the first account's Inbox, the first one newest; `files-thread` stores that conversation's four messages (`files-thread-1` … `-4`) |
 //! | `files-show NAME` | Selects NAME's row in the list and waits until the reader shows its conversation |
-//! | `files-add-text NAME` | Stores a sample as a large message's text parts: its attachments empty, their sections recorded, `BodyState::Text` |
+//! | `files-add-text NAME` | Stores a sample as a large message's text parts: its attachments and inline parts empty, their sections recorded, `BodyState::Text` |
 //! | `files-hooks` | Opens attachments under `$TMP/files-open` and records them; Save answers `$TMP/files-saved/<name>`, Download all `$TMP/files-folder` |
 //! | `files-answer save\|folder PATH\|cancel` | The next answers of the Save or the folder chooser |
 //! | `files-click N open\|save\|cancel\|retry` | A real click on card N's button (scrolled into view first) |
@@ -28,6 +28,7 @@
 //! | `assert-files folder N` | The Download all folder holds N files |
 //! | `assert-files missing PATH` | Nothing was written at PATH |
 //! | `assert-files banner\|note BOOL [NAME]` | The selected message's card (or NAME's) shows the banner, or the "always shown" line |
+//! | `assert-files cid-loaded N` | The selected message's HTML body shows N images served through `cid:` |
 //! | `assert-files remote-allowed BOOL [NAME]` | The selected message's HTML body (or NAME's) loads remote images |
 //! | `assert-files sender ADDRESS BOOL` | The reader's list holds ADDRESS |
 //! | `assert-files stored-sender ADDRESS BOOL` | The store's list holds ADDRESS |
@@ -287,8 +288,8 @@ async fn add_text(harness: &Harness, name: &str) -> StepResult {
     let now = glib::real_time() / 1_000_000;
     let mut draft = samples::files_draft(name, now).ok_or_else(|| format!("no sample {name}"))?;
     let raw = draft.render();
-    for attachment in &mut draft.attachments {
-        attachment.data.clear();
+    for part in draft.attachments.iter_mut().chain(&mut draft.inline) {
+        part.data.clear();
     }
     let rebuilt = draft.render();
     let parsed = message::parse(&raw);
@@ -617,6 +618,21 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
             let shown = find(&card(&reader, args.get(2).map(String::as_str))?, name)
                 .is_some_and(|widget| widget.is_visible());
             equal(name, shown, boolean(arg(1)?)?)
+        }
+        "cid-loaded" => {
+            let probe = reader
+                .eval(
+                    "return [...document.images].filter(i => i.src.startsWith('cid:') \
+                     && i.complete && i.naturalWidth > 0).length;",
+                )
+                .await?;
+            equal(
+                "images served through cid:",
+                probe.to_int32() as usize,
+                arg(1)?
+                    .parse::<usize>()
+                    .map_err(|error| error.to_string())?,
+            )
         }
         "remote-allowed" => {
             let id = match args.get(2) {

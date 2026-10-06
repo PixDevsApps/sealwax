@@ -70,8 +70,9 @@ enum Source {
     /// Decoded from the stored message.
     Ready(InlinePart),
     /// Not stored (a large message kept as its text parts, ML-044): the [`PartLoader`] fetches
-    /// part `part` (a mail-parser index) of the message when the body asks for it.
-    Fetch { part: u32 },
+    /// part `part` (a mail-parser index) of the message when the body asks for it; it is served
+    /// as the type the stored message declares.
+    Fetch { part: u32, mime_type: String },
 }
 
 /// A message's inline parts by Content-ID (without angle brackets).
@@ -94,8 +95,9 @@ impl InlineParts {
     }
 
     /// A part the store doesn't hold, fetched by the [`PartLoader`] when the body asks for it.
-    pub fn insert_missing(&mut self, content_id: String, part: u32) {
-        self.parts.insert(content_id, Source::Fetch { part });
+    pub fn insert_missing(&mut self, content_id: String, part: u32, mime_type: String) {
+        self.parts
+            .insert(content_id, Source::Fetch { part, mime_type });
     }
 
     pub fn len(&self) -> usize {
@@ -132,10 +134,10 @@ impl InlineParts {
     }
 }
 
-/// Fetches part `part` (a mail-parser index) of a message the store keeps as its text parts:
-/// in the app, `Command::FetchPart` (phase B). `None` when it can't be had.
+/// Fetches the decoded bytes of part `part` (a mail-parser index) of a message the store keeps
+/// as its text parts: in the app, `Command::FetchPart`. `None` when it can't be had.
 pub type PartLoader =
-    Rc<dyn Fn(MessageId, u32) -> Pin<Box<dyn Future<Output = Option<InlinePart>>>>>;
+    Rc<dyn Fn(MessageId, u32) -> Pin<Box<dyn Future<Output = Option<glib::Bytes>>>>>;
 
 /// What became of a `cid:` request, for the hostile suite and the self-tests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -448,7 +450,9 @@ fn serve_cid(
     };
     let loader = loader.borrow().clone();
     let fetch = match (&source, message, loader) {
-        (Some(Source::Fetch { part }), Some(message), Some(loader)) => Some(loader(message, *part)),
+        (Some(Source::Fetch { part, mime_type }), Some(message), Some(loader)) => {
+            Some((loader(message, *part), mime_type.clone()))
+        }
         _ => None,
     };
     let request = request.clone();
@@ -457,7 +461,7 @@ fn serve_cid(
     glib::spawn_future_local(async move {
         let part = match (source, fetch) {
             (Some(Source::Ready(part)), _) => Some(part),
-            (_, Some(fetch)) => fetch.await,
+            (_, Some((fetch, mime_type))) => fetch.await.map(|data| InlinePart { mime_type, data }),
             _ => None,
         };
         let outcome = if !pages.borrow().current(page, epoch) {
@@ -557,7 +561,7 @@ mod tests {
             },
         );
         let mut second = InlineParts::new(MessageId(2));
-        second.insert_missing("image001.png@01D9".into(), 3);
+        second.insert_missing("image001.png@01D9".into(), 3, "image/png".into());
         assert_eq!((second.len(), second.missing()), (1, 1));
         let mut pages = Pages::default();
         let epoch = pages.set(7, Rc::new(first));
@@ -571,7 +575,9 @@ mod tests {
             "the view shows another message now"
         );
         let (_, source, message) = pages.lookup(7, "IMAGE001.PNG@01d9").unwrap();
-        assert!(matches!(source, Some(Source::Fetch { part: 3 })));
+        assert!(
+            matches!(source, Some(Source::Fetch { part: 3, mime_type }) if mime_type == "image/png")
+        );
         assert_eq!(message, Some(MessageId(2)));
         assert!(
             pages.lookup(8, "image001.png@01D9").is_none(),

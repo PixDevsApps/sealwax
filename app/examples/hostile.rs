@@ -41,9 +41,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_app::reader::samples::{self, Draft, Part};
-use sealwax_app::reader::{
-    CidOutcome, InlinePart, Reader, Refused, Shown, ShownBody, ViewEvent, links_in,
-};
+use sealwax_app::reader::{CidOutcome, Reader, Refused, Shown, ShownBody, ViewEvent, links_in};
 use sealwax_app::theme::{STARTUP_WAIT, ThemeController};
 use sealwax_domain::model::MessageId;
 use sealwax_domain::theme::ThemeOptions;
@@ -1090,10 +1088,7 @@ async fn cid_cancelled(
         let logo = logo.clone();
         Box::pin(async move {
             glib::timeout_future(SLOW_PART).await;
-            Some(InlinePart {
-                mime_type: "image/png".into(),
-                data: logo,
-            })
+            Some(logo)
         })
     })));
     if let (Some(earlier), Some(later)) = (filled.id(PAIR[0]), filled.id(PAIR[1])) {

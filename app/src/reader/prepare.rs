@@ -208,7 +208,7 @@ fn inline_parts(
             continue;
         };
         if part.data.is_empty() {
-            parts.insert_missing(id.clone(), attachment.part);
+            parts.insert_missing(id.clone(), attachment.part, attachment.mime_type.clone());
             continue;
         }
         bytes += part.data.len();
