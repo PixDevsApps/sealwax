@@ -26,6 +26,7 @@ use std::time::Instant;
 mod accounts;
 mod bodies;
 pub(crate) mod compose;
+mod index;
 pub(crate) mod ops;
 pub(crate) mod overlay;
 mod remote;
@@ -129,6 +130,9 @@ pub(crate) enum WriteJob {
         address: String,
         reply: Sender<()>,
     },
+    RebuildIndex {
+        reply: Sender<super::IndexRebuilt>,
+    },
 }
 
 /// An ingest still running: the messages left and the result so far.
@@ -165,6 +169,8 @@ struct RowChange {
 pub(crate) struct Writer {
     conn: Connection,
     state: State,
+    /// Rebuild Search Index, while it runs.
+    rebuild: Option<index::Rebuild>,
 }
 
 /// Everything but the connection, so a method can hold a transaction and still commit.
@@ -239,6 +245,7 @@ impl Writer {
                 inserted_since_optimize: 0,
                 outbox: Vec::new(),
             },
+            rebuild: None,
         })
     }
 
@@ -246,11 +253,16 @@ impl Writer {
         if let Err(error) = self.recover_index() {
             tracing::warn!(%error, "full-text recovery failed");
         }
+        self.resume_rebuild();
         let mut interactive = VecDeque::new();
         let mut bulk = VecDeque::new();
         let mut index: VecDeque<Index> = VecDeque::new();
         loop {
-            if interactive.is_empty() && bulk.is_empty() && index.is_empty() {
+            if interactive.is_empty()
+                && bulk.is_empty()
+                && index.is_empty()
+                && self.rebuild.is_none()
+            {
                 match queue.recv_blocking() {
                     Ok(job) => self.sort(job, &mut interactive, &mut bulk),
                     Err(_) => break,
@@ -259,16 +271,21 @@ impl Writer {
             while let Ok(job) = queue.try_recv() {
                 self.sort(job, &mut interactive, &mut bulk);
             }
+            if queue.is_closed() {
+                self.stop_rebuild();
+            }
             if let Some(job) = interactive.pop_front() {
                 self.interactive(job);
             } else if let Some(job) = index.pop_front() {
                 if let Some(next) = self.index(job) {
                     bulk.push_front(next);
                 }
-            } else if let Some(job) = bulk.pop_front()
-                && let Some(next) = self.ingest(job)
-            {
-                index.push_back(next);
+            } else if let Some(job) = bulk.pop_front() {
+                if let Some(next) = self.ingest(job) {
+                    index.push_back(next);
+                }
+            } else {
+                self.rebuild_step();
             }
         }
         if let Err(error) = self
@@ -362,6 +379,7 @@ impl Writer {
             WriteJob::ForgetRemoteSender { address, reply } => {
                 let _ = reply.try_send(self.forget_remote_sender(&address));
             }
+            WriteJob::RebuildIndex { reply } => self.start_rebuild(reply),
             WriteJob::Ingest { .. } => unreachable!("ingest jobs are bulk"),
         }
     }
@@ -681,7 +699,10 @@ impl Writer {
                         .as_ref()
                         .zip(blob.as_deref().and_then(BlobKey::from_slice))
                         .and_then(|(blobs, key)| blobs.get(&key).ok())
-                        .map(|raw| message::parse(&raw).body_text)
+                        .map(|raw| {
+                            let parsed = message::parse(&raw);
+                            fts::body_text(&parsed.body_text, &parsed.attachments).into_owned()
+                        })
                         .unwrap_or_else(|| snippet.clone());
                     FtsDoc {
                         id: *id,
@@ -1220,7 +1241,7 @@ fn fts_doc(id: MessageId, message: &NewMessage) -> FtsDoc {
         subject: headers.subject.clone(),
         sender: people(&headers.from),
         recipients: people(&[headers.to.as_slice(), headers.cc.as_slice()].concat()),
-        body: message.search_text.clone(),
+        body: fts::body_text(&message.search_text, &message.attachments).into_owned(),
     }
 }
 

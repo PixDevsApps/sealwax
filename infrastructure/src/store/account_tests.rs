@@ -244,7 +244,13 @@ fn keyed_accounts_follow_accounts_toml() {
             .is_some(),
         "a detached account keeps its rows"
     );
-    assert_eq!(search(&store, "alpha"), 3);
+    assert_eq!(
+        search(&store, "alpha"),
+        0,
+        "a search of every folder leaves a detached account out"
+    );
+    let in_folder = store.search("alpha", Some(work_inbox), 10).recv_blocking();
+    assert_eq!(in_folder.unwrap().value.len(), 3);
 
     // The entry comes back: the same account, with its mail.
     let back = store
@@ -257,6 +263,7 @@ fn keyed_accounts_follow_accounts_toml() {
     assert_eq!(back.value[0], work);
     assert_eq!(back.value[1], ids.value[0]);
     assert_eq!(unified_total(&store), 5);
+    assert_eq!(search(&store, "alpha"), 3);
     let same = store
         .reconcile_accounts(vec![
             (key("work"), new_account("Job")),

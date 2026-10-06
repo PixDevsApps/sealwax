@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 9;
+pub const VERSION: i64 = 10;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -389,6 +389,16 @@ CREATE TABLE contact_terms(
     PRIMARY KEY(term, contact)
 ) WITHOUT ROWID;
 CREATE INDEX contact_terms_contact ON contact_terms(contact);
+";
+
+/// M7's search index (ML-081): entries hold æ and ø as ae and o, which unicode61 doesn't fold,
+/// and the body column ends with the names of the attachments. The tables stay; a store with
+/// mail indexes every message again once, in place and in the background
+/// (`writer/index.rs`), and meanwhile a query that spells æ or ø also asks for the old entries'
+/// spelling. Nothing here blocks opening the store.
+const V10: &str = "
+INSERT OR REPLACE INTO meta(key, value)
+    SELECT 'fts_rebuild_through', 0 WHERE EXISTS (SELECT 1 FROM messages);
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

@@ -6,7 +6,7 @@ use super::api::{
     BodyCandidate, BodyTarget, BodyUsage, FolderSync, OpenView, Page, PartSource, StoreVersion,
     SyncState, Versioned, ViewOpened, ViewSpec,
 };
-use super::{Shared, StoreError, check, codec, fts, views};
+use super::{Shared, StoreError, check, codec, views};
 use rusqlite::{Connection, OptionalExtension};
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{
@@ -435,11 +435,13 @@ impl Reader {
         folder: Option<FolderId>,
         limit: u32,
     ) -> Result<Versioned<Vec<MessageSummary>>, StoreError> {
+        let query = sealwax_domain::search::parse(text);
         let tx = self.conn.unchecked_transaction()?;
         let version = version(&tx)?;
-        let value = match fts::match_query(text) {
-            Some(expression) => views::search(&tx, &expression, folder, limit)?,
-            None => Vec::new(),
+        let value = if query.is_empty() {
+            Vec::new()
+        } else {
+            views::search(&tx, &query, folder, limit)?
         };
         Ok(Versioned { version, value })
     }
