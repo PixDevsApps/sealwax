@@ -180,7 +180,8 @@ ALTER TABLE folders ADD COLUMN below_unread INTEGER NOT NULL DEFAULT 0;
 /// flags with the pending ops applied, plus bit 256 while a pending move or expunge takes the
 /// message out of its folder. `server_flags` keeps the server's flags where they differ from
 /// what is shown, NULL otherwise. Rows hidden by that bit or flagged `\Deleted` (8) are in no
-/// view and no count, so every list index leaves them out and the counts are recounted. An op
+/// view and no count, so every list index leaves them out (and holds `flags`, so its walks stay
+/// covering: SQLite checks the condition again on every row) and the counts are recounted. An op
 /// is one change to one message (or, for a folder marked read, to the server's unread below its
 /// floor), in FIFO order per message; done ops stay with their batch, for Undo. Refusals the
 /// sync paths decide wait in `op_refusals` for the account's op runner.
@@ -191,12 +192,12 @@ DROP INDEX messages_unread;
 DROP INDEX messages_flagged;
 DROP INDEX messages_attachments;
 DROP INDEX messages_date;
-CREATE INDEX messages_folder_date ON messages(folder_id, date) WHERE flags & 264 = 0;
+CREATE INDEX messages_folder_date ON messages(folder_id, date, id, flags) WHERE flags & 264 = 0;
 CREATE INDEX messages_unread ON messages(folder_id, date, id, flags) WHERE flags & 265 = 0;
 CREATE INDEX messages_flagged ON messages(folder_id, date, id, flags) WHERE flags & 268 = 4;
-CREATE INDEX messages_attachments ON messages(folder_id, date, id, has_attachments)
+CREATE INDEX messages_attachments ON messages(folder_id, date, id, has_attachments, flags)
     WHERE has_attachments <> 0 AND flags & 264 = 0;
-CREATE INDEX messages_date ON messages(date, id, folder_id) WHERE flags & 264 = 0;
+CREATE INDEX messages_date ON messages(date, id, folder_id, flags) WHERE flags & 264 = 0;
 CREATE INDEX messages_special ON messages(folder_id)
     WHERE server_flags IS NOT NULL OR flags & 8 <> 0;
 UPDATE folders SET
@@ -236,6 +237,7 @@ CREATE INDEX ops_message ON ops(message, id);
 CREATE INDEX ops_batch ON ops(batch);
 CREATE INDEX ops_pending ON ops(account_id, not_before) WHERE done = 0;
 CREATE INDEX ops_folder ON ops(folder_id) WHERE done = 0;
+CREATE INDEX ops_waiting ON ops(folder_id, kind, message_id) WHERE done = 0 AND message IS NULL;
 CREATE INDEX ops_target ON ops(target) WHERE done = 0 AND target IS NOT NULL;
 
 CREATE TABLE op_refusals(

@@ -6,6 +6,7 @@ mod bench;
 mod corpus;
 mod import;
 mod mime;
+mod ops;
 mod remove;
 mod rng;
 mod stats;
@@ -26,12 +27,14 @@ const USAGE: &str = "usage:
                           [--folders single|spread] [--account NAME] [--chunk N] [--workers N]
   sealwax-fixtures bench --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
   sealwax-fixtures bench-unified --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
+  sealwax-fixtures bench-ops --store PATH [--cold N] [--warm N] [--samples N] [--overlays N] [--now UNIX]
   sealwax-fixtures check --store PATH
   sealwax-fixtures remove-account --store PATH [--blobs DIR] [--account NAME]
 
 The blob store defaults to `blobs` next to the store file. Messages are numbered newest first,
 the order of a first sync. `bench-unified` measures All Inboxes over several accounts, each
-imported with its own --account.";
+imported with its own --account. `bench-ops` measures the op queue with the fixture account made a
+server account (it gets a key), so run it on a copy of a store.";
 
 struct Args {
     command: String,
@@ -230,6 +233,14 @@ fn main() -> Result<()> {
         "import" => import(&args),
         "bench" => bench::run(&args.bench()?),
         "bench-unified" => unified::run(&args.bench()?),
+        "bench-ops" => ops::run(&ops::Options {
+            store: args.path("store")?,
+            cold: args.number("cold", 5)?,
+            warm: args.number("warm", 30)?,
+            samples: args.number("samples", 200)?,
+            overlays: args.number("overlays", 1_000)?,
+            now: args.now()?,
+        }),
         "check" => check(&args),
         "remove-account" => {
             let store = args.path("store")?;

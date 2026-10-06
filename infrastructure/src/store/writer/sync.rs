@@ -571,8 +571,8 @@ fn refuse_gone(
     for folder in gone {
         let held: Vec<MessageId> = tx
             .prepare_cached(
-                "SELECT DISTINCT o.message FROM ops o JOIN messages m ON m.id = o.message \
-                 WHERE m.folder_id = ?1 AND o.done = 0",
+                "SELECT DISTINCT message FROM ops \
+                 WHERE folder_id = ?1 AND done = 0 AND message IS NOT NULL",
             )?
             .query_map([folder.0], |row| row.get(0).map(MessageId))?
             .collect::<rusqlite::Result<_>>()?;

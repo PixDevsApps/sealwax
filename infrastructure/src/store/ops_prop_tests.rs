@@ -19,6 +19,9 @@ use std::collections::BTreeMap;
 const WINDOW: i64 = 8_000;
 const HIDDEN: u32 = 256;
 
+/// A pending op as the `ops` table holds it: kind, target, flags added and removed.
+type PendingOp = (i64, Option<i64>, u32, u32);
+
 /// The model server's folders, in the order of `ops_tests::folder_list`.
 const FOLDERS: usize = 5;
 const INBOX: usize = 0;
@@ -528,7 +531,7 @@ impl Harness {
         );
         let conn =
             Connection::open_with_flags(&self.path, OpenFlags::SQLITE_OPEN_READ_ONLY).unwrap();
-        let mut pending: BTreeMap<i64, Vec<(i64, Option<i64>, u32, u32)>> = BTreeMap::new();
+        let mut pending: BTreeMap<i64, Vec<PendingOp>> = BTreeMap::new();
         let mut select = conn
             .prepare(
                 "SELECT message, kind, target, add_flags, remove_flags FROM ops \

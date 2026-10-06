@@ -126,8 +126,8 @@ pub(crate) fn read_below(
     uid: u32,
 ) -> rusqlite::Result<bool> {
     tx.prepare_cached(
-        "SELECT EXISTS(SELECT 1 FROM ops WHERE folder_id = ?1 AND done = 0 AND kind = 3 \
-           AND uidvalidity = ?2 AND uid > ?3)",
+        "SELECT EXISTS(SELECT 1 FROM ops WHERE folder_id = ?1 AND done = 0 AND message IS NULL \
+           AND kind = 3 AND uidvalidity = ?2 AND uid > ?3)",
     )?
     .query_row(params![folder.0, uidvalidity, uid], |row| row.get(0))
 }
@@ -240,21 +240,39 @@ pub(crate) fn count_delta(
     before: Option<u32>,
     after: Option<u32>,
 ) -> rusqlite::Result<bool> {
-    let (total_before, unread_before) = before.map_or((0, 0), overlay::counted);
-    let (total_after, unread_after) = after.map_or((0, 0), overlay::counted);
-    if (total_before, unread_before) == (total_after, unread_after) {
-        return Ok(false);
+    let mut deltas = Deltas::default();
+    deltas.add(folder, before, after);
+    deltas.apply(tx).map(|changed| !changed.is_empty())
+}
+
+/// Count changes of many rows, written once per folder.
+#[derive(Default)]
+pub(crate) struct Deltas(BTreeMap<FolderId, (i64, i64)>);
+
+impl Deltas {
+    pub(crate) fn add(&mut self, folder: FolderId, before: Option<u32>, after: Option<u32>) {
+        let (total_before, unread_before) = before.map_or((0, 0), overlay::counted);
+        let (total_after, unread_after) = after.map_or((0, 0), overlay::counted);
+        let delta = self.0.entry(folder).or_default();
+        delta.0 += total_after - total_before;
+        delta.1 += unread_after - unread_before;
     }
-    tx.prepare_cached(
-        "UPDATE folders SET total_count = total_count + ?2, unread_count = unread_count + ?3 \
-         WHERE id = ?1",
-    )?
-    .execute(params![
-        folder.0,
-        total_after - total_before,
-        unread_after - unread_before
-    ])?;
-    Ok(true)
+
+    /// Writes them; replies with the folders whose counts changed.
+    pub(crate) fn apply(self, tx: &Connection) -> rusqlite::Result<BTreeSet<FolderId>> {
+        let mut update = tx.prepare_cached(
+            "UPDATE folders SET total_count = total_count + ?2, unread_count = unread_count + ?3 \
+             WHERE id = ?1",
+        )?;
+        let mut changed = BTreeSet::new();
+        for (folder, (total, unread)) in self.0 {
+            if (total, unread) != (0, 0) {
+                update.execute(params![folder.0, total, unread])?;
+                changed.insert(folder);
+            }
+        }
+        Ok(changed)
+    }
 }
 
 /// Whether any of `batches` marked a folder read.
@@ -487,6 +505,7 @@ impl State {
         let mut removed = Vec::new();
         let mut threads = BTreeSet::new();
         let mut blobs = BTreeSet::new();
+        let mut deltas = Deltas::default();
         {
             let mut update = tx.prepare_cached(
                 "UPDATE messages SET flags = ?2, server_flags = ?3 WHERE id = ?1",
@@ -505,9 +524,7 @@ impl State {
                             continue;
                         }
                         update.execute(params![row.id.0, flags, server_column(flags, server)])?;
-                        if count_delta(&tx, row.folder, Some(row.flags), Some(flags))? {
-                            folders.insert(row.folder);
-                        }
+                        deltas.add(row.folder, Some(row.flags), Some(flags));
                         if flags != row.flags {
                             changed.push(row.id);
                         }
@@ -525,20 +542,14 @@ impl State {
                             flags,
                             server_column(flags, server)
                         ])?;
-                        if count_delta(&tx, row.folder, Some(row.flags), None)? {
-                            folders.insert(row.folder);
-                        }
-                        if count_delta(&tx, folder, None, Some(flags))? {
-                            folders.insert(folder);
-                        }
+                        deltas.add(row.folder, Some(row.flags), None);
+                        deltas.add(folder, None, Some(flags));
                         changed.push(row.id);
                     }
                     After::Deleted => {
                         delete.execute([row.id.0])?;
                         unindex.execute([row.id.0])?;
-                        if count_delta(&tx, row.folder, Some(row.flags), None)? {
-                            folders.insert(row.folder);
-                        }
+                        deltas.add(row.folder, Some(row.flags), None);
                         threads.insert(row.thread);
                         blobs.extend(row.blob);
                         removed.push(row.id);
@@ -546,6 +557,7 @@ impl State {
                 }
             }
         }
+        folders.extend(deltas.apply(&tx)?);
         for thread in &threads {
             recompute_thread(&tx, *thread)?;
         }
@@ -647,7 +659,8 @@ pub(crate) fn reads_below(
     folder: FolderId,
 ) -> rusqlite::Result<Vec<(OpId, AccountId, u32)>> {
     tx.prepare_cached(
-        "SELECT id, account_id, below FROM ops WHERE folder_id = ?1 AND done = 0 AND kind = ?2",
+        "SELECT id, account_id, below FROM ops \
+         WHERE folder_id = ?1 AND done = 0 AND message IS NULL AND kind = ?2",
     )?
     .query_map(params![folder.0, READ_BELOW], |row| {
         Ok((OpId(row.get(0)?), AccountId(row.get(1)?), row.get(2)?))

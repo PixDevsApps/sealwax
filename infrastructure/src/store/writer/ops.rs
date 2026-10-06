@@ -647,6 +647,9 @@ impl Writer {
                     .query_map(params![folder.0, floor], |row| row.get(0).map(MessageId))?
                     .collect::<rusqlite::Result<_>>()?;
                 for id in below {
+                    if plans.iter().any(|plan: &RowPlan| plan.row.id == id) {
+                        continue;
+                    }
                     if let Some(found) = row(&tx, id)? {
                         let server = found.server | Flags::SEEN.bits();
                         plans.push(RowPlan {

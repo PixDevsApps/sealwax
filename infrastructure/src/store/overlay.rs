@@ -14,8 +14,8 @@ pub(crate) const UNSHOWN: u32 = HIDDEN | Flags::DELETED.bits();
 /// The unread count a folder shows (of `folders`): its shown unread rows, plus the server's
 /// unread below its floor unless a pending "mark folder read" covers them.
 pub(crate) const UNREAD_SQL: &str = "unread_count + CASE WHEN EXISTS (SELECT 1 FROM ops \
-    WHERE ops.folder_id = folders.id AND ops.done = 0 AND ops.kind = 3) THEN 0 \
-    ELSE below_unread END";
+    WHERE ops.folder_id = folders.id AND ops.done = 0 AND ops.message IS NULL AND ops.kind = 3) \
+    THEN 0 ELSE below_unread END";
 
 /// `kind` in the `ops` table.
 pub(crate) const FLAGS: i64 = 0;
