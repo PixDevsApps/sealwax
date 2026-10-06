@@ -633,11 +633,6 @@ impl AppState {
         self.present(&window);
     }
 
-    /// Whether this application's own engine runs (self-tests attach a scripted one instead).
-    pub fn engine_started(&self) -> bool {
-        self.engine_service.borrow().is_some()
-    }
-
     /// The theme follower (ADR-004), from `startup` on.
     pub fn theme(&self) -> Option<Rc<ThemeController>> {
         self.theme.get().cloned()
