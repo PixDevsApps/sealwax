@@ -1,0 +1,110 @@
+# Previews for the M5 gate, files and remote content (ML-058, ML-061, ML-063): attachment cards
+# with Open, Save and Download all; the warning of attachments that are never opened; the
+# remote-content banner with Always for this sender; the quiet line of a sender whose images
+# always load; Show Original; an attachment of a large message downloading, and failed with
+# Retry; in a dark and a light stock theme (matte-black with square corners, catppuccin-latte
+# rounded). The engine is scripted; every name, address and message is fictional.
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/preview-m5-files.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+triage-mark-read-on-open false
+mail-account Personal
+files-add attachments files-danger newsletter files-remote-again
+files-add-text files-large
+files-hooks
+assert-list-count 5
+
+# Attachment cards: Open, Save and Download all.
+list-select 1
+wait-until assert-files message attachments
+wait-until assert-files cards 3
+screenshot $DIR/../../tools/progress/public/m5-files-attachments-matte-black-square-2026-10-06.png
+
+# Never opened: the warning, Save only.
+list-select 2
+wait-until assert-files message files-danger
+wait-until assert-files cards 4
+screenshot $DIR/../../tools/progress/public/m5-files-dangerous-matte-black-square-2026-10-06.png
+
+# The banner with Show images and Always for this sender.
+list-select 3
+wait-until assert-files message newsletter
+wait-until assert-files banner true
+screenshot $DIR/../../tools/progress/public/m5-files-banner-matte-black-square-2026-10-06.png
+
+# A sender whose images always load: the quiet line with Hide.
+list-select 4
+wait-until assert-files message files-remote-again
+wait-until assert-files banner true
+files-click always
+wait-until assert-files note true
+screenshot $DIR/../../tools/progress/public/m5-files-sender-note-matte-black-square-2026-10-06.png
+files-click hide
+wait-until assert-files banner true
+
+# Show Original.
+list-select 1
+wait-until assert-files message attachments
+action win.show-original
+wait-until assert-files original view source
+screenshot $DIR/../../tools/progress/public/m5-files-original-matte-black-square-2026-10-06.png
+files-click original-close
+wait-until assert-files original open false
+
+# A large message's attachment: downloading, then failed with Retry.
+list-select 0
+wait-until assert-files message files-large
+wait-until assert-files card 0 size "about 4.4 MB"
+files-click 0 open
+engine-expect fetch-part
+wait-until assert-files card 0 busy true
+screenshot $DIR/../../tools/progress/public/m5-files-downloading-matte-black-square-2026-10-06.png
+engine-reply part-fetched offline
+wait-until assert-files card 0 failure "can't be reached"
+screenshot $DIR/../../tools/progress/public/m5-files-download-failed-matte-black-square-2026-10-06.png
+
+# The same in a light theme with rounded corners.
+theme catppuccin-latte
+corners 8
+list-select 1
+wait-until assert-files message attachments
+wait-until assert-files cards 3
+screenshot $DIR/../../tools/progress/public/m5-files-attachments-catppuccin-latte-rounded-2026-10-06.png
+list-select 2
+wait-until assert-files message files-danger
+wait-until assert-files cards 4
+screenshot $DIR/../../tools/progress/public/m5-files-dangerous-catppuccin-latte-rounded-2026-10-06.png
+list-select 3
+wait-until assert-files message newsletter
+wait-until assert-files banner true
+screenshot $DIR/../../tools/progress/public/m5-files-banner-catppuccin-latte-rounded-2026-10-06.png
+list-select 4
+wait-until assert-files message files-remote-again
+wait-until assert-files banner true
+files-click always
+wait-until assert-files note true
+screenshot $DIR/../../tools/progress/public/m5-files-sender-note-catppuccin-latte-rounded-2026-10-06.png
+files-click hide
+wait-until assert-files banner true
+list-select 1
+wait-until assert-files message attachments
+action win.show-original
+wait-until assert-files original view source
+screenshot $DIR/../../tools/progress/public/m5-files-original-catppuccin-latte-rounded-2026-10-06.png
+files-click original-close
+wait-until assert-files original open false
+list-select 0
+wait-until assert-files message files-large
+wait-until assert-files card 0 size "about 4.4 MB"
+files-click 0 open
+engine-expect fetch-part
+wait-until assert-files card 0 busy true
+screenshot $DIR/../../tools/progress/public/m5-files-downloading-catppuccin-latte-rounded-2026-10-06.png
+engine-reply part-fetched offline
+wait-until assert-files card 0 failure "can't be reached"
+screenshot $DIR/../../tools/progress/public/m5-files-download-failed-catppuccin-latte-rounded-2026-10-06.png
