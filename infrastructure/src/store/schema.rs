@@ -397,7 +397,8 @@ CREATE INDEX contact_terms_contact ON contact_terms(contact);
 /// (`writer/index.rs`); meanwhile a query that spells æ or ø also asks for the old entries'
 /// spelling. The date index, which a search of every folder walks, also holds
 /// `has_attachments`, so `has:attachment` there reads no rows; built anew it is also packed
-/// (3.6 MiB a first sync left at 100,000 messages, 1.9 MiB), which takes about 0.6 s at 100,000.
+/// (3.6 MiB a first sync left at 100,000 messages, 1.9 MiB). Opening a v9 store of 100,000
+/// messages took about 0.1 s with this migration.
 const V10: &str = "
 INSERT OR REPLACE INTO meta(key, value)
     SELECT 'fts_rebuild_through', 0 WHERE EXISTS (SELECT 1 FROM messages);

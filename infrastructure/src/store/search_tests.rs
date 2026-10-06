@@ -207,6 +207,9 @@ fn the_last_word_typed_finds_the_words_it_starts() {
         ("budsjett -kon", vec![ids[0]]),
         ("k", none.clone()),
         ("ko", vec![ids[1], ids[0]]),
+        ("from:annabelle.lie@example.t", vec![ids[0]]),
+        ("from:annabelle.lie@example.te", vec![ids[0]]),
+        ("from:kon.tiki@e", vec![ids[1]]),
     ] {
         assert_eq!(fx.find(text, None), expected, "{text:?}");
     }

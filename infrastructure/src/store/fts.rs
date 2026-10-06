@@ -166,22 +166,31 @@ impl Expression {
 }
 
 /// One term as an FTS5 phrase, and whether it is a prefix; `None` when nothing in it is
-/// searchable.
+/// searchable. A prefix's last word needs [`MIN_PREFIX`] letters or digits: a shorter one is
+/// left out of a prefix that unicode61 splits into several words (`kari@example.c` looks for
+/// "kari example"), and a prefix of one short word is searched as that word.
 fn term(term: &Term) -> Option<(String, bool)> {
-    let text = term.text();
+    let mut text = Cow::Borrowed(term.text());
     if !text.chars().any(char::is_alphanumeric) {
         return None;
     }
-    let prefix = match term {
-        Term::Prefix(stem) => {
-            stem.chars().filter(|c| c.is_alphanumeric()).count() >= MIN_PREFIX
-                && !stem.chars().any(is_cjk)
+    let mut prefix = false;
+    if let Term::Prefix(stem) = term
+        && !stem.chars().any(is_cjk)
+    {
+        let words: Vec<&str> = stem
+            .split(|c: char| !c.is_alphanumeric())
+            .filter(|word| !word.is_empty())
+            .collect();
+        match words.as_slice() {
+            [.., last] if last.chars().count() >= MIN_PREFIX => prefix = true,
+            [rest @ .., _] if !rest.is_empty() => text = Cow::Owned(rest.join(" ")),
+            _ => {}
         }
-        Term::Word(_) | Term::Phrase(_) => false,
-    };
+    }
     let star = if prefix { "*" } else { "" };
-    let folded = quote(&index_text(text));
-    let earlier = quote(&earlier_text(text));
+    let folded = quote(&index_text(&text));
+    let earlier = quote(&earlier_text(&text));
     let sql = if folded == earlier {
         format!("{folded}{star}")
     } else {
@@ -325,5 +334,15 @@ mod tests {
         assert_eq!(matching("ab*").as_deref(), Some("\"ab\"*"));
         assert!(!Expression::of(&parse("a*")).prefix);
         assert_eq!(matching("会*").as_deref(), Some("\"会\""));
+        assert_eq!(
+            matching("to:kari@example.c*").as_deref(),
+            Some("recipients : \"kari example\"")
+        );
+        assert!(!Expression::of(&parse("kari@example.c*")).prefix);
+        assert_eq!(
+            matching("kari@example.co*").as_deref(),
+            Some("\"kari@example.co\"*")
+        );
+        assert_eq!(matching("v1.2*").as_deref(), Some("\"v1\""));
     }
 }
