@@ -721,17 +721,22 @@ fn drafts_upload_when_quiet_or_closed_and_replace_their_copy() {
             .is_empty()
     );
 
-    // Changed and closed: due at once; an attempt cut short is retried from its mark.
+    // Changed and closed: due once it has been quiet a little while (the quick reply keeps its
+    // draft closed while the user types); an attempt cut short is retried from its mark.
     let mut edited = draft(cx.account, 1);
     edited.subject = "Edited".into();
     save(store, Some(id), edited, false);
-    let second = store.due_drafts(cx.account, NOW).recv_blocking().unwrap();
+    let closed = store.due_drafts(cx.account, NOW).recv_blocking().unwrap();
+    assert!(closed.uploads.is_empty());
+    assert_eq!(closed.next, Some(NOW + CLOSED_DRAFT_QUIET_MS));
+    let quiet = NOW + CLOSED_DRAFT_QUIET_MS;
+    let second = store.due_drafts(cx.account, quiet).recv_blocking().unwrap();
     assert_eq!(second.uploads.len(), 1);
     store
         .draft_upload_started(id, 2, cx.drafts, UIDVALIDITY, 11)
         .recv_blocking()
         .unwrap();
-    let retry = store.due_drafts(cx.account, NOW).recv_blocking().unwrap();
+    let retry = store.due_drafts(cx.account, quiet).recv_blocking().unwrap();
     assert_eq!(retry.uploads[0].retry_from, Some(11));
     assert_eq!(retry.uploads[0].attempts, 1);
     assert_eq!(retry.uploads[0].replaces.unwrap().uid, Some(10));

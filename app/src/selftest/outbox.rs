@@ -217,7 +217,9 @@ fn send_error(name: &str) -> Result<(SendError, SendFailure), String> {
             SendFailure::RecipientsRefused,
         ),
         "too-large" => (
-            SendError::TooLarge { limit: 26_214_400 },
+            SendError::TooLarge {
+                limit: Some(26_214_400),
+            },
             SendFailure::TooLarge,
         ),
         "refused" => (SendError::Refused, SendFailure::Refused),

@@ -395,10 +395,11 @@ pub fn failure_text(error: &SendError) -> String {
         SendError::RecipientsRefused(refused) => {
             format!("the server refused {} recipients", refused.len())
         }
-        SendError::TooLarge { limit } => format!(
+        SendError::TooLarge { limit: Some(limit) } => format!(
             "it is larger than the server takes ({})",
             glib::format_size(*limit)
         ),
+        SendError::TooLarge { limit: None } => "it is larger than the server takes".to_owned(),
         SendError::Refused => "the server refused it".to_owned(),
         SendError::NeedsSignIn => "the account needs you to sign in again".to_owned(),
         SendError::Offline => "the mail server can't be reached".to_owned(),
@@ -581,7 +582,13 @@ mod tests {
             "Your message wasn't sent: the server refused 1 recipient. It's back in your drafts."
         );
         // GLib may put a no-break space between the number and the unit.
-        assert!(failure_text(&SendError::TooLarge { limit: 26_214_400 }).contains("(26.2"));
+        assert!(
+            failure_text(&SendError::TooLarge {
+                limit: Some(26_214_400)
+            })
+            .contains("(26.2")
+        );
+        assert!(failure_text(&SendError::TooLarge { limit: None }).contains("larger"));
         assert_eq!(
             failure_text(&SendError::Other),
             "Your message wasn't sent. It's back in your drafts."

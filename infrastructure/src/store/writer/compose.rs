@@ -12,10 +12,10 @@ use crate::store::compose::{
     state_from,
 };
 use crate::store::compose_api::{
-    CopyFolder, DRAFT_QUIET_MS, DeletionId, DeletionTarget, Discarded, DraftDeletion, DraftSaved,
-    DraftUpload, DueDrafts, DueSend, DueSends, DueSentCopy, OutboxChange, Prepared, Resolution,
-    SaveDraft, SendFailed, SendFailure, SendQueued, SendRecorded, SendStarted, SendState,
-    SendUndone, SentCopyDone, ServerCopy, UploadRecorded,
+    CLOSED_DRAFT_QUIET_MS, CopyFolder, DRAFT_QUIET_MS, DeletionId, DeletionTarget, Discarded,
+    DraftDeletion, DraftSaved, DraftUpload, DueDrafts, DueSend, DueSends, DueSentCopy,
+    OutboxChange, Prepared, Resolution, SaveDraft, SendFailed, SendFailure, SendQueued,
+    SendRecorded, SendStarted, SendState, SendUndone, SentCopyDone, ServerCopy, UploadRecorded,
 };
 use crate::store::ops_api::Failure;
 use crate::store::overlay::{BATCH_COMPOSE, Change, EXPUNGE};
@@ -1366,15 +1366,16 @@ impl Writer {
         if let Some(folder) = role_folder(&tx, account, "drafts")? {
             let waiting: Vec<(DraftId, i64)> = tx
                 .prepare_cached(
-                    "SELECT id, max(upload_not_before, CASE WHEN open THEN saved + ?2 ELSE 0 END) \
+                    "SELECT id, max(upload_not_before, saved + CASE WHEN open THEN ?2 ELSE ?3 END) \
                      FROM drafts d WHERE account_id = ?1 AND revision > copy_revision \
                        AND revision > upload_refused \
                        AND NOT EXISTS (SELECT 1 FROM outbox WHERE draft = d.id) \
                      ORDER BY id",
                 )?
-                .query_map(params![account.0, DRAFT_QUIET_MS], |row| {
-                    Ok((DraftId(row.get(0)?), row.get(1)?))
-                })?
+                .query_map(
+                    params![account.0, DRAFT_QUIET_MS, CLOSED_DRAFT_QUIET_MS],
+                    |row| Ok((DraftId(row.get(0)?), row.get(1)?)),
+                )?
                 .collect::<rusqlite::Result<_>>()?;
             for (id, at) in waiting {
                 if at > now {

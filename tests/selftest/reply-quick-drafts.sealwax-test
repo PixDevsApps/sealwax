@@ -8,6 +8,9 @@
 
 desktop tiling
 resize 1440 900
+# Phase A's in-memory backend: the fixture accounts have no server, so the store's backend
+# would refuse every send.
+composer-backend stand-in
 triage-mark-read-on-open false
 conversation-account Personal alex.berg@example.test
 conversation-add trip
