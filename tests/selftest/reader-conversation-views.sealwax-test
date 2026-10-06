@@ -18,10 +18,15 @@ assert-conversation expanded letters-8
 assert-conversation html-bodies 1
 assert-conversation live-bodies 1
 
-# Expand All: eight bodies, never more than four views.
+# Expand All: eight bodies, never more than four views. The seven that open above the selected
+# one, and their heights as they are measured, don't move it: the column keeps it in place.
+assert-conversation at-top false
+conversation-remember letters-8
 action win.expand-all
 wait-until assert-conversation cards 8
 assert-conversation html-bodies 8
+wait-until assert-conversation measured 8
+assert-conversation kept
 assert-conversation live-at-most 4
 conversation-scroll top
 assert-conversation blank 0

@@ -6,6 +6,7 @@
 //!
 //! | Command | What it does |
 //! | --- | --- |
+//! | `conversation-account NAME ADDRESS` | An account at ADDRESS with the six role folders (`alex.berg@example.test` makes the samples "to me") |
 //! | `conversation-add NAME [ACCOUNT]` | Files sample conversation NAME (`trip`, `letters`, `long`, `typical`) in the account's Inbox, the user's own messages in its Sent |
 //! | `conversation-show MESSAGE` | Selects MESSAGE's row (`trip-6`, …) and waits until the reader shows its conversation |
 //! | `conversation-click-row N` | A real click on the N-th collapsed row (from 0), scrolled into view first; waits for its card |
@@ -15,23 +16,25 @@
 //! | `conversation-scroll-through STEP` | Scrolls from the top to the bottom STEP px at a time: at every step at most `MAX_LIVE_VIEWS` views; once settled, no blank body on screen and every body as tall as first measured |
 //! | `conversation-reply NAME` | A reply to conversation NAME's latest message arrives, unread |
 //! | `conversation-delete MESSAGE` | MESSAGE goes to the Trash (a local account applies it at once) |
-//! | `assert-conversation FIELD VALUE…` | `messages`, `expanded` (a count, or names joined by commas), `collapsed`, `cards` (expanded cards built), `folds`, `folded`, `html-bodies`, `live-bodies`, `live-at-most`, `top-of` MESSAGE (its card or row starts in the column's view), `at-top` (the column isn't scrolled), `blank`, `read` MESSAGE `true\|false`, `selected` MESSAGE, `labelled` (rows and headers say what they are), `criticals` N |
+//! | `conversation-remember MESSAGE` | Notes where MESSAGE starts in the column, for `assert-conversation kept` |
+//! | `assert-conversation FIELD VALUE…` | `messages`, `expanded` (a count, or names joined by commas), `collapsed`, `cards` (expanded cards built), `folds`, `folded`, `html-bodies`, `measured` (HTML bodies with a height), `live-bodies`, `live-at-most`, `top-of` MESSAGE (its card or row starts in the column's view), `at-top` (the column isn't scrolled), `blank`, `read` MESSAGE `true\|false`, `selected` MESSAGE, `kept` (the remembered message starts where it did, within 2 px), `labelled` (rows and headers say what they are), `criticals` N |
 
 use super::{Harness, StepResult, blocking, equal, mail, number, script, triage};
 use crate::reader::{BodyReport, MAX_LIVE_VIEWS, Reader, samples};
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
-use sealwax_domain::model::MessageId;
+use sealwax_domain::model::{FolderRole, MessageId};
 use sealwax_domain::triage::Triage;
 use sealwax_infrastructure::ingest::{self, RawMessage};
-use sealwax_infrastructure::store::QueueTriage;
+use sealwax_infrastructure::store::{FolderSpec, NewAccount, QueueTriage};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// The commands and their argument counts, for the script parser.
 pub const COMMANDS: &[(&str, usize, usize)] = &[
+    ("conversation-account", 2, 2),
     ("conversation-add", 1, 2),
     ("conversation-show", 1, 1),
     ("conversation-click-row", 1, 1),
@@ -41,6 +44,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("conversation-scroll-through", 1, 1),
     ("conversation-reply", 1, 1),
     ("conversation-delete", 1, 1),
+    ("conversation-remember", 1, 1),
     ("assert-conversation", 1, 3),
 ];
 
@@ -53,6 +57,8 @@ thread_local! {
     static SIZES: RefCell<HashMap<String, (usize, usize)>> = RefCell::new(HashMap::new());
     /// Gtk and GObject criticals since the first command.
     static CRITICALS: Cell<Option<u32>> = const { Cell::new(None) };
+    /// A message and where it started in the column when `conversation-remember` ran.
+    static REMEMBERED: Cell<Option<(MessageId, f64)>> = const { Cell::new(None) };
 }
 
 pub fn handles(command: &str) -> bool {
@@ -106,6 +112,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
     count_criticals();
     let arg = |index: usize| args[index].as_str();
     match command {
+        "conversation-account" => account(harness, arg(0), arg(1)).await,
         "conversation-add" => add(harness, arg(0), args.get(1).map(String::as_str)).await,
         "conversation-show" => show(harness, arg(0)).await,
         "conversation-click-row" => click_row(harness, number(arg(0))?).await,
@@ -115,9 +122,57 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         "conversation-scroll-through" => scroll_through(harness, number(arg(0))? as f64).await,
         "conversation-reply" => reply(harness, arg(0)).await,
         "conversation-delete" => delete(harness, arg(0)).await,
+        "conversation-remember" => {
+            let id = id(arg(0))?;
+            let top = reader(harness)?
+                .message_top(id)
+                .ok_or_else(|| format!("{} isn't shown", arg(0)))?;
+            REMEMBERED.with(|remembered| remembered.set(Some((id, top))));
+            Ok(())
+        }
         "assert-conversation" => check(harness, args).await,
         other => Err(format!("unknown command {other}")),
     }
+}
+
+/// An account named `name` at `address` (the samples write to `alex.berg@example.test`, so
+/// their messages say "to me" there), with the six role folders.
+async fn account(harness: &Harness, name: &str, address: &str) -> StepResult {
+    let mailbox = harness.state.mailbox();
+    let reply = mailbox
+        .store()
+        .ok_or("the store is not open")?
+        .add_account(NewAccount {
+            name: name.to_owned(),
+            address: address.to_owned(),
+        });
+    let account = reply.recv().await.map_err(|error| error.to_string())?.value;
+    for (role, folder) in [
+        (FolderRole::Inbox, "INBOX"),
+        (FolderRole::Drafts, "Drafts"),
+        (FolderRole::Sent, "Sent"),
+        (FolderRole::Archive, "Archive"),
+        (FolderRole::Junk, "Junk"),
+        (FolderRole::Trash, "Trash"),
+    ] {
+        let reply = mailbox
+            .store()
+            .ok_or("the store is not open")?
+            .upsert_folder(FolderSpec::local(account, folder, role));
+        reply.recv().await.map_err(|error| error.to_string())?;
+    }
+    let started = Instant::now();
+    while !mailbox
+        .folders()
+        .iter()
+        .any(|folder| folder.account == account)
+    {
+        if started.elapsed() > WAIT {
+            return Err("the sidebar never got the new account's folders".to_owned());
+        }
+        glib::timeout_future(Duration::from_millis(10)).await;
+    }
+    mail::settled(harness).await
 }
 
 async fn add(harness: &Harness, name: &str, account: Option<&str>) -> StepResult {
@@ -577,6 +632,32 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 "read",
                 detail.summary.flags.is_seen(),
                 script::boolean(value(2)?)?,
+            )
+        }
+        "measured" => equal(
+            "HTML bodies measured",
+            reader
+                .bodies()
+                .iter()
+                .filter(|body| body.measured.is_some())
+                .count(),
+            number(value(1)?)?,
+        ),
+        "kept" => {
+            let (id, before) = REMEMBERED
+                .with(Cell::get)
+                .ok_or("run conversation-remember first")?;
+            let now = reader
+                .message_top(id)
+                .ok_or_else(|| format!("{} isn't shown", name_of(id)))?;
+            println!(
+                "  # {} started {before:.0} px down the column, now {now:.0} px",
+                name_of(id)
+            );
+            equal(
+                "kept its place (within 2 px)",
+                (now - before).abs() <= 2.0,
+                true,
             )
         }
         "selected" => equal(

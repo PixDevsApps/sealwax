@@ -268,7 +268,10 @@ async fn measure(
                 );
             }
             ready.entry(kind(&shown.body)).or_default().push(ready_ms);
-            sizes.entry(size(shown.messages)).or_default().push(ready_ms);
+            sizes
+                .entry(size(shown.messages))
+                .or_default()
+                .push(ready_ms);
             all_ready.push(ready_ms);
             painted.extend(first_paint);
         }
