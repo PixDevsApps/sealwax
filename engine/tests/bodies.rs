@@ -169,6 +169,24 @@ fn next<T>(engine: &Engine, mut pick: impl FnMut(Event) -> Option<T>) -> T {
     }
 }
 
+/// Waits until the server has heard no command for `quiet`: the actor's passes after an account
+/// pass (INBOX right after it, on a server without IDLE) have ended. The fake server lists no
+/// messages to sync, so a pass that ran after the test stores rows would rightly remove them.
+fn settle(server: &Mutex<Server>, quiet: Duration) {
+    let deadline = Instant::now() + WAIT;
+    let mut seen = server.lock().unwrap().commands.len();
+    let mut since = Instant::now();
+    while since.elapsed() < quiet {
+        assert!(Instant::now() < deadline, "the actor never went quiet");
+        std::thread::sleep(Duration::from_millis(10));
+        let now = server.lock().unwrap().commands.len();
+        if now != seen {
+            seen = now;
+            since = Instant::now();
+        }
+    }
+}
+
 /// Every `BodyFetched` within `wait`.
 fn bodies_fetched(engine: &Engine, wait: Duration) -> Vec<(MessageId, Result<(), BodyError>)> {
     let events = engine.events();
@@ -253,6 +271,7 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         }
         _ => None,
     });
+    settle(&server, Duration::from_millis(300));
     let inbox = store
         .folders()
         .recv_blocking()
