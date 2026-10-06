@@ -6,3 +6,4 @@
 # everyone who runs the test benefits from these saved cases.
 cc 6decc10501cc372e375fc295654720725295a3974873ece1457cf2b13c0e2353 # shrinks to subject = "", name = "", body = "", bcc = false
 cc e60e2842065740720a7b26f0dc9250877062ea7d08defcab1adfa90a11361f77 # shrinks to subject = "", name = "", body = "", bcc = false
+cc a62ccdbe264f1509507bf83d9f12e6b466d7aaf67eacd6bbae064a1d413f28fc # shrinks to subject = "", name = "", body = "", bcc = false

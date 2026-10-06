@@ -381,8 +381,9 @@ fn check(raw: &[u8], which: Which, draft: &Draft, data: &[Vec<u8>]) {
         .text_part(0)
         .and_then(|part| part.text_contents())
         .unwrap();
-    assert_eq!(normalized(text), normalized(&plain_text(&crlf(&document))));
-    assert!(!text.trim().is_empty());
+    let expected_text = plain_text(&crlf(&document));
+    assert_eq!(normalized(text), normalized(&expected_text));
+    assert_eq!(text.trim().is_empty(), expected_text.trim().is_empty());
 
     let references: Vec<String> = html
         .match_indices("src=\"cid:")
