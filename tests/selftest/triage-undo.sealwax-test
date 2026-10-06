@@ -85,6 +85,8 @@ assert-toast Undone
 assert-list-row 3 starred false
 
 # Deleting for good can't be undone once the window is over; the toast's Undo says so.
+# A window just over two seconds keeps its toast up for three, a margin for a loaded machine.
+triage-undo-window 2001
 mail-add Personal:trash 15m "Gammelt utkast" "from=Ingrid Solberg"
 folder trash Personal
 focus list
@@ -92,7 +94,7 @@ list-select 0
 key Delete
 assert-toast "Deleted 1 message for good"
 assert-undoable true
-sleep 1700
+sleep 2250
 assert-undoable false
 assert-action-enabled win.undo false
 toast-undo

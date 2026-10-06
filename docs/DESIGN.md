@@ -97,7 +97,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - *As built in M4 (ML-052, ML-054, [report](m4/triage-app.md)):*
   - **Toolbar:** each command is sensitive where it applies to the selected messages, and its tooltip names its keys and, when it doesn't apply, why ("Archive (e, y) — already archived", "the account has no Junk folder", "the messages are in more than one account"). In a Junk folder Move to Junk is **Not Junk**, back to the Inbox (title, tooltip, icon and the palette's entry); Star or Unstar is "Unstar" when every selected message is starred.
   - **Several messages selected:** the reader shows a quiet page, "3 messages selected", "Every action here applies to all of them. Escape leaves the select mode.", with Archive, Delete, Junk, Move to…, Star, Mark as Read and Mark as Unread as buttons bound to the same commands. The reader's keys work there too.
-  - **Keys:** WebKitGTK keeps Delete with an HTML body focused, so the reader takes Delete before the view does; a text field inside a message loses Delete.
+  - **Keys:** WebKitGTK and the plain-text view keep Delete while a body has the focus, so the reader takes Delete before the body does; a text field inside an HTML message loses Delete.
   - **Move to…** (`v`, Ctrl+Shift+V): a picker over the window like the command palette, "Move 3 messages to…", listing the account's folders that take messages except the one they are in, role folders first under their role's name (the server's own name beside it). Typing filters, Up/Down move, Enter moves, Escape closes. Insensitive, saying why, when the selection spans accounts (1.0 doesn't move between accounts).
 
 **Composer**
