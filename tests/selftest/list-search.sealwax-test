@@ -10,9 +10,9 @@ resize 1440 900
 list-wait
 mail-account Personal
 folder inbox Personal
-mail-add Personal:inbox 2h "Blåbærsyltetøy til hytta" "text=Husk blåbærsyltetøy og vafler til helga."
-mail-add Personal:inbox 3h "Oppskrift" "text=Blåbærsyltetøy med lite sukker." read attachment
-mail-add Personal:inbox 4h "Handleliste" "text=Melk, brød og egg."
+mail-add Personal:inbox 2m "Blåbærsyltetøy til hytta" "text=Husk blåbærsyltetøy og vafler til helga."
+mail-add Personal:inbox 3m "Oppskrift" "text=Blåbærsyltetøy med lite sukker." read attachment
+mail-add Personal:inbox 4m "Handleliste" "text=Melk, brød og egg."
 assert-list-count 3
 
 # A word in one folder: its two messages, newest first; the bar says so.
@@ -39,7 +39,7 @@ assert-label list-subtitle "No results"
 chip all
 
 # Results follow the store: a new match comes in, a flag change shows.
-mail-add Personal:inbox 1h "Mer blåbærsyltetøy" "text=Siste glass."
+mail-add Personal:inbox 1m "Mer blåbærsyltetøy" "text=Siste glass."
 assert-list-search 3 false
 assert-list-row 0 subject "Mer blåbærsyltetøy"
 mail-flag 0 +read
