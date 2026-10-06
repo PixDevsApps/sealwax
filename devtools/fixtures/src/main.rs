@@ -3,6 +3,7 @@
 //! the app's own store is at `SealwaxDirs::from_env().store_file()`.
 
 mod bench;
+mod conversation;
 mod corpus;
 mod import;
 mod mime;
@@ -28,13 +29,16 @@ const USAGE: &str = "usage:
   sealwax-fixtures bench --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
   sealwax-fixtures bench-unified --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
   sealwax-fixtures bench-ops --store PATH [--cold N] [--warm N] [--samples N] [--overlays N] [--now UNIX]
+  sealwax-fixtures bench-conversation --store PATH [--blobs DIR] [--cold N] [--warm N] [--now UNIX]
   sealwax-fixtures check --store PATH
   sealwax-fixtures remove-account --store PATH [--blobs DIR] [--account NAME]
 
 The blob store defaults to `blobs` next to the store file. Messages are numbered newest first,
 the order of a first sync. `bench-unified` measures All Inboxes over several accounts, each
 imported with its own --account. `bench-ops` measures the op queue with the fixture account made a
-server account (it gets a key), so run it on a copy of a store.";
+server account (it gets a key), so run it on a copy of a store. `bench-conversation` measures the
+reader's read of a conversation and files a 150-message one into the INBOX the first time, so run
+it on a copy too.";
 
 struct Args {
     command: String,
@@ -233,6 +237,7 @@ fn main() -> Result<()> {
         "import" => import(&args),
         "bench" => bench::run(&args.bench()?),
         "bench-unified" => unified::run(&args.bench()?),
+        "bench-conversation" => conversation::run(&args.bench()?),
         "bench-ops" => ops::run(&ops::Options {
             store: args.path("store")?,
             cold: args.number("cold", 5)?,

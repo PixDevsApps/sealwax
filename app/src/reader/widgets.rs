@@ -1,8 +1,10 @@
 //! Two containers the reader needs. [`BodyBox`] holds a WebView at exactly its requested
 //! height (S2: a WebView's natural height is WebKit's contents size, which never drops below
-//! its viewport). [`Stage`] shows one page and lays the next one out unseen at the same width,
-//! so a message appears once its body has its height, with no jump and no blank frame.
-//! [`hand_over_focus`] keeps GTK from moving the focus out of a page that has left the window.
+//! its viewport), or, once its view has gone back to the pool, keeps that height empty (ADR-011:
+//! released bodies keep their measured height, so nothing jumps). [`Stage`] shows one page and
+//! lays the next one out unseen at the same width, so a conversation appears once its bodies
+//! have their heights, with no jump and no blank frame. [`hand_over_focus`] keeps GTK from
+//! moving the focus out of a page that has left the window.
 
 use gtk4 as gtk;
 use gtk4::glib;
@@ -11,9 +13,13 @@ use gtk4::subclass::prelude::*;
 
 mod body_box {
     use super::*;
+    use std::cell::Cell;
 
     #[derive(Default)]
-    pub struct BodyBox;
+    pub struct BodyBox {
+        /// The height kept while there is no child.
+        pub placeholder: Cell<i32>,
+    }
 
     #[glib::object_subclass]
     impl ObjectSubclass for BodyBox {
@@ -32,10 +38,10 @@ mod body_box {
 
     impl WidgetImpl for BodyBox {
         fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
-            let height = self
-                .obj()
-                .first_child()
-                .map_or(0, |child| child.size_request().1.max(0));
+            let height = self.obj().first_child().map_or_else(
+                || self.placeholder.get().max(0),
+                |child| child.size_request().1.max(0),
+            );
             match orientation {
                 gtk::Orientation::Vertical => (height, height, -1, -1),
                 _ => (0, 0, -1, -1),
@@ -51,7 +57,8 @@ mod body_box {
 }
 
 glib::wrapper! {
-    /// One child at exactly its height request and the full width.
+    /// One child at exactly its height request and the full width; without one, the height
+    /// given to [`BodyBox::set_placeholder`].
     pub struct BodyBox(ObjectSubclass<body_box::BodyBox>)
         @extends gtk::Widget,
         @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
@@ -59,9 +66,25 @@ glib::wrapper! {
 
 impl BodyBox {
     pub fn new(child: &impl IsA<gtk::Widget>) -> Self {
-        let body: Self = glib::Object::new();
+        let body = Self::empty();
         body.set_child(Some(child));
         body
+    }
+
+    /// A box with no child yet, as tall as its placeholder.
+    pub fn empty() -> Self {
+        glib::Object::new()
+    }
+
+    /// The height kept while the box has no child.
+    pub fn set_placeholder(&self, height: i32) {
+        if self.imp().placeholder.replace(height) != height && self.first_child().is_none() {
+            self.queue_resize();
+        }
+    }
+
+    pub fn child(&self) -> Option<gtk::Widget> {
+        self.first_child()
     }
 
     pub fn set_child(&self, child: Option<&impl IsA<gtk::Widget>>) {

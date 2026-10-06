@@ -1,8 +1,9 @@
-//! The GTK side of one message (DESIGN.md "Reader", the approved mock): the subject as a
-//! heading, the remote-content banner, and a card with the sender block (avatar, name and
-//! address, "to me" or the recipients, the date with relative time, expandable details), the
-//! body and the attachment cards. The banner is [`super::remote`]'s, the cards
-//! [`super::attachments`]'s and a plain-text body [`super::plain`]'s (M5's owners).
+//! The GTK side of one expanded message (DESIGN.md "Reader", the approved mock): a card with the
+//! sender block (avatar, name and address, "to me" or the recipients, the date with relative
+//! time, expandable details), its own remote-content banner, the body and the attachment cards.
+//! The sender block is a button that collapses the card. The banner (or the line of a sender
+//! whose images load) is [`super::remote`]'s, the cards [`super::attachments`]'s and a
+//! plain-text body [`super::plain`]'s (M5's owners); each card calls them in one place, [`card`].
 
 use super::Reader;
 use super::attachments::attachment_cards;
@@ -15,12 +16,16 @@ use gtk4::prelude::*;
 use sealwax_domain::model::{Attachment, MessageDetail};
 use sealwax_domain::theme::{avatar_class, initials};
 
-/// The widgets of one message that the reader changes after building it.
-pub struct PageWidgets {
+/// The widgets of one message's card that the reader changes after building it.
+pub struct CardWidgets {
     pub root: gtk::Box,
-    /// Where the body goes, inside the card.
+    /// The sender block: a click, Enter or Space collapses the card.
+    pub header: gtk::Button,
+    /// Where the body goes.
     pub body: gtk::Box,
     pub banner: Option<Banner>,
+    /// What the card says about its remote images, as it was built.
+    pub notice: Notice,
     /// What takes the focus when the reader keeps it across messages: the body once it has
     /// one, else the details button.
     pub focus: Option<gtk::Widget>,
@@ -33,66 +38,49 @@ pub struct Header<'a> {
     pub now: i64,
 }
 
-pub fn build(
+pub fn card(
     reader: &Reader,
     header: &Header<'_>,
     attachments: &[Attachment],
-    remote: Notice,
-) -> PageWidgets {
+    notice: Notice,
+) -> CardWidgets {
     let root = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
-        .spacing(16)
-        .css_classes(["sw-reader-page"])
+        .spacing(18)
+        .css_classes(["sw-message-card", "sw-reader-card"])
         .build();
-    root.set_widget_name("reader-page");
-    let subject = header.detail.headers.subject.trim();
-    let heading = selectable(
-        if subject.is_empty() {
-            "(No subject)"
-        } else {
-            subject
-        },
-        &["sw-subject-heading"],
-    );
-    heading.set_widget_name("reader-subject");
-    heading.set_wrap(true);
-    heading.set_wrap_mode(gtk::pango::WrapMode::WordChar);
-    root.append(&heading);
-    let banner = match &remote {
-        Notice::Hidden(sender) => Some(banner(reader, sender)),
+    root.set_widget_name("reader-card");
+    let (sender, header_button, details) = sender_block(header);
+    root.append(&sender);
+    let banner = match &notice {
+        Notice::Hidden(address) => Some(banner(reader, address)),
         Notice::None | Notice::SenderAllowed(_) => None,
     };
     if let Some(banner) = &banner {
         root.append(&banner.root);
     }
-    if let Notice::SenderAllowed(sender) = &remote {
-        root.append(&sender_note(reader, sender));
+    if let Notice::SenderAllowed(address) = &notice {
+        root.append(&sender_note(reader, address));
     }
-    let card = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(18)
-        .css_classes(["sw-message-card", "sw-reader-card"])
-        .build();
-    let (sender, details) = sender_block(header);
-    card.append(&sender);
     let body = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .css_classes(["sw-reader-body"])
         .build();
     body.set_widget_name("reader-body");
-    card.append(&body);
+    root.append(&body);
     if !attachments.is_empty() {
-        card.append(&attachment_cards(
+        root.append(&attachment_cards(
             reader,
             header.detail.summary.id,
             attachments,
         ));
     }
-    root.append(&card);
-    PageWidgets {
+    CardWidgets {
         root,
+        header: header_button,
         body,
         banner,
+        notice,
         focus: Some(details.upcast()),
     }
 }
@@ -115,8 +103,8 @@ fn label(text: &str, classes: &[&str]) -> gtk::Label {
         .build()
 }
 
-/// The sender block, and its details button.
-fn sender_block(header: &Header<'_>) -> (gtk::Box, gtk::ToggleButton) {
+/// The sender block, the button it makes (avatar, names and date), and its details button.
+fn sender_block(header: &Header<'_>) -> (gtk::Box, gtk::Button, gtk::ToggleButton) {
     let headers = &header.detail.headers;
     let sender = headers.from.first().cloned().unwrap_or_default();
     let name = if sender.name.trim().is_empty() {
@@ -162,10 +150,8 @@ fn sender_block(header: &Header<'_>) -> (gtk::Box, gtk::ToggleButton) {
         .date
         .unwrap_or(header.detail.summary.date);
     let zone = glib::TimeZone::local();
-    let when = label(
-        &format::date_line(date, header.now, &zone),
-        &["sw-small", "sw-secondary", "numeric"],
-    );
+    let date_text = format::date_line(date, header.now, &zone);
+    let when = label(&date_text, &["sw-small", "sw-secondary", "numeric"]);
     when.set_widget_name("reader-date");
     when.set_valign(gtk::Align::Center);
     when.set_tooltip_text(Some(&format::full_date(date, &zone)));
@@ -185,20 +171,32 @@ fn sender_block(header: &Header<'_>) -> (gtk::Box, gtk::ToggleButton) {
         .bind_property("active", &details, "reveal-child")
         .sync_create()
         .build();
+    let who = gtk::Box::builder().spacing(12).build();
+    who.append(&avatar);
+    who.append(&names);
+    who.append(&when);
+    let button = gtk::Button::builder()
+        .child(&who)
+        .hexpand(true)
+        .css_classes(["flat", "sw-reader-card-header"])
+        .build();
+    button.set_widget_name("reader-card-header");
+    button.update_property(&[gtk::accessible::Property::Label(&format!(
+        "{name}, {date_text}, expanded"
+    ))]);
+    button.update_state(&[gtk::accessible::State::Expanded(Some(true))]);
     let row = gtk::Box::builder()
         .spacing(12)
         .css_classes(["sw-message-header"])
         .build();
-    row.append(&avatar);
-    row.append(&names);
-    row.append(&when);
+    row.append(&button);
     row.append(&toggle);
     let block = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .build();
     block.append(&row);
     block.append(&details);
-    (block, toggle)
+    (block, button, toggle)
 }
 
 fn details_grid(detail: &MessageDetail, date: i64, zone: &glib::TimeZone) -> gtk::Grid {

@@ -7,6 +7,7 @@
 mod api;
 mod check;
 mod codec;
+mod conversation;
 pub mod fts;
 mod maintenance;
 mod ops_api;
@@ -38,6 +39,9 @@ mod body_tests;
 mod count_tests;
 
 #[cfg(test)]
+mod conversation_tests;
+
+#[cfg(test)]
 mod ops_prop_tests;
 #[cfg(test)]
 mod ops_tests;
@@ -46,6 +50,7 @@ mod ops_tests;
 mod remote_tests;
 
 pub use api::*;
+pub use conversation::{Conversation, ConversationMessage};
 pub use ops_api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
 pub use sync_api::*;

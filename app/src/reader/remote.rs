@@ -4,12 +4,14 @@
 //! Nothing remote loads until the user allows it for that message (this session, nothing
 //! stored) or for its sender (the store's list, schema v8). The list is read once as the reader
 //! starts, off the GTK thread, and kept in memory; allowing or forgetting a sender changes it at
-//! once, writes it through the store and shows that sender's messages again
-//! (`Inner::remote_changed`).
+//! once and writes it through the store. Every card of the shown conversation follows the policy
+//! through `Inner::refresh_remote`: a sender allowed or forgotten builds that sender's expanded
+//! cards again; collapsed ones take the policy when expanded.
 //!
 //! A forged From address can make a listed sender's images load in someone else's message; the
 //! images still come only over https, from a session that keeps no cookies (rules 2 and 5).
 
+use super::conversation::Entry;
 use super::{Inner, Reader};
 use crate::window::panes::icon;
 use gtk4 as gtk;
@@ -142,9 +144,7 @@ pub(super) fn load(inner: &Rc<Inner>) {
                 inner.remote.set_sender(sender, true);
             }
             inner.remote.loaded.set(true);
-            for sender in &senders {
-                inner.remote_changed(sender, true);
-            }
+            inner.refresh_remote();
             inner.remote.changed();
             return;
         }
@@ -152,19 +152,21 @@ pub(super) fn load(inner: &Rc<Inner>) {
     });
 }
 
-/// The message the reader shows: its id, its sender (lower case) and whether its banner says
-/// its images are hidden.
+/// The selected message of the shown conversation, once its card is built: its id, its sender
+/// (lower case) and whether its banner says its images are hidden.
 pub(super) fn shown(reader: &Reader) -> Option<(MessageId, String, bool)> {
-    let banner = reader.state().banner;
-    reader
-        .inner
-        .shown
-        .borrow()
+    let shown = reader.inner.shown.borrow();
+    let page = shown.as_ref()?;
+    let card = page.selected_card()?;
+    let banner = card
+        .widgets
+        .banner
         .as_ref()
-        .map(|page| (page.id, page.sender.clone(), banner))
+        .is_some_and(|banner| banner.root.parent().is_some());
+    Some((page.selected, card.sender.clone(), banner))
 }
 
-/// Images from the shown message's sender load from now on (`on`), or are hidden again.
+/// Images from the selected message's sender load from now on (`on`), or are hidden again.
 pub(super) fn set_always(reader: &Reader, on: bool) {
     if let Some((_, sender, _)) = shown(reader)
         && !sender.is_empty()
@@ -173,8 +175,9 @@ pub(super) fn set_always(reader: &Reader, on: bool) {
     }
 }
 
-/// Puts `sender` on the list or takes it off, in memory at once and in the store, and shows
-/// the sender's messages again.
+/// Puts `sender` on the list or takes it off, in memory at once and in the store, and builds
+/// the sender's expanded cards again. Taken off, the images of the sender's messages in the
+/// shown conversation that were allowed this session are hidden again too.
 fn set_sender(inner: &Rc<Inner>, sender: &str, allowed: bool) {
     if inner.remote.sender_allowed(sender) == allowed {
         inner.remote.changed();
@@ -185,10 +188,45 @@ fn set_sender(inner: &Rc<Inner>, sender: &str, allowed: bool) {
         inner.store.allow_remote_sender(sender);
     } else {
         inner.store.forget_remote_sender(sender);
+        for id in messages_from(inner, sender) {
+            inner.remote.forget_message(id);
+        }
     }
     tracing::debug!(allowed, "reader: a sender's images load without asking");
-    inner.remote_changed(sender, allowed);
+    inner.refresh_remote();
     inner.remote.changed();
+}
+
+/// The messages from `sender` (lower case) in the shown and the pending conversation, folded
+/// ones included.
+fn messages_from(inner: &Inner, sender: &str) -> Vec<MessageId> {
+    let mut out = Vec::new();
+    for pages in [&inner.shown, &inner.pending] {
+        let pages = pages.borrow();
+        let Some(page) = pages.as_ref() else {
+            continue;
+        };
+        for entry in &page.entries {
+            match entry {
+                Entry::Message(item) => {
+                    let from = item.card.as_ref().map_or_else(
+                        || item.message.summary.sender_email.to_lowercase(),
+                        |card| card.sender.clone(),
+                    );
+                    if from == sender {
+                        out.push(item.id());
+                    }
+                }
+                Entry::Fold(fold) => out.extend(
+                    fold.messages
+                        .iter()
+                        .filter(|message| message.summary.sender_email.to_lowercase() == sender)
+                        .map(|message| message.summary.id),
+                ),
+            }
+        }
+    }
+    out
 }
 
 /// The banner of one message whose images are hidden: "Images are hidden so the sender can't
@@ -294,8 +332,9 @@ pub fn sender_note(reader: &Reader, sender: &str) -> gtk::Box {
     root
 }
 
-/// Calls `listener` whenever what the shown message's images do may have changed: the list was
-/// read, a sender was allowed or forgotten, Show images was clicked.
+/// Calls `listener` whenever what the selected message's images do may have changed: the list
+/// was read, a sender was allowed or forgotten, Show images was clicked, the selected message's
+/// card was built.
 pub fn connect_changed(reader: &Reader, listener: impl Fn() + 'static) {
     reader.inner.remote.connect_changed(listener);
 }

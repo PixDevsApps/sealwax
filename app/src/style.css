@@ -1309,3 +1309,67 @@ textview.sw-original-text > text {
   padding: var(--sw-space-xl) var(--sw-space-xxxl);
   border-top: var(--sw-control-border-width) solid var(--border-color);
 }
+
+/* Conversations (ML-057): the collapsed messages as one-line rows in the cards' frame, the
+   expanded card's sender block as the button that collapses it, and the "N earlier messages"
+   fold as a quiet pill between rules. Every colour and radius is the theme's. */
+button.sw-collapsed-message {
+  min-height: 0;
+  padding: var(--sw-space-lg) var(--sw-space-huge);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius);
+  background: none;
+  box-shadow: none;
+  font-weight: normal;
+}
+
+button.sw-collapsed-message:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-collapsed-message:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+button.sw-collapsed-message .sw-strong {
+  font-weight: bold;
+}
+
+button.sw-reader-card-header {
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+  font-weight: normal;
+}
+
+button.sw-reader-card-header:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+button.sw-reader-fold {
+  min-height: 0;
+  padding: var(--sw-space-xs) 0;
+  border: none;
+  background: none;
+  box-shadow: none;
+  font-weight: normal;
+}
+
+button.sw-reader-fold separator {
+  background: var(--border-color);
+}
+
+.sw-reader-fold-count {
+  padding: var(--sw-space-xxs) var(--sw-space-xl);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  color: var(--sw-secondary-fg-color);
+}
+
+button.sw-reader-fold:hover .sw-reader-fold-count {
+  background: var(--sw-hover-bg-color);
+  color: var(--window-fg-color);
+}

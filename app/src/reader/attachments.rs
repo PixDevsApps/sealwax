@@ -571,24 +571,36 @@ fn find(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
 }
 
 impl Reader {
-    /// The attachment cards of the shown page, in order, for checks.
-    pub fn attachment_cards(&self) -> Vec<gtk::Widget> {
+    /// The card of message `id` in the shown conversation, while it is expanded, for checks and
+    /// real clicks.
+    pub fn message_card(&self, id: MessageId) -> Option<gtk::Widget> {
         self.inner
-            .stage
-            .shown()
-            .map(|page| cards_in(&page))
+            .shown
+            .borrow()
+            .as_ref()?
+            .item(id)?
+            .card
+            .as_ref()
+            .map(|card| card.widgets.root.clone().upcast())
+    }
+
+    /// The attachment cards of the selected message's card, in order, for checks.
+    pub fn attachment_cards(&self) -> Vec<gtk::Widget> {
+        self.message()
+            .and_then(|id| self.message_card(id))
+            .map(|card| cards_in(&card))
             .unwrap_or_default()
     }
 
     /// The button named `name` (`reader-attachment-open`, `-save`, `-cancel`, `-retry`) of the
-    /// shown page's card `index`, for checks and real clicks.
+    /// selected message's attachment card `index`, for checks and real clicks.
     pub fn attachment_button(&self, index: usize, name: &str) -> Option<gtk::Widget> {
         self.attachment_cards()
             .get(index)
             .and_then(|card| find(card, name))
     }
 
-    /// What card `index` of the shown page shows, for checks.
+    /// What attachment card `index` of the selected message shows, for checks.
     pub fn attachment_card(&self, index: usize) -> Option<CardState> {
         let card = self.attachment_cards().into_iter().nth(index)?;
         let label = |name: &str| {

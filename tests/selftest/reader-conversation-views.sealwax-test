@@ -1,0 +1,64 @@
+# Live views (ADR-011's memory decision, ML-057): with eight styled newsletters expanded, at most
+# four bodies hold a WebView while the column scrolls through them; bodies far off screen give
+# theirs back and keep their measured height, get one again before they scroll into sight, and
+# nothing blank is left on screen once a scroll settles. A hidden reader gives every view back
+# after 3 s and takes them again when shown. Scrolling is programmatic (the column's
+# adjustment); no Gtk-CRITICAL. Every message is fictional (app/src/reader/samples.rs). Run:
+#   tools/headless.sh 31 target/debug/sealwax --self-test tests/selftest/reader-conversation-views.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Personal
+conversation-add letters
+
+# Eight newsletters, the latest unread: it alone is expanded at first.
+conversation-show letters-8
+assert-conversation messages 8
+assert-conversation expanded letters-8
+assert-conversation html-bodies 1
+assert-conversation live-bodies 1
+
+# Expand All: eight bodies, never more than four views. The seven that open above the selected
+# one, and their heights as they are measured, don't move it: the column keeps it in place.
+assert-conversation at-top false
+conversation-remember letters-8
+action win.expand-all
+wait-until assert-conversation cards 8
+assert-conversation html-bodies 8
+wait-until assert-conversation measured 8
+assert-conversation kept
+assert-conversation live-at-most 4
+conversation-scroll top
+assert-conversation blank 0
+assert-conversation live-at-most 4
+screenshot $DIR/../../.local/selftest/reader-views-top.png
+
+# Through the whole conversation a third of a screen at a time, then a screen and more at a
+# time: at most four views at every step, nothing blank once settled, every body as tall as it
+# was first measured, with or without its view.
+conversation-scroll-through 300
+assert-conversation live-at-most 4
+conversation-scroll-through 1200
+assert-conversation live-at-most 4
+conversation-scroll 0.5
+assert-conversation blank 0
+screenshot $DIR/../../.local/selftest/reader-views-middle.png
+conversation-scroll bottom
+assert-conversation blank 0
+assert-conversation live-at-most 4
+
+# Hidden for 3 s (one pane at a time, the list shown), the reader gives every view back; shown
+# again, the bodies on screen take views again.
+resize 800 900
+assert-layout narrow
+action nav.pane::list
+sleep 3500
+assert-conversation live-bodies 0
+action nav.pane::reader
+wait-until assert-conversation blank 0
+assert-conversation live-at-most 4
+resize 1440 900
+wait-until assert-conversation blank 0
+conversation-scroll-through 900
+assert-conversation live-at-most 4
+assert-conversation criticals 0

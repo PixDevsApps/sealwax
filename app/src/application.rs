@@ -18,7 +18,7 @@ use crate::move_to;
 use crate::oauth;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
-use crate::reader::{self, MessageSource, Position, Reader, Shown, ShownBody};
+use crate::reader::{self, MessageSource, Opened, Position, Reader};
 use crate::setup::{self, Again, remove::Removable};
 use crate::shortcuts;
 use crate::status::{self, Waiting};
@@ -216,8 +216,8 @@ impl SealwaxApplication {
             triage: RefCell::new(None),
             toast: RefCell::new(None),
             mark_read_on_open: Cell::new(MARK_READ_ON_OPEN),
-            read_on_leave: Cell::new(None),
-            read_when_shown: Cell::new(None),
+            read_on_leave: RefCell::new((None, Vec::new())),
+            read_when_shown: RefCell::new(Vec::new()),
             triage_started: Cell::new(None),
             pending_ops: Cell::new(0),
             pending_queued: Cell::new(false),
@@ -297,11 +297,12 @@ pub struct AppState {
     /// Whether a message the reader shows is marked read ([`MARK_READ_ON_OPEN`]; the self-test
     /// turns it off and on).
     mark_read_on_open: Cell<bool>,
-    /// A message shown in the Unread view, marked read once the selection leaves it.
-    read_on_leave: Cell<Option<Target>>,
-    /// A message the reader showed while it was hidden (one pane at a time), marked read when
-    /// the reader is shown.
-    read_when_shown: Cell<Option<MessageId>>,
+    /// Unread messages a conversation shown in the Unread view expanded, marked read once the
+    /// selection leaves the message it was shown for.
+    read_on_leave: RefCell<(Option<MessageId>, Vec<Target>)>,
+    /// Unread messages the reader showed while it was hidden (one pane at a time), marked read
+    /// when the reader is shown.
+    read_when_shown: RefCell<Vec<Target>>,
     /// When the last mail command's handler ran, and the window's frame then (measurements).
     triage_started: Cell<Option<(Instant, i64)>>,
     /// The ops waiting for a server, for the offline banner.
@@ -1286,11 +1287,11 @@ impl AppState {
             ActionId::MarkUnread => Triage::Read(false),
             _ => return,
         };
-        if matches!(action, Triage::Read(_))
-            && let Some(pending) = self.read_on_leave.get()
-            && targets.iter().any(|target| target.id == pending.id)
-        {
-            self.read_on_leave.set(None);
+        if matches!(action, Triage::Read(_)) {
+            self.read_on_leave
+                .borrow_mut()
+                .1
+                .retain(|pending| targets.iter().all(|target| target.id != pending.id));
         }
         let ids: Vec<MessageId> = targets.iter().map(|target| target.id).collect();
         list.advance_after(&ids);
@@ -1469,70 +1470,71 @@ impl AppState {
         }
     }
 
-    /// The reader showed a message's body: it is read now, or in the Unread view once the
-    /// selection leaves it, or when a hidden reader is shown ([`MARK_READ_ON_OPEN`]).
-    fn message_shown(&self, shown: &Shown) {
-        if !self.mark_read_on_open.get()
-            || self.reader_shows.get() != Some(shown.id)
-            || !matches!(
-                shown.body,
-                ShownBody::Html { .. }
-                    | ShownBody::Plain
-                    | ShownBody::TextFallback
-                    | ShownBody::Empty
-            )
-        {
+    /// The reader showed message bodies of the selected message's conversation (ML-057): the
+    /// unread ones are read now, or in the Unread view once the selection leaves the message, or
+    /// when a hidden reader is shown ([`MARK_READ_ON_OPEN`]).
+    fn messages_opened(&self, opened: &Opened) {
+        if !self.mark_read_on_open.get() || self.reader_shows.get() != Some(opened.selected) {
+            return;
+        }
+        let targets: Vec<Target> = opened
+            .messages
+            .iter()
+            .filter(|message| !message.flags.is_seen())
+            .map(|message| Target {
+                id: message.id,
+                folder: message.folder,
+                flags: message.flags,
+            })
+            .collect();
+        if targets.is_empty() {
             return;
         }
         let visible = self
             .reader()
             .is_some_and(|reader| reader.widget().is_mapped());
         if visible {
-            self.read_opened(shown.id);
+            self.read_opened(opened.selected, targets);
         } else {
-            self.read_when_shown.set(Some(shown.id));
+            self.read_when_shown.borrow_mut().extend(targets);
         }
     }
 
-    /// The reader came on screen (one pane at a time): the message it shows is read now.
+    /// The reader came on screen (one pane at a time): the messages it showed are read now.
     fn reader_mapped(&self) {
-        if let Some(id) = self.read_when_shown.take()
-            && self.reader_shows.get() == Some(id)
+        let waiting = self.read_when_shown.take();
+        if let Some(selected) = self.reader_shows.get()
+            && !waiting.is_empty()
         {
-            self.read_opened(id);
+            self.read_opened(selected, waiting);
         }
     }
 
-    fn read_opened(&self, id: MessageId) {
+    fn read_opened(&self, selected: MessageId, targets: Vec<Target>) {
         let (Some(list), Some(triage)) = (self.list(), self.triage()) else {
             return;
         };
-        let Some(target) = list
-            .position(id)
-            .and_then(|(position, _)| list.target_at(position - 1))
-            .filter(|target| target.id == id && !target.flags.is_seen())
-        else {
-            return;
-        };
         if list.filter() == ViewFilter::Unread {
-            self.read_on_leave.set(Some(target));
+            let mut leave = self.read_on_leave.borrow_mut();
+            leave.0 = Some(selected);
+            leave.1.extend(targets);
         } else {
-            triage.queue(Triage::Read(true), vec![target], Origin::Opened);
+            triage.queue(Triage::Read(true), targets, Origin::Opened);
         }
     }
 
-    /// The selection left the message shown in the Unread view: it is read now.
+    /// The selection left the message shown in the Unread view: what it opened is read now.
     fn leave_opened(&self, now: Option<MessageId>) {
-        self.read_when_shown.set(None);
-        let Some(target) = self.read_on_leave.get() else {
-            return;
-        };
-        if now == Some(target.id) {
+        self.read_when_shown.borrow_mut().clear();
+        let opened_for = self.read_on_leave.borrow().0;
+        if now.is_some() && now == opened_for {
             return;
         }
-        self.read_on_leave.set(None);
-        if let Some(triage) = self.triage() {
-            triage.queue(Triage::Read(true), vec![target], Origin::Opened);
+        let (_, targets) = self.read_on_leave.replace((None, Vec::new()));
+        if !targets.is_empty()
+            && let Some(triage) = self.triage()
+        {
+            triage.queue(Triage::Read(true), targets, Origin::Opened);
         }
     }
 
@@ -1709,9 +1711,9 @@ impl AppState {
         let next = list.clone();
         reader.connect_next(move || next.select_next());
         let weak = Rc::downgrade(self);
-        reader.connect_shown(move |shown| {
+        reader.connect_opened(move |opened| {
             if let Some(state) = weak.upgrade() {
-                state.message_shown(shown);
+                state.messages_opened(opened);
             }
         });
         let weak = Rc::downgrade(self);
@@ -1725,7 +1727,7 @@ impl AppState {
             if let Some(state) = weak.upgrade() {
                 state.update_position();
                 if let Some(reader) = state.reader() {
-                    reader.messages_changed(&event.changed);
+                    reader.store_changed(event);
                 }
             }
         });

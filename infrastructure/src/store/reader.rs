@@ -19,6 +19,7 @@ mod sync;
 
 pub(crate) use sync::SyncRead;
 mod bodies;
+mod conversation;
 mod remote;
 
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
@@ -90,6 +91,10 @@ pub(crate) enum ReadJob {
     RemoteSenders {
         reply: Sender<Vec<String>>,
     },
+    Conversation {
+        id: MessageId,
+        reply: Sender<Versioned<Option<crate::store::Conversation>>>,
+    },
 }
 
 impl ReadJob {
@@ -112,6 +117,7 @@ impl ReadJob {
             ReadJob::BodyUsage { reply } => reply.is_closed(),
             ReadJob::PendingOps { reply, .. } => reply.is_closed(),
             ReadJob::RemoteSenders { reply } => reply.is_closed(),
+            ReadJob::Conversation { reply, .. } => reply.is_closed(),
         }
     }
 }
@@ -225,6 +231,9 @@ impl Reader {
             }
             ReadJob::RemoteSenders { reply } => {
                 let _ = reply.try_send(self.remote_senders());
+            }
+            ReadJob::Conversation { id, reply } => {
+                let _ = reply.try_send(self.conversation(id));
             }
         }
     }

@@ -5,7 +5,7 @@
 
 use gtk4::glib;
 use sealwax_domain::model::{Account, MessageDetail, MessageId};
-use sealwax_infrastructure::store::{BodyTarget, Reply, Store, Versioned};
+use sealwax_infrastructure::store::{BodyTarget, Conversation, Reply, Store, Versioned};
 
 /// Where the reader sends its requests.
 pub trait MessageSource {
@@ -37,6 +37,11 @@ pub trait MessageSource {
 
     /// The raw message as stored; `None` while no store is open.
     fn raw_message(&self, _id: MessageId) -> Option<Reply<Option<Vec<u8>>>> {
+        None
+    }
+
+    /// The conversation of `id` as the reader shows it (ML-057); `None` while no store is open.
+    fn conversation(&self, _id: MessageId) -> Option<Reply<Versioned<Option<Conversation>>>> {
         None
     }
 }
@@ -99,6 +104,10 @@ impl MessageSource for Store {
     fn raw_message(&self, id: MessageId) -> Option<Reply<Option<Vec<u8>>>> {
         Some(Store::raw_message(self, id))
     }
+
+    fn conversation(&self, id: MessageId) -> Option<Reply<Versioned<Option<Conversation>>>> {
+        Some(Store::conversation(self, id))
+    }
 }
 
 impl MessageSource for crate::mailbox::Mailbox {
@@ -138,5 +147,10 @@ impl MessageSource for crate::mailbox::Mailbox {
     fn raw_message(&self, id: MessageId) -> Option<Reply<Option<Vec<u8>>>> {
         self.store()
             .and_then(|store| MessageSource::raw_message(&*store, id))
+    }
+
+    fn conversation(&self, id: MessageId) -> Option<Reply<Versioned<Option<Conversation>>>> {
+        self.store()
+            .and_then(|store| MessageSource::conversation(&*store, id))
     }
 }

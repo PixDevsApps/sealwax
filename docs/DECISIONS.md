@@ -784,7 +784,7 @@ Built in M3 ([report](m3/threading.md)).
 
 ### ADR-017 amendment — the list's own keys accepted (M4 gate, 2026-10-06)
 
-Accepted by the user at the M4 gate ("Keep all four", 2026-10-06). Beside the registry, as the message list's own keys (no `keys.toml` name, like GtkListView's Down and Up): Shift+`j` and Shift+`k` extend the selection as Shift+Down and Shift+Up do; Escape leaves the select mode; Menu and Shift+F10 open a sidebar folder's menu. GtkListView's Ctrl+A is swallowed (rows not loaded have no ids). The keyboard pass on the US and Norwegian layouts was approved headless (`triage-keys` and M1's audit); the live pass stays a P1 follow-up.
+Accepted by the user at the M4 gate ("Keep all four", 2026-10-06). Beside the registry, as the message list's own keys (no `keys.toml` name, like GtkListView's Down and Up): Shift+`j` and Shift+`k` extend the selection as Shift+Down and Shift+Up do; Escape leaves the select mode; Menu and Shift+F10 open a sidebar folder's menu. GtkListView's Ctrl+A is swallowed (rows not loaded have no ids). The keyboard pass on the US and Norwegian layouts was approved headless (`triage-keys` and M1's audit); the live pass stays a P1 follow-up. *(Done 2026-10-06: the user's own live pass, "Keyboard pass approved".)*
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 

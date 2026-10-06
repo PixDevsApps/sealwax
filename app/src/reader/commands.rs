@@ -19,8 +19,21 @@ pub fn connect(actions: &ActionSet, reader: &Reader) {
     remote_content(actions, reader);
 }
 
-/// Expand All Messages and Collapse All Messages (ML-057).
-fn conversation(_actions: &ActionSet, _reader: &Reader) {}
+/// Expand All Messages and Collapse All Messages (ML-057), available while the shown
+/// conversation has more than one message.
+fn conversation(actions: &ActionSet, reader: &Reader) {
+    for (id, run) in [
+        (ActionId::ExpandAll, Reader::expand_all as fn(&Reader)),
+        (ActionId::CollapseAll, Reader::collapse_all),
+    ] {
+        let target = reader.clone();
+        actions.connect(id, move || run(&target));
+        if let Some(action) = actions.action(id).cloned() {
+            action.set_enabled(reader.state().messages > 1);
+            reader.connect_size(move |size| action.set_enabled(size > 1));
+        }
+    }
+}
 
 /// Print, Show Original and Save as .eml (ML-063), on the message the reader shows. They need a
 /// selection (the registry's), and apply only while the reader shows one message (the app's

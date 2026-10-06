@@ -8,6 +8,7 @@
 
 mod bodies;
 mod broadway;
+mod conversation;
 mod files;
 mod mail;
 mod perf;
@@ -398,6 +399,9 @@ impl Harness {
             "test-bus-activate" => self.test_bus_call(None).await,
             "test-bus-signal" => self.test_bus_signal(arg(0)).await,
             "test-bus-stop" => self.stop_test_bus().await,
+            command if conversation::handles(command) => {
+                conversation::step(self, command, args).await
+            }
             command if reader::handles(command) => reader::step(self, command, args).await,
             command if bodies::handles(command) => bodies::step(self, command, args).await,
             command if setup::handles(command) => setup::step(self, command, args).await,
@@ -703,6 +707,9 @@ impl Harness {
                 }
             }
             "assert-reader" => reader::check(self, args).await,
+            assertion if conversation::handles(assertion) => {
+                conversation::step(self, assertion, args).await
+            }
             assertion if bodies::handles(assertion) => bodies::step(self, assertion, args).await,
             assertion if setup::checks(assertion) => setup::check(self, assertion, args),
             assertion if triage::handles(assertion) => triage::step(self, assertion, args).await,
