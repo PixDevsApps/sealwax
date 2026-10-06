@@ -7,7 +7,7 @@
 //! | Command | What it does |
 //! | --- | --- |
 //! | `notify-server [plain]` | Starts the stand-in with omarchy-shell's capabilities; `plain` without `body-markup` |
-//! | `notify-mail NAME [ACCOUNT:]ROLE SUBJECT [read] [from=NAME] [ago=MINUTES]` | A fictional message in the store, unread unless `read` |
+//! | `notify-mail NAME [ACCOUNT:]ROLE SUBJECT [read] [from=NAME] [ago=MINUTES] [text=WORDS]` | A fictional message in the store, unread unless `read` |
 //! | `notify-arrive NAME…` | `Event::NewMail` for the named messages, one per folder |
 //! | `notify-click N default\|LABEL` | The stand-in clicks notification N: its default action, or the button labelled LABEL |
 //! | `notify-expire N` | Notification N leaves the screen by itself |
@@ -37,7 +37,7 @@ use std::time::Instant;
 
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("notify-server", 0, 1),
-    ("notify-mail", 3, 6),
+    ("notify-mail", 3, 7),
     ("notify-arrive", 1, usize::MAX),
     ("notify-click", 2, 2),
     ("notify-expire", 1, 1),
@@ -283,7 +283,7 @@ fn field(which: &str, field: &str, wanted: &str) -> StepResult {
     )
 }
 
-/// `notify-mail NAME [ACCOUNT:]ROLE SUBJECT [read] [from=NAME] [ago=MINUTES]`: through the real
+/// `notify-mail NAME [ACCOUNT:]ROLE SUBJECT [read] [from=NAME] [ago=MINUTES] [text=WORDS]`: through the real
 /// ingest path, without the window (it may be closed).
 async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
     let name = args[0].clone();
@@ -304,6 +304,7 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
             other => match other.split_once('=') {
                 Some(("from", from)) => fiction.from = from.to_owned(),
                 Some(("ago", minutes)) => ago = number(minutes)? as i64,
+                Some(("text", text)) => fiction.text = text.to_owned(),
                 _ => return Err(format!("unknown option {other}")),
             },
         }

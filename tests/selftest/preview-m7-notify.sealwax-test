@@ -1,0 +1,80 @@
+# Previews for the M7 gate, new-mail notifications (ML-083). A notification has no window of its
+# own (the desktop's notification server draws it), so the script checks its text through the
+# stand-in notification server on the wrapper's private bus (app name, title, body, buttons, and
+# the count of several at once) and previews what the window shows after the click: the message
+# open in its Inbox with the window open on another folder; the toast with Undo after Archive
+# from the notification; the new window that a click builds in background mode; and what a click
+# on a message gone since says. Dark matte-black with square corners, light catppuccin-latte
+# rounded. Every name, subject and text is fictional.
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/preview-m7-notify.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+notify-server
+triage-account Work work
+triage-mark-read-on-open true
+mail-add Work:inbox 2h "Styremøte torsdag" "from=Marius Dahl"
+mail-add Work:inbox 5h "Kvittering for bestilling" read "from=Leah Kim"
+mail-add Work:inbox 1d "Budsjett 2027" attachment "from=Ingrid Solberg"
+mail-add Work:inbox 3d "Nyhetsbrev uke 41" read "from=Marius Dahl"
+folder archive Work
+
+# The notification's text, as the stand-in received it.
+notify-mail trip Work:inbox "Hyttetur i oktober" "from=Kari Nordmann" "text=Hei! Skal vi leie hytta på Geilo den siste helga i oktober? Jeg har sjekket ledige datoer."
+notify-arrive trip
+wait-until assert-notify-count 1
+assert-notify 1 app-name Sealwax
+assert-notify 1 summary "Kari Nordmann"
+assert-notify 1 body "Hyttetur i oktober"
+assert-notify 1 actions "default,Archive,Mark Read"
+assert-notify 1 urgency 1
+
+# The click with the window open on the Archive: the message open in its Inbox.
+notify-click 1 default
+wait-until assert-notify-opened trip had-window
+sleep 500
+screenshot $DIR/../../tools/progress/public/m7-notify-click-matte-black-square-2026-10-06.png
+
+# Archive from a notification: the window's toast, with Undo.
+folder archive Work
+notify-mail invoice Work:inbox "Faktura september" "from=Leah Kim"
+notify-arrive invoice
+wait-until assert-notify-count 2
+notify-click 2 Archive
+wait-until assert-toast "Archived 1 message"
+screenshot $DIR/../../tools/progress/public/m7-notify-archive-matte-black-square-2026-10-06.png
+
+# Several at once: one notification counts them, with the senders.
+setup-dismiss-toasts
+notify-mail one Work:inbox "Lunsj fredag" "from=Leah Kim" ago=4
+notify-mail two Work:inbox "Prosjektplan" "from=Marius Dahl" ago=3
+notify-mail three Work:inbox "Bilder fra turen" "from=Kari Nordmann" ago=2
+notify-mail four Work:inbox "Møtereferat" "from=Ingrid Solberg" ago=1
+notify-arrive one two three four
+wait-until assert-notify-count 3
+assert-notify 3 summary "4 new messages"
+assert-notify 3 body "Ingrid Solberg, Kari Nordmann, Marius Dahl and 1 other"
+
+# Light, rounded: background mode, the window closed; a click builds a new one on the message.
+theme catppuccin-latte
+corners 8
+background true
+close-window
+assert-window false
+notify-mail dinner Work:inbox "Middag fredag?" "from=Ingrid Solberg" "text=Vi lager taco hos oss på fredag. Kom gjerne ved sjutiden!"
+notify-arrive dinner
+wait-until assert-notify-count 4
+notify-click 4 default
+wait-until assert-window true
+wait-until assert-notify-opened dinner new-window
+sleep 500
+screenshot $DIR/../../tools/progress/public/m7-notify-background-catppuccin-latte-rounded-2026-10-06.png
+
+# A click on a message gone since: the window says so.
+action "app.open-message(int64 999999)"
+wait-until assert-toast "The message was moved or deleted"
+screenshot $DIR/../../tools/progress/public/m7-notify-gone-catppuccin-latte-rounded-2026-10-06.png
