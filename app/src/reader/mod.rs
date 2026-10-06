@@ -160,6 +160,22 @@ pub struct ReaderState {
     pub live_bodies: Vec<MessageId>,
 }
 
+/// An expanded HTML body of the shown conversation, for checks: where the column shows it (px
+/// from the top of its visible part), whether it holds a view, and its heights.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BodyReport {
+    pub id: MessageId,
+    pub top: f64,
+    pub bottom: f64,
+    pub live: bool,
+    /// The view's current load fired its `load` event and painted a frame.
+    pub loaded: bool,
+    pub painted: bool,
+    /// The height last measured, and the height its box has now.
+    pub measured: Option<i32>,
+    pub height: i32,
+}
+
 type ShownListener = Rc<dyn Fn(&Shown)>;
 type OpenedListener = Rc<dyn Fn(&Opened)>;
 type SizeListener = Rc<dyn Fn(usize)>;
@@ -534,6 +550,17 @@ impl Reader {
             }
         }
         state
+    }
+
+    /// The shown conversation's expanded HTML bodies, where the column shows them.
+    pub fn bodies(&self) -> Vec<BodyReport> {
+        self.inner.body_reports()
+    }
+
+    /// Where message `id`'s row or card starts in the column, px from the top of what the
+    /// column shows; `None` when it isn't in the shown conversation (or folded).
+    pub fn message_top(&self, id: MessageId) -> Option<f64> {
+        self.inner.message_top(id)
     }
 
     /// Every `cid:` request the process's views made so far.

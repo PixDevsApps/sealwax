@@ -227,11 +227,19 @@ impl Inner {
         (self.stage.is_mapped() && height > 1.0).then_some(height)
     }
 
-    /// The part of the shown `page` the column shows, in page coordinates.
+    /// The part of the shown `page` the column shows, in page coordinates: from the column's
+    /// scroll value and the page's place in the scrolled content, which allocations only catch
+    /// up with at the next layout.
     fn window(&self, page: &Page) -> Option<(f64, f64)> {
         let scroller = self.scroller()?;
-        let top = -top_in(&page.root, &scroller)?;
-        Some((top, top + f64::from(scroller.height())))
+        let content = scroller.child().and_downcast::<gtk::Viewport>()?.child()?;
+        let adjustment = scroller.vadjustment();
+        let top = adjustment.value() - top_in(&page.root, &content)?;
+        let height = match adjustment.page_size() {
+            size if size > 1.0 => size,
+            _ => f64::from(scroller.height()),
+        };
+        Some((top, top + height))
     }
 
     /// Follows the column's scroll and size, and the window's layout, while the reader is on
@@ -355,6 +363,12 @@ impl Inner {
             }
             keep.extend(chosen.into_iter().map(|id| (*key, id)));
         }
+        tracing::trace!(
+            window = ?shown.as_ref().map(|(_, _, window)| *window),
+            bodies = shown.as_ref().map_or(0, |(_, bodies, _)| bodies.len()),
+            keep = ?keep.iter().map(|(_, id)| id.0).collect::<Vec<_>>(),
+            "reader: live views chosen"
+        );
         self.apply_views(&keep, focus.as_ref());
     }
 
@@ -530,6 +544,36 @@ impl Inner {
         if delta.abs() >= 0.5 {
             adjustment.set_value(adjustment.value() + delta);
         }
+    }
+
+    /// Where message `id`'s row or card starts in the column, px from the top of what it shows.
+    pub(super) fn message_top(&self, id: MessageId) -> Option<f64> {
+        let shown = self.shown.borrow();
+        top_in(&shown.as_ref()?.item(id)?.slot, &self.scroller()?)
+    }
+
+    /// The shown conversation's expanded HTML bodies, where the column shows them.
+    pub(super) fn body_reports(&self) -> Vec<super::BodyReport> {
+        let shown = self.shown.borrow();
+        let (Some(page), Some(scroller)) = (shown.as_ref(), self.scroller()) else {
+            return Vec::new();
+        };
+        page.items()
+            .filter_map(|item| {
+                let html = item.card.as_ref()?.html.as_ref()?;
+                let top = top_in(&html.frame, &scroller)?;
+                Some(super::BodyReport {
+                    id: item.id(),
+                    top,
+                    bottom: top + f64::from(html.frame.height()),
+                    live: html.view.is_some(),
+                    loaded: html.loaded,
+                    painted: html.painted,
+                    measured: html.measured.map(|(height, _)| height),
+                    height: html.holder.height(),
+                })
+            })
+            .collect()
     }
 
     /// Where the column scrolls to show the selected message, once the page is laid out.

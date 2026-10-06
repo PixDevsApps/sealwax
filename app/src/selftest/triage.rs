@@ -448,7 +448,7 @@ async fn click_widget(
 }
 
 /// A real click on `button` through Broadway; the step fails unless the button saw it.
-async fn click_button(harness: &Harness, button: &gtk::Button) -> StepResult {
+pub(super) async fn click_button(harness: &Harness, button: &gtk::Button) -> StepResult {
     let seen = Rc::new(Cell::new(false));
     let mark = seen.clone();
     let handler = button.connect_clicked(move |_| mark.set(true));

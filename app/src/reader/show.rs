@@ -491,8 +491,8 @@ impl Inner {
     }
 
     /// Reads the shown conversation again and changes its page in place: messages gone are
-    /// taken out, new ones put in their place (expanded when unread), changed flags shown. The
-    /// bodies already shown stay, and so does what the column shows.
+    /// taken out, new ones put in their place as rows (unread until the user opens them),
+    /// changed flags shown. The bodies already shown stay, and so does what the column shows.
     async fn refresh(self: Rc<Self>, key: u64) {
         let selected = self
             .shown
@@ -590,11 +590,8 @@ impl Inner {
         for item in removed {
             self.remove_item(key, item);
         }
-        let mut loads = Vec::new();
         for message in added {
-            let expanded = !message.summary.flags.is_seen();
-            let item = self.item(key, &message, expanded);
-            let id = item.id();
+            let item = self.item(key, &message, false);
             self.with_page(key, |page| {
                 let order =
                     |message: &ConversationMessage| (message.summary.date, message.summary.id);
@@ -607,12 +604,6 @@ impl Inner {
                 page.list.insert_child_after(&item.slot, before.as_ref());
                 page.entries.insert(at, Entry::Message(Box::new(item)));
             });
-            if expanded {
-                loads.push(id);
-            }
-        }
-        for id in loads {
-            self.reload_card(key, id);
         }
         tracing::debug!("reader: the shown conversation changed");
         self.size_changed();
