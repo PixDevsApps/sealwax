@@ -281,6 +281,7 @@ def seed_server(name: str, perf_count: int):
         "dave",
         "outbox",
         "outboxfault",
+        "newmail",
     ]:
         account = Imap(port, user)
         account.ensure_folders(ROLE_FOLDERS if create_roles else [])

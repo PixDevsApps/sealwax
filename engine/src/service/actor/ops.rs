@@ -169,10 +169,33 @@ impl Poller {
         for folder in folders {
             held.push(race(&self.signals, seen, self.locks.lock(folder)).await?);
         }
+        let target = match &group.action {
+            OpAction::Move { to, .. } => Some(*to),
+            _ => None,
+        };
+        if let Some(to) = target {
+            self.moved.start(
+                to,
+                group
+                    .messages
+                    .iter()
+                    .filter_map(|message| message.message_id.clone()),
+            );
+        }
         let outcome = self.attempt(&group, uidvalidity, seen).await?;
         let ran = match outcome {
             Outcome::Unstarted => Ran::Recorded,
             Outcome::Written(Ok(done)) => {
+                if let Some(to) = target {
+                    let rehomed = group
+                        .messages
+                        .iter()
+                        .filter(|message| done.moved.iter().any(|(old, _)| *old == message.uid));
+                    self.moved.settled(
+                        to,
+                        rehomed.filter_map(|message| message.message_id.as_deref()),
+                    );
+                }
                 self.record_done(&group, done).await;
                 Ran::Recorded
             }

@@ -17,14 +17,16 @@
 //!   or sign-in (which restarts the actor).
 //!
 //! Passes over one folder never overlap ([`FolderLocks`]). Statuses go out as they change;
-//! progress at most every `progress_every`.
+//! progress at most every `progress_every`. New mail goes out as `Event::NewMail` the moment a
+//! pass's step commits it (ML-083), except what the account's own moves put there ([`Moved`]),
+//! and never from older mail.
 
 use super::{Shared, bodies, log_in_with_password, log_in_with_token};
 use crate::api::{Event, SyncStatus};
 use crate::imap::write::Mark;
 use crate::imap::{
-    self, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop, SyncError,
-    SyncOptions, SyncReport,
+    self, Arrived, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop,
+    SyncError, SyncOptions, SyncReport,
 };
 use crate::smtp::submit::Timeouts;
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
@@ -206,6 +208,118 @@ async fn race<T>(
     }
 }
 
+/// How long a move whose target UID is unknown keeps its messages out of the target's new mail.
+const MOVED_KEPT: Duration = Duration::from_secs(600);
+
+/// Message-IDs moved into each folder, with when their move started.
+type MovedInto = HashMap<FolderId, Vec<(String, Instant)>>;
+
+/// Messages the account's op runner moved into a folder without learning their new UIDs (no
+/// COPYUID and no Message-ID match, or an attempt cut before its outcome), by target folder and
+/// Message-ID: the target's sync stores them as new rows, and they aren't new mail. Shared by
+/// the op runner and [`forward_new_mail`]; holds Message-IDs, so it has no `Debug`.
+#[derive(Clone, Default)]
+pub(super) struct Moved(Arc<Mutex<MovedInto>>);
+
+impl Moved {
+    fn lock(&self) -> std::sync::MutexGuard<'_, MovedInto> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// A move into `target` is about to run (again, for a retry).
+    pub(super) fn start(&self, target: FolderId, message_ids: impl Iterator<Item = String>) {
+        let now = Instant::now();
+        let mut moved = self.lock();
+        let waiting = moved.entry(target).or_default();
+        for message_id in message_ids {
+            match waiting.iter_mut().find(|(id, _)| *id == message_id) {
+                Some((_, at)) => *at = now,
+                None => waiting.push((message_id, now)),
+            }
+        }
+    }
+
+    /// These moved messages were re-homed under their new UIDs: the store holds them already.
+    pub(super) fn settled<'a>(&self, target: FolderId, message_ids: impl Iterator<Item = &'a str>) {
+        let mut moved = self.lock();
+        if let Some(waiting) = moved.get_mut(&target) {
+            for message_id in message_ids {
+                if let Some(at) = waiting.iter().position(|(id, _)| id == message_id) {
+                    waiting.swap_remove(at);
+                }
+            }
+            if waiting.is_empty() {
+                moved.remove(&target);
+            }
+        }
+    }
+
+    /// Whether moves into `folder` wait to be recognised; forgets those past [`MOVED_KEPT`].
+    fn waiting(&self, folder: FolderId) -> bool {
+        let mut moved = self.lock();
+        moved.retain(|_, waiting| {
+            waiting.retain(|(_, at)| at.elapsed() < MOVED_KEPT);
+            !waiting.is_empty()
+        });
+        moved.contains_key(&folder)
+    }
+
+    /// Whether a message with `message_id` was moved into `folder`, forgetting it if so.
+    fn take(&self, folder: FolderId, message_id: &str) -> bool {
+        let mut moved = self.lock();
+        let Some(waiting) = moved.get_mut(&folder) else {
+            return false;
+        };
+        let Some(at) = waiting.iter().position(|(id, _)| id == message_id) else {
+            return false;
+        };
+        waiting.swap_remove(at);
+        if waiting.is_empty() {
+            moved.remove(&folder);
+        }
+        true
+    }
+}
+
+/// Hands each step's new mail to the app as `Event::NewMail`, without the messages the
+/// account's own moves put there, until every pass's end of the channel is gone.
+async fn forward_new_mail(
+    shared: Arc<Shared>,
+    account: AccountId,
+    arrivals: async_channel::Receiver<Arrived>,
+    moved: Moved,
+) {
+    while let Ok(Arrived { folder, messages }) = arrivals.recv().await {
+        let mut kept = Vec::with_capacity(messages.len());
+        if moved.waiting(folder) {
+            for id in messages {
+                let message_id = shared
+                    .store
+                    .message(id)
+                    .recv()
+                    .await
+                    .ok()
+                    .and_then(|found| found.value)
+                    .and_then(|detail| detail.headers.message_id);
+                if !message_id.is_some_and(|message_id| moved.take(folder, &message_id)) {
+                    kept.push(id);
+                }
+            }
+        } else {
+            kept = messages;
+        }
+        if kept.is_empty() {
+            continue;
+        }
+        tracing::debug!(account = account.0, %folder, messages = kept.len(), "new mail");
+        shared.send(Event::NewMail {
+            account,
+            folder,
+            messages: kept,
+        });
+    }
+}
+
 /// A small xorshift for the backoff's jitter; the tests reproduce delays with `backoff_delay`.
 struct Jitter(u64);
 
@@ -328,6 +442,14 @@ async fn run(
         progress: Mutex::new(None),
     });
     status.set(SyncStatus::Syncing);
+    let (arrivals, arrived) = async_channel::unbounded();
+    let moved = Moved::default();
+    tokio::spawn(forward_new_mail(
+        shared.clone(),
+        account,
+        arrived,
+        moved.clone(),
+    ));
     let mut poller = Poller {
         jitter: Jitter::new(account),
         shared,
@@ -360,6 +482,8 @@ async fn run(
         smtp_failures: 0,
         smtp_status: None,
         sent_marks: HashMap::new(),
+        arrivals,
+        moved,
     };
     poller.run().await;
 }
@@ -408,6 +532,10 @@ struct Poller {
     /// The Sent folder's mark taken before each send's data went out, until its Sent copy is
     /// done: a server that saves its own copy puts it above.
     sent_marks: HashMap<DraftId, Mark>,
+    /// Where the passes put new mail ([`forward_new_mail`] reads it).
+    arrivals: async_channel::Sender<Arrived>,
+    /// What the op runner moved without learning the new UIDs.
+    moved: Moved,
 }
 
 /// What woke the command connection's loop.
@@ -699,6 +827,7 @@ impl Poller {
 
     fn options(&self) -> SyncOptions {
         let mut options = self.config().options.clone();
+        options.arrivals = Some(self.arrivals.clone());
         if self.idling() {
             options.elsewhere = (*self.inbox.borrow()).map(|folder| Elsewhere {
                 folder,
@@ -782,7 +911,10 @@ impl Poller {
     }
 
     async fn load_older(&mut self, folder: FolderId, seen: u64) -> Result<(), Interrupt> {
-        let options = self.options();
+        let options = SyncOptions {
+            arrivals: None,
+            ..self.options()
+        };
         let Some(conn) = self.conn.as_mut() else {
             return Ok(());
         };
@@ -854,11 +986,13 @@ impl Poller {
             self.locks.clone(),
             self.inbox.subscribe(),
             self.signals.clone(),
+            self.arrivals.clone(),
         )));
     }
 }
 
 /// The IDLE connection: INBOX current within a moment of every change the server announces.
+#[allow(clippy::too_many_arguments)]
 async fn idle(
     shared: Arc<Shared>,
     settings: Arc<AccountSettings>,
@@ -867,8 +1001,13 @@ async fn idle(
     locks: FolderLocks,
     inbox: watch::Receiver<Option<FolderId>>,
     signals: watch::Receiver<Signal>,
+    arrivals: async_channel::Sender<Arrived>,
 ) {
     let config = shared.sync.clone();
+    let options = SyncOptions {
+        arrivals: Some(arrivals),
+        ..config.options.clone()
+    };
     let mut jitter = Jitter::new(account);
     let mut failures = 0u32;
     loop {
@@ -901,6 +1040,7 @@ async fn idle(
         let watch = Idling {
             shared: &shared,
             config: &config,
+            options: &options,
             account,
             status: &status,
             locks: &locks,
@@ -932,6 +1072,8 @@ enum Kept {
 struct Idling<'a> {
     shared: &'a Arc<Shared>,
     config: &'a SyncConfig,
+    /// The configuration's, with the account's new mail sink.
+    options: &'a SyncOptions,
     account: AccountId,
     status: &'a Arc<Status>,
     locks: &'a FolderLocks,
@@ -964,7 +1106,7 @@ impl Idling<'_> {
                     &mut conn,
                     &self.shared.store,
                     folder,
-                    &self.config.options,
+                    self.options,
                     self.locks,
                     |progress| status.progress(folder, progress, every),
                 ),

@@ -14,6 +14,12 @@
 //!
 //! Passes over one folder are serialized by [`FolderLocks`], so two connections of an account
 //! (the IDLE connection and the polling one, phase B) can share its folders.
+//!
+//! New mail ([`Arrived`], ML-083): the rows a folder pass stores at or above the UIDNEXT the
+//! store held when it began, step by step as they commit, into the report and to
+//! [`SyncOptions::arrivals`]. A pass that runs a first sync (a UIDVALIDITY reset's included)
+//! reports none, and neither does older mail; a row the store holds already (one the op runner
+//! re-homed after a move) is never inserted again.
 
 mod account;
 mod folder;
@@ -25,7 +31,7 @@ pub use folder::sync_folder;
 pub use older::{Older, load_older};
 
 use super::error::SyncError;
-use sealwax_domain::model::{BlobKey, FolderId};
+use sealwax_domain::model::{BlobKey, FolderId, MessageId};
 use sealwax_domain::sync::{OLDER_BATCH, Window};
 use sealwax_infrastructure::store::{FolderSync, Store, StoreError};
 use std::collections::HashMap;
@@ -43,6 +49,8 @@ pub struct SyncOptions {
     pub elsewhere: Option<Elsewhere>,
     /// The time the window counts back from (Unix seconds); the clock when `None`.
     pub now: Option<i64>,
+    /// Where each step's new mail goes the moment it is committed, besides the report.
+    pub arrivals: Option<async_channel::Sender<Arrived>>,
 }
 
 impl Default for SyncOptions {
@@ -52,8 +60,17 @@ impl Default for SyncOptions {
             older: OLDER_BATCH,
             elsewhere: None,
             now: None,
+            arrivals: None,
         }
     }
+}
+
+/// Mail that arrived in a folder after its first sync: rows one step stored above the UIDNEXT
+/// the store held when the pass began, in the step's order (ML-083).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Arrived {
+    pub folder: FolderId,
+    pub messages: Vec<MessageId>,
 }
 
 impl SyncOptions {
@@ -142,12 +159,15 @@ pub struct SyncReport {
     /// Raw messages no row refers to any more (folders removed, UIDVALIDITY resets,
     /// expunges); the caller deletes them from the blob store.
     pub orphaned_blobs: Vec<BlobKey>,
+    /// New mail, one entry per committed step that stored some.
+    pub arrived: Vec<Arrived>,
 }
 
 impl SyncReport {
     pub fn add(&mut self, other: SyncReport) {
         self.stats.add(&other.stats);
         self.orphaned_blobs.extend(other.orphaned_blobs);
+        self.arrived.extend(other.arrived);
     }
 }
 

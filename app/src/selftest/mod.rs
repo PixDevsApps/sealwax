@@ -13,6 +13,7 @@ mod composer;
 mod conversation;
 mod files;
 mod mail;
+mod notify;
 mod outbox;
 mod perf;
 mod probe;
@@ -430,6 +431,7 @@ impl Harness {
             command if reader::handles(command) => reader::step(self, command, args).await,
             command if reply::handles(command) => reply::step(self, command, args).await,
             command if outbox::handles(command) => outbox::step(self, command, args).await,
+            command if notify::handles(command) => notify::step(self, command, args).await,
             command if search::handles(command) => search::step(self, command, args).await,
             command if background::handles(command) => background::step(self, command, args).await,
             command if bodies::handles(command) => bodies::step(self, command, args).await,
@@ -746,6 +748,7 @@ impl Harness {
             assertion if files::handles(assertion) => files::step(self, assertion, args).await,
             assertion if reply::handles(assertion) => reply::step(self, assertion, args).await,
             assertion if outbox::handles(assertion) => outbox::step(self, assertion, args).await,
+            assertion if notify::handles(assertion) => notify::step(self, assertion, args).await,
             assertion if search::handles(assertion) => search::step(self, assertion, args).await,
             assertion if background::handles(assertion) => {
                 background::step(self, assertion, args).await
