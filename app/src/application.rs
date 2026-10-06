@@ -604,15 +604,27 @@ impl AppState {
     }
 
     /// Quits the application: the one path for signals, the exit timer and the Quit action.
+    /// Open composer windows save their drafts first (`composer::save_all`).
     pub fn quit(&self, app: &SealwaxApplication) {
         if self.quitting.replace(true) {
             return;
         }
         self.background.take();
-        for window in app.windows() {
-            window.destroy();
+        let app = app.clone();
+        let finish = move || {
+            for window in app.windows() {
+                window.destroy();
+            }
+            app.quit();
+        };
+        if crate::composer::is_open() {
+            glib::spawn_future_local(async move {
+                crate::composer::save_all().await;
+                finish();
+            });
+        } else {
+            finish();
         }
-        app.quit();
     }
 
     fn startup(self: &Rc<Self>, app: &SealwaxApplication) {

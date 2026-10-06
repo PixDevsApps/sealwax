@@ -1,0 +1,149 @@
+# Previews for the M6 gate, the composer window (ML-067, ML-071, ML-072): a new message, a reply
+# with its quote, recipient chips with the suggestions open, and attachments with the size
+# warning; in a dark and a light stock theme (matte-black with square corners, catppuccin-latte
+# rounded). The stand-in backend; every name, address and message is fictional.
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/preview-m6-composer.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+mail-account Work
+composer-identity Support "Work Support" support@example.test
+composer-make-file $TMP/files/Kvartalsrapport-Q3.pdf 2140000
+composer-make-file $TMP/files/notater.txt 12400
+composer-make-file $TMP/files/opptak.mov 31000000
+
+# A new message.
+composer-open new
+composer-wait
+composer-type "kari@example.com,"
+composer-type "\"Ola Nordmann\" <ola@example.org>,"
+composer-focus subject
+composer-type "Møte i morgen"
+composer-focus body
+composer-insert "Hei begge,"
+composer-key Return
+composer-key Return
+composer-insert "Kan vi flytte møtet til klokka 10? Jeg har tatt med "
+composer-key <Control>b
+composer-insert "kvartalstallene"
+composer-key <Control>b
+composer-insert " og et utkast til planen:"
+composer-key Return
+composer-click composer-bulleted-list
+composer-insert "budsjettet for blåbærprosjektet"
+composer-key Return
+composer-insert "neste steg"
+composer-key Return
+composer-key Return
+composer-insert "Kari"
+composer-select "kvartalstallene"
+wait-until assert-composer pressed composer-bold true
+wait-until assert-composer saved true
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-new-matte-black-square-2026-10-06.png
+composer-close
+wait-until assert-composer count 0
+
+# A reply with the quote.
+composer-open reply
+composer-wait
+composer-insert "Takk, Grace! Jeg ser på tallene i kveld."
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-reply-matte-black-square-2026-10-06.png
+composer-close
+wait-until assert-composer count 0
+
+# Chips with the suggestions open.
+composer-open new
+composer-wait
+composer-type "grace@example.test,"
+composer-type "not-an-address,"
+composer-type "ad"
+wait-until assert-composer suggestions 2
+composer-key Down
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-suggestions-matte-black-square-2026-10-06.png
+composer-key Escape
+composer-key <Control>a
+composer-key BackSpace
+composer-close
+wait-until assert-composer count 0
+
+# Attachments over the size limit: the warning in the footer.
+composer-open new
+composer-wait
+composer-type "ola@example.org,"
+composer-focus subject
+composer-type "Opptaket fra workshopen"
+composer-focus body
+composer-insert "Her er opptaket og rapporten."
+composer-attach $TMP/files/Kvartalsrapport-Q3.pdf $TMP/files/notater.txt $TMP/files/opptak.mov
+wait-until assert-composer attachment 2 size=31000000
+wait-until assert-composer warning "Too large to send"
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-attachments-matte-black-square-2026-10-06.png
+composer-close
+wait-until assert-composer count 0
+
+theme catppuccin-latte
+corners 8
+
+composer-open new
+composer-wait
+composer-type "kari@example.com,"
+composer-type "\"Ola Nordmann\" <ola@example.org>,"
+composer-focus subject
+composer-type "Møte i morgen"
+composer-focus body
+composer-insert "Hei begge,"
+composer-key Return
+composer-key Return
+composer-insert "Kan vi flytte møtet til klokka 10? Jeg har tatt med "
+composer-key <Control>b
+composer-insert "kvartalstallene"
+composer-key <Control>b
+composer-insert " og et utkast til planen:"
+composer-key Return
+composer-click composer-bulleted-list
+composer-insert "budsjettet for blåbærprosjektet"
+composer-key Return
+composer-insert "neste steg"
+composer-key Return
+composer-key Return
+composer-insert "Kari"
+composer-select "kvartalstallene"
+wait-until assert-composer pressed composer-bold true
+wait-until assert-composer saved true
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-new-catppuccin-latte-rounded-2026-10-06.png
+composer-close
+wait-until assert-composer count 0
+
+composer-open reply
+composer-wait
+composer-insert "Takk, Grace! Jeg ser på tallene i kveld."
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-reply-catppuccin-latte-rounded-2026-10-06.png
+composer-close
+wait-until assert-composer count 0
+
+composer-open new
+composer-wait
+composer-type "grace@example.test,"
+composer-type "not-an-address,"
+composer-type "ad"
+wait-until assert-composer suggestions 2
+composer-key Down
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-suggestions-catppuccin-latte-rounded-2026-10-06.png
+composer-key Escape
+composer-close
+wait-until assert-composer count 0
+
+composer-open new
+composer-wait
+composer-type "ola@example.org,"
+composer-focus subject
+composer-type "Opptaket fra workshopen"
+composer-focus body
+composer-insert "Her er opptaket og rapporten."
+composer-attach $TMP/files/Kvartalsrapport-Q3.pdf $TMP/files/notater.txt $TMP/files/opptak.mov
+wait-until assert-composer attachment 2 size=31000000
+wait-until assert-composer warning "Too large to send"
+composer-screenshot $DIR/../../tools/progress/public/m6-composer-attachments-catppuccin-latte-rounded-2026-10-06.png

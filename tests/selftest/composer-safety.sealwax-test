@@ -1,0 +1,91 @@
+# The composer's body is hostile-safe (M6: ADR-014, SECURITY.md "Composer"): S7's hostile
+# clipboard (a Google Docs wrapper, Word's markup, scripts, frames, forms, SVG, media, styles,
+# a foreign cid: reference and remote references aimed at a local canary) is cleaned with S7's
+# allowlist on paste: no request reaches the canary, nothing forbidden is left, the basic
+# formatting stays, a data: image becomes a part, and the paste is one undo step. A hostile
+# page loaded as a draft's body (a quote not cleaned upstream) runs no script and loads nothing
+# remote. The body follows a live theme switch. Every address is fictional; the canary listens
+# on 127.0.0.1 only.
+# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/composer-safety.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+mail-account Work
+composer-canary
+composer-open new
+composer-wait
+assert-composer theme
+
+# The hostile paste, through the real Ctrl+V.
+composer-focus body
+composer-insert "before paste "
+composer-clipboard hostile
+composer-key <Control>v
+wait-until assert-composer html-has "Bold from Docs"
+sleep 1000
+assert-composer canary 0
+assert-composer remote 0
+assert-composer html-lacks "<script"
+assert-composer html-lacks "onerror"
+assert-composer html-lacks "onclick"
+assert-composer html-lacks "onmouseover"
+assert-composer html-lacks "onload"
+assert-composer html-lacks "<iframe"
+assert-composer html-lacks "<form"
+assert-composer html-lacks "<input"
+assert-composer html-lacks "<button"
+assert-composer html-lacks "<svg"
+assert-composer html-lacks "<video"
+assert-composer html-lacks "<style"
+assert-composer html-lacks "<link"
+assert-composer html-lacks "<meta"
+assert-composer html-lacks "<title"
+assert-composer html-lacks "<font"
+assert-composer html-lacks "<o:p"
+assert-composer html-lacks "class="
+assert-composer html-lacks "javascript:"
+assert-composer html-lacks "127.0.0.1"
+assert-composer html-lacks "mso-"
+assert-composer html-lacks "background"
+assert-composer html-lacks "someone-elses-part"
+assert-composer html-lacks "data:image"
+assert-composer html-has "<b>Bold from Docs</b>"
+assert-composer html-has "<i>italic from Docs</i>"
+assert-composer html-has "href=\"https://example.org/ok\""
+assert-composer html-has "<li>list item</li>"
+assert-composer html-has "colspan=\"2\""
+assert-composer html-has "bad link"
+assert-composer html-lacks "<b>Word paragraph"
+wait-until assert-composer parts 1
+wait-until assert-composer cid-served 1
+
+# The paste is one undo step.
+composer-key <Control>z
+wait-until assert-composer html-lacks "Bold from Docs"
+assert-composer html-has "before paste"
+
+# A plain-text paste inserts text, never markup.
+composer-clipboard text "line one <b>not markup</b> æøå"
+composer-key <Control>v
+wait-until assert-composer html-has "line one &lt;b&gt;not markup&lt;/b&gt; æøå"
+sleep 500
+assert-composer canary 0
+
+# A hostile page as the draft's body: no script runs, nothing remote loads, nothing navigates.
+composer-body "<p>quoted</p><script>document.title='ran'</script><img src=x onerror=\"document.body.insertAdjacentText('beforeend','RAN-SCRIPT')\"><img src=\"http://127.0.0.1:9/never.png\"><div style=\"background:url(http://127.0.0.1:9/bg.png)\">styled</div><a href=\"https://example.org/link\">link</a><meta http-equiv=\"refresh\" content=\"0; url=http://127.0.0.1:9/refresh\">"
+sleep 1000
+assert-composer eval "document.title" ""
+assert-composer eval "document.body.innerText.includes('RAN-SCRIPT')" false
+assert-composer html-lacks "<script"
+assert-composer html-lacks "127.0.0.1"
+assert-composer html-has "styled"
+assert-composer canary 0
+assert-composer loaded true
+
+# The body follows a live theme switch, light and back to dark.
+theme catppuccin-latte
+wait-until assert-composer theme
+theme matte-black
+wait-until assert-composer theme
+assert-composer labelled

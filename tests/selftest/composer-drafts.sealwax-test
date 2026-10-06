@@ -1,0 +1,139 @@
+# The composer's requests and drafts (M6: ML-067, ML-071's autosave, PRD C5): a window for each
+# request kind (New, Reply, Reply All, Forward, Quick Reply, a server draft, a stored draft),
+# the draft saved at most 5 s behind the typing ("Draft saved HH:MM"), saved when the window
+# closes and when Quit saves them all, kept open after the main window closes, and Discard
+# asking first when there is something to lose. The stand-in backend's drafts; every name and
+# address is fictional.
+# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/composer-drafts.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Work
+
+# New (draft 1): empty, the focus in To.
+composer-open new
+composer-wait
+assert-composer title "New message"
+assert-composer focus to
+assert-composer subject ""
+assert-composer from work@example.test
+assert-composer saved false
+composer-close
+wait-until assert-composer count 0
+assert-composer closed 1
+
+# Reply (draft 2): the quote with its attribution, the caret above it.
+composer-open reply
+composer-wait
+assert-composer title Reply
+assert-composer chips to grace@example.test
+assert-composer subject "Re: The quarterly figures"
+assert-composer html-has "<blockquote type=\"cite\""
+assert-composer html-has "wrote:</div>"
+assert-composer labelled
+assert-composer focus body
+composer-insert "Takk, Grace!"
+assert-composer html-has "<div>Takk, Grace!</div>"
+composer-close
+wait-until assert-composer count 0
+assert-composer stored 2 html "Takk, Grace!"
+
+# Reply All (3), Forward (4), Quick Reply (5) and a draft from the server (6).
+composer-open reply-all
+composer-wait
+assert-composer title "Reply all"
+assert-composer chips to grace@example.test
+assert-composer chips cc ada@example.test
+assert-composer shown composer-cc true
+composer-close
+composer-open forward
+composer-wait
+assert-composer title Forward
+assert-composer chips to none
+assert-composer subject "Fwd: The quarterly figures"
+assert-composer focus to
+composer-close
+composer-open quick-reply "Hei Grace,\nfint, takk."
+composer-wait
+assert-composer title Reply
+assert-composer html-has "<div>Hei Grace,</div><div>fint, takk.</div>"
+composer-close
+composer-open server-draft
+composer-wait
+assert-composer title Draft
+assert-composer subject "Notes for Thursday"
+composer-close
+wait-until assert-composer count 0
+
+# A stored draft reopens as it was saved.
+composer-open draft 2
+composer-wait
+assert-composer title Draft
+assert-composer chips to grace@example.test
+assert-composer html-has "Takk, Grace!"
+composer-close
+wait-until assert-composer count 0
+
+# The autosave: while typing goes on (a character every 300 ms for 7 s), a save at least every
+# 4 s; 1.5 s after the typing stops, the last one. No edit waits more than 5 s.
+composer-open new
+composer-wait
+composer-focus body
+composer-edit-for 7000 300
+sleep 2500
+assert-composer save-lag 5000
+assert-composer saves 3
+assert-composer saved true
+composer-focus subject
+composer-type "Emne"
+sleep 2500
+assert-composer save-lag 5000
+assert-composer stored 7 subject Emne
+
+# Discard: asks when there is something to lose; Cancel keeps the draft.
+composer-click composer-discard
+wait-until assert-composer dialog discard true
+composer-discard-answer cancel
+assert-composer count 1
+assert-composer discarded 0
+composer-action discard-draft
+wait-until assert-composer dialog discard true
+composer-discard-answer discard
+wait-until assert-composer count 0
+assert-composer discarded 1
+# An empty draft goes without asking.
+composer-open new
+composer-wait
+composer-action discard-draft
+wait-until assert-composer count 0
+assert-composer discarded 2
+
+# Quit saves every open draft first (`composer::save_all`, which Quit runs).
+composer-open new
+composer-wait
+composer-focus body
+composer-insert "saved on quit"
+composer-open new
+composer-wait
+composer-focus subject
+composer-type "second"
+composer-save-all
+assert-composer stored 9 html "saved on quit"
+assert-composer stored 10 subject second
+
+# The main window closes; the composer keeps Sealwax running and saves when it closes.
+background true
+composer-open new
+composer-wait
+composer-focus body
+composer-insert "kept after the main window"
+close-window
+assert-window false
+assert-composer count 3
+composer-pick 2
+composer-close
+composer-pick 0
+assert-composer stored 11 html "kept after the main window"
+
+# Quit with composers open: their drafts are saved, then Sealwax ends.
+quit

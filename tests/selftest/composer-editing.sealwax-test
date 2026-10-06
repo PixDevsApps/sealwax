@@ -1,0 +1,192 @@
+# The composer's body (M6: ML-067, ADR-014): typing through the helper and as key presses, every
+# toolbar command and the state it shows, the paragraph styles, Link… with its dialog, Undo and
+# Redo following WebKit, and every Composer-scope key: Ctrl+B, Ctrl+I and Ctrl+U toggle once,
+# Ctrl+K opens Link…, Ctrl+Z, Ctrl+Shift+Z and Ctrl+Y undo and redo typing (never the main
+# window's mail Undo), Ctrl+Shift+V pastes plain text, Ctrl+Enter sends. One-key shortcuts
+# never fire while typing. Norwegian text round-trips. The stand-in backend; every address is
+# fictional.
+# Run: tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/composer-editing.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Work
+action-log
+composer-open new
+composer-wait
+assert-composer loaded true
+assert-composer spell false
+assert-composer enabled bold true
+assert-composer enabled composer-undo false
+assert-composer labelled
+
+# Typing through the helper; Norwegian text round-trips.
+composer-focus body
+composer-insert "Blåbærsyltetøy på brødskiva — ÆØÅ æøå"
+assert-composer html-has "Blåbærsyltetøy på brødskiva — ÆØÅ æøå"
+wait-until assert-composer undo true
+assert-composer enabled composer-undo true
+
+# Key presses through Broadway into the body, timed to the helper's input report: Broadway's
+# delivery, not a display's (informational, no bar).
+composer-typing 40
+composer-key <Control>a
+composer-key BackSpace
+composer-insert "Blåbærsyltetøy på brødskiva — ÆØÅ æøå"
+
+# Bold, italic, underline and strikethrough from the toolbar: the state follows the selection.
+composer-select "brødskiva"
+composer-click composer-bold
+wait-until assert-composer pressed composer-bold true
+assert-composer html-has "<b>brødskiva</b>"
+composer-click composer-italic
+wait-until assert-composer pressed composer-italic true
+composer-click composer-underline
+wait-until assert-composer pressed composer-underline true
+composer-click composer-strikethrough
+wait-until assert-composer pressed composer-strikethrough true
+assert-composer html-has "<u>"
+composer-click composer-clear-formatting
+wait-until assert-composer pressed composer-bold false
+assert-composer pressed composer-italic false
+assert-composer html-lacks "<b>"
+assert-composer html-lacks "<u>"
+assert-composer ran bold,italic,underline,strikethrough,clear-formatting
+
+# The keys in the body: each toggles once (the body's own Ctrl+B and Ctrl+I never run as well).
+composer-select "Blåbærsyltetøy"
+composer-key <Control>b
+wait-until assert-composer pressed composer-bold true
+assert-composer html-has "<b>Blåbærsyltetøy</b>"
+composer-key <Control>b
+wait-until assert-composer pressed composer-bold false
+assert-composer html-lacks "<b>"
+composer-key <Control>i
+wait-until assert-composer pressed composer-italic true
+assert-composer html-has "<i>Blåbærsyltetøy</i>"
+composer-key <Control>u
+wait-until assert-composer pressed composer-underline true
+assert-composer html-has "<u>"
+assert-composer ran bold,bold,italic,underline
+
+# Ctrl+Z undoes typing in the body, Ctrl+Shift+Z and Ctrl+Y redo; the main window's mail Undo
+# never runs.
+composer-key <Control>z
+wait-until assert-composer html-lacks "<u>"
+composer-key <Control><Shift>z
+wait-until assert-composer html-has "<u>"
+composer-key <Control>z
+wait-until assert-composer html-lacks "<u>"
+composer-key <Control>y
+wait-until assert-composer html-has "<u>"
+assert-composer ran composer-undo,composer-redo,composer-undo,composer-redo
+assert-action-log none
+
+# Lists, quote, indent and outdent: the toolbar shows where the caret is.
+composer-body "<div>first line</div><div>second line</div>"
+composer-caret "first"
+composer-click composer-bulleted-list
+wait-until assert-composer pressed composer-bulleted-list true
+assert-composer html-has "<ul><li>first line"
+composer-click composer-numbered-list
+wait-until assert-composer pressed composer-numbered-list true
+assert-composer pressed composer-bulleted-list false
+assert-composer html-has "<ol><li>first line"
+composer-click composer-numbered-list
+wait-until assert-composer pressed composer-numbered-list false
+composer-caret "second"
+composer-click composer-quote
+wait-until assert-composer pressed composer-quote true
+assert-composer html-has "<blockquote type=\"cite\""
+composer-click composer-quote
+wait-until assert-composer pressed composer-quote false
+composer-click composer-indent
+wait-until assert-composer html-has "margin: 0 0 0 40px"
+composer-click composer-outdent
+wait-until assert-composer html-lacks "margin: 0 0 0 40px"
+assert-composer ran bulleted-list,numbered-list,numbered-list,quote,quote,indent,outdent
+
+# The paragraph styles.
+composer-caret "first"
+composer-style h1
+wait-until assert-composer style "Heading 1"
+assert-composer html-has "<h1>first line</h1>"
+composer-style pre
+wait-until assert-composer style "Preformatted"
+assert-composer html-has "<pre>first line</pre>"
+composer-style p
+wait-until assert-composer style "Paragraph"
+composer-click composer-style
+assert-composer shown composer-style-h2 true
+composer-click composer-style-h2
+wait-until assert-composer style "Heading 2"
+
+# Link… (Ctrl+K): http(s) and mailto only; on a link it edits or removes it.
+composer-body "<div>see the plans today</div>"
+composer-select "plans"
+composer-key <Control>k
+wait-until assert-composer dialog link true
+composer-link "javascript:alert(1)" cancel
+assert-composer html-lacks "javascript"
+composer-select "plans"
+composer-click composer-insert-link
+wait-until assert-composer dialog link true
+composer-link "https://example.org/plans" apply
+wait-until assert-composer html-has "<a href=\"https://example.org/plans\">plans</a>"
+composer-caret "plans"
+wait-until assert-composer pressed composer-insert-link true
+composer-click composer-insert-link
+wait-until assert-composer dialog link true
+composer-link - remove
+wait-until assert-composer html-lacks "<a href"
+composer-caret end
+composer-click composer-insert-link
+composer-link "ola@example.org" apply
+wait-until assert-composer html-has "<a href=\"mailto:ola@example.org\">ola@example.org</a>"
+assert-composer ran insert-link,insert-link,insert-link,insert-link
+
+# Ctrl+Shift+V pastes the clipboard's text without its formatting.
+composer-clipboard html "<b>bold</b> and <i>italic</i> markup"
+composer-caret end
+composer-key <Control><Shift>v
+wait-until assert-composer html-has "plain fallback"
+assert-composer html-lacks "<b>bold</b>"
+assert-composer ran paste-as-text
+
+# One-key shortcuts never fire while typing: in the body, the subject or a recipient field.
+action-log
+composer-key <Control>a
+composer-key BackSpace
+composer-type "jkecrsxzvu#/!?gin"
+wait-until assert-composer html-has "jkecrsxzvu#/!?gin"
+composer-focus subject
+composer-type "jkecrsxzvu"
+assert-composer subject "jkecrsxzvu"
+composer-focus to
+composer-type "jkecr"
+assert-composer entry to "jkecr"
+composer-key <Control>a
+composer-key BackSpace
+assert-action-log none
+assert-composer ran none
+
+# The app's accelerators reach the composer's own commands: Ctrl+N opens another composer.
+composer-key <Control>n
+wait-until assert-composer count 2
+composer-pick 0
+assert-composer ran compose
+composer-pick 1
+composer-close
+wait-until assert-composer count 1
+composer-pick 0
+
+# Ctrl+Enter sends from the body.
+composer-focus to
+composer-type "ola@example.org,"
+assert-composer chips to ola@example.org
+composer-focus body
+composer-key <Control>Return
+wait-until assert-composer sent 1
+assert-composer last-sent to ola@example.org
+assert-composer last-sent html "jkecrsxzvu"
+wait-until assert-composer count 0
+assert-action-log none
