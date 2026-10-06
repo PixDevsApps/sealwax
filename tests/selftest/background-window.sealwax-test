@@ -72,5 +72,19 @@ wait-until assert-background false
 write-file $TMP/config/sealwax/config.toml "[background]\nenabled = true\n"
 wait-until assert-background true
 
+# With no window, the network coming back and a resume (as desktop.rs reports them) still
+# reconnect the engine (here a scripted one).
+engine-attach
+close-window
+wait-until assert-window false
+desktop-network down
+engine-expect none
+desktop-network up
+engine-expect reconnect
+desktop-resume
+engine-expect reconnect
+bus-activate
+wait-until assert-window true
+
 # Quit (Ctrl+Q's action) ends Sealwax even in background mode.
 quit
