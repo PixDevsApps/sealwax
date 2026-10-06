@@ -50,6 +50,9 @@ mod ops_prop_tests;
 mod ops_tests;
 
 #[cfg(test)]
+mod compose_tests;
+
+#[cfg(test)]
 mod remote_tests;
 
 pub use api::*;
