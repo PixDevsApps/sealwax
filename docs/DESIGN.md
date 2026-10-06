@@ -1,6 +1,6 @@
 # Design & Interaction System
 
-Synced: 2026-10-05
+Synced: 2026-10-06
 
 The repository docs are the canonical project memory ([ADR-012](DECISIONS.md#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Anything the user changes after approval is recorded here as a dated entry above the affected section.
 
@@ -76,7 +76,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   - **After a folder, chip or search change** the list starts at the top, with 40 rows in the first frame and 40 more each frame. A reload of the same view keeps the place, the selection and the focus.
   - **Search** replaces the list's title with "Search" and a count ("12 results", "50+ results", "No results"). The chips filter the results, and Escape ends the search. In a folder it searches that folder; in All Inboxes it searches every folder.
   - **Keys:** `j`/`k` and Down/Up move the selection, Enter/`o` open it, and `/` or Ctrl+F go to the search field.
-- *As built in M4 (ML-052, ML-054, [report](m4/triage-app.md)); proposals for the user at the M4 gate:*
+- *As built in M4 (ML-052, ML-054, [report](m4/triage-app.md)); accepted by the user at the M4 gate (2026-10-06):*
   - **Batch selection:** Ctrl+click toggles a row, Shift+click selects from the row last clicked; Shift with Down/Up or with `j`/`k` extends from the keyboard. Two messages or more, or Select (`x`, Space), put the list in a **select mode**: each row's avatar becomes a checkbox of the same size (so the text doesn't move), `j`/`k` and Down/Up move a cursor without changing the selection, `x`/Space toggle the row under it, a click on a checkbox toggles that row, and a plain click or Escape leaves with one message selected (Escape keeps the one under the cursor); Escape anywhere in the window leaves it once text fields and dialogs have had it (phase B: a batch-page button that went insensitive under the focus left Escape nowhere). GtkListView's own Ctrl+A selects nothing.
   - **Every action applies to every selected message.** Star stars them all unless all are starred, then unstars them. Archive, Delete, Junk and Move to… apply to the messages they can; the toast counts any left as they were.
   - **After the selected messages leave the list** (archive, delete, junk, move, or a filter they no longer pass) the message that took the first one's place is selected, or the last when they were at the end, as Gmail does.
@@ -140,7 +140,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   *As built in M4 phase B ([report](m4/triage-app.md#phase-b-the-stores-op-queue)):* with changes waiting for a server the strip ends in the mock's quiet count, "3 waiting" (the ops the accounts with a server haven't run, read again a moment after each action, Undo and change event, and every 3 s while any wait), and its text says Sealwax keeps the changes and sends them when the network is back.
 - **Reconnecting:** when the network comes back and after a resume (logind's `PrepareForSleep(false)`), the app sends `Reconnect`; Retry does too, with a toast ("Connecting again…").
 
-*As built in M4 (ML-053, [report](m4/triage-app.md)); proposals for the user at the M4 gate:*
+*As built in M4 (ML-053, [report](m4/triage-app.md)); accepted by the user at the M4 gate (2026-10-06):*
 - **The Undo toast** follows an action that moves messages (archive, delete, junk, move) or changes several (star, read, unread, Mark Folder as Read): "Archived 3 messages", "Moved 2 messages to the Trash", "Deleted 1 message for good", "Moved 1 message to the Inbox as not junk", "Starred 3 messages", "Marked 12 messages in Inbox as read", with **Undo**. It shows for the undo window, **7 s** (ADR-015's 5–10 s). A new action replaces it, since only the last action is undoable from the toast; `z` and Ctrl+Z undo the last action while it can be undone, also after the toast is gone. After an Undo: "Undone".
 - **A single message's read or star change** has no toast and doesn't replace the last action: it shows in place, and its key changes it back.
 - **Deleting for good** (Delete in the Trash, or where an account has no Trash) waits for the undo window like a move. Undo asks the store, which puts back whatever hasn't reached the server and says what can't come back ("1 message was deleted for good and can't be brought back"). A local account (no server: fixtures) deletes at once, so its toast offers no Undo. *(Phase B; in phase A Undo was refused once the window was over.)*
@@ -205,7 +205,7 @@ Short fades (≤ 150 ms) for toasts and banners; no sliding lists, no bounce. An
 
 ## Keyboard
 
-Draft keymap ([ADR-017](DECISIONS.md#adr-017--keymap-scoped-one-key-shortcuts-under-omarchy-rules-2026-10-04)). One-key shortcuts work only while the list or reader has focus.
+The keymap ([ADR-017](DECISIONS.md#adr-017--keymap-scoped-one-key-shortcuts-under-omarchy-rules-2026-10-04)). One-key shortcuts work only while the list or reader has focus; `keys.toml` rebinds registry commands.
 
 | Action | Keys |
 | --- | --- |
@@ -220,18 +220,24 @@ Draft keymap ([ADR-017](DECISIONS.md#adr-017--keymap-scoped-one-key-shortcuts-un
 | Star | `s` |
 | Mark read / unread | Shift+I / Shift+U |
 | Select | `x`, Space |
+| Extend the selection (the list's own) | Shift+`j` / Shift+`k`, Shift+Down / Shift+Up |
+| Leave the select mode (the list's own) | Escape |
+| Mark folder as read | none (the palette, a folder's menu) |
+| A sidebar folder's menu (the sidebar's own) | Menu, Shift+F10 |
 | Search | `/`, Ctrl+F |
 | Go to Inbox / Starred / Sent / Drafts | `g` then `i` / `s` / `t` / `d` |
 | Send | Ctrl+Enter |
 | Undo | `z`, Ctrl+Z |
 | Command palette | F1, Ctrl+Shift+P |
-| Keyboard shortcuts | `?`, Ctrl+? |
+| Keyboard shortcuts | `?`, `h`, Ctrl+? |
+| Preferences / quit | Ctrl+, / Ctrl+Q |
+| Refresh / toggle sidebar | Ctrl+Alt+R, F5 / Ctrl+Shift+S, F9 |
 
 Every entry is audited for US and Norwegian layouts (no AltGr; `#`, `/`, `!` and `?` have unshifted alternatives), nothing uses SUPER, and every F-key has an alternative.
 
-As built in M1 ([ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keymap-as-built-in-m1-2026-10-04)): keys with Ctrl or Alt, and F-keys, of window and application commands work anywhere; every key of the message commands, and every one-key shortcut, works only while the list or the reader has the focus, so text fields keep their letters, Delete and Ctrl+Z. `g` waits 1.5 s for its second key. **Proposed, waiting for the user:** `h` for Keyboard Shortcuts (`?` and Ctrl+? need Shift), Ctrl+, Preferences, Ctrl+Q Quit, Ctrl+Alt+R and F5 Refresh, Ctrl+Shift+S and F9 Toggle Sidebar.
+As built in M1 ([ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keymap-as-built-in-m1-2026-10-04)): keys with Ctrl or Alt, and F-keys, of window and application commands work anywhere; every key of the message commands, and every one-key shortcut, works only while the list or the reader has the focus, so text fields keep their letters, Delete and Ctrl+Z. `g` waits 1.5 s for its second key. **Accepted at the M1 gate (2026-10-05):** `h` for Keyboard Shortcuts (`?` and Ctrl+? need Shift), Ctrl+, Preferences, Ctrl+Q Quit, Ctrl+Alt+R and F5 Refresh, Ctrl+Shift+S and F9 Toggle Sidebar.
 
-As built in M4 (ML-055, [report](m4/triage-app.md)): the message commands' keys act (archive, delete, junk, move to, star, read, unread, select, undo). No key was added to the registry; the list's own keys beside it, proposals for this table: **Shift with Next and Previous Message's keys** (Shift+`j`/`k`, as Shift+Down/Up) extends the selection; **Escape** leaves the select mode; **Menu** and **Shift+F10** open a sidebar folder's menu. Mark Folder as Read has no default key.
+As built in M4 (ML-055, [report](m4/triage-app.md)): the message commands' keys act (archive, delete, junk, move to, star, read, unread, select, undo). No key was added to the registry; the list's own keys beside it, accepted at the M4 gate (2026-10-06, [ADR-017](DECISIONS.md#adr-017-amendment--the-lists-own-keys-accepted-m4-gate-2026-10-06)): **Shift with Next and Previous Message's keys** (Shift+`j`/`k`, as Shift+Down/Up) extends the selection; **Escape** leaves the select mode; **Menu** and **Shift+F10** open a sidebar folder's menu. Mark Folder as Read has no default key. The keyboard pass was approved headless; a live pass on the US and Norwegian layouts is a follow-up.
 
 ## Accessibility
 

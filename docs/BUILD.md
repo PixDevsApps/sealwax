@@ -1,6 +1,6 @@
 # Build
 
-Synced: 2026-10-04
+Synced: 2026-10-06
 
 ## Toolchain and system libraries
 
@@ -100,6 +100,16 @@ The testbed end to end through the real engine and the setup assistant (not in C
 tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/testbed-setup.sealwax-test
 bash tools/ci.sh --testbed
 ```
+
+Triage end to end (M4): prepare the user `triage` (every folder emptied, eight synthetic messages in its INBOX), run the script, then print what the servers hold:
+
+```bash
+SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_mailbox.py fill dovecot stalwart
+tools/headless.sh 25 target/debug/sealwax --self-test tests/selftest/testbed-triage.sealwax-test
+SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_mailbox.py show dovecot stalwart
+```
+
+`tools/ci.sh --testbed` runs every engine testbed suite, M4's `write_testbed` (the IMAP writes and S1's lost replies) and `ops_testbed` (the op runner: crash replay, the undo window, the randomized triage suite) included.
 
 **Sign in with Microsoft** needs the client ID in `config.toml` or at build time ([OAUTH-SETUP.md](OAUTH-SETUP.md#where-the-id-goes)). Two runners check it against a real account, which needs the user's authorization each time (AGENTS.md): `spikes/s5-oauth` (S5) and `cargo run -p sealwax-engine --example oauth_live -- <address> [--resign-in]` (ML-032), which uses scratch folders and a test app-id in the keyring and removes everything at the end. The user signs in in the browser, so tell them before starting a run.
 

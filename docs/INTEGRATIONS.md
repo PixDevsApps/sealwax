@@ -1,6 +1,6 @@
 # Integrations
 
-Synced: 2026-10-05
+Synced: 2026-10-06
 
 How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this machine were read on 2026-10-04 (Omarchy 4.0.4, Hyprland 0.56.2); anything marked *to verify* is checked in the named spike before code depends on it.
 
@@ -114,7 +114,7 @@ Settings and policies checked on the providers' help pages on 2026-10-04 (S4). A
 
 ## Provider quirks
 
-What a mail client must know per preset provider (ML-031), from the providers' own help pages, read on 2026-10-05 between 07:50 and 08:05 UTC; nothing was checked with a login. Most pages were read through a fetch tool that returns an extract of the page, so titles and wording come from those extracts; AOL, Mail.ru and Tuta pages were downloaded and read raw. **Unverified** means the provider's documentation doesn't say. What Sealwax does with archive and delete is decided in M4, with the Sent copy in M6; the links are in the presets.
+What a mail client must know per preset provider (ML-031), from the providers' own help pages, read on 2026-10-05 between 07:50 and 08:05 UTC; nothing was checked with a login. Most pages were read through a fetch tool that returns an extract of the page, so titles and wording come from those extracts; AOL, Mail.ru and Tuta pages were downloaded and read raw. **Unverified** means the provider's documentation doesn't say. What Sealwax does with archive and delete was decided in M4 (`domain::triage`, [ADR-015](DECISIONS.md#adr-015-amendment--m4-gate-decisions-2026-10-06)): archive moves to the Archive folder, else to the `\All` folder (Gmail's All Mail, which takes the Inbox label away), and is unavailable where an account has neither (Zoho's archive isn't an IMAP folder); delete moves to the Trash, and in the Trash deletes for good (`\Deleted` and UID EXPUNGE with UIDPLUS; without it the message stays flagged and hidden), so a provider's own expunge setting, such as Gmail's, decides what happens on its side. The Sent copy is M6's. The links are in the presets.
 
 | Provider | App password (preset link) | IMAP switch | Archive | Delete | Sent copy | Sources |
 | --- | --- | --- | --- | --- | --- | --- |
