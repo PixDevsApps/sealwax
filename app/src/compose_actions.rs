@@ -13,19 +13,24 @@
 
 use crate::actions::ActionSet;
 use crate::application::{AppState, SealwaxApplication};
+use crate::composer::backend::Refusal;
 use crate::composer::{self, ComposeRequest};
 use crate::list::{MessageList, Selected};
+use crate::outbox;
 use crate::reader::Reader;
 use crate::triage::Target;
 use crate::window::Window;
+use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use sealwax_domain::actions::ActionId;
-use sealwax_domain::compose::ReplyKind;
-use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole, MessageId};
+use sealwax_domain::compose::{Draft, ReplyKind};
+use sealwax_domain::model::{AccountId, DraftId, Folder, FolderId, FolderRole, MessageId};
 use sealwax_infrastructure::store::ViewScope;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 /// The commands this module handles.
 pub const COMMANDS: [ActionId; 5] = [
@@ -51,8 +56,8 @@ pub fn install(state: &Rc<AppState>, window: &Window, actions: &ActionSet) {
     }
 }
 
-/// The reader's own requests open composer windows too, and its quick reply sends through
-/// [`quick_send`].
+/// The reader's own requests open composer windows too; its quick reply sends, and keeps its
+/// text as a draft, through the composer's backend (`composer::backend`).
 pub fn connect_reader(reader: &Reader, window: &Window) {
     let target = window.window().downgrade();
     reader.connect_compose(move |request| {
@@ -60,7 +65,30 @@ pub fn connect_reader(reader: &Reader, window: &Window) {
             open(&window, request);
         }
     });
-    reader.set_quick_send(quick_send);
+    let Some(app) = window
+        .window()
+        .application()
+        .and_downcast::<SealwaxApplication>()
+    else {
+        return;
+    };
+    let weak = app.downgrade();
+    reader.set_quick_send(move |message, text| {
+        let app = weak.upgrade();
+        Box::pin(async move {
+            match app {
+                Some(app) => send_quick(&app, message, text).await,
+                None => false,
+            }
+        })
+    });
+    let keeper = Rc::new(QuickDrafts {
+        app: app.downgrade(),
+        kept: RefCell::new(HashMap::new()),
+    });
+    let saver = keeper.clone();
+    reader.connect_quick_text(move |message, text| saver.changed(message, text));
+    reader.set_quick_finder(move |message| keeper.find(message));
 }
 
 /// Reply, Reply All and Forward apply to one selected message that isn't a draft; Edit Draft
@@ -143,22 +171,236 @@ pub fn compose_account(
 }
 
 thread_local! {
-    /// Every quick reply [`quick_send`] took in this process, oldest first.
+    /// Every quick reply Send was asked for in this process, oldest first.
     static QUICK_SENDS: RefCell<Vec<(MessageId, String)>> = const { RefCell::new(Vec::new()) };
 }
 
-/// The quick reply's Send. Phase A's stand-in keeps the request for the self-tests and takes
-/// it, so the box empties; phase B plans the reply by the compose rules, saves it as a draft
-/// and queues it with Undo send. Only the message's id is logged, never the text.
-pub fn quick_send(message: MessageId, text: &str) -> bool {
-    tracing::info!(id = message.0, "quick reply send requested");
-    QUICK_SENDS.with(|sends| sends.borrow_mut().push((message, text.to_owned())));
-    true
-}
-
-/// Every quick reply sent in this process, oldest first; the self-tests read it.
+/// Every quick reply Send was asked for in this process, oldest first; the self-tests read it.
 pub fn quick_sends() -> Vec<(MessageId, String)> {
     QUICK_SENDS.with(|sends| sends.borrow().clone())
+}
+
+/// The quick reply's Send (M6 phase B): the reply prepared by the compose rules
+/// (`ComposeRequest::QuickReply`), saved, and handed to the backend's send, which queues it with
+/// Undo send (`outbox::queued`). `false` keeps the text in the box: the window says why. Only the
+/// message's id is logged, never the text.
+async fn send_quick(app: &SealwaxApplication, message: MessageId, text: String) -> bool {
+    tracing::info!(id = message.0, "quick reply send requested");
+    QUICK_SENDS.with(|sends| sends.borrow_mut().push((message, text.clone())));
+    let backend = composer::backend(app);
+    let refuse = |why: &str| {
+        let toast = adw::Toast::builder()
+            .title(format!("The reply wasn't sent. {why}"))
+            .use_markup(false)
+            .timeout(outbox::FAILED_SHOWN.as_secs() as u32)
+            .build();
+        app.state().show_toast(&toast, false);
+        false
+    };
+    let request = ComposeRequest::QuickReply {
+        message,
+        text: text.clone(),
+    };
+    let prepared = match backend.prepare(request).await {
+        Ok(prepared) => prepared,
+        Err(why) => return refuse(&why),
+    };
+    if let Err(why) = backend.save(prepared.id, prepared.draft.clone()).await {
+        let _ = backend.discard(prepared.id).await;
+        return refuse(&why);
+    }
+    outbox::from_quick_reply(prepared.id, message, text);
+    match backend.send(prepared.id, prepared.draft).await {
+        Ok(()) => true,
+        Err(Refusal(why)) => {
+            outbox::forget_quick(prepared.id);
+            let _ = backend.discard(prepared.id).await;
+            refuse(&why)
+        }
+    }
+}
+
+/// How long the quick reply's text rests before it is saved as a draft, and the most it waits
+/// while the typing goes on (PRD C5: at most 5 s behind the typing).
+pub const QUICK_SAVE_IDLE: Duration = Duration::from_secs(2);
+pub const QUICK_SAVE_AT_MOST: Duration = Duration::from_secs(5);
+
+/// One message's quick reply as a draft.
+#[derive(Default)]
+struct Kept {
+    /// The draft as it was last saved; `None` until the first save.
+    draft: Option<(DraftId, Draft)>,
+    text: String,
+    saved: String,
+    timer: Option<glib::SourceId>,
+    first_unsaved: Option<Instant>,
+    busy: bool,
+}
+
+/// Keeps every quick reply's text as a draft through the composer's backend: prepared once as
+/// a reply to its message (`ComposeRequest::QuickReply` with no text yet), saved with the text
+/// as its body (the quote comes back when it is sent or opened in a composer, from the compose
+/// rules), closed so no composer window reopens it, and discarded when the box empties. After a
+/// restart the reader finds it again through the store's newest closed reply draft to the
+/// message ([`QuickDrafts::find`]).
+struct QuickDrafts {
+    app: glib::WeakRef<SealwaxApplication>,
+    kept: RefCell<HashMap<MessageId, Kept>>,
+}
+
+impl QuickDrafts {
+    fn changed(self: &Rc<Self>, message: MessageId, text: &str) {
+        let mut kept = self.kept.borrow_mut();
+        let entry = kept.entry(message).or_default();
+        entry.text = text.to_owned();
+        if let Some(timer) = entry.timer.take() {
+            timer.remove();
+        }
+        if entry.text == entry.saved && !entry.busy {
+            entry.first_unsaved = None;
+            return;
+        }
+        let now = Instant::now();
+        let first = *entry.first_unsaved.get_or_insert(now);
+        let delay =
+            QUICK_SAVE_IDLE.min((first + QUICK_SAVE_AT_MOST).saturating_duration_since(now));
+        let weak = Rc::downgrade(self);
+        entry.timer = Some(glib::timeout_add_local_once(delay, move || {
+            if let Some(keeper) = weak.upgrade() {
+                keeper.flush(message);
+            }
+        }));
+    }
+
+    fn flush(self: &Rc<Self>, message: MessageId) {
+        let (text, draft) = {
+            let mut kept = self.kept.borrow_mut();
+            let Some(entry) = kept.get_mut(&message) else {
+                return;
+            };
+            entry.timer = None;
+            if entry.busy {
+                return;
+            }
+            entry.busy = true;
+            (entry.text.clone(), entry.draft.clone())
+        };
+        let Some(app) = self.app.upgrade() else {
+            return;
+        };
+        let keeper = self.clone();
+        glib::spawn_future_local(async move {
+            let saved = keep(&app, message, &text, draft).await;
+            let again = {
+                let mut kept = keeper.kept.borrow_mut();
+                let Some(entry) = kept.get_mut(&message) else {
+                    return;
+                };
+                entry.busy = false;
+                if let Ok(draft) = saved {
+                    entry.draft = draft;
+                    entry.saved = text;
+                    entry.first_unsaved = None;
+                }
+                (entry.text != entry.saved).then(|| entry.text.clone())
+            };
+            if let Some(text) = again {
+                keeper.changed(message, &text);
+            }
+        });
+    }
+
+    /// What the quick reply held for `message` before this session: the text of its draft,
+    /// when the draft's body is the quick reply's plain text.
+    fn find(self: &Rc<Self>, message: MessageId) -> crate::reader::Local<Option<String>> {
+        let known = self.kept.borrow().contains_key(&message);
+        let reply = self.app.upgrade().filter(|_| !known).and_then(|app| {
+            app.state()
+                .mailbox()
+                .store()
+                .map(|store| store.reply_draft(message))
+        });
+        let keeper = self.clone();
+        Box::pin(async move {
+            let stored = reply?.recv().await.ok().flatten()?;
+            let text = typed_text(&stored.draft.html)?;
+            let mut kept = keeper.kept.borrow_mut();
+            let entry = kept.entry(message).or_default();
+            if entry.draft.is_none() && entry.text.is_empty() {
+                entry.draft = Some((stored.id, stored.draft));
+                entry.text = text.clone();
+                entry.saved = text.clone();
+            }
+            Some(text)
+        })
+    }
+}
+
+/// Saves `text` as the quick reply's draft for `message`; empty, discards it. The draft after
+/// it, or `Err` when the backend refused (the text stays in memory and is saved again on the
+/// next change).
+async fn keep(
+    app: &SealwaxApplication,
+    message: MessageId,
+    text: &str,
+    draft: Option<(DraftId, Draft)>,
+) -> Result<Option<(DraftId, Draft)>, ()> {
+    let backend = composer::backend(app);
+    if text.trim().is_empty() {
+        if let Some((id, _)) = draft {
+            backend.discard(id).await.map_err(|_| ())?;
+        }
+        return Ok(None);
+    }
+    let (id, mut body) = match draft {
+        Some(draft) => draft,
+        None => {
+            let request = ComposeRequest::QuickReply {
+                message,
+                text: String::new(),
+            };
+            let prepared = backend.prepare(request).await.map_err(|_| {
+                tracing::warn!(id = message.0, "the quick reply's draft couldn't be made");
+            })?;
+            (prepared.id, prepared.draft)
+        }
+    };
+    body.html = sealwax_domain::compose::text::to_html(text);
+    backend.save(id, body.clone()).await.map_err(|_| {
+        tracing::warn!(id = message.0, "the quick reply's draft couldn't be saved");
+    })?;
+    backend.close(id);
+    Ok(Some((id, body)))
+}
+
+/// The plain text of a body that is nothing but the editor's lines (`compose::text::to_html`'s
+/// output); `None` for anything else (formatting, a quote, a signature).
+pub fn typed_text(html: &str) -> Option<String> {
+    let mut lines = Vec::new();
+    let mut rest = html;
+    while !rest.is_empty() {
+        let inner = rest.strip_prefix("<div>")?;
+        let end = inner.find("</div>")?;
+        let line = &inner[..end];
+        rest = &inner[end + "</div>".len()..];
+        if line == "<br>" {
+            lines.push(String::new());
+            continue;
+        }
+        if line.contains('<') {
+            return None;
+        }
+        lines.push(
+            line.replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace('\u{a0}', " ")
+                .replace("&amp;", "&"),
+        );
+    }
+    let text = lines.join("\n");
+    (sealwax_domain::compose::text::to_html(&text) == html).then_some(text)
 }
 
 #[cfg(test)]
@@ -175,6 +417,26 @@ mod tests {
             total: 0,
             unread: 0,
         }
+    }
+
+    #[test]
+    fn a_quick_replys_draft_gives_its_text_back_and_nothing_else() {
+        use sealwax_domain::compose::text::to_html;
+        for text in [
+            "See you Friday!",
+            "Two lines\n\nand a gap",
+            "  indented <b> & \"quoted\" 'text'",
+            "æøå 😀",
+        ] {
+            assert_eq!(typed_text(&to_html(text)).as_deref(), Some(text), "{text}");
+        }
+        assert_eq!(typed_text("<div><b>bold</b></div>"), None);
+        assert_eq!(
+            typed_text("<div>Hi</div><div><br></div><blockquote type=\"cite\">x</blockquote>"),
+            None
+        );
+        assert_eq!(typed_text("<p>Hi</p>"), None);
+        assert_eq!(typed_text("<div>a</div>trailing"), None);
     }
 
     #[test]

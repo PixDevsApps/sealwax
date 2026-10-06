@@ -3,7 +3,8 @@
 //! shows the first and counts the rest.
 //!
 //! The order, a proposal for the M3 gate: no keyring, then each account whose certificate
-//! changed, each that needs a sign-in, each whose mailbox is full (in the sidebar's order), then
+//! changed, each that needs a sign-in, each send that may have gone out (M6, oldest first, a
+//! proposal for the M6 gate), each account whose mailbox is full (in the sidebar's order), then
 //! offline. Offline is one entry: when the desktop has no network, or when every account's
 //! server is out of reach; a single unreachable account shows only in the sidebar.
 
@@ -32,12 +33,14 @@ pub struct Waiting {
 
 /// Everything waiting, most important first. `keyring_missing`: the engine fell back to memory
 /// and the banner wasn't dismissed; `network`: the desktop reports a network; `pending`: the
-/// changes waiting for a server, which the offline entry counts.
+/// changes and sends waiting for a server, which the offline entry counts; `uncertain`: the
+/// account name of each send that may have gone out, oldest first.
 pub fn queue(
     accounts: &[Account<'_>],
     keyring_missing: bool,
     network: bool,
     pending: u32,
+    uncertain: &[String],
 ) -> Vec<Waiting> {
     let mut waiting = Vec::new();
     if keyring_missing {
@@ -52,6 +55,12 @@ pub fn queue(
         AccountStatus::QuotaFull,
     ];
     for kind in kinds {
+        if kind == AccountStatus::QuotaFull {
+            waiting.extend(uncertain.iter().map(|name| Waiting {
+                attention: Attention::UncertainSend { name: name.clone() },
+                account: None,
+            }));
+        }
         for account in accounts.iter().filter(|account| account.status == kind) {
             let name = account.name.to_owned();
             let attention = match kind {
@@ -168,6 +177,7 @@ mod tests {
                     Attention::SignIn { browser: true, .. } => "sign-in",
                     Attention::SignIn { browser: false, .. } => "password",
                     Attention::QuotaFull { .. } => "quota",
+                    Attention::UncertainSend { .. } => "uncertain",
                     Attention::Offline { network: true, .. } => "offline",
                     Attention::Offline { .. } => "unreachable",
                 };
@@ -206,7 +216,7 @@ mod tests {
             })
             .collect();
         assert_eq!(
-            shown(&queue(&accounts, true, false, 0)),
+            shown(&queue(&accounts, true, false, 0, &[])),
             [
                 "keyring",
                 "certificate:per",
@@ -216,8 +226,22 @@ mod tests {
                 "offline"
             ]
         );
+        // Sends that may have gone out: after the sign-ins, before the full mailboxes.
+        let uncertain = ["anne".to_owned(), "ola".to_owned()];
         assert_eq!(
-            shown(&queue(&accounts, false, true, 0)),
+            shown(&queue(&accounts, false, false, 2, &uncertain)),
+            [
+                "certificate:per",
+                "sign-in:kari",
+                "password:ola",
+                "uncertain",
+                "uncertain",
+                "quota:anne",
+                "offline"
+            ]
+        );
+        assert_eq!(
+            shown(&queue(&accounts, false, true, 0, &[])),
             [
                 "certificate:per",
                 "sign-in:kari",
@@ -227,7 +251,7 @@ mod tests {
             "one unreachable account shows only in the sidebar"
         );
         assert_eq!(
-            queue(&accounts, false, true, 0)[0].attention,
+            queue(&accounts, false, true, 0, &[])[0].attention,
             Attention::CertificateChanged {
                 name: "per".to_owned(),
                 host: "imap.per.example.test".to_owned(),
@@ -253,18 +277,21 @@ mod tests {
                 .collect()
         };
         let offline = accounts([AccountStatus::Offline, AccountStatus::Offline]);
-        assert_eq!(shown(&queue(&offline, false, true, 0)), ["unreachable"]);
         assert_eq!(
-            queue(&offline, false, true, 0)[0].attention,
+            shown(&queue(&offline, false, true, 0, &[])),
+            ["unreachable"]
+        );
+        assert_eq!(
+            queue(&offline, false, true, 0, &[])[0].attention,
             Attention::Offline {
                 network: false,
                 accounts: 2,
                 waiting: 0,
             }
         );
-        assert_eq!(shown(&queue(&offline, false, false, 0)), ["offline"]);
+        assert_eq!(shown(&queue(&offline, false, false, 0, &[])), ["offline"]);
         assert_eq!(
-            queue(&offline, false, false, 3)[0].attention,
+            queue(&offline, false, false, 3, &[])[0].attention,
             Attention::Offline {
                 network: true,
                 accounts: 2,
@@ -272,14 +299,14 @@ mod tests {
             }
         );
         let synced = accounts([AccountStatus::Synced, AccountStatus::Syncing]);
-        assert!(queue(&synced, false, true, 0).is_empty());
-        assert_eq!(shown(&queue(&synced, false, false, 0)), ["offline"]);
-        assert_eq!(shown(&queue(&[], false, false, 0)), ["offline"]);
+        assert!(queue(&synced, false, true, 0, &[]).is_empty());
+        assert_eq!(shown(&queue(&synced, false, false, 0, &[])), ["offline"]);
+        assert_eq!(shown(&queue(&[], false, false, 0, &[])), ["offline"]);
         assert!(
-            queue(&[], false, true, 0).is_empty(),
+            queue(&[], false, true, 0, &[]).is_empty(),
             "no account, no server"
         );
-        assert_eq!(shown(&queue(&[], true, true, 0)), ["keyring"]);
+        assert_eq!(shown(&queue(&[], true, true, 0, &[])), ["keyring"]);
     }
 
     #[test]

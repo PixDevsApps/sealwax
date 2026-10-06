@@ -19,6 +19,7 @@ use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
 use crate::move_to;
 use crate::oauth;
+use crate::outbox;
 use crate::palette;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{self, MessageSource, Opened, Position, Reader};
@@ -402,11 +403,22 @@ impl AppState {
                 })
             })
             .collect();
+        let uncertain: Vec<String> = outbox::uncertain()
+            .into_iter()
+            .map(|(_, account)| {
+                known
+                    .iter()
+                    .find(|known| known.id == account)
+                    .map(|known| known.name.clone())
+                    .unwrap_or_default()
+            })
+            .collect();
         status::queue(
             &accounts,
             self.keyring_missing.get() && !self.keyring_dismissed.get(),
             self.network.get(),
-            self.pending_ops.get(),
+            self.pending_ops.get() + outbox::waiting_sends(),
+            &uncertain,
         )
     }
 
@@ -442,7 +454,7 @@ impl AppState {
     }
 
     /// One banner shows the most important state and counts the others.
-    fn update_banner(&self) {
+    pub(crate) fn update_banner(&self) {
         let Some(window) = self.window() else {
             return;
         };
@@ -485,6 +497,7 @@ impl AppState {
                 });
             }
             (BannerAction::Retry, _) => self.retry(),
+            (BannerAction::Decide, _) => outbox::decide(self),
             (BannerAction::Dismiss, _) => {
                 self.keyring_dismissed.set(true);
                 self.update_banner();
@@ -683,6 +696,7 @@ impl AppState {
             }
         });
         self.engine_events.replace(Some(subscription));
+        outbox::install(self);
         if let Some(options) = self.config.engine.clone() {
             let ready = self.mailbox.wait_ready();
             let weak = Rc::downgrade(self);
@@ -785,25 +799,42 @@ impl AppState {
             );
             return glib::ExitCode::from(2);
         }
-        let window = self.window_or_new(app);
-        for uri in &parsed.uris {
-            compose(app, uri);
-        }
-        self.present(&window);
+        let uris: Vec<&str> = parsed.uris.iter().map(String::as_str).collect();
+        self.compose_links(app, &uris);
         glib::ExitCode::SUCCESS
     }
 
-    fn open(self: &Rc<Self>, app: &SealwaxApplication, files: &[gio::File]) {
-        let window = self.window_or_new(app);
-        for file in files {
-            let uri = file.uri();
-            if mailto::is_mailto(&uri) {
-                compose(app, &uri);
-            } else {
-                tracing::warn!("ignored an open request that is not a mailto: link");
-            }
+    /// `mailto:` links from the command line or D-Bus `Open`. With no main window shown yet
+    /// (a link from a browser, or background mode after the window closed) they open composer
+    /// windows alone (M6); otherwise, or when none of them opened, the main window shows too.
+    fn compose_links(self: &Rc<Self>, app: &SealwaxApplication, uris: &[&str]) {
+        let alone = self.window().is_none() && !uris.is_empty();
+        let before = crate::composer::composers().len();
+        let window = (!alone).then(|| self.window_or_new(app));
+        for uri in uris {
+            compose(app, uri);
         }
+        if alone && crate::composer::composers().len() > before {
+            return;
+        }
+        let window = window.unwrap_or_else(|| self.window_or_new(app));
         self.present(&window);
+    }
+
+    fn open(self: &Rc<Self>, app: &SealwaxApplication, files: &[gio::File]) {
+        let uris: Vec<String> = files
+            .iter()
+            .map(|file| file.uri().to_string())
+            .filter(|uri| {
+                let link = mailto::is_mailto(uri);
+                if !link {
+                    tracing::warn!("ignored an open request that is not a mailto: link");
+                }
+                link
+            })
+            .collect();
+        let uris: Vec<&str> = uris.iter().map(String::as_str).collect();
+        self.compose_links(app, &uris);
     }
 
     /// The theme, the settings files and the application's commands. The theme read blocks
@@ -1085,6 +1116,9 @@ impl AppState {
         let weak = Rc::downgrade(self);
         controller.connect_changed(move || {
             if let Some(state) = weak.upgrade() {
+                if state.triage().is_some_and(|triage| triage.can_undo()) {
+                    outbox::forget_last();
+                }
                 state.refresh_commands();
             }
         });
@@ -1116,6 +1150,7 @@ impl AppState {
         let weak = Rc::downgrade(self);
         actions.connect(ActionId::Undo, move || {
             if let Some(state) = weak.upgrade()
+                && !outbox::undo_last(&state)
                 && let Some(triage) = state.triage()
             {
                 triage.undo(None);
@@ -1410,7 +1445,7 @@ impl AppState {
 
     /// Enables the mail commands where they apply to the selection, with their titles and
     /// reasons in the reader's toolbar and on the batch page (ML-052).
-    fn refresh_commands(&self) {
+    pub(crate) fn refresh_commands(&self) {
         let (Some(list), Some(window)) = (self.list(), self.window()) else {
             return;
         };
@@ -1451,7 +1486,7 @@ impl AppState {
             ActionId::MarkFolderRead,
             list.query().is_empty() && self.unread_in(list.scope()) > 0,
         );
-        let undo = self.triage().is_some_and(|triage| triage.can_undo());
+        let undo = self.triage().is_some_and(|triage| triage.can_undo()) || outbox::can_undo();
         actions.set_applies(ActionId::Undo, undo);
         compose_actions::refresh(actions, &list, &targets, &folders);
     }
@@ -1459,12 +1494,6 @@ impl AppState {
     /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place
     /// (ADR-015: only the last action is undoable from the toast).
     fn show_notice(self: &Rc<Self>, notice: &Notice, replaces: bool) {
-        let Some(window) = self.window() else {
-            return;
-        };
-        if replaces && let Some(previous) = self.toast.take() {
-            previous.dismiss();
-        }
         let toast = adw::Toast::builder()
             .title(notice.text.as_str())
             .use_markup(false)
@@ -1482,9 +1511,21 @@ impl AppState {
                 }
             });
         }
+        self.show_toast(&toast, replaces);
+    }
+
+    /// Shows `toast` in the main window; with `replaces`, it takes the last action's toast's
+    /// place (M6: the outbox's Undo-send toast is the last action's too).
+    pub fn show_toast(&self, toast: &adw::Toast, replaces: bool) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        if replaces && let Some(previous) = self.toast.take() {
+            previous.dismiss();
+        }
         window.add_toast(toast.clone());
         if replaces {
-            self.toast.replace(Some(toast));
+            self.toast.replace(Some(toast.clone()));
         }
     }
 

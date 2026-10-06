@@ -425,6 +425,12 @@ impl Store {
         self.read(|reply| ReadJob::Compose(ComposeRead::DraftForMessage { message, reply }))
     }
 
+    /// The newest closed, editable draft that replies to `message` with Reply (M6 phase B: the
+    /// quick reply's text kept as a draft, found again after a restart).
+    pub fn reply_draft(&self, message: MessageId) -> Reply<Option<StoredDraft>> {
+        self.read(|reply| ReadJob::Compose(ComposeRead::ReplyDraft { message, reply }))
+    }
+
     /// Queues a draft to send from `not_before` (the end of the undo window). Refused for local
     /// accounts, which have no server.
     pub fn queue_send(&self, id: DraftId, not_before: i64) -> Reply<SendQueued> {
