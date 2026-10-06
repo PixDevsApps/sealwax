@@ -61,6 +61,18 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M3 6-hour soak (ML-049) — 2026-10-05 to 2026-10-06
+
+`SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem SEALWAX_SOAK_MINUTES=360 cargo test -p sealwax-engine --release --test soak -- --ignored --nocapture` on `571eb0b`, development machine, 2026-10-05 19:25:08 CEST to 01:26, under `systemd-inhibit --what=sleep`. Log: `.local/soak-m3-6h-2026-10-05.log`.
+
+| Check | Result |
+| --- | --- |
+| Duration, verdict | 361.2 min, **0 problems**; `test soak ... ok` (21,670 s) |
+| Load | Four accounts through the fault proxy (Dovecot, IMAP4rev1 Dovecot, Stalwart, Stalwart's 10,000-message `perf` read only). The other client: 7,082 appends, 10,578 flag changes, 2,164 flag storms, 4,554 moves, 4,585 expunges, 2,527 copies, 316 UIDVALIDITY resets. Faults: 25 cuts, 19 black holes with `Reconnect`, 17 unannounced, 17 suspends. The user's side: 1,420 folders opened, 1,436 older-mail requests, 1,399 body requests |
+| Hourly checks (61, 120, 181, 242, 301 min) and the end | Every account equal to its server; the store's check 0 problems. Time to converge once paused: account 1 (Dovecot, IDLE) 18.3–88.8 s, the others 0–29.7 s (limit 600 s) |
+| Resources | File descriptors 47–62; resident memory 44 → 47 MiB |
+| Not shown | async-imap's tag wrap at 10,000 commands (connections cut every few minutes); a real suspend or network; real providers |
+
 ### M3 integrated: sync core, the per-account actor, account status, threading — 2026-10-05
 
 On `main` after every M3 merge (`9629271`), development machine (Ryzen 9 5900X, Omarchy, Linux 7.2.5-3-omarchy, rustc 1.98.1), the Docker testbed up since the lead seeded it. Reports: [sync](m3/sync.md), [actor](m3/actor.md), [status](m3/status.md), [threading](m3/threading.md), [bodies](m3/bodies.md).
