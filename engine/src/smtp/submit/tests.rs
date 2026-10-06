@@ -42,6 +42,8 @@ struct Script {
     hang: bool,
     /// The connection is closed as DATA arrives, unanswered.
     cut_at_data: bool,
+    /// The connection is closed as RSET arrives, unanswered.
+    cut_at_rset: bool,
 }
 
 impl Default for Script {
@@ -55,6 +57,7 @@ impl Default for Script {
             end: Some("250 2.0.0 queued as X1"),
             hang: false,
             cut_at_data: false,
+            cut_at_rset: false,
         }
     }
 }
@@ -143,6 +146,7 @@ async fn serve(mut peer: Peer, script: Script, seen: Arc<Mutex<Seen>>) {
                     None => return,
                 }
             }
+            "RSET" if script.cut_at_rset => return,
             "RSET" => "250 2.0.0 reset\r\n".into(),
             "QUIT" => {
                 peer.send("221 bye\r\n").await;
@@ -286,6 +290,49 @@ async fn a_refused_recipient_refuses_the_whole_send() {
     submitter.quit().await;
     let verbs = server.seen().verbs();
     assert!(verbs.contains(&"RSET".to_owned()) && !verbs.contains(&"DATA".to_owned()));
+}
+
+#[tokio::test]
+async fn a_refusal_keeps_its_class_when_the_reset_fails() {
+    for (script, expected) in [
+        (
+            Script {
+                rcpt: vec!["550 5.1.1 no such user"],
+                cut_at_rset: true,
+                ..Script::default()
+            },
+            SubmitError::RecipientsRefused {
+                recipients: vec![0],
+            },
+        ),
+        (
+            Script {
+                mail: "553 5.7.1 sender not allowed",
+                cut_at_rset: true,
+                ..Script::default()
+            },
+            SubmitError::Refused { code: 553 },
+        ),
+        (
+            Script {
+                data: "552 5.3.4 too big",
+                cut_at_rset: true,
+                ..Script::default()
+            },
+            SubmitError::TooLarge {
+                limit: Some(1_000_000),
+            },
+        ),
+    ] {
+        let server = Server::start(vec![script]).await;
+        let mut submitter = server.connect().await.unwrap();
+        let error = send(&mut submitter, &to(&["b@x.test"]), MESSAGE)
+            .await
+            .unwrap_err();
+        assert_eq!(error, expected);
+        assert!(submitter.conn.is_none(), "the failed reset dropped it");
+        submitter.quit().await;
+    }
 }
 
 #[tokio::test]

@@ -477,17 +477,14 @@ impl Submitter {
         self.open = true;
         match ask(conn, Line(&mail), timeout).await {
             Ok(_) => {}
-            Err(Answer::Code(552)) => {
-                self.reset().await?;
-                return Err(SubmitError::TooLarge { limit });
-            }
-            Err(Answer::Code(code)) if code < 500 => {
-                self.reset().await?;
-                return Err(SubmitError::Transient);
-            }
             Err(Answer::Code(code)) => {
-                self.reset().await?;
-                return Err(SubmitError::Refused { code });
+                // A failed RSET drops the connection; the reply's class stands.
+                let _ = self.reset().await;
+                return Err(match code {
+                    552 => SubmitError::TooLarge { limit },
+                    ..500 => SubmitError::Transient,
+                    _ => SubmitError::Refused { code },
+                });
             }
             Err(Answer::Lost) => return Err(self.lost()),
         }
@@ -504,14 +501,15 @@ impl Submitter {
                 Err(Answer::Lost) => return Err(self.lost()),
             }
         }
+        if !refused.is_empty() || deferred {
+            let _ = self.reset().await;
+        }
         if !refused.is_empty() {
-            self.reset().await?;
             return Err(SubmitError::RecipientsRefused {
                 recipients: refused,
             });
         }
         if deferred {
-            self.reset().await?;
             return Err(SubmitError::Transient);
         }
         Ok(())
@@ -569,17 +567,13 @@ impl Prepared<'_, '_> {
             Ok(response) if response.has_code(354) => {}
             // Nothing of the message went out, so nothing can have been delivered.
             Ok(_) | Err(Answer::Lost) => return Err(submitter.lost()),
-            Err(Answer::Code(552)) => {
-                submitter.reset().await?;
-                return Err(SubmitError::TooLarge { limit });
-            }
-            Err(Answer::Code(code)) if code < 500 => {
-                submitter.reset().await?;
-                return Err(SubmitError::Transient);
-            }
             Err(Answer::Code(code)) => {
-                submitter.reset().await?;
-                return Err(SubmitError::Refused { code });
+                let _ = submitter.reset().await;
+                return Err(match code {
+                    552 => SubmitError::TooLarge { limit },
+                    ..500 => SubmitError::Transient,
+                    _ => SubmitError::Refused { code },
+                });
             }
         }
         // lettre ends the data with CRLF . CRLF; the message's own final CRLF is that first
