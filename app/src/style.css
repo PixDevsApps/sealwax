@@ -1225,7 +1225,12 @@ button.sw-batch-action:active {
   background: var(--sw-pressed-bg-color);
 }
 
-/* A sidebar folder's menu (Mark Folder as Read). */
+/* A sidebar folder's menu (Mark Folder as Read), in the chrome font like the window. */
+popover.sw-folder-menu {
+  font-family: var(--sw-font-chrome);
+  font-size: var(--sw-text-body);
+}
+
 popover.sw-folder-menu > contents {
   padding: var(--sw-space-sm);
 }

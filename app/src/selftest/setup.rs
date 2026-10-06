@@ -204,8 +204,10 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             Ok(())
         }
         "setup-dismiss-toasts" => {
-            let toast =
-                glib::Type::from_name("AdwToastWidget").ok_or("libadwaita has no toast widget")?;
+            // libadwaita registers the toast's type with the first toast: none yet, none shown.
+            let Some(toast) = glib::Type::from_name("AdwToastWidget") else {
+                return Ok(());
+            };
             for _ in 0..10 {
                 let window = harness.window()?;
                 let mut close = None;

@@ -98,7 +98,7 @@ impl MoveTo {
             count => format!("Move {count} messages to…"),
         };
         let entry = gtk::SearchEntry::builder()
-            .placeholder_text("Type a folder")
+            .placeholder_text(title.as_str())
             .search_delay(0)
             .hexpand(true)
             .css_classes(["sw-palette-search", "sw-move-to-search"])
