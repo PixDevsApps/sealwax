@@ -503,7 +503,12 @@ async fn run(
     previews: bool,
 ) -> Result<bool, String> {
     let reports = support::shown_reports(reader);
-    support::resize(window.window(), 1600, 1000).await?;
+    if std::env::var_os("BROADWAY_DISPLAY").is_some() {
+        support::resize(window.window(), 1600, 1000).await?;
+    } else {
+        let (width, height) = support::settled_size(window.window(), 1600, 1000).await;
+        println!("WINDOW {width}x{height} (the compositor's)");
+    }
     let mut rows: Vec<Row> = Vec::new();
     let mut scrolls: Vec<(String, &'static str, Vec<f64>)> = Vec::new();
     for (mode, name) in THEMES {

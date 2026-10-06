@@ -200,6 +200,28 @@ pub async fn resize(window: &impl IsA<gtk::Window>, width: i32, height: i32) -> 
     frames(window, 2).await
 }
 
+/// The window's size on the live session, where the compositor decides it (a tiling Hyprland
+/// tiles the window): `width`×`height` is asked for, then the size is taken once it has held
+/// for half a second (5 s at most). Headless runs use [`resize`], which insists on the size.
+pub async fn settled_size(window: &impl IsA<gtk::Window>, width: i32, height: i32) -> (i32, i32) {
+    let window = window.as_ref();
+    window.set_default_size(width, height);
+    let started = Instant::now();
+    let mut held_since = Instant::now();
+    let mut size = (window.width(), window.height());
+    while started.elapsed() < Duration::from_secs(5)
+        && held_since.elapsed() < Duration::from_millis(500)
+    {
+        sleep(50).await;
+        let now = (window.width(), window.height());
+        if now != size {
+            size = now;
+            held_since = Instant::now();
+        }
+    }
+    size
+}
+
 /// [`pixel`], retried over a few frames while the widget hasn't drawn yet.
 pub async fn painted_pixel(widget: &impl IsA<gtk::Widget>, x: i32, y: i32) -> Result<Rgb, String> {
     let mut last = Err("never tried".to_owned());
