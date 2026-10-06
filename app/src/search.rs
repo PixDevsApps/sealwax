@@ -148,6 +148,7 @@ mod tests {
         let rebuilt = |messages, millis| IndexRebuilt {
             messages,
             elapsed: Duration::from_millis(millis),
+            ..IndexRebuilt::default()
         };
         assert_eq!(
             result_text(&rebuilt(100_000, 41_260)),
