@@ -29,11 +29,12 @@ assert-color reader-pane background window
 assert-font folder-list chrome
 assert-font list-title chrome
 
-# Compose is insensitive until the composer exists (M6) and still reads: the selected chip's
-# pair instead of libadwaita's half-transparent accent.
-assert-sensitive compose false
-assert-color compose background chip
-assert-color compose text chip-text
+# Compose opens a composer (M6): the accent fill with its text. Text on the accent is held to
+# 3:1 on every stock theme (docs/m1/theme.md): 4.34:1 on catppuccin-latte and 4.24:1 on the
+# built-in light palette, so the light checks below ask 3:1, matte-black 4.5:1.
+assert-sensitive compose true
+assert-color compose background accent
+assert-color compose text on-accent
 assert-contrast compose 4.5
 assert-height compose 34
 assert-radius compose 0
@@ -88,8 +89,8 @@ assert-layout wide
 assert-folder personal/inbox
 assert-color sidebar background sidebar
 assert-color reader-pane background window
-assert-color compose background chip
-assert-contrast compose 4.5
+assert-color compose background accent
+assert-contrast compose 3
 assert-radius compose 8
 assert-radius folder:personal/inbox 6
 assert-color count:personal/inbox text unread
@@ -101,8 +102,8 @@ screenshot $DIR/../../.local/selftest/theme-1440-catppuccin-latte.png
 resize 800 900
 assert-layout narrow
 assert-color list-pane background sidebar
-assert-color list-compose background chip
-assert-contrast list-compose 4.5
+assert-color list-compose background accent
+assert-contrast list-compose 3
 assert-tooltip list-compose "New message (c, Ctrl+N)"
 
 # Back to the built-in palette when no Omarchy theme is installed.
@@ -110,4 +111,4 @@ theme none
 resize 1440 900
 assert-color sidebar background sidebar
 assert-color reader-pane background window
-assert-contrast compose 4.5
+assert-contrast compose 3

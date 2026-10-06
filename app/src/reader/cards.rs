@@ -16,7 +16,7 @@ use super::{
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use sealwax_domain::model::{MessageDetail, MessageId};
+use sealwax_domain::model::{FolderRole, MessageDetail, MessageId};
 use sealwax_domain::theme::BodyStyle;
 use sealwax_engine::api::BodyError;
 use std::rc::Rc;
@@ -82,6 +82,10 @@ impl Inner {
                     .collect()
             })
             .unwrap_or_default();
+        if !mine.is_empty() {
+            self.mine
+                .replace(mine.iter().map(|address| address.to_lowercase()).collect());
+        }
         let answer = self.answers.borrow_mut().remove(&id);
         let download = match &raw {
             None => self.download_state(answer),
@@ -124,6 +128,13 @@ impl Inner {
         };
         let notice = self.remote.notice(id, &sender, remote_images);
         let widgets = page::card(&reader, &header, &prepared.attachments, notice);
+        let draft = self
+            .with_page(key, |page| {
+                page.item(id)
+                    .is_some_and(|item| item.message.role == FolderRole::Drafts)
+            })
+            .unwrap_or(false);
+        let replies = self.reply_buttons(&widgets.header, id, draft);
         let weak = Rc::downgrade(&self);
         widgets.header.connect_clicked(move |_| {
             if let Some(inner) = weak.upgrade()
@@ -147,6 +158,7 @@ impl Inner {
             attachments: prepared.attachments.len(),
             sender,
             remote_images,
+            replies,
         };
         let collapse_quotes = self
             .with_page(key, |page| page.has_earlier(id))

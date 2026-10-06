@@ -15,6 +15,7 @@ mod perf;
 mod probe;
 mod processes;
 mod reader;
+mod reply;
 mod sample;
 mod screenshot;
 mod script;
@@ -105,6 +106,10 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
             return glib::ExitCode::from(2);
         }
     };
+    if let Err(error) = reply::before_start(&steps, &root.path) {
+        eprintln!("sealwax: {}: {error}", script_path.display());
+        return glib::ExitCode::from(2);
+    }
     let tiling = match steps.first() {
         Some(step) if step.command == "desktop" => match step.args[0].as_str() {
             "tiling" => true,
@@ -403,6 +408,7 @@ impl Harness {
                 conversation::step(self, command, args).await
             }
             command if reader::handles(command) => reader::step(self, command, args).await,
+            command if reply::handles(command) => reply::step(self, command, args).await,
             command if bodies::handles(command) => bodies::step(self, command, args).await,
             command if setup::handles(command) => setup::step(self, command, args).await,
             command if triage::handles(command) => triage::step(self, command, args).await,
@@ -714,6 +720,7 @@ impl Harness {
             assertion if setup::checks(assertion) => setup::check(self, assertion, args),
             assertion if triage::handles(assertion) => triage::step(self, assertion, args).await,
             assertion if files::handles(assertion) => files::step(self, assertion, args).await,
+            assertion if reply::handles(assertion) => reply::step(self, assertion, args).await,
             other => Err(format!("unknown command {other}")),
         }
     }

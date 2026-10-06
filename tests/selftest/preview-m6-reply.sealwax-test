@@ -1,0 +1,58 @@
+# Previews for the M6 gate, replying from the reader (ML-068, ML-069, ML-078): a conversation
+# with each card's Reply, Reply all and Forward and the quick reply under it, the quick reply
+# with a reply typed, and the Make Sealwax the Default Mail App… question, in a dark and a light
+# stock theme (matte-black with square corners, catppuccin-latte rounded). The default-app
+# question runs in a sandboxed home with a self-test desktop entry. Messages aren't marked read,
+# so the unread marks stay. Every name, address and message is fictional.
+# Not run by CI: it writes into tools/progress/public/.
+# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/preview-m6-reply.sealwax-test
+
+desktop tiling
+reply-sandbox
+resize 1440 900
+theme matte-black
+corners 0
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+conversation-add trip
+reply-install-entry
+focus list
+
+# The conversation: the cards' buttons, and the quick reply under the latest message.
+conversation-show trip-6
+wait-until assert-quick-reply shown true
+conversation-scroll bottom
+screenshot $DIR/../../tools/progress/public/m6-reply-conversation-matte-black-square-2026-10-06.png
+
+# A reply typed: Send takes the accent.
+action win.quick-reply
+type "Perfect, see you Friday! I'll bring the board games."
+conversation-scroll bottom
+screenshot $DIR/../../tools/progress/public/m6-reply-typed-matte-black-square-2026-10-06.png
+
+# The default-mail-app question.
+focus list
+action app.default-mail-app
+wait-until assert-shown default-mail-app true
+screenshot $DIR/../../tools/progress/public/m6-reply-default-app-matte-black-square-2026-10-06.png
+setup-respond default-mail-app cancel
+
+# The same in a light theme with rounded corners.
+theme catppuccin-latte
+corners 8
+conversation-show trip-2
+conversation-show trip-6
+conversation-scroll bottom
+assert-quick-reply text "Perfect, see you Friday! I'll bring the board games."
+screenshot $DIR/../../tools/progress/public/m6-reply-typed-catppuccin-latte-rounded-2026-10-06.png
+action win.quick-reply
+key <Control>a
+key BackSpace
+focus list
+conversation-scroll bottom
+screenshot $DIR/../../tools/progress/public/m6-reply-conversation-catppuccin-latte-rounded-2026-10-06.png
+action app.default-mail-app
+wait-until assert-shown default-mail-app true
+screenshot $DIR/../../tools/progress/public/m6-reply-default-app-catppuccin-latte-rounded-2026-10-06.png
+setup-respond default-mail-app cancel
+assert-conversation criticals 0

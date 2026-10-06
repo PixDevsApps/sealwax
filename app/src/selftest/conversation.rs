@@ -92,10 +92,21 @@ fn reader(harness: &Harness) -> Result<Reader, String> {
         .ok_or_else(|| "there is no reader".to_owned())
 }
 
-fn id(name: &str) -> Result<MessageId, String> {
+pub(super) fn id(name: &str) -> Result<MessageId, String> {
     NAMES
         .with(|names| names.borrow().get(name).copied())
         .ok_or_else(|| format!("no message {name}; file it with conversation-add"))
+}
+
+/// The sample name of message `id`, if a sample filed it.
+pub(super) fn name(id: MessageId) -> Option<String> {
+    NAMES.with(|names| {
+        names
+            .borrow()
+            .iter()
+            .find(|(_, candidate)| **candidate == id)
+            .map(|(name, _)| name.clone())
+    })
 }
 
 fn name_of(id: MessageId) -> String {

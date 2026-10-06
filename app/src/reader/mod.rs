@@ -29,6 +29,7 @@ mod plain;
 mod prepare;
 mod protection;
 mod remote;
+mod reply;
 pub mod samples;
 mod show;
 mod source;
@@ -48,6 +49,7 @@ pub use heuristic::{Evidence, Scan, scan as scan_html};
 pub use links::LinkState;
 pub use plain::{links_in, shown_text};
 pub use protection::{ENCRYPTED, SIGNED, Unreadable};
+pub use reply::{PLACEHOLDER, QuickReport, QuickState, expand_hint, reply_label, reply_target};
 pub use source::{MessageSource, Reads};
 pub use toolbar::{Position, tooltip};
 pub use view::{Hover, Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
@@ -256,6 +258,15 @@ struct Inner {
     progress: (async_channel::Sender<()>, async_channel::Receiver<()>),
     /// Attachments, Print, Show Original and Save as .eml (ML-061, ML-063).
     files: files::Files,
+    /// The Composer scope's keys, on each conversation's quick reply (M6, ML-068).
+    composer_keys: ScopedShortcuts,
+    /// The keymap in use, for the cards' Reply buttons and the quick reply.
+    keymap: RefCell<Keymap>,
+    /// The user's own addresses, as the last card read them: the quick reply answers the
+    /// latest message that isn't theirs.
+    mine: RefCell<Vec<String>>,
+    /// The quick replies' texts, and where compose requests and Send go (M6).
+    quick: reply::Quick,
 }
 
 impl Reader {
@@ -308,6 +319,10 @@ impl Reader {
             refresh_queued: Cell::new(false),
             progress: async_channel::unbounded(),
             files: files::Files::new(cache),
+            composer_keys: actions::ScopedShortcuts::new(Scope::Composer, keymap),
+            keymap: RefCell::new(keymap.clone()),
+            mine: RefCell::new(Vec::new()),
+            quick: reply::Quick::default(),
         });
         remote::load(&inner);
         let weak = Rc::downgrade(&inner);
@@ -341,6 +356,7 @@ impl Reader {
     pub fn update_keys(&self, keymap: &Keymap) {
         self.inner.keys.update(keymap);
         self.inner.toolbar.update_keys(keymap);
+        self.inner.update_reply_keys(keymap);
     }
 
     /// Shows the conversation of the message `id`, scrolled to it. Returns at once; the
@@ -416,6 +432,7 @@ impl Reader {
             self.inner.release_page(page);
         }
         self.inner.size_changed();
+        self.inner.quick_changed();
     }
 
     /// The selected message: the one the reader was asked to show, once its conversation is on

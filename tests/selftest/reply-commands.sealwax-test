@@ -1,0 +1,134 @@
+# Compose, Reply, Reply All, Forward and Edit Draft from the main window (M6: ML-069, ML-074):
+# each key from the list and from the reader, each card's buttons by real clicks, and the window's
+# actions as the palette runs them, open the right composer request (`composer::open`). Reply,
+# Reply All and Forward act on the selected message in the list, and in the reader on the message
+# the user is on (the focused card, else the one n or p reached); they don't apply to several
+# messages or to a draft. Compose writes from the account the list shows. `mailto:` links reach
+# the composer through the application's open path. Every name and message is fictional.
+# Run: tools/headless.sh 43 target/debug/sealwax --self-test tests/selftest/reply-commands.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+conversation-add trip
+mail-add Personal:drafts 1h "Unsent thoughts" read from=Alex
+conversation-account Work alex.berg@work.example.test
+mail-add Work:inbox 5m "Quarterly numbers" read from=Leah
+folder inbox Personal
+focus list
+
+# The list: the selected message (trip-6) and every key of the four commands.
+conversation-show trip-6
+focus list
+assert-action-enabled win.reply true
+assert-action-enabled win.reply-all true
+assert-action-enabled win.forward true
+assert-action-enabled win.edit-draft false
+key r
+assert-compose-last reply trip-6 reply
+key a
+assert-compose-last reply trip-6 reply-all
+key f
+assert-compose-last reply trip-6 forward
+key <Control>r
+assert-compose-last reply trip-6 reply
+key <Control><Shift>r
+assert-compose-last reply trip-6 reply-all
+key <Control>l
+assert-compose-last reply trip-6 forward
+assert-compose-requests 6
+# Compose (c, Ctrl+N) writes from the account whose folder the list shows.
+key c
+assert-compose-last new Personal
+key <Control>n
+assert-compose-last new Personal
+assert-compose-requests 8
+
+# The reader: n and p move to a message, and the commands act on it.
+key p
+wait-until assert-conversation top-of trip-5
+key r
+assert-compose-last reply trip-5 reply
+key p
+wait-until assert-conversation top-of trip-4
+key f
+assert-compose-last reply trip-4 forward
+# The focus in a card: its message (`focus reader` puts it in the first plain-text body, trip-5's).
+focus reader
+key a
+assert-compose-last reply trip-5 reply-all
+key c
+assert-compose-last new Personal
+assert-compose-requests 12
+
+# Each card's buttons act on that card's message.
+action win.expand-all
+wait-until assert-conversation cards 6
+reply-click-card trip-1 reply
+assert-compose-last reply trip-1 reply
+reply-click-card trip-3 reply-all
+assert-compose-last reply trip-3 reply-all
+reply-click-card trip-5 forward
+assert-compose-last reply trip-5 forward
+assert-tooltip reader-card-reply "Reply (r, Ctrl+R)"
+assert-tooltip reader-card-reply-all "Reply all (a, Ctrl+Shift+R)"
+assert-tooltip reader-card-forward "Forward (f, Ctrl+L)"
+assert-labelled
+assert-compose-requests 15
+
+# As the palette runs them: the focus is still on trip-5's Forward button.
+action win.reply
+assert-compose-last reply trip-5 reply
+focus list
+action win.reply
+assert-compose-last reply trip-4 reply
+action win.compose
+assert-compose-last new Personal
+assert-compose-requests 18
+
+# Several messages: Reply, Reply All and Forward don't apply, and their keys do nothing.
+focus list
+key <Shift>j
+assert-select-mode true
+assert-action-enabled win.reply false
+assert-action-enabled win.reply-all false
+assert-action-enabled win.forward false
+key r
+key f
+assert-compose-requests 18
+key Escape
+assert-select-mode false
+
+# A draft: Edit Draft opens it in the composer; Reply doesn't apply; its card offers Edit draft.
+folder drafts Personal
+list-select 0
+wait-until assert-conversation messages 1
+assert-action-enabled win.edit-draft true
+assert-action-enabled win.reply false
+action win.edit-draft
+assert-compose-last server-draft selected
+reply-click-card selected edit-draft
+assert-compose-last server-draft selected
+assert-compose-requests 20
+
+# All Inboxes: the selected message's account; another account's folder: that account.
+folder all-inboxes
+list-select 0
+wait-until assert-list-selected 0
+action win.compose
+assert-compose-last new Work
+folder inbox Work
+action win.compose
+assert-compose-last new Work
+assert-compose-requests 22
+
+# A mailto: link through the application's open path (D-Bus Open, `sealwax mailto:`); the
+# attach parameter is dropped.
+bus-open "mailto:ingrid@example.test?subject=Cabin&attach=%2Fetc%2Fpasswd"
+wait-until assert-compose-requests 23
+assert-compose-last mailto ingrid@example.test
+assert-compose-count 1
+assert-compose 1 subject Cabin
+assert-compose 1 ignored attach
+assert-conversation criticals 0
