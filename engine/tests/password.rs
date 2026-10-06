@@ -404,6 +404,8 @@ async fn a_new_password_is_checked_stored_and_the_account_syncs_again() {
         smtp: smtp.endpoint(),
         username: "user".into(),
         auth: AuthMethod::Password,
+        signature: None,
+        identities: Vec::new(),
     };
     let account = added(&engine, 1, settings).await;
     assert_eq!(settled(&engine, account).await, SyncStatus::Synced);

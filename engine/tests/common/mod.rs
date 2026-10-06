@@ -86,6 +86,8 @@ pub fn settings(imap: Endpoint, smtp: Endpoint, username: &str) -> AccountSettin
         smtp,
         username: username.into(),
         auth: AuthMethod::Password,
+        signature: None,
+        identities: Vec::new(),
     }
 }
 

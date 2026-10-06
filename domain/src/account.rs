@@ -62,6 +62,22 @@ pub struct AccountSettings {
     /// The login name for both IMAP and SMTP.
     pub username: String,
     pub auth: AuthMethod,
+    /// The signature under mail sent from `address` (M6, ML-070): plain text, `None` for none.
+    pub signature: Option<String>,
+    /// The other addresses the account sends from (aliases, PRD A6), from
+    /// `[[account.identity]]` (M6, ML-070).
+    pub identities: Vec<Identity>,
+}
+
+/// An address the account sends from besides its own (PRD A6): an alias with its own sender
+/// name and signature. A reply goes out from the identity the message was sent to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Identity {
+    /// The sender name; the account's when the file leaves it out.
+    pub name: String,
+    pub address: String,
+    /// Plain text; `None` for none.
+    pub signature: Option<String>,
 }
 
 /// The login name a detected setting expects, relative to the address.

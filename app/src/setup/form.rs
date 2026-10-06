@@ -128,6 +128,8 @@ pub fn settings(
         smtp,
         username,
         auth: AuthMethod::Password,
+        signature: None,
+        identities: Vec::new(),
     }
 }
 

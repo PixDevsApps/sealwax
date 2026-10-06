@@ -111,6 +111,9 @@ assert-undoable true
 sleep 3300
 assert-toasts 0
 assert-undoable true
+# The toast going moves the focus off its Undo button, to a chip or (when GTK leaves it
+# nowhere) back to the list, a few frames later.
+sleep 500
 key z
 assert-toast Undone
 assert-list-count 1

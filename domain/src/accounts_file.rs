@@ -339,6 +339,8 @@ impl Reader<'_> {
                 imap,
                 smtp,
                 auth,
+                signature: None,
+                identities: Vec::new(),
             },
             key_span,
             address_span,
@@ -770,6 +772,8 @@ mod tests {
             },
             username: address.to_owned(),
             auth: AuthMethod::Password,
+            signature: None,
+            identities: Vec::new(),
         }
     }
 

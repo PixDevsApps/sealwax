@@ -512,6 +512,33 @@ impl MessageList {
         &self.inner.view
     }
 
+    /// When `window`'s focus goes nowhere while the list is shown, as when a toast that held it
+    /// hides after the last row left, it comes back to the list once the frame is done, so the
+    /// list's keys (`z` among them) keep working.
+    pub fn keep_focus(&self, window: &impl IsA<gtk::Window>) {
+        let weak = self.downgrade();
+        window.connect_focus_widget_notify(move |window| {
+            if gtk::prelude::GtkWindowExt::focus(window).is_some() {
+                return;
+            }
+            let weak = weak.clone();
+            let window = window.downgrade();
+            glib::idle_add_local_once(move || {
+                let Some(window) = window.upgrade() else {
+                    return;
+                };
+                if gtk::prelude::GtkWindowExt::focus(&window).is_some() {
+                    return;
+                }
+                Self::with(&weak, |list| {
+                    if list.inner.root.is_mapped() {
+                        list.inner.view.grab_focus();
+                    }
+                });
+            });
+        });
+    }
+
     pub fn search_entry(&self) -> &gtk::SearchEntry {
         &self.inner.search
     }

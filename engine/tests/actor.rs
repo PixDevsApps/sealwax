@@ -152,6 +152,8 @@ impl Running {
             smtp: fake.endpoint(),
             username: format!("{name}@example.test"),
             auth: AuthMethod::Password,
+            signature: None,
+            identities: Vec::new(),
         };
         self.send(Command::AddAccount {
             request,
@@ -429,6 +431,8 @@ async fn failed_connections_back_off_and_reconnect_tries_at_once() {
             smtp: fake.endpoint(),
             username: "backoff@example.test".into(),
             auth: AuthMethod::Password,
+            signature: None,
+            identities: Vec::new(),
         },
         password: Password::new("fake-password".into()),
         sign_in: None,
@@ -839,6 +843,8 @@ async fn two_accounts_sync_at_once_and_the_engine_stops_quickly() {
                 smtp: fake.endpoint(),
                 username: format!("{name}@example.test"),
                 auth: AuthMethod::Password,
+                signature: None,
+                identities: Vec::new(),
             },
             password: Password::new("fake-password".into()),
             sign_in: None,

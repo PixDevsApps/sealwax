@@ -488,6 +488,8 @@ mod tests {
             smtp: endpoint("smtp.example.test", 465),
             username: address.to_owned(),
             auth: AuthMethod::Password,
+            signature: None,
+            identities: Vec::new(),
         }
     }
 

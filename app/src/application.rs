@@ -949,6 +949,7 @@ impl AppState {
         list.set_quick_tooltips(quick_tooltips(keymap));
         window.set_list(list.widget());
         GtkWindowExt::set_focus(window.window(), Some(list.list_view()));
+        list.keep_focus(window.window());
         self.install_triage(window, &list, win_actions);
 
         let target = list.clone();

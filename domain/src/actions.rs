@@ -212,6 +212,26 @@ pub enum ActionId {
     ReplyAll,
     Forward,
     Send,
+    EditDraft,
+    QuickReply,
+    ReplyInComposer,
+    AttachFile,
+    ShowCcBcc,
+    DiscardDraft,
+    Bold,
+    Italic,
+    Underline,
+    Strikethrough,
+    BulletedList,
+    NumberedList,
+    InsertLink,
+    Quote,
+    Indent,
+    Outdent,
+    ClearFormatting,
+    ComposerUndo,
+    ComposerRedo,
+    PasteAsText,
     ExpandAll,
     CollapseAll,
     ShowImages,
@@ -224,11 +244,12 @@ pub enum ActionId {
     KeyboardShortcuts,
     Preferences,
     CustomizeShortcuts,
+    DefaultMailApp,
     Quit,
 }
 
 impl ActionId {
-    pub const ALL: [Self; 42] = [
+    pub const ALL: [Self; 63] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -258,6 +279,26 @@ impl ActionId {
         Self::ReplyAll,
         Self::Forward,
         Self::Send,
+        Self::EditDraft,
+        Self::QuickReply,
+        Self::ReplyInComposer,
+        Self::AttachFile,
+        Self::ShowCcBcc,
+        Self::DiscardDraft,
+        Self::Bold,
+        Self::Italic,
+        Self::Underline,
+        Self::Strikethrough,
+        Self::BulletedList,
+        Self::NumberedList,
+        Self::InsertLink,
+        Self::Quote,
+        Self::Indent,
+        Self::Outdent,
+        Self::ClearFormatting,
+        Self::ComposerUndo,
+        Self::ComposerRedo,
+        Self::PasteAsText,
         Self::ExpandAll,
         Self::CollapseAll,
         Self::ShowImages,
@@ -270,6 +311,7 @@ impl ActionId {
         Self::KeyboardShortcuts,
         Self::Preferences,
         Self::CustomizeShortcuts,
+        Self::DefaultMailApp,
         Self::Quit,
     ];
 
@@ -394,6 +436,115 @@ impl ActionId {
                 Scope::Composer,
                 &["<Control>Return"],
             ),
+            // Opens the selected message of a Drafts folder in the composer (ML-074). No default
+            // key until the user picks one.
+            Self::EditDraft => on_selection("edit-draft", "Edit Draft", Compose, &[]),
+            // The quick reply under the conversation (ML-068): Quick Reply puts the focus in it;
+            // Open Reply in Composer takes what it holds into the full composer, with the
+            // approved mock's Ctrl+Shift+E.
+            Self::QuickReply => command("quick-reply", "Quick Reply", Compose, Scope::Reader, &[]),
+            Self::ReplyInComposer => command(
+                "reply-in-composer",
+                "Open Reply in Composer",
+                Compose,
+                Scope::Reader,
+                &["<Control><Shift>e"],
+            ),
+            // The composer window's own commands (ML-067, ML-072). Ctrl+B, Ctrl+I, Ctrl+U,
+            // Ctrl+K and Ctrl+Z are the approved mock's; WebKitGTK binds only Ctrl+B, Ctrl+I and
+            // Ctrl+A in editable content, so the composer binds the rest (ADR-014); redo's two
+            // keys are ADR-014's, and paste as text's Ctrl+Shift+V is a proposal for the gate.
+            Self::AttachFile => {
+                command("attach-file", "Attach File…", Compose, Scope::Composer, &[])
+            }
+            Self::ShowCcBcc => command(
+                "show-cc-bcc",
+                "Add Cc and Bcc",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::DiscardDraft => command(
+                "discard-draft",
+                "Discard Draft",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::Bold => command("bold", "Bold", Compose, Scope::Composer, &["<Control>b"]),
+            Self::Italic => command(
+                "italic",
+                "Italic",
+                Compose,
+                Scope::Composer,
+                &["<Control>i"],
+            ),
+            Self::Underline => command(
+                "underline",
+                "Underline",
+                Compose,
+                Scope::Composer,
+                &["<Control>u"],
+            ),
+            Self::Strikethrough => command(
+                "strikethrough",
+                "Strikethrough",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::BulletedList => command(
+                "bulleted-list",
+                "Bulleted List",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::NumberedList => command(
+                "numbered-list",
+                "Numbered List",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::InsertLink => command(
+                "insert-link",
+                "Link…",
+                Compose,
+                Scope::Composer,
+                &["<Control>k"],
+            ),
+            Self::Quote => command("quote", "Quote", Compose, Scope::Composer, &[]),
+            Self::Indent => command("indent", "Indent", Compose, Scope::Composer, &[]),
+            Self::Outdent => command("outdent", "Outdent", Compose, Scope::Composer, &[]),
+            Self::ClearFormatting => command(
+                "clear-formatting",
+                "Clear Formatting",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::ComposerUndo => command(
+                "composer-undo",
+                "Undo Typing",
+                Compose,
+                Scope::Composer,
+                &["<Control>z"],
+            ),
+            Self::ComposerRedo => command(
+                "composer-redo",
+                "Redo Typing",
+                Compose,
+                Scope::Composer,
+                &["<Control><Shift>z", "<Control>y"],
+            ),
+            Self::PasteAsText => command(
+                "paste-as-text",
+                "Paste as Plain Text",
+                Compose,
+                Scope::Composer,
+                &["<Control><Shift>v"],
+            ),
             // The conversation the reader shows (ML-057) and its remote content (ML-058). No
             // default keys until the user picks them; the reader's More menu and the palette
             // reach them.
@@ -506,6 +657,15 @@ impl ActionId {
                     &[],
                 )
             },
+            // Asks before it makes Sealwax the desktop's handler for mailto: links (PRD C8): the
+            // only change Sealwax makes outside its own folders, and only on the user's word.
+            Self::DefaultMailApp => command(
+                "default-mail-app",
+                "Make Sealwax the Default Mail App…",
+                General,
+                Scope::App,
+                &[],
+            ),
             Self::Quit => ActionSpec {
                 menu: Some(MenuSection::Quit),
                 ..command("quit", "Quit", General, Scope::App, &["<Control>q"])
@@ -700,6 +860,7 @@ mod tests {
                 ActionId::Reply,
                 ActionId::ReplyAll,
                 ActionId::Forward,
+                ActionId::EditDraft,
             ]
         );
         for id in needs {
@@ -765,5 +926,35 @@ mod tests {
             assert!(keys(id).is_empty(), "{id:?}");
         }
         assert_eq!(ActionId::AlwaysShowImages.kind(), ActionKind::Toggle);
+        // M6: the mock's composer and quick reply keys, ADR-014's redo keys, and paste as
+        // text's proposed Ctrl+Shift+V.
+        assert_eq!(keys(ActionId::Bold), ["<Control>b"]);
+        assert_eq!(keys(ActionId::Italic), ["<Control>i"]);
+        assert_eq!(keys(ActionId::Underline), ["<Control>u"]);
+        assert_eq!(keys(ActionId::InsertLink), ["<Control>k"]);
+        assert_eq!(keys(ActionId::ComposerUndo), ["<Control>z"]);
+        assert_eq!(
+            keys(ActionId::ComposerRedo),
+            ["<Control><Shift>z", "<Control>y"]
+        );
+        assert_eq!(keys(ActionId::PasteAsText), ["<Control><Shift>v"]);
+        assert_eq!(keys(ActionId::ReplyInComposer), ["<Control><Shift>e"]);
+        for id in [
+            ActionId::EditDraft,
+            ActionId::QuickReply,
+            ActionId::AttachFile,
+            ActionId::ShowCcBcc,
+            ActionId::DiscardDraft,
+            ActionId::Strikethrough,
+            ActionId::BulletedList,
+            ActionId::NumberedList,
+            ActionId::Quote,
+            ActionId::Indent,
+            ActionId::Outdent,
+            ActionId::ClearFormatting,
+            ActionId::DefaultMailApp,
+        ] {
+            assert!(keys(id).is_empty(), "{id:?}");
+        }
     }
 }

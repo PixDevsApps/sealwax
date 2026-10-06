@@ -148,6 +148,8 @@ impl Running {
             smtp: fake.endpoint(),
             username: "ops@example.test".into(),
             auth: AuthMethod::Password,
+            signature: None,
+            identities: Vec::new(),
         };
         self.send(Command::AddAccount {
             request: 1,

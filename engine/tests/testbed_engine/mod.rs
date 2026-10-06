@@ -158,6 +158,8 @@ impl TestEngine {
             smtp: common::submission(Security::Tls),
             username: user.into(),
             auth: AuthMethod::Password,
+            signature: None,
+            identities: Vec::new(),
         };
         self.send(Command::AddAccount {
             request,

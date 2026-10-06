@@ -11,7 +11,7 @@
 //! lane stops that actor before it removes the account or replaces its token.
 
 use crate::accounts::{Accounts, secret_label};
-use crate::api::{AccountError, Command, Event, Password, RequestId};
+use crate::api::{AccountError, Command, Event, Password, RequestId, SendError};
 use crate::autoconfig::{self, DetectOptions};
 use crate::imap::{self, Credentials, ImapError, Stop};
 use crate::net::Trust;
@@ -453,6 +453,17 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 {
                     let _ = actor.control.try_send(actor::Control::Ops);
                 }
+                continue;
+            }
+            // Built in M6's phase A and B: until then queued sends and drafts wait in the store,
+            // and the size limit is answered as unknown.
+            Command::OutboxQueued { .. } | Command::DraftsChanged { .. } => continue,
+            Command::SubmissionLimit { request, account } => {
+                shared.send(Event::SubmissionLimit {
+                    request,
+                    account,
+                    result: Err(SendError::Other),
+                });
                 continue;
             }
             Command::Reconnect => {

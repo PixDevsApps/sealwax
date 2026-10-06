@@ -125,6 +125,8 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
         smtp: endpoint,
         username: "service".into(),
         auth: AuthMethod::Password,
+        signature: None,
+        identities: Vec::new(),
     };
     let commands = engine.commands();
     commands

@@ -127,6 +127,8 @@ fn settings(address: &str) -> AccountSettings {
         smtp: endpoint("smtp.example.test", 465),
         username: address.to_owned(),
         auth: AuthMethod::Password,
+        signature: None,
+        identities: Vec::new(),
     }
 }
 
@@ -351,6 +353,8 @@ async fn no_token_reaches_a_file_or_a_log() {
                 smtp: smtp.endpoint(),
                 username: TOKEN_ADDRESS.into(),
                 auth: AuthMethod::OAuth(OAuthProvider::Microsoft),
+                signature: None,
+                identities: Vec::new(),
             },
             password: Password::new(String::new()),
             sign_in: Some(1),

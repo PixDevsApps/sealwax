@@ -153,6 +153,8 @@ mod tests {
             smtp: endpoint(&format!("smtp.{key}.example.test")),
             username: key.to_owned(),
             auth,
+            signature: None,
+            identities: Vec::new(),
         }
     }
 

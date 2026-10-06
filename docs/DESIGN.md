@@ -111,6 +111,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
   - **Encrypted and signed mail** (ML-064): "This message is encrypted. Sealwax can't read encrypted mail yet." in place of the body; signed mail shows "Signed · not checked".
 
 **Composer**
+- *Decided at M6's start (user, 2026-10-06, [ADR-014](DECISIONS.md#adr-014-amendment--the-composer-in-its-own-window-m6-start-2026-10-06)):* the full composer is a window of its own for each draft, as the mock's "New message" frame: its header has the From chip, Attach and Discard; Hyprland tiles it beside the main window. The quick reply stays under the conversation in the reader and expands into a composer window (the mock's Ctrl+Shift+E).
 - From (identity), To / Cc / Bcc as chips with autocomplete, Subject.
 - Formatting toolbar (bold, italic, underline, strike, lists, link, quote, indent, clear formatting) driven by the editor state.
 - Body, attachments tray (drag and drop), Send (Ctrl+Enter) with "Undo" in the toast that follows.

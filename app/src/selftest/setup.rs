@@ -654,6 +654,21 @@ fn fields(
         Command::OpsQueued { account } => {
             ("ops-queued", None, vec![("account", account.0.to_string())])
         }
+        Command::OutboxQueued { account } => (
+            "outbox-queued",
+            None,
+            vec![("account", account.0.to_string())],
+        ),
+        Command::DraftsChanged { account } => (
+            "drafts-changed",
+            None,
+            vec![("account", account.0.to_string())],
+        ),
+        Command::SubmissionLimit { request, account } => (
+            "submission-limit",
+            Some(*request),
+            vec![("account", account.0.to_string())],
+        ),
         Command::UpdatePassword { request, key, .. } => (
             "update-password",
             Some(*request),

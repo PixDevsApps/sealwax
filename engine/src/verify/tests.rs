@@ -87,6 +87,8 @@ fn settings(imap: u16, smtp: u16) -> AccountSettings {
         smtp: endpoint(smtp),
         username: "first@example.test".into(),
         auth: AuthMethod::Password,
+        signature: None,
+        identities: Vec::new(),
     }
 }
 

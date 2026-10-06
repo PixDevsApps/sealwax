@@ -88,6 +88,8 @@ impl Setup {
             smtp: self.smtp.endpoint(),
             username: ADDRESS.into(),
             auth: AuthMethod::OAuth(OAuthProvider::Microsoft),
+            signature: None,
+            identities: Vec::new(),
         }
     }
 

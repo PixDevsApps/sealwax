@@ -5,6 +5,7 @@ pub mod actions;
 pub mod activation;
 pub mod application;
 pub mod cli;
+pub mod composer;
 pub mod config;
 pub mod desktop;
 pub mod engine;

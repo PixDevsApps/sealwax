@@ -325,6 +325,8 @@ async fn sign_in_and_add(
             smtp,
             username,
             auth: AuthMethod::OAuth(OAuthProvider::Microsoft),
+            signature: None,
+            identities: Vec::new(),
         },
         password: Password::new(String::new()),
         sign_in: Some(1),

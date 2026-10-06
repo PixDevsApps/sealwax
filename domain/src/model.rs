@@ -34,6 +34,11 @@ id!(
     /// A conversation: messages joined by Message-ID, In-Reply-To and References.
     ThreadId
 );
+id!(
+    /// A message being written or waiting in the outbox (M6): a draft keeps its id from the
+    /// composer through the undo window and the send.
+    DraftId
+);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Account {

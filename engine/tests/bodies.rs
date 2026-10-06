@@ -251,6 +251,8 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         smtp: endpoint,
         username: "bodies@example.test".into(),
         auth: AuthMethod::Password,
+        signature: None,
+        identities: Vec::new(),
     };
     let commands = engine.commands();
     commands

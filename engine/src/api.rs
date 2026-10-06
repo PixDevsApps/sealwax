@@ -3,13 +3,15 @@
 //! folders opened, older mail, bodies, reconnecting, a new password, and the account's status.
 //! M4 adds the op queue's: the app queues triage in the store and wakes the account, and hears
 //! when the server refuses a change for good. M5 adds downloads the reader asks for: one part of
-//! a large message, or a message whole as the server has it.
+//! a large message, or a message whole as the server has it. M6 adds sending: the app queues a
+//! draft in the store's outbox and wakes the account, which sends it at most once, saves the
+//! Sent copy and keeps the Drafts folder's copy of every draft current.
 
 use sealwax_domain::account::{
     AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure, OAuthProvider,
 };
 use sealwax_domain::config::Storage;
-use sealwax_domain::model::{AccountId, FolderId, MessageId};
+use sealwax_domain::model::{AccountId, DraftId, FolderId, MessageId};
 use std::fmt;
 use zeroize::Zeroizing;
 
@@ -112,6 +114,19 @@ pub enum Command {
     /// runs the ops that are due now and wakes again when the next undo window ends. Queued ops
     /// also run after a start or reconnect without it; this only spares the wait.
     OpsQueued { account: AccountId },
+    /// The app queued a draft to send, or undid a send, in the store (M6, ML-076): the
+    /// account's actor sends what is due now and wakes again when the next undo window ends.
+    /// Queued sends also go after a start or reconnect without it; this only spares the wait.
+    OutboxQueued { account: AccountId },
+    /// A draft of `account` was saved, closed or discarded in the store (M6, ML-074): its copy
+    /// in the server's Drafts folder is brought up to date when it is due.
+    DraftsChanged { account: AccountId },
+    /// The submission server's size limit for `account` (EHLO SIZE, RFC 1870), for the
+    /// composer's size check (ML-072). Answered with one `SubmissionLimit`.
+    SubmissionLimit {
+        request: RequestId,
+        account: AccountId,
+    },
     /// Stop every connection and the runtime.
     Shutdown,
 }
@@ -198,6 +213,25 @@ pub enum Event {
         change: Refused,
         messages: u32,
     },
+    /// The answer to `SubmissionLimit`: the largest message in bytes the server takes, `None`
+    /// when it names no limit.
+    SubmissionLimit {
+        request: RequestId,
+        account: AccountId,
+        result: Result<Option<u64>, SendError>,
+    },
+    /// The server took `draft` for delivery (ML-075); the store records it as sent.
+    Sent { account: AccountId, draft: DraftId },
+    /// `draft` can't be sent as it is, or the server refused it for good: the store has put it
+    /// back as a draft whose send failed, for the user to change and send again.
+    SendFailed {
+        account: AccountId,
+        draft: DraftId,
+        error: SendError,
+    },
+    /// Sealwax stopped while `draft` was being sent, after its data may have reached the
+    /// server: it may have been sent. It is never sent again without the user (ADR-015).
+    SendUncertain { account: AccountId, draft: DraftId },
 }
 
 /// A part downloaded for `FetchPart`, its transfer encoding decoded. Message content: its
@@ -299,6 +333,45 @@ pub enum BodyError {
     Store,
     #[error("the download failed")]
     Other,
+}
+
+/// Why a message couldn't be sent, or the size limit couldn't be read.
+#[derive(Clone, PartialEq, Eq, thiserror::Error)]
+pub enum SendError {
+    #[error("the account is offline")]
+    Offline,
+    #[error("the account needs sign-in")]
+    NeedsSignIn,
+    /// The server refused these recipients' addresses (RCPT TO).
+    #[error("the server refused {} recipients", .0.len())]
+    RecipientsRefused(Vec<String>),
+    /// Larger than the server takes.
+    #[error("the message is larger than the server's limit of {limit} bytes")]
+    TooLarge { limit: u64 },
+    /// The server refused the message itself, or its sender address.
+    #[error("the server refused the message")]
+    Refused,
+    #[error("the local store failed")]
+    Store,
+    #[error("sending failed")]
+    Other,
+}
+
+/// Recipient addresses are the user's data: `Debug` prints only how many.
+impl fmt::Debug for SendError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SendError::Offline => f.write_str("Offline"),
+            SendError::NeedsSignIn => f.write_str("NeedsSignIn"),
+            SendError::RecipientsRefused(recipients) => {
+                write!(f, "RecipientsRefused({})", recipients.len())
+            }
+            SendError::TooLarge { limit } => write!(f, "TooLarge {{ limit: {limit} }}"),
+            SendError::Refused => f.write_str("Refused"),
+            SendError::Store => f.write_str("Store"),
+            SendError::Other => f.write_str("Other"),
+        }
+    }
 }
 
 /// Why saving or removing an account failed.

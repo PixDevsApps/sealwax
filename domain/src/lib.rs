@@ -6,6 +6,7 @@ pub mod actions;
 pub mod attachment;
 pub mod autoconfig;
 pub mod bodies;
+pub mod compose;
 pub mod config;
 pub mod flowed;
 pub mod keymap;

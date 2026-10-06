@@ -589,7 +589,21 @@ mod tests {
             !triggers.contains(&"<Control>n".to_owned()),
             "an accelerator"
         );
+        assert!(triggers.contains(&"<Control><Shift>e".to_owned()));
         let composer = Dispatch::new(Scope::Composer, &Keymap::default());
-        assert_eq!(composer.triggers(), ["<Control>Return"]);
+        assert_eq!(
+            composer.triggers(),
+            [
+                "<Control><Shift>v",
+                "<Control><Shift>z",
+                "<Control>Return",
+                "<Control>b",
+                "<Control>i",
+                "<Control>k",
+                "<Control>u",
+                "<Control>y",
+                "<Control>z",
+            ]
+        );
     }
 }

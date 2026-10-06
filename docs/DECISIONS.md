@@ -16,14 +16,14 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 004 | Follow the live Omarchy theme | Accepted (user request); built in M1 |
 | 005 | SQLite with FTS5 plus a blob store | SQLite + FTS5 accepted (S3 evidence); schema additions from S1; schema v1 and the blob store built in M1; schema v2 (the account key) and folder sync state in M2; v3–v6 in M3; v7 (the op queue, the overlay in the rows) in M4; v8 (the senders whose images load) in M5 |
 | 006 | IMAP library and state-driven sync | Accepted (S1 evidence, GO): async-imap with a mandatory raw layer, UIDNEXT-window recovery; the connection layer built in M2; the sync core and actor in M3; the op queue's writes in M4; parts and originals on demand in M5 |
-| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments (interop pending); the SMTP login check built in M2 |
+| 007 | SMTP, MIME and privacy defaults | Proposed; S7 confirmed the MIME side with amendments; the SMTP login check built in M2; interop checked on the testbed, rendering in real clients the user's own test (user decision, M6 start) |
 | 008 | OAuth2 and secrets | OAuth for Microsoft in 1.0; Sign in with Google deferred to 1.x (user decisions); mechanism accepted on S5's evidence (GO, 2026-10-05); secrets keyed by the account key in M2 |
 | 009 | Settings in files: config.toml, keys.toml, accounts.toml | Proposed; config.toml and keys.toml built in M1, accounts.toml in M2 |
 | 010 | Name and app-id | Accepted (user decision): **Sealwax**, `io.github.pixdevsapps.Sealwax`; code renamed 2026-10-04 |
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1; conversations, links, remote content per sender and print in M5; memory measured live in M5, NVIDIA's mappings counted in the GPU budget (user decision, M5 gate) |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
-| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06) |
+| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06); the composer in its own window (user decision, M6 start) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send waits for M6 |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start); built in M5 |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate), M5's keys accepted (M5 gate) |
@@ -410,6 +410,10 @@ Built in M2 ([m2/imap.md](m2/imap.md)).
 - `hello_name` is `ClientId::Ipv4(127.0.0.1)`, sent as `EHLO [127.0.0.1]` (the RFC 5321 address literal).
 - A refused login drops the connection rather than lettre's `abort()`, which waits for QUIT's reply without a timeout; QUIT after success waits 2 s at most. lettre's error displays include server replies, so they are never logged.
 
+### ADR-007 amendment — interop checked on the testbed (M6 start, 2026-10-06)
+
+**Status:** user decision at M6's start ("Mailpit + your test (Recommended)", 2026-10-06). S7's interop check, rendering Sealwax's mail in Gmail web, Outlook web and Thunderbird, needed test accounts and send approvals; real accounts became the user's own test once the app is finished (2026-10-05), and Thunderbird isn't installed here. So M6's exit criterion is met on the testbed: every message Sealwax sends in the testbed suites is caught by Mailpit (or delivered by Stalwart's submission port), round-tripped through mail-parser, and scanned for a Bcc header and the host name. Rendering in the three clients moves to the user's own test (a P1 follow-up in PLAN.md).
+
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
 **Status:** OAuth2 sign-in for Google and Microsoft in 1.0 is accepted — user decision, 2026-10-04. The mechanism is proposed; S5 is the go/no-go.
@@ -696,6 +700,12 @@ Still open: the user's fcitx5 and Norwegian dead-key check (`bash spikes/s7-comp
 ### ADR-014 amendment — the user's fcitx5 check (2026-10-06)
 
 The user ran S7's manual check on the live session with fcitx5 and approved it ("approved", 2026-10-06). With acceleration off, key press → painted frame was p95 10.51 ms for every text key (n=85) and 11.24 ms for æ/ø/å, under the 16 ms bar; dead keys arrived as fcitx5 commits after preedits. One of the five instruction lines was typed exactly; € (Compose), ô and ü weren't exercised ([PLAN.md](PLAN.md#the-fcitx5-and-norwegian-typing-check-done-by-the-user--2026-10-06)). Still open: the 60 Hz re-measure and long-quote scrolling, before M6.
+
+### ADR-014 amendment — the composer in its own window (M6 start, 2026-10-06)
+
+**Status:** user decision at M6's start ("Its own window (Recommended)", 2026-10-06). The full composer is a window of its own for each draft, as the approved mock draws it ("New message" with its From chip): Hyprland tiles it beside the main window, several drafts can be open at once, and a `mailto:` link from a browser opens one without taking over the reader. The quick reply stays in the reader, under the conversation, and expands into a composer window. The composer window installs its own `win.` actions for the Composer scope (Send, the formatting commands, Attach File…, Discard Draft); the alternative, the composer in the reader's pane, was declined.
+
+Still open from S7: the 60 Hz re-measure (the user's; it changes the monitor's settings). Typing in the real composer and long-quote scrolling without acceleration are measured live in M6 (authorized 2026-10-06).
 
 ## ADR-015 — Op queue: optimistic overlay, Undo, at-most-once send (2026-10-04)
 

@@ -367,6 +367,8 @@ fn parts_and_originals_are_fetched_on_demand_and_answered_once() {
                 smtp: endpoint,
                 username: ADDRESS.into(),
                 auth: AuthMethod::Password,
+                signature: None,
+                identities: Vec::new(),
             },
             password: Password::new(PASSWORD.into()),
             sign_in: None,
