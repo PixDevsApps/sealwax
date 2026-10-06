@@ -23,7 +23,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 011 | Reading pane: approach A with hardened WebKit | Approach A accepted (S2 evidence) with amendments; memory judged as PSS with a live-view cap (user decision); built in M1 |
 | 012 | Repository docs canonical, Notion as a mirror | Accepted (user decision) |
 | 013 | Lean 1.0 scope | Accepted (plan approval); amended at the M0 gate (background mode P0) |
-| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration; fcitx5 check pending) |
+| 014 | WYSIWYG composer in an editable WebKit view | Format accepted (user decision); mechanism confirmed by S7 with conditions (no acceleration); the user's fcitx5 check passed the latency bar (2026-10-06) |
 | 015 | Op queue: optimistic overlay, Undo, at-most-once send | Accepted for triage (M4 gate, user decision): built in M4, its defaults accepted; at-most-once send waits for M6 |
 | 016 | Conversation threading | Proposed; alias table and merges confirmed in S3, inputs in S1; built in M1; the conversation view is the reader's, the list keeps message rows (user decision, M5 start) |
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate) |
@@ -662,6 +662,10 @@ Decisions:
 - Quirks the composer must handle: unlink needs a selection; quote and indent are both `<blockquote>` (indent is told apart by WebKit's margin style); strikethrough writes `<strike>`; lists arrive wrapped in a `div` with a trailing `<br>`; when both are offered, the paste event shows only `text/html`; an image-only clipboard is converted by the helper from a `blob:` image to a `cid:` part.
 
 Still open: the user's fcitx5 and Norwegian dead-key check (`bash spikes/s7-composer/manual-check.sh`); a re-measure on a 60 Hz display and scrolling of long quotes without acceleration, before M6.
+
+### ADR-014 amendment — the user's fcitx5 check (2026-10-06)
+
+The user ran S7's manual check on the live session with fcitx5 and approved it ("approved", 2026-10-06). With acceleration off, key press → painted frame was p95 10.51 ms for every text key (n=85) and 11.24 ms for æ/ø/å, under the 16 ms bar; dead keys arrived as fcitx5 commits after preedits. One of the five instruction lines was typed exactly; € (Compose), ô and ü weren't exercised ([PLAN.md](PLAN.md#the-fcitx5-and-norwegian-typing-check-done-by-the-user--2026-10-06)). Still open: the 60 Hz re-measure and long-quote scrolling, before M6.
 
 ## ADR-015 — Op queue: optimistic overlay, Undo, at-most-once send (2026-10-04)
 

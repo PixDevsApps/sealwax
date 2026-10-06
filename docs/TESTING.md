@@ -357,7 +357,7 @@ Release builds; four headless runs (display 23) and five self-closing live runs 
 | Undo | every format; a typed run and a paste each undo in one step | Pass (the app must bind Ctrl+Z, Ctrl+Shift+Z/Ctrl+Y, Ctrl+U) |
 | Paste cleaned | hostile HTML stripped to the allowlist, 0 canary requests | Pass |
 | Typing < 16 ms | accelerated p95 16.0–24.1 ms; `hardware-acceleration-policy = NEVER` p95 9.9–11.9 ms | Pass without acceleration only |
-| fcitx5 and Norwegian dead keys | `bash spikes/s7-composer/manual-check.sh` | Pending the user |
+| fcitx5 and Norwegian dead keys | `bash spikes/s7-composer/manual-check.sh`, the user, 2026-10-06 | Approved by the user: p95 10.51 ms (æ/ø/å 11.24 ms) with fcitx5; 1 of 5 lines typed exactly, € ô ü not exercised |
 | Round trip through mail-parser | 12 `.eml` files | Pass |
 | No Bcc in the transmitted copy; no hostname | 0 hits | Pass |
 | Gmail web / Outlook web / Thunderbird | samples ready | Pending test accounts |
