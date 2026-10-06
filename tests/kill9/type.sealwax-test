@@ -1,0 +1,12 @@
+# The kill -9 exit criterion (PRD C5), first run: a composer on the real store backend, a local
+# (server-less) account, a character typed through the editor's helper every 200 ms. The
+# harness (tools/kill9-compose.sh) reads the log and kills this process with SIGKILL at a
+# random moment. Every text is a run of letters; nothing personal.
+desktop tiling
+resize 1440 900
+mail-account Local
+composer-backend store
+composer-open new
+composer-wait
+composer-focus body
+composer-type-log $TMP/typed.log 200 900

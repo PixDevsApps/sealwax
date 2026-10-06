@@ -10,6 +10,7 @@ resize 1440 900
 theme matte-black
 corners 0
 mail-account Work
+composer-backend stand-in
 composer-identity Support "Work Support" support@example.test
 composer-make-file $TMP/files/Kvartalsrapport-Q3.pdf 2140000
 composer-make-file $TMP/files/notater.txt 12400

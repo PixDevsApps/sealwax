@@ -30,6 +30,9 @@ pub struct Sender {
     pub label: String,
     /// The sender name and address the message goes out with.
     pub address: Address,
+    /// Its signature, plain text (`accounts.toml`); the composer swaps it in when the sender
+    /// changes.
+    pub signature: Option<String>,
 }
 
 /// What a composer window starts from.
@@ -156,6 +159,7 @@ impl StandIn {
         self.identities.borrow_mut().push(Sender {
             label: label.to_owned(),
             address: Address::new(name, email),
+            signature: None,
         });
     }
 
@@ -261,6 +265,7 @@ impl Backend for StandIn {
             let mut senders = vec![Sender {
                 label: account.name.clone(),
                 address: Address::new(account.name.clone(), account.address.clone()),
+                signature: None,
             }];
             if let Some(key) = &account.key
                 && let Some(settings) = settings.iter().find(|settings| &settings.key == key)
@@ -268,6 +273,7 @@ impl Backend for StandIn {
                 senders.extend(settings.identities.iter().map(|identity| Sender {
                     label: identity.name.clone(),
                     address: Address::new(identity.name.clone(), identity.address.clone()),
+                    signature: identity.signature.clone(),
                 }));
             }
             senders.extend(identities);

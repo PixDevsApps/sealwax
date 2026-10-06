@@ -10,6 +10,7 @@
 desktop tiling
 resize 1440 900
 mail-account Work
+composer-backend stand-in
 action-log
 composer-open new
 composer-wait

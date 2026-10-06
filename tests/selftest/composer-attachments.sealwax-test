@@ -10,6 +10,7 @@
 desktop tiling
 resize 1440 900
 mail-account Work
+composer-backend stand-in
 composer-make-file $TMP/files/Kvartalsrapport.pdf 212000
 composer-make-file $TMP/files/notater.txt 1200
 composer-make-file "$TMP/files/../files/.hidden name.csv" 300

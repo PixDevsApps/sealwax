@@ -12,6 +12,7 @@ desktop tiling
 resize 1440 900
 theme matte-black
 mail-account Work
+composer-backend stand-in
 composer-canary
 composer-open new
 composer-wait
