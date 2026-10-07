@@ -50,6 +50,39 @@ fn imap_server(
     seen
 }
 
+/// A POP3 server that accepts only `accept` and answers others with `-ERR refusal`. It has
+/// UIDL, so the check sends nothing after the login but CAPA and QUIT.
+fn pop3_server(
+    listener: TcpListener,
+    config: Arc<ServerConfig>,
+    accept: &'static str,
+    refusal: &'static str,
+) -> Seen {
+    let seen = Seen::default();
+    let tried = seen.clone();
+    tokio::spawn(async move {
+        loop {
+            let mut peer = Peer::accept_tls(&listener, config.clone()).await;
+            peer.send("+OK ready\r\n").await;
+            assert_eq!(peer.line().await.unwrap(), "CAPA");
+            peer.send("+OK\r\nSASL PLAIN\r\nUIDL\r\n.\r\n").await;
+            let auth = peer.line().await.unwrap();
+            let user = plain_user(auth.strip_prefix("AUTH PLAIN ").unwrap());
+            tried.lock().unwrap().push(user.clone());
+            if user != accept {
+                peer.send(&format!("-ERR {refusal}\r\n")).await;
+                continue;
+            }
+            peer.send("+OK in\r\n").await;
+            assert_eq!(peer.line().await.unwrap(), "CAPA");
+            peer.send("+OK\r\nUIDL\r\n.\r\n").await;
+            assert_eq!(peer.line().await.unwrap(), "QUIT");
+            peer.send("+OK bye\r\n").await;
+        }
+    });
+    seen
+}
+
 /// An implicit-TLS submission server that accepts every login and records the user.
 fn smtp_server(listener: TcpListener, config: Arc<ServerConfig>) -> Seen {
     let seen = Seen::default();
@@ -161,6 +194,69 @@ async fn oauth_accounts_send_no_password() {
         result,
         Err(LoginError {
             protocol: Protocol::Imap,
+            failure: LoginFailure::OAuthRequired
+        })
+    );
+}
+
+async fn run_pop3(
+    refusal: &'static str,
+    second: Option<&str>,
+) -> (Result<String, LoginError>, Vec<String>, Vec<String>) {
+    let ca = test_ca();
+    let (pop3_listener, pop3_port) = bind().await;
+    let (smtp_listener, smtp_port) = bind().await;
+    let pop3 = pop3_server(pop3_listener, ca.server.clone(), "first", refusal);
+    let smtp = smtp_server(smtp_listener, ca.server.clone());
+    let mut account = settings(pop3_port, smtp_port);
+    account.receive = Receive::Pop3(Default::default());
+    let password = Password::new("secret".into());
+    let result = verify(&account, second, &password, &ca.trust).await;
+    let pop3 = pop3.lock().unwrap().clone();
+    let smtp = smtp.lock().unwrap().clone();
+    (result, pop3, smtp)
+}
+
+#[tokio::test]
+async fn a_pop3_account_logs_in_to_pop3_with_the_same_two_username_rule() {
+    let (result, pop3, smtp) = run_pop3("[AUTH] no", Some("first")).await;
+    assert_eq!(result, Ok("first".to_owned()));
+    assert_eq!(pop3, ["first@example.test", "first"]);
+    assert_eq!(smtp, ["first"]);
+
+    let (result, pop3, smtp) = run_pop3("[AUTH] no", Some("other")).await;
+    assert_eq!(
+        result,
+        Err(LoginError {
+            protocol: Protocol::Pop3,
+            failure: LoginFailure::WrongPassword,
+        })
+    );
+    assert_eq!(pop3.len(), 2, "never more than two attempts");
+    assert!(smtp.is_empty(), "no SMTP after a failed POP3 login");
+
+    let (result, pop3, _) = run_pop3("[IN-USE] another session", Some("first")).await;
+    assert_eq!(
+        result,
+        Err(LoginError {
+            protocol: Protocol::Pop3,
+            failure: LoginFailure::Other,
+        })
+    );
+    assert_eq!(pop3.len(), 1, "a busy maildrop isn't a wrong username");
+}
+
+#[tokio::test]
+async fn a_pop3_oauth_account_is_named_as_pop3() {
+    let mut account = settings(1, 1);
+    account.receive = Receive::Pop3(Default::default());
+    account.auth = AuthMethod::OAuth(OAuthProvider::Microsoft);
+    let password = Password::new("secret".into());
+    let result = verify(&account, None, &password, &Trust::Platform).await;
+    assert_eq!(
+        result,
+        Err(LoginError {
+            protocol: Protocol::Pop3,
             failure: LoginFailure::OAuthRequired
         })
     );
