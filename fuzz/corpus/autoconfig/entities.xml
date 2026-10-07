@@ -1,0 +1,1 @@
+<?xml version="1.0"?><!DOCTYPE x [<!ENTITY a "aaaa">]><clientConfig><emailProvider><incomingServer type="imap"><hostname>&a;.example.test</hostname><port>99999</port><socketType>SSL</socketType></incomingServer></emailProvider></clientConfig>

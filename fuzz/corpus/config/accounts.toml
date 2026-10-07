@@ -1,0 +1,38 @@
+# accounts
+[[account]]
+key = "work"
+name = "Kari Nordmann"
+address = "kari@example.test"
+username = "kari@example.test"
+auth = "password"
+signature = "-- \nKari"
+
+[account.imap]
+host = "imap.example.test"
+port = 993
+security = "tls"
+
+[account.smtp]
+host = "smtp.example.test"
+port = 587
+security = "starttls"
+
+[[account.identity]]
+address = "post@example.test"
+
+[[account]]
+key = "pop"
+name = "Ola"
+address = "ola@example.test"
+username = "ola"
+auth = "password"
+[account.pop3]
+host = "pop.example.test"
+port = 995
+security = "tls"
+leave_on_server = true
+delete_after_days = 14
+[account.smtp]
+host = "smtp.example.test"
+port = 465
+security = "tls"

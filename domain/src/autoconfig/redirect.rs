@@ -45,25 +45,29 @@ pub fn follow(redirect: &Redirect<'_>) -> bool {
 }
 
 /// Whether `url` contains `address`, its local part followed by an `@`, or any `@` in its query,
-/// after up to two rounds of percent-decoding, ignoring case.
+/// as written or after any number of rounds of percent-decoding, ignoring case.
 pub fn carries(url: &str, address: &str) -> bool {
     let address = address.to_lowercase();
     let local = address.rsplit_once('@').map_or("", |(local, _)| local);
-    let once = percent_decode(url);
-    let twice = percent_decode(&once);
-    [
-        url.to_lowercase(),
-        once.to_lowercase(),
-        twice.to_lowercase(),
-    ]
-    .iter()
-    .any(|text| {
+    let found = |text: &str| {
+        let text = text.to_lowercase();
         text.contains(&address)
             || (!local.is_empty() && text.contains(&format!("{local}@")))
             || text
                 .split_once('?')
                 .is_some_and(|(_, query)| query.contains('@'))
-    })
+    };
+    let mut text = url.to_owned();
+    loop {
+        if found(&text) {
+            return true;
+        }
+        let decoded = percent_decode(&text);
+        if decoded == text {
+            return false;
+        }
+        text = decoded;
+    }
 }
 
 fn percent_decode(text: &str) -> String {
@@ -165,6 +169,8 @@ mod tests {
     fn encoded_addresses_are_recognized() {
         assert!(carries("https://h/?e=TEST%40Example.com", ADDRESS));
         assert!(carries("https://h/?e=test%2540example.com", ADDRESS));
+        // Any depth of encoding (the review, ML-093: two rounds were decoded before).
+        assert!(carries("https://h/?e=test%25252540example.com", ADDRESS));
         assert!(carries("https://h/test@example.com/config", ADDRESS));
         assert!(carries("https://h/?login=test%40", ADDRESS));
         assert!(carries("https://h/?x=a@b", ADDRESS));

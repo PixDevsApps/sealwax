@@ -1,0 +1,15 @@
+#)NNNNNNNNNNNNNÿÿNÿNNÿNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNNN accounts
+[[account]]
+key = "work                                 "
+name = "Kari Nordmann"
+address = "kariªªªª*ªªªªªªªªªªªªªªªªªªªªªªªªªªªªªªªª@example.te——————————————————————"
+[account.pop3]
+host = "pop.exZmple.test"
+port = 995
+security = "tls"
+leave_on_server = true
+delete_after_days = 14
+[account.smtp]
+host = "smtp.example.test"
+port = 465
+security = "tls"

@@ -8,6 +8,7 @@ use crate::model::{Address, Attachment, BodyKind, Headers, ThreadIndex};
 use crate::snippet::{self, SNIPPET_CHARS};
 use mail_parser::decoders::base64::base64_decode;
 use mail_parser::{HeaderValue, Message, MessageParser, MimeHeaders, PartType};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 pub use html::html_to_text;
 
@@ -47,8 +48,17 @@ impl ParsedMessage {
     }
 }
 
-/// Parses a raw message. Input without any header yields an empty result with only the size.
+/// Parses a raw message. Input without any header yields an empty result with only the size,
+/// and so does a panic in a parser beneath: one message must never stop a sync (ML-093).
 pub fn parse(raw: &[u8]) -> ParsedMessage {
+    let size = raw.len() as u64;
+    catch_unwind(AssertUnwindSafe(|| parse_message(raw))).unwrap_or_else(|_| ParsedMessage {
+        size,
+        ..ParsedMessage::default()
+    })
+}
+
+fn parse_message(raw: &[u8]) -> ParsedMessage {
     let size = raw.len() as u64;
     let Some(message) = MessageParser::default().parse(raw) else {
         return ParsedMessage {

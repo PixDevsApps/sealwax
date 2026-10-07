@@ -1,0 +1,1 @@
+See www.example.test, https://example.test/a?b=(c) and <mailto:ola@example.test>, javascript:alert(1) file:///etc/passwd ola@example.test.

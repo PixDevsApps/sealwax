@@ -1017,10 +1017,11 @@ pub fn remove(text: &str, key: &AccountKey) -> Result<Option<String>, EditError>
     else {
         return Ok(None);
     };
-    let Some(index) = tables
-        .iter()
-        .position(|table| table.get("key").and_then(Item::as_str) == Some(key.0.as_str()))
-    else {
+    // The key as `parse` reads it: white space around it is no part of it (found by fuzzing,
+    // ML-093: such an entry stayed while the account's data went).
+    let Some(index) = tables.iter().position(|table| {
+        table.get("key").and_then(Item::as_str).map(str::trim) == Some(key.0.as_str())
+    }) else {
         return Ok(None);
     };
     let removed = tables.remove(index);
@@ -1898,6 +1899,17 @@ mod tests {
         let only_home = remove(&two, &AccountKey("work".into())).unwrap().unwrap();
         assert!(only_home.starts_with(&header));
         assert_eq!(parse(&only_home).unwrap()[0].key.0, "home");
+    }
+
+    /// Found by fuzzing (ML-093): `parse` reads a key without the white space around it, and
+    /// removing it by that key found nothing, so the entry stayed while the account's data went.
+    #[test]
+    fn a_key_written_with_spaces_is_removed_by_its_key() {
+        let text = "[[account]]\nkey = \" work \"\nname = \"W\"\naddress = \"w@example.test\"\n\
+                    [account.imap]\nhost = \"i.example.test\"\n[account.smtp]\nhost = \"s.example.test\"\n";
+        assert_eq!(parse(text).unwrap()[0].key.0, "work");
+        let removed = remove(text, &AccountKey("work".into())).unwrap().unwrap();
+        assert_eq!(parse(&removed), Ok(Vec::new()));
     }
 
     #[test]

@@ -176,6 +176,25 @@ fn images_cid_https_and_data_only() {
     assert_eq!(only_known.content_ids, ["known@example.test"]);
 }
 
+/// Found by fuzzing (ML-093): a `<p>` inside `<svg>` ends the SVG for the allowlist's parser
+/// but not for the first pass, which let an image through without `keep_cid`; an image's
+/// source written in capitals, after white space or in text was counted wrongly.
+#[test]
+fn every_image_the_output_shows_is_counted_and_checked() {
+    let escaped = clean_with(
+        "<svg><p><img src=\"cid:gone@example.test\"><img src=\"cid:known@example.test\"></svg>",
+        |id| id == "known@example.test",
+    );
+    assert_eq!(escaped.content_ids, ["known@example.test"]);
+    assert!(!escaped.html.contains("gone@"), "{}", escaped.html);
+    let counted = clean(
+        "<img src=\" CID:Upper@example.test\"><img src=\"\u{c}https://example.test/a.png\">\
+         <p>src=\"cid:text@example.test\"</p>",
+    );
+    assert_eq!(counted.content_ids, ["Upper@example.test"]);
+    assert_eq!(counted.remote_images, 1);
+}
+
 #[test]
 fn links_web_and_mail_only() {
     let html = clean(

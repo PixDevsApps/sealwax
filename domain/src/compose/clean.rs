@@ -174,19 +174,38 @@ pub fn clean(html: &str) -> Cleaned {
 /// Content-ID (the caller has that part). White space around the result (a document's line
 /// breaks between `head` and `body`) is trimmed.
 pub fn clean_with(html: &str, keep_cid: impl Fn(&str) -> bool) -> Cleaned {
-    let normalized = normalize(html, &keep_cid);
+    let cleaned = clean_once(html, &keep_cid);
+    if cleaned.content_ids.iter().all(|id| keep_cid(id)) {
+        return cleaned;
+    }
+    // The first pass reads tags as a tokenizer does, the allowlist as a tree, and markup such
+    // as `<svg><p>` leaves foreign content in one but not in the other: an image the first pass
+    // took for part of a dropped element can survive. The allowlist's output has no foreign
+    // content, so a second round over it sees every image (found by fuzzing, ML-093).
+    clean_once(&cleaned.html, &keep_cid)
+}
+
+fn clean_once(html: &str, keep_cid: &dyn Fn(&str) -> bool) -> Cleaned {
+    let normalized = normalize(html, keep_cid);
     let html = BUILDER
         .clean(&normalized)
         .to_string()
         .trim_matches(|c: char| c.is_ascii_whitespace())
         .to_owned();
+    let sources = image_sources(&html);
     let mut content_ids: Vec<String> = Vec::new();
-    for id in sources(&html, "cid:") {
-        if !content_ids.contains(&id) {
-            content_ids.push(id);
+    for source in &sources {
+        if has_prefix(source, "cid:") {
+            let id = percent_decode(&source[4..]);
+            if !content_ids.contains(&id) {
+                content_ids.push(id);
+            }
         }
     }
-    let remote_images = sources(&html, "https:").len();
+    let remote_images = sources
+        .iter()
+        .filter(|source| has_prefix(source, "https:"))
+        .count();
     Cleaned {
         html,
         content_ids,
@@ -194,24 +213,31 @@ pub fn clean_with(html: &str, keep_cid: impl Fn(&str) -> bool) -> Cleaned {
     }
 }
 
-/// The decoded values of `src="<scheme>…"` in serialized HTML, without the scheme for `cid:`.
-fn sources(html: &str, scheme: &str) -> Vec<String> {
-    let needle = format!("src=\"{scheme}");
-    html.match_indices(&needle)
-        .filter_map(|(at, _)| {
-            let rest = &html[at + needle.len()..];
-            let value = &rest[..rest.find('"')?];
-            let value = value
-                .replace("&quot;", "\"")
-                .replace("&nbsp;", "\u{a0}")
-                .replace("&amp;", "&");
-            Some(if scheme == "cid:" {
-                percent_decode(&value)
-            } else {
-                value
-            })
-        })
-        .collect()
+/// The trimmed `src` of every image in serialized HTML, character references decoded.
+fn image_sources(html: &str) -> Vec<String> {
+    struct Sources(RefCell<Vec<String>>);
+
+    impl TokenSink for Sources {
+        type Handle = ();
+
+        fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+            if let Token::TagToken(tag) = token
+                && tag.kind == TagKind::StartTag
+                && &*tag.name == "img"
+                && let Some(source) = attribute(&tag.attrs, "src")
+            {
+                self.0.borrow_mut().push(source.trim().to_owned());
+            }
+            TokenSinkResult::Continue
+        }
+    }
+
+    let tokenizer = Tokenizer::new(Sources(RefCell::new(Vec::new())), TokenizerOpts::default());
+    let input = BufferQueue::default();
+    input.push_back(html.into());
+    let _ = tokenizer.feed(&input);
+    tokenizer.end();
+    tokenizer.sink.0.take()
 }
 
 /// RFC 2392: a `cid:` URL is the Content-ID percent-encoded.
@@ -222,6 +248,7 @@ fn percent_decode(text: &str) -> String {
     while index < bytes.len() {
         if bytes[index] == b'%'
             && let Some(hex) = bytes.get(index + 1..index + 3)
+            && hex.iter().all(u8::is_ascii_hexdigit)
             && let Ok(hex) = std::str::from_utf8(hex)
             && let Ok(byte) = u8::from_str_radix(hex, 16)
         {

@@ -1,0 +1,33 @@
+From: "Kari Nordmann" <kari@example.test>
+To: Ola Nordmann <ola@example.test>, =?utf-8?B?QmrDuHJu?= <bjorn@example.test>
+Subject: =?iso-8859-1?Q?Bl=E5b=E6r?= Re: Fwd: SV: plan
+Date: Wed, 7 Oct 2026 09:30:00 +0200
+Message-ID: <seed-1@example.test>
+In-Reply-To: <root@example.test>
+References: <root@example.test> <mid@example.test>
+Thread-Index: AQHZ1234567890abcdefghijklmnopq==
+List-Id: Fjord list <fjord.example.test>
+MIME-Version: 1.0
+Content-Type: multipart/signed; protocol="application/pgp-signature"; micalg=pgp-sha256; boundary="s"
+
+--s
+Content-Type: text/plain
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
+Signed text
+-----BEGIN PGP SIGNATURE-----
+
+iQEzBAEBCAAdFiEE
+=abcd
+-----END PGP SIGNATURE-----
+--s
+Content-Type: application/pgp-signature
+
+-----BEGIN PGP SIGNATURE-----
+
+iQEzBAEBCAAdFiEE
+=abcd
+-----END PGP SIGNATURE-----
+--s--

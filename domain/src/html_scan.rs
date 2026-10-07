@@ -162,10 +162,10 @@ fn scan_tag(bytes: &[u8], mut at: usize) -> (String, Vec<(String, String)>, usiz
                 value = String::from_utf8_lossy(&bytes[value_start..at]).into_owned();
             }
         }
-        if name.is_empty() {
-            at += 1;
-        } else {
+        if !name.is_empty() {
             attributes.push((name, value));
+        } else if at == attr_start {
+            at += 1;
         }
     }
 }
@@ -386,5 +386,16 @@ mod tests {
                     <link rel=stylesheet href=\"https://example.test/s.css\">\
                     <div style=\"background:url(cid:bg@example.test)\">x</div>";
         assert!(!scan(html).remote_images);
+    }
+
+    /// Found by fuzzing (ML-093): a value without a name at the end of the text read past it
+    /// (a panic, so the reader showed the message as empty), and one before `>` skipped the
+    /// tag's end.
+    #[test]
+    fn values_without_a_name_end_where_they_end() {
+        assert_eq!(scan("<a =\"\""), Scan::default());
+        assert_eq!(scan("<a ='x'"), Scan::default());
+        assert!(scan("<p =x><font color=red>x</font>").own_colours);
+        assert!(scan("<p =\"\"é><font color=red>x</font>").own_colours);
     }
 }

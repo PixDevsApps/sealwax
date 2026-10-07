@@ -5,6 +5,9 @@ pub mod accounts;
 pub mod api;
 pub mod autoconfig;
 pub mod bodies;
+#[cfg(any(test, feature = "fuzz"))]
+#[doc(hidden)]
+pub mod fuzz;
 pub mod imap;
 pub mod net;
 pub mod oauth;

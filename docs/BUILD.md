@@ -1,6 +1,6 @@
 # Build
 
-Synced: 2026-10-06
+Synced: 2026-10-07
 
 ## Toolchain and system libraries
 
@@ -42,6 +42,7 @@ cargo run -p sealwax -- --version
 | `sealwax-fixtures` | `devtools/fixtures/` | Synthetic `.eml` corpora, import and store benchmarks, `bench-conversation` (workspace glob `devtools/*`, `publish = false`) |
 | `sealwax-dns-canary` | `devtools/dns-canary/` | A preloadable `getaddrinfo` that records and refuses every name looked up, for the hostile suite (M5) |
 | `email-spike-s1` … `email-spike-s7` | `spikes/<id>-<topic>/` | M0 measurement code, one crate per spike (workspace glob `spikes/*`) |
+| `sealwax-fuzz` | `fuzz/` | libFuzzer targets (M9, ML-093); a workspace of its own, excluded from this one, built by `tools/fuzz.sh` |
 
 Release profile: thin LTO, one codegen unit. The M0 spike crates keep their `email-spike-*` names (ADR-010).
 
@@ -105,6 +106,20 @@ tools/headless.sh 21 target/debug/sealwax --self-test tests/selftest/testbed-pop
 ```
 
 `pop3_testbed` (the client: Dovecot's and Stalwart's POP3 over both securities, alice read-only, `popclient`'s own INBOX for deletions, cuts through the fault proxy; `SEALWAX_POP3_SEEDS` sets its fault runs, 5 by default) and `pop3_accounts_testbed` (an account's actor end to end on `popclient`) also run under `tools/ci.sh --testbed`. `testbed-pop3-setup` adds a POP3 account through the assistant on Stalwart's POP3 (port 16995): never point it at Dovecot's alice, since Dovecot marks downloaded mail read when the POP3 session ends. `engine/tests/pop3.rs` (a scripted server), `pop3_log.rs` and `pop3_accounts.rs` (a fake maildrop) run in CI.
+
+## Fuzzing and the advisory check (M9)
+
+```sh
+bash tools/fuzz.sh list                    # the 12 targets
+bash tools/fuzz.sh message 900             # build, then fuzz one target for 900 s
+bash tools/fuzz.sh all 600 4               # every target, 600 s each, 4 at a time
+bash tools/fuzz.sh repro html target/fuzz-artifacts/html/crash-…   # one input again
+SEALWAX_CORPUS_REAL=/path/to/.local/corpus/real bash tools/fuzz.sh html 900   # from a worktree
+git clone --depth 1 https://github.com/rustsec/advisory-db target/advisory-db
+python3 tools/advisories.py -v target/advisory-db Cargo.lock
+```
+
+The fuzz targets live in `fuzz/`, a workspace of its own (excluded from the main one), so `cargo build` and CI never compile them. They link libFuzzer through the `libfuzzer-sys` crate on the stable toolchain, instrumented with SanitizerCoverage flags (`-C passes=sancov-module`); no nightly, no `cargo-fuzz` and no AddressSanitizer. Debug assertions and overflow checks are on (`fuzz/Cargo.toml`). Each target calls an entry point in the crates (`sealwax_domain::fuzz`, `sealwax_engine::fuzz`, built for tests and with the `fuzz` feature) that also checks what the parser promises, so a property that fails is a crash. Working corpora, crashes and logs go to `target/fuzz-corpus/`, `target/fuzz-artifacts/` and `target/fuzz-logs/`; the checked-in seeds and every crash found are in `fuzz/corpus/<target>/`, which `cargo test -p sealwax-domain -p sealwax-engine` runs through the same entry points. The advisory check reads the public RustSec database (cloned into `target/`, never committed) instead of installing `cargo audit`. Results: [m9/security.md](m9/security.md).
 
 ## Headless GTK runs
 

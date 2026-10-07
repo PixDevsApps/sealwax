@@ -290,32 +290,33 @@ pub struct Found {
 /// becomes a link: `javascript:`, `file:`, `data:` and relative targets are text.
 pub fn find(text: &str) -> Vec<Found> {
     let lower = text.to_ascii_lowercase();
+    let mut starts: Vec<(usize, &str)> = ["https://", "http://", "mailto:", "www."]
+        .into_iter()
+        .flat_map(|prefix| lower.match_indices(prefix))
+        .collect();
+    starts.sort_unstable();
     let mut found: Vec<Found> = Vec::new();
-    for prefix in ["https://", "http://", "mailto:", "www."] {
-        for (start, _) in lower.match_indices(prefix) {
-            if !at_word_start(text, start)
-                || found.iter().any(|f| f.start <= start && start < f.end)
-            {
-                continue;
-            }
-            let end = url_end(text, start);
-            let url = &text[start..end];
-            let rest = url.get(prefix.len()..).unwrap_or_default();
-            let usable = match prefix {
-                "mailto:" => rest.contains('@'),
-                "www." => rest.contains('.'),
-                _ => !rest.is_empty(),
-            };
-            if !usable {
-                continue;
-            }
-            let target = if prefix == "www." {
-                format!("https://{url}")
-            } else {
-                url.to_owned()
-            };
-            found.push(Found { start, end, target });
+    for (start, prefix) in starts {
+        if !at_word_start(text, start) || found.last().is_some_and(|last| start < last.end) {
+            continue;
         }
+        let end = url_end(text, start);
+        let url = &text[start..end];
+        let rest = url.get(prefix.len()..).unwrap_or_default();
+        let usable = match prefix {
+            "mailto:" => rest.contains('@'),
+            "www." => rest.contains('.'),
+            _ => !rest.is_empty(),
+        };
+        if !usable {
+            continue;
+        }
+        let target = if prefix == "www." {
+            format!("https://{url}")
+        } else {
+            url.to_owned()
+        };
+        found.push(Found { start, end, target });
     }
     for (at, _) in text.match_indices('@') {
         if found.iter().any(|f| f.start <= at && at < f.end) {
@@ -409,7 +410,8 @@ fn normalize_host(host: &str) -> Option<String> {
     if let Some(address) = ipv4(host) {
         return Some(address.to_string());
     }
-    match idna::domain_to_ascii(host) {
+    // UTS 46 maps the ideographic full stop and its kin to `.`, so dots trail only now.
+    match idna::domain_to_ascii(host).map(|ascii| ascii.trim_end_matches('.').to_owned()) {
         Ok(ascii) if !ascii.is_empty() => Some(ascii),
         _ => host
             .is_ascii()
@@ -437,8 +439,10 @@ fn ipv4(host: &str) -> Option<Ipv4Addr> {
                 None
             } else if digits.is_empty() {
                 Some(0)
-            } else {
+            } else if digits.chars().all(|c| c.is_digit(radix)) {
                 u64::from_str_radix(digits, radix).ok()
+            } else {
+                None
             }
         })
         .collect::<Option<Vec<u64>>>()?;
@@ -559,6 +563,15 @@ mod tests {
             assert_eq!(target(url).unwrap().host, "127.0.0.1", "{url}");
         }
         assert_eq!(target("http://256.0.0.1/").unwrap().host, "256.0.0.1");
+        // Found in the security review (ML-093): a full stop IDNA maps to a dot trails no more,
+        // and a sign is no digit.
+        assert_eq!(
+            target("https://bank.example\u{3002}/").unwrap().host,
+            "bank.example"
+        );
+        assert_eq!(target("https:\u{3002}."), None);
+        assert_eq!(target("http://0x+7f.1/").unwrap().host, "0x+7f.1");
+        assert_eq!(target("http://+127.1/").unwrap().host, "+127.1");
         assert_eq!(check("127.0.0.1", "http://2130706433/"), Verdict::Fine);
         assert_eq!(
             check("bank.example", "http://192.0.2.1/login"),
@@ -841,5 +854,20 @@ mod tests {
         let text = "'https://example.com/q'";
         let found = find(text);
         assert_eq!(&text[found[0].start..found[0].end], "https://example.com/q");
+    }
+
+    /// Found by fuzzing (ML-093): a link that starts inside another was found too when its
+    /// prefix was looked for first, so two links covered the same text.
+    #[test]
+    fn links_never_overlap() {
+        for text in [
+            "www.example.test/r?u=https://evil.example/",
+            "mailto:ada@example.test?body=http://evil.example/",
+            "www.55lom\u{f9}https://./https:h",
+        ] {
+            let found = find(text);
+            assert_eq!(found.len(), 1, "{text}: {found:?}");
+            assert_eq!((found[0].start, found[0].end), (0, text.len()), "{text}");
+        }
     }
 }

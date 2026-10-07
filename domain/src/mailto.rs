@@ -146,6 +146,7 @@ fn decode(text: &str) -> Vec<u8> {
     while index < bytes.len() {
         if bytes[index] == b'%'
             && let Some(hex) = bytes.get(index + 1..index + 3)
+            && hex.iter().all(u8::is_ascii_hexdigit)
             && let Ok(hex) = std::str::from_utf8(hex)
             && let Ok(byte) = u8::from_str_radix(hex, 16)
         {
@@ -272,6 +273,15 @@ mod tests {
         assert_eq!(parsed.to, ["x@example.com"]);
         assert_eq!(parsed.subject.as_deref(), Some("Blåbær+syltetøy"));
         assert_eq!(parsed.body.as_deref(), Some("Hei\npå deg"));
+    }
+
+    /// Found in the security review (ML-093): Rust reads `+a` as hex, so `%+a` became a line
+    /// break; a `%` without two hex digits stays as it is.
+    #[test]
+    fn signs_are_not_hex_digits() {
+        let parsed = parse("mailto:x@example.com?subject=a%+a&body=b%+ab%-1").unwrap();
+        assert_eq!(parsed.subject.as_deref(), Some("a%+a"));
+        assert_eq!(parsed.body.as_deref(), Some("b%+ab%-1"));
     }
 
     #[test]

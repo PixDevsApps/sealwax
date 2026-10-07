@@ -111,7 +111,7 @@ pub struct Capabilities {
 }
 
 impl Capabilities {
-    fn read(&mut self, line: &[u8]) {
+    pub(super) fn read(&mut self, line: &[u8]) {
         let line = String::from_utf8_lossy(line);
         let mut words = line.split_ascii_whitespace();
         let Some(name) = words.next() else {
@@ -181,7 +181,7 @@ fn number(text: &[u8]) -> Option<u32> {
 }
 
 /// The size at the start of a LIST value (more information may follow it, RFC 1939, 5).
-fn octets(value: &[u8]) -> Result<u64, Pop3Error> {
+pub(super) fn octets(value: &[u8]) -> Result<u64, Pop3Error> {
     std::str::from_utf8(value)
         .ok()
         .and_then(|value| value.split_ascii_whitespace().next()?.parse().ok())
@@ -189,7 +189,7 @@ fn octets(value: &[u8]) -> Result<u64, Pop3Error> {
 }
 
 /// `n value` from a UIDL or LIST line.
-fn pair(line: &[u8]) -> Result<(u32, &[u8]), Pop3Error> {
+pub(super) fn pair(line: &[u8]) -> Result<(u32, &[u8]), Pop3Error> {
     let line = line.trim_ascii();
     let space = line
         .iter()
@@ -199,7 +199,7 @@ fn pair(line: &[u8]) -> Result<(u32, &[u8]), Pop3Error> {
     Ok((n, line[space..].trim_ascii()))
 }
 
-fn uidl(value: &[u8]) -> Result<String, Pop3Error> {
+pub(super) fn uidl(value: &[u8]) -> Result<String, Pop3Error> {
     let valid = !value.is_empty()
         && value.len() <= MAX_UIDL
         && value.iter().all(|byte| (0x21..=0x7e).contains(byte));

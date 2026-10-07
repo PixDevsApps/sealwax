@@ -1,0 +1,46 @@
+From: "Kari Nordmann" <kari@example.test>
+To: Ola Nordmann <ola@example.test>, =?utf-8?B?QmrDuHJu?= <bjorn@example.test>
+Subject: =?iso-8859-1?Q?Bl=E5b=E6r?= Re: Fwd: SV: plan
+Date: Wed, 7 Oct 2026 09:30:00 +0200
+Message-ID: <seed-1@example.test>
+In-Reply-To: <root@example.test>
+References: <root@example.test> <mid@example.test>
+Thread-Index: AQHZ1234567890abcdefghijklmnopq==
+List-Id: Fjord list <fjord.example.test>
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="m"
+
+--m
+Content-Type: multipart/related; boundary="r"
+
+--r
+Content-Type: text/html; charset=utf-8
+
+<html><body><img src="cid:logo%40example.test"><blockquote>old</blockquote></body></html>
+--r
+Content-Type: image/png
+Content-ID: <logo@example.test>
+Content-Disposition: inline
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyAhIiMkJSYn
+--r--
+--m
+Content-Type: application/x-desktop; name="../../.config/autostart/x.desktop"
+Content-Disposition: attachment; filename*=utf-8''rapport%E2%80%AEfdp.exe
+Content-Transfer-Encoding: base64
+
+W0Rlc2t0b3AgRW50cnld
+--m
+Content-Type: application/pdf; name="=?utf-8?Q?faktura=E2=80=A4pdf.sh?="
+Content-Disposition: attachment
+
+JVBERi0=
+--m
+Content-Type: message/rfc822
+
+From: inner@example.test
+Subject: inner
+
+Inner body
+--m--

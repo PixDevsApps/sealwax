@@ -109,16 +109,22 @@ pub const MAX_NAME_BYTES: usize = 200;
 /// The longest extension kept whole when a long name is shortened, in bytes.
 const MAX_EXTENSION_BYTES: usize = 16;
 
-/// Whether the desktop must never open this attachment, and why.
+/// Whether the desktop must never open this attachment, and why. The name it would be opened
+/// under ([`safe_file_name`]) is checked too: shortening a long name can leave another
+/// extension at its end.
 pub fn danger(name: Option<&str>, mime_type: &str) -> Option<Danger> {
     let base = last_component(name.unwrap_or_default());
     if base.chars().any(is_direction_control) || lookalike_extension(base) {
         return Some(Danger::Disguised);
     }
-    let normalized = normalize(base);
-    let program = extension(&normalized).is_some_and(|extension| {
-        DANGEROUS_EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str())
-    }) || dangerous_type(mime_type);
+    let program = [normalize(base), safe_file_name(name, mime_type)]
+        .iter()
+        .any(|name| {
+            extension(name).is_some_and(|extension| {
+                DANGEROUS_EXTENSIONS.contains(&extension.to_ascii_lowercase().as_str())
+            })
+        })
+        || dangerous_type(mime_type);
     program.then_some(Danger::Program)
 }
 
@@ -405,6 +411,19 @@ mod tests {
         ] {
             assert_eq!(danger_of(name), Some(Danger::Program), "{name}");
         }
+    }
+
+    /// Found by fuzzing (ML-093): shortening a name whose last extension is too long to keep
+    /// left `.desktop` at the end of the name it opens under, while the check read the original.
+    #[test]
+    fn the_name_it_opens_under_is_checked_too() {
+        let name = format!("{}.desktop.{}", "a".repeat(191), "x".repeat(20));
+        let safe = safe_file_name(Some(&name), "application/pdf");
+        assert_eq!(extension(&safe), Some("desktop"));
+        assert_eq!(
+            danger(Some(&name), "application/pdf"),
+            Some(Danger::Program)
+        );
     }
 
     #[test]
