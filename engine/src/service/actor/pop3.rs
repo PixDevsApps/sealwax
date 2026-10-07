@@ -25,7 +25,7 @@ use super::{
 };
 use crate::api::{Event, SyncStatus};
 use crate::imap::Progress;
-use crate::pop3::{self, Credentials, Listing, Mailbox, Pop3Error};
+use crate::pop3::{self, Busy, Credentials, Expire, Listing, Mailbox, Pop3Error};
 use crate::service::{Shared, password, tls};
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure, Pop3Policy, Receive};
 use sealwax_domain::message;
@@ -50,31 +50,35 @@ const BATCH: usize = 25;
 const BATCH_WAIT: Duration = Duration::from_millis(500);
 const DAY: i64 = 86_400;
 
-/// The maildrop as the actor uses it: the client's `Mailbox`, and the header of a message too
-/// large to download.
-pub(super) trait Maildrop: Mailbox {
-    /// The message's header (TOP n 0), for one the client won't download whole.
-    fn top(&mut self, number: u32) -> impl Future<Output = Result<Vec<u8>, Pop3Error>> + Send;
+/// What the server's CAPA said at the login that the passes heed.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct Offers {
+    /// LOGIN-DELAY: the least time between logins.
+    pub login_delay: Option<Duration>,
+    /// EXPIRE: how long the server keeps mail once it was retrieved.
+    pub expire: Option<Expire>,
 }
 
-impl Maildrop for pop3::Session {
-    async fn top(&mut self, number: u32) -> Result<Vec<u8>, Pop3Error> {
-        // M8's merge: the client's `Mailbox::header(number)` (TOP).
-        let _ = number;
-        Err(Pop3Error::Err)
-    }
+/// Why a login didn't open the maildrop.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Refused {
+    /// The account's status says why.
+    Login(LoginFailure),
+    /// The server can't open the maildrop now (another app holds it, LOGIN-DELAY, a temporary
+    /// problem): tried again later, without the user.
+    Busy(Busy),
 }
 
 /// How the actor reaches the account's server: the POP3 client, or a test's mailbox.
 pub(super) trait Connect: Send + Sync + 'static {
-    type Mailbox: Maildrop + 'static;
+    type Mailbox: Mailbox + 'static;
 
     /// Connects and logs in as the account.
     fn connect(
         &self,
         shared: &Shared,
         settings: &AccountSettings,
-    ) -> impl Future<Output = Result<Self::Mailbox, LoginFailure>> + Send;
+    ) -> impl Future<Output = Result<(Self::Mailbox, Offers), Refused>> + Send;
 }
 
 /// The POP3 client, with the account's password: POP3 accounts are password accounts in 1.0
@@ -88,32 +92,31 @@ impl Connect for Network {
         &self,
         shared: &Shared,
         settings: &AccountSettings,
-    ) -> Result<pop3::Session, LoginFailure> {
+    ) -> Result<(pop3::Session, Offers), Refused> {
         if let AuthMethod::OAuth(_) = settings.auth {
             tracing::info!("a POP3 account signs in with a password");
-            return Err(LoginFailure::Other);
+            return Err(Refused::Login(LoginFailure::Other));
         }
-        let password = password(shared, settings).await?;
-        let password = std::str::from_utf8(&password).map_err(|_| LoginFailure::WrongPassword)?;
+        let password = password(shared, settings).await.map_err(Refused::Login)?;
+        let password = std::str::from_utf8(&password)
+            .map_err(|_| Refused::Login(LoginFailure::WrongPassword))?;
         let credentials = Credentials::Password {
             username: &settings.username,
             password,
         };
-        pop3::connect(&settings.incoming, credentials, tls(shared)?)
-            .await
-            .map_err(login_failure)
-    }
-}
-
-/// What a POP3 error at login says about the account.
-fn login_failure(error: Pop3Error) -> LoginFailure {
-    match error {
-        Pop3Error::Rejected(failure) => failure,
-        Pop3Error::Connect(error) => error.failure(),
-        Pop3Error::StartTls => LoginFailure::NoTls,
-        Pop3Error::Timeout => LoginFailure::Timeout,
-        Pop3Error::ConnectionLost => LoginFailure::Unreachable,
-        _ => LoginFailure::Other,
+        let tls = tls(shared).map_err(Refused::Login)?;
+        match pop3::connect(&settings.incoming, credentials, tls).await {
+            Ok(session) => {
+                let caps = session.capabilities();
+                let offers = Offers {
+                    login_delay: caps.login_delay,
+                    expire: caps.expire,
+                };
+                Ok((session, offers))
+            }
+            Err(Pop3Error::Busy(busy)) => Err(Refused::Busy(busy)),
+            Err(error) => Err(Refused::Login(error.failure())),
+        }
     }
 }
 
@@ -268,6 +271,9 @@ async fn run<C: Connect>(
         wake: wake.clone(),
         drafts: drafts.clone(),
         incoming: incoming.clone(),
+        login_delay: None,
+        expire_told: false,
+        too_large: HashSet::new(),
     };
     let mut outbox = Outbox {
         submission: Submission::new(shared.clone(), settings, account, status, signals.clone()),
@@ -316,6 +322,13 @@ struct Passes<C: Connect> {
     /// What the account shows from its incoming side: the outbox's status once a submission
     /// login works again.
     incoming: Arc<Mutex<SyncStatus>>,
+    /// The server's LOGIN-DELAY, once a login said it: no login comes sooner after another.
+    login_delay: Option<Duration>,
+    /// The server's EXPIRE was logged for this policy.
+    expire_told: bool,
+    /// UIDLs whose data outgrew the size cap while it came, closing the session: their header
+    /// is fetched instead from then on.
+    too_large: HashSet<String>,
 }
 
 impl<C: Connect> Passes<C> {
@@ -406,12 +419,13 @@ impl<C: Connect> Passes<C> {
             self.halted = true;
             return;
         }
-        self.retry_later(false);
+        self.retry_later(false, None);
     }
 
     /// Tried again after the backoff; a connection lost mid-pass is made again at once the first
-    /// time, a failed login never (a server may want a LOGIN-DELAY, or be busy).
-    fn retry_later(&mut self, at_once: bool) {
+    /// time, a failed login never. No login comes sooner than the server's LOGIN-DELAY, or
+    /// `least`.
+    fn retry_later(&mut self, at_once: bool, least: Option<Duration>) {
         self.failures += 1;
         let failures = if at_once {
             self.failures
@@ -419,7 +433,49 @@ impl<C: Connect> Passes<C> {
             self.failures.max(2)
         };
         let unit = self.jitter.unit();
-        self.next_pass = Instant::now() + backoff_delay(&self.shared.sync, failures, unit);
+        let wait = backoff_delay(&self.shared.sync, failures, unit)
+            .max(self.login_delay.unwrap_or_default())
+            .max(least.unwrap_or_default());
+        self.next_pass = Instant::now() + wait;
+    }
+
+    /// The server can't open the maildrop now: the status stays, and the login waits.
+    fn busy(&mut self, busy: Busy) {
+        tracing::info!(account = self.account.0, ?busy, "the POP3 maildrop is busy");
+        let least = match busy {
+            Busy::LoginDelay(delay) => {
+                if delay.is_some() {
+                    self.login_delay = delay;
+                }
+                delay
+            }
+            Busy::InUse | Busy::Temporary => None,
+        };
+        self.retry_later(false, least);
+    }
+
+    /// What the login's CAPA said: LOGIN-DELAY spaces the logins; an EXPIRE that keeps
+    /// retrieved mail for less than the policy leaves it on the server is logged once.
+    fn offers(&mut self, offers: Offers) {
+        if offers.login_delay.is_some() {
+            self.login_delay = offers.login_delay;
+        }
+        let Some(Expire::Days(days)) = offers.expire else {
+            return;
+        };
+        let kept = self.policy.leave_on_server
+            && self
+                .policy
+                .delete_after_days
+                .is_none_or(|after| after > days);
+        if kept && !self.expire_told {
+            self.expire_told = true;
+            tracing::info!(
+                account = self.account.0,
+                days,
+                "the POP3 server deletes retrieved mail itself (EXPIRE): leave on server can't hold"
+            );
+        }
     }
 
     async fn pass(&mut self, seen: u64) -> Result<(), Interrupt> {
@@ -430,16 +486,28 @@ impl<C: Connect> Passes<C> {
         )
         .await?;
         let mailbox = match connected {
-            Ok(mailbox) => mailbox,
-            Err(failure) => {
+            Ok((mailbox, offers)) => {
+                self.offers(offers);
+                mailbox
+            }
+            Err(Refused::Login(failure)) => {
                 self.failed(failure);
+                return Ok(());
+            }
+            Err(Refused::Busy(busy)) => {
+                self.busy(busy);
                 return Ok(());
             }
         };
         match self.session(mailbox, seen).await? {
             Ok(()) => {
                 self.failures = 0;
-                self.next_pass = Instant::now() + self.shared.sync.pop3_poll;
+                self.next_pass = Instant::now()
+                    + self
+                        .shared
+                        .sync
+                        .pop3_poll
+                        .max(self.login_delay.unwrap_or_default());
                 self.set_incoming(SyncStatus::Synced);
                 self.status
                     .set(self.status.smtp().unwrap_or(SyncStatus::Synced));
@@ -450,17 +518,16 @@ impl<C: Connect> Passes<C> {
                     }
                 }
             }
-            Err(Failed::Server(
-                error @ (Pop3Error::ConnectionLost | Pop3Error::Timeout | Pop3Error::Connect(_)),
-            )) => {
+            Err(Failed::Server(error)) if error.is_connection() => {
                 tracing::info!(account = self.account.0, %error, "the POP3 connection was lost");
-                self.retry_later(true);
+                self.retry_later(true, None);
             }
+            Err(Failed::Server(Pop3Error::Busy(busy))) => self.busy(busy),
             Err(Failed::Server(error)) => {
                 tracing::warn!(account = self.account.0, %error, "a POP3 pass failed");
                 self.failed(LoginFailure::Other);
             }
-            Err(Failed::Store) => self.retry_later(false),
+            Err(Failed::Store) => self.retry_later(false, None),
         }
         Ok(())
     }
@@ -493,6 +560,8 @@ impl<C: Connect> Passes<C> {
             let new = to_download(&listing, &held);
             downloads.total = u32::try_from(new.len()).unwrap_or(u32::MAX);
             let fetched = downloads.fetch(self, &mut mailbox, &new, seen).await;
+            self.too_large
+                .extend(std::mem::take(&mut downloads.too_large));
             let stored = downloads.flush(self).await;
             match (fetched, stored) {
                 (Err(interrupt), _) => return Err(interrupt),
@@ -563,6 +632,8 @@ struct Downloads {
     since: Option<Instant>,
     /// UIDLs stored by this pass, with when and whether whole.
     stored: Vec<(String, (i64, bool))>,
+    /// UIDLs whose data outgrew the size cap while it came (the session is closed).
+    too_large: Vec<String>,
     fetched: u32,
     total: u32,
     /// Mail stored now is new mail (the account's first complete pass is behind it).
@@ -575,6 +646,7 @@ impl Downloads {
             batch: Vec::new(),
             since: None,
             stored: Vec::with_capacity(listed.min(BATCH)),
+            too_large: Vec::new(),
             fetched: 0,
             total: 0,
             new_mail: passes.first_pass.is_some(),
@@ -593,32 +665,40 @@ impl Downloads {
         let mut complete = true;
         let every = passes.shared.sync.progress_every;
         for entry in new {
-            let (message, whole) =
-                match race(&passes.signals, seen, mailbox.retrieve(entry.number)).await? {
-                    Ok(bytes) => match prepare(passes, bytes).await {
-                        Some(message) => (message, true),
-                        None => return Ok(Err(Failed::Store)),
-                    },
-                    Err(Pop3Error::TooLarge(size)) => {
-                        match race(&passes.signals, seen, mailbox.top(entry.number)).await? {
-                            Ok(header) => (header_only(passes.inbox, &header, entry.size), false),
-                            Err(Pop3Error::Err) => {
-                                tracing::info!(
-                                    account = passes.account.0,
-                                    size,
-                                    "a message too large to download stays on the server"
-                                );
-                                continue;
-                            }
-                            Err(error) => return Ok(Err(Failed::Server(error))),
+            let retrieved = if passes.too_large.contains(&entry.uidl) {
+                Err(Pop3Error::TooLarge(entry.size))
+            } else {
+                race(&passes.signals, seen, mailbox.retrieve(entry.number)).await?
+            };
+            let (message, whole) = match retrieved {
+                Ok(bytes) => match prepare(passes, bytes).await {
+                    Some(message) => (message, true),
+                    None => return Ok(Err(Failed::Store)),
+                },
+                Err(Pop3Error::TooLarge(size)) => {
+                    match race(&passes.signals, seen, mailbox.header(entry.number)).await? {
+                        Ok(header) => (header_only(passes.inbox, &header, entry.size), false),
+                        Err(error) if error.is_connection() => {
+                            // The data outgrew the cap while it came, which closed the session.
+                            self.too_large.push(entry.uidl.clone());
+                            return Ok(Err(Failed::Server(error)));
+                        }
+                        Err(_) => {
+                            tracing::info!(
+                                account = passes.account.0,
+                                size,
+                                "a message too large to download stays on the server"
+                            );
+                            continue;
                         }
                     }
-                    Err(Pop3Error::Err) => {
-                        complete = false;
-                        continue;
-                    }
-                    Err(error) => return Ok(Err(Failed::Server(error))),
-                };
+                }
+                Err(Pop3Error::Err | Pop3Error::Busy(_)) => {
+                    complete = false;
+                    continue;
+                }
+                Err(error) => return Ok(Err(Failed::Server(error))),
+            };
             self.batch.push(Pop3Download {
                 uidl: entry.uidl.clone(),
                 message,

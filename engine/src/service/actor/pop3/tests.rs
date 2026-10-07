@@ -4,8 +4,9 @@
 //! refused login; sending through a scripted SMTP server with the Sent copy filed locally,
 //! beside a long download; drafts' copies in the local Drafts folder; the bytes of mail deleted
 //! for good leaving the disk; a message above IMAP's whole-message limit stored whole, kept by
-//! the disk cap and answered from the store only; and Refresh's `CheckMail`. Test data and
-//! dummy addresses only.
+//! the disk cap and answered from the store only; Refresh's `CheckMail`; messages above the
+//! client's cap kept on the server as header rows; a busy maildrop and LOGIN-DELAY. Test data
+//! and dummy addresses only.
 
 use super::super::ops::unix_ms;
 use super::*;
@@ -63,11 +64,19 @@ struct Server {
     slow: Option<Duration>,
     /// UIDLs whose RETR the client refuses as too large.
     large: Vec<String>,
+    /// UIDLs whose data outgrows the size cap while it comes: the session closes.
+    outgrow: Vec<String>,
     /// TOP answers -ERR.
     no_top: bool,
-    /// `CONNECT`, `LIST`, `RETR <uidl>` (`RETR <uidl> cut`, `RETR <uidl> too large`),
-    /// `TOP <uidl>`, `DELE <uidl>`, `QUIT`.
+    /// The next logins are refused as busy, one each.
+    busy: Vec<Busy>,
+    /// What CAPA says at the login.
+    offers: Offers,
+    /// `CONNECT`, `LIST`, `RETR <uidl>` (`RETR <uidl> cut`, `RETR <uidl> too large`,
+    /// `RETR <uidl> outgrew`), `TOP <uidl>`, `DELE <uidl>`, `QUIT`.
     log: Vec<String>,
+    /// When each login came.
+    logins: Vec<Instant>,
 }
 
 #[derive(Clone, Default)]
@@ -112,10 +121,15 @@ struct FakeSession {
     listed: Vec<String>,
     marked: Vec<String>,
     retrieved: usize,
+    /// Closed by data that outgrew the cap.
+    closed: bool,
 }
 
 impl FakeSession {
     fn uidl(&self, number: u32) -> Result<String, Pop3Error> {
+        if self.closed {
+            return Err(Pop3Error::ConnectionLost);
+        }
         self.listed
             .get(number as usize - 1)
             .cloned()
@@ -156,6 +170,11 @@ impl Mailbox for FakeSession {
             drop.log.push(format!("RETR {uidl} too large"));
             return Err(Pop3Error::TooLarge(200 * 1024 * 1024));
         }
+        if drop.outgrow.contains(&uidl) {
+            drop.log.push(format!("RETR {uidl} outgrew"));
+            self.closed = true;
+            return Err(Pop3Error::TooLarge(200 * 1024 * 1024));
+        }
         drop.log.push(format!("RETR {uidl}"));
         self.retrieved += 1;
         drop.messages
@@ -182,10 +201,8 @@ impl Mailbox for FakeSession {
             .retain(|(uidl, _)| !self.marked.contains(uidl));
         Ok(())
     }
-}
 
-impl Maildrop for FakeSession {
-    async fn top(&mut self, number: u32) -> Result<Vec<u8>, Pop3Error> {
+    async fn header(&mut self, number: u32) -> Result<Vec<u8>, Pop3Error> {
         let uidl = self.uidl(number)?;
         let mut drop = self.fake.lock();
         drop.log.push(format!("TOP {uidl}"));
@@ -215,21 +232,27 @@ impl Connect for FakeConnect {
         &self,
         _shared: &Shared,
         _settings: &AccountSettings,
-    ) -> Result<FakeSession, LoginFailure> {
+    ) -> Result<(FakeSession, Offers), Refused> {
         let mut drop = self.0.lock();
         drop.log.push("CONNECT".into());
+        drop.logins.push(Instant::now());
         if drop.down {
-            return Err(LoginFailure::Unreachable);
+            return Err(Refused::Login(LoginFailure::Unreachable));
         }
         if let Some(failure) = drop.refuse {
-            return Err(failure);
+            return Err(Refused::Login(failure));
         }
-        Ok(FakeSession {
+        if !drop.busy.is_empty() {
+            return Err(Refused::Busy(drop.busy.remove(0)));
+        }
+        let session = FakeSession {
             fake: self.0.clone(),
             listed: Vec::new(),
             marked: Vec::new(),
             retrieved: 0,
-        })
+            closed: false,
+        };
+        Ok((session, drop.offers))
     }
 }
 
@@ -1387,6 +1410,85 @@ async fn downloaded_mail_is_unread_unless_its_header_says_read() {
             ("Melding 2".to_owned(), true),
             ("Melding 1".to_owned(), false)
         ]
+    );
+    stop(actor).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_message_whose_data_outgrows_the_cap_gets_its_header_at_the_next_pass() {
+    let fake = Fake::with(1..=2);
+    fake.lock().outgrow.push("u2".into());
+    let mut h = harness(Pop3Policy::default(), quick(), None, fake).await;
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    let inbox = h.folder(FolderRole::Inbox).await;
+    assert_eq!(h.subjects(inbox).await, ["Melding 2", "Melding 1"]);
+    let log = h.fake.log();
+    assert_eq!(h.fake.count("RETR u2 outgrew"), 1, "{log:?}");
+    assert_eq!(h.fake.count("TOP u2"), 1, "in the next session");
+    assert_eq!(h.fake.count("RETR u2"), 0, "never downloaded again");
+    assert!(
+        h.uidls()
+            .await
+            .iter()
+            .any(|uidl| uidl.uidl == "u2" && !uidl.whole)
+    );
+    stop(actor).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_busy_maildrop_waits_its_login_delay_and_keeps_the_status() {
+    let fake = Fake::with(1..=1);
+    fake.lock().busy = vec![
+        Busy::InUse,
+        Busy::LoginDelay(Some(Duration::from_millis(700))),
+    ];
+    let mut h = harness(Pop3Policy::default(), quick(), None, fake).await;
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    let logins = h.fake.lock().logins.clone();
+    assert_eq!(logins.len(), 3);
+    assert!(
+        logins[2] - logins[1] >= Duration::from_millis(700),
+        "no login before the LOGIN-DELAY: {:?}",
+        logins[2] - logins[1]
+    );
+    let statuses: Vec<SyncStatus> = h
+        .seen
+        .iter()
+        .filter_map(|event| match event {
+            Event::AccountStatus { status, .. } => Some(*status),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        statuses,
+        [SyncStatus::Syncing, SyncStatus::Synced],
+        "busy isn't offline"
+    );
+    stop(actor).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn polls_are_spaced_by_the_servers_login_delay() {
+    let fake = Fake::with(1..=1);
+    fake.lock().offers = Offers {
+        login_delay: Some(Duration::from_millis(900)),
+        expire: Some(Expire::Days(0)),
+    };
+    let mut h = harness(Pop3Policy::default(), quick(), None, fake).await;
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    h.eventually(|| {
+        let fake = h.fake.clone();
+        async move { fake.lock().logins.len() >= 2 }
+    })
+    .await;
+    let logins = h.fake.lock().logins.clone();
+    assert!(
+        logins[1] - logins[0] >= Duration::from_millis(900),
+        "the poll waits out LOGIN-DELAY (poll 200 ms): {:?}",
+        logins[1] - logins[0]
     );
     stop(actor).await;
 }
