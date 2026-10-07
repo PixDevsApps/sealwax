@@ -362,6 +362,9 @@ impl MessageList {
             .model(&selection)
             .factory(&factory)
             .header_factory(&headers)
+            // One Tab stop, as the folder list: Up and Down move between messages, and Tab goes
+            // on to the reader instead of through every row on screen.
+            .tab_behavior(gtk::ListTabBehavior::Item)
             .build();
         view.add_css_class("sw-message-list");
         view.set_widget_name("message-list");

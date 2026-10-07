@@ -524,6 +524,13 @@ impl RecipientField {
                     current.saturating_sub(1)
                 };
                 self.select(next);
+                // The entry keeps the focus, so a screen reader hears the row this way.
+                if let Some(row) = self.list.row_at_index(next as i32) {
+                    crate::accessibility::announce(
+                        &self.entry,
+                        &crate::accessibility::shown_text(&row),
+                    );
+                }
                 glib::Propagation::Stop
             }
             gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::ISO_Enter if plain && open => {
@@ -658,7 +665,9 @@ fn chip(address: &Address, valid: bool, name: &str) -> gtk::Box {
                 .icon_name("window-close-symbolic")
                 .tooltip_text(format!("Remove {shown}"))
                 .valign(gtk::Align::Center)
-                .can_focus(false)
+                // A Tab stop, so any chip can go from the keyboard (Backspace removes only the
+                // last); a click leaves the focus in the entry.
+                .focus_on_click(false)
                 .build(),
             &["sw-composer-chip-remove"],
         ),

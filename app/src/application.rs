@@ -40,7 +40,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use libadwaita::subclass::prelude::*;
 use sealwax_domain::account::AccountKey;
-use sealwax_domain::actions::ActionId;
+use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
 use sealwax_domain::model::{FolderId, FolderRole, MessageId};
@@ -683,7 +683,8 @@ impl AppState {
         self.app_actions.get()
     }
 
-    /// Whether a command is built and usable now, in either action group.
+    /// Whether a command is built and usable now, in either action group, or, for the
+    /// composer's commands, in every composer window.
     pub fn is_available(&self, id: ActionId) -> bool {
         self.app_actions
             .get()
@@ -693,6 +694,7 @@ impl AppState {
                 .borrow()
                 .as_ref()
                 .is_some_and(|set| set.is_available(id))
+            || (id.scope() == Scope::Composer && crate::composer::window::runs(id))
     }
 
     /// Quits the application: the one path for signals, the exit timer and the Quit action.
@@ -1121,6 +1123,7 @@ impl AppState {
         actions::apply_accels(app, &keymap);
         self.install_list(window, &win_actions, &keymap);
         compose_actions::install(self, window, &win_actions);
+        crate::go_to::install(self, &win_actions);
         self.win_actions.replace(Some(win_actions));
     }
 

@@ -458,7 +458,14 @@ impl Suggestions {
             (Some(at), false) => takeable.get(at - 1).copied(),
         };
         match next.and_then(|index| self.inner.list.row_at_index(index as i32)) {
-            Some(row) => self.inner.list.select_row(Some(&row)),
+            Some(row) => {
+                self.inner.list.select_row(Some(&row));
+                // The field keeps the focus, so a screen reader hears the row this way.
+                crate::accessibility::announce(
+                    &self.inner.entry,
+                    &crate::accessibility::shown_text(&row),
+                );
+            }
             None => self.inner.list.unselect_all(),
         }
     }

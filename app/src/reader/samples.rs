@@ -851,7 +851,7 @@ pub struct Threaded {
 /// The sample conversations: `trip` (six messages, plain and simple HTML, one with
 /// attachments), `letters` (eight styled newsletters), `long` (150 short messages), `typical`
 /// (ten: six plain or simple HTML, three styled newsletters, one with attachments).
-pub const CONVERSATIONS: [&str; 4] = ["trip", "letters", "long", "typical"];
+pub const CONVERSATIONS: [&str; 5] = ["trip", "letters", "long", "typical", "links"];
 
 /// The messages of conversation `name`, oldest first, the latest dated a little before `now`.
 pub fn conversation(name: &str, now: i64) -> Vec<Threaded> {
@@ -859,6 +859,7 @@ pub fn conversation(name: &str, now: i64) -> Vec<Threaded> {
         "trip" => trip(now),
         "letters" => letters(now),
         "long" => long(now),
+        "links" => links(now),
         _ => typical(now),
     }
 }
@@ -982,6 +983,77 @@ fn trip(now: i64) -> Vec<Threaded> {
                     at(1),
                     "trip-6",
                     "Perfect. I'll pick up firewood on the way; see you Friday.\n",
+                ),
+                false,
+                false,
+            ),
+        ],
+    )
+}
+
+/// Links and quoted history for the keyboard (M9, ML-092): a plain-text reply with three
+/// links and its quote collapsed behind "…", after an HTML one with a link whose text names
+/// another address and a collapsed Gmail quote.
+fn links(now: i64) -> Vec<Threaded> {
+    let subject = "Workshop sign-up";
+    let re = format!("Re: {subject}");
+    let at = |hours: i64| now - hours * 3_600;
+    let mut form = Draft::new(SANA, &re, at(3), "links-5");
+    form.text = Some("See the HTML part.\n".into());
+    form.html = Some(
+        "<div>The sign-up form is <a href=\"https://example.test/forms/workshop\">here</a>, \
+         and the old page is <a href=\"https://example.test.sign-in.example/login\">\
+         www.example.test/login</a>.</div><div><br></div><div>Sana</div><br>\
+         <div class=\"gmail_quote\"><div class=\"gmail_attr\">On Monday, Ingrid Solberg \
+         wrote:</div><blockquote class=\"gmail_quote\">Where do we sign up?</blockquote></div>"
+            .into(),
+    );
+    thread(
+        "links",
+        vec![
+            (
+                reply(
+                    INGRID,
+                    subject,
+                    at(52),
+                    "links-1",
+                    "Hi all,\n\nWhere do we sign up for the spring workshop?\n\nIngrid\n",
+                ),
+                true,
+                false,
+            ),
+            (
+                reply(
+                    TOMAS,
+                    &re,
+                    at(49),
+                    "links-2",
+                    "Good question; I don't know.\n",
+                ),
+                true,
+                false,
+            ),
+            (
+                reply(ME, &re, at(40), "links-3", "Marius will know.\n"),
+                true,
+                true,
+            ),
+            (
+                reply(MARIUS, &re, at(20), "links-4", "Sana has the form.\n"),
+                true,
+                false,
+            ),
+            (form, false, false),
+            (
+                reply(
+                    TOMAS,
+                    &re,
+                    at(1),
+                    "links-6",
+                    "Thanks! The agenda is at https://example.test/agenda and the map at \
+                     www.example.test/map. Questions go to workshop@example.test.\n\nTomas\n\n\
+                     > The sign-up form is here, and the old page is www.example.test/login.\n\
+                     > Sana\n",
                 ),
                 false,
                 false,

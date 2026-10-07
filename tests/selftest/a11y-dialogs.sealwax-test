@@ -1,0 +1,156 @@
+# The accessibility pass (M9, ML-092) on the command palette, Move to…, the Keyboard Shortcuts
+# dialog, the search suggestions, toasts, banners and the window's dialogs (the default mail app,
+# Start Sealwax at Login, the certificate's details, "Was the message sent?", Show Original):
+# every control on screen has an accessible name, a role and the states its role needs
+# (assert-accessible); Tab stays inside a dialog and comes round, Escape closes it, and the focus
+# goes back where it was. The palette, Move to… and the suggestions keep the focus in their
+# field, so the row Up and Down choose is announced. Every name, address and message is
+# fictional; nothing reaches the desktop (the sandboxed handlers of reply-default-app and
+# background-login).
+# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-dialogs.sealwax-test
+
+desktop tiling
+reply-sandbox
+resize 1440 900
+engine-attach
+triage-undo-window 3000
+triage-mark-read-on-open false
+triage-account Work work
+outbox-draft first Work
+outbox-draft second Work
+mail-add Work:inbox 2h "Kvartalsrapport" "from=Anna Berg" "text=Rapporten for tredje kvartal."
+mail-add Work:inbox 3h "Hyttetur" "from=Anders Lie" attachment
+list-wait
+list-select 0
+focus list
+
+# The command palette: the focus stays in its field, Down chooses and is announced, Tab doesn't
+# leave the dialog, Escape closes it and the list has the focus again.
+key F1
+assert-dialog "Command Palette"
+assert-accessible dialog
+assert-accessible-name palette-search "Command palette"
+assert-accessible-name palette-list Commands
+assert-focus palette-search
+key Down
+assert-announced "Previous Message, Navigation, k, Up"
+assert-focus palette-search
+tab-chain window forward 10
+assert-tab-stops 1
+key Escape
+assert-dialog none
+assert-focus list
+
+# Move to…: the same.
+key v
+assert-move-to open true
+assert-accessible dialog
+assert-accessible-name move-to-list Folders
+key Down
+assert-announced "Move to Drafts"
+tab-chain window forward 10
+assert-tab-stops 1
+key Escape
+assert-move-to open false
+assert-focus list
+
+# The Keyboard Shortcuts dialog: every list named by its section; the go-to keys, Back to List
+# and the composer's commands listed as built.
+key h
+assert-dialog "Keyboard Shortcuts"
+assert-accessible dialog
+assert-shortcut "Go to Inbox" built
+assert-shortcut "Back to List" built
+assert-shortcut Bold built
+assert-shortcut "Undo Typing" built
+assert-shortcut "Toggle Sidebar" "not built"
+key Escape
+assert-dialog none
+assert-focus list
+
+# The search field's suggestions: the field keeps the focus; Down is announced.
+focus search
+type fr
+wait-until assert-suggestions 1
+assert-accessible window
+key Down
+assert-announced "from:, Sender's name or address, from:anna, Enter"
+key Escape
+search-escape
+focus list
+
+# The certificate banner and its details, for an account the assistant added.
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-1
+setup-key enter
+engine-expect verify
+engine-reply verified ok
+engine-expect add-account
+engine-reply added ok
+wait-until assert-setup open false
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\n\n[account.imap]\nhost = \"imap.kari.example.test\"\n\n[account.smtp]\nhost = \"smtp.kari.example.test\"\n"
+wait-until assert-label sidebar-summary "2 accounts · all synced"
+setup-dismiss-toasts
+engine-reply status kari@example.test certificate
+wait-until assert-setup banner-queue certificate:kari
+assert-accessible window
+click banner-secondary
+wait-until assert-shown certificate-details true
+assert-accessible dialog
+tab-chain window forward 10
+key Escape
+assert-dialog none
+engine-reply status kari@example.test synced
+wait-until assert-setup banner-queue none
+
+# A toast: Archive's, with Undo.
+list-select 0
+focus list
+key e
+wait-until assert-toasts 1
+assert-accessible window
+toast-undo
+
+# The banner for a message that may have been sent, and its question.
+outbox-queue first
+outbox-engine start first
+outbox-engine uncertain first
+wait-until assert-setup banner-queue uncertain
+assert-accessible window
+assert-accessible-role banner-strip alert
+click banner-primary
+wait-until assert-shown uncertain-send true
+assert-accessible dialog
+tab-chain window forward 10
+key Escape
+assert-dialog none
+assert-focus-stop banner-primary
+
+# Make Sealwax the Default Mail App… and Start Sealwax at Login.
+reply-install-entry
+action app.default-mail-app
+wait-until assert-shown default-mail-app true
+assert-accessible dialog
+tab-chain window forward 10
+key Escape
+assert-dialog none
+action app.start-at-login
+wait-until assert-shown start-at-login true
+assert-accessible dialog
+key Escape
+assert-dialog none
+
+# Show Original.
+list-select 0
+wait-until assert-reader-page message
+action win.show-original
+wait-until assert-shown original-dialog true
+assert-accessible dialog
+tab-chain window forward 10
+key Escape
+assert-dialog none

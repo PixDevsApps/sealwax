@@ -377,7 +377,8 @@ impl Sidebar {
             &["sw-sidebar-footer"],
         );
         footer.append(&summary);
-        footer.append(&named(config_button(tooltips, "sw-icon-button"), "config"));
+        let config = named(config_button(tooltips, "sw-icon-button"), "config");
+        footer.append(&config);
         let full = classed(
             gtk::Box::new(gtk::Orientation::Vertical, 0),
             &["sw-sidebar-body"],
@@ -457,6 +458,7 @@ impl Sidebar {
             weak: RefCell::new(std::rc::Weak::new()),
         });
         sidebar.weak.replace(Rc::downgrade(&sidebar));
+        sidebar.keep_one_tab_stop(&config);
         sidebar.list.connect_row_activated(glib::clone!(
             #[weak]
             sidebar,
@@ -464,6 +466,69 @@ impl Sidebar {
         ));
         sidebar.rebuild();
         sidebar
+    }
+
+    /// The folder list is one Tab stop, as the message list is: Tab and Shift+Tab leave it
+    /// from any row (Up and Down move inside it), and coming in from the compose button or
+    /// the config button they land on the folder shown. GtkListBox's own Tab goes row by row
+    /// and stops at the first account heading, so it differed by direction.
+    fn keep_one_tab_stop(&self, config: &gtk::Button) {
+        let leave = gtk::EventControllerKey::new();
+        leave.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let compose = self.compose.downgrade();
+        let after = config.downgrade();
+        leave.connect_key_pressed(move |_, key, _, state| {
+            let target = match tab_direction(key, state) {
+                Some(Tab::Forward) => after.upgrade(),
+                Some(Tab::Backward) => compose.upgrade(),
+                None => None,
+            };
+            match target {
+                Some(target) if target.is_sensitive() && target.grab_focus() => {
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
+        });
+        self.list.add_controller(leave);
+        for (neighbour, entering) in [
+            (self.compose.clone(), Tab::Forward),
+            (config.clone(), Tab::Backward),
+        ] {
+            let enter = gtk::EventControllerKey::new();
+            enter.set_propagation_phase(gtk::PropagationPhase::Capture);
+            let weak = self.weak.borrow().clone();
+            enter.connect_key_pressed(move |_, key, _, state| {
+                let row = weak.upgrade().and_then(|sidebar| sidebar.entry_row());
+                match row {
+                    Some(row)
+                        if tab_direction(key, state) == Some(entering) && row.grab_focus() =>
+                    {
+                        glib::Propagation::Stop
+                    }
+                    _ => glib::Propagation::Proceed,
+                }
+            });
+            neighbour.add_controller(enter);
+        }
+    }
+
+    /// Where the keyboard focus enters the folder list: the folder shown, else the first row.
+    fn entry_row(&self) -> Option<gtk::ListBoxRow> {
+        if !self.list.is_mapped() {
+            return None;
+        }
+        let rows = self.rows.borrow();
+        let usable = |row: &&Row| row.widget.is_mapped() && row.widget.is_sensitive();
+        rows.iter()
+            .filter(usable)
+            .find(|row| row.widget.has_css_class("sw-current"))
+            .or_else(|| {
+                rows.iter()
+                    .filter(usable)
+                    .find(|row| row.widget.is_activatable())
+            })
+            .map(|row| row.widget.clone())
     }
 
     pub fn contains(&self, key: &str) -> bool {
@@ -871,6 +936,27 @@ impl Sidebar {
 
 /// The compose button: the accent fill with an icon and `label`, bound to the registry's
 /// Compose (insensitive until the composer exists, M6). The label is hidden in the rail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tab {
+    Forward,
+    Backward,
+}
+
+/// Which way a key moves the focus as Tab does: Tab, or Shift+Tab (GDK's ISO_Left_Tab);
+/// Ctrl+Tab and Alt+Tab are left alone.
+fn tab_direction(key: gtk::gdk::Key, state: gtk::gdk::ModifierType) -> Option<Tab> {
+    use gtk::gdk::{Key, ModifierType};
+    if state.intersects(ModifierType::CONTROL_MASK | ModifierType::ALT_MASK) {
+        return None;
+    }
+    match key {
+        Key::ISO_Left_Tab => Some(Tab::Backward),
+        Key::Tab | Key::KP_Tab if state.contains(ModifierType::SHIFT_MASK) => Some(Tab::Backward),
+        Key::Tab | Key::KP_Tab => Some(Tab::Forward),
+        _ => None,
+    }
+}
+
 pub(super) fn compose_button(label: &str) -> (gtk::Button, gtk::Label) {
     let text = gtk::Label::new(Some(label));
     let content = gtk::Box::builder().halign(gtk::Align::Center).build();

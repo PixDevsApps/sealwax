@@ -1,0 +1,88 @@
+# The accessibility pass (M9, ML-092) on the reader's links and quoted history, on the `links`
+# sample conversation (app/src/reader/samples.rs): an HTML reply with a link whose text names
+# another address and a collapsed Gmail quote, then a plain-text reply with three links and its
+# quote collapsed behind "…". From the keyboard: Tab goes into the HTML body from link to link
+# and to its "…" (WebKit's own focus), and out again; in the plain-text body Tab goes from link
+# to link, selecting each and showing its target in the strip, Enter opens it, and the "…" toggle
+# comes next, a button with its expanded state. A link whose text names another address shows
+# the warning and announces it when the keyboard reaches it, and Enter asks first. Links are
+# recorded, never opened. Every name, address and link is fictional.
+# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-reader.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Personal
+conversation-add links
+conversation-show links-6
+link-hooks
+assert-accessible window
+assert-accessible-name reader-quote-toggle "Show quoted text"
+assert-accessible-state reader-quote-toggle expanded false
+assert-accessible-role reader-link-strip status
+
+# The plain-text body: Tab from the text to each link, in order, then the "…" toggle.
+focus reader-plain
+assert-link-strip hidden
+key Tab
+assert-focus reader-plain
+assert-link-strip https://example.test/agenda
+key Tab
+assert-link-strip https://www.example.test/map
+key Tab
+assert-link-strip workshop@example.test
+key Return
+assert-link-opened mailto:workshop@example.test
+key <Shift>Tab
+assert-link-strip https://www.example.test/map
+key Return
+assert-link-opened https://www.example.test/map
+key Tab
+key Tab
+assert-focus reader-quote-toggle
+assert-link-strip hidden
+key Return
+assert-accessible-name reader-quote-toggle "Hide quoted text"
+assert-accessible-state reader-quote-toggle expanded true
+key space
+assert-accessible-state reader-quote-toggle expanded false
+key Tab
+assert-focus quick-reply-text
+
+# Shift+Tab from the toggle goes back into the text at its last link.
+focus reader-quote-toggle
+key <Shift>Tab
+assert-focus reader-plain
+key <Shift>Tab
+assert-link-strip workshop@example.test
+
+# The HTML body: Tab from its card's last button into the page, then link by link.
+assert-announced none
+focus reader-card-forward
+key Tab
+assert-focus reader-frame
+key Tab
+assert-web-focus links-5 "a[href='https://example.test/forms/workshop']"
+wait-until assert-link-strip https://example.test/forms/workshop
+assert-announced none
+key Tab
+assert-web-focus links-5 "a[href='https://example.test.sign-in.example/login']"
+wait-until assert-link-strip https://example.test.sign-in.example/login
+wait-until assert-announced "The link text and its target differ. Text says www.example.test. Opens example.test.sign-in.example/login"
+key Return
+wait-until assert-link-dialog open
+assert-accessible window
+link-dialog-answer cancel
+assert-link-dialog closed
+assert-link-opened https://www.example.test/map
+key Tab
+assert-web-focus links-5 "[data-sealwax-quote-toggle]"
+key Tab
+assert-web-focus links-5 none
+assert-focus-stop reader-card-header
+
+# Shift+Tab from the next card goes back into the page, through it to the card's buttons, and
+# round the window: never stuck in WebKit's hidden key-binding widget.
+key <Shift>Tab
+assert-focus-stop reader-frame
+tab-chain window backward 80
+assert-tab-chain reader-frame,reader-card-forward,reader-card-reply-all,reader-card-reply,reader-details-toggle,reader-card-header,reader-row,reader-archive,message-list,compose,quick-reply-text,reader-plain,reader-card-header,reader-frame

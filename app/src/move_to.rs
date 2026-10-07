@@ -25,6 +25,15 @@ struct Choice {
 }
 
 impl Choice {
+    /// What a screen reader says for the row.
+    fn spoken(&self) -> String {
+        if self.detail.is_empty() {
+            format!("Move to {}", self.title)
+        } else {
+            format!("Move to {}, {}", self.title, self.detail)
+        }
+    }
+
     fn new(folder: &Folder) -> Self {
         let title = folder_title(folder);
         let detail = if folder.role == FolderRole::Other || folder.name == title {
@@ -110,13 +119,16 @@ impl MoveTo {
             .css_classes(["sw-palette-list", "sw-move-to-list"])
             .build();
         list.set_widget_name("move-to-list");
+        list.update_property(&[gtk::accessible::Property::Label("Folders")]);
         let empty = gtk::Label::builder()
             .label("No matching folder")
             .css_classes(["sw-palette-empty", "sw-secondary"])
             .build();
         list.set_placeholder(Some(&empty));
+        // The focus stays in the entry; the list is no Tab stop of its own.
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&list)
+            .focusable(false)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();
@@ -265,6 +277,15 @@ impl Inner {
         let next = (current + step).clamp(0, count - 1);
         if let Some(row) = list.row_at_index(next) {
             list.select_row(Some(&row));
+            // The focus stays in the entry, so a screen reader hears the row this way.
+            if let (Some(entry), Some(choice)) = (
+                self.entry.upgrade(),
+                usize::try_from(next)
+                    .ok()
+                    .and_then(|index| self.shown.borrow().get(index).cloned()),
+            ) {
+                crate::accessibility::announce(&entry, &choice.spoken());
+            }
             if let (Some(scrolled), Some(bounds)) =
                 (self.scrolled.upgrade(), row.compute_bounds(&list))
             {
@@ -319,11 +340,9 @@ fn row(choice: &Choice) -> gtk::ListBoxRow {
         .child(&content)
         .css_classes(["sw-palette-row", "sw-move-to-row"])
         .build();
-    let spoken = if choice.detail.is_empty() {
-        format!("Move to {}", choice.title)
-    } else {
-        format!("Move to {}, {}", choice.title, choice.detail)
-    };
-    row.update_property(&[gtk::accessible::Property::Label(&spoken)]);
+    // The focus stays in the search entry, where Up and Down move the chosen row and a screen
+    // reader hears it: Tab doesn't walk every row.
+    row.set_focusable(false);
+    row.update_property(&[gtk::accessible::Property::Label(&choice.spoken())]);
     row
 }

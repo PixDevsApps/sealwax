@@ -103,6 +103,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
 fn arity(command: &str) -> Option<(usize, usize)> {
     COMMANDS
         .iter()
+        .chain(super::a11y::COMMANDS)
         .chain(super::bodies::COMMANDS)
         .chain(super::composer::COMMANDS)
         .chain(super::conversation::COMMANDS)

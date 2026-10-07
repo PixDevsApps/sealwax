@@ -7,7 +7,7 @@
 //! | Command | What it does |
 //! | --- | --- |
 //! | `conversation-account NAME ADDRESS` | An account at ADDRESS with the six role folders (`alex.berg@example.test` makes the samples "to me") |
-//! | `conversation-add NAME [ACCOUNT]` | Files sample conversation NAME (`trip`, `letters`, `long`, `typical`) in the account's Inbox, the user's own messages in its Sent |
+//! | `conversation-add NAME [ACCOUNT]` | Files sample conversation NAME (`trip`, `letters`, `long`, `typical`, `links`) in the account's Inbox, the user's own messages in its Sent |
 //! | `conversation-show MESSAGE` | Selects MESSAGE's row (`trip-6`, …) and waits until the reader shows its conversation |
 //! | `conversation-click-row N` | A real click on the N-th collapsed row (from 0), scrolled into view first; waits for its card |
 //! | `conversation-click-header MESSAGE` | A real click on MESSAGE's card header; waits for its row |

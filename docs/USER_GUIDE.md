@@ -338,7 +338,11 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 
 "—" means the command has no key: the palette, a menu or a button reaches it, and `keys.toml` can give it one.
 
-**Not built yet.** Back to List (Escape, `u`), Go to Inbox, Starred, Sent and Drafts (`g` then `i`, `s`, `t`, `d`) and Toggle Sidebar (Ctrl+Shift+S, F9) are in the keymap, but their keys do nothing yet; the Keyboard Shortcuts dialog marks them "Not available yet". To leave the reader in the one-pane layout, use the back button at the top of the reader ("Back to the list"). The dialog also marks the composer's own commands (Bold, Link…, Undo Typing, Attach File… and the others) "Not available yet": that is wrong, and they work in a composer window.
+**Going places.** Go to Inbox, Sent and Drafts (`g` then `i`, `t`, `d`) show that folder of the account the list shows (in All Inboxes, the selected message's account, else the first); Go to Inbox in All Inboxes stays there. Go to Starred (`g` then `s`) turns on the **Starred** chip, as there is no Starred folder. Back to List (Escape or `u` in the reader) puts the keyboard focus in the message list, and in the one-pane layout shows the list, as the reader's back button does.
+
+**Not built yet.** Toggle Sidebar (Ctrl+Shift+S, F9) is in the keymap, but its keys do nothing yet; the Keyboard Shortcuts dialog marks it "Not available yet".
+
+**Moving with Tab.** Tab and Shift+Tab go through the window from left to right: the sidebar (the new-message button, the folder list, `config.toml`), the list's bar, the message list, the reader's toolbar and the conversation, then round again. The folder list and the message list are one stop each: Up and Down move inside them. In a message, Tab goes from link to link (in a plain-text message too: the link is selected, its address shows at the bottom of the reader, and Enter opens it), then on to the "…" that shows quoted text. In the composer, Tab in the message moves on to **Send** and Shift+Tab back to the toolbar, instead of typing a tab. A dialog keeps Tab inside it, and Escape closes it.
 
 **The list's own keys,** which `keys.toml` can't change: Up and Down move the selection; Shift with Up, Down, `j` or `k` extends it; Escape leaves the select mode. On a folder in the sidebar, Menu or Shift+F10 opens its menu.
 

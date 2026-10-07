@@ -148,9 +148,12 @@ impl ReaderColumn {
                 .build(),
             &["sw-reader-clamp"],
         );
+        // No Tab stop of its own while a conversation is still being built: the focus would
+        // land on an unnamed pane.
         let scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
+            .focusable(false)
             .child(&clamp)
             .build();
         Self { scroller, slot }

@@ -201,13 +201,16 @@ fn collapse(view: &gtk::TextView, start: i32) {
         &buffer.iter_at_offset(start + 1),
         &buffer.end_iter(),
     );
+    // A label child, not the button's own label: GTK names a button by its own label ("…"),
+    // over the label property a screen reader should hear.
     let toggle = gtk::Button::builder()
-        .label("…")
+        .child(&gtk::Label::new(Some("…")))
         .tooltip_text("Show quoted text")
-        .css_classes(["sw-quote-toggle"])
+        .css_classes(["text-button", "sw-quote-toggle"])
         .build();
     toggle.set_widget_name("reader-quote-toggle");
     toggle.update_property(&[gtk::accessible::Property::Label("Show quoted text")]);
+    toggle.update_state(&[gtk::accessible::State::Expanded(Some(false))]);
     toggle.connect_clicked(move |toggle| {
         let expand = hidden.is_invisible();
         hidden.set_invisible(!expand);
@@ -218,6 +221,7 @@ fn collapse(view: &gtk::TextView, start: i32) {
         };
         toggle.set_tooltip_text(Some(label));
         toggle.update_property(&[gtk::accessible::Property::Label(label)]);
+        toggle.update_state(&[gtk::accessible::State::Expanded(Some(expand))]);
     });
     view.add_child_at_anchor(&toggle, &anchor);
 }
@@ -238,22 +242,196 @@ fn link_at(view: &gtk::TextView, x: f64, y: f64) -> Option<Hover> {
     if !end.ends_tag(Some(&tag)) {
         end.forward_to_tag_toggle(Some(&tag));
     }
-    let text = view.buffer().text(&start, &end, false).to_string();
-    let first = view.iter_location(&start);
+    Some(hover_over(view, &start, &end, target, false))
+}
+
+/// The link from `start` to `end` with its box in `view`'s widget coordinates.
+fn hover_over(
+    view: &gtk::TextView,
+    start: &gtk::TextIter,
+    end: &gtk::TextIter,
+    target: String,
+    focused: bool,
+) -> Hover {
+    let text = view.buffer().text(start, end, false).to_string();
+    let first = view.iter_location(start);
     let (x, y) = view.buffer_to_window_coords(gtk::TextWindowType::Widget, first.x(), first.y());
-    let last = view.iter_location(&end);
+    let last = view.iter_location(end);
     let width = if last.y() == first.y() {
         (last.x() - first.x()).max(1)
     } else {
         view.width() - x
     };
-    Some(Hover {
+    Hover {
         link: Link { uri: target, text },
         x,
         y,
         width,
         height: first.height(),
-    })
+        focused,
+    }
+}
+
+/// The links of `view` a reader can see, in order: their char offsets and targets; links in
+/// the collapsed quoted history don't count while it is hidden.
+fn visible_links(view: &gtk::TextView) -> Vec<(i32, i32, String)> {
+    let buffer = view.buffer();
+    let hidden = buffer
+        .tag_table()
+        .lookup(HIDDEN_TAG)
+        .filter(|tag| tag.is_invisible());
+    let mut found = Vec::new();
+    let mut iter = buffer.start_iter();
+    loop {
+        for tag in iter.toggled_tags(true) {
+            let Some(target) = tag
+                .name()
+                .and_then(|name| name.strip_prefix(LINK_TAG).map(str::to_owned))
+            else {
+                continue;
+            };
+            if hidden.as_ref().is_some_and(|hidden| iter.has_tag(hidden)) {
+                continue;
+            }
+            let mut end = iter;
+            end.forward_to_tag_toggle(Some(&tag));
+            found.push((iter.offset(), end.offset(), target));
+        }
+        if !iter.forward_to_tag_toggle(None::<&gtk::TextTag>) {
+            break;
+        }
+    }
+    found
+}
+
+/// Tab and Shift+Tab in a plain-text body go from link to link, as they do in an HTML body:
+/// the link is selected, its target shows in the strip (with the warning, when its text names
+/// another address), and Enter opens it. Past the last link the focus goes on.
+fn keyboard_links(view: &gtk::TextView, links: &Rc<Links>) {
+    let chosen: Rc<Cell<Option<(i32, i32)>>> = Rc::default();
+    let keys = gtk::EventControllerKey::new();
+    // Before the text view's own Tab, which moves the focus on.
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(links);
+    keys.connect_key_pressed(glib::clone!(
+        #[strong]
+        chosen,
+        move |keys, key, _, state| {
+            let (Some(links), Some(view)) = (
+                weak.upgrade(),
+                keys.widget().and_downcast::<gtk::TextView>(),
+            ) else {
+                return glib::Propagation::Proceed;
+            };
+            if !view.has_focus()
+                || state.intersects(gdk::ModifierType::CONTROL_MASK | gdk::ModifierType::ALT_MASK)
+            {
+                return glib::Propagation::Proceed;
+            }
+            let buffer = view.buffer();
+            match key {
+                gdk::Key::Tab | gdk::Key::KP_Tab | gdk::Key::ISO_Left_Tab => {
+                    let backward = key == gdk::Key::ISO_Left_Tab
+                        || state.contains(gdk::ModifierType::SHIFT_MASK);
+                    let all = visible_links(&view);
+                    let at = chosen.get().map(|(start, _)| start);
+                    let next = if backward {
+                        all.iter()
+                            .rev()
+                            .find(|(start, _, _)| at.is_none_or(|at| *start < at))
+                    } else {
+                        all.iter()
+                            .find(|(start, _, _)| at.is_none_or(|at| *start > at))
+                    };
+                    let Some((start, end, target)) = next.cloned() else {
+                        release(&view, &chosen);
+                        links.hover(None, None);
+                        return glib::Propagation::Proceed;
+                    };
+                    let (from, to) = (buffer.iter_at_offset(start), buffer.iter_at_offset(end));
+                    buffer.select_range(&from, &to);
+                    chosen.set(Some((start, end)));
+                    let hover = hover_over(&view, &from, &to, target, true);
+                    reveal(&view, &hover);
+                    links.hover(Some(view.upcast_ref()), Some(&hover));
+                    glib::Propagation::Stop
+                }
+                gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::ISO_Enter
+                    if !state.contains(gdk::ModifierType::SHIFT_MASK) =>
+                {
+                    let Some((start, end)) = chosen.get() else {
+                        return glib::Propagation::Proceed;
+                    };
+                    let Some((_, _, target)) = visible_links(&view)
+                        .into_iter()
+                        .find(|(from, to, _)| (*from, *to) == (start, end))
+                    else {
+                        return glib::Propagation::Proceed;
+                    };
+                    let (from, to) = (buffer.iter_at_offset(start), buffer.iter_at_offset(end));
+                    let text = buffer.text(&from, &to, false).to_string();
+                    links.open(&Link { uri: target, text });
+                    glib::Propagation::Stop
+                }
+                _ => glib::Propagation::Proceed,
+            }
+        }
+    ));
+    view.add_controller(keys);
+    let focus = gtk::EventControllerFocus::new();
+    let weak = Rc::downgrade(links);
+    focus.connect_leave(move |focus| {
+        if let Some(view) = focus.widget().and_downcast::<gtk::TextView>()
+            && chosen.get().is_some()
+        {
+            release(&view, &chosen);
+            if let Some(links) = weak.upgrade() {
+                links.hover(None, None);
+            }
+        }
+    });
+    view.add_controller(focus);
+}
+
+/// Drops the link Tab chose: its selection and the record of it.
+fn release(view: &gtk::TextView, chosen: &Cell<Option<(i32, i32)>>) {
+    if let Some((start, end)) = chosen.take() {
+        let buffer = view.buffer();
+        if let Some((from, to)) = buffer.selection_bounds()
+            && (from.offset(), to.offset()) == (start, end)
+        {
+            buffer.select_range(&from, &from);
+        }
+    }
+}
+
+/// Scrolls the reader's column just enough to show the link `hover` describes.
+fn reveal(view: &gtk::TextView, hover: &Hover) {
+    let Some(scrolled) = view
+        .ancestor(gtk::ScrolledWindow::static_type())
+        .and_downcast::<gtk::ScrolledWindow>()
+    else {
+        return;
+    };
+    let Some(content) = scrolled.child() else {
+        return;
+    };
+    let Some(point) = view.compute_point(
+        &content,
+        &gtk::graphene::Point::new(hover.x as f32, hover.y as f32),
+    ) else {
+        return;
+    };
+    let adjustment = scrolled.vadjustment();
+    let (top, bottom) = (
+        f64::from(point.y()),
+        f64::from(point.y()) + f64::from(hover.height.max(1)),
+    );
+    if top < adjustment.value() {
+        adjustment.set_value(top);
+    } else if bottom > adjustment.value() + adjustment.page_size() {
+        adjustment.set_value(bottom - adjustment.page_size());
+    }
 }
 
 /// The strip on hover, a pointer cursor over links, and a click (without a selection) opens.
@@ -312,4 +490,5 @@ fn follow_links(view: &gtk::TextView, links: &Rc<Links>) {
         }
     });
     view.add_controller(click);
+    keyboard_links(view, links);
 }

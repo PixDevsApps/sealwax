@@ -31,6 +31,16 @@ fn server_texts(protocol: Protocol) -> (&'static str, &'static str) {
     }
 }
 
+/// What a screen reader calls the port and the security fields, whose captions ("Port",
+/// "Security") are the same for both servers.
+fn field_names(protocol: Protocol) -> (&'static str, &'static str) {
+    match protocol {
+        Protocol::Imap => ("IMAP port", "IMAP security"),
+        Protocol::Smtp => ("SMTP port", "SMTP security"),
+        Protocol::Pop3 => ("POP3 port", "POP3 security"),
+    }
+}
+
 impl ServerFields {
     /// Names the incoming server's protocol: the caption, the placeholder and the accessible
     /// label follow the "Incoming mail" choice.
@@ -41,6 +51,11 @@ impl ServerFields {
             self.host.set_placeholder_text(Some(placeholder));
             self.host
                 .update_property(&[gtk::accessible::Property::Label(caption)]);
+            let (port, security) = field_names(protocol);
+            self.port
+                .update_property(&[gtk::accessible::Property::Label(port)]);
+            self.security
+                .update_property(&[gtk::accessible::Property::Label(security)]);
         }
     }
 
@@ -271,6 +286,16 @@ fn server_fields(protocol: Protocol) -> (ServerFields, gtk::Box) {
         &security,
         &format!("setup-{key}-security-field"),
     ));
+    // Their captions say only "Port" and "Security" for both servers, so a screen reader
+    // hears the label property instead of the caption GTK ties them to.
+    let (port_name, security_name) = field_names(protocol);
+    for (control, name) in [
+        (port.upcast_ref::<gtk::Widget>(), port_name),
+        (security.upcast_ref(), security_name),
+    ] {
+        control.reset_relation(gtk::AccessibleRelation::LabelledBy);
+        control.update_property(&[gtk::accessible::Property::Label(name)]);
+    }
     let row = classed(
         gtk::Box::builder().homogeneous(true).build(),
         &["sw-setup-grid-row"],
@@ -557,9 +582,12 @@ impl Widgets {
         ] {
             content.append(part);
         }
+        // Not a Tab stop of its own while every field waits (checking the login): the focus
+        // would land on an unnamed pane.
         let scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
+            .focusable(false)
             .child(&content)
             .build();
 

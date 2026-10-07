@@ -1,6 +1,7 @@
 //! The GTK application: windows, widgets, theme, actions and the self-test runner.
 //! `main.rs` only starts it, so every module here can be built and tested on its own.
 
+pub mod accessibility;
 pub mod actions;
 pub mod activation;
 pub mod application;
@@ -14,6 +15,7 @@ pub mod default_handler;
 pub mod desktop;
 pub mod engine;
 pub mod engine_link;
+pub mod go_to;
 pub mod list;
 pub mod mailbox;
 pub mod menu;

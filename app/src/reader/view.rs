@@ -108,7 +108,7 @@ const LINKS_JS: &str = r#"(() => {
     window.webkit.messageHandlers.link.postMessage(describe(link));
   };
   let current = null;
-  const hover = (link) => {
+  const hover = (link, focused) => {
     if (link === current) return;
     current = link;
     if (!link) {
@@ -116,7 +116,7 @@ const LINKS_JS: &str = r#"(() => {
       return;
     }
     const box = link.getBoundingClientRect();
-    window.webkit.messageHandlers.hover.postMessage(Object.assign({load,
+    window.webkit.messageHandlers.hover.postMessage(Object.assign({load, focused: !!focused,
       x: box.left, y: box.top, width: box.width, height: box.height}, describe(link)));
   };
   document.addEventListener('click', follow, true);
@@ -124,8 +124,8 @@ const LINKS_JS: &str = r#"(() => {
   document.addEventListener('submit', (event) => event.preventDefault(), true);
   document.addEventListener('mouseover', (event) => hover(find(event.target)), true);
   document.addEventListener('mouseout', (event) => hover(find(event.relatedTarget)), true);
-  document.addEventListener('focusin', (event) => hover(find(event.target)), true);
-  document.addEventListener('focusout', (event) => hover(find(event.relatedTarget)), true);
+  document.addEventListener('focusin', (event) => hover(find(event.target), true), true);
+  document.addEventListener('focusout', (event) => hover(find(event.relatedTarget), true), true);
 })();"#;
 
 /// Collapses quoted history behind a "…" toggle (DESIGN.md "HTML mail inside the theme"), only
@@ -237,6 +237,8 @@ pub struct Hover {
     pub y: i32,
     pub width: i32,
     pub height: i32,
+    /// The keyboard focus is on the link, not the pointer.
+    pub focused: bool,
 }
 
 /// Something a message tried and the view refused; counted, never logged with its URL.
@@ -343,6 +345,8 @@ impl MessageView {
         let view = builder.build();
         view.set_valign(gtk::Align::Start);
         view.add_css_class("sw-reader-web-view");
+        view.update_property(&[gtk::accessible::Property::Label("Message body")]);
+        crate::accessibility::keep_focus_off_key_bindings(&view);
         let this = Self {
             view,
             ucm,
@@ -570,6 +574,9 @@ impl MessageView {
                         y: number("y").round() as i32,
                         width: number("width").round().max(0.0) as i32,
                         height: number("height").round().max(0.0) as i32,
+                        focused: value
+                            .object_get_property("focused")
+                            .is_some_and(|value| value.to_boolean()),
                     });
                     state.emit(ViewEvent::Hover(hover));
                 }
