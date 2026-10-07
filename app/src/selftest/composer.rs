@@ -18,7 +18,7 @@
 //! | `composer-insert TEXT` | Types TEXT at the caret through the helper (`insertText`) |
 //! | `composer-type TEXT` | Types TEXT as key presses, a character at a time |
 //! | `composer-key KEY [COUNT]` | Presses KEY (a GTK accelerator) COUNT times |
-//! | `composer-focus body\|to\|cc\|bcc\|subject` | Puts the keyboard focus there |
+//! | `composer-focus body\|to\|cc\|bcc\|subject` | Puts the keyboard focus there (the body: until its page has the focus and has drawn two frames) |
 //! | `composer-body HTML` | Replaces the body (as a paste of the editor's own content would) |
 //! | `composer-caret start\|end\|TEXT` | Puts the caret there (before TEXT) |
 //! | `composer-select TEXT` | Selects TEXT in the body |
@@ -292,6 +292,9 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             let composer = composer()?;
             composer.window().present();
             focus_target(&composer, arg(0))?.grab_focus();
+            if arg(0) == "body" {
+                page_focused(&composer).await?;
+            }
             settle(harness).await;
             Ok(())
         }
@@ -607,6 +610,34 @@ fn scratch(harness: &Harness, path: &str) -> Result<PathBuf, String> {
             "{} is outside the scratch directory",
             path.display()
         ))
+    }
+}
+
+/// Waits until the body's page has the focus and has drawn two frames since: an edit made by
+/// script in the moment after the focus moves can miss WebKit's undo stack
+/// (`composer-editing`'s first Undo check failed 6 of 48 runs so).
+async fn page_focused(composer: &Composer) -> StepResult {
+    let editor = composer.editor();
+    let started = Instant::now();
+    let mut asked = false;
+    loop {
+        let script = if asked {
+            "window.sealwaxFramesAfterFocus === 2"
+        } else {
+            "document.hasFocus() && (window.sealwaxFramesAfterFocus = 0, \
+             requestAnimationFrame(() => requestAnimationFrame(() => \
+             { window.sealwaxFramesAfterFocus = 2; })), true)"
+        };
+        if editor.eval(script).await?.to_boolean() {
+            if asked {
+                return Ok(());
+            }
+            asked = true;
+        }
+        if started.elapsed() > Duration::from_secs(5) {
+            return Err("the body's page never took the focus".into());
+        }
+        glib::timeout_future(Duration::from_millis(10)).await;
     }
 }
 
