@@ -9,18 +9,19 @@ desktop tiling
 resize 1440 900
 engine-attach
 
-# The welcome page, then the address step.
+# The welcome page, then the address step, opened from the keyboard.
 assert-accessible window
-setup-click add-account
+focus add-account
+key Return
 assert-setup step address
-assert-dialog "Add an Account"
+assert-dialog "Add an account"
 assert-accessible dialog
 assert-accessible-name setup-address "Email address"
 assert-accessible-name setup-name "Your name"
 tab-chain window forward 20
-assert-tab-chain setup-address,setup-name,setup-manual-link,setup-address
+assert-tab-chain setup-address,setup-name,setup-manual-link,setup-close,setup-address
 tab-chain window backward 20
-assert-tab-chain setup-address,setup-manual-link,setup-name,setup-address
+assert-tab-chain setup-address,setup-close,setup-manual-link,setup-name,setup-address
 
 # Looking up the provider, then the password.
 setup-type setup-address kari@example.test
@@ -36,7 +37,7 @@ assert-accessible dialog
 assert-accessible-name setup-password "App password"
 assert-setup focus setup-password
 tab-chain window forward 20
-assert-tab-chain setup-password,setup-app-password-link,setup-primary,setup-back,setup-password
+assert-tab-chain setup-password,setup-app-password-link,setup-manual-link,setup-close,setup-address,setup-password
 
 # A wrong password: the alert, the settings tried, the focus in the password.
 setup-type setup-password fictional-password-2
@@ -48,20 +49,27 @@ engine-reply verified imap wrong-password
 assert-setup step failed
 assert-accessible dialog
 assert-accessible-role setup-alert alert
-assert-accessible-name setup-imap-host "Incoming mail server"
-assert-accessible-name setup-imap-port "Incoming mail port"
-assert-accessible-name setup-smtp-host "Outgoing mail server"
-assert-accessible-state setup-password invalid true
+assert-accessible-name setup-imap-host "IMAP server"
+assert-accessible-name setup-imap-port "IMAP port"
+assert-accessible-name setup-imap-security "IMAP security"
+assert-accessible-name setup-smtp-host "SMTP server"
+assert-accessible-name setup-smtp-port "SMTP port"
+assert-accessible-name setup-smtp-security "SMTP security"
 assert-setup focus setup-password
 tab-chain window forward 40
-assert-tab-chain setup-password,setup-primary,setup-back,setup-password
+assert-tab-chain setup-password,setup-back,setup-primary,setup-close,setup-alert-link,setup-incoming,setup-imap-host,setup-imap-port,setup-imap-security,setup-smtp-host,setup-smtp-port,setup-smtp-security,setup-manual-username,setup-password
 
 # POP3 in the manual settings: the protocol choice and its note.
 setup-choose setup-incoming POP3
 assert-accessible dialog
 assert-accessible-name setup-imap-host "POP3 server"
+assert-accessible-name setup-imap-port "POP3 port"
+assert-accessible-name setup-imap-security "POP3 security"
 
-# Escape goes back a step; on the first step it closes, and the focus returns to the window.
+# Escape goes back a step at a time; on the first step it closes, and the focus returns to the
+# window's Add an account.
+setup-key escape
+assert-setup step password
 setup-key escape
 assert-setup step address
 setup-key escape
@@ -86,7 +94,10 @@ engine-expect sign-in address=kari@outlook.example.test
 assert-shown setup-waiting true
 assert-accessible dialog
 setup-key escape
+engine-expect cancel-sign-in
+assert-setup step microsoft
 setup-key escape
+assert-setup step address
 setup-key escape
 assert-setup open false
 

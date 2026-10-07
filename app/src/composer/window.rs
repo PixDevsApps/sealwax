@@ -89,6 +89,12 @@ pub const STYLES: [(&str, &str); 5] = [
     ("pre", "Preformatted"),
 ];
 
+/// Whether a composer window runs `id`: the Keyboard Shortcuts dialog lists its commands as
+/// built though the main window's action set doesn't run them.
+pub fn runs(id: ActionId) -> bool {
+    COMMANDS.contains(&id)
+}
+
 /// Every command the window runs.
 const COMMANDS: [ActionId; 20] = [
     ActionId::Send,

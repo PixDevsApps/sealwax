@@ -103,3 +103,14 @@ assert-accessible window
 action nav.pane::reader
 assert-pane reader
 assert-accessible window
+# Back to List (Escape, u) as the reader's back button says: the list, with the focus in it.
+assert-tooltip reader-back "Back to the list (Escape, u)"
+focus reader
+key u
+assert-pane list
+assert-focus list
+action nav.pane::reader
+focus reader
+key Escape
+assert-pane list
+assert-focus list

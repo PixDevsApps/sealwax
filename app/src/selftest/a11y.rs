@@ -577,7 +577,8 @@ fn is_named_container(role: gtk::AccessibleRole) -> bool {
 }
 
 /// GTK's and libadwaita's own parts, which name themselves or are left to them: a menu
-/// button's inner toggle, a text entry's inner text, the window controls, a toast's parts.
+/// button's inner toggle, a text entry's inner text, a drop-down's insides (the drop-down is
+/// checked), the window controls, a toast's parts, an alert dialog's scrolled body.
 fn gtk_internal(widget: &gtk::Widget) -> bool {
     let toast = glib::Type::from_name("AdwToastWidget");
     let parent_is = |ty: glib::Type| {
@@ -601,6 +602,8 @@ fn gtk_internal(widget: &gtk::Widget) -> bool {
             .ancestor(gtk::WindowControls::static_type())
             .is_some()
         || widget.type_().name() == "AdwGizmo"
+        || widget.ancestor(gtk::DropDown::static_type()).is_some()
+        || widget.has_css_class("body-scrolled-window")
         || toast.is_some_and(|toast| widget.ancestor(toast).is_some())
 }
 
