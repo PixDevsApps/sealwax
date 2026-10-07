@@ -13,8 +13,9 @@ optdepends=(
   'hunspell-en_us: spell checking in the composer (other hunspell dictionaries work too)'
 )
 makedepends=('rust' 'cargo' 'pkgconf')
-# The release profile carries no debug info, so a -debug package would be empty.
-options=('!debug')
+# The release profile carries no debug info, so a -debug package would be empty. makepkg's LTO
+# flags would compile ring's C code to GCC LTO bytecode, which Rust's linker (rust-lld) can't read.
+options=('!debug' '!lto')
 source=("sealwax-${pkgver}.tar.gz")
 sha256sums=('@SHA256@')
 export SOURCE_DATE_EPOCH=@SOURCE_DATE_EPOCH@

@@ -53,7 +53,7 @@ def main() -> int:
     print(f"commit {commit}")
     print(f"SHA256 {digest}")
     print(f"SOURCE_DATE_EPOCH {epoch}")
-    print(f"Build (needs authorization): cd {out} && makepkg --cleanbuild --force")
+    print(f"Build: cd {out} && makepkg --cleanbuild --force (--nodeps where Rust comes from rustup; -si also installs; an agent needs authorization)")
     return 0
 
 
