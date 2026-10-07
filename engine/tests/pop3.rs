@@ -757,8 +757,13 @@ async fn a_huge_listing() {
     assert_eq!(listing[99_999].uidl, "uid-100000");
     assert_eq!(listing[99_999].size, sizes[99_999]);
     println!(
-        "listing of {COUNT}: {:.1} ms (debug build, localhost)",
-        elapsed.as_secs_f64() * 1000.0
+        "listing of {COUNT}: {:.1} ms ({} build, localhost)",
+        elapsed.as_secs_f64() * 1000.0,
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        }
     );
     drop(session);
     server.await.unwrap();

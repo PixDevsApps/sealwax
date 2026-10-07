@@ -109,7 +109,10 @@ const DISABLED: &[&str] = &[
 const OAUTH: &[&str] = &["basic authentication is disabled", "use oauth"];
 const WEB: &[&str] = &["web browser", "web login"];
 const IN_USE: &[&str] = &[
-    "in use",
+    "mailbox in use",
+    "maildrop in use",
+    "already in use",
+    "in use by another",
     "already locked",
     "unable to lock",
     "maildrop is locked",
@@ -257,6 +260,14 @@ mod tests {
                 Pop3Error::Rejected(LoginFailure::Other),
             ),
             ("-ERR Unable to lock maildrop", Pop3Error::Busy(Busy::InUse)),
+            (
+                "-ERR Mailbox in use by another client",
+                Pop3Error::Busy(Busy::InUse),
+            ),
+            (
+                "-ERR Login used a wrong password",
+                Pop3Error::Rejected(LoginFailure::WrongPassword),
+            ),
             ("-ERR Temporary failure", Pop3Error::Busy(Busy::Temporary)),
             (
                 "-ERR Authentication failed",
