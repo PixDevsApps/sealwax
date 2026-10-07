@@ -483,9 +483,9 @@ Omarchy creates a keyring with no password ("Default keyring", in `~/.local/shar
 2. Open **Passwords and Keys**, find **Default keyring** under Passwords, open its menu (right-click) and choose **Change Password**.
 3. Leave the old password empty and set a new one.
 
-What changes: Omarchy's login doesn't unlock gnome-keyring with your password (on this machine its SDDM setup has no keyring step for password logins, and autologin has no password to give), so nothing unlocks the keyring at login any more. The first app that needs a secret in each session (Sealwax, when it connects to your accounts) makes gnome-keyring ask for the keyring password once. Until you type it, Sealwax can't log in to your accounts. To go back, set an empty password the same way.
+What changes: Omarchy's login doesn't unlock gnome-keyring with your password (its SDDM setup has no keyring step for password logins, and autologin has no password to give), so nothing unlocks the keyring at login any more. The first app that needs a secret in each session (Sealwax, when it connects to your accounts) makes gnome-keyring ask for the keyring password once. Until you type it, Sealwax can't log in to your accounts. To go back, set an empty password the same way.
 
-These steps are not tried on the development machine (Seahorse isn't installed there, and changing that keyring would change the owner's system), and the menu names aren't checked against the current Seahorse.
+These steps haven't been tested yet, and the menu names aren't checked against the current Seahorse.
 
 ## Troubleshooting
 
