@@ -742,6 +742,7 @@ impl Harness {
                 }
             }
             "assert-reader" => reader::check(self, args).await,
+            "assert-web-sandbox" => blocking(processes::web_sandbox).await?,
             assertion if a11y::handles(assertion) => a11y::step(self, assertion, args).await,
             assertion if conversation::handles(assertion) => {
                 conversation::step(self, assertion, args).await

@@ -13,6 +13,9 @@
 //!   (or its In-Reply-To when it has none) plus its Message-ID, at most [`MAX_REFERENCES`]: the
 //!   first, which names the thread's root, and the most recent. A forward has neither (RFC 5322
 //!   3.6.4 gives them to replies; they would show the new recipients the thread's ids).
+//! - **The quote** is the original's HTML, cleaned, up to [`message::HTML_PARSE_LIMIT`]; a
+//!   larger original is quoted as its text (its plain part, else the text of its HTML's first
+//!   256 KiB), without its inline images (M9, F14).
 
 use super::clean;
 use super::identity::{self, Signature};
@@ -178,20 +181,21 @@ pub fn plan(original: &Original, kind: ReplyKind, senders: &[Identity]) -> Reply
                 .iter()
                 .any(|part| part.content_id.as_deref() == Some(id))
     };
-    let (body_html, content_ids) = match &original.html {
-        Some(html) => {
-            let cleaned = clean::clean_with(html, available);
-            (cleaned.html, cleaned.content_ids)
-        }
-        None => (
-            text::to_html(original.text.as_deref().unwrap_or_default()),
-            Vec::new(),
-        ),
-    };
     let body_text = match (&original.text, &original.html) {
         (Some(text), _) => text.clone(),
         (None, Some(html)) => message::html_to_text(html),
         (None, None) => String::new(),
+    };
+    let quoted_html = original
+        .html
+        .as_deref()
+        .filter(|html| html.len() <= message::HTML_PARSE_LIMIT);
+    let (body_html, content_ids) = match quoted_html {
+        Some(html) => {
+            let cleaned = clean::clean_with(html, available);
+            (cleaned.html, cleaned.content_ids)
+        }
+        None => (text::to_html(&body_text), Vec::new()),
     };
     let (quote_html, quote_text) = match kind {
         ReplyKind::Reply | ReplyKind::ReplyAll => {

@@ -5,8 +5,11 @@ use super::truncate;
 use html2text::render::TextDecorator;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-/// HTML beyond this many bytes is cut before conversion; it only feeds a snippet and the index.
-const HTML_LIMIT: usize = 1024 * 1024;
+/// The most HTML Sealwax parses into a tree (html5ever, beneath html2text and the cleaner) for
+/// anything but the reader: the tree builder's time grows with the square of the nesting depth,
+/// so 1 MB of nested lists took 37.9 s and 256 KiB 2.56 s (M9, F14). HTML beyond it is cut
+/// before [`html_to_text`] reads it, and a reply or forward quotes a larger original as text.
+pub const HTML_PARSE_LIMIT: usize = 256 * 1024;
 const WIDTH: usize = 200;
 
 #[derive(Clone, Copy, Debug, Default)]
@@ -84,10 +87,11 @@ impl TextDecorator for TextOnly {
     }
 }
 
-/// The text of an HTML body, one rendered line per line, quoted blocks prefixed with "> ".
-/// Falls back to mail-parser's simple converter if html2text fails.
+/// The text of an HTML body's first [`HTML_PARSE_LIMIT`] bytes, one rendered line per line,
+/// quoted blocks prefixed with "> ". Falls back to mail-parser's simple converter if html2text
+/// fails.
 pub fn html_to_text(html: &str) -> String {
-    let html = truncate(html, HTML_LIMIT);
+    let html = truncate(html, HTML_PARSE_LIMIT);
     let converted = catch_unwind(AssertUnwindSafe(|| {
         html2text::config::with_decorator(TextOnly)
             .link_footnotes(false)
@@ -103,8 +107,22 @@ pub fn html_to_text(html: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::html_to_text;
+    use super::{HTML_PARSE_LIMIT, html_to_text};
     use crate::snippet::snippet;
+
+    #[test]
+    fn reads_only_the_first_256_kib() {
+        let filler = "<p>fyll</p>".repeat(HTML_PARSE_LIMIT / 11);
+        let html = format!("<p>tidlig</p>{filler}<p>sent</p>");
+        assert!(html.len() > HTML_PARSE_LIMIT);
+        let text = html_to_text(&html);
+        assert!(text.starts_with("tidlig"), "{:?}", &text[..40]);
+        assert!(!text.contains("sent"));
+        let within = format!("<p>tidlig</p>{}<p>sent</p>", "<p>fyll</p>".repeat(1_000));
+        assert!(html_to_text(&within).contains("sent"));
+        let euros = html_to_text(&"€".repeat(HTML_PARSE_LIMIT));
+        assert_eq!(euros.matches('€').count(), HTML_PARSE_LIMIT / 3);
+    }
 
     #[test]
     fn keeps_the_text_and_marks_quotes() {

@@ -45,11 +45,20 @@ if $ui; then
     log=.local/ci-smoke.log
     # Scratch config, state and cache, so the smoke run never reads or writes the user's files.
     smoke=$(mktemp -d)
-    tools/headless.sh "$display" env SEALWAX_EXIT_AFTER_MS=1500 XDG_CONFIG_HOME="$smoke/config" \
-        XDG_STATE_HOME="$smoke/state" XDG_CACHE_HOME="$smoke/cache" XDG_DATA_HOME="$smoke/data" \
+    # WebKit's sandbox switch is set for the smoke run and every self-test: Sealwax clears it
+    # at start and warns without its value (M9); assert-web-sandbox checks the web processes.
+    sandbox_off=WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=ci-sandbox-value
+    tools/headless.sh "$display" env "$sandbox_off" SEALWAX_EXIT_AFTER_MS=1500 \
+        XDG_CONFIG_HOME="$smoke/config" XDG_STATE_HOME="$smoke/state" \
+        XDG_CACHE_HOME="$smoke/cache" XDG_DATA_HOME="$smoke/data" \
         target/debug/sealwax 2>&1 | tee "$log"
     if ! grep -q 'first-frame' "$log"; then
         echo "smoke test: the app never logged first-frame; see $log" >&2
+        exit 1
+    fi
+    if ! grep -q 'WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS was set' "$log" ||
+        grep -q 'ci-sandbox-value' "$log"; then
+        echo "smoke test: no warning about WebKit's sandbox switch, or one with its value" >&2
         exit 1
     fi
     for script in tests/selftest/*.sealwax-test; do
@@ -60,7 +69,8 @@ if $ui; then
         # testbed; run them by hand.
         [[ $name == preview* || $name == perf-* || $name == live-* || $name == testbed-* ]] && continue
         log=.local/selftest-$name.log
-        if ! tools/headless.sh "$display" target/debug/sealwax --self-test "$script" >"$log" 2>&1; then
+        if ! tools/headless.sh "$display" env "$sandbox_off" target/debug/sealwax \
+            --self-test "$script" >"$log" 2>&1; then
             grep -v '^ok ' "$log" >&2 || true
             echo "self-test $name failed; see $log" >&2
             exit 1

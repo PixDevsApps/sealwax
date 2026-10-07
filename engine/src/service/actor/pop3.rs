@@ -21,7 +21,7 @@ use super::ops::{instant_at, unix_ms};
 use super::outbox::{Submission, Unbuilt, build_drafts_copy};
 use super::{
     Control, Handle, Interrupt, Jitter, Signal, Status, backoff_delay, discard, halts, interrupted,
-    race,
+    race, spawn_supervised,
 };
 use crate::api::{Event, SyncStatus};
 use crate::imap::Progress;
@@ -187,7 +187,8 @@ impl Handle {
     }
 }
 
-/// A POP3 actor reaching its server through `connector`.
+/// A POP3 actor reaching its server through `connector`, started again after a panic as an
+/// IMAP account's is ([`super::supervise`]).
 pub(super) fn start_with<C: Connect>(
     shared: &Arc<Shared>,
     settings: AccountSettings,
@@ -196,14 +197,20 @@ pub(super) fn start_with<C: Connect>(
     let (control, controls) = async_channel::unbounded();
     let (signal, signals) = watch::channel(Signal::default());
     let account = Arc::new(OnceLock::new());
-    let task = tokio::spawn(run(
-        shared.clone(),
-        settings.clone(),
-        account.clone(),
-        controls,
-        signals,
-        connector,
-    ));
+    let connector = Arc::new(connector);
+    let task = spawn_supervised(shared, account.clone(), signals.clone(), {
+        let (shared, settings, account) = (shared.clone(), settings.clone(), account.clone());
+        move || {
+            run(
+                shared.clone(),
+                settings.clone(),
+                account.clone(),
+                controls.clone(),
+                signals.clone(),
+                connector.clone(),
+            )
+        }
+    });
     Handle {
         settings,
         account,
@@ -219,7 +226,7 @@ async fn run<C: Connect>(
     cell: Arc<OnceLock<AccountId>>,
     controls: async_channel::Receiver<Control>,
     signals: watch::Receiver<Signal>,
-    connector: C,
+    connector: Arc<C>,
 ) {
     let Receive::Pop3(policy) = settings.receive else {
         return;
@@ -310,7 +317,7 @@ struct Passes<C: Connect> {
     status: Arc<Status>,
     signals: watch::Receiver<Signal>,
     controls: async_channel::Receiver<Control>,
-    connector: C,
+    connector: Arc<C>,
     jitter: Jitter,
     failures: u32,
     /// A refused login or a changed certificate: no pass until `Reconnect`.

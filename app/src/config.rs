@@ -15,6 +15,10 @@ pub const EXIT_AFTER_ENV: &str = "SEALWAX_EXIT_AFTER_MS";
 pub const EXEC_NS_ENV: &str = "SEALWAX_EXEC_NS";
 pub const START_FULLSCREEN_ENV: &str = "SEALWAX_START_FULLSCREEN";
 
+/// WebKit starts its web processes outside their sandbox when this is set; `main` clears it in
+/// every build before any thread starts, so the sandbox stays on (SECURITY.md, layer 8; M9).
+pub const SANDBOX_OFF_ENV: &str = "WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS";
+
 /// `SEALWAX_EXIT_AFTER_MS`, for headless smoke runs.
 pub fn exit_after_from_env() -> Result<Option<Duration>, String> {
     match std::env::var(EXIT_AFTER_ENV) {
