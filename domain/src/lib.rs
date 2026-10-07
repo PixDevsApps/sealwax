@@ -12,6 +12,7 @@ pub mod flowed;
 #[cfg(any(test, feature = "fuzz"))]
 #[doc(hidden)]
 pub mod fuzz;
+pub mod html_depth;
 pub mod html_scan;
 pub mod keymap;
 pub mod links;

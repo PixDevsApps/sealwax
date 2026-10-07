@@ -201,7 +201,7 @@ Pasted text keeps simple formatting and loses the rest; **Paste as Plain Text** 
 **Sending.** Send closes the composer and the main window shows "Message queued" with **Undo** for 7 seconds (`z` and Ctrl+Z work too); Undo puts the draft back in a composer. Then "Message sent". Without a network, the message waits in the outbox and goes when the network is back. A copy goes into the Sent folder, unless the server files one itself (Outlook.com and Microsoft 365 do).
 
 - **Sent at most once.** If Sealwax stopped, or the connection broke, while a message was going out, Sealwax can't know whether the server got it. Instead of sending it again by itself, it shows a banner, "A message may have been sent", with **Choose…**: Send Again, It Was Sent, Back to Drafts or Later. Look in your Sent folder, or ask a recipient, before you send it again.
-- **A send that failed for good** (the server refused a recipient, for example) shows a toast that says why; the message is back in your drafts, and **Open** opens it.
+- **A send that failed for good** (the server refused a recipient, for example) shows a toast that says why; the message is back in your drafts, and **Open** opens it. If Sealwax stopped while it was preparing a message to send, the message comes back the same way the next time Sealwax starts, and isn't sent until you send it again.
 
 Outgoing mail carries no name of your computer and no Bcc header, and Sealwax adds no "sent with" field.
 

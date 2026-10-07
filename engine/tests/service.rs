@@ -1,18 +1,23 @@
 //! The engine service end to end, offline: commands in, events out. A preset address is detected
 //! without the network; an account whose server refuses connections is added, reports its sync
-//! failure, and is removed with its entry and its secret.
+//! failure, and is removed with its entry and its secret; a send whose message was being built
+//! when Sealwax stopped comes back as failed at the next start.
 
 use sealwax_domain::account::{
     AccountKey, AccountSettings, AuthMethod, DetectSource, Detection, Endpoint, LoginFailure,
     Security,
 };
-use sealwax_engine::api::{Command, Event, Password};
+use sealwax_domain::compose::Draft;
+use sealwax_domain::model::Address;
+use sealwax_engine::api::{Command, Event, Password, SendError};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::{self, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
-use sealwax_infrastructure::store::{Store, StoreOptions};
+use sealwax_infrastructure::store::{
+    DraftSaved, NewAccount, SaveDraft, SendFailure, Store, StoreOptions,
+};
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::net::TcpListener;
 use std::sync::Arc;
@@ -104,6 +109,77 @@ fn a_preset_address_is_detected_without_the_network() {
     };
     assert_eq!(found.imap.security, Security::Tls);
     engine.stop();
+}
+
+/// Sealwax died while a send's message was being built (M9, docs/m9/depth.md): the engine's
+/// next start gives the send back to its draft as failed, before any actor runs, so a message
+/// whose build stops Sealwax isn't built again at every start.
+#[test]
+fn a_send_left_being_built_fails_at_the_engines_start() {
+    let root = tempfile::tempdir().unwrap();
+    let dirs = SealwaxDirs::under(root.path());
+    let store = Store::open(&dirs.store_file(), StoreOptions::default()).unwrap();
+    let account = store
+        .ensure_account(
+            AccountKey("built-before".into()),
+            NewAccount {
+                name: "Service".into(),
+                address: "service@example.test".into(),
+            },
+        )
+        .recv_blocking()
+        .unwrap()
+        .value;
+    let saved = store
+        .save_draft(SaveDraft {
+            id: None,
+            draft: Draft {
+                account,
+                from: Address::new("Service", "service@example.test"),
+                to: vec![Address::new("Kari", "kari@example.test")],
+                subject: "Bygget".into(),
+                html: "<p>Hei</p>".into(),
+                message_id: "built-before@example.test".into(),
+                ..Draft::default()
+            },
+            open: false,
+            now: 1_791_360_000_000,
+        })
+        .recv_blocking()
+        .unwrap();
+    let DraftSaved::Saved { id, .. } = saved else {
+        panic!("not saved: {saved:?}");
+    };
+    store
+        .queue_send(id, 1_791_360_000_000)
+        .recv_blocking()
+        .unwrap();
+    assert!(
+        store
+            .send_building(id, 1_791_360_007_000)
+            .recv_blocking()
+            .unwrap()
+    );
+    store.close().unwrap();
+
+    let engine = start(&dirs);
+    let error = next(&engine, |event| match event {
+        Event::SendFailed {
+            account: a,
+            draft,
+            error,
+        } if a == account && draft == id => Some(error),
+        _ => None,
+    });
+    assert_eq!(error, SendError::Interrupted);
+    engine.stop();
+    let store = Store::open(&dirs.store_file(), StoreOptions::default()).unwrap();
+    let back = store.draft(id).recv_blocking().unwrap().unwrap();
+    assert_eq!(
+        (back.send, back.failure),
+        (None, Some(SendFailure::Interrupted))
+    );
+    assert!(store.outbox(None).recv_blocking().unwrap().is_empty());
 }
 
 #[test]

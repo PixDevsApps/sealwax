@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 11;
+pub const VERSION: i64 = 12;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -437,6 +437,17 @@ CREATE TABLE pop3_uidls(
 CREATE INDEX pop3_uidls_message ON pop3_uidls(message);
 
 CREATE TABLE blob_deletions(blob_key BLOB PRIMARY KEY) WITHOUT ROWID;
+";
+
+/// M9's guard against building a message again that stopped Sealwax while it was built (the
+/// depth limit's report, docs/m9/depth.md). `outbox.building` is when a queued send's message
+/// started to be built, cleared once the build returns; `drafts.upload_building` is the revision
+/// whose Drafts-folder copy is being built. A start that finds either set doesn't build it again
+/// by itself: the send goes back to its draft as failed, and the copy waits for the draft to
+/// change.
+const V12: &str = "
+ALTER TABLE outbox ADD COLUMN building INTEGER;
+ALTER TABLE drafts ADD COLUMN upload_building INTEGER;
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

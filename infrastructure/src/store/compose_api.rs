@@ -81,6 +81,9 @@ pub enum SendFailure {
     Refused,
     NeedsSignIn,
     Other,
+    /// Sealwax stopped while it built the message, which may be what stopped it: the message
+    /// isn't built again until the user sends it again ([`Store::send_building`]).
+    Interrupted,
 }
 
 /// A draft as the store keeps it.
@@ -463,9 +466,43 @@ impl Store {
 
     /// At the engine's start, before any `due_sends`: every send left `Sending` becomes
     /// `Uncertain` (its data may have reached the server) and is never sent again without the
-    /// user. Replies with them, for `Event::SendUncertain`.
+    /// user; every send whose message was being built ([`Store::send_building`]) goes back to an
+    /// editable draft that failed with [`SendFailure::Interrupted`], so a message that stops
+    /// Sealwax isn't built again at every start; a Drafts-folder copy left being built
+    /// ([`Store::draft_building`]) waits for the draft to change. Replies with the sends, for
+    /// `Event::SendUncertain` and `Event::SendFailed`.
     pub fn recover_sends(&self) -> Reply<Vec<OutboxChange>> {
         self.write(|reply| WriteJob::Compose(ComposeJob::Recover { reply }))
+    }
+
+    /// Records, before a queued send's message is built, that it is being built; `false` when it
+    /// isn't queued any more (build nothing). [`Store::send_built`] clears it once the build
+    /// returns, whatever it returned; a start that finds it set fails the send instead of
+    /// building it again ([`Store::recover_sends`]).
+    pub fn send_building(&self, draft: DraftId, now: i64) -> Reply<bool> {
+        self.write(|reply| WriteJob::Compose(ComposeJob::Building { draft, now, reply }))
+    }
+
+    /// The message's build returned.
+    pub fn send_built(&self, draft: DraftId) -> Reply<()> {
+        self.write(|reply| WriteJob::Compose(ComposeJob::Built { draft, reply }))
+    }
+
+    /// Records, before a draft's Drafts-folder copy is built, that `revision`'s is being built;
+    /// `false` when the draft is gone or in the outbox. [`Store::draft_built`] clears it.
+    pub fn draft_building(&self, draft: DraftId, revision: u64) -> Reply<bool> {
+        self.write(|reply| {
+            WriteJob::Compose(ComposeJob::DraftBuilding {
+                draft,
+                revision,
+                reply,
+            })
+        })
+    }
+
+    /// The Drafts-folder copy's build returned.
+    pub fn draft_built(&self, draft: DraftId) -> Reply<()> {
+        self.write(|reply| WriteJob::Compose(ComposeJob::DraftBuilt { draft, reply }))
     }
 
     /// The account's sends and Sent copies due at `now`, and when the next one is.

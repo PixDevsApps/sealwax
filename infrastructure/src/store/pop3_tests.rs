@@ -869,7 +869,8 @@ fn v11_migrates_a_v10_store_and_a_newer_one_is_refused() {
     // Back to v10: what M7 left on disk, with mail in it.
     let conn = Connection::open(&path).unwrap();
     conn.execute_batch(
-        "DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \
+        "ALTER TABLE outbox DROP COLUMN building; ALTER TABLE drafts DROP COLUMN upload_building; \
+         DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \
          DELETE FROM schema_migrations WHERE version >= 11; PRAGMA user_version = 10;",
     )
     .unwrap();
@@ -894,20 +895,20 @@ fn v11_migrates_a_v10_store_and_a_newer_one_is_refused() {
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 11);
+    assert_eq!(SCHEMA_VERSION, 12);
     // A store from a newer build is refused and left as it is.
-    conn.execute_batch("PRAGMA user_version = 12;").unwrap();
+    conn.execute_batch("PRAGMA user_version = 13;").unwrap();
     drop(conn);
     assert!(matches!(
         Store::open(&path, StoreOptions::default()),
         Err(StoreError::NewerSchema {
-            found: 12,
-            supported: 11
+            found: 13,
+            supported: 12
         })
     ));
     let conn = Connection::open(&path).unwrap();
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 12);
+    assert_eq!(version, 13);
 }

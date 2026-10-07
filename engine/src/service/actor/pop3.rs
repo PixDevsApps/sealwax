@@ -18,7 +18,7 @@
 //! each pass.
 
 use super::ops::{instant_at, unix_ms};
-use super::outbox::{Submission, Unbuilt, build_drafts_copy};
+use super::outbox::{Submission, Unbuilt, build_copy, build_drafts_copy};
 use super::{
     Control, Handle, Interrupt, Jitter, Signal, Status, backoff_delay, discard, halts, interrupted,
     race, spawn_supervised,
@@ -993,7 +993,7 @@ impl Outbox {
         let draft = upload.message.clone();
         let folder = upload.folder.folder;
         let date = unix_seconds();
-        let built = tokio::task::spawn_blocking(move || {
+        let build = move || {
             let raw = build_drafts_copy(&blobs, &draft, date)?;
             let message = RawMessage {
                 folder,
@@ -1004,9 +1004,12 @@ impl Outbox {
                 raw,
             };
             ingest::prepare(&blobs, vec![message], 1).map_err(|_| Unbuilt::Blobs)
-        })
-        .await
-        .unwrap_or(Err(Unbuilt::Blobs));
+        };
+        let Some(built) = build_copy(&self.shared, &upload, build).await else {
+            let retry = Instant::now() + self.shared.sync.backoff_min;
+            self.next_drafts = Some(self.next_drafts.map_or(retry, |next| next.min(retry)));
+            return;
+        };
         let message = match built {
             Ok(prepared) => prepared.messages.into_iter().next(),
             Err(Unbuilt::Draft(error)) => {

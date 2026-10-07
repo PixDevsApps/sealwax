@@ -403,6 +403,7 @@ pub fn failure_text(error: &SendError) -> String {
         SendError::Refused => "the server refused it".to_owned(),
         SendError::NeedsSignIn => "the account needs you to sign in again".to_owned(),
         SendError::Offline => "the mail server can't be reached".to_owned(),
+        SendError::Interrupted => "Sealwax stopped while preparing it".to_owned(),
         SendError::Store | SendError::Other => String::new(),
     };
     if why.is_empty() {
@@ -592,6 +593,10 @@ mod tests {
         assert_eq!(
             failure_text(&SendError::Other),
             "Your message wasn't sent. It's back in your drafts."
+        );
+        assert_eq!(
+            failure_text(&SendError::Interrupted),
+            "Your message wasn't sent: Sealwax stopped while preparing it. It's back in your drafts."
         );
     }
 

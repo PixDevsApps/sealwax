@@ -352,15 +352,21 @@ enum Job {
     },
 }
 
-/// Sends a stop left mid-way become uncertain (their data may have reached the server), before
-/// any actor starts and asks for due sends; the app hears each.
+/// Sends a stop left mid-way become uncertain (their data may have reached the server), and
+/// those whose message was being built go back to their drafts as failed (the build may be what
+/// stopped Sealwax), before any actor starts and asks for due sends; the app hears each.
 async fn recover_sends(shared: &Shared) {
     match shared.store.recover_sends().recv().await {
         Ok(changes) => {
             for change in changes {
-                shared.send(Event::SendUncertain {
-                    account: change.account,
-                    draft: change.draft,
+                let (account, draft) = (change.account, change.draft);
+                shared.send(match change.failure {
+                    Some(_) => Event::SendFailed {
+                        account,
+                        draft,
+                        error: SendError::Interrupted,
+                    },
+                    None => Event::SendUncertain { account, draft },
                 });
             }
         }

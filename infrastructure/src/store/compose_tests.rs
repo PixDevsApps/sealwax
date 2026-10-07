@@ -667,6 +667,125 @@ fn a_send_left_sending_is_uncertain_after_a_restart_and_waits_for_the_user() {
     assert!(store.check().recv_blocking().unwrap().is_empty());
 }
 
+/// A message whose build stopped Sealwax (M9, docs/m9/depth.md) isn't built again by itself at
+/// the next start: the send comes back as a draft that failed, never due, nothing sent; one
+/// whose build returned goes on as usual.
+#[test]
+fn a_send_left_being_built_fails_at_the_next_start_and_keeps_its_draft() {
+    let cx = server();
+    let path = cx.path();
+    let ids: Vec<DraftId> = (1..=3)
+        .map(|n| save(&cx.store, None, draft(cx.account, n), false))
+        .collect();
+    for id in &ids {
+        cx.store.queue_send(*id, NOW).recv_blocking().unwrap();
+    }
+    for id in &ids[..2] {
+        assert!(cx.store.send_building(*id, NOW).recv_blocking().unwrap());
+    }
+    // The second's build returned (a refusal or a transient failure would follow).
+    cx.store.send_built(ids[1]).recv_blocking().unwrap();
+    // Sealwax died while the first's was being built.
+    drop(cx.store);
+    let store = Store::open(&path, StoreOptions::default()).unwrap();
+    let recovered = store.recover_sends().recv_blocking().unwrap();
+    assert_eq!(
+        recovered,
+        [OutboxChange {
+            account: cx.account,
+            draft: ids[0],
+            state: None,
+            failure: Some(SendFailure::Interrupted),
+        }]
+    );
+    assert!(store.recover_sends().recv_blocking().unwrap().is_empty());
+    assert_eq!(due(&store, cx.account, NOW + 3_600_000), ids[1..]);
+    let back = store.draft(ids[0]).recv_blocking().unwrap().unwrap();
+    assert_eq!(
+        (back.send, back.failure, back.open),
+        (None, Some(SendFailure::Interrupted), false)
+    );
+    assert_eq!(back.draft, draft(cx.account, 1));
+    // The user's draft to edit, discard or send again: sent again, it is built again.
+    save(&store, Some(ids[0]), draft(cx.account, 1), true);
+    store.queue_send(ids[0], NOW).recv_blocking().unwrap();
+    assert_eq!(due(&store, cx.account, NOW).len(), 3);
+    assert_eq!(
+        store
+            .draft(ids[0])
+            .recv_blocking()
+            .unwrap()
+            .unwrap()
+            .failure,
+        None
+    );
+    // Undone meanwhile: nothing to build.
+    store.undo_send(ids[2]).recv_blocking().unwrap();
+    assert!(!store.send_building(ids[2], NOW).recv_blocking().unwrap());
+    assert!(store.check().recv_blocking().unwrap().is_empty());
+}
+
+/// The same for a draft's Drafts-folder copy: left being built, it isn't built again at the next
+/// start until the draft changes.
+#[test]
+fn a_drafts_copy_left_being_built_waits_for_the_draft_to_change() {
+    let cx = server();
+    let path = cx.path();
+    let id = save(&cx.store, None, draft(cx.account, 1), false);
+    let later = NOW + 60_000;
+    let uploads = |store: &Store| -> Vec<DraftId> {
+        store
+            .due_drafts(cx.account, later)
+            .recv_blocking()
+            .unwrap()
+            .uploads
+            .iter()
+            .map(|upload| upload.draft)
+            .collect()
+    };
+    assert_eq!(uploads(&cx.store), [id]);
+    assert!(cx.store.draft_building(id, 1).recv_blocking().unwrap());
+    drop(cx.store);
+    let store = Store::open(&path, StoreOptions::default()).unwrap();
+    assert!(store.recover_sends().recv_blocking().unwrap().is_empty());
+    assert!(uploads(&store).is_empty());
+    save(&store, Some(id), draft(cx.account, 1), false);
+    assert_eq!(uploads(&store), [id]);
+    // A build that returned leaves nothing behind.
+    assert!(store.draft_building(id, 2).recv_blocking().unwrap());
+    store.draft_built(id).recv_blocking().unwrap();
+    store.recover_sends().recv_blocking().unwrap();
+    assert_eq!(uploads(&store), [id]);
+}
+
+/// v12 adds the markers to a v11 store with a queued send, which stays due.
+#[test]
+fn v12_migrates_a_v11_store_with_a_queued_send() {
+    let cx = server();
+    let path = cx.path();
+    let id = save(&cx.store, None, draft(cx.account, 1), false);
+    cx.store.queue_send(id, NOW).recv_blocking().unwrap();
+    cx.store.close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(
+        "ALTER TABLE outbox DROP COLUMN building; ALTER TABLE drafts DROP COLUMN upload_building; \
+         DELETE FROM schema_migrations WHERE version >= 12; PRAGMA user_version = 11;",
+    )
+    .unwrap();
+    drop(conn);
+    let store = Store::open(&path, StoreOptions::default()).unwrap();
+    assert!(store.recover_sends().recv_blocking().unwrap().is_empty());
+    assert_eq!(due(&store, cx.account, NOW), [id]);
+    assert!(store.send_building(id, NOW).recv_blocking().unwrap());
+    assert!(store.check().recv_blocking().unwrap().is_empty());
+    store.close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    let version: i64 = conn
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(version, SCHEMA_VERSION);
+}
+
 fn drafts_message(folder: FolderId, uid: u32, message_id: &str) -> NewMessage {
     NewMessage {
         folder,

@@ -97,9 +97,9 @@ fn nested_html_takes_seconds_not_minutes() {
     }
 }
 
-/// Not html5ever's: html2text renders nested `<s>` in time quadratic in their depth, so the
-/// limit leaves about half a minute (a follow-up in docs/m9/hardening.md). The bound is the
-/// state found, not a goal.
+/// Not html5ever's: html2text renders nested `<s>` in time quadratic in their depth (36 s here
+/// under the size limit alone); the depth limit (docs/m9/depth.md) takes such HTML's text from
+/// mail-parser's converter.
 #[test]
 #[ignore = "timing: run in release (the module's comment)"]
 fn nested_strikeouts_within_the_limit() {
@@ -111,7 +111,7 @@ fn nested_strikeouts_within_the_limit() {
         message::HTML_PARSE_LIMIT / 3,
         html.len()
     );
-    assert!(parse < Duration::from_secs(120), "parse took {parse:?}");
+    assert!(parse < BOUND, "parse took {parse:?}");
 }
 
 /// The reader's scan (`domain::html_scan`) reads the whole HTML without a tree; braces nested in

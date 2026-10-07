@@ -1,11 +1,13 @@
 //! At-most-once delivery (ADR-015) as a property test: random interleavings of queueing, Undo
 //! send, time passing, the account's actor sending what is due (accepted, a transient failure
 //! before DATA or a 4xx after it, a permanent refusal, the connection cut after DATA, Sealwax
-//! stopped before or after DATA or before the answer is recorded), reopening the store with the
-//! engine's recovery, the user's answers to uncertain sends, the Sent copy, edits and discards.
+//! stopped while the message is built, before or after DATA or before the answer is recorded),
+//! reopening the store with the engine's recovery, the user's answers to uncertain sends, the
+//! Sent copy, edits and discards.
 //!
 //! The model counts the user's authorizations: queueing a draft and "send again" give one;
-//! Undo, "it was sent", "back to a draft" and a permanent refusal withdraw it; data that may
+//! Undo, "it was sent", "back to a draft", a permanent refusal and a stop while the message is
+//! built (it comes back as a failed draft) withdraw it; data that may
 //! have reached the server uses it up, while a definite refusal (4xx, 5xx) doesn't. The actor
 //! transmits only after the store answers `Started`, and every transmission asserts an
 //! authorization is held: no path sends a message twice without the user. After every step the
@@ -59,7 +61,8 @@ enum Step {
     /// One outcome per due send, in order: 0 a stop before the start, 1 a transient failure
     /// before DATA, 2 a permanent one before DATA, 3 accepted, 4 a 4xx reply to the data, 5 a
     /// 5xx, 6 the connection cut after DATA, 7 a stop after the start before DATA, 8 a stop
-    /// after DATA, 9 accepted and a stop before it is recorded.
+    /// after DATA, 9 accepted and a stop before it is recorded, 10 a stop while its message is
+    /// built (a send with recorded bytes builds nothing: a stop before the start).
     Engine {
         outcomes: Vec<u8>,
     },
@@ -86,7 +89,7 @@ fn step() -> impl Strategy<Value = Step> {
         4 => (draft(), any::<bool>()).prop_map(|(draft, window)| Step::Queue { draft, window }),
         2 => draft().prop_map(|draft| Step::Undo { draft }),
         3 => (0..12_000u16).prop_map(|ms| Step::Tick { ms }),
-        4 => proptest::collection::vec(0..10u8, 1..4).prop_map(|outcomes| Step::Engine { outcomes }),
+        4 => proptest::collection::vec(0..11u8, 1..4).prop_map(|outcomes| Step::Engine { outcomes }),
         1 => Just(Step::Reopen),
         2 => (draft(), 0..3u8).prop_map(|(draft, how)| Step::Resolve { draft, how }),
         1 => (draft(), any::<bool>()).prop_map(|(draft, done)| Step::Copy { draft, done }),
@@ -162,24 +165,34 @@ impl World {
     }
 
     /// Stopped hard and started again: the engine's start makes every send left sending
-    /// uncertain.
-    fn reopen(&mut self) {
+    /// uncertain, and the one whose message was being built (`building`) a failed draft.
+    fn reopen(&mut self, building: Option<usize>) {
         drop(self.store.take());
         let store = Store::open(&self.path, StoreOptions::default()).unwrap();
         let recovered = store.recover_sends().recv_blocking().unwrap();
         self.store = Some(store);
-        let mut expected: Vec<DraftId> = (0..DRAFTS)
+        let mut expected: Vec<(DraftId, Option<SendFailure>)> = (0..DRAFTS)
             .filter(|slot| self.expected[*slot] == Expected::Sending)
-            .filter_map(|slot| self.ids[slot])
+            .filter_map(|slot| Some((self.ids[slot]?, None)))
+            .chain(
+                building.and_then(|slot| Some((self.ids[slot]?, Some(SendFailure::Interrupted)))),
+            )
             .collect();
-        let mut got: Vec<DraftId> = recovered.iter().map(|change| change.draft).collect();
-        expected.sort();
-        got.sort();
+        let mut got: Vec<(DraftId, Option<SendFailure>)> = recovered
+            .iter()
+            .map(|change| (change.draft, change.failure))
+            .collect();
+        expected.sort_by_key(|(id, _)| *id);
+        got.sort_by_key(|(id, _)| *id);
         assert_eq!(got, expected);
         for slot in 0..DRAFTS {
             if self.expected[slot] == Expected::Sending {
                 self.expected[slot] = Expected::Uncertain;
             }
+        }
+        if let Some(slot) = building {
+            self.expected[slot] = Expected::Editable;
+            self.authorized[slot] = false;
         }
     }
 
@@ -212,7 +225,7 @@ impl World {
             Step::Undo { draft } => self.undo(draft as usize),
             Step::Tick { ms } => self.now += i64::from(ms),
             Step::Engine { ref outcomes } => self.engine(outcomes),
-            Step::Reopen => self.reopen(),
+            Step::Reopen => self.reopen(None),
             Step::Resolve { draft, how } => self.resolve(draft as usize, how),
             Step::Copy { draft, done } => self.copy(draft as usize, done),
             Step::Edit { draft } => self.edit(draft as usize),
@@ -266,9 +279,24 @@ impl World {
         for (index, send) in due.sends.into_iter().enumerate() {
             let slot = self.slot(send.draft);
             let id = send.draft;
-            match outcomes[index % outcomes.len()] {
-                0 => {
-                    self.reopen();
+            let outcome = outcomes[index % outcomes.len()];
+            if send.prepared.is_none() && outcome != 0 {
+                // The actor builds the message, recording that first.
+                let building = self
+                    .store()
+                    .send_building(id, self.now)
+                    .recv_blocking()
+                    .unwrap();
+                assert!(building);
+                if outcome == 10 {
+                    self.reopen(Some(slot));
+                    return;
+                }
+                self.store().send_built(id).recv_blocking().unwrap();
+            }
+            match outcome {
+                0 | 10 => {
+                    self.reopen(None);
                     return;
                 }
                 1 => {
@@ -297,7 +325,6 @@ impl World {
                 }
                 _ => {}
             }
-            let outcome = outcomes[index % outcomes.len()];
             let prepared = match send.prepared {
                 Some(prepared) => prepared,
                 None => self.prepared(),
@@ -347,12 +374,12 @@ impl World {
                     self.expected[slot] = Expected::Uncertain;
                 }
                 7 => {
-                    self.reopen();
+                    self.reopen(None);
                     return;
                 }
                 8 | 9 => {
                     self.transmit(slot, true);
-                    self.reopen();
+                    self.reopen(None);
                     return;
                 }
                 other => unreachable!("outcome {other}"),

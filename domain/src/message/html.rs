@@ -2,6 +2,7 @@
 //! keeps only the text, marking quoted blocks with "> " so the snippet can leave them out.
 
 use super::truncate;
+use crate::html_depth;
 use html2text::render::TextDecorator;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -88,16 +89,19 @@ impl TextDecorator for TextOnly {
 }
 
 /// The text of an HTML body's first [`HTML_PARSE_LIMIT`] bytes, one rendered line per line,
-/// quoted blocks prefixed with "> ". Falls back to mail-parser's simple converter if html2text
-/// fails.
+/// quoted blocks prefixed with "> ". HTML nested deeper than [`html_depth::MAX_DEPTH`], or that
+/// html2text fails on, goes through mail-parser's simple converter, which reads it in one pass.
 pub fn html_to_text(html: &str) -> String {
     let html = truncate(html, HTML_PARSE_LIMIT);
+    if html_depth::too_deep(html) {
+        return mail_parser::decoders::html::html_to_text(html);
+    }
     let converted = catch_unwind(AssertUnwindSafe(|| {
-        html2text::config::with_decorator(TextOnly)
+        let config = html2text::config::with_decorator(TextOnly)
             .link_footnotes(false)
             .no_table_borders()
-            .allow_width_overflow()
-            .string_from_read(html.as_bytes(), WIDTH)
+            .allow_width_overflow();
+        html_depth::render(config, html, WIDTH)
     }));
     match converted {
         Ok(Ok(text)) => text,
@@ -107,8 +111,38 @@ pub fn html_to_text(html: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{HTML_PARSE_LIMIT, html_to_text};
+    use super::{HTML_PARSE_LIMIT, TextOnly, WIDTH, html_to_text};
     use crate::snippet::snippet;
+
+    /// Below the depth limit the text is html2text's, read as before the limit (M9); deeper, it
+    /// is mail-parser's converter's, which keeps the text.
+    #[test]
+    fn the_text_is_html2texts_below_the_depth_limit() {
+        let lists = |depth: usize| {
+            format!(
+                "{}dypt{}",
+                "<ul><li>".repeat(depth),
+                "</li></ul>".repeat(depth)
+            )
+        };
+        for html in [
+            lists(200),
+            "<p>Hei <b>Kari</b></p><blockquote><p>Gammel</p></blockquote>".to_owned(),
+        ] {
+            let old = html2text::config::with_decorator(TextOnly)
+                .link_footnotes(false)
+                .no_table_borders()
+                .allow_width_overflow()
+                .string_from_read(html.as_bytes(), WIDTH)
+                .unwrap();
+            assert_eq!(html_to_text(&html), old);
+        }
+        let deep = lists(300);
+        assert_eq!(
+            html_to_text(&deep),
+            mail_parser::decoders::html::html_to_text(&deep)
+        );
+    }
 
     #[test]
     fn reads_only_the_first_256_kib() {
