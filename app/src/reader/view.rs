@@ -865,3 +865,48 @@ pub fn disabled_features(view: &webkit6::WebView) -> Vec<String> {
         .filter(|id| NETWORK_FEATURES.contains(&id.as_str()))
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Isolated-world scripts aren't bound by the page's CSP, and a view whose images the user
+    /// allowed loads without the content filter, so the reader's helpers load nothing at all
+    /// (SECURITY.md "Message rendering", ML-093).
+    #[test]
+    fn helper_scripts_load_nothing() {
+        for script in [HEIGHT_JS, LINKS_JS, QUOTES_JS] {
+            for call in [
+                "fetch",
+                "XMLHttpRequest",
+                "Image(",
+                "src",
+                "url(",
+                "import(",
+                "sendBeacon",
+                "WebSocket",
+                "EventSource",
+                "location",
+                "window.open",
+                "innerHTML",
+                "outerHTML",
+                "insertAdjacentHTML",
+            ] {
+                assert!(!script.contains(call), "{call}");
+            }
+        }
+    }
+
+    /// A feature WebKit renamed would silently stay on.
+    #[test]
+    fn every_network_feature_is_known_to_this_webkit() {
+        let features = webkit6::Settings::all_features().expect("WebKit lists its features");
+        let known: Vec<String> = (0..features.length())
+            .filter_map(|index| features.get(index))
+            .filter_map(|feature| feature.identifier().map(String::from))
+            .collect();
+        for name in NETWORK_FEATURES {
+            assert!(known.iter().any(|id| id == name), "{name}");
+        }
+    }
+}

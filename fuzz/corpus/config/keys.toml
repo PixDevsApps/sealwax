@@ -1,0 +1,3 @@
+archive = ["e", "<Shift>a"]
+reply = ["r", "g r"]
+unknown = ["F13"]

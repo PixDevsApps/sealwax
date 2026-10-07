@@ -179,12 +179,27 @@ fn public_v4(ip: Ipv4Addr) -> bool {
 }
 
 fn public_v6(ip: Ipv6Addr) -> bool {
-    let [first, second, ..] = ip.segments();
+    let [first, second, third, ..] = ip.segments();
+    let embedded = |high: u16, low: u16| {
+        let [a, b] = high.to_be_bytes();
+        let [c, d] = low.to_be_bytes();
+        Ipv4Addr::new(a, b, c, d)
+    };
+    // 6to4 (2002::/16) carries an IPv4 address that may be a private one; Teredo (2001::/32),
+    // IPv4-compatible (::/96), site-local (fec0::/10) and discard-only (100::/64) addresses are
+    // never a mail server's (found in ML-093's review).
+    if first == 0x2002 {
+        return public_v4(embedded(second, third));
+    }
     !(ip.is_loopback()
         || ip.is_unspecified()
         || ip.is_multicast()
         || ip.is_unique_local()
         || ip.is_unicast_link_local()
+        || ip.segments()[..6] == [0; 6]
+        || (first & 0xffc0) == 0xfec0
+        || (first == 0x0100 && ip.segments()[1..4] == [0; 3])
+        || (first == 0x2001 && second == 0)
         || (first == 0x2001 && second == 0x0db8)
         || (first == 0x0064 && second == 0xff9b))
 }
@@ -413,6 +428,14 @@ mod tests {
             "::ffff:127.0.0.1",
             "2001:db8::1",
             "64:ff9b::1",
+            "64:ff9b:1::1",
+            "2002:c0a8:0101::1",
+            "2002:7f00:1::",
+            "2001:0:4136:e378:8000:63bf:3fff:fdd2",
+            "::7f00:1",
+            "::c0a8:101",
+            "fec0::1",
+            "100::1",
         ] {
             assert!(!public_address(ip.parse().unwrap()), "{ip}");
         }
@@ -421,6 +444,8 @@ mod tests {
             "8.8.8.8",
             "2a00:1450:4010:c05::6c",
             "::ffff:1.1.1.1",
+            "2002:0101:0101::1",
+            "2001:4860::8888",
         ] {
             assert!(public_address(ip.parse().unwrap()), "{ip}");
         }

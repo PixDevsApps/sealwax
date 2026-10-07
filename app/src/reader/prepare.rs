@@ -3,10 +3,10 @@
 //! it can't be shown), the attachment cards, and whether it is signed (ML-064).
 
 use super::engine::{InlinePart, InlineParts, percent_decode};
-use super::heuristic;
 use super::protection::Unreadable;
 use gtk4::glib;
 use sealwax_domain::flowed::{self, Flowed};
+use sealwax_domain::html_scan;
 use sealwax_domain::message;
 use sealwax_domain::model::{Attachment, MessageDetail, MessageId};
 use sealwax_domain::reading::{self, Encryption, InlinePgp, Signature};
@@ -92,7 +92,7 @@ pub fn prepare(detail: &MessageDetail, raw: Option<&[u8]>) -> Prepared {
         }
         let referenced = cid_references(&html);
         let parts = inline_parts(detail.summary.id, raw, &kept, &referenced);
-        let scan = heuristic::scan(&html);
+        let scan = html_scan::scan(&html);
         let attachments = kept
             .into_iter()
             .filter(|attachment| !shown_inline(attachment, &referenced))

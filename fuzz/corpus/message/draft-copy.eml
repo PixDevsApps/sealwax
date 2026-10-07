@@ -1,0 +1,24 @@
+From: "Kari Nordmann" <kari@example.test>
+To: Ola Nordmann <ola@example.test>, =?utf-8?B?QmrDuHJu?= <bjorn@example.test>
+Subject: =?iso-8859-1?Q?Bl=E5b=E6r?= Re: Fwd: SV: plan
+Date: Wed, 7 Oct 2026 09:30:00 +0200
+Message-ID: <seed-1@example.test>
+In-Reply-To: <root@example.test>
+References: <root@example.test> <mid@example.test>
+Thread-Index: AQHZ1234567890abcdefghijklmnopq==
+List-Id: Fjord list <fjord.example.test>
+MIME-Version: 1.0
+X-Sealwax-Draft: 1
+Content-Type: multipart/mixed; boundary="d"
+Bcc: hidden@example.test
+
+--d
+Content-Type: text/html; charset=utf-8
+
+<div>Draft <img src="cid:part1@example.test"></div>
+--d
+Content-Type: text/plain; name=notes.txt
+Content-Disposition: attachment; filename=notes.txt
+
+notes
+--d--

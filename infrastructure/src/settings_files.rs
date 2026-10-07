@@ -3,6 +3,7 @@
 
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 
 use crate::xdg::ensure_private_dir;
@@ -32,13 +33,18 @@ pub fn read_optional(path: &Path) -> io::Result<Option<String>> {
     }
 }
 
-/// Writes `text` to `path` unless the file exists, creating its directory (mode 0700).
-/// Returns whether it wrote the file; an existing file is never touched.
+/// Writes `text` to `path` (mode 0600) unless the file exists, creating its directory (mode
+/// 0700). Returns whether it wrote the file; an existing file is never touched.
 pub fn create_if_missing(path: &Path, text: &str) -> io::Result<bool> {
     if let Some(dir) = path.parent() {
         ensure_private_dir(dir)?;
     }
-    let mut file = match OpenOptions::new().write(true).create_new(true).open(path) {
+    let mut file = match OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+    {
         Ok(file) => file,
         Err(error) if error.kind() == io::ErrorKind::AlreadyExists => return Ok(false),
         Err(error) => return Err(error),
@@ -89,6 +95,10 @@ mod tests {
         let path = dirs.keys_file();
         assert!(create_if_missing(&path, "# defaults\n").unwrap());
         assert_eq!(fs::read_to_string(&path).unwrap(), "# defaults\n");
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
         assert_eq!(
             fs::metadata(&dirs.config).unwrap().permissions().mode() & 0o777,
             0o700

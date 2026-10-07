@@ -1,0 +1,10 @@
+[appearance]
+corner_radius = "auto"
+font_size = 11
+
+[notifications]
+show = "count"
+enabled = true
+
+[reading]
+remote_images = "ask"

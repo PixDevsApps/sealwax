@@ -1,0 +1,110 @@
+# Coverage-guided fuzz targets (ML-093): libFuzzer through libfuzzer-sys on the stable
+# toolchain, run by tools/fuzz.sh. A workspace of its own, so the normal build never compiles
+# it; the entry points live in the crates (`sealwax_domain::fuzz`, `sealwax_engine::fuzz`).
+[package]
+name = "sealwax-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+libfuzzer-sys = "0.4.13"
+sealwax-domain = { path = "../domain", features = ["fuzz"] }
+sealwax-engine = { path = "../engine", features = ["fuzz"] }
+
+[workspace]
+
+[profile.release]
+debug = "line-tables-only"
+debug-assertions = true
+overflow-checks = true
+
+# mail-parser 0.11.9's `debug_assert!(false, "Invalid part ID, could not find multipart.")`
+# (src/parsers/message.rs:485) fires on fuzzed multiparts; release builds, Sealwax's among
+# them, compile it out and parse on (docs/m9/security.md).
+[profile.release.package.mail-parser]
+debug-assertions = false
+
+[[bin]]
+name = "message"
+path = "fuzz_targets/message.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "html"
+path = "fuzz_targets/html.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "text"
+path = "fuzz_targets/text.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "links"
+path = "fuzz_targets/links.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "attachment"
+path = "fuzz_targets/attachment.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "autoconfig"
+path = "fuzz_targets/autoconfig.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "search"
+path = "fuzz_targets/search.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mailto"
+path = "fuzz_targets/mailto.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "config"
+path = "fuzz_targets/config.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "theme"
+path = "fuzz_targets/theme.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "pop3"
+path = "fuzz_targets/pop3.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "imap"
+path = "fuzz_targets/imap.rs"
+test = false
+doc = false
+bench = false

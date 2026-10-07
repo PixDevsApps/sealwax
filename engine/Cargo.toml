@@ -40,3 +40,7 @@ tempfile.workspace = true
 tracing-subscriber.workspace = true
 rusqlite.workspace = true
 tokio = { workspace = true, features = ["io-util", "test-util"] }
+
+[features]
+# The entry points of the fuzz targets in fuzz/ (docs/m9/security.md).
+fuzz = []

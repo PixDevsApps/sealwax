@@ -10,6 +10,8 @@ mod error;
 mod fetch;
 mod first_sync;
 mod folders;
+#[cfg(any(test, feature = "fuzz"))]
+pub(crate) mod fuzz;
 mod idle;
 pub mod mutf7;
 mod raw;

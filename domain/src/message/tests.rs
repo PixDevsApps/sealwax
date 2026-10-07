@@ -413,3 +413,12 @@ fn never_panics_on_malformed_input() {
         }
     }
 }
+
+/// Found by fuzzing (ML-093): this message reaches mail-parser 0.11.9's
+/// `debug_assert!(false, "Invalid part ID, could not find multipart.")`, a panic in debug builds
+/// (release builds compile it out). A panic beneath `parse` leaves the size only.
+#[test]
+fn a_panic_beneath_the_parser_is_caught() {
+    let raw = include_bytes!("../../../fuzz/known/mail-parser-debug-assert.eml");
+    assert_eq!(parse(raw).size, raw.len() as u64);
+}

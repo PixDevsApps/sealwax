@@ -2,6 +2,7 @@
 //! in one transaction, the end of a pass, ops done at once with Undo, sending with the Sent copy
 //! filed locally and no Drafts-folder copies, the disk cap, removal and the v11 migration.
 
+use super::body_tests::{raw, upgrade};
 use super::compose_tests::{draft, prepared, save};
 use super::ops_tests::{NOW, WINDOW, counts, held_ids, message};
 use super::tests::scratch;
@@ -770,6 +771,57 @@ fn the_disk_cap_never_evicts_a_pop3_accounts_mail() {
     }
     let candidates = pop.store.body_candidates(0, 10).recv_blocking().unwrap();
     assert!(candidates.is_empty(), "nothing to prefetch");
+}
+
+/// Found in the security review (ML-093): blobs are named by their content, so an IMAP
+/// account's cached body can be the very file a POP3 message keeps (the same mailbox added
+/// both ways). Evicting the cached body took the POP3 message's only copy with it.
+#[test]
+fn the_disk_cap_never_evicts_a_blob_a_pop3_message_shares() {
+    let pop = pop();
+    let shared = BlobKey([1; 32]);
+    let kept = stored(&pop.store, pop.account, vec![download(pop.inbox, 1)]).ids[0].unwrap();
+    let imap = pop
+        .store
+        .ensure_account(
+            AccountKey("imap-test".into()),
+            NewAccount {
+                name: "Imap".into(),
+                address: "imap@example.test".into(),
+            },
+        )
+        .recv_blocking()
+        .unwrap()
+        .value;
+    let inbox = pop
+        .store
+        .upsert_folder(FolderSpec::local(imap, "INBOX", FolderRole::Inbox))
+        .recv_blocking()
+        .unwrap()
+        .value;
+    let cached = pop
+        .store
+        .ingest(vec![NewMessage {
+            body_state: BodyState::Partial,
+            ..message(inbox, 7, Flags::NONE)
+        }])
+        .recv_blocking()
+        .unwrap()
+        .ids[0]
+        .unwrap();
+    pop.store
+        .upgrade_body(upgrade(cached, 7, shared, &raw(7), AT))
+        .recv_blocking()
+        .unwrap();
+    assert!(pop.store.body_usage().recv_blocking().unwrap().bytes > 0);
+    let evicted = pop
+        .store
+        .evict_bodies(0, Vec::new())
+        .recv_blocking()
+        .unwrap();
+    assert!(evicted.blobs.is_empty(), "{evicted:?}");
+    let target = &pop.store.body_targets(vec![kept]).recv_blocking().unwrap()[0];
+    assert_eq!(target.blob, Some(shared));
 }
 
 #[test]

@@ -9,6 +9,10 @@ pub mod bodies;
 pub mod compose;
 pub mod config;
 pub mod flowed;
+#[cfg(any(test, feature = "fuzz"))]
+#[doc(hidden)]
+pub mod fuzz;
+pub mod html_scan;
 pub mod keymap;
 pub mod links;
 pub mod mailto;

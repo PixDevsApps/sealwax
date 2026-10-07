@@ -1,5 +1,6 @@
 [workspace]
 members = ["app", "domain", "infrastructure", "engine", "spikes/*", "devtools/*"]
+exclude = ["fuzz"]
 default-members = ["app"]
 resolver = "3"
 

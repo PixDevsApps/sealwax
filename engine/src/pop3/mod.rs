@@ -17,6 +17,8 @@
 //! - **Logs** carry counts, sizes, timings and the mechanism, never a username, a UIDL, message
 //!   text or a protocol line (ADR-018).
 
+#[cfg(any(test, feature = "fuzz"))]
+pub(crate) mod fuzz;
 mod reply;
 mod session;
 mod wire;
