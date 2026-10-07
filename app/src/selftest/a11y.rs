@@ -908,9 +908,10 @@ async fn tab_chain(harness: &Harness, which: &str, backward: bool, max: usize) -
         };
         chain.push(stop(&focus));
         // Inside a web view the focus moves through the page while GTK's stays on the view:
-        // the chain is round once it left the start and came back.
+        // from there the chain is round once it left the view and came back. Anywhere else a
+        // press that keeps the focus where it started means that is the only stop.
         left |= focus != start;
-        if focus == start && left {
+        if focus == start && (left || !start.is::<webkit6::WebView>()) {
             result = Ok(());
             break;
         }
