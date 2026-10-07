@@ -1,21 +1,45 @@
-//! The login check behind `Command::Verify` (PRD A3): log in to IMAP, then to SMTP, saving
-//! nothing. When the server refuses the first username, `second_username` is tried once, so a
-//! check makes at most two IMAP login attempts; SMTP then logs in with the username that
-//! worked. A failure names the protocol and why, never the server's text.
+//! The login check behind `Command::Verify` (PRD A3): log in to the incoming server (IMAP, or
+//! POP3 for a POP3 account, M8), then to SMTP, saving nothing. When the incoming server refuses
+//! the first username, `second_username` is tried once, so a check makes at most two incoming
+//! login attempts; SMTP then logs in with the username that worked. A failure names the protocol
+//! and why, never the server's text.
 
 use crate::api::Password;
-use crate::imap::{self, Credentials, ImapError};
+use crate::imap::{self, Credentials};
 use crate::net::Trust;
 use crate::pop3;
 use crate::smtp;
+use rustls::ClientConfig;
 use sealwax_domain::account::{
     AccountSettings, AuthMethod, LoginError, LoginFailure, Protocol, Receive,
 };
+use std::sync::Arc;
 
-fn imap_error(failure: LoginFailure) -> LoginError {
+fn incoming_error(settings: &AccountSettings, failure: LoginFailure) -> LoginError {
     LoginError {
-        protocol: Protocol::Imap,
+        protocol: settings.receive.protocol(),
         failure,
+    }
+}
+
+/// Logs in to the account's incoming server and out again.
+async fn incoming(
+    settings: &AccountSettings,
+    credentials: Credentials<'_>,
+    tls: Arc<ClientConfig>,
+) -> Result<(), LoginFailure> {
+    match settings.receive {
+        Receive::Imap => match imap::connect(&settings.incoming, credentials, tls).await {
+            Ok(connection) => {
+                connection.logout().await;
+                Ok(())
+            }
+            Err(error) => {
+                tracing::debug!(%error, "imap login check failed");
+                Err(error.failure())
+            }
+        },
+        Receive::Pop3(_) => pop3::check_login(&settings.incoming, credentials, tls).await,
     }
 }
 
@@ -29,11 +53,11 @@ pub async fn verify(
     trust: &Trust,
 ) -> Result<String, LoginError> {
     if let AuthMethod::OAuth(_) = settings.auth {
-        return Err(imap_error(LoginFailure::OAuthRequired));
+        return Err(incoming_error(settings, LoginFailure::OAuthRequired));
     }
     let tls = trust
         .client_config()
-        .map_err(|_| imap_error(LoginFailure::Other))?;
+        .map_err(|_| incoming_error(settings, LoginFailure::Other))?;
     let mut usernames = vec![settings.username.as_str()];
     usernames.extend(second_username.filter(|second| *second != settings.username));
     let mut username = None;
@@ -42,43 +66,18 @@ pub async fn verify(
             username: candidate,
             password: password.expose(),
         };
-        if let Receive::Pop3(_) = settings.receive {
-            match pop3::check_login(&settings.incoming, credentials, tls.clone()).await {
-                Ok(()) => {
-                    username = Some(*candidate);
-                    break;
-                }
-                Err(LoginFailure::WrongPassword) if attempt + 1 < usernames.len() => {
-                    tracing::debug!(attempt, "pop3 login refused; trying the other username");
-                    continue;
-                }
-                Err(failure) => {
-                    tracing::debug!(attempt, "pop3 login check failed");
-                    return Err(LoginError {
-                        protocol: Protocol::Pop3,
-                        failure,
-                    });
-                }
-            }
-        }
-        match imap::connect(&settings.incoming, credentials, tls.clone()).await {
-            Ok(connection) => {
-                connection.logout().await;
+        match incoming(settings, credentials, tls.clone()).await {
+            Ok(()) => {
                 username = Some(*candidate);
                 break;
             }
-            Err(ImapError::Rejected(LoginFailure::WrongPassword))
-                if attempt + 1 < usernames.len() =>
-            {
-                tracing::debug!(attempt, "imap login refused; trying the other username");
+            Err(LoginFailure::WrongPassword) if attempt + 1 < usernames.len() => {
+                tracing::debug!(attempt, "login refused; trying the other username");
             }
-            Err(error) => {
-                tracing::debug!(attempt, %error, "imap login check failed");
-                return Err(imap_error(error.failure()));
-            }
+            Err(failure) => return Err(incoming_error(settings, failure)),
         }
     }
-    let username = username.ok_or_else(|| imap_error(LoginFailure::WrongPassword))?;
+    let username = username.ok_or_else(|| incoming_error(settings, LoginFailure::WrongPassword))?;
     let credentials = Credentials::Password {
         username,
         password: password.expose(),

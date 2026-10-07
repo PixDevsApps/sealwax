@@ -39,6 +39,8 @@ USERS = [
     "outboxfault",
     # M7's new-mail suite (engine/tests/newmail_testbed.rs).
     "newmail",
+    # M8's POP3 client suite (engine/tests/pop3_testbed.rs): its own INBOX for DELE and QUIT.
+    "popclient",
 ]
 PASSWORD = "testbed-password"
 
