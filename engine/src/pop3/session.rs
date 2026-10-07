@@ -209,6 +209,14 @@ fn uidl(value: &[u8]) -> Result<String, Pop3Error> {
     Ok(String::from_utf8_lossy(value).into_owned())
 }
 
+/// A refused UIDL: a server without it, unless the refusal says the server is busy.
+fn no_uidl(refusal: &Refusal) -> Pop3Error {
+    match refusal.command() {
+        Pop3Error::Err => Pop3Error::NoUidl,
+        busy => busy,
+    }
+}
+
 impl Session {
     pub fn capabilities(&self) -> &Capabilities {
         &self.caps
@@ -320,11 +328,7 @@ impl Session {
         if self.caps.uidl {
             return Ok(());
         }
-        let refused = |refusal: &Refusal| match refusal.command() {
-            Pop3Error::Err => Pop3Error::NoUidl,
-            busy => busy,
-        };
-        self.multi(b"UIDL", refused, |_| Ok(())).await
+        self.multi(b"UIDL", no_uidl, |_| Ok(())).await
     }
 
     /// QUIT, waiting at most `wait` for the answer; errors don't matter any more.
@@ -344,11 +348,7 @@ impl Mailbox for Session {
     async fn listing(&mut self) -> Result<Vec<Listing>, Pop3Error> {
         let started = std::time::Instant::now();
         let mut uidls: Vec<(u32, String)> = Vec::new();
-        let refused = |refusal: &Refusal| match refusal.command() {
-            Pop3Error::Err => Pop3Error::NoUidl,
-            busy => busy,
-        };
-        self.multi(b"UIDL", refused, |line| {
+        self.multi(b"UIDL", no_uidl, |line| {
             let (n, value) = pair(line)?;
             uidls.push((n, uidl(value)?));
             Ok(())
