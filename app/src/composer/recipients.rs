@@ -524,6 +524,13 @@ impl RecipientField {
                     current.saturating_sub(1)
                 };
                 self.select(next);
+                // The entry keeps the focus, so a screen reader hears the row this way.
+                if let Some(row) = self.list.row_at_index(next as i32) {
+                    crate::accessibility::announce(
+                        &self.entry,
+                        &crate::accessibility::shown_text(&row),
+                    );
+                }
                 glib::Propagation::Stop
             }
             gdk::Key::Return | gdk::Key::KP_Enter | gdk::Key::ISO_Enter if plain && open => {

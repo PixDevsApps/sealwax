@@ -6,6 +6,7 @@
 //! theme follower reads a scratch Omarchy state, never the desktop's: the built-in palette
 //! until a script installs a theme from `tests/theme/` (`theme`).
 
+mod a11y;
 mod background;
 mod bodies;
 mod broadway;
@@ -148,6 +149,7 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
         engine: None,
         microsoft_client_id: None,
     };
+    crate::accessibility::record_announcements();
     let app = SealwaxApplication::new(config, started);
     let outcome: Rc<Cell<Option<bool>>> = Rc::new(Cell::new(None));
     let harness_root = root.path.clone();
@@ -425,6 +427,7 @@ impl Harness {
             "test-bus-activate" => self.test_bus_call(None).await,
             "test-bus-signal" => self.test_bus_signal(arg(0)).await,
             "test-bus-stop" => self.stop_test_bus().await,
+            command if a11y::handles(command) => a11y::step(self, command, args).await,
             command if conversation::handles(command) => {
                 conversation::step(self, command, args).await
             }
@@ -739,6 +742,7 @@ impl Harness {
                 }
             }
             "assert-reader" => reader::check(self, args).await,
+            assertion if a11y::handles(assertion) => a11y::step(self, assertion, args).await,
             assertion if conversation::handles(assertion) => {
                 conversation::step(self, assertion, args).await
             }

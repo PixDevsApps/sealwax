@@ -1,0 +1,113 @@
+# The accessibility pass (M9, ML-092) on the setup assistant, its failures, Microsoft sign-in and
+# Remove Account, on a scripted engine: every control on screen has an accessible name, a role
+# that says what it is and the states its role needs (assert-accessible), Tab and Shift+Tab
+# (real key presses) go round each step's fields and buttons and stay in the dialog, and Escape
+# goes back a step and closes on the first. Every address, name and server is fictional.
+# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-setup.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+
+# The welcome page, then the address step.
+assert-accessible window
+setup-click add-account
+assert-setup step address
+assert-dialog "Add an Account"
+assert-accessible dialog
+assert-accessible-name setup-address "Email address"
+assert-accessible-name setup-name "Your name"
+tab-chain window forward 20
+assert-tab-chain setup-address,setup-name,setup-manual-link,setup-address
+tab-chain window backward 20
+assert-tab-chain setup-address,setup-manual-link,setup-name,setup-address
+
+# Looking up the provider, then the password.
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply progress preset
+engine-reply progress autoconfig
+assert-setup step detecting
+assert-accessible dialog
+engine-reply detected fastmail
+assert-setup step password
+assert-accessible dialog
+assert-accessible-name setup-password "App password"
+assert-setup focus setup-password
+tab-chain window forward 20
+assert-tab-chain setup-password,setup-app-password-link,setup-primary,setup-back,setup-password
+
+# A wrong password: the alert, the settings tried, the focus in the password.
+setup-type setup-password fictional-password-2
+setup-key enter
+engine-expect verify username=kari@example.test
+assert-setup step checking
+assert-accessible dialog
+engine-reply verified imap wrong-password
+assert-setup step failed
+assert-accessible dialog
+assert-accessible-role setup-alert alert
+assert-accessible-name setup-imap-host "Incoming mail server"
+assert-accessible-name setup-imap-port "Incoming mail port"
+assert-accessible-name setup-smtp-host "Outgoing mail server"
+assert-accessible-state setup-password invalid true
+assert-setup focus setup-password
+tab-chain window forward 40
+assert-tab-chain setup-password,setup-primary,setup-back,setup-password
+
+# POP3 in the manual settings: the protocol choice and its note.
+setup-choose setup-incoming POP3
+assert-accessible dialog
+assert-accessible-name setup-imap-host "POP3 server"
+
+# Escape goes back a step; on the first step it closes, and the focus returns to the window.
+setup-key escape
+assert-setup step address
+setup-key escape
+assert-setup open false
+assert-dialog none
+assert-focus add-account
+
+# Microsoft sign-in, without and with a client ID.
+setup-click add-account
+setup-type setup-address kari@outlook.example.test
+setup-key enter
+engine-expect detect address=kari@outlook.example.test
+engine-reply detected microsoft
+assert-setup step microsoft
+assert-accessible dialog
+assert-accessible-state setup-microsoft-button disabled true
+write-file $TMP/config/sealwax/config.toml "[oauth.microsoft]\nclient_id = \"fictional-client-id\"\n"
+wait-until assert-sensitive setup-microsoft-button true
+assert-accessible dialog
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@outlook.example.test
+assert-shown setup-waiting true
+assert-accessible dialog
+setup-key escape
+setup-key escape
+setup-key escape
+assert-setup open false
+
+# Remove Account: one account through the manual settings, then the confirmation.
+setup-click add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-click setup-manual-link
+setup-type setup-imap-host imap.example.test
+setup-type setup-smtp-host smtp.example.test
+setup-type setup-password fictional-password-9
+setup-key enter
+engine-expect verify address=kari@example.test
+engine-reply verified ok
+engine-expect add-account address=kari@example.test
+engine-reply added ok
+wait-until assert-setup open false
+action win.remove-account
+assert-shown remove-account true
+assert-accessible dialog
+tab-chain window forward 10
+key Escape
+assert-dialog none
+engine-expect none

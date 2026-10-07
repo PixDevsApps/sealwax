@@ -1,0 +1,105 @@
+# The accessibility pass (M9, ML-092) on the main window at its three layouts, on a fixture
+# store: every control on screen has an accessible name, a role that says what it is and the
+# states its role needs (assert-accessible, app/src/selftest/a11y.rs), and Tab and Shift+Tab
+# (real key presses through Broadway) go through the panes left to right and come back where
+# they started: folders, then the list's bar and the list, then the reader's toolbar and the
+# conversation. The folder list and the message list are one Tab stop each (Up and Down move
+# inside them). Every message is fictional.
+# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-window.sealwax-test
+
+desktop tiling
+fixtures --count 40 --seed 9 --folders spread
+resize 1440 900
+triage-mark-read-on-open false
+list-wait
+list-select 0
+wait-until assert-reader-page message
+
+# Wide: sidebar · list · reader.
+assert-layout wide
+assert-accessible window
+assert-accessible-name compose "New message"
+assert-accessible-role folder-list list
+assert-accessible-name folder-list Folders
+assert-accessible-name message-list Messages
+assert-accessible-name list-search "Search mail"
+assert-accessible-role chip-all toggle-button
+assert-accessible-state chip-all pressed true
+assert-accessible-state chip-unread pressed false
+assert-accessible-name list-menu "Main menu"
+assert-accessible-name reader-archive Archive
+assert-accessible-state reader-previous disabled true
+
+# Tab from the folder shown: the sidebar's footer, the list's bar, the list, the reader's toolbar
+# and conversation, and round to the sidebar's compose button and the folder list again.
+focus folder:folder-1
+assert-focus folder:folder-1
+tab-chain window forward 80
+assert-tab-chain folder:folder-1,config,list-menu,list-search,chip-all,chip-attachments,message-list,reader-archive,reader-next,reader-subject,quick-reply-text,compose,folder:folder-1
+tab-chain window backward 80
+assert-tab-chain folder:folder-1,compose,quick-reply-text,reader-subject,reader-next,reader-archive,message-list,chip-attachments,chip-all,list-search,list-menu,config,folder:folder-1
+
+# The folder list is one stop: Tab leaves it from any row, and comes back to the folder shown.
+focus folder:folder-1
+key Down
+key Down
+key Tab
+assert-focus config
+key <Shift>Tab
+assert-focus folder:folder-1
+key <Shift>Tab
+assert-focus compose
+key Tab
+assert-focus folder:folder-1
+
+# The message list is one stop too: Down moves the selection, Tab goes to the reader.
+focus list
+key Tab
+assert-focus reader-archive
+key <Shift>Tab
+assert-focus list
+
+# Menus and the folder menu.
+menu-open list-menu
+assert-accessible window
+menu-close list-menu
+menu-open reader-more
+assert-accessible window
+menu-close reader-more
+sidebar-menu inbox
+assert-accessible window
+key Escape
+assert-sidebar-menu closed
+
+# The select mode: checkboxes on the rows, the batch page in the reader.
+focus list
+key x
+assert-select-mode true
+key j
+key x
+assert-reader-page batch
+assert-accessible window
+key Escape
+assert-select-mode false
+
+# Half: the rail · list · reader.
+resize 1100 900
+assert-layout rail
+assert-accessible window
+focus list
+tab-chain window forward 80
+assert-tab-chain message-list,reader-archive,quick-reply-text,compose,rail:all-inboxes,rail-config,list-menu,list-search,message-list
+
+# Narrow: one pane at a time, with back buttons.
+resize 800 900
+assert-layout narrow
+assert-accessible window
+focus list
+tab-chain window forward 40
+assert-tab-chain message-list,list-back,list-compose,list-menu,list-search,chip-all,message-list
+action nav.pane::folders
+assert-pane folders
+assert-accessible window
+action nav.pane::reader
+assert-pane reader
+assert-accessible window

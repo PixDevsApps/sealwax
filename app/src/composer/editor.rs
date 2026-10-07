@@ -544,6 +544,8 @@ impl Editor {
             .build();
         view.add_css_class("sw-composer-body");
         view.update_property(&[gtk::accessible::Property::Label("Message body")]);
+        crate::accessibility::keep_focus_off_key_bindings(&view);
+        crate::accessibility::tab_leaves(&view);
         let parts: Parts = Rc::default();
         engine
             .pages

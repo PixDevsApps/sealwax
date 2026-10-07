@@ -26,6 +26,15 @@ impl Item {
     fn search_text(&self) -> String {
         format!("{} {}", self.title, self.category)
     }
+
+    /// What a screen reader says for the row: the command, its category, its keys.
+    fn spoken(&self) -> String {
+        [self.title.as_str(), self.category, self.keys.as_str()]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
 }
 
 /// What the signal handlers share. It holds the widgets weakly, so the dialog never keeps
@@ -93,11 +102,14 @@ impl Palette {
             .hexpand(true)
             .css_classes(["sw-palette-search"])
             .build();
+        entry.set_widget_name("palette-search");
         entry.update_property(&[gtk::accessible::Property::Label("Command palette")]);
         let list = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::Browse)
             .css_classes(["sw-palette-list"])
             .build();
+        list.set_widget_name("palette-list");
+        list.update_property(&[gtk::accessible::Property::Label("Commands")]);
         let empty = gtk::Label::builder()
             .label("No matching command")
             .css_classes(["sw-palette-empty", "sw-secondary"])
@@ -303,6 +315,15 @@ impl Inner {
         if let Some(row) = list.row_at_index(next) {
             list.select_row(Some(&row));
             self.scroll_to(&list, &row);
+            // The focus stays in the entry, so a screen reader hears the row this way.
+            if let (Some(entry), Some(item)) = (
+                self.entry.upgrade(),
+                usize::try_from(next)
+                    .ok()
+                    .and_then(|index| self.shown.borrow().get(index).cloned()),
+            ) {
+                crate::accessibility::announce(&entry, &item.spoken());
+            }
         }
     }
 
@@ -375,11 +396,10 @@ fn row(item: &Item) -> gtk::ListBoxRow {
         .child(&content)
         .css_classes(["sw-palette-row"])
         .build();
-    // A screen reader reads the row as one: the command, its category, its keys.
-    let spoken: Vec<&str> = [item.title.as_str(), item.category, item.keys.as_str()]
-        .into_iter()
-        .filter(|part| !part.is_empty())
-        .collect();
-    row.update_property(&[gtk::accessible::Property::Label(&spoken.join(", "))]);
+    // The focus stays in the search entry, where Up and Down move the chosen row and a screen
+    // reader hears it: Tab doesn't walk every row.
+    row.set_focusable(false);
+    // A screen reader reads the row as one.
+    row.update_property(&[gtk::accessible::Property::Label(&item.spoken())]);
     row
 }

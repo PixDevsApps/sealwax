@@ -170,6 +170,18 @@ impl Links {
             ),
             Verdict::Fine => return,
         };
+        // A screen reader user reaching the link with the keyboard hears the warning too.
+        if hover.focused {
+            let said = match &verdict {
+                Verdict::Disguised { shown, .. } => format!("It shows {shown}"),
+                Verdict::Mismatch { text, .. } => format!("Text says {text}"),
+                Verdict::Fine => String::new(),
+            };
+            crate::accessibility::announce(
+                &self.overlay,
+                &format!("{title}. {said}. Opens {opens}{path}"),
+            );
+        }
         self.warning.title.set_text(title);
         self.warning.said.set_markup(&said);
         self.warning.opens.set_markup(&format!(

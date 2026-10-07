@@ -2,6 +2,7 @@
 //! registry and the keymap in use, one section per category.
 
 use gtk4 as gtk;
+use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::actions::{ActionId, Category, Scope};
@@ -12,6 +13,7 @@ use sealwax_domain::keymap::{Binding, Keymap};
 pub fn dialog(keymap: &Keymap, available: &dyn Fn(ActionId) -> bool) -> adw::ShortcutsDialog {
     let dialog = adw::ShortcutsDialog::new();
     dialog.add_css_class("sw-shortcuts");
+    let mut titles = Vec::new();
     for category in Category::ALL {
         let section = adw::ShortcutsSection::new(Some(category.label()));
         let mut empty = true;
@@ -30,9 +32,37 @@ pub fn dialog(keymap: &Keymap, available: &dyn Fn(ActionId) -> bool) -> adw::Sho
         }
         if !empty {
             dialog.add(section);
+            titles.push(category.label());
         }
     }
+    // libadwaita leaves each section's list without a name; a screen reader entering one
+    // hears the section's title instead of only "list". The lists exist once it shows, each
+    // in a group titled as its section.
+    dialog.connect_map(move |dialog| {
+        let mut lists = Vec::new();
+        collect_lists(dialog.upcast_ref(), &mut lists);
+        for list in lists {
+            let title = list
+                .ancestor(adw::PreferencesGroup::static_type())
+                .map(|group| group.property::<String>("title"))
+                .filter(|title| titles.contains(&title.as_str()));
+            if let Some(title) = title {
+                list.update_property(&[gtk::accessible::Property::Label(&title)]);
+            }
+        }
+    });
     dialog
+}
+
+fn collect_lists(widget: &gtk::Widget, lists: &mut Vec<gtk::Widget>) {
+    if widget.is::<gtk::ListBox>() && widget.has_css_class("boxed-list") {
+        lists.push(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        collect_lists(&current, lists);
+        child = current.next_sibling();
+    }
 }
 
 /// Builds the dialog and presents it over `parent`.
