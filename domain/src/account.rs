@@ -28,6 +28,8 @@ pub enum Security {
 pub enum Protocol {
     Imap,
     Smtp,
+    /// POP3 (M8, PRD A9).
+    Pop3,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -50,6 +52,47 @@ pub enum AuthMethod {
     OAuth(OAuthProvider),
 }
 
+/// How an account receives its mail (M8, PRD A9).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Receive {
+    /// IMAP: the server's folders, kept in sync.
+    #[default]
+    Imap,
+    /// POP3: new mail downloaded from the server into the account's local folders (ML-087,
+    /// ML-088).
+    Pop3(Pop3Policy),
+}
+
+/// What happens on the POP3 server to mail Sealwax has downloaded (PRD A9).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct Pop3Policy {
+    /// Downloaded mail stays on the server.
+    pub leave_on_server: bool,
+    /// With `leave_on_server`, mail is deleted from the server this many days after it was
+    /// downloaded; `None` keeps it there.
+    pub delete_after_days: Option<u32>,
+}
+
+impl Receive {
+    /// The incoming server's protocol.
+    pub const fn protocol(self) -> Protocol {
+        match self {
+            Self::Imap => Protocol::Imap,
+            Self::Pop3(_) => Protocol::Pop3,
+        }
+    }
+}
+
+impl Default for Pop3Policy {
+    /// Leave on server, never delete: the lead's recommendation at M8's start.
+    fn default() -> Self {
+        Self {
+            leave_on_server: true,
+            delete_after_days: None,
+        }
+    }
+}
+
 /// One account as `accounts.toml` holds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AccountSettings {
@@ -57,9 +100,11 @@ pub struct AccountSettings {
     /// The sender name on outgoing mail and the account's label in the sidebar.
     pub name: String,
     pub address: String,
-    pub imap: Endpoint,
+    /// The server mail comes from: IMAP's, or POP3's when `receive` says so.
+    pub incoming: Endpoint,
+    pub receive: Receive,
     pub smtp: Endpoint,
-    /// The login name for both IMAP and SMTP.
+    /// The login name for both the incoming server and SMTP.
     pub username: String,
     pub auth: AuthMethod,
     /// The signature under mail sent from `address` (M6, ML-070): plain text, `None` for none.

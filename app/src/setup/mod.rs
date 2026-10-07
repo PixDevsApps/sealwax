@@ -943,7 +943,7 @@ impl Assistant {
                             &error,
                             &text::Context {
                                 provider: found.and_then(|settings| settings.provider.as_deref()),
-                                imap: &attempt.imap,
+                                imap: &attempt.incoming,
                                 smtp: &attempt.smtp,
                                 app_password: found
                                     .and_then(|settings| settings.app_password.as_ref()),
@@ -965,7 +965,7 @@ impl Assistant {
                     && let Some(attempt) = attempt
                 {
                     let w = &self.inner.widgets;
-                    w.imap.fill(&attempt.imap);
+                    w.imap.fill(&attempt.incoming);
                     w.smtp.fill(&attempt.smtp);
                     w.manual_username.set_text(&attempt.username);
                 }
@@ -1277,7 +1277,7 @@ impl Assistant {
     fn security_changed(&self, protocol: Protocol) {
         let w = &self.inner.widgets;
         let fields = match protocol {
-            Protocol::Imap => &w.imap,
+            Protocol::Imap | Protocol::Pop3 => &w.imap,
             Protocol::Smtp => &w.smtp,
         };
         let security = fields.security();
@@ -1393,7 +1393,7 @@ impl Assistant {
             | LoginFailure::ImapDisabled
             | LoginFailure::OAuthRequired => w.password.clone().upcast(),
             _ => match error.protocol {
-                Protocol::Imap => w.imap.host.clone().upcast(),
+                Protocol::Imap | Protocol::Pop3 => w.imap.host.clone().upcast(),
                 Protocol::Smtp => w.smtp.host.clone().upcast(),
             },
         };

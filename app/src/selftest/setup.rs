@@ -522,7 +522,7 @@ fn fields(
             ("address", settings.address.clone()),
             ("name", settings.name.clone()),
             ("key", settings.key.to_string()),
-            ("imap", endpoint_text(&settings.imap)),
+            ("imap", endpoint_text(&settings.incoming)),
             ("smtp", endpoint_text(&settings.smtp)),
             ("username", settings.username.clone()),
             ("auth", auth_text(settings.auth).to_owned()),

@@ -282,6 +282,7 @@ mod tests {
         let (port, security) = match protocol {
             Protocol::Imap => (993, Security::Tls),
             Protocol::Smtp => (465, Security::Tls),
+            Protocol::Pop3 => (995, Security::Tls),
         };
         Choice {
             server: Server::new(protocol, host, port, security).with_username(username),

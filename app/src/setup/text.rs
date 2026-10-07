@@ -55,13 +55,14 @@ fn server(protocol: Protocol) -> &'static str {
     match protocol {
         Protocol::Imap => "The incoming mail server (IMAP)",
         Protocol::Smtp => "The outgoing mail server (SMTP)",
+        Protocol::Pop3 => "The incoming mail server (POP3)",
     }
 }
 
 /// Why a login failed and what to do about it.
 pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
     let endpoint = match error.protocol {
-        Protocol::Imap => context.imap,
+        Protocol::Imap | Protocol::Pop3 => context.imap,
         Protocol::Smtp => context.smtp,
     };
     let (host, port) = (&endpoint.host, endpoint.port);
@@ -232,7 +233,7 @@ pub fn signed_in_again(name: &str) -> String {
 /// be changed on this step, so nothing points at the server settings.
 pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
     let endpoint = match error.protocol {
-        Protocol::Imap => context.imap,
+        Protocol::Imap | Protocol::Pop3 => context.imap,
         Protocol::Smtp => context.smtp,
     };
     let (host, port) = (&endpoint.host, endpoint.port);
@@ -399,6 +400,7 @@ pub fn endpoint(protocol: Protocol, endpoint: &Endpoint) -> String {
     let name = match protocol {
         Protocol::Imap => "IMAP",
         Protocol::Smtp => "SMTP",
+        Protocol::Pop3 => "POP3",
     };
     format!(
         "{name} {} · {} · {}",

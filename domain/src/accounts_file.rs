@@ -6,7 +6,8 @@
 //! layout survive the assistant's writes.
 
 use crate::account::{
-    AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider, Protocol, Security,
+    AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider, Protocol, Receive,
+    Security,
 };
 use crate::config::{FileError, article, did_you_mean, entries, parse_toml};
 use std::net::Ipv6Addr;
@@ -51,6 +52,8 @@ pub fn default_port(protocol: Protocol, security: Security) -> u16 {
         (Protocol::Imap, Security::StartTls) => 143,
         (Protocol::Smtp, Security::Tls) => 465,
         (Protocol::Smtp, Security::StartTls) => 587,
+        (Protocol::Pop3, Security::Tls) => 995,
+        (Protocol::Pop3, Security::StartTls) => 110,
     }
 }
 
@@ -115,6 +118,7 @@ fn protocol_name(protocol: Protocol) -> &'static str {
     match protocol {
         Protocol::Imap => "imap",
         Protocol::Smtp => "smtp",
+        Protocol::Pop3 => "pop3",
     }
 }
 
@@ -147,7 +151,7 @@ pub fn check(account: &AccountSettings) -> Result<(), String> {
         return Err("the username is empty or has control characters".to_owned());
     }
     for (protocol, endpoint) in [
-        (Protocol::Imap, &account.imap),
+        (account.receive.protocol(), &account.incoming),
         (Protocol::Smtp, &account.smtp),
     ] {
         if let Some(fault) = host_fault(&endpoint.host) {
@@ -516,7 +520,8 @@ impl Reader<'_> {
                 name,
                 username: username.unwrap_or_else(|| address.clone()),
                 address,
-                imap,
+                incoming: imap,
+                receive: Receive::Imap,
                 smtp,
                 auth,
                 signature,
@@ -783,7 +788,7 @@ pub fn entry(account: &AccountSettings) -> String {
     table["address"] = value(&account.address);
     table["username"] = value(&account.username);
     table["auth"] = value(auth_name(account.auth));
-    table["imap"] = endpoint(&account.imap);
+    table[protocol_name(account.receive.protocol())] = endpoint(&account.incoming);
     table["smtp"] = endpoint(&account.smtp);
     let mut tables = ArrayOfTables::new();
     tables.push(table);
@@ -964,11 +969,12 @@ mod tests {
             key: AccountKey(key.to_owned()),
             name: "Ada Lovelace".to_owned(),
             address: address.to_owned(),
-            imap: Endpoint {
+            incoming: Endpoint {
                 host: "imap.example.test".to_owned(),
                 port: 993,
                 security: Security::Tls,
             },
+            receive: crate::account::Receive::Imap,
             smtp: Endpoint {
                 host: "smtp.example.test".to_owned(),
                 port: 587,
@@ -1025,7 +1031,7 @@ mod tests {
         assert_eq!(account.username, "ada");
         assert_eq!(account.auth, AuthMethod::OAuth(OAuthProvider::Microsoft));
         assert_eq!(
-            account.imap,
+            account.incoming,
             Endpoint {
                 host: "127.0.0.1".to_owned(),
                 port: 1993,
@@ -1378,7 +1384,7 @@ mod tests {
             Err(EditError::Invalid(_))
         ));
         let mut bad = account("a", "a@example.test");
-        bad.imap.host = "imap.example.test:993".to_owned();
+        bad.incoming.host = "imap.example.test:993".to_owned();
         assert!(matches!(add("", &bad), Err(EditError::Account(_))));
         bad = account("Not A Key", "a@example.test");
         assert!(matches!(add("", &bad), Err(EditError::Account(_))));

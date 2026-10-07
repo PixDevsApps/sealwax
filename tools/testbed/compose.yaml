@@ -8,6 +8,8 @@ services:
     ports:
       - "127.0.0.1:14143:31143"
       - "127.0.0.1:14993:31993"
+      - "127.0.0.1:14110:31110"
+      - "127.0.0.1:14995:31995"
     volumes:
       - ./dovecot/full.conf:/etc/dovecot/dovecot.conf:ro
       - ./certs/server.pem:/etc/dovecot/ssl/tls.crt:ro
@@ -36,6 +38,8 @@ services:
       - "127.0.0.1:16587:587"
       - "127.0.0.1:16465:465"
       - "127.0.0.1:16080:8080"
+      - "127.0.0.1:16110:110"
+      - "127.0.0.1:16995:995"
     volumes:
       - ./stalwart/config.json:/etc/stalwart/config.json:ro
       - stalwart-data:/var/lib/stalwart

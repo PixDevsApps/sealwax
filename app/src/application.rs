@@ -470,7 +470,7 @@ impl AppState {
             key: key.clone(),
             name: account.name,
             address: settings.address,
-            imap: settings.imap,
+            imap: settings.incoming,
             smtp: settings.smtp,
         })
     }

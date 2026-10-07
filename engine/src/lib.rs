@@ -8,6 +8,7 @@ pub mod bodies;
 pub mod imap;
 pub mod net;
 pub mod oauth;
+pub mod pop3;
 pub mod secrets;
 pub mod service;
 pub mod smtp;
