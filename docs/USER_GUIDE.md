@@ -62,15 +62,9 @@ Without a client ID the assistant says "Microsoft sign-in isn't available in thi
 
 When Microsoft ends the session later, a banner says that the account "needs you to sign in again", with **Sign in**. A Microsoft account is always an IMAP account in Sealwax; POP3 with Sign in with Microsoft isn't supported.
 
-### Gmail and Google Workspace: an app password
+### Gmail and Google Workspace: not supported
 
-Sign in with Google comes in a later version. Until then a Gmail account uses an **app password**:
-
-1. Turn on 2-Step Verification in your Google account, if it isn't on.
-2. Create an app password for Sealwax: the assistant's **Create an app password** link opens Google's help page for it.
-3. Type the app password in the assistant's **App password** field ("Google needs an app password, not your account password").
-
-Google offers no app passwords to accounts that use only security keys for 2-Step Verification or that use Advanced Protection, and a Google Workspace admin can turn IMAP off. In Gmail, labels show as folders, and Archive takes a message out of the Inbox (it stays in All Mail).
+Sealwax doesn't support Gmail: there is no Sign in with Google, and Gmail isn't on the assistant's provider list. Use Gmail's own app or its web version. The assistant may still find Gmail's servers through Mozilla's database, or you can type them in, and a Gmail app password may then work, but that isn't tested or supported.
 
 ### iCloud, Fastmail, Yahoo and other app-password providers
 
@@ -164,7 +158,7 @@ Allowed images load only over HTTPS and without cookies. A forged From address c
 
 | Command | Keys | What it does |
 | --- | --- | --- |
-| Archive | `e`, `y` | Moves to the account's Archive folder (Gmail: out of the Inbox, into All Mail); unavailable where an account has neither |
+| Archive | `e`, `y` | Moves to the account's Archive folder (or, where a server has no Archive but an All Mail folder, into that); unavailable where an account has neither |
 | Delete | `#`, Delete | Moves to the Trash; in the Trash (or without one) deletes for good |
 | Move to Junk | `!`, Ctrl+J | Moves to Junk; in Junk it is **Not Junk** and moves back to the Inbox |
 | Move to… | `v`, Ctrl+Shift+V | Opens a folder picker: type to filter, Up and Down, Enter moves, Escape closes |
@@ -204,7 +198,7 @@ Pasted text keeps simple formatting and loses the rest; **Paste as Plain Text** 
 
 **Identities and signatures** are set in `accounts.toml` ([below](#accountstoml)): `signature` on an account, and an `[[account.identity]]` table for each other address the account sends from, with its own name and signature. A signature is plain text, put under what you write after a `-- ` line.
 
-**Sending.** Send closes the composer and the main window shows "Message queued" with **Undo** for 7 seconds (`z` and Ctrl+Z work too); Undo puts the draft back in a composer. Then "Message sent". Without a network, the message waits in the outbox and goes when the network is back. A copy goes into the Sent folder, unless the server files one itself (Gmail, Outlook.com and Microsoft 365 do).
+**Sending.** Send closes the composer and the main window shows "Message queued" with **Undo** for 7 seconds (`z` and Ctrl+Z work too); Undo puts the draft back in a composer. Then "Message sent". Without a network, the message waits in the outbox and goes when the network is back. A copy goes into the Sent folder, unless the server files one itself (Outlook.com and Microsoft 365 do).
 
 - **Sent at most once.** If Sealwax stopped, or the connection broke, while a message was going out, Sealwax can't know whether the server got it. Instead of sending it again by itself, it shows a banner, "A message may have been sent", with **Choose…**: Send Again, It Was Sent, Back to Drafts or Later. Look in your Sent folder, or ask a recipient, before you send it again.
 - **A send that failed for good** (the server refused a recipient, for example) shows a toast that says why; the message is back in your drafts, and **Open** opens it.

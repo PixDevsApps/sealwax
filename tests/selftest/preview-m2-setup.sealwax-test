@@ -89,13 +89,13 @@ engine-reply detected not-found
 assert-setup step manual
 screenshot $DIR/../../tools/progress/public/m2-setup-manual-wide-matte-black-square-2026-10-05.png
 
-# Gmail: the app password asked for before the first try, then the failure with the manual
-# settings (the mock's third card).
+# An app-password provider (iCloud; Gmail until 2026-10-07): the app password asked for
+# before the first try, then the failure with the manual settings (the mock's third card).
 setup-key escape
 setup-key enter
 engine-expect detect
 engine-reply progress preset
-engine-reply detected gmail
+engine-reply detected icloud
 setup-type setup-password fictional-password
 assert-setup step password
 screenshot $DIR/../../tools/progress/public/m2-setup-app-password-wide-matte-black-square-2026-10-05.png
@@ -183,7 +183,7 @@ setup-key escape
 setup-key enter
 engine-expect detect
 engine-reply progress preset
-engine-reply detected gmail
+engine-reply detected icloud
 setup-type setup-password fictional-password
 assert-setup step password
 screenshot $DIR/../../tools/progress/public/m2-setup-app-password-wide-catppuccin-latte-rounded-2026-10-05.png

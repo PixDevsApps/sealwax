@@ -1,32 +1,14 @@
-# OAuth setup: Google and Microsoft sign-in
+# OAuth setup: Microsoft sign-in
 
-Synced: 2026-10-05
+Synced: 2026-10-07
 
-"Sign in with Google" and "Sign in with Microsoft" need an OAuth client registered by the app's publisher ([ADR-008](DECISIONS.md#adr-008--oauth2-and-secrets-2026-10-04)). Only you can create these registrations: they belong to your Google and Microsoft accounts. This page walks through both; it takes about 20 minutes. Spike S5 (ML-013) is blocked until the client IDs exist.
+"Sign in with Microsoft" needs an OAuth client registered by the app's publisher ([ADR-008](DECISIONS.md#adr-008--oauth2-and-secrets-2026-10-04)). Only you can create the registration: it belongs to your Microsoft account. This page walks through it.
 
-**2026-10-04: Sign in with Google is deferred to 1.x** (user decision, [ADR-008 amendment](DECISIONS.md#adr-008-amendment--sign-in-with-google-deferred-to-1x-2026-10-04)). Only the Microsoft registration is needed now; the Google section is kept for later.
+**2026-10-07: Google dropped.** Sign in with Google is never built and Gmail is no longer a listed provider (user decision, [ADR-008 amendment](DECISIONS.md#adr-008-amendment--google-dropped-2026-10-07)); this page's Google section, kept for 1.x since 2026-10-04, is gone (it is in git history).
 
 The app is named **Sealwax** ([ADR-010](DECISIONS.md#adr-010-accepted--sealwax-2026-10-04)); name the development registrations "Sealwax (dev)". Use a dedicated test account for the first sign-ins.
 
-Facts below were checked against Google's and Microsoft's documentation on 2026-10-04; provider consoles change, so S5 records anything that differs.
-
-## Google (Gmail and Google Workspace) — deferred to 1.x, skip for now
-
-1. Open the [Google Cloud console](https://console.cloud.google.com/) and create a project, for example "sealwax-dev".
-2. Open **Google Auth Platform** (APIs & Services → OAuth consent screen in older layouts):
-   - **Branding:** app name "Sealwax (dev)", your support email, developer contact.
-   - **Audience:** user type **External**. Leave the publishing status on **Testing** for now and add your test Google account(s) under **Test users**.
-   - **Data access:** add the scope `https://mail.google.com/` (full IMAP/SMTP access; Google classes it as *restricted*).
-3. **Clients → Create client:** application type **Desktop app**, name "Sealwax (dev) desktop". Copy the **client ID** (`…apps.googleusercontent.com`) and the client secret.
-
-What to know:
-
-- **Redirect:** desktop clients use a loopback address, `http://127.0.0.1:<port>` (or `http://[::1]:<port>`), on a port the app picks; nothing to register. Custom URI schemes and copy/paste (OOB) flows are no longer supported by Google.
-- **PKCE** is supported and recommended; Sealwax always uses it.
-- **Client secret:** Google treats desktop clients as unable to keep secrets, so the "secret" is not confidential. Keep it out of git anyway.
-- **Testing status:** refresh tokens expire after **7 days** for an External app in Testing status (unless only name/email/profile scopes are requested), so you would sign in again weekly.
-- **Production status:** publishing without verification shows Google's "unverified app" warning and caps the number of users (100 for unverified apps — to verify in S5). A public release needs Google's verification for the restricted scope, which includes a security assessment.
-- **Alternative without OAuth:** with 2-Step Verification on, a Gmail **app password** works with normal IMAP/SMTP login; the setup assistant offers it.
+Facts below were checked against Microsoft's documentation on 2026-10-04; provider consoles change, so S5 records anything that differs.
 
 ## Microsoft (Outlook.com, Hotmail and Microsoft 365)
 
@@ -71,4 +53,4 @@ Or build it in by exporting it before `cargo build`:
 export SEALWAX_MICROSOFT_CLIENT_ID="00000000-0000-0000-0000-000000000000"
 ```
 
-Never commit it to the repository. `config.toml` has no Google section: Sign in with Google is deferred to 1.x, and no settings file holds a client secret ([ADR-009 amendment](DECISIONS.md#adr-009-amendment--configtoml-and-keystoml-as-built-in-m1-2026-10-04)).
+Never commit it to the repository. `config.toml` has no Google section (there is no Sign in with Google), and no settings file holds a client secret ([ADR-009 amendment](DECISIONS.md#adr-009-amendment--configtoml-and-keystoml-as-built-in-m1-2026-10-04)).

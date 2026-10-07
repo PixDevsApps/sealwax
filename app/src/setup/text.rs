@@ -536,7 +536,7 @@ mod tests {
             url: "https://example.test/app-passwords".to_owned(),
         };
         let context = Context {
-            provider: Some("Gmail"),
+            provider: Some("iCloud"),
             incoming: &imap,
             smtp: &smtp,
             app_password: Some(&link),
@@ -563,7 +563,7 @@ mod tests {
             &context,
         );
         assert_eq!(app_password.title, "The server asked for an app password");
-        assert!(app_password.body.starts_with("Gmail lets mail apps in"));
+        assert!(app_password.body.starts_with("iCloud lets mail apps in"));
         assert_eq!(app_password.link.as_ref(), Some(&link));
 
         let unreachable = login_failure(
@@ -738,7 +738,7 @@ mod tests {
             url: "https://example.test/app-passwords".to_owned(),
         };
         let context = Context {
-            provider: Some("Gmail"),
+            provider: Some("iCloud"),
             incoming: &imap,
             smtp: &smtp,
             app_password: Some(&link),
@@ -772,7 +772,11 @@ mod tests {
             )
         };
         assert_eq!(wrong(&context).link.as_ref(), Some(&link));
-        assert!(wrong(&context).body.contains("Gmail needs an app password"));
+        assert!(
+            wrong(&context)
+                .body
+                .contains("iCloud needs an app password")
+        );
         let plain = wrong(&Context {
             provider: None,
             app_password: None,

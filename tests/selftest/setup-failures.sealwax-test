@@ -2,7 +2,7 @@
 # says what to do next for every way a login fails, with the provider's page where it helps;
 # the settings opened, filled with what was tried; the focus on what to fix; no login attempt
 # the user didn't ask for (each check is one Verify, at most two logins). Then the ways saving
-# can fail, and Gmail's app-password failure with the manual settings, as in the mock. Every
+# can fail, and an app-password failure (iCloud's) with the manual settings, as in the mock. Every
 # address and server is fictional. Screenshots go to .local/selftest/.
 # Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-failures.sealwax-test
 
@@ -164,24 +164,24 @@ assert-label setup-alert-title "This account is already set up"
 setup-click setup-close
 assert-setup open false
 
-# Gmail's app-password failure with the manual settings, as the mock's third card.
+# An app-password failure (iCloud's) with the manual settings, as the mock's third card.
 action win.add-account
 setup-type setup-address kari.nordmann@example.test
 setup-key enter
 engine-expect detect address=kari.nordmann@example.test
-engine-reply detected gmail
-assert-label setup-password-hint "Gmail needs an app password, not your account password."
-assert-label setup-app-password-link "Open the Google account page"
+engine-reply detected icloud
+assert-label setup-password-hint "iCloud needs an app password, not your account password."
+assert-label setup-app-password-link "Open the Apple account page"
 setup-type setup-password fictional-password-4
 setup-key enter
 engine-expect verify username=kari.nordmann@example.test second=none
 engine-reply verified imap app-password
 assert-label setup-title "Couldn't sign in"
 assert-label setup-alert-title "The server asked for an app password"
-assert-label setup-alert-body "Gmail lets mail apps in with an app password: turn on two-step verification in your account if it isn't on, then create an app password for Sealwax and type it here."
-assert-label setup-alert-link "Open the Google account page"
+assert-label setup-alert-body "iCloud lets mail apps in with an app password: turn on two-step verification in your account if it isn't on, then create an app password for Sealwax and type it here."
+assert-label setup-alert-link "Open the Apple account page"
 assert-field setup-manual-username kari.nordmann@example.test
 assert-contrast setup-alert 4.5
-screenshot $DIR/../../.local/selftest/setup-gmail-app-password.png
+screenshot $DIR/../../.local/selftest/setup-icloud-app-password.png
 setup-click setup-close
 assert-setup open false

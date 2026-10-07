@@ -169,8 +169,6 @@ const fn enable_imap(url: &'static str) -> Option<Link> {
     })
 }
 
-const GOOGLE_APP_PASSWORD: Option<Link> =
-    app_password("https://support.google.com/accounts/answer/185833");
 const ICLOUD_APP_PASSWORD: Option<Link> = app_password("https://support.apple.com/en-us/102654");
 const YAHOO_APP_PASSWORD: Option<Link> = app_password("https://help.yahoo.com/kb/SLN15241.html");
 const AOL_APP_PASSWORD: Option<Link> =
@@ -196,21 +194,8 @@ const ZOHO_ENABLE_IMAP: Option<Link> =
 const YANDEX_ENABLE_IMAP: Option<Link> =
     enable_imap("https://yandex.com/support/yandex-360/customers/mail/en/mail-clients/others");
 
+/// Gmail isn't listed (ADR-008, 2026-10-07): a Gmail account found elsewhere connects unsupported.
 pub static PRESETS: &[Preset] = &[
-    Preset {
-        id: "google",
-        name: "Google",
-        domains: &["gmail.com", "googlemail.com"],
-        mx_suffixes: &["google.com", "googlemail.com"],
-        kind: Kind::Servers {
-            imap: &[tls("imap.gmail.com", 993)],
-            smtp: &[tls("smtp.gmail.com", 465), starttls("smtp.gmail.com", 587)],
-            username: UsernameForm::Address,
-            oauth: None,
-            app_password: GOOGLE_APP_PASSWORD,
-            enable_imap: None,
-        },
-    },
     Preset {
         id: "outlook",
         name: "Outlook.com",
@@ -519,18 +504,21 @@ mod tests {
 
     #[test]
     fn matches_domains_exactly() {
-        assert_eq!(by_domain("gmail.com").map(|p| p.id), Some("google"));
         assert_eq!(by_domain("Hotmail.com.").map(|p| p.id), Some("outlook"));
-        assert!(by_domain("mail.gmail.com").is_none());
+        assert!(by_domain("mail.hotmail.com").is_none());
         assert!(by_domain("example.com").is_none());
+    }
+
+    #[test]
+    fn gmail_is_not_listed() {
+        assert!(by_domain("gmail.com").is_none());
+        assert!(by_domain("googlemail.com").is_none());
+        assert!(by_mx("aspmx.l.google.com.").is_none());
     }
 
     #[test]
     fn matches_mx_on_label_boundaries() {
         for (mx, id) in [
-            ("aspmx.l.google.com.", "google"),
-            ("smtp.google.com", "google"),
-            ("ALT1.ASPMX.L.GOOGLE.COM.", "google"),
             ("example-com.mail.protection.outlook.com", "microsoft365"),
             ("example-com.m-v1.mx.microsoft.", "microsoft365"),
             ("eur.olc.protection.outlook.com", "outlook"),
@@ -544,8 +532,8 @@ mod tests {
         ] {
             assert_eq!(by_mx(mx).map(|p| p.id), Some(id), "{mx}");
         }
-        assert!(by_mx("notgoogle.com").is_none());
-        assert!(by_mx("google.com.evil.example").is_none());
+        assert!(by_mx("notmessagingengine.com").is_none());
+        assert!(by_mx("messagingengine.com.evil.example").is_none());
     }
 
     #[test]
@@ -607,7 +595,6 @@ mod tests {
             other => panic!("{domain}: {other:?}"),
         };
         for (domain, site) in [
-            ("gmail.com", "support.google.com"),
             ("icloud.com", "support.apple.com"),
             ("yahoo.com", "help.yahoo.com"),
             ("fastmail.com", "www.fastmail.help"),

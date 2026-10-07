@@ -187,15 +187,15 @@ async fn a_preset_answers_without_any_request() {
     let heard = Mutex::new(Vec::new());
     let (detection, trace) = detect_with(
         &script,
-        "test@gmail.com",
+        "test@icloud.com",
         &DetectOptions::default(),
         |source| heard.lock().unwrap().push(source),
     )
     .await;
     let settings = found(&detection);
-    assert_eq!(settings.imap.host, "imap.gmail.com");
-    assert_eq!(settings.smtp.port, 465);
-    assert_eq!(settings.provider.as_deref(), Some("Google"));
+    assert_eq!(settings.imap.host, "imap.mail.me.com");
+    assert_eq!(settings.smtp.port, 587);
+    assert_eq!(settings.provider.as_deref(), Some("iCloud"));
     assert_eq!(settings.source, DetectSource::Preset);
     assert!(script.calls().is_empty());
     assert_eq!(trace.elapsed, Duration::ZERO);

@@ -462,20 +462,11 @@ impl Reader<'_> {
                 "auth" => match value.get_ref().as_str() {
                     Some("password") => auth = AuthMethod::Password,
                     Some("microsoft") => auth = AuthMethod::OAuth(OAuthProvider::Microsoft),
-                    other => {
-                        let later = if other == Some("google") {
-                            "; Sign in with Google comes in a later version"
-                        } else {
-                            ""
-                        };
-                        self.error(
-                            span,
-                            format!(
-                                "auth is \"password\" (a password or app password, kept in the \
-                                 keyring) or \"microsoft\" (Sign in with Microsoft){later}"
-                            ),
-                        );
-                    }
+                    _ => self.error(
+                        span,
+                        "auth is \"password\" (a password or app password, kept in the keyring) \
+                         or \"microsoft\" (Sign in with Microsoft)",
+                    ),
                 },
                 "imap" | "pop3" => {
                     let pop3 = field_name == "pop3";

@@ -10,7 +10,7 @@ A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 an
 
 ## Features
 
-- **Accounts without server settings:** type your address, and Sealwax finds the servers (its provider list, your domain's autoconfig, Mozilla's ISPDB, DNS). **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for Gmail, iCloud, Fastmail and others, with a link to the provider's page; manual settings for the rest. Several accounts and All Inboxes.
+- **Accounts without server settings:** type your address, and Sealwax finds the servers (its provider list, your domain's autoconfig, Mozilla's ISPDB, DNS). **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for iCloud, Fastmail, Yahoo and others, with a link to the provider's page; manual settings for the rest. Several accounts and All Inboxes.
 - **IMAP** with IDLE push and an offline copy of your mail, and **POP3** into local folders (mail left on the server by default).
 - **Reading:** whole conversations; safe HTML (no message script ever runs; nothing remote loads until you allow it, per message or per sender); attachments that open safely, with a warning for programs and disguised files; link warnings; print, Show Original, Save as `.eml`; graceful display of encrypted and signed mail.
 - **Triage:** archive, delete, junk, move, star, read and unread at once, on one message or many, with Undo, also offline.
@@ -21,7 +21,7 @@ A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 an
 - **Keyboard first:** one-key shortcuts in the list and reader, a command palette (F1), and your own keys in `keys.toml`. Settings live in plain files: `config.toml`, `keys.toml`, `accounts.toml`.
 - **Private:** passwords and tokens only in your keyring; no telemetry; logs without mail content; outgoing mail without your computer's name or a Bcc header.
 
-Not in 1.0: Sign in with Google (Gmail works with an app password), server-side search, folder management, PGP and S/MIME, calendars and contacts beyond autocomplete ([scope](docs/PLAN.md#scope-control)).
+Not supported: Gmail and Sign in with Google (use Gmail's own app or web version). Not in 1.0: server-side search, folder management, PGP and S/MIME, calendars and contacts beyond autocomplete ([scope](docs/PLAN.md#scope-control)).
 
 ## Requirements
 

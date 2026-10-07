@@ -131,4 +131,3 @@ Three of the review's proposals, chosen by the user on 2026-10-07 and built on `
 - **WebKit's sandbox can't be turned off:** it needs bubblewrap and unprivileged user namespaces; where a container lacks them, web processes may fail to start (not tried; ML-095's clean-container test).
 - **Self-signed servers** (Proton Bridge, some self-hosted servers) can't be added until pinned exceptions arrive in 1.x.
 - **Encrypted and signed mail** (PGP, S/MIME) is displayed gracefully but not decrypted or verified in 1.0: encrypted mail shows a notice in place of its body (the ciphertext is never shown, and the encrypted part can be saved); signed mail shows its content with "Signed · not checked"; signature parts stay out of the attachment cards (M5, ML-064).
-- **Google verification** (only once Sign in with Google returns in 1.x): until the OAuth app is verified, Google shows an "unverified app" screen and limits use to test users ([OAUTH-SETUP.md](OAUTH-SETUP.md)).

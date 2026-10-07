@@ -9,7 +9,7 @@
 //! | `engine-expect detect\|verify\|add-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
 //! | `engine-expect none` | The app sent nothing more |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
-//! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `gmail`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
+//! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
 //! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|pop3\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
 //! | `engine-reply sign-in-open URL` | `SignInOpen` for the last command |
 //! | `engine-reply signed-in ok USERNAME`, `engine-reply signed-in [imap\|smtp] FAILURE` | `SignedIn` (IMAP when no protocol is named) |
@@ -1337,13 +1337,13 @@ fn detection(name: &str) -> Result<Detection, String> {
             ),
             ..found("Fastmail", DetectSource::Preset)
         }),
-        "gmail" => Detection::Found(DetectedSettings {
+        "icloud" => Detection::Found(DetectedSettings {
             second_username: None,
             app_password: link(
-                "Open the Google account page",
+                "Open the Apple account page",
                 "https://example.test/apppasswords",
             ),
-            ..found("Gmail", DetectSource::Preset)
+            ..found("iCloud", DetectSource::Preset)
         }),
         "imap-off" => Detection::Found(DetectedSettings {
             enable_imap: link(

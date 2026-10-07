@@ -132,7 +132,7 @@ pub struct OAuthClient {
     pub client_id: Option<String>,
 }
 
-/// `[oauth.microsoft]`. Sign in with Google is deferred to 1.x (ADR-008 amendment).
+/// `[oauth.microsoft]`; there is no Sign in with Google (ADR-008 amendment, 2026-10-07).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct OAuth {
     pub microsoft: OAuthClient,

@@ -537,6 +537,14 @@ Built in M3 ([report](m3/status.md)).
 - **No keyring:** when the Secret Service doesn't answer, the engine keeps secrets in memory, as before, and tells the app once (`KeyringUnavailable`). The window's banner says passwords and sign-ins stay in memory until Sealwax quits, until dismissed for the session. The memory backend that self-tests and `SEALWAX_SECRETS=memory` choose is not a fallback and isn't reported.
 - **A password typed again** (`UpdatePassword`) is checked on IMAP and then SMTP with the account's username before the account lane stores it under the account key; a refused one is never stored. The account's sync restarts after it is stored.
 
+### ADR-008 amendment — Google dropped (2026-10-07)
+
+**Status:** Accepted — user decision, 2026-10-07 ("Also drop Gmail guidance"). Supersedes the amendment above's "kept for 1.x" and its "the existing preset".
+
+**Decision:** Sign in with Google is never built (it moves from 1.x to Never). Gmail is no longer a listed provider: the autodetect preset for gmail.com, googlemail.com and Google-hosted domains and its app-password help link are removed, and the docs stop presenting Gmail as supported. A Gmail account found through the Mozilla ISPDB or typed in by hand may still connect with an app password, unsupported. The generic IMAP behaviour that also suits Gmail stays (`\All` never syncs by itself, no second Sent copy where the server keeps one, an app-password refusal recognised). OAUTH-SETUP.md's Google section goes.
+
+**Reason:** the restricted `https://mail.google.com/` scope needs a yearly security assessment (CASA, $500–$4,500 a year by Google's support page) and verification paperwork for a public release, and in testing status sign-ins expire after 7 days for at most 100 listed users; most Gmail users read their mail in Google's own app or web version (the user, 2026-10-07).
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
@@ -784,6 +792,10 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 **Decision:** POP3 stays in 1.0 (PRD A9, P1), as the user chose at planning. A POP3 account is added through the setup assistant's manual settings (an "Incoming mail: IMAP or POP3" choice) or `accounts.toml`; autodetect stays IMAP. Its mail is downloaded into local folders (Inbox, Sent, Drafts, Junk, Trash, Archive). By default downloaded mail stays on the server and is never deleted there; deleting after N days, or at once, is the user's setting. The first download doesn't notify; later mail does.
 
 **Reason:** the user wanted POP3 kept (2026-10-04); the defaults are the ones that can't lose mail on the server.
+
+### ADR-013 amendment — Google and Gmail out of scope (2026-10-07)
+
+**Status:** Accepted — user decision, 2026-10-07 ([ADR-008 amendment](#adr-008-amendment--google-dropped-2026-10-07)). Sign in with Google moves from 1.x to Never; Gmail labels leave 1.x; 1.0's app-password guidance no longer names Gmail, which is no longer a listed provider.
 
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
