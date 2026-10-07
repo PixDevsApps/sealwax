@@ -113,6 +113,11 @@ async fn run(
                 .map_err(handshake)?;
             smtp_ehlo(&mut BufReader::new(stream)).await.map(drop)
         }
+        // Autodetect's chains name IMAP and SMTP only; POP3 accounts are set up by hand (M8).
+        (Protocol::Pop3, _) => Err(ProbeError::new(
+            Stage::Greeting,
+            "autodetect doesn't probe POP3".to_owned(),
+        )),
     }
 }
 

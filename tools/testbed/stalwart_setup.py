@@ -2,7 +2,8 @@
 """Configures the testbed Stalwart through its JMAP management API. Idempotent.
 
 Creates the testbed certificate (certs/server.pem), the domain example.test, plaintext IMAP (143)
-and submission (587) listeners with STARTTLS, and the test users. Stalwart is restarted when a
+and submission (587) listeners with STARTTLS, POP3 listeners (110 with STLS, 995 with implicit TLS;
+M8), and the test users. Stalwart is restarted when a
 listener was added, because new listeners only bind at start-up.
 """
 
@@ -159,16 +160,22 @@ def main():
     )
 
     listeners = {listener["name"] for listener in get_all("NetworkListener")}
-    wanted = {"imap": (143, "imap"), "submission": (587, "smtp")}
+    wanted = {
+        "imap": (143, "imap", False),
+        "submission": (587, "smtp", False),
+        # M8: POP3 with STLS (110) and with implicit TLS (995).
+        "pop3": (110, "pop3", False),
+        "pop3s": (995, "pop3", True),
+    }
     missing = {
         name: {
             "name": name,
             "bind": {f"[::]:{port}": True},
             "protocol": protocol,
             "useTls": True,
-            "tlsImplicit": False,
+            "tlsImplicit": implicit,
         }
-        for name, (port, protocol) in wanted.items()
+        for name, (port, protocol, implicit) in wanted.items()
         if name not in listeners
     }
     if missing:

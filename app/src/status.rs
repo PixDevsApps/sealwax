@@ -66,7 +66,7 @@ pub fn queue(
             let attention = match kind {
                 AccountStatus::CertificateChanged => Attention::CertificateChanged {
                     name,
-                    host: account.settings.imap.host.clone(),
+                    host: account.settings.incoming.host.clone(),
                 },
                 AccountStatus::NeedsSignIn => Attention::SignIn {
                     name,
@@ -158,7 +158,8 @@ mod tests {
             key: AccountKey(key.to_owned()),
             name: key.to_owned(),
             address: format!("{key}@example.test"),
-            imap: endpoint(&format!("imap.{key}.example.test")),
+            incoming: endpoint(&format!("imap.{key}.example.test")),
+            receive: sealwax_domain::account::Receive::Imap,
             smtp: endpoint(&format!("smtp.{key}.example.test")),
             username: key.to_owned(),
             auth,
@@ -316,7 +317,7 @@ mod tests {
             key: account.key.clone(),
             name: "Work".to_owned(),
             address: account.address.clone(),
-            imap: account.imap.clone(),
+            imap: account.incoming.clone(),
             smtp: Endpoint {
                 port: 587,
                 security: Security::StartTls,

@@ -73,6 +73,8 @@ pub fn default_port(protocol: Protocol, security: Security) -> u16 {
         (Protocol::Imap, Security::StartTls) => 143,
         (Protocol::Smtp, Security::Tls) => 465,
         (Protocol::Smtp, Security::StartTls) => 587,
+        (Protocol::Pop3, Security::Tls) => 995,
+        (Protocol::Pop3, Security::StartTls) => 110,
     }
 }
 
@@ -124,7 +126,8 @@ pub fn settings(
             name.to_owned()
         },
         address: address.text.clone(),
-        imap,
+        incoming: imap,
+        receive: sealwax_domain::account::Receive::Imap,
         smtp,
         username,
         auth: AuthMethod::Password,
@@ -384,7 +387,7 @@ mod tests {
             super::settings(
                 &kari,
                 " Kari Nordmann ",
-                settings.imap.clone(),
+                settings.incoming.clone(),
                 settings.smtp.clone(),
                 "kari".to_owned()
             )

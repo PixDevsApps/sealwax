@@ -6,8 +6,11 @@
 use crate::api::Password;
 use crate::imap::{self, Credentials, ImapError};
 use crate::net::Trust;
+use crate::pop3;
 use crate::smtp;
-use sealwax_domain::account::{AccountSettings, AuthMethod, LoginError, LoginFailure, Protocol};
+use sealwax_domain::account::{
+    AccountSettings, AuthMethod, LoginError, LoginFailure, Protocol, Receive,
+};
 
 fn imap_error(failure: LoginFailure) -> LoginError {
     LoginError {
@@ -39,7 +42,26 @@ pub async fn verify(
             username: candidate,
             password: password.expose(),
         };
-        match imap::connect(&settings.imap, credentials, tls.clone()).await {
+        if let Receive::Pop3(_) = settings.receive {
+            match pop3::check_login(&settings.incoming, credentials, tls.clone()).await {
+                Ok(()) => {
+                    username = Some(*candidate);
+                    break;
+                }
+                Err(LoginFailure::WrongPassword) if attempt + 1 < usernames.len() => {
+                    tracing::debug!(attempt, "pop3 login refused; trying the other username");
+                    continue;
+                }
+                Err(failure) => {
+                    tracing::debug!(attempt, "pop3 login check failed");
+                    return Err(LoginError {
+                        protocol: Protocol::Pop3,
+                        failure,
+                    });
+                }
+            }
+        }
+        match imap::connect(&settings.incoming, credentials, tls.clone()).await {
             Ok(connection) => {
                 connection.logout().await;
                 username = Some(*candidate);

@@ -209,6 +209,7 @@ fn server_fields(protocol: Protocol) -> (ServerFields, gtk::Box) {
     let (key, server, placeholder) = match protocol {
         Protocol::Imap => ("imap", "IMAP server", "imap.example.test"),
         Protocol::Smtp => ("smtp", "SMTP server", "smtp.example.test"),
+        Protocol::Pop3 => ("pop3", "POP3 server", "pop.example.test"),
     };
     let host = entry(
         &format!("setup-{key}-host"),

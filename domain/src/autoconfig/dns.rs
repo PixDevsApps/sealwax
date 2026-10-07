@@ -193,6 +193,7 @@ pub fn conventional_label(protocol: Protocol) -> &'static str {
     match protocol {
         Protocol::Imap => "imap",
         Protocol::Smtp => "smtp",
+        Protocol::Pop3 => "pop",
     }
 }
 

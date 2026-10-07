@@ -273,6 +273,8 @@ pub fn default_port(protocol: Protocol, security: Security) -> u16 {
         (Protocol::Imap, Security::StartTls) => 143,
         (Protocol::Smtp, Security::Tls) => 465,
         (Protocol::Smtp, Security::StartTls) => 587,
+        (Protocol::Pop3, Security::Tls) => 995,
+        (Protocol::Pop3, Security::StartTls) => 110,
     }
 }
 

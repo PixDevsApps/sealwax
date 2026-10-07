@@ -22,7 +22,7 @@ use crate::verify::verify;
 use rustls::ClientConfig;
 use sealwax_domain::account::{
     AccountKey, AccountSettings, AuthMethod, Endpoint, LoginError, LoginFailure, OAuthProvider,
-    Protocol,
+    Protocol, Receive,
 };
 use sealwax_domain::autoconfig::{address_domain, presets};
 use sealwax_domain::model::{AccountId, FolderId};
@@ -779,6 +779,11 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
 /// Starts the account's sync actor, unless one runs with the same settings; one with other
 /// settings (a server changed in `accounts.toml`) is stopped first.
 async fn start_sync(shared: &Arc<Shared>, settings: AccountSettings) {
+    if let Receive::Pop3(_) = settings.receive {
+        // M8's contract: a POP3 account's actor comes in phase A; no IMAP actor for it.
+        tracing::info!("a POP3 account isn't synced yet");
+        return;
+    }
     let running = shared
         .actors()
         .get(&settings.key)
@@ -827,7 +832,7 @@ async fn log_in_with_password(
         password,
     };
     imap::connect_with(
-        &settings.imap,
+        &settings.incoming,
         credentials,
         tls(shared)?,
         shared.sync.connect,
@@ -863,7 +868,7 @@ async fn log_in_with_token(
             token: &fetched.token,
         };
         match imap::connect_with(
-            &settings.imap,
+            &settings.incoming,
             credentials,
             tls.clone(),
             shared.sync.connect,
@@ -1043,7 +1048,7 @@ async fn signed_in(
                 );
                 return Err(imap_error(LoginFailure::WrongPassword));
             }
-            (settings.imap.clone(), settings.smtp.clone())
+            (settings.incoming.clone(), settings.smtp.clone())
         }
         None => match &shared.sign_in.servers {
             Some(servers) => servers.clone(),

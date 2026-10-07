@@ -56,6 +56,7 @@ fn chain_targets(host: &str, protocol: Protocol) -> Vec<Target> {
     let ports = match protocol {
         Protocol::Imap => [(993, Security::Tls), (143, Security::StartTls)],
         Protocol::Smtp => [(465, Security::Tls), (587, Security::StartTls)],
+        Protocol::Pop3 => [(995, Security::Tls), (110, Security::StartTls)],
     };
     ports
         .iter()
@@ -71,6 +72,7 @@ pub fn chains(domain: &str, mx_operators: &[String]) -> Vec<Chain> {
         let label = match protocol {
             Protocol::Imap => "imap.",
             Protocol::Smtp => "smtp.",
+            Protocol::Pop3 => "pop.",
         };
         let mut hosts: Vec<(Scope, String)> = [label, "mail.", ""]
             .iter()

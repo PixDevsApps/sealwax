@@ -32,9 +32,9 @@ docker compose up -d --wait
 python3 stalwart_setup.py
 
 echo "testbed: up"
-echo "  dovecot       imaps 127.0.0.1:14993  imap+STARTTLS 127.0.0.1:14143"
+echo "  dovecot       imaps 127.0.0.1:14993  imap+STARTTLS 127.0.0.1:14143  pop3s 14995  pop3+STLS 14110"
 echo "  dovecot-rev1  imaps 127.0.0.1:15993  imap+STARTTLS 127.0.0.1:15143  (IMAP4rev1 only)"
-echo "  stalwart      imaps 127.0.0.1:16993  imap+STARTTLS 127.0.0.1:16143  smtp 16025  submission 16587  submissions 16465  http/jmap 16080"
+echo "  stalwart      imaps 127.0.0.1:16993  imap+STARTTLS 127.0.0.1:16143  pop3s 16995  pop3+STLS 16110  smtp 16025  submission 16587  submissions 16465  http/jmap 16080"
 echo "  mailpit       smtp+STARTTLS 127.0.0.1:17025  http/api 127.0.0.1:17080"
 echo "  users alice bob perf rand fault idle spike ops opsfault triage carol dave outbox outboxfault newmail,"
 echo "  password testbed-password; CA certs/ca.pem"
