@@ -1,9 +1,11 @@
 # A POP3 account end to end on the Docker mail testbed (M8, for phase B): the real engine checks
-# a POP3 login from the setup assistant's manual settings (Dovecot's POP3 with implicit TLS on
-# 14995, Mailpit for the SMTP login check, which accepts any login and sends nothing), refuses a
+# a POP3 login from the setup assistant's manual settings (Stalwart's POP3 with implicit TLS on
+# 16995, Mailpit for the SMTP login check, which accepts any login and sends nothing), refuses a
 # wrong password with POP3's server named, then adds alice by POP3: accounts.toml gets her
 # [account.pop3] with the safe policy, and the sidebar her local folders. Only the testbed CA is
 # trusted, secrets stay in memory, and nothing leaves 127.0.0.1.
+# Stalwart, not Dovecot: Dovecot marks mail read when a POP3 session that downloaded it ends,
+# which would change alice's flags for the IMAP suites (it did once, 2026-10-07; restored).
 # Not in CI: it needs the testbed and the POP3 client (ML-087) and accounts (ML-088), which
 # phase B merges; on the setup branch alone the login check answers that it can't reach the
 # server (the contract's client answers NotBuilt).
@@ -22,7 +24,7 @@ setup-type setup-name Alice
 setup-click setup-manual-link
 setup-choose setup-incoming pop3
 setup-type setup-imap-host 127.0.0.1
-setup-type setup-imap-port 14995
+setup-type setup-imap-port 16995
 setup-type setup-smtp-host 127.0.0.1
 setup-choose setup-smtp-security starttls
 setup-type setup-smtp-port 17025
@@ -39,7 +41,7 @@ assert-field setup-incoming POP3
 setup-type setup-password testbed-password
 setup-key enter
 wait-until assert-setup open false
-assert-file-contains $TMP/config/sealwax/accounts.toml "\n[account.pop3]\nhost = \"127.0.0.1\"\nport = 14995\nsecurity = \"tls\"\nleave_on_server = true\n"
+assert-file-contains $TMP/config/sealwax/accounts.toml "\n[account.pop3]\nhost = \"127.0.0.1\"\nport = 16995\nsecurity = \"tls\"\nleave_on_server = true\n"
 assert-file-lacks $TMP/config/sealwax/accounts.toml "\n[account.imap]"
 assert-file-lacks $TMP/config/sealwax/accounts.toml testbed-password
 wait-until assert-account-status alice@example.test synced
