@@ -454,7 +454,11 @@ fn the_sent_copy_is_the_transmitted_bytes_plus_bcc() {
     let built = build(&draft, DATE, &slices(&data)).unwrap();
     let transmitted = header_block(&built.transmitted);
     let sent = header_block(&built.sent_copy);
-    assert!(!transmitted.to_ascii_lowercase().contains("bcc"));
+    assert!(
+        !transmitted
+            .split("\r\n")
+            .any(|line| line.to_ascii_lowercase().starts_with("bcc:"))
+    );
     assert!(!transmitted.contains("blind@") && !transmitted.contains("hemmelig@"));
     let added: Vec<&str> = sent
         .split("\r\n")

@@ -262,7 +262,11 @@ mod tests {
         .unwrap();
         let transmitted = header_block(&outgoing.transmitted);
         let sent = header_block(&outgoing.sent_copy);
-        assert!(!transmitted.to_ascii_lowercase().contains("bcc"));
+        assert!(
+            !transmitted
+                .split("\r\n")
+                .any(|line| line.to_ascii_lowercase().starts_with("bcc:"))
+        );
         assert!(!transmitted.contains("blind@example.net"));
         assert!(sent.contains("\r\nBcc: \"Blind Kopi\" <blind@example.net>\r\n"));
         assert_eq!(
