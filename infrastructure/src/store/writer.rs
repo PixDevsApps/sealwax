@@ -29,6 +29,7 @@ pub(crate) mod compose;
 mod index;
 pub(crate) mod ops;
 pub(crate) mod overlay;
+pub(crate) mod pop3;
 mod remote;
 pub(crate) mod sync;
 
@@ -107,6 +108,7 @@ pub(crate) enum WriteJob {
     Sync(sync::SyncJob),
     Ops(ops::OpsJob),
     Compose(compose::ComposeJob),
+    Pop3(pop3::Pop3Job),
     UpgradeBody {
         upgrade: Box<BodyUpgrade>,
         reply: Sender<Upgraded>,
@@ -364,6 +366,7 @@ impl Writer {
             WriteJob::Sync(job) => self.sync_job(job),
             WriteJob::Ops(job) => self.ops_job(job),
             WriteJob::Compose(job) => self.compose_job(job),
+            WriteJob::Pop3(job) => self.pop3_job(job),
             WriteJob::UpgradeBody { upgrade, reply } => {
                 let _ = reply.try_send(self.upgrade_body(&upgrade));
             }

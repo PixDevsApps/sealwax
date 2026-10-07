@@ -103,6 +103,10 @@ pub enum Command {
     /// The network came back or the machine resumed: drop every connection and reconnect now,
     /// without waiting for a socket to fail (ML-045, S6).
     Reconnect,
+    /// Refresh (M8): check every account for new mail now, keeping its connections: an IMAP
+    /// account runs an account pass, a POP3 account a pass. An account waiting out its backoff
+    /// tries at once; one whose login was refused waits for `Reconnect` or a new password.
+    CheckMail,
     /// A new password for a password account the server refused (ML-048): checked on IMAP and
     /// SMTP, stored in the keyring, and the account syncs again.
     UpdatePassword {

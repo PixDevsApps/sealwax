@@ -16,7 +16,7 @@ use crate::autoconfig::{self, DetectOptions};
 use crate::imap::{self, Credentials, ImapError, Stop};
 use crate::net::Trust;
 use crate::oauth::{self, AccessToken, AccessTokens, Identity};
-use crate::secrets::{MemoryStore, SecretKind, SecretStore, Secrets};
+use crate::secrets::{MemoryStore, Secret, SecretKind, SecretStore, Secrets};
 use crate::smtp;
 use crate::verify::verify;
 use rustls::ClientConfig;
@@ -488,6 +488,13 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 }
                 continue;
             }
+            Command::CheckMail => {
+                tracing::info!("checking every account for new mail");
+                for actor in shared.actors().values() {
+                    let _ = actor.control.try_send(actor::Control::CheckMail);
+                }
+                continue;
+            }
         };
         let _ = jobs.send(job).await;
     }
@@ -777,13 +784,9 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
 }
 
 /// Starts the account's sync actor, unless one runs with the same settings; one with other
-/// settings (a server changed in `accounts.toml`) is stopped first.
+/// settings (a server or a POP3 policy changed in `accounts.toml`) is stopped first. A POP3
+/// account gets a POP3 actor (M8), never an IMAP one.
 async fn start_sync(shared: &Arc<Shared>, settings: AccountSettings) {
-    if let Receive::Pop3(_) = settings.receive {
-        // M8's contract: a POP3 account's actor comes in phase A; no IMAP actor for it.
-        tracing::info!("a POP3 account isn't synced yet");
-        return;
-    }
     let running = shared
         .actors()
         .get(&settings.key)
@@ -793,7 +796,10 @@ async fn start_sync(shared: &Arc<Shared>, settings: AccountSettings) {
         Some(_) => stop_sync(shared, &settings.key).await,
         None => {}
     }
-    let actor = actor::Handle::start(shared, settings);
+    let actor = match settings.receive {
+        Receive::Imap => actor::Handle::start(shared, settings),
+        Receive::Pop3(_) => actor::Handle::start_pop3(shared, settings),
+    };
     shared.actors().insert(actor.settings.key.clone(), actor);
 }
 
@@ -812,11 +818,9 @@ fn tls(shared: &Shared) -> Result<Arc<ClientConfig>, LoginFailure> {
         .map_err(|_| LoginFailure::Certificate)
 }
 
-async fn log_in_with_password(
-    shared: &Shared,
-    settings: &AccountSettings,
-) -> Result<imap::Connection, LoginFailure> {
-    let password = shared
+/// The account's password from the keyring; a missing one counts as a wrong one.
+async fn password(shared: &Shared, settings: &AccountSettings) -> Result<Secret, LoginFailure> {
+    shared
         .secrets()
         .await
         .read(&settings.key.0, SecretKind::Password)
@@ -825,7 +829,14 @@ async fn log_in_with_password(
             tracing::warn!(%error, "the account's password couldn't be read");
             LoginFailure::Other
         })?
-        .ok_or(LoginFailure::WrongPassword)?;
+        .ok_or(LoginFailure::WrongPassword)
+}
+
+async fn log_in_with_password(
+    shared: &Shared,
+    settings: &AccountSettings,
+) -> Result<imap::Connection, LoginFailure> {
+    let password = password(shared, settings).await?;
     let password = std::str::from_utf8(&password).map_err(|_| LoginFailure::WrongPassword)?;
     let credentials = Credentials::Password {
         username: &settings.username,

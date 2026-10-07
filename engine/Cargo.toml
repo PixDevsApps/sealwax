@@ -38,4 +38,5 @@ idna.workspace = true
 rcgen = { version = "0.14.10", default-features = false, features = ["crypto", "pem", "ring"] }
 tempfile.workspace = true
 tracing-subscriber.workspace = true
+rusqlite.workspace = true
 tokio = { workspace = true, features = ["io-util", "test-util"] }

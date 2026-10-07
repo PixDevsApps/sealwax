@@ -1056,7 +1056,8 @@ fn v10_indexes_every_message_once() {
         .unwrap();
     }
     conn.execute_batch(
-        "DELETE FROM schema_migrations WHERE version = 10; PRAGMA user_version = 9;",
+        "DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \
+         DELETE FROM schema_migrations WHERE version >= 10; PRAGMA user_version = 9;",
     )
     .unwrap();
     drop(conn);

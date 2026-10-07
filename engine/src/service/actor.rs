@@ -23,14 +23,13 @@
 
 use super::{Shared, bodies, log_in_with_password, log_in_with_token};
 use crate::api::{Event, SyncStatus};
-use crate::imap::write::Mark;
 use crate::imap::{
     self, Arrived, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop,
     SyncError, SyncOptions, SyncReport,
 };
 use crate::smtp::submit::Timeouts;
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
-use sealwax_domain::model::{AccountId, BlobKey, DraftId, FolderId, FolderRole};
+use sealwax_domain::model::{AccountId, BlobKey, FolderId, FolderRole};
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
@@ -39,6 +38,7 @@ use tokio::sync::watch;
 
 mod ops;
 mod outbox;
+mod pop3;
 
 /// How often and how patiently the actors sync. The defaults are proposals for the user.
 #[derive(Clone, Debug)]
@@ -70,6 +70,8 @@ pub struct SyncConfig {
     pub connect: ConnectOptions,
     /// How long the outbox's SMTP steps may take.
     pub submission: Timeouts,
+    /// A POP3 account's passes (M8): POP3 has no IDLE, and its servers dislike frequent polls.
+    pub pop3_poll: Duration,
 }
 
 impl Default for SyncConfig {
@@ -89,6 +91,7 @@ impl Default for SyncConfig {
             logout_wait: Duration::from_millis(300),
             connect: ConnectOptions::default(),
             submission: Timeouts::default(),
+            pop3_poll: Duration::from_secs(300),
         }
     }
 }
@@ -120,6 +123,8 @@ pub(super) enum Control {
     Outbox,
     /// `DraftsChanged`: a draft was saved, closed or discarded.
     Drafts,
+    /// `CheckMail` (Refresh): look for new mail now.
+    CheckMail,
 }
 
 /// Reconnects asked for so far, and whether to stop.
@@ -345,9 +350,35 @@ struct Status {
     account: AccountId,
     shown: Mutex<Option<SyncStatus>>,
     progress: Mutex<Option<Instant>>,
+    /// The submission server refused the login: the account shows it until a login works.
+    smtp: Mutex<Option<SyncStatus>>,
 }
 
 impl Status {
+    fn new(shared: Arc<Shared>, account: AccountId) -> Status {
+        Status {
+            shared,
+            account,
+            shown: Mutex::new(None),
+            progress: Mutex::new(None),
+            smtp: Mutex::new(None),
+        }
+    }
+
+    /// What the submission server's refused login shows, if it did.
+    fn smtp(&self) -> Option<SyncStatus> {
+        *self.smtp.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Records the submission server's refused login, or that a login works; returns what was
+    /// recorded before.
+    fn set_smtp(&self, status: Option<SyncStatus>) -> Option<SyncStatus> {
+        std::mem::replace(
+            &mut *self.smtp.lock().unwrap_or_else(PoisonError::into_inner),
+            status,
+        )
+    }
+
     fn set(&self, status: SyncStatus) {
         let mut shown = self.shown.lock().unwrap_or_else(PoisonError::into_inner);
         if *shown != Some(status) {
@@ -435,12 +466,7 @@ async fn run(
         }
     };
     let _ = cell.set(account);
-    let status = Arc::new(Status {
-        shared: shared.clone(),
-        account,
-        shown: Mutex::new(None),
-        progress: Mutex::new(None),
-    });
+    let status = Arc::new(Status::new(shared.clone(), account));
     status.set(SyncStatus::Syncing);
     let (arrivals, arrived) = async_channel::unbounded();
     let moved = Moved::default();
@@ -450,10 +476,18 @@ async fn run(
         arrived,
         moved.clone(),
     ));
+    let settings = Arc::new(settings);
+    let outbox = outbox::Submission::new(
+        shared.clone(),
+        settings.clone(),
+        account,
+        status.clone(),
+        signals.clone(),
+    );
     let mut poller = Poller {
         jitter: Jitter::new(account),
         shared,
-        settings: Arc::new(settings),
+        settings,
         account,
         status,
         locks: FolderLocks::default(),
@@ -475,13 +509,9 @@ async fn run(
         ops_now: true,
         next_ops: None,
         quota: false,
-        outbox_now: true,
-        next_outbox: None,
+        outbox,
         drafts_now: true,
         next_drafts: None,
-        smtp_failures: 0,
-        smtp_status: None,
-        sent_marks: HashMap::new(),
         arrivals,
         moved,
     };
@@ -518,20 +548,11 @@ struct Poller {
     next_ops: Option<Instant>,
     /// The server said the mailbox is full; the account shows it until ops get through.
     quota: bool,
-    /// Run the due sends and Sent copies at the next chance.
-    outbox_now: bool,
-    /// When the next send or Sent copy becomes due.
-    next_outbox: Option<Instant>,
+    /// The outbox's sends.
+    outbox: outbox::Submission,
     /// Run the due Drafts-folder uploads and deletions at the next chance.
     drafts_now: bool,
     next_drafts: Option<Instant>,
-    /// Submission failures in a row, for the backoff.
-    smtp_failures: u32,
-    /// The submission server refused the login: the account shows it until a login works.
-    smtp_status: Option<SyncStatus>,
-    /// The Sent folder's mark taken before each send's data went out, until its Sent copy is
-    /// done: a server that saves its own copy puts it above.
-    sent_marks: HashMap<DraftId, Mark>,
     /// Where the passes put new mail ([`forward_new_mail`] reads it).
     arrivals: async_channel::Sender<Arrived>,
     /// What the op runner moved without learning the new UIDs.
@@ -568,7 +589,7 @@ impl Poller {
                         self.used = Instant::now();
                         self.next_account = Instant::now();
                         self.ops_now = true;
-                        self.outbox_now = true;
+                        self.outbox.now = true;
                         self.drafts_now = true;
                     }
                     Ok(Err(failure)) => self.failed(failure),
@@ -684,7 +705,7 @@ impl Poller {
             if self.opened.is_some() {
                 due = due.min(self.next_opened);
             }
-            for next in [self.next_ops, self.next_outbox, self.next_drafts]
+            for next in [self.next_ops, self.outbox.next, self.next_drafts]
                 .into_iter()
                 .flatten()
             {
@@ -692,7 +713,7 @@ impl Poller {
             }
             if self.opened_now
                 || self.ops_now
-                || self.outbox_now
+                || self.outbox.now
                 || self.drafts_now
                 || !self.older.is_empty()
             {
@@ -748,8 +769,14 @@ impl Poller {
                 }
             }
             Control::Ops => self.ops_now = true,
-            Control::Outbox => self.outbox_now = true,
+            Control::Outbox => self.outbox.now = true,
             Control::Drafts => self.drafts_now = true,
+            Control::CheckMail => {
+                self.next_account = Instant::now();
+                if !self.halted {
+                    self.retry_at = Instant::now();
+                }
+            }
         }
     }
 
@@ -777,7 +804,7 @@ impl Poller {
                 return Ok(());
             }
         }
-        if self.outbox_now || self.next_outbox.is_some_and(|due| due <= Instant::now()) {
+        if self.outbox.is_due() {
             self.run_outbox(seen).await?;
             if self.conn.is_none() {
                 return Ok(());

@@ -140,7 +140,10 @@ pub(crate) enum ComposeJob {
 struct DraftRow {
     id: DraftId,
     account: AccountId,
+    /// No key: a fixture's or self-test's account, which can't send.
     local: bool,
+    /// A POP3 account (M8): it sends, but no server holds its Drafts folder.
+    pop3: bool,
     message_id: String,
     revision: u64,
     state: Option<i64>,
@@ -153,7 +156,8 @@ fn draft_row(tx: &Connection, id: DraftId) -> rusqlite::Result<Option<DraftRow>>
     tx.prepare_cached(
         "SELECT d.account_id, a.key IS NULL, d.message_id, d.revision, o.state, d.copy_folder, \
            d.copy_uidvalidity, d.copy_uid, d.copy_mark, d.copy_revision, d.upload_folder, \
-           d.upload_uidvalidity, d.upload_mark \
+           d.upload_uidvalidity, d.upload_mark, \
+           EXISTS(SELECT 1 FROM pop3_accounts WHERE account_id = d.account_id) \
          FROM drafts d JOIN accounts a ON a.id = d.account_id \
          LEFT JOIN outbox o ON o.draft = d.id WHERE d.id = ?1",
     )?
@@ -186,6 +190,7 @@ fn draft_row(tx: &Connection, id: DraftId) -> rusqlite::Result<Option<DraftRow>>
             id,
             account: AccountId(row.get(0)?),
             local: row.get(1)?,
+            pop3: row.get(13)?,
             message_id: row.get(2)?,
             revision: row.get::<_, i64>(3)? as u64,
             state: row.get(4)?,
@@ -290,6 +295,13 @@ impl Deletions {
         if draft.local {
             return Ok(());
         }
+        if draft.pop3 {
+            // Its copies are rows of its local Drafts folder, deleted at once.
+            for folder in drafts_folders(tx, draft.account)? {
+                self.rows(tx, folder, &draft.message_id, (1, None), None)?;
+            }
+            return Ok(());
+        }
         let mut folders = BTreeSet::new();
         if let Some(copy) = draft.copy {
             folders.insert(copy.folder);
@@ -375,6 +387,16 @@ impl Deletions {
         }
         Ok(())
     }
+}
+
+/// The account's folders with the Drafts role.
+pub(crate) fn drafts_folders(
+    tx: &Connection,
+    account: AccountId,
+) -> rusqlite::Result<Vec<FolderId>> {
+    tx.prepare_cached("SELECT id FROM folders WHERE account_id = ?1 AND role = 'drafts'")?
+        .query_map([account.0], |row| row.get(0).map(FolderId))?
+        .collect()
 }
 
 /// Whether the store holds a row at `uid` of `folder` under `uidvalidity` (its deletion then
@@ -545,6 +567,7 @@ impl State {
         if plans.is_empty() {
             return self.commit(tx, ChangeEvent::default());
         }
+        super::overlay::defer_blob_deletions(&tx, plans)?;
         Ok(self.commit_rows(tx, plans, BTreeSet::new())?.version)
     }
 }
@@ -1354,6 +1377,7 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Deferred)?;
+        // A POP3 account's copies go to its local Drafts folder (`draft_filed`).
         let local: Option<bool> = tx
             .prepare_cached("SELECT key IS NULL FROM accounts WHERE id = ?1")?
             .query_row([account.0], |row| row.get(0))

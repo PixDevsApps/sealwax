@@ -329,6 +329,10 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // A POP3 account's folders are local: no server's list may remove them and their mail.
+        if super::pop3::is_pop3(&tx, account)? {
+            return Err(StoreError::NotPop3(account));
+        }
         if let Some(ids) = unchanged(&tx, account, folders)? {
             // The usual account pass: the same list. Only a new folder's STATUS counts may
             // have moved, and nothing else is written or published.

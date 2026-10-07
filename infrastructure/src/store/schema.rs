@@ -6,9 +6,9 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 10;
+pub const VERSION: i64 = 11;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10];
+pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -405,6 +405,38 @@ INSERT OR REPLACE INTO meta(key, value)
 DROP INDEX messages_date;
 CREATE INDEX messages_date ON messages(date, id, folder_id, flags, has_attachments)
     WHERE flags & 264 = 0;
+";
+
+/// M8's POP3 accounts (ML-087, ML-088). An account with a `pop3_accounts` row keeps its mail
+/// in local folders: its ops are done at once in the store, as a local account's, and no
+/// server folder or Drafts-folder copy belongs to it. `first_pass` is when its first complete
+/// pass ended (Unix seconds): mail downloaded before it isn't new mail. `pop3_uidls` holds every
+/// message the account downloaded by the server's UIDL, written in the transaction that stores
+/// the message, so none is downloaded twice: the row it became while the store holds it, when
+/// it was downloaded (Unix seconds, for deleting it from the server after N days), whether it
+/// was downloaded whole (a message above the client's size cap is stored as its header and
+/// stays on the server, never deleted there), and when Sealwax deleted it from the server
+/// (DELE, then a QUIT sent: its reply may be lost, so the next listing tells).
+/// `blob_deletions` holds the raw messages that ops done at once (local and POP3 accounts) left
+/// unreferenced: their replies go to the app, which deletes no blobs, so an actor takes them.
+const V11: &str = "
+CREATE TABLE pop3_accounts(
+    account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+    first_pass INTEGER
+);
+
+CREATE TABLE pop3_uidls(
+    account_id INTEGER NOT NULL REFERENCES pop3_accounts(account_id) ON DELETE CASCADE,
+    uidl TEXT NOT NULL,
+    message INTEGER REFERENCES messages(id) ON DELETE SET NULL,
+    downloaded INTEGER NOT NULL,
+    whole INTEGER NOT NULL DEFAULT 1,
+    deleted INTEGER,
+    PRIMARY KEY(account_id, uidl)
+) WITHOUT ROWID;
+CREATE INDEX pop3_uidls_message ON pop3_uidls(message);
+
+CREATE TABLE blob_deletions(blob_key BLOB PRIMARY KEY) WITHOUT ROWID;
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.
