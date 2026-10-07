@@ -114,9 +114,12 @@ assert-accessible window
 key Escape
 assert-select-mode false
 
-# Half: the rail · list · reader.
+# Half: the rail · list · reader, with a message shown and the toasts of the steps above gone.
 resize 1100 900
 assert-layout rail
+setup-dismiss-toasts
+list-select 0
+wait-until assert-reader-page message
 assert-accessible window
 focus list
 tab-chain window forward 80
