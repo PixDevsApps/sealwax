@@ -1492,3 +1492,30 @@ async fn polls_are_spaced_by_the_servers_login_delay() {
     );
     stop(actor).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn refresh_and_reconnect_wait_out_the_login_delay() {
+    let fake = Fake::with(1..=1);
+    fake.lock().offers.login_delay = Some(Duration::from_millis(800));
+    let sync = SyncConfig {
+        pop3_poll: Duration::from_secs(3_600),
+        ..quick()
+    };
+    let mut h = harness(Pop3Policy::default(), sync, None, fake).await;
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    actor.control.send(Control::CheckMail).await.unwrap();
+    actor.reconnect();
+    h.eventually(|| {
+        let fake = h.fake.clone();
+        async move { fake.lock().logins.len() >= 2 }
+    })
+    .await;
+    let logins = h.fake.lock().logins.clone();
+    assert!(
+        logins[1] - logins[0] >= Duration::from_millis(800),
+        "{:?}",
+        logins[1] - logins[0]
+    );
+    stop(actor).await;
+}

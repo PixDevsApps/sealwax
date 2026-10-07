@@ -272,6 +272,7 @@ async fn run<C: Connect>(
         drafts: drafts.clone(),
         incoming: incoming.clone(),
         login_delay: None,
+        last_login: None,
         expire_told: false,
         too_large: HashSet::new(),
     };
@@ -324,6 +325,8 @@ struct Passes<C: Connect> {
     incoming: Arc<Mutex<SyncStatus>>,
     /// The server's LOGIN-DELAY, once a login said it: no login comes sooner after another.
     login_delay: Option<Duration>,
+    /// When the last login was tried.
+    last_login: Option<Instant>,
     /// The server's EXPIRE was logged for this policy.
     expire_told: bool,
     /// UIDLs whose data outgrew the size cap while it came, closing the session: their header
@@ -377,7 +380,7 @@ impl<C: Connect> Passes<C> {
             Interrupt::Reconnect => {
                 self.failures = 0;
                 self.halted = false;
-                self.next_pass = Instant::now();
+                self.next_pass = self.earliest_login();
                 self.status.set(SyncStatus::Syncing);
                 false
             }
@@ -390,13 +393,22 @@ impl<C: Connect> Passes<C> {
             // Local folders: nothing to sync, nothing older on a server, no op for a server.
             Control::Opened(_) | Control::Ops => {}
             Control::Drafts => self.drafts.notify_one(),
-            Control::CheckMail => self.next_pass = Instant::now(),
+            Control::CheckMail => self.next_pass = self.earliest_login(),
             Control::Older(folder) => self.shared.send(Event::OlderLoaded {
                 folder,
                 fetched: 0,
                 complete: true,
             }),
             Control::Outbox => self.wake.notify_one(),
+        }
+    }
+
+    /// Now, or once the server's LOGIN-DELAY since the last login has passed.
+    fn earliest_login(&self) -> Instant {
+        let now = Instant::now();
+        match (self.last_login, self.login_delay) {
+            (Some(last), Some(delay)) => (last + delay).max(now),
+            _ => now,
         }
     }
 
@@ -479,6 +491,7 @@ impl<C: Connect> Passes<C> {
     }
 
     async fn pass(&mut self, seen: u64) -> Result<(), Interrupt> {
+        self.last_login = Some(Instant::now());
         let connected = race(
             &self.signals,
             seen,
