@@ -24,7 +24,9 @@
 //! for go by UID or by a Message-ID search above a mark.
 
 use super::ops::{MAX_ATTEMPTS, instant_at, unix_ms};
-use super::{Interrupt, Poller, backoff_delay, discard, race};
+use super::{
+    Interrupt, Jitter, Poller, Shared, Signal, Status, SyncConfig, backoff_delay, discard, race,
+};
 use crate::accounts::secret_label;
 use crate::api::{Event, SendError, SyncStatus};
 use crate::imap::Credentials;
@@ -34,13 +36,16 @@ use crate::smtp::submit::{self, Envelope, SubmitError, SubmitFailure, Submitter}
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
 use sealwax_domain::compose::mime::{self, BuildError, Field};
 use sealwax_domain::compose::{Draft, address};
-use sealwax_domain::model::{Flags, FolderRole};
+use sealwax_domain::model::{AccountId, DraftId, Flags, FolderRole};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{
-    DeletionTarget, DraftDeletion, DraftUpload, DueSend, DueSentCopy, Failure, Prepared,
+    DeletionTarget, DraftDeletion, DraftUpload, DueSend, DueSends, DueSentCopy, Failure, Prepared,
     SendFailed, SendFailure, SendStarted, SentCopyDone,
 };
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::watch;
 
 /// Whether the account's server keeps its own copy of what it sends, so Sealwax appends none:
 /// Outlook.com and Microsoft 365 (and Gmail, for accounts added by hand). Hosts by suffix.
@@ -70,7 +75,7 @@ struct Built {
 }
 
 /// Why a message couldn't be built.
-enum Unbuilt {
+pub(super) enum Unbuilt {
     /// The draft can't be sent as it is.
     Draft(BuildError),
     /// A part's or the recorded message's bytes couldn't be read or written.
@@ -121,7 +126,11 @@ fn build(blobs: &BlobStore, draft: &Draft, date: i64) -> Result<Built, Unbuilt> 
 }
 
 /// The Drafts folder's copy of `draft`.
-fn build_drafts_copy(blobs: &BlobStore, draft: &Draft, date: i64) -> Result<Vec<u8>, Unbuilt> {
+pub(super) fn build_drafts_copy(
+    blobs: &BlobStore,
+    draft: &Draft,
+    date: i64,
+) -> Result<Vec<u8>, Unbuilt> {
     let parts: Vec<Vec<u8>> = draft
         .parts
         .iter()
@@ -184,32 +193,26 @@ impl Poller {
         if self.quota {
             SyncStatus::QuotaFull
         } else {
-            self.smtp_status.unwrap_or(SyncStatus::Synced)
+            self.status.smtp().unwrap_or(SyncStatus::Synced)
         }
-    }
-
-    /// The wait before trying the submission server again after a failure.
-    fn smtp_backoff(&mut self) -> std::time::Duration {
-        self.smtp_failures += 1;
-        let unit = self.jitter.unit();
-        backoff_delay(self.config(), self.smtp_failures + 1, unit).max(self.config().backoff_min)
     }
 
     /// Sends what is due, then the Sent copies, and sets the timer for the next.
     pub(super) async fn run_outbox(&mut self, seen: u64) -> Result<(), Interrupt> {
-        self.outbox_now = false;
-        let now = unix_ms();
-        let due = match self.shared.store.due_sends(self.account, now).recv().await {
-            Ok(due) => due,
-            Err(error) => {
-                tracing::warn!(account = self.account.0, %error, "due sends couldn't be read");
-                self.next_outbox = Some(Instant::now() + self.config().backoff_max);
-                return Ok(());
-            }
+        let Some(due) = self.outbox.due().await else {
+            return Ok(());
         };
-        self.next_outbox = due.next.map(|at| instant_at(at, now));
         if !due.sends.is_empty() {
-            self.send_all(due.sends, seen).await?;
+            let mark = self.sent_mark(seen).await?;
+            let base = if self.quota {
+                SyncStatus::QuotaFull
+            } else {
+                SyncStatus::Synced
+            };
+            let sent = self.outbox.send_all(due.sends, mark, base, seen).await;
+            self.ops_now |= std::mem::take(&mut self.outbox.ops_queued);
+            self.drafts_now |= std::mem::take(&mut self.outbox.copies_to_delete);
+            sent?;
             if self.conn.is_none() {
                 return Ok(());
             }
@@ -258,14 +261,116 @@ impl Poller {
             }
         })
     }
+}
 
-    /// Every due send on one SMTP connection.
-    async fn send_all(&mut self, sends: Vec<DueSend>, seen: u64) -> Result<(), Interrupt> {
-        let mark = self.sent_mark(seen).await?;
+/// The outbox's sends over SMTP, as an account's actor runs them (ADR-015's at-most-once send):
+/// the IMAP actor's and, from M8, the POP3 actor's. One SMTP connection per round of due sends;
+/// the store's durable start before DATA; a stop or `Reconnect` while the data goes out records
+/// the send uncertain first.
+pub(super) struct Submission {
+    shared: Arc<Shared>,
+    settings: Arc<AccountSettings>,
+    account: AccountId,
+    status: Arc<Status>,
+    signals: watch::Receiver<Signal>,
+    jitter: Jitter,
+    /// Run the due sends and Sent copies at the next chance.
+    pub(super) now: bool,
+    /// When the next send or Sent copy becomes due.
+    pub(super) next: Option<Instant>,
+    /// Submission failures in a row, for the backoff.
+    failures: u32,
+    /// The Sent folder's mark taken before each send's data went out, until its Sent copy is
+    /// done: a server that saves its own copy puts it above.
+    pub(super) sent_marks: HashMap<DraftId, Mark>,
+    /// A send recorded since the actor last looked queued the source's flag in the op queue.
+    pub(super) ops_queued: bool,
+    /// A send recorded since the actor last looked queued Drafts-folder copies for deletion.
+    pub(super) copies_to_delete: bool,
+}
+
+impl Submission {
+    pub(super) fn new(
+        shared: Arc<Shared>,
+        settings: Arc<AccountSettings>,
+        account: AccountId,
+        status: Arc<Status>,
+        signals: watch::Receiver<Signal>,
+    ) -> Submission {
+        Submission {
+            shared,
+            settings,
+            jitter: Jitter::new(account),
+            account,
+            status,
+            signals,
+            now: true,
+            next: None,
+            failures: 0,
+            sent_marks: HashMap::new(),
+            ops_queued: false,
+            copies_to_delete: false,
+        }
+    }
+
+    fn config(&self) -> &SyncConfig {
+        &self.shared.sync
+    }
+
+    /// Whether a round is due now.
+    pub(super) fn is_due(&self) -> bool {
+        self.now || self.next.is_some_and(|due| due <= Instant::now())
+    }
+
+    /// `Reconnect`: the next round goes at once, without the backoff.
+    pub(super) fn reset(&mut self) {
+        self.failures = 0;
+        self.now = true;
+    }
+
+    /// Runs `at` at the latest.
+    pub(super) fn retry_by(&mut self, at: Instant) {
+        self.next = Some(self.next.map_or(at, |next| next.min(at)));
+    }
+
+    /// The account's sends and Sent copies due now, with the timer set for the next; `None`
+    /// when the store couldn't say.
+    pub(super) async fn due(&mut self) -> Option<DueSends> {
+        self.now = false;
+        let now = unix_ms();
+        match self.shared.store.due_sends(self.account, now).recv().await {
+            Ok(due) => {
+                self.next = due.next.map(|at| instant_at(at, now));
+                Some(due)
+            }
+            Err(error) => {
+                tracing::warn!(account = self.account.0, %error, "due sends couldn't be read");
+                self.next = Some(Instant::now() + self.config().backoff_max);
+                None
+            }
+        }
+    }
+
+    /// The wait before trying the submission server again after a failure.
+    fn backoff(&mut self) -> std::time::Duration {
+        self.failures += 1;
+        let unit = self.jitter.unit();
+        backoff_delay(self.config(), self.failures + 1, unit).max(self.config().backoff_min)
+    }
+
+    /// Every due send on one SMTP connection. `mark` is the Sent folder's mark taken before;
+    /// `base` is what the account shows once a submission login works again.
+    pub(super) async fn send_all(
+        &mut self,
+        sends: Vec<DueSend>,
+        mark: Option<Mark>,
+        base: SyncStatus,
+        seen: u64,
+    ) -> Result<(), Interrupt> {
         let mut smtp: Option<Submitter> = None;
         let mut result = Ok(());
         for send in sends {
-            match self.send_one(&send, &mut smtp, mark, seen).await {
+            match self.send_one(&send, &mut smtp, mark, base, seen).await {
                 Ok(Next::Continue) => {}
                 Ok(Next::Stop) => break,
                 Err(interrupt) => {
@@ -350,8 +455,8 @@ impl Poller {
 
     /// The submission server couldn't be reached or refused the login: the sends wait, and a
     /// login the user must fix shows in the account's status.
-    fn smtp_failed(&mut self, error: &SubmitError) {
-        let wait = self.smtp_backoff();
+    fn failed(&mut self, error: &SubmitError) {
+        let wait = self.backoff();
         tracing::info!(
             account = self.account.0,
             ?error,
@@ -359,17 +464,16 @@ impl Poller {
         );
         if error.failure() == SubmitFailure::Account {
             let status = SyncStatus::from_failure(login_failure(error));
-            self.smtp_status = Some(status);
+            self.status.set_smtp(Some(status));
             self.status.set(status);
         }
-        let retry = Instant::now() + wait;
-        self.next_outbox = Some(self.next_outbox.map_or(retry, |next| next.min(retry)));
+        self.retry_by(Instant::now() + wait);
     }
 
-    fn smtp_ok(&mut self) {
-        self.smtp_failures = 0;
-        if self.smtp_status.take().is_some() {
-            self.status.set(self.healthy());
+    fn ok(&mut self, base: SyncStatus) {
+        self.failures = 0;
+        if self.status.set_smtp(None).is_some() {
+            self.status.set(base);
         }
     }
 
@@ -378,6 +482,7 @@ impl Poller {
         send: &DueSend,
         smtp: &mut Option<Submitter>,
         mark: Option<Mark>,
+        base: SyncStatus,
         seen: u64,
     ) -> Result<Next, Interrupt> {
         let started = Instant::now();
@@ -407,10 +512,10 @@ impl Poller {
             match race(&self.signals, seen, self.submitter()).await? {
                 Ok(submitter) => {
                     *smtp = Some(submitter);
-                    self.smtp_ok();
+                    self.ok(base);
                 }
                 Err(error) => {
-                    self.smtp_failed(&error);
+                    self.failed(&error);
                     return Ok(Next::Stop);
                 }
             }
@@ -452,7 +557,7 @@ impl Poller {
                 let _ = race(&self.signals, seen, prepared.cancel()).await?;
                 if other.is_err() {
                     let retry = Instant::now() + self.config().backoff_min;
-                    self.next_outbox = Some(self.next_outbox.map_or(retry, |next| next.min(retry)));
+                    self.retry_by(retry);
                 }
                 return Ok(Next::Continue);
             }
@@ -475,7 +580,7 @@ impl Poller {
 
     /// The server took the message.
     async fn delivered(&mut self, send: &DueSend, started: Instant) {
-        self.smtp_failures = 0;
+        self.failures = 0;
         match self
             .shared
             .store
@@ -494,9 +599,9 @@ impl Poller {
                     account: self.account,
                     draft: send.draft,
                 });
-                self.ops_now |= recorded.ops_queued;
-                self.drafts_now |= recorded.copies_to_delete;
-                self.outbox_now = true;
+                self.ops_queued |= recorded.ops_queued;
+                self.copies_to_delete |= recorded.copies_to_delete;
+                self.now = true;
                 discard(&self.shared, recorded.orphaned_blobs).await;
             }
             Err(error) => {
@@ -558,9 +663,9 @@ impl Poller {
             }
             SubmitFailure::Retry | SubmitFailure::Account => {
                 if error.failure() == SubmitFailure::Account {
-                    self.smtp_failed(error);
+                    self.failed(error);
                 }
-                let wait = self.smtp_backoff();
+                let wait = self.backoff();
                 let retry_at = unix_ms() + wait.as_millis() as i64;
                 tracing::info!(
                     account = self.account.0,
@@ -576,12 +681,13 @@ impl Poller {
                 if let Err(error) = recorded {
                     tracing::warn!(account = self.account.0, %error, "a deferred send couldn't be recorded");
                 }
-                let retry = Instant::now() + wait;
-                self.next_outbox = Some(self.next_outbox.map_or(retry, |next| next.min(retry)));
+                self.retry_by(Instant::now() + wait);
             }
         }
     }
+}
 
+impl Poller {
     /// The Sent copy of a sent message: none where the server saves its own; else found from
     /// the mark taken before the send, or appended `\Seen` with the folder's mark recorded
     /// first.
@@ -611,7 +717,7 @@ impl Poller {
                 true,
             ),
             None => {
-                let before = self.sent_marks.get(&copy.draft).copied();
+                let before = self.outbox.sent_marks.get(&copy.draft).copied();
                 let found = race(
                     &self.signals,
                     seen,
@@ -693,7 +799,7 @@ impl Poller {
     }
 
     async fn copy_done(&mut self, copy: &DueSentCopy, done: SentCopyDone) {
-        self.sent_marks.remove(&copy.draft);
+        self.outbox.sent_marks.remove(&copy.draft);
         tracing::debug!(account = self.account.0, ?done, "Sent copy done");
         match self
             .shared
@@ -732,7 +838,7 @@ impl Poller {
             tracing::warn!(account = self.account.0, %error, "a failed Sent copy couldn't be recorded");
         }
         let retry = Instant::now() + wait;
-        self.next_outbox = Some(self.next_outbox.map_or(retry, |next| next.min(retry)));
+        self.outbox.retry_by(retry);
     }
 
     /// The Drafts folder's uploads and deletions that are due.

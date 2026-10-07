@@ -1,16 +1,23 @@
 //! POP3 accounts' writes (M8: ML-087, ML-088): an account made a POP3 account with its local
-//! folders, downloaded messages stored with their UIDLs in one transaction, and the end of a
-//! pass.
+//! folders, downloaded messages stored with their UIDLs in one transaction, the end of a pass, a
+//! draft's copy filed into the local Drafts folder, and the raw messages ops done at once left
+//! for an actor to delete.
 
+use super::compose::drafts_folders;
+use super::ops::queue_in;
+use super::overlay::row;
 use super::{
     RowChange, Writer, folder_counts, free_uid, fts_doc, insert_message, overlay_new,
     resolve_thread, thread_counts, upsert_rows, view_changes,
 };
 use crate::store::api::{ChangeEvent, FolderSpec, StoreVersion, ThreadMerge, ViewScope};
-use crate::store::pop3_api::{POP3_FOLDERS, Pop3Account, Pop3Download, Pop3PassDone, Pop3Stored};
-use crate::store::{StoreError, views};
+use crate::store::overlay::{BATCH_COMPOSE, Change};
+use crate::store::pop3_api::{
+    DraftFiled, POP3_FOLDERS, Pop3Account, Pop3Download, Pop3PassDone, Pop3Stored,
+};
+use crate::store::{StoreError, compose, views};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
-use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
+use sealwax_domain::model::{AccountId, BlobKey, DraftId, FolderId, FolderRole, MessageId};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
@@ -31,6 +38,16 @@ pub(crate) enum Pop3Job {
         account: AccountId,
         done: Pop3PassDone,
         reply: Sender<()>,
+    },
+    DraftFiled {
+        account: AccountId,
+        draft: DraftId,
+        revision: u64,
+        blob: BlobKey,
+        reply: Sender<DraftFiled>,
+    },
+    TakeBlobDeletions {
+        reply: Sender<Vec<BlobKey>>,
     },
 }
 
@@ -61,7 +78,111 @@ impl Writer {
             } => {
                 let _ = reply.try_send(self.pop3_pass_done(account, &done));
             }
+            Pop3Job::DraftFiled {
+                account,
+                draft,
+                revision,
+                blob,
+                reply,
+            } => {
+                let _ = reply.try_send(self.draft_filed(account, draft, revision, blob));
+            }
+            Pop3Job::TakeBlobDeletions { reply } => {
+                let _ = reply.try_send(self.take_blob_deletions());
+            }
         }
+    }
+
+    /// A draft's copy, stored in the account's Drafts folder as `blob`, is its copy from now
+    /// on: older copies (rows there with its Message-ID) go at once. A copy of a draft that was
+    /// discarded or queued to send meanwhile goes itself.
+    fn draft_filed(
+        &mut self,
+        account: AccountId,
+        draft: DraftId,
+        revision: u64,
+        blob: BlobKey,
+    ) -> Result<DraftFiled, StoreError> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if !is_pop3(&tx, account)? {
+            return Err(StoreError::NotPop3(account));
+        }
+        let current: Option<String> = tx
+            .query_row(
+                "SELECT d.message_id FROM drafts d \
+                 WHERE d.id = ?1 AND d.account_id = ?2 \
+                   AND NOT EXISTS (SELECT 1 FROM outbox WHERE draft = d.id)",
+                params![draft.0, account.0],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let mut stale = Vec::new();
+        for folder in drafts_folders(&tx, account)? {
+            let ids: Vec<MessageId> = match &current {
+                Some(message_id) => tx
+                    .prepare_cached(
+                        "SELECT id FROM messages WHERE folder_id = ?1 AND message_id = ?2 \
+                           AND (blob_key IS NULL OR blob_key <> ?3)",
+                    )?
+                    .query_map(params![folder.0, message_id, blob.0.as_slice()], |row| {
+                        row.get(0).map(MessageId)
+                    })?
+                    .collect::<rusqlite::Result<_>>()?,
+                None => tx
+                    .prepare_cached(
+                        "SELECT id FROM messages INDEXED BY messages_blob \
+                         WHERE blob_key = ?1 AND folder_id = ?2",
+                    )?
+                    .query_map(params![blob.0.as_slice(), folder.0], |row| {
+                        row.get(0).map(MessageId)
+                    })?
+                    .collect::<rusqlite::Result<_>>()?,
+            };
+            stale.extend(ids);
+        }
+        if current.is_some() {
+            tx.execute(
+                "UPDATE drafts SET copy_revision = max(copy_revision, ?2), upload_attempts = 0 \
+                 WHERE id = ?1",
+                params![draft.0, revision as i64],
+            )?;
+        }
+        let mut changes = Vec::with_capacity(stale.len());
+        for id in stale {
+            if let Some(found) = row(&tx, id)? {
+                changes.push((found, Change::Expunge));
+            }
+        }
+        let (plans, _) = queue_in(&tx, BATCH_COMPOSE, changes)?;
+        let committed = self.state.commit_rows(tx, &plans, BTreeSet::new())?;
+        Ok(DraftFiled {
+            version: committed.version,
+            applied: current.is_some(),
+            orphaned_blobs: committed.orphaned_blobs,
+        })
+    }
+
+    /// The raw messages ops done at once left that nothing refers to any more; the others are
+    /// forgotten too, as something refers to them again.
+    fn take_blob_deletions(&mut self) -> Result<Vec<BlobKey>, StoreError> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let keys: BTreeSet<BlobKey> = tx
+            .prepare_cached("SELECT blob_key FROM blob_deletions")?
+            .query_map([], |row| row.get::<_, Vec<u8>>(0))?
+            .filter_map(|key| key.map(|key| BlobKey::from_slice(&key)).transpose())
+            .collect::<rusqlite::Result<_>>()?;
+        if keys.is_empty() {
+            return Ok(Vec::new());
+        }
+        tx.execute("DELETE FROM blob_deletions", [])?;
+        let unreferenced = compose::unreferenced(&tx, keys)?;
+        tx.commit()?;
+        self.state.after_commit();
+        Ok(unreferenced)
     }
 
     fn pop3_account(&mut self, account: AccountId) -> Result<Pop3Account, StoreError> {
@@ -92,6 +213,11 @@ impl Writer {
             .map(|(name, role)| FolderSpec::local(account, name, *role))
             .collect();
         let (created, _) = upsert_rows(&tx, &missing)?;
+        // Nothing older is left on a server: `LoadOlder` is answered complete, actor or not.
+        tx.execute(
+            "UPDATE folders SET sync_floor = 1 WHERE account_id = ?1 AND sync_floor IS NULL",
+            [account.0],
+        )?;
         let inbox: FolderId = tx.query_row(
             "SELECT id FROM folders WHERE account_id = ?1 AND role = 'inbox' ORDER BY id LIMIT 1",
             [account.0],
@@ -220,10 +346,16 @@ impl Writer {
                 (None, None) => None,
             };
             tx.prepare_cached(
-                "INSERT INTO pop3_uidls(account_id, uidl, message, downloaded) \
-                 VALUES (?1, ?2, ?3, ?4)",
+                "INSERT INTO pop3_uidls(account_id, uidl, message, downloaded, whole) \
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
             )?
-            .execute(params![account.0, download.uidl, row.map(|id| id.0), at])?;
+            .execute(params![
+                account.0,
+                download.uidl,
+                row.map(|id| id.0),
+                at,
+                download.whole
+            ])?;
             ids.push(inserted);
         }
         if rows.is_empty() {

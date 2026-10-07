@@ -80,6 +80,7 @@ fn download(inbox: FolderId, n: u32) -> Pop3Download {
             body_state: BodyState::Full,
             ..message(inbox, n, Flags::NONE)
         },
+        whole: true,
     }
 }
 
@@ -171,6 +172,17 @@ fn a_pop3_account_gets_its_local_folders_once() {
     assert_eq!(
         names,
         ["INBOX", "Sent", "Drafts", "Junk", "Trash", "Archive"]
+    );
+    // Nothing older to load from a server, actor or not.
+    for folder in store.account_folders(account).recv_blocking().unwrap() {
+        assert!(folder.complete());
+    }
+    assert!(store.is_pop3_account(account).recv_blocking().unwrap());
+    assert!(
+        !store
+            .is_pop3_account(AccountId(999))
+            .recv_blocking()
+            .unwrap()
     );
     // Again (every start of its actor): nothing new, no event.
     let again = store.pop3_account(account).recv_blocking().unwrap();
@@ -481,12 +493,12 @@ fn a_pop3_account_sends_and_files_its_sent_copy_locally() {
         kind: ReplyKind::Reply,
     });
     let id = save(store, None, reply, true);
-    // Drafts never go to a server: none due, however long after the save.
+    // No server holds its drafts: nothing to delete there.
     let drafts = store
         .due_drafts(pop.account, NOW + 3_600_000)
         .recv_blocking()
         .unwrap();
-    assert!(drafts.uploads.is_empty() && drafts.deletions.is_empty() && drafts.next.is_none());
+    assert!(drafts.deletions.is_empty());
 
     let queued = store.queue_send(id, NOW + 7_000).recv_blocking().unwrap();
     assert!(matches!(queued, SendQueued::Queued { .. }), "{queued:?}");
@@ -543,10 +555,174 @@ fn a_pop3_account_sends_and_files_its_sent_copy_locally() {
     assert_eq!(counts(store, sent), (1, 0));
     assert!(store.outbox(None).recv_blocking().unwrap().is_empty());
 
-    // A discarded draft has no server copy to delete.
+    // A discarded draft without a copy has nothing to delete.
     let other = save(store, None, draft(pop.account, 2), false);
     let discarded = store.discard_draft(other).recv_blocking().unwrap();
     assert!(discarded.found && !discarded.server_copy);
+    clean(store);
+}
+
+/// The copy of `draft` the actor files, as `blob`, into the Drafts folder.
+fn file_copy(pop: &Pop, drafts: FolderId, message_id: &str, blob: u8) -> MessageId {
+    let mut copy = message(
+        drafts,
+        60 + u32::from(blob),
+        Flags::DRAFT.union(Flags::SEEN),
+    );
+    copy.uid = None;
+    copy.headers.message_id = Some(message_id.to_owned());
+    copy.blob = Some(BlobKey([blob; 32]));
+    copy.body_state = BodyState::Full;
+    pop.store.ingest(vec![copy]).recv_blocking().unwrap().ids[0].unwrap()
+}
+
+#[test]
+fn a_pop3_drafts_copies_are_rows_of_its_local_drafts_folder() {
+    let pop = pop();
+    let store = &pop.store;
+    let drafts = pop.folder(FolderRole::Drafts);
+    let mut first = draft(pop.account, 1);
+    first.message_id = "local-draft@example.test".into();
+    let id = save(store, None, first.clone(), false);
+    // Due for the local Drafts folder once it went quiet, with nothing to replace on a server.
+    let due = store
+        .due_drafts(pop.account, NOW + CLOSED_DRAFT_QUIET_MS)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(due.uploads.len(), 1);
+    let upload = &due.uploads[0];
+    assert_eq!(upload.folder.folder, drafts);
+    assert_eq!((upload.retry_from, upload.replaces), (None, None));
+
+    let row = file_copy(&pop, drafts, &first.message_id, 201);
+    let filed = store
+        .draft_filed(pop.account, id, upload.revision, BlobKey([201; 32]))
+        .recv_blocking()
+        .unwrap();
+    assert!(filed.applied && filed.orphaned_blobs.is_empty());
+    assert_eq!(
+        store.draft_for_message(row).recv_blocking().unwrap(),
+        Some(id)
+    );
+    let due = store
+        .due_drafts(pop.account, NOW + 3_600_000)
+        .recv_blocking()
+        .unwrap();
+    assert!(due.uploads.is_empty(), "copied");
+
+    // A new revision's copy replaces the old one at once.
+    save(store, Some(id), first.clone(), false);
+    let due = store
+        .due_drafts(pop.account, NOW + 3_600_000)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(due.uploads[0].revision, 2);
+    let newer = file_copy(&pop, drafts, &first.message_id, 202);
+    let filed = store
+        .draft_filed(pop.account, id, 2, BlobKey([202; 32]))
+        .recv_blocking()
+        .unwrap();
+    assert!(filed.applied);
+    assert_eq!(filed.orphaned_blobs, [BlobKey([201; 32])]);
+    assert_eq!(
+        held_ids(store, drafts).into_values().collect::<Vec<_>>(),
+        [newer]
+    );
+
+    // Sent: its copy goes at once, and its bytes are handed out for deletion.
+    store.queue_send(id, NOW).recv_blocking().unwrap();
+    store
+        .send_started(id, prepared(3), NOW + 100)
+        .recv_blocking()
+        .unwrap();
+    let done = store.send_done(id, NOW + 200).recv_blocking().unwrap();
+    assert!(!done.ops_queued);
+    assert!(held_ids(store, drafts).is_empty());
+    let taken = store.take_blob_deletions().recv_blocking().unwrap();
+    assert!(taken.contains(&BlobKey([202; 32])), "{taken:?}");
+
+    // A copy filed after its draft was discarded goes itself.
+    let late = save(store, None, draft(pop.account, 4), false);
+    store.discard_draft(late).recv_blocking().unwrap();
+    file_copy(&pop, drafts, "d4@example.test", 204);
+    let filed = store
+        .draft_filed(pop.account, late, 1, BlobKey([204; 32]))
+        .recv_blocking()
+        .unwrap();
+    assert!(!filed.applied);
+    assert_eq!(filed.orphaned_blobs, [BlobKey([204; 32])]);
+    assert!(held_ids(store, drafts).is_empty());
+    // Discarding a draft deletes its copy at once.
+    let kept = save(store, None, draft(pop.account, 5), false);
+    let copy = file_copy(&pop, drafts, "d5@example.test", 205);
+    store
+        .draft_filed(pop.account, kept, 1, BlobKey([205; 32]))
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(
+        held_ids(store, drafts).into_values().collect::<Vec<_>>(),
+        [copy]
+    );
+    store.discard_draft(kept).recv_blocking().unwrap();
+    assert!(held_ids(store, drafts).is_empty());
+    // Only for a POP3 account.
+    let other = store
+        .add_account(NewAccount {
+            name: "Local".into(),
+            address: "local@example.test".into(),
+        })
+        .recv_blocking()
+        .unwrap()
+        .value;
+    assert!(matches!(
+        store
+            .draft_filed(other, kept, 1, BlobKey([205; 32]))
+            .recv_blocking(),
+        Err(StoreError::NotPop3(_))
+    ));
+    clean(store);
+}
+
+#[test]
+fn blobs_that_ops_done_at_once_leave_are_handed_out_once() {
+    let pop = pop();
+    let store = &pop.store;
+    let ids: Vec<MessageId> = stored(
+        store,
+        pop.account,
+        (1..=2).map(|n| download(pop.inbox, n)).collect(),
+    )
+    .ids
+    .into_iter()
+    .map(Option::unwrap)
+    .collect();
+    // Message 2's bytes are also in the Archive (another copy of the same message).
+    let archive = pop.folder(FolderRole::Archive);
+    let mut copy = download(archive, 2).message;
+    copy.folder = archive;
+    store.ingest(vec![copy]).recv_blocking().unwrap();
+    assert!(
+        store
+            .take_blob_deletions()
+            .recv_blocking()
+            .unwrap()
+            .is_empty()
+    );
+    queue(store, Triage::Delete, &ids);
+    queue(store, Triage::Delete, &ids);
+    let taken = store.take_blob_deletions().recv_blocking().unwrap();
+    assert_eq!(
+        taken,
+        [BlobKey([1; 32])],
+        "the Archive's copy keeps its bytes"
+    );
+    assert!(
+        store
+            .take_blob_deletions()
+            .recv_blocking()
+            .unwrap()
+            .is_empty()
+    );
     clean(store);
 }
 
@@ -641,7 +817,7 @@ fn v11_migrates_a_v10_store_and_a_newer_one_is_refused() {
     // Back to v10: what M7 left on disk, with mail in it.
     let conn = Connection::open(&path).unwrap();
     conn.execute_batch(
-        "DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \
+        "DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \
          DELETE FROM schema_migrations WHERE version >= 11; PRAGMA user_version = 10;",
     )
     .unwrap();

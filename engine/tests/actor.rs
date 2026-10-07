@@ -2,7 +2,7 @@
 //! network beyond 127.0.0.1): new mail through IDLE, NOOP before IDLE, the STATUS backstop,
 //! IDLE issued again, backoff and its reset, `Reconnect` after silently dead connections,
 //! statuses, `FolderOpened`, `LoadOlder`, bodies beside the actor, two accounts at once,
-//! throttled progress and a quick stop. Timings are short real durations: the store answers
+//! throttled progress, a quick stop and Refresh's `CheckMail`. Timings are short real durations: the store answers
 //! from its own threads, so paused tokio time would jump past them.
 
 mod fake;
@@ -935,4 +935,42 @@ async fn progress_is_throttled_and_ends_with_the_last_batch() {
     assert_eq!(progress.last(), Some(&(3000, 3000)));
     let allowed = (elapsed.as_millis() / 100) as usize + 2;
     assert!(progress.len() <= allowed, "{} > {allowed}", progress.len());
+}
+
+/// Refresh (`CheckMail`, M8): an account pass now, on the connection the actor has, instead of
+/// the next one a minute later.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn check_mail_runs_an_account_pass_now() {
+    let fake = fake(Flavor::Qresync).await;
+    let mut run = running(&fake, config());
+    let account = run.add(&fake, 1, "check").await;
+    let sent = run.folder(account, "Sendt").await;
+    within(WAIT, || async { fake.world().count("IDLE") >= 1 }).await;
+    let logins = |fake: &Fake| {
+        let world = fake.world();
+        world.count("LOGIN") + world.count("AUTHENTICATE")
+    };
+    let before = logins(&fake);
+    fake.world().append("Sendt", 0, &[]);
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        run.count(sent).await,
+        0,
+        "the next account pass is a minute away"
+    );
+    let lists = fake.world().count("LIST");
+    run.send(Command::CheckMail);
+    assert!(
+        within(Duration::from_secs(5), || async {
+            run.count(sent).await == 1
+        })
+        .await
+        .is_some(),
+        "the account pass ran"
+    );
+    assert!(
+        fake.world().count("LIST") > lists,
+        "an account pass lists the folders"
+    );
+    assert_eq!(logins(&fake), before, "no connection was made again");
 }

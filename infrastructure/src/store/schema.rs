@@ -413,8 +413,12 @@ CREATE INDEX messages_date ON messages(date, id, folder_id, flags, has_attachmen
 /// pass ended (Unix seconds): mail downloaded before it isn't new mail. `pop3_uidls` holds every
 /// message the account downloaded by the server's UIDL, written in the transaction that stores
 /// the message, so none is downloaded twice: the row it became while the store holds it, when
-/// it was downloaded (Unix seconds, for deleting it from the server after N days), and when
-/// Sealwax deleted it from the server (a QUIT that answered `+OK` after its DELE).
+/// it was downloaded (Unix seconds, for deleting it from the server after N days), whether it
+/// was downloaded whole (a message above the client's size cap is stored as its header and
+/// stays on the server, never deleted there), and when Sealwax deleted it from the server
+/// (DELE, then a QUIT sent: its reply may be lost, so the next listing tells).
+/// `blob_deletions` holds the raw messages that ops done at once (local and POP3 accounts) left
+/// unreferenced: their replies go to the app, which deletes no blobs, so an actor takes them.
 const V11: &str = "
 CREATE TABLE pop3_accounts(
     account_id INTEGER PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
@@ -426,10 +430,13 @@ CREATE TABLE pop3_uidls(
     uidl TEXT NOT NULL,
     message INTEGER REFERENCES messages(id) ON DELETE SET NULL,
     downloaded INTEGER NOT NULL,
+    whole INTEGER NOT NULL DEFAULT 1,
     deleted INTEGER,
     PRIMARY KEY(account_id, uidl)
 ) WITHOUT ROWID;
 CREATE INDEX pop3_uidls_message ON pop3_uidls(message);
+
+CREATE TABLE blob_deletions(blob_key BLOB PRIMARY KEY) WITHOUT ROWID;
 ";
 
 /// SQLite 3.43 brought `contentless_delete`.

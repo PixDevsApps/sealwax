@@ -13,6 +13,10 @@
 //! on the same connection, before any body batch (the reader waits for them; the prefetch
 //! doesn't), one at a time, each answered with one `Event::PartFetched` or
 //! `Event::OriginalFetched`; asking again while one is out asks nothing more.
+//!
+//! M8: a POP3 account's mail is in the store whole and its server is never asked: its bodies,
+//! parts and originals are answered from the blob store, and a message whose bytes are missing
+//! is `Gone`.
 
 use super::actor::Signal;
 use super::{Shared, log_in_with_password, log_in_with_token};
@@ -20,8 +24,9 @@ use crate::api::{BodyError, Event, FetchedPart, Original, SyncStatus};
 use crate::bodies::{enforce_cap, prefetch_ids};
 use crate::imap::bodies::{BodyFetchError, Sink, fetch_bodies, fetch_original, fetch_part};
 use crate::imap::{Connection, ImapError};
-use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
+use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure, Receive};
 use sealwax_domain::config::Storage;
+use sealwax_domain::message;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use sealwax_infrastructure::store::{BodyState, BodyTarget, FolderSync, PartSource};
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -195,11 +200,22 @@ pub(super) fn request(shared: &Arc<Shared>, messages: Vec<MessageId>, announce: 
             answer(&shared, *message, Err(BodyError::Gone));
         }
         let mut queued: HashMap<AccountId, Vec<BodyTarget>> = HashMap::new();
+        let mut pop3: HashMap<AccountId, bool> = HashMap::new();
         for target in targets {
             let stored = matches!(target.body_state, BodyState::Full | BodyState::Text)
                 && target.blob.is_some_and(|key| shared.blobs.contains(&key));
             if stored {
                 answer(&shared, target.message, Ok(()));
+                continue;
+            }
+            let local = match pop3.get(&target.account) {
+                Some(local) => *local,
+                None => *pop3
+                    .entry(target.account)
+                    .or_insert(is_pop3(&shared, target.account).await),
+            };
+            if local {
+                answer(&shared, target.message, Err(BodyError::Gone));
             } else {
                 queued.entry(target.account).or_default().push(target);
             }
@@ -229,6 +245,45 @@ fn answer_original(shared: &Shared, message: MessageId, result: Result<Original,
     shared.send(Event::OriginalFetched { message, result });
 }
 
+/// Whether `account` is a POP3 account (M8), whose server is never asked for its mail.
+async fn is_pop3(shared: &Shared, account: AccountId) -> bool {
+    shared
+        .store
+        .is_pop3_account(account)
+        .recv()
+        .await
+        .unwrap_or(false)
+}
+
+/// A POP3 message's bytes from the blob store; `Gone` without them.
+async fn local_raw(shared: &Shared, target: &BodyTarget) -> Result<Vec<u8>, BodyError> {
+    let key = target.blob.ok_or(BodyError::Gone)?;
+    let blobs = shared.blobs.clone();
+    tokio::task::spawn_blocking(move || blobs.get(&key))
+        .await
+        .ok()
+        .and_then(Result::ok)
+        .ok_or(BodyError::Gone)
+}
+
+/// The part at mail-parser index `part` of a POP3 message, from its bytes in the blob store.
+async fn local_part(
+    shared: &Shared,
+    target: &BodyTarget,
+    part: u32,
+) -> Result<FetchedPart, BodyError> {
+    let raw = local_raw(shared, target).await?;
+    tokio::task::spawn_blocking(move || message::part(&raw, part))
+        .await
+        .ok()
+        .flatten()
+        .map(|found| FetchedPart {
+            mime_type: found.mime_type,
+            data: found.data,
+        })
+        .ok_or(BodyError::Other)
+}
+
 /// Where `message` is on the server, if the store still holds it.
 async fn stored(shared: &Shared, message: MessageId) -> Result<Option<BodyTarget>, BodyError> {
     match shared.store.body_targets(vec![message]).recv().await {
@@ -254,6 +309,10 @@ pub(super) fn request_part(shared: &Arc<Shared>, message: MessageId, part: u32) 
             Ok(None) => return answer_part(&shared, message, part, Err(BodyError::Gone)),
             Err(error) => return answer_part(&shared, message, part, Err(error)),
         };
+        if is_pop3(&shared, target.account).await {
+            let result = local_part(&shared, &target, part).await;
+            return answer_part(&shared, message, part, result);
+        }
         let source = match shared.store.part_source(message, part).recv().await {
             Ok(Some(source)) => source,
             Ok(None) => {
@@ -278,6 +337,10 @@ pub(super) fn request_original(shared: &Arc<Shared>, message: MessageId) {
     let shared = shared.clone();
     tokio::spawn(async move {
         match stored(&shared, message).await {
+            Ok(Some(target)) if is_pop3(&shared, target.account).await => {
+                let result = local_raw(&shared, &target).await.map(Original);
+                answer_original(&shared, message, result);
+            }
             Ok(Some(target)) => {
                 enqueue_extra(&shared, target.account, Extra::Original { target });
             }
@@ -463,6 +526,12 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
         fail_all(&shared, account, BodyError::Other);
         return;
     };
+    if let Receive::Pop3(_) = settings.receive {
+        // A POP3 account's mail is in the store whole: its server has nothing to fetch by part.
+        tracing::info!(account = account.0, "bodies asked for a POP3 account");
+        fail_all(&shared, account, BodyError::Gone);
+        return;
+    }
     let signals = shared.actor_signal(account);
     let mut seen = signals
         .as_ref()

@@ -578,7 +578,8 @@ impl Store {
     /// The account's Drafts-folder uploads and deletions due at `now`. A draft is due when it
     /// changed since its last upload and was saved at least [`DRAFT_QUIET_MS`] ago while its
     /// window is open, or [`CLOSED_DRAFT_QUIET_MS`] ago when none is; drafts in the outbox aren't
-    /// uploaded. Local accounts and POP3 accounts have none.
+    /// uploaded. Local accounts have none; a POP3 account's are filed into its local Drafts
+    /// folder ([`Store::draft_filed`]) instead of a server's.
     pub fn due_drafts(&self, account: AccountId, now: i64) -> Reply<DueDrafts> {
         self.write(|reply| {
             WriteJob::Compose(ComposeJob::DueDrafts {

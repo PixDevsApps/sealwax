@@ -5,8 +5,8 @@
 
 use super::Writer;
 use super::overlay::{
-    After, Pending, Refusals, Row, RowPlan, chain, change_from_code, rehome_chain, row, row_at,
-    shown, shown_at,
+    After, Pending, Refusals, Row, RowPlan, chain, change_from_code, defer_blob_deletions,
+    rehome_chain, row, row_at, shown, shown_at,
 };
 use crate::store::StoreError;
 use crate::store::api::StoreVersion;
@@ -216,6 +216,7 @@ impl Writer {
             Some(_) => {
                 let plans = touched.plans(&tx)?;
                 prune(&tx)?;
+                defer_blob_deletions(&tx, &plans)?;
                 self.state.commit_rows(tx, &plans, BTreeSet::new())?.version
             }
             None => StoreVersion(self.state.version),

@@ -102,6 +102,10 @@ pub(crate) enum ReadJob {
         account: AccountId,
         reply: Sender<Vec<crate::store::Pop3Uidl>>,
     },
+    IsPop3 {
+        account: AccountId,
+        reply: Sender<bool>,
+    },
 }
 
 impl ReadJob {
@@ -127,6 +131,7 @@ impl ReadJob {
             ReadJob::RemoteSenders { reply } => reply.is_closed(),
             ReadJob::Conversation { reply, .. } => reply.is_closed(),
             ReadJob::Pop3Uidls { reply, .. } => reply.is_closed(),
+            ReadJob::IsPop3 { reply, .. } => reply.is_closed(),
         }
     }
 }
@@ -247,6 +252,9 @@ impl Reader {
             }
             ReadJob::Pop3Uidls { account, reply } => {
                 let _ = reply.try_send(self.pop3_uidls(account));
+            }
+            ReadJob::IsPop3 { account, reply } => {
+                let _ = reply.try_send(self.is_pop3(account));
             }
         }
     }

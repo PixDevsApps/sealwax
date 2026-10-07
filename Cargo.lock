@@ -3311,6 +3311,7 @@ dependencies = [
  "oo7",
  "rcgen",
  "reqwest",
+ "rusqlite",
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",

@@ -292,7 +292,14 @@ impl Deletions {
     /// Every copy of a draft that is discarded, sent or moved to another account: the rows of
     /// its folders with its Message-ID, its recorded copy and an upload under way.
     fn all(&mut self, tx: &Connection, draft: &DraftRow) -> rusqlite::Result<()> {
-        if draft.local || draft.pop3 {
+        if draft.local {
+            return Ok(());
+        }
+        if draft.pop3 {
+            // Its copies are rows of its local Drafts folder, deleted at once.
+            for folder in drafts_folders(tx, draft.account)? {
+                self.rows(tx, folder, &draft.message_id, (1, None), None)?;
+            }
             return Ok(());
         }
         let mut folders = BTreeSet::new();
@@ -380,6 +387,16 @@ impl Deletions {
         }
         Ok(())
     }
+}
+
+/// The account's folders with the Drafts role.
+pub(crate) fn drafts_folders(
+    tx: &Connection,
+    account: AccountId,
+) -> rusqlite::Result<Vec<FolderId>> {
+    tx.prepare_cached("SELECT id FROM folders WHERE account_id = ?1 AND role = 'drafts'")?
+        .query_map([account.0], |row| row.get(0).map(FolderId))?
+        .collect()
 }
 
 /// Whether the store holds a row at `uid` of `folder` under `uidvalidity` (its deletion then
@@ -550,6 +567,7 @@ impl State {
         if plans.is_empty() {
             return self.commit(tx, ChangeEvent::default());
         }
+        super::overlay::defer_blob_deletions(&tx, plans)?;
         Ok(self.commit_rows(tx, plans, BTreeSet::new())?.version)
     }
 }
@@ -1359,12 +1377,9 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Deferred)?;
+        // A POP3 account's copies go to its local Drafts folder (`draft_filed`).
         let local: Option<bool> = tx
-            .prepare_cached(
-                "SELECT key IS NULL \
-                   OR EXISTS(SELECT 1 FROM pop3_accounts WHERE account_id = accounts.id) \
-                 FROM accounts WHERE id = ?1",
-            )?
+            .prepare_cached("SELECT key IS NULL FROM accounts WHERE id = ?1")?
             .query_row([account.0], |row| row.get(0))
             .optional()?;
         if local != Some(false) {

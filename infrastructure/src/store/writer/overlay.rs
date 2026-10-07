@@ -589,6 +589,20 @@ impl State {
     }
 }
 
+/// Records the raw messages of the rows `plans` delete, for an actor to delete once nothing
+/// refers to them: what ops done at once (local and POP3 accounts) delete, whose replies go to
+/// the app, which deletes no blobs.
+pub(crate) fn defer_blob_deletions(tx: &Connection, plans: &[RowPlan]) -> rusqlite::Result<()> {
+    let mut insert =
+        tx.prepare_cached("INSERT OR IGNORE INTO blob_deletions(blob_key) VALUES (?1)")?;
+    for plan in plans {
+        if let (After::Deleted, Some(blob)) = (&plan.after, &plan.row.blob) {
+            insert.execute([blob.0.as_slice()])?;
+        }
+    }
+    Ok(())
+}
+
 /// Of `blobs`, those no row, draft or outbox entry refers to any more.
 pub(crate) fn orphaned(
     tx: &Connection,
