@@ -6,7 +6,7 @@ A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 an
 
 ## Status
 
-**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0 (accessibility, the security review and fuzzing, this documentation, then performance, packaging and the sign-off), is under way. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use. [docs/PLAN.md](docs/PLAN.md) has the current state.
+**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0, is under way: accessibility, the security review and fuzzing and this documentation are done; UI polish is next, then performance, packaging and the sign-off. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use. [docs/PLAN.md](docs/PLAN.md) has the current state.
 
 ## Features
 
