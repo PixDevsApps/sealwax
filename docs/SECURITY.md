@@ -87,18 +87,19 @@ HTML that enters a draft from elsewhere (a quoted or forwarded original, a draft
 - Microsoft sign-in: the address never goes into the sign-in URL (no `login_hint`); the sign-in URL, code, tokens and the username are never logged (ML-032).
 - Autodetect: the full address goes only to the domain's own HTTPS autoconfig; ISPDB, MX and SRV lookups use the domain. Plain-HTTP autoconfig is never used. A redirect that would carry the address to any other host is refused: S4b found `autoconfig.msn.com` redirecting to `www.msn.com` with the address kept, which S4's audit had missed. Hosts that resolve to non-public addresses are neither fetched nor probed.
 - No avatars, favicons, BIMI or Gravatar lookups; no read receipts; no telemetry.
+- New-mail notifications (M7) give the desktop's notification server the sender and the subject, the user's choice at M7's start; the text is mail content, so control and direction characters are dropped, it is capped (80 and 200 characters), and the body is markup-escaped where the server reads markup. omarchy-shell writes toasts under `~/.local/state/omarchy/notifications/`; `[notifications] show = "count"` sends only a count, and `enabled = false` nothing.
 - Development and spikes never put the user's address or personal data in network requests ([ADR-018](DECISIONS.md#adr-018--logging-and-privacy-2026-10-04)).
 
 ### Logging
 
-Logs never contain message bodies, subjects, addresses, folder names, tokens or protocol traces; AUTH lines are always redacted. Logs use account ids and counts.
+Logs never contain message bodies, subjects, addresses, folder names, search text, tokens or protocol traces; AUTH lines are always redacted. Logs use account ids and counts. The search query's types (`Query`, `Term`, the store's FTS expression) and anything holding a notification's text print counts or lengths in `Debug` (M7).
 
 Third-party protocol crates are capped at `warn` whatever `RUST_LOG` says: S1 found that async-imap's trace logging prints the LOGIN password ([ADR-018 amendment](DECISIONS.md#adr-018-amendment--third-party-trace-logs-2026-10-04)). A test runs the testbed suites at trace level and greps the captured logs for credentials, tokens, addresses and folder names.
 
 ### Local data
 
 - Private folders are created 0700 and files 0600 (database, blobs, drafts, temporary attachment copies under `$XDG_RUNTIME_DIR/<app-id>/attachments`).
-- The app never edits `~/.config` outside its own folder, `~/.local/state/omarchy` or system files, except through opt-in commands the user confirms (the default mail handler: Make Sealwax the Default Mail App…, which asks first; M6).
+- The app never edits `~/.config` outside its own folder, `~/.local/state/omarchy` or system files, except through opt-in commands the user confirms: the default mail handler (Make Sealwax the Default Mail App…, which asks first; M6) and Start Sealwax at Login (M7), which asks before it writes `$XDG_CONFIG_HOME/autostart/<app-id>.desktop` and, turned off, deletes only that file.
 - Drafts, their parts and the outbox's built messages live in the store and the blob store (0600); a part's bytes stay until the draft is discarded or sent, even after the part is removed in the editor, and the disk cap never evicts them (M6).
 
 ## Known limitations

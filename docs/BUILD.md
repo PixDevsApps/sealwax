@@ -53,7 +53,10 @@ target/release/sealwax-fixtures generate --count 2000 --seed 7 --out target/m1-s
 target/release/sealwax-fixtures import --count 100000 --seed 1 --store target/m1-store/100k/store.sqlite
 target/release/sealwax-fixtures bench --store target/m1-store/100k/store.sqlite
 target/release/sealwax-fixtures check --store target/m1-store/100k/store.sqlite
+target/release/sealwax-fixtures bench-search --store COPY/store.sqlite --blobs COPY/blobs --cold 10 --warm 30 --rebuild yes
 ```
+
+`bench-search` (M7) times the first 50 results of 38 query shapes cold and warm, a word typed a key at a time, the index's size, schema v10's pass when the store comes from an earlier build, Rebuild Search Index with flag changes and searches beside it, and optionally (`--date-keyed yes`) S3's date-keyed table to compare; run it on a copy, since it migrates and rebuilds.
 
 Always give `--store` a scratch path; the app's own store is `SealwaxDirs::from_env().store_file()`. The store links the system SQLite and refuses one without FTS5 or `contentless_delete` (≥ 3.43).
 
@@ -80,6 +83,19 @@ target/release/examples/composer_live --live                        # authorized
 
 `kill9-compose.sh` (debug build first: `cargo build`) runs Sealwax headless on a scratch store under `.local/kill9/`, types into a composer every 200 ms, kills it with SIGKILL at a random moment, starts it again on the same folders and reads the reopened draft; about 12 s a run, so it isn't in `tools/ci.sh`. `composer_live` times an edit to the painted frame in the real composer's editor (S7's method: WebKit's `InsertText`, a paint probe, no key events) in a small document and above a 199 KB quoted thread, then scrolls the quote; it makes no input, uses scratch XDG folders, writes its report under `.local/reader/`, and ends by itself. The testbed's sending suites (`send_testbed`, `append_testbed`, `outbox_testbed`) run under `tools/ci.sh --testbed`; `SEALWAX_OUTBOX_SEEDS` sets the outbox suite's seeds (2 by default).
 
+## Search, notification and background measurements (M7)
+
+```sh
+cargo build --release -p sealwax
+SEALWAX_HEADLESS_TIMEOUT=900 tools/headless.sh 53 target/release/sealwax --self-test tests/selftest/perf-search.sealwax-test   # key → results at 100,000
+python3 tools/testbed/notify_e2e.py 21          # new mail in background mode, end to end on the testbed (debug build first)
+cargo build -p sealwax --example notify_live
+tools/headless.sh 56 target/debug/examples/notify_live            # dry run (the stand-in clicks)
+target/debug/examples/notify_live --live                          # authorized live runs only: the user clicks
+```
+
+`perf-search` uses perf-list's 100,000-message fixture store under `target/perf-list/`. `notify_e2e.py` runs `tests/selftest/testbed-notify.sealwax-test` (the real engine on Stalwart's `newmail` user, the window closed into background mode) and APPENDs one fictional message as another IMAP client once the window has closed, timing its OK to the notification at the stand-in server. `notify_live` sends two notifications over a scratch fictional mailbox (app-id `io.github.pixdevsapps.Sealwax.NotifyLive`) and records which message each click opened; it injects no input. `SEALWAX_CLOSE_WINDOW_AFTER_MS` (development builds only) closes the first main window that long after its first frame, a test hook like `SEALWAX_EXIT_AFTER_MS` (`background-*` self-tests).
+
 ## Headless GTK runs
 
 `tools/headless.sh <display> <cmd...>` starts `gtk4-broadwayd` on `127.0.0.1:<8080 + display>`, runs the command with `GDK_BACKEND=broadway`, a private D-Bus bus from `tools/headless-dbus.conf` (no service directories, so no portal, gvfs or at-spi can start and reach the live session), `GSETTINGS_BACKEND=memory` and `ADW_DISABLE_PORTAL=1`, and cleans up the daemon and its socket. It refuses a display that is already in use. Every run gets scratch XDG folders under `.local/headless-<display>/` (config, cache, data, state), so nothing it writes — WebKit's data included — lands in the user's home. Never replace it with a plain `dbus-run-session`.
@@ -102,7 +118,7 @@ python3 tools/testbed/check.py      # health check
 tools/testbed/down.sh               # stop and remove; --keep-volumes keeps the mail
 ```
 
-The users are alice, bob, perf, rand, fault, idle, spike, ops, opsfault and triage (the last three added for M4), and carol, dave, outbox and outboxfault (added for M6's sending suites; on a running testbed, `python3 tools/testbed/stalwart_setup.py` and `tools/testbed/seed.sh` add them), password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (the S1 harness takes an override path from `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
+The users are alice, bob, perf, rand, fault, idle, spike, ops, opsfault and triage (the last three added for M4), carol, dave, outbox and outboxfault (added for M6's sending suites) and newmail (M7's new-mail suite and end-to-end check; on a running testbed, `python3 tools/testbed/stalwart_setup.py` and `tools/testbed/seed.sh` add them), password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (the S1 harness takes an override path from `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
 
 `bash tools/ci.sh --testbed` (M3) runs, after the usual checks, every test file with tests ignored as "needs the testbed", in release and one test at a time, since the suites share test users; each file's output goes to `.local/testbed-<package>-<file>.log`. With no testbed container running it starts and seeds the testbed first and stops it at the end with `down.sh --keep-volumes`; a running testbed is used and left running, and a partly running one is refused. The suites need `tools/testbed/certs/` (the CA, and the server certificate for their proxies); a worktree has none, so link it there from the checkout that started the testbed. The sync soak (ML-049) is ignored for another reason and stays out; it runs by hand for as long as `SEALWAX_SOAK_MINUTES` says (30 unless set):
 

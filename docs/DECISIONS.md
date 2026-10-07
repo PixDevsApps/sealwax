@@ -147,6 +147,14 @@ Built in M3 ([report](m3/actor.md)).
 - **Stopping:** `Engine::stop` LOGOUTs within 300 ms per connection and aborts after 1.2 s.
 - **Reconnecting:** on resume and when the network comes back the app sends `Reconnect`, which drops every connection of every account and connects again at once (S6).
 
+### ADR-003 amendment — background mode as built (M7, 2026-10-07)
+
+Built in M7 ([report](m7/background.md)); accepted at the M7 gate (the user's delegation, 2026-10-07).
+- **The hold** follows `[background] enabled` (on by default, [ADR-013](#adr-013-amendment--background-mode-on-by-default-notifications-show-sender-and-subject-m7-start-2026-10-06)) and changes as soon as `config.toml` does; with it off and no window left, Sealwax quits through the one quit path. `--background` holds until a main window has shown, even with background mode off, so an autostart entry still means "sync from login".
+- **The engine without a window:** when Sealwax starts with no main window (`--background`, or a composer opened alone), the engine starts once the store and the settings are read, with the desktop watch (resume and network), and only once: a window shown later never starts a second engine. Start → engine running with its accounts p50 47.4 ms (release, headless).
+- **A closed window is freed** with its list and reader: the window's handlers look the window and the list up through `AppState`, and no closure the window owns keeps a clone of `Window`, `MessageList` or `Reader` (`background-memory` and `assert-freed` check it). Before the fix every close and reopen kept about 7.5 MiB (debug: 155.7 → 381.2 MiB over 30 cycles); after it memory stays flat. A window built again creates its reader after its own first frame; activation from background mode → first frame p50 63.8 ms, p95 67.1 ms (release, headless).
+- **Opt-in autostart** (PRD D6's P1 part) is Start Sealwax at Login: an XDG autostart entry running `sealwax --background`, written only after the user agrees; Omarchy runs XDG autostart entries through uwsm and systemd's generator (read on this machine, 2026-10-06).
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.
@@ -278,6 +286,17 @@ Built in M6's phase A ([report](m6/drafts-store.md)). Migration v9 adds:
 
 Draft saves bump no version and send no event (p99 1.24 ms for a 200 KB body at 100,000 messages); outbox writes send one with `ChangeEvent::outbox`. Contacts are found by prefixes of the address, its domain and the name's words, folded (p95 ≤ 0.6 ms with the fixture's contacts, ≤ 13.2 ms with 50,000 more). `Store::reply_draft` (phase B) finds a quick reply's closed draft by the message it answers. A draft is uploaded to the Drafts folder 30 s after its last save while its window is open and 10 s after it when none is (phase B's integration: the quick reply keeps its draft closed while the user types).
 
+### ADR-005 amendment — schema v10: search (M7, 2026-10-07)
+
+Built in M7 ([report](m7/search.md)); its proposals accepted at the M7 gate (the user's delegation, 2026-10-07).
+- **The query language** is pure code in `domain::search`: `parse`, and `parse_typed` for text as typed, where the last word is the start of a word until a space follows it (never inside quotes or for an excluded word). `from:`, `to:`, `subject:`, `has:attachment`, `is:unread|read|starred`, `before:`/`after:` (local days; six forms), quoted values, `-word`, `-"phrase"`, `-has:`, `-is:` and negated dates; prefixes need two letters or digits.
+- **Plans:** FTS first when a term has at most 200 matches, date first otherwise; a query without words walks a date index; partial indexes within one folder. **Date first is kept** over S3's date-keyed rowid: measured faster warm, but 54 % larger and reachable only through a fresh index, which would lose the preview words of messages whose body isn't stored. "Every folder" leaves out Trash, Junk and detached accounts.
+- **Folding, corrected:** `unicode61 remove_diacritics 2` folds å, but neither ø nor æ (S3's amendment said it folded ø). The index and every query store æ as "ae" and ø as "o", and queries also ask for the old spelling while old entries remain; `aa` and `oe` spellings stay unfolded. Attachment names are indexed in the body column; the 256 KiB body cap stays.
+- **Schema v10** builds the date index again with `has_attachments` (the slowest combined shape went from 108 to 49 ms cold) and schedules one background pass over the index, through the full-text lane that yields to interactive writes: 24.7–25.0 s at 100,000 messages, a flag change meanwhile p95 ≤ 10.4 ms. Opening and migrating a v9 store of 100,000 took 84–113 ms (and 1,859 ms once, right after an unsynced 1.1 GB copy). v0.3.0 can't open a v10 store.
+- **Rebuild Search Index** works in place, a few messages a transaction with automatic merging off and a merge at the end; it resumes after a restart, keeps the entry of a message whose body the store doesn't hold, and answers a second request with the first one's reply: 19.3–25.4 s at 100,000.
+- **Measured** on the merged build (release, 2026-10-07, `bench-search`): the first 50 results of 38 shapes at 100,000 messages, worst p95 82.3 and 88.5 ms cold, 24.4 and 24.5 ms warm, against the 100 ms bar; the agent's runs 66.2–74.8 ms cold.
+- `Query`, `Term` and the store's FTS expression print counts or lengths in `Debug` (ADR-018).
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -387,6 +406,10 @@ Found by M4's randomized triage suite ([report](m4/runner.md#the-flag-refresh-fi
 ### ADR-006 amendment — parts and originals on demand (M5, 2026-10-06)
 
 Built as [m5/files.md](m5/files.md) records. `Command::FetchPart` fetches `BODY.PEEK[<section>.MIME]` and `BODY.PEEK[<section>]` by the section the store recorded, and `Command::FetchOriginal` fetches `BODY.PEEK[]`, on the account's body connection after EXAMINE and the UIDVALIDITY check, ahead of body batches, one at a time, retried once after a cut. Nothing is stored and nothing is marked `\Seen`; a vanished UID or a new UIDVALIDITY is `Gone`. The reader uses them for a large message stored as its text parts: its attachments, its inline images (served as the type the stored message declares) and Show Original and Save as .eml. On the testbed a 12 MB original took 25–63 ms and its 4.4 MB attachment 28–43 ms, byte for byte.
+
+### ADR-006 amendment — new mail reported per committed step (M7, 2026-10-07)
+
+Built in M7 ([report](m7/notifications.md)). `Event::NewMail { account, folder, messages }` is sent from the account's actor as each step of a folder pass commits (not once per pass, which a cut after a commit would lose), for the rows at or above the UIDNEXT the store held, the UID diff's included. Never for a first sync (also after a UIDVALIDITY reset), older mail (`LoadOlder`), or the account's own moves: re-homed rows are never inserted again, and the actor's record of its moves (10 minutes) keeps out a move whose new UID stayed unknown. Mail that arrived while Sealwax was stopped is reported at the next start. Testbed, release: APPEND OK → `NewMail` median 1.7 ms on Stalwart and 497.8 ms on Dovecot (its own IDLE delay); end to end in background mode with no window, APPEND OK → the notification 10–23 ms on Stalwart (5 runs).
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
@@ -705,6 +728,17 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 
 **Reason:** on Omarchy a notification click reaches Sealwax only while it runs (S6), so background mode is what makes D5 work; the sender and subject are what most mail clients show, and the private mode covers shared screens.
 
+### ADR-013 amendment — M7 gate decisions: notifications and background mode as built (2026-10-07)
+
+**Status:** Accepted — the user's delegation at M7's end ("I trust you and go with your recommendations"), 2026-10-07.
+
+**Decision:**
+- **Notifications** ([report](m7/notifications.md)): unread mail in an Inbox only; quiet while the focused window's list shows that folder or All Inboxes; up to three of their own within 30 s, then one "N new messages" that replaces itself; normal urgency; the sender (else the address) as the title and the subject as the body, capped at 80 and 200 characters, or "New mail" and a count in the count mode; Archive and Mark Read as buttons where the server shows them; withdrawn when the message is read, moved or deleted anywhere, and when the user switches to the count mode or off. The actions behind a notification take a message id, so they are application actions outside the registry. Per-account muting isn't built (a follow-up).
+- **Background mode** ([report](m7/background.md)): the one-time notice shows when the last window (main or a composer opened alone) closes into background mode, once per user.
+- **Opt-in autostart** is built as Start Sealwax at Login (ADR-003's M7 amendment).
+
+**Reason:** the agents' proposals as built; the live check passed on omarchy-shell on 2026-10-07 (a click opened the right message, 14.9 ms with the window open, 73.4 ms from background mode).
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
@@ -899,6 +933,10 @@ Accepted by the user at the M5 gate ("Ctrl+U: Show Original", "Ctrl+S: Save as .
 ### ADR-017 amendment — M6's keys accepted (M6 gate, 2026-10-06)
 
 Accepted by the user at the M6 gate ("Keep both", 2026-10-06): Paste as Plain Text takes Ctrl+Shift+V in the composer (Move to…'s Ctrl+Shift+V is in the list's and the reader's scope), and Open Reply in Composer takes the approved mock's Ctrl+Shift+E in the reader (IBus uses it for emoji typing; fcitx5, Omarchy's input method, doesn't by default). The composer's other keys are the approved mock's (Ctrl+B, Ctrl+I, Ctrl+U, Ctrl+K, Ctrl+Z, Ctrl+Enter) and ADR-014's (Ctrl+Shift+Z and Ctrl+Y for redo). No Close Composer command: Hyprland's own close closes a composer and keeps its draft. Quick Reply, Edit Draft, Attach File…, Add Cc and Bcc, Discard Draft, the other formatting commands and Make Sealwax the Default Mail App… keep no default key. Enter, `o` and a double click on a message of a Drafts folder open it in the composer (the user's choice at the same gate, "Open in the composer").
+
+### ADR-017 amendment — M7 adds no keys (M7 gate, 2026-10-07)
+
+**Status:** Accepted at the M7 gate (the user's delegation, 2026-10-07). No registry key was added: Rebuild Search Index and Start Sealwax at Login have none. The search field's own keys while its suggestions show (Down, Up, Tab, Enter, Escape; Down with them closed lists the operators) are the field's, as the composer's recipient suggestions are. The notification actions aren't registry commands.
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 
