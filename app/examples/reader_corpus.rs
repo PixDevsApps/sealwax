@@ -19,7 +19,8 @@
 //! ```
 //!
 //! `--previews` saves the gate's screenshots of a few templates in both themes into
-//! `tools/progress/public/`. Exits 0 when no body is blank, every height is exact and stable,
+//! `tools/progress/public/`. `--no-snapshots` skips the two blank-frame checks, which render the
+//! whole view, to measure the GPU memory without them (PLAN.md's follow-up). Exits 0 when no body is blank, every height is exact and stable,
 //! the canary saw nothing and GLib wrote no critical; times and overflow are recorded, not
 //! judged.
 
@@ -389,6 +390,7 @@ fn main() -> glib::ExitCode {
     let _ = sealwax_infrastructure::logging::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let previews = args.iter().any(|arg| arg == "--previews");
+    let snapshots = !args.iter().any(|arg| arg == "--no-snapshots");
     let only: Option<Vec<String>> = args
         .iter()
         .find_map(|arg| arg.strip_prefix("--only="))
@@ -471,6 +473,7 @@ fn main() -> glib::ExitCode {
             glib::spawn_future_local(async move {
                 let ok = run(
                     &theme, &reader, &window, &state, &messages, &filled, &canary, previews,
+                    snapshots,
                 )
                 .await
                 .unwrap_or_else(|error| {
@@ -501,6 +504,7 @@ async fn run(
     filled: &samples::Filled,
     canary: &Canary,
     previews: bool,
+    snapshots: bool,
 ) -> Result<bool, String> {
     let reports = support::shown_reports(reader);
     if std::env::var_os("BROADWAY_DISPLAY").is_some() {
@@ -525,7 +529,7 @@ async fn run(
             let id = filled
                 .id(&message.id)
                 .ok_or_else(|| format!("{} wasn't stored", message.id))?;
-            let row = measure(reader, &reports, window, message, id, mode).await;
+            let row = measure(reader, &reports, window, message, id, mode, snapshots).await;
             print_row(&row);
             if previews && PREVIEWS.contains(&message.id.as_str()) {
                 let date = glib::DateTime::now_local()
@@ -638,6 +642,7 @@ async fn measure(
     message: &Message,
     id: sealwax_domain::model::MessageId,
     theme: &'static str,
+    snapshots: bool,
 ) -> Row {
     let mut row = Row {
         id: message.id.clone(),
@@ -678,7 +683,24 @@ async fn measure(
         row.failures.push(format!("shown as {:?}", shown.body));
         return row;
     }
+    if message.html.is_none() {
+        return row;
+    }
+    let waited = Instant::now();
+    if !support::wait_until(Duration::from_secs(3), || reader.web_view().is_some()).await {
+        row.failures
+            .push("an HTML body without a view for 3 s after it was shown".into());
+        return row;
+    }
+    if waited.elapsed() >= Duration::from_millis(10) {
+        println!(
+            "VIEW_LATE theme={theme} id={} after={:.1}ms",
+            message.id,
+            waited.elapsed().as_secs_f64() * 1000.0
+        );
+    }
     let Some(view) = reader.web_view() else {
+        row.failures.push("the body's view went away".into());
         return row;
     };
     settle(reader, window).await;
@@ -724,6 +746,9 @@ async fn measure(
     }
     if !row.stable {
         row.failures.push("the height moved on a re-measure".into());
+    }
+    if !snapshots {
+        return row;
     }
     row.blank_webkit = match view
         .snapshot_future(

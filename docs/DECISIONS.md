@@ -704,6 +704,10 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 
 `reader_memory --opens=N` measured the follow-up the M5 gate set: live, the app's process is flat after 200 opens and WebKit's web process after about 1,000–1,200; from 1,000 to 3,000 opens the process tree stays within 394–422 MiB with no trend (two runs, 399.0 and 399.2 MiB at 3,000); headless the tree stops growing at 200 ([TESTING.md](TESTING.md#reader-memory-over-1000-and-3000-opens--2026-10-07)). By the gate's rule ("fixed before 1.0 if it doesn't level off") no fix is needed; the follow-up is closed. The growth over the first 200 opens stays as measured at M5.
 
+### ADR-011 amendment — the corpus's GPU growth was the harness (2026-10-07)
+
+The 118 → 1,350 MiB of GPU memory during M5's `reader_corpus` run came from the harness's own blank-frame checks, which render each whole view (up to 13,000 px) as textures: with them the run reached 1,352 MiB again; with `--no-snapshots`, three live runs held 47 MiB from start to end ([TESTING.md](TESTING.md#the-corpus-harnesss-gpu-memory--2026-10-07)). The reader stays within the GPU budget's ~64 MiB of GPU memory on the whole corpus.
+
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
 **Status:** Accepted — user decision, 2026-10-04.
