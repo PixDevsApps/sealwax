@@ -564,6 +564,15 @@ impl AppState {
         }
     }
 
+    /// Refresh (M8): every account checks for new mail now and keeps its connections; an IMAP
+    /// account runs an account pass, a POP3 account a pass.
+    fn check_mail(&self) {
+        match self.engine.send(Command::CheckMail) {
+            Ok(()) => tracing::info!("checking for new mail"),
+            Err(_) => tracing::debug!("no engine to check mail"),
+        }
+    }
+
     /// Drops every connection and makes it again (ADR-003 amendment, S6), without waiting for
     /// a socket to fail.
     fn reconnect(&self, why: &'static str) {
@@ -1081,6 +1090,12 @@ impl AppState {
                 && let Some(window) = state.window()
             {
                 setup::open(&window, &state.engine, state.microsoft_available());
+            }
+        });
+        let weak = Rc::downgrade(self);
+        win_actions.connect(ActionId::Refresh, move || {
+            if let Some(state) = weak.upgrade() {
+                state.check_mail();
             }
         });
         let weak = Rc::downgrade(self);

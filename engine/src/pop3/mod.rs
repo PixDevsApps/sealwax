@@ -98,13 +98,15 @@ pub enum Pop3Error {
 
 impl Pop3Error {
     /// What the setup assistant or the account's status tells the user. A busy maildrop is
-    /// `Other`, which the account's status treats as offline and retries.
+    /// `Busy`, which the account's status treats as offline and retries.
     pub fn failure(&self) -> LoginFailure {
         match self {
             Pop3Error::Connect(error) => error.failure(),
             Pop3Error::StartTls => LoginFailure::NoTls,
             Pop3Error::Rejected(failure) => *failure,
             Pop3Error::Timeout => LoginFailure::Timeout,
+            Pop3Error::NoUidl => LoginFailure::NoUidl,
+            Pop3Error::Busy(_) => LoginFailure::Busy,
             _ => LoginFailure::Other,
         }
     }

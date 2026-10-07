@@ -518,7 +518,7 @@ async fn a_server_without_uidl_is_refused() {
     )
     .await
     .unwrap_err();
-    assert_eq!(failure, LoginFailure::Other);
+    assert_eq!(failure, LoginFailure::NoUidl);
     let received = server.await.unwrap();
     assert!(!received.iter().any(|line| line == "QUIT"));
 

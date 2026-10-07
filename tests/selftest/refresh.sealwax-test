@@ -1,0 +1,17 @@
+# Refresh (M8): F5 and Ctrl+Alt+R ask the engine to check every account for new mail now
+# (Command::CheckMail), keeping its connections; the View menu and the palette offer it.
+# Run: tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/refresh.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+mail-account Personal
+folder inbox Personal
+engine-expect folder-opened
+action win.refresh
+engine-expect check-mail
+focus list
+key F5
+engine-expect check-mail
+key <Control><Alt>r
+engine-expect check-mail

@@ -146,6 +146,22 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
             "The server didn't answer in time",
             format!("{host} took too long to answer. Check that you're online, then try again."),
         ),
+        LoginFailure::NoUidl => Notice::problem(
+            "This POP3 server can't keep track of messages",
+            format!(
+                "{server} doesn't number its messages for good (no UIDL), so Sealwax would \
+                 download everything again on every check and couldn't leave mail on the \
+                 server. Use IMAP if your provider offers it."
+            ),
+        ),
+        LoginFailure::Busy => Notice::problem(
+            "The mailbox is busy",
+            format!(
+                "{server} says the mailbox is in use or wants a pause between sign-ins. Another \
+                 mail app may be downloading from it: close that app, or try again in a few \
+                 minutes."
+            ),
+        ),
         // RFC 2449's IN-USE: a POP3 mailbox takes one session at a time.
         LoginFailure::Other if error.protocol == Protocol::Pop3 => Notice::problem(
             "The server refused the sign-in",
@@ -222,7 +238,7 @@ pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
                  secure connections can cause this: try another network, then sign in again."
             ),
         ),
-        LoginFailure::Other => Notice::problem(
+        LoginFailure::Other | LoginFailure::NoUidl | LoginFailure::Busy => Notice::problem(
             "The sign-in didn't work",
             format!(
                 "{server} reported a problem Sealwax doesn't recognise. Sign in again, or try \
@@ -318,7 +334,9 @@ pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
         LoginFailure::AppPasswordRequired
         | LoginFailure::ImapDisabled
         | LoginFailure::SignInDeclined
-        | LoginFailure::Timeout => login_failure(error, context),
+        | LoginFailure::Timeout
+        | LoginFailure::NoUidl
+        | LoginFailure::Busy => login_failure(error, context),
     }
 }
 
@@ -493,7 +511,7 @@ mod tests {
         }
     }
 
-    const FAILURES: [LoginFailure; 9] = [
+    const FAILURES: [LoginFailure; 11] = [
         LoginFailure::WrongPassword,
         LoginFailure::AppPasswordRequired,
         LoginFailure::ImapDisabled,
@@ -502,6 +520,8 @@ mod tests {
         LoginFailure::Certificate,
         LoginFailure::Unreachable,
         LoginFailure::Timeout,
+        LoginFailure::NoUidl,
+        LoginFailure::Busy,
         LoginFailure::Other,
     ];
 
@@ -594,8 +614,9 @@ mod tests {
             let notice = login_failure(&error, &context);
             assert_eq!(notice.tone, Tone::Problem);
             assert!(notice.body.ends_with('.'), "{failure:?}: {}", notice.body);
+            // Only a server Sealwax can't use as POP3 points to IMAP.
             assert!(
-                !notice.body.contains("IMAP"),
+                failure == LoginFailure::NoUidl || !notice.body.contains("IMAP"),
                 "{failure:?}: {}",
                 notice.body
             );
@@ -609,7 +630,11 @@ mod tests {
             );
             titles.push(notice.title);
             let again = password_again_failure(&error, &context);
-            assert!(!again.body.contains("IMAP"), "{failure:?}: {}", again.body);
+            assert!(
+                failure == LoginFailure::NoUidl || !again.body.contains("IMAP"),
+                "{failure:?}: {}",
+                again.body
+            );
         }
         titles.dedup();
         assert_eq!(titles.len(), FAILURES.len(), "one heading per failure");
@@ -660,9 +685,11 @@ mod tests {
 
     #[test]
     fn every_sign_in_failure_ends_in_signing_in_again() {
+        // Microsoft's sign-in reaches IMAP and SMTP, never POP3's failures.
         let failures = [LoginFailure::SignInDeclined]
             .into_iter()
             .chain(FAILURES)
+            .filter(|failure| !matches!(failure, LoginFailure::NoUidl | LoginFailure::Busy))
             .collect::<Vec<_>>();
         let mut titles = Vec::new();
         for &failure in &failures {

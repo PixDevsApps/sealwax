@@ -234,6 +234,12 @@ pub enum LoginFailure {
     /// The host doesn't resolve or refuses the connection.
     Unreachable,
     Timeout,
+    /// A POP3 server that doesn't number messages for good (no UIDL), so Sealwax can't tell what
+    /// it has downloaded (M8).
+    NoUidl,
+    /// The mailbox is in use by another session, or the server wants a pause between logins
+    /// (POP3's `[IN-USE]`, `[LOGIN-DELAY]`, `[SYS/TEMP]`; M8).
+    Busy,
     /// Anything else the server or the connection did.
     Other,
 }

@@ -240,7 +240,7 @@ async fn a_pop3_account_logs_in_to_pop3_with_the_same_two_username_rule() {
         result,
         Err(LoginError {
             protocol: Protocol::Pop3,
-            failure: LoginFailure::Other,
+            failure: LoginFailure::Busy,
         })
     );
     assert_eq!(pop3.len(), 1, "a busy maildrop isn't a wrong username");

@@ -739,12 +739,12 @@ mod tests {
     fn errors_say_what_the_user_is_told() {
         assert_eq!(Pop3Error::StartTls.failure(), LoginFailure::NoTls);
         assert_eq!(Pop3Error::Timeout.failure(), LoginFailure::Timeout);
-        assert_eq!(Pop3Error::Busy(Busy::InUse).failure(), LoginFailure::Other);
+        assert_eq!(Pop3Error::Busy(Busy::InUse).failure(), LoginFailure::Busy);
         assert_eq!(
             Pop3Error::Rejected(LoginFailure::AppPasswordRequired).failure(),
             LoginFailure::AppPasswordRequired
         );
-        assert_eq!(Pop3Error::NoUidl.failure(), LoginFailure::Other);
+        assert_eq!(Pop3Error::NoUidl.failure(), LoginFailure::NoUidl);
         assert!(Pop3Error::ConnectionLost.is_connection());
         assert!(!Pop3Error::Err.is_connection());
         assert!(!Pop3Error::TooLarge(1).is_connection());

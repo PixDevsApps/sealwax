@@ -319,6 +319,8 @@ impl SyncStatus {
             LoginFailure::NoTls
             | LoginFailure::Unreachable
             | LoginFailure::Timeout
+            | LoginFailure::NoUidl
+            | LoginFailure::Busy
             | LoginFailure::Other => SyncStatus::Offline(failure),
         }
     }
