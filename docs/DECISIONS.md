@@ -301,6 +301,10 @@ Built in M7 ([report](m7/search.md)); its proposals accepted at the M7 gate (the
 
 Built in M8's phase A ([report](m8/pop3-accounts.md)); its proposals wait for the M8 gate. `pop3_accounts` marks an account as POP3 and records its first complete pass; `pop3_uidls` keeps each downloaded UIDL with the row it became (`ON DELETE SET NULL`), when it was downloaded, whether whole or header only, and when Sealwax deleted it on the server; a message and its UIDL are stored in one transaction, so a crash neither loses nor repeats one. `blob_deletions` hands the POP3 actor the raw messages that ops done at once left behind. A POP3 account's local folders (Inbox, Sent, Drafts, Junk, Trash, Archive) are complete from the start (`sync_floor` 1); its mail is never in `bodies`, so the disk cap never evicts it; `replace_folders` refuses an IMAP folder list for it, so a protocol changed in `accounts.toml` can't wipe local mail. The migration only creates tables.
 
+### ADR-005 amendment — the HTML read for the search text (M9, 2026-10-07)
+
+Built on the user's "HTML size cap". The search text and snippet of an HTML-only message come from its HTML's first 256 KiB (`message::HTML_PARSE_LIMIT`; 1 MiB before): html5ever's tree builder is quadratic in the nesting depth (the review's 990,000-byte nested lists: 19.8 s at sync on an idle machine, now 7.4 s). A reply or forward to an original with more HTML quotes its text (ADR-014's composer). The body text kept for the index stays 256 KiB.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -420,6 +424,10 @@ Built in M7 ([report](m7/notifications.md)). `Event::NewMail { account, folder, 
 Built in M8's phase A ([client](m8/pop3-client.md), [accounts](m8/pop3-accounts.md)); the proposals wait for the M8 gate.
 - **The client** is Sealwax's own code over `net`'s sockets and TLS, no crate. Implicit TLS, or STLS right after the greeting with nothing else in plaintext; a refused STLS, a failed handshake or plaintext after STLS's `+OK` refuses the account. CAPA over TLS, before and after the login. SASL PLAIN, else USER/PASS, XOAUTH2 for a token (scripted only). RFC 2449 and 3206 codes classify refusals (the text dropped); `[IN-USE]`, `[LOGIN-DELAY]` and `[SYS/TEMP]` are `Busy`. UIDL is required (a server without it is refused at setup, `LoginFailure::NoUidl`); messages sharing a UIDL are left alone. RETR keeps the bytes and line ends as sent, up to 100 MiB; a larger message's header comes by TOP. Timeouts: 30 s to connect and log in, 60 s a reply, RETR 60 s plus its size at 16 KiB/s. Deletions happen only at a successful QUIT; a QUIT without its answer is unknown (on the testbed it had always deleted).
 - **The actor:** one session per pass, at start, on `Reconnect`, on `Command::CheckMail` (Refresh, M8; IMAP accounts run an account pass for it) and every 5 minutes, never sooner than LOGIN-DELAY; newest first, stored 25 messages or 500 ms at a time; `NewMail` only after the account's first complete pass; the policy's deletions only of what the store recorded whole, by this session's numbers, never of oversized or shared-UIDL messages; a QUIT without its answer settled by the next listing; a busy maildrop changes no status; EXPIRE logged; the outbox runs beside the passes. POP3 accounts are password accounts in 1.0 (Microsoft would need a separate POP scope).
+
+### ADR-006 amendment — a crashed actor started again (M9, 2026-10-07)
+
+Built on the user's "Restart a crashed sync" (2026-10-07; [report](m9/hardening.md#2-restarting-a-crashed-sync-f15)). An account's actor, IMAP or POP3, runs under a supervisor in its task: one that ends in a panic (imap-proto 0.17.0 panics on a reply code followed at once by a non-ASCII character, F15) is started again after the backoff a second failed connection waits (1 s doubling to 5 minutes, jittered; a run longer than 5 minutes starts the count over), the account showing offline meanwhile; one that ends on a stop (removal, quit, `accounts.toml`) stays ended, also when the stop comes during the wait; `Reconnect` restarts it at once. The IDLE connection goes with its actor. The log names the account's id and the count, never the panic's message. Verified against the fake IMAP server with imap-proto's real panic and with injected panics (IMAP's supervisor, POP3's actor); not on a real server.
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
@@ -711,6 +719,10 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 ### ADR-011 amendment — the corpus's GPU growth was the harness (2026-10-07)
 
 The 118 → 1,350 MiB of GPU memory during M5's `reader_corpus` run came from the harness's own blank-frame checks, which render each whole view (up to 13,000 px) as textures: with them the run reached 1,352 MiB again; with `--no-snapshots`, three live runs held 47 MiB from start to end ([TESTING.md](TESTING.md#the-corpus-harnesss-gpu-memory--2026-10-07)). The reader stays within the GPU budget's ~64 MiB of GPU memory on the whole corpus.
+
+### ADR-011 amendment — WebKit's sandbox can't be turned off from the environment (M9, 2026-10-07)
+
+Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web processes outside bubblewrap when `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS` is set (tried: the web process became Sealwax's own child, in Sealwax's namespaces). `main` removes it before any thread starts, in every build, and logs a warning without its value. The self-tests run with it set, and `assert-web-sandbox` checks that the reader's and the composer's web processes run under bubblewrap in a PID namespace of their own. A container without unprivileged user namespaces can't run WebKit's web processes (ML-095 takes that into account).
 
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
@@ -1008,6 +1020,10 @@ Built in M2 ([m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md)).
 
 - **Caps as built:** `infrastructure::logging::CAPPED` holds 15 crates at `warn`: `async_imap`, `imap_proto`, `lettre`, `rustls`, `tokio_rustls`, `hickory`, `reqwest`, `hyper`, `hyper_util`, `h2`, `zbus`, `html5ever`, `markup5ever`, `html2text` and `mail_builder` (the amendments above named all but `hyper`, `hyper_util` and `h2`).
 - **No Referer:** reqwest sent the previous URL, query and all, as the Referer of every redirect it followed, so a redirect the policy allowed (to another host inside the user's domain, without the address in its URL) still carried the address to that host in a header. Autodetect's client now sends no Referer (`.referer(false)`), found by M9's security review ([report](m9/security.md#findings)). The test reads the client's configuration; no real redirect was observed.
+
+### ADR-018 amendment — panics reported without their message (M9, 2026-10-07)
+
+`logging::init` installs a panic hook: a panic located outside Sealwax's own sources (a dependency's or the standard library's code) is reported on stderr by thread and place only, as its message may quote what was being parsed (imap-proto's names a character of the server's reply); Sealwax's own panics keep Rust's report. An actor's panic is logged with the account's id and a count.
 
 ## ADR-019 — Corner radius follows Hyprland (2026-10-04)
 
