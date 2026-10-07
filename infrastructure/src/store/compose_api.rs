@@ -291,6 +291,8 @@ pub enum SentCopyDone {
     ServerSaves,
     /// Refused for good (no Sent folder, the server refuses it): the message stays sent.
     GaveUp,
+    /// Filed into the account's local Sent folder (a POP3 account, M8).
+    Filed,
 }
 
 /// A copy in the server's Drafts folder.
@@ -436,7 +438,7 @@ impl Store {
     }
 
     /// Queues a draft to send from `not_before` (the end of the undo window). Refused for local
-    /// accounts, which have no server.
+    /// accounts, which have no server; a POP3 account sends through its SMTP server.
     pub fn queue_send(&self, id: DraftId, not_before: i64) -> Reply<SendQueued> {
         self.write(|reply| {
             WriteJob::Compose(ComposeJob::Queue {
@@ -576,7 +578,7 @@ impl Store {
     /// The account's Drafts-folder uploads and deletions due at `now`. A draft is due when it
     /// changed since its last upload and was saved at least [`DRAFT_QUIET_MS`] ago while its
     /// window is open, or [`CLOSED_DRAFT_QUIET_MS`] ago when none is; drafts in the outbox aren't
-    /// uploaded. Local accounts have none.
+    /// uploaded. Local accounts and POP3 accounts have none.
     pub fn due_drafts(&self, account: AccountId, now: i64) -> Reply<DueDrafts> {
         self.write(|reply| {
             WriteJob::Compose(ComposeJob::DueDrafts {

@@ -15,6 +15,7 @@ pub mod fts;
 mod maintenance;
 mod ops_api;
 mod overlay;
+mod pop3_api;
 mod reader;
 mod schema;
 mod sync_api;
@@ -60,10 +61,14 @@ mod remote_tests;
 #[cfg(test)]
 mod search_tests;
 
+#[cfg(test)]
+mod pop3_tests;
+
 pub use api::*;
 pub use compose_api::*;
 pub use conversation::{Conversation, ConversationMessage};
 pub use ops_api::*;
+pub use pop3_api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
 pub use sync_api::*;
 pub use views::ViewHandle;
@@ -98,6 +103,11 @@ pub enum StoreError {
     UnknownFolder(FolderId),
     #[error("folder {0} is not in the sync state this step needs")]
     SyncState(FolderId),
+    #[error("unknown account {0}")]
+    UnknownAccount(AccountId),
+    /// A POP3 step for an account that isn't one, or an IMAP step for one that is.
+    #[error("account {0} is not a POP3 account, or is one where IMAP was asked")]
+    NotPop3(AccountId),
     #[error("the store is closed")]
     Closed,
 }

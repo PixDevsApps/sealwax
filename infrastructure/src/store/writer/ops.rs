@@ -1,6 +1,7 @@
 //! The op queue's writes (ML-051, ML-053, ADR-015): triage queued as one op per message with its
 //! overlay, in one transaction; Undo; and what the account's op runner takes and records. Local
-//! accounts (no key) have no server, so their ops are done in the transaction that queues them.
+//! accounts (no key) and POP3 accounts have no server holding their folders, so their ops are
+//! done in the transaction that queues them.
 
 use super::Writer;
 use super::overlay::{
@@ -1181,10 +1182,14 @@ fn account_folders(tx: &Connection, account: AccountId) -> rusqlite::Result<Vec<
         .collect()
 }
 
-/// A local account has no key: fixtures and self-tests, with no server.
+/// A local account has no server holding its folders: one with no key (fixtures and
+/// self-tests) or a POP3 account (M8), whose folders are local.
 fn is_local(tx: &Connection, account: AccountId) -> rusqlite::Result<bool> {
-    tx.prepare_cached("SELECT key IS NULL FROM accounts WHERE id = ?1")?
-        .query_row([account.0], |row| row.get(0))
+    tx.prepare_cached(
+        "SELECT key IS NULL OR EXISTS(SELECT 1 FROM pop3_accounts WHERE account_id = accounts.id) \
+         FROM accounts WHERE id = ?1",
+    )?
+    .query_row([account.0], |row| row.get(0))
 }
 
 fn new_batch(tx: &Connection, kind: i64) -> rusqlite::Result<i64> {

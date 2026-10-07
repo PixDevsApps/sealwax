@@ -21,6 +21,7 @@ pub(crate) use sync::SyncRead;
 mod bodies;
 pub(crate) mod compose;
 mod conversation;
+mod pop3;
 mod remote;
 
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
@@ -97,6 +98,10 @@ pub(crate) enum ReadJob {
         id: MessageId,
         reply: Sender<Versioned<Option<crate::store::Conversation>>>,
     },
+    Pop3Uidls {
+        account: AccountId,
+        reply: Sender<Vec<crate::store::Pop3Uidl>>,
+    },
 }
 
 impl ReadJob {
@@ -121,6 +126,7 @@ impl ReadJob {
             ReadJob::PendingOps { reply, .. } => reply.is_closed(),
             ReadJob::RemoteSenders { reply } => reply.is_closed(),
             ReadJob::Conversation { reply, .. } => reply.is_closed(),
+            ReadJob::Pop3Uidls { reply, .. } => reply.is_closed(),
         }
     }
 }
@@ -238,6 +244,9 @@ impl Reader {
             }
             ReadJob::Conversation { id, reply } => {
                 let _ = reply.try_send(self.conversation(id));
+            }
+            ReadJob::Pop3Uidls { account, reply } => {
+                let _ = reply.try_send(self.pop3_uidls(account));
             }
         }
     }

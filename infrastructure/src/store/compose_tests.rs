@@ -1066,7 +1066,8 @@ fn v9_migrates_a_v8_store_with_mail_and_fills_the_contacts() {
     assert_eq!(kept.len(), 4);
     // Back to v8: what M5 left on disk, with mail in it.
     conn.execute_batch(
-        "DROP TABLE contact_terms; DROP TABLE contacts; DROP TABLE draft_deletions; \
+        "DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \
+         DROP TABLE contact_terms; DROP TABLE contacts; DROP TABLE draft_deletions; \
          DROP TABLE outbox; DROP TABLE draft_blobs; DROP TABLE draft_parts; DROP TABLE drafts; \
          DELETE FROM schema_migrations WHERE version >= 9; PRAGMA user_version = 8;",
     )

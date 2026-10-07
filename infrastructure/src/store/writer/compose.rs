@@ -140,7 +140,10 @@ pub(crate) enum ComposeJob {
 struct DraftRow {
     id: DraftId,
     account: AccountId,
+    /// No key: a fixture's or self-test's account, which can't send.
     local: bool,
+    /// A POP3 account (M8): it sends, but no server holds its Drafts folder.
+    pop3: bool,
     message_id: String,
     revision: u64,
     state: Option<i64>,
@@ -153,7 +156,8 @@ fn draft_row(tx: &Connection, id: DraftId) -> rusqlite::Result<Option<DraftRow>>
     tx.prepare_cached(
         "SELECT d.account_id, a.key IS NULL, d.message_id, d.revision, o.state, d.copy_folder, \
            d.copy_uidvalidity, d.copy_uid, d.copy_mark, d.copy_revision, d.upload_folder, \
-           d.upload_uidvalidity, d.upload_mark \
+           d.upload_uidvalidity, d.upload_mark, \
+           EXISTS(SELECT 1 FROM pop3_accounts WHERE account_id = d.account_id) \
          FROM drafts d JOIN accounts a ON a.id = d.account_id \
          LEFT JOIN outbox o ON o.draft = d.id WHERE d.id = ?1",
     )?
@@ -186,6 +190,7 @@ fn draft_row(tx: &Connection, id: DraftId) -> rusqlite::Result<Option<DraftRow>>
             id,
             account: AccountId(row.get(0)?),
             local: row.get(1)?,
+            pop3: row.get(13)?,
             message_id: row.get(2)?,
             revision: row.get::<_, i64>(3)? as u64,
             state: row.get(4)?,
@@ -287,7 +292,7 @@ impl Deletions {
     /// Every copy of a draft that is discarded, sent or moved to another account: the rows of
     /// its folders with its Message-ID, its recorded copy and an upload under way.
     fn all(&mut self, tx: &Connection, draft: &DraftRow) -> rusqlite::Result<()> {
-        if draft.local {
+        if draft.local || draft.pop3 {
             return Ok(());
         }
         let mut folders = BTreeSet::new();
@@ -1355,7 +1360,11 @@ impl Writer {
             .conn
             .transaction_with_behavior(TransactionBehavior::Deferred)?;
         let local: Option<bool> = tx
-            .prepare_cached("SELECT key IS NULL FROM accounts WHERE id = ?1")?
+            .prepare_cached(
+                "SELECT key IS NULL \
+                   OR EXISTS(SELECT 1 FROM pop3_accounts WHERE account_id = accounts.id) \
+                 FROM accounts WHERE id = ?1",
+            )?
             .query_row([account.0], |row| row.get(0))
             .optional()?;
         if local != Some(false) {
