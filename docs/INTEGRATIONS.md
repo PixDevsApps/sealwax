@@ -92,7 +92,7 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 ## Secret Service
 
 - gnome-keyring 50 owns `org.freedesktop.secrets` on this machine; the "Default keyring" is unlocked and passwordless, so its file is stored unencrypted (protected by full-disk encryption only). See [SECURITY.md](SECURITY.md#known-limitations).
-- Sealwax stores items through oo7 with attributes `{ app: <app-id>, account: <uuid>, kind: password | refresh-token }`. Headless runs use the in-memory store (the private bus starts no services).
+- Sealwax stores items through oo7 with attributes `{ application: <app-id>, account: <the account's key in accounts.toml>, kind: password | refresh-token }` (`engine::secrets`; corrected 2026-10-07 in M9's user guide work, this line said `app` and a uuid). Headless runs use the in-memory store (the private bus starts no services).
 
 ## Default mail handler
 
