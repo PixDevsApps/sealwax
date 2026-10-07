@@ -14,7 +14,8 @@ Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actual
 | Protocol (testbed) | Real servers in Docker: Dovecot 2.4, Stalwart, an IMAP4rev1-only server, a mail catcher; the login check, folder list and first sync (M2), the log grep at trace level; body downloads (ML-044); S1's randomized two-client and fault-injection suites, for the sync core's passes (M3 phase A) and through the engine's per-account actor (phase B: IDLE latency, a cut while idling, a cut mid-FETCH, a black hole lifted with `Reconnect`) | `tools/testbed/`, `engine/tests/testbed.rs` and `engine/tests/log_grep.rs` (M2), `engine/tests/bodies_testbed.rs`, `sync_testbed.rs` and `actor_testbed.rs` (M3), the writes, outbox and sending suites (M4, M6), `engine/tests/newmail_testbed.rs` (M7: new mail through IDLE), `engine/tests/pop3_testbed.rs` and `pop3_accounts_testbed.rs` (M8: POP3), `spikes/s1-imap/tests/testbed.rs` | No: `bash tools/ci.sh --testbed` runs every one (it starts the testbed when it is down) |
 | Soak (testbed) | The engine with four accounts through the fault proxy for hours: a slow other client, cuts, black holes with and without `Reconnect`, suspends; every account compared with the server at each check (ML-049) | `engine/tests/soak.rs` | No: by hand, `SEALWAX_SOAK_MINUTES` long ([BUILD.md](BUILD.md#mail-testbed)) |
 | UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, take screenshots, and load fixture stores (`store-dir`, `fixtures`); `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*`, `perf-*`, `live-*` and `testbed-*`) |
-| Security | Hostile-HTML suite against a local HTTP canary and a DNS canary (M5); secret grep over config, database and logs; outgoing-mail checks (no Bcc, no hostname) | `app/examples/hostile.rs` in `tools/ci.sh --ui`; `app/` and `engine/` tests | Yes |
+| Security | Hostile-HTML suite against a local HTTP canary and a DNS canary (M5); secret grep over config, database and logs; outgoing-mail checks (no Bcc, no hostname); STARTTLS and STLS injection; every fuzz target's entry point over `fuzz/corpus/` (M9) | `app/examples/hostile.rs` in `tools/ci.sh --ui`; `app/` and `engine/` tests | Yes |
+| Fuzzing | 12 coverage-guided libFuzzer targets on the stable toolchain (M9, ML-093): message parsing, HTML, text, links, attachment names, autoconfig XML, search, `mailto:`, the config files, the theme, POP3, IMAP; crashes kept as regression inputs | `fuzz/` (its own workspace), `tools/fuzz.sh <target> [seconds]` | The corpus only, through `cargo test`; fuzzing by hand |
 | Live | Real Wayland session (NVIDIA rendering, notifications, activation, fcitx5) and real test accounts | Manual or agent with authorization | No |
 
 ## Headless runs
@@ -65,6 +66,20 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### M9 phase A: the user guide, the security review and fuzzing — 2026-10-07
+
+Reports: [m9/guide.md](m9/guide.md), [m9/security.md](m9/security.md). Machine as M5's; rustc 1.98.1.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The guide's shortcut table against the registry (`domain/tests/user_guide_keys.rs`, ML-094) | 2 tests; both failed when one key in the guide was changed by hand, both passed after | Pass |
+| Fuzzing (ML-093), 12 targets, stable libFuzzer without sanitizers, 10 s per input, at most four jobs at `nice 10`, 10:16–11:31 | About 13,700 s in all. Final runs: `text` 1,215,890 executions; `pop3` 16,812,278; `attachment` 26,409,419; `autoconfig` 30,807,505; `search` 1,256,698; `mailto` 4,755,663; `theme` 7,974,939; `imap` 4,254,853; `config` 5,416,754; `links` 14,711,870; `html` 219,814 (2,401 s); `message` 105,883 (1,801 s); no crash, hang or input over 1 s. Earlier runs found six faults in Sealwax's code (F3, F5, F6, F7, F8), all fixed with tests, and two beneath it (imap-proto F15, mail-parser F20) | Pass, with F15 open ([report](m9/security.md#fuzzing)) |
+| Deeply nested HTML (F14), release `sealwax-domain`, one run each beside four fuzz jobs | `message::parse` of 55,000 nested `<ul><li>` (990,000 bytes): 37.9 s; of 14,563 (262,134 bytes): 2.56 s; 55,000 nested `<div>`: 9.0 s | A proposal for M9's gate (a 256 KiB cap) |
+| Advisories: `python3 tools/advisories.py -v target/advisory-db Cargo.lock` (RustSec `ef6173c`) | 464 locked packages, 1 match (RUSTSEC-2025-0007, `ring`, withdrawn), 0 vulnerabilities; `fuzz/Cargo.lock` the same | Pass |
+| CI on the branches | Guide: `tools/ci.sh` 1,280 passed, 0 failed, 93 ignored. Security: `tools/ci.sh --ui` on `d91579e` 1,303 passed, 0 failed, 93 ignored, 62 scripts (5,818 steps), the hostile suite clean | Pass |
+
+- **Not verified:** AddressSanitizer (nightly only); the Referer fix over a real redirect; the keyring-password steps in the guide; a clean-system install (ML-095).
 
 ### The corpus harness's GPU memory — 2026-10-07
 

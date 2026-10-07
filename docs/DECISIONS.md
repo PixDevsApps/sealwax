@@ -465,6 +465,10 @@ Built in M6 ([compose rules](m6/compose-domain.md), [sending](m6/send.md)).
 - **APPEND** (`engine::imap::write::append`) takes the folder's mark first; a retry reads the Message-IDs from the mark up (S1: Stalwart never matches `SEARCH HEADER Message-ID`) and appends only what isn't there; a draft's new revision is appended before the old copy is removed (left `\Deleted` without UIDPLUS).
 - **Measured on the testbed:** 240 cut APPENDs on three servers, 0 duplicates, 0 lost; S7's six fixtures arrived byte for byte at Stalwart (14 deliveries) and Mailpit (6).
 
+### ADR-007 amendment — the STARTTLS stream (M9, 2026-10-07)
+
+M9's security review found STARTTLS response injection in submission: lettre 0.11.23 upgrades the stream beneath its own read buffer, so bytes a man in the middle sent right after STARTTLS's `220` were read after the handshake as the server's answers (the scripted test's login check passed while every reply was read one step behind; the password still went over TLS to the real server only). Sealwax now hands lettre a plaintext stream of its own (`engine::smtp::Plain`) that gives at most one line per read until the handshake starts and fails the handshake if anything was read ahead; the login check then fails with `NoTls` and nothing goes over TLS. IMAP and POP3 were already safe (an IMAP injection test added). Checked against scripted servers on the branch ([report](m9/security.md#findings)); the testbed's STARTTLS servers after the merge ([PLAN.md](PLAN.md#m9-phase-a-the-security-review-and-fuzzing-merged--2026-10-07)).
+
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
 **Status:** OAuth2 sign-in for Google and Microsoft in 1.0 is accepted — user decision, 2026-10-04. The mechanism is proposed; S5 is the go/no-go.
@@ -993,6 +997,11 @@ Built in M2 ([m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md)).
 ### ADR-018 amendment — the HTML parser capped (M6, 2026-10-06)
 
 `html5ever`, `markup5ever`, `html2text` and `mail_builder` are capped at `warn` like the protocol crates: html5ever's debug output carries the text it parses, and the log grep caught a draft's body in it while the MIME builder made the plain part ([report](m6/send.md)). The default `info` filter never showed it; `RUST_LOG=debug` would have, in the reader too.
+
+### ADR-018 amendment — the caps as built, and no Referer in autodetect (M9, 2026-10-07)
+
+- **Caps as built:** `infrastructure::logging::CAPPED` holds 15 crates at `warn`: `async_imap`, `imap_proto`, `lettre`, `rustls`, `tokio_rustls`, `hickory`, `reqwest`, `hyper`, `hyper_util`, `h2`, `zbus`, `html5ever`, `markup5ever`, `html2text` and `mail_builder` (the amendments above named all but `hyper`, `hyper_util` and `h2`).
+- **No Referer:** reqwest sent the previous URL, query and all, as the Referer of every redirect it followed, so a redirect the policy allowed (to another host inside the user's domain, without the address in its URL) still carried the address to that host in a header. Autodetect's client now sends no Referer (`.referer(false)`), found by M9's security review ([report](m9/security.md#findings)). The test reads the client's configuration; no real redirect was observed.
 
 ## ADR-019 — Corner radius follows Hyprland (2026-10-04)
 
