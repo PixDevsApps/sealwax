@@ -44,7 +44,7 @@ Outlook.com accepts only OAuth for IMAP and SMTP, so without this registration t
    - No admin consent is needed for your own personal account. Work tenants may require their admin to consent.
 5. Copy the **Application (client) ID** from the Overview page. There is no client secret: the app is a public client and uses PKCE.
 
-Scopes the app requests: `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access` (plus `https://outlook.office.com/POP.AccessAsUser.All` for POP3 accounts). IMAP and SMTP then authenticate with SASL XOAUTH2.
+Scopes the app requests: `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access openid profile` (`engine::oauth::MICROSOFT_SCOPES`; `openid profile` bring the ID token whose `preferred_username` is the login name, ML-032). IMAP and SMTP then authenticate with SASL XOAUTH2. POP3 accounts don't use Microsoft sign-in in 1.0: POP would need `https://outlook.office.com/POP.AccessAsUser.All`, which isn't requested (M8; corrected 2026-10-07, this line said it was requested for POP3 accounts).
 
 ### As registered on 2026-10-05
 
