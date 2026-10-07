@@ -739,6 +739,14 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 
 **Reason:** the agents' proposals as built; the live check passed on omarchy-shell on 2026-10-07 (a click opened the right message, 14.9 ms with the window open, 73.4 ms from background mode).
 
+### ADR-013 amendment — POP3 kept in 1.0; POP3 accounts as M8 starts them (2026-10-07)
+
+**Status:** Accepted — the lead's recommendations, by the user's delegation at M8's start ("Then start M8, still with your recommendations"), 2026-10-07.
+
+**Decision:** POP3 stays in 1.0 (PRD A9, P1), as the user chose at planning. A POP3 account is added through the setup assistant's manual settings (an "Incoming mail: IMAP or POP3" choice) or `accounts.toml`; autodetect stays IMAP. Its mail is downloaded into local folders (Inbox, Sent, Drafts, Junk, Trash, Archive). By default downloaded mail stays on the server and is never deleted there; deleting after N days, or at once, is the user's setting. The first download doesn't notify; later mail does.
+
+**Reason:** the user wanted POP3 kept (2026-10-04); the defaults are the ones that can't lose mail on the server.
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.

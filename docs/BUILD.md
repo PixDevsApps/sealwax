@@ -106,9 +106,9 @@ target/debug/examples/notify_live --live                          # authorized l
 
 | Service | Image | Ports |
 | --- | --- | --- |
-| Dovecot, full extensions | `dovecot/dovecot:2.4.5` | 14993 IMAPS, 14143 IMAP+STARTTLS |
+| Dovecot, full extensions | `dovecot/dovecot:2.4.5` | 14993 IMAPS, 14143 IMAP+STARTTLS, 14995 POP3S, 14110 POP3+STLS (M8) |
 | Dovecot, IMAP4rev1 only | `dovecot/dovecot:2.4.5` | 15993, 15143 |
-| Stalwart | `stalwartlabs/stalwart:v0.16.24` | 16993, 16143, SMTP 16025, submission 16587, submissions 16465, HTTP/JMAP 16080 |
+| Stalwart | `stalwartlabs/stalwart:v0.16.24` | 16993, 16143, POP3S 16995, POP3+STLS 16110 (M8), SMTP 16025, submission 16587, submissions 16465, HTTP/JMAP 16080 |
 | Mailpit | `axllent/mailpit:v1.31.4` | SMTP 17025 (STARTTLS), API 17080 |
 
 ```bash
