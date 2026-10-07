@@ -73,6 +73,7 @@ impl Links {
             .can_focus(false)
             .visible(false)
             .build();
+        strip.set_widget_name("reader-link-strip");
         strip.append(&status);
         overlay.add_overlay(&strip);
         overlay.set_clip_overlay(&strip, false);

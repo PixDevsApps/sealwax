@@ -511,6 +511,7 @@ fn build(
             .build(),
         &["sw-composer-from-list"],
     );
+    from_list.update_property(&[gtk::accessible::Property::Label("Senders")]);
     let from = named(
         classed(
             gtk::MenuButton::builder()

@@ -1,0 +1,91 @@
+# The accessibility pass (M9, ML-092) on the composer window, on phase A's stand-in backend:
+# every control on screen has an accessible name, a role that says what it is and the states its
+# role needs (assert-accessible), with recipient chips, the suggestions, the From and style
+# menus, attachment cards, the size warning, the link dialog and the discard dialog; Tab and
+# Shift+Tab (real key presses) go From → Attach → Discard → To → Cc · Bcc → Subject → the
+# toolbar → the body → Send and round again, and Tab in the body moves on instead of typing a
+# tab. The chosen suggestion is announced, as the entry keeps the focus. Every name, address and
+# file is fictional.
+# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-composer.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Work
+composer-backend stand-in
+composer-identity Support "Work Support" support@example.test
+composer-make-file $TMP/files/Kvartalsrapport.pdf 212000
+composer-make-file $TMP/files/big.bin 25000000
+composer-open new
+composer-wait
+assert-composer focus to
+assert-accessible composer
+assert-accessible-name composer-subject Subject
+assert-accessible-name composer-send Send
+assert-accessible-name composer-from "Send from"
+assert-accessible-name composer-bold Bold
+
+# The Tab order, from the To field round and back.
+tab-chain composer forward 40
+assert-tab-chain composer-to-entry,composer-ccbcc,composer-subject,composer-style,composer-bold,composer-clear-formatting,composer-body,composer-send,composer-from,composer-attach,composer-discard,composer-to-entry
+tab-chain composer backward 40
+assert-tab-chain composer-to-entry,composer-discard,composer-attach,composer-from,composer-send,composer-body,composer-clear-formatting,composer-bold,composer-style,composer-subject,composer-ccbcc,composer-to-entry
+
+# Tab in the body moves on, Shift+Tab back; no tab is typed.
+composer-focus body
+composer-key Tab
+assert-composer focus "GtkButton composer-send"
+composer-focus body
+composer-key <Shift>Tab
+assert-composer focus "GtkButton composer-clear-formatting"
+assert-composer html-lacks "\t"
+
+# Chips, Cc and Bcc, and the suggestions, whose chosen row is announced.
+composer-focus to
+composer-type "kari@example.com,"
+composer-type "not-an-address,"
+assert-composer chips to kari@example.com
+assert-composer invalid to 1
+assert-accessible composer
+composer-click composer-ccbcc
+assert-composer shown composer-cc true
+assert-accessible composer
+composer-focus to
+assert-announced none
+composer-type "a"
+wait-until assert-composer suggestions 6
+assert-accessible composer
+composer-key Down
+assert-composer selected 1
+assert-announced "Adrian Berg, adrian.berg@example.com · 3 messages, Enter"
+composer-key Escape
+
+# The From menu and the paragraph styles.
+composer-click composer-from
+assert-composer shown composer-from-1 true
+assert-accessible composer
+composer-key Escape
+composer-click composer-style
+assert-composer shown composer-style-h2 true
+assert-accessible composer
+composer-key Escape
+
+# An attachment card, and the size warning.
+composer-attach $TMP/files/Kvartalsrapport.pdf
+wait-until assert-composer attachments 1
+assert-accessible composer
+composer-attach $TMP/files/big.bin
+wait-until assert-composer attachments 2
+assert-accessible composer
+
+# The link dialog and the discard dialog: their fields and buttons, and Escape.
+composer-body "<div>see the plans today</div>"
+composer-select "plans"
+composer-key <Control>k
+wait-until assert-composer dialog link true
+assert-accessible composer
+composer-link - cancel
+composer-click composer-discard
+wait-until assert-composer dialog discard true
+assert-accessible composer
+composer-discard-answer cancel
+assert-composer count 1

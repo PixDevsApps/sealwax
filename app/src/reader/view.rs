@@ -125,7 +125,7 @@ const LINKS_JS: &str = r#"(() => {
   document.addEventListener('mouseover', (event) => hover(find(event.target)), true);
   document.addEventListener('mouseout', (event) => hover(find(event.relatedTarget)), true);
   document.addEventListener('focusin', (event) => hover(find(event.target), true), true);
-  document.addEventListener('focusout', (event) => hover(find(event.relatedTarget)), true);
+  document.addEventListener('focusout', (event) => hover(find(event.relatedTarget), true), true);
 })();"#;
 
 /// Collapses quoted history behind a "…" toggle (DESIGN.md "HTML mail inside the theme"), only

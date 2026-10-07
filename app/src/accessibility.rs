@@ -24,16 +24,40 @@ pub fn announce(widget: &impl IsA<gtk::Accessible>, text: &str) {
     if text.is_empty() {
         return;
     }
-    widget.announce(text, gtk::AccessibleAnnouncementPriority::Medium);
     if RECORDING.with(Cell::get) {
         SPOKEN.with(|spoken| spoken.borrow_mut().push(text.to_owned()));
+    }
+    if speaks(widget.upcast_ref()) {
+        widget.announce(text, gtk::AccessibleAnnouncementPriority::Medium);
+    }
+}
+
+/// Whether `accessible` has a screen-reader backend that announces. GTK (4.22) falls back to
+/// its test backend where AT-SPI can't be used (Broadway, `GTK_A11Y=test`), and that backend
+/// leaves `announce` unset, so announcing there crashes; with `GTK_A11Y=none` there is none.
+fn speaks(accessible: &gtk::Accessible) -> bool {
+    use gtk4::glib::translate::ToGlibPtr;
+    // SAFETY: the context comes back with a reference (or NULL), dropped here once its type is
+    // read.
+    unsafe {
+        let context = gtk::ffi::gtk_accessible_get_at_context(accessible.to_glib_none().0);
+        if context.is_null() {
+            return false;
+        }
+        let name = std::ffi::CStr::from_ptr(gtk4::glib::gobject_ffi::g_type_name_from_instance(
+            context.cast(),
+        ));
+        let speaks = name.to_bytes() != b"GtkTestATContext";
+        gtk4::glib::gobject_ffi::g_object_unref(context.cast());
+        speaks
     }
 }
 
 /// What a list row shows, as a screen reader would read it: its visible texts, in order.
 pub fn shown_text(widget: &impl IsA<gtk::Widget>) -> String {
     fn collect(widget: &gtk::Widget, parts: &mut Vec<String>) {
-        if !widget.is_visible() {
+        // An avatar's initials repeat the name beside it.
+        if !widget.is_visible() || widget.has_css_class("sw-avatar") {
             return;
         }
         if let Some(label) = widget.downcast_ref::<gtk::Label>() {

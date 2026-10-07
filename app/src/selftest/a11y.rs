@@ -14,6 +14,7 @@
 //! | `tab-chain window\|composer forward\|backward [MAX]` | Presses Tab (Shift+Tab backward) as real key presses until the focus is back where it started, at most MAX times (60); prints each stop. Fails when a press leaves the focus nowhere or the chain never comes back |
 //! | `assert-tab-chain STOP,STOP,…` | The last chain, from where it started, passed these stops in this order (others may lie between). A stop is the nearest named widget around the focus |
 //! | `assert-tab-stops N` | The last chain had N distinct stops |
+//! | `assert-focus-stop STOP [window\|composer]` | The keyboard focus is at STOP (as `tab-chain` names stops) in the main window or the newest composer |
 //! | `assert-dialog TITLE\|none` | The main window's top dialog has that title, or none is open |
 //! | `menu-open NAME`, `menu-close NAME` | Opens or closes the menu of the menu button NAME, as a click does |
 //! | `link-hooks` | The app's reader records the links it would open instead of opening them |
@@ -46,6 +47,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("tab-chain", 2, 3),
     ("assert-tab-chain", 1, 1),
     ("assert-tab-stops", 1, 1),
+    ("assert-focus-stop", 1, 2),
     ("assert-dialog", 1, 1),
     ("assert-announced", 1, 1),
     ("menu-open", 1, 1),
@@ -149,6 +151,15 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                     collapsed(&chain).join(" → ")
                 ))
             }
+        }
+        "assert-focus-stop" => {
+            let window: gtk::Window = match args.get(1).map_or("window", String::as_str) {
+                "composer" => composer_window()?,
+                _ => harness.window()?.window().clone().upcast(),
+            };
+            let now = gtk::prelude::GtkWindowExt::focus(&window)
+                .map_or_else(|| "nothing".to_owned(), |focus| stop(&focus));
+            equal("the focus", now.as_str(), arg(0))
         }
         "assert-tab-stops" => {
             let chain = CHAIN.with(|chain| chain.borrow().clone());
