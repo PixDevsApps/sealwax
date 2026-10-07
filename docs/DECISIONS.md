@@ -297,6 +297,10 @@ Built in M7 ([report](m7/search.md)); its proposals accepted at the M7 gate (the
 - **Measured** on the merged build (release, 2026-10-07, `bench-search`): the first 50 results of 38 shapes at 100,000 messages, worst p95 82.3 and 88.5 ms cold, 24.4 and 24.5 ms warm, against the 100 ms bar; the agent's runs 66.2–74.8 ms cold.
 - `Query`, `Term` and the store's FTS expression print counts or lengths in `Debug` (ADR-018).
 
+### ADR-005 amendment — schema v11: POP3 accounts (M8 phase A, 2026-10-07)
+
+Built in M8's phase A ([report](m8/pop3-accounts.md)); its proposals wait for the M8 gate. `pop3_accounts` marks an account as POP3 and records its first complete pass; `pop3_uidls` keeps each downloaded UIDL with the row it became (`ON DELETE SET NULL`), when it was downloaded, whether whole or header only, and when Sealwax deleted it on the server; a message and its UIDL are stored in one transaction, so a crash neither loses nor repeats one. `blob_deletions` hands the POP3 actor the raw messages that ops done at once left behind. A POP3 account's local folders (Inbox, Sent, Drafts, Junk, Trash, Archive) are complete from the start (`sync_floor` 1); its mail is never in `bodies`, so the disk cap never evicts it; `replace_folders` refuses an IMAP folder list for it, so a protocol changed in `accounts.toml` can't wipe local mail. The migration only creates tables.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -410,6 +414,12 @@ Built as [m5/files.md](m5/files.md) records. `Command::FetchPart` fetches `BODY.
 ### ADR-006 amendment — new mail reported per committed step (M7, 2026-10-07)
 
 Built in M7 ([report](m7/notifications.md)). `Event::NewMail { account, folder, messages }` is sent from the account's actor as each step of a folder pass commits (not once per pass, which a cut after a commit would lose), for the rows at or above the UIDNEXT the store held, the UID diff's included. Never for a first sync (also after a UIDVALIDITY reset), older mail (`LoadOlder`), or the account's own moves: re-homed rows are never inserted again, and the actor's record of its moves (10 minutes) keeps out a move whose new UID stayed unknown. Mail that arrived while Sealwax was stopped is reported at the next start. Testbed, release: APPEND OK → `NewMail` median 1.7 ms on Stalwart and 497.8 ms on Dovecot (its own IDLE delay); end to end in background mode with no window, APPEND OK → the notification 10–23 ms on Stalwart (5 runs).
+
+### ADR-006 amendment — POP3: the client and the account's actor (M8 phase A, 2026-10-07)
+
+Built in M8's phase A ([client](m8/pop3-client.md), [accounts](m8/pop3-accounts.md)); the proposals wait for the M8 gate.
+- **The client** is Sealwax's own code over `net`'s sockets and TLS, no crate. Implicit TLS, or STLS right after the greeting with nothing else in plaintext; a refused STLS, a failed handshake or plaintext after STLS's `+OK` refuses the account. CAPA over TLS, before and after the login. SASL PLAIN, else USER/PASS, XOAUTH2 for a token (scripted only). RFC 2449 and 3206 codes classify refusals (the text dropped); `[IN-USE]`, `[LOGIN-DELAY]` and `[SYS/TEMP]` are `Busy`. UIDL is required (a server without it is refused at setup, `LoginFailure::NoUidl`); messages sharing a UIDL are left alone. RETR keeps the bytes and line ends as sent, up to 100 MiB; a larger message's header comes by TOP. Timeouts: 30 s to connect and log in, 60 s a reply, RETR 60 s plus its size at 16 KiB/s. Deletions happen only at a successful QUIT; a QUIT without its answer is unknown (on the testbed it had always deleted).
+- **The actor:** one session per pass, at start, on `Reconnect`, on `Command::CheckMail` (Refresh, M8; IMAP accounts run an account pass for it) and every 5 minutes, never sooner than LOGIN-DELAY; newest first, stored 25 messages or 500 ms at a time; `NewMail` only after the account's first complete pass; the policy's deletions only of what the store recorded whole, by this session's numbers, never of oversized or shared-UIDL messages; a QUIT without its answer settled by the next listing; a busy maildrop changes no status; EXPIRE logged; the outbox runs beside the passes. POP3 accounts are password accounts in 1.0 (Microsoft would need a separate POP scope).
 
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
@@ -558,6 +568,10 @@ Built in M6's phase A ([report](m6/compose-domain.md)). `signature = """…"""` 
 ### ADR-009 amendment — `[notifications]` and `[background]` in config.toml (M7 contract, 2026-10-06)
 
 Two sections, read with the file's error style, following the user's decisions at M7's start ([ADR-013 amendment](#adr-013-amendment--background-mode-on-by-default-notifications-show-sender-and-subject-m7-start-2026-10-06)): `[notifications]` with `enabled` (default `true`) and `show` (`"sender-and-subject"`, the default, or `"count"`), and `[background]` with `enabled` (default `true`: closing the window keeps Sealwax running). A bare `enabled` at the top level is pointed to both sections. The default file documents them in comments.
+
+### ADR-009 amendment — POP3 accounts in accounts.toml (M8 phase A, 2026-10-07)
+
+Built in M8's phase A ([report](m8/pop3-setup.md)). A POP3 account has `[account.pop3]` in place of `[account.imap]`, exactly one of the two: `host`, `port` (995 for `"tls"`, 110 for `"starttls"` when left out), `security`, `leave_on_server` (default `true`) and `delete_after_days` (1–3650, only with `leave_on_server = true`; left out, mail stays on the server). Read with the file's error style (positions, did-you-mean, both tables or neither, the policy's contradictions); the assistant writes it with `leave_on_server` spelled out and offers no policy choice (the lead's recommendation, for the gate). In code, `AccountSettings::imap` became `incoming`, with `receive` saying which protocol (the M8 contract).
 
 ## ADR-010 — Name and app-id (2026-10-04)
 
@@ -865,6 +879,10 @@ Built in M6 ([store](m6/drafts-store.md), [sending](m6/send.md), [reply](m6/repl
 ### ADR-015 amendment — M6 gate decisions (2026-10-06)
 
 **Status:** accepted by the user at the M6 gate ("Accept all (Recommended)", 2026-10-06); this ADR's at-most-once send is built and accepted. The proposals in this ADR's, ADR-007's, ADR-009's and ADR-014's M6 amendments stand as built: the undo-send window 7 s; one refused recipient refuses the whole send; a send uncertain once the message's bytes start going out; the Sent copy skipped for servers that save their own (Microsoft, Gmail), else looked for from the mark and appended; one SMTP connection per round of due sends; sends kept queued while the login needs fixing, retried without a cap; drafts to the Drafts folder 30 s after the last save while open, 10 s once closed; plain-text signatures; remote images in quotes kept and never loaded in the composer; forwards without In-Reply-To or References; no User-Agent or X-Mailer; References trimmed to 20; the HTML parser crates capped in the logs. At the same gate: text on the accent keeps the 3:1 `docs/m1/theme.md` states; Enter, `o` and a double click open a Drafts-folder message in the composer; the keys in [ADR-017's M6 amendment](#adr-017-amendment--m6s-keys-accepted-m6-gate-2026-10-06).
+
+### ADR-015 amendment — POP3 accounts' ops and outbox (M8 phase A, 2026-10-07)
+
+Built in M8's phase A ([report](m8/pop3-accounts.md)). A POP3 account's ops are done at once in the store, with Undo, like a local account's. The outbox's sending is shared by the IMAP and POP3 actors (`outbox::Submission`), at most once as before; a POP3 account's Sent copy is filed into its local Sent folder (`SentCopyDone::Filed`), also when its SMTP server saves one of its own, and its drafts' copies are rows of its local Drafts folder (IMAP's timing: 30 s after the last save, 10 s once closed). Raw messages left by ops done at once are deleted by the POP3 actor after each pass.
 
 ## ADR-016 — Conversation threading (2026-10-04)
 

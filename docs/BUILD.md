@@ -96,6 +96,16 @@ target/debug/examples/notify_live --live                          # authorized l
 
 `perf-search` uses perf-list's 100,000-message fixture store under `target/perf-list/`. `notify_e2e.py` runs `tests/selftest/testbed-notify.sealwax-test` (the real engine on Stalwart's `newmail` user, the window closed into background mode) and APPENDs one fictional message as another IMAP client once the window has closed, timing its OK to the notification at the stand-in server. `notify_live` sends two notifications over a scratch fictional mailbox (app-id `io.github.pixdevsapps.Sealwax.NotifyLive`) and records which message each click opened; it injects no input. `SEALWAX_CLOSE_WINDOW_AFTER_MS` (development builds only) closes the first main window that long after its first frame, a test hook like `SEALWAX_EXIT_AFTER_MS` (`background-*` self-tests).
 
+## POP3 suites (M8)
+
+```sh
+SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem cargo test -p sealwax-engine --release --test pop3_testbed -- --ignored --test-threads=1
+SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem cargo test -p sealwax-engine --release --test pop3_accounts_testbed -- --ignored --test-threads=1
+tools/headless.sh 21 target/debug/sealwax --self-test tests/selftest/testbed-pop3-setup.sealwax-test
+```
+
+`pop3_testbed` (the client: Dovecot's and Stalwart's POP3 over both securities, alice read-only, `popclient`'s own INBOX for deletions, cuts through the fault proxy; `SEALWAX_POP3_SEEDS` sets its fault runs, 5 by default) and `pop3_accounts_testbed` (an account's actor end to end on `popclient`) also run under `tools/ci.sh --testbed`. `testbed-pop3-setup` adds a POP3 account through the assistant on Stalwart's POP3 (port 16995): never point it at Dovecot's alice, since Dovecot marks downloaded mail read when the POP3 session ends. `engine/tests/pop3.rs` (a scripted server), `pop3_log.rs` and `pop3_accounts.rs` (a fake maildrop) run in CI.
+
 ## Headless GTK runs
 
 `tools/headless.sh <display> <cmd...>` starts `gtk4-broadwayd` on `127.0.0.1:<8080 + display>`, runs the command with `GDK_BACKEND=broadway`, a private D-Bus bus from `tools/headless-dbus.conf` (no service directories, so no portal, gvfs or at-spi can start and reach the live session), `GSETTINGS_BACKEND=memory` and `ADW_DISABLE_PORTAL=1`, and cleans up the daemon and its socket. It refuses a display that is already in use. Every run gets scratch XDG folders under `.local/headless-<display>/` (config, cache, data, state), so nothing it writes — WebKit's data included — lands in the user's home. Never replace it with a plain `dbus-run-session`.
@@ -118,7 +128,7 @@ python3 tools/testbed/check.py      # health check
 tools/testbed/down.sh               # stop and remove; --keep-volumes keeps the mail
 ```
 
-The users are alice, bob, perf, rand, fault, idle, spike, ops, opsfault and triage (the last three added for M4), carol, dave, outbox and outboxfault (added for M6's sending suites) and newmail (M7's new-mail suite and end-to-end check; on a running testbed, `python3 tools/testbed/stalwart_setup.py` and `tools/testbed/seed.sh` add them), password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (the S1 harness takes an override path from `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
+The users are alice, bob, perf, rand, fault, idle, spike, ops, opsfault and triage (the last three added for M4), carol, dave, outbox and outboxfault (added for M6's sending suites) newmail (M7's new-mail suite and end-to-end check) and popclient (M8's POP3 client and accounts suites; on a running testbed, `python3 tools/testbed/stalwart_setup.py` and `tools/testbed/seed.sh` add them), password `testbed-password`. Clients trust the generated CA `tools/testbed/certs/ca.pem` explicitly (the S1 harness takes an override path from `MAIL_TESTBED_CA`), never through the system store or a disabled verifier. The scripts need Python 3 (standard library only), OpenSSL and Docker Compose.
 
 `bash tools/ci.sh --testbed` (M3) runs, after the usual checks, every test file with tests ignored as "needs the testbed", in release and one test at a time, since the suites share test users; each file's output goes to `.local/testbed-<package>-<file>.log`. With no testbed container running it starts and seeds the testbed first and stops it at the end with `down.sh --keep-volumes`; a running testbed is used and left running, and a partly running one is refused. The suites need `tools/testbed/certs/` (the CA, and the server certificate for their proxies); a worktree has none, so link it there from the checkout that started the testbed. The sync soak (ML-049) is ignored for another reason and stays out; it runs by hand for as long as `SEALWAX_SOAK_MINUTES` says (30 unless set):
 

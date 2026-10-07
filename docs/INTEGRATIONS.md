@@ -162,6 +162,13 @@ Settings and policies checked on the providers' help pages on 2026-10-04 (S4). A
 | NextGenTel (broadpark.no) / Tussa | imap.broadpark.no:993, smtp.broadpark.no:587 STARTTLS / imap.tussa.com:993, smtp.tussa.com:587 STARTTLS | Password | Broadpark's username form is undocumented. S4b: broadpark.no is found through its SRV records, renamed to the documented `imap.`/`smtp.` names; Tussa's 465 also works, 587 is documented |
 | Discontinued | c2i.net and tele2.no (closed 2013; c2i.net now held by an unknown party), chello.no (2008, null MX); getmail.no → Wemail, start.no → Mailia (paid third parties) | — | Never autoconfigure c2i.net |
 
+## POP3 servers (M8)
+
+- **Dovecot marks downloaded mail read** when a POP3 session that downloaded it ends (Dovecot 2.4.5's default, seen on the testbed); Stalwart 0.16 doesn't. Sealwax keeps its own read state for POP3 mail (a downloaded message is unread unless an mbox `Status:` header says `R`), so neither shows, but an IMAP client on the same mailbox sees the change.
+- **CAPA:** Dovecot lists `AUTH-RESP-CODE`, `PIPELINING`, `RESP-CODES`, `SASL`, `TOP`, `UIDL`, `USER`; Stalwart `EXPIRE NEVER`, `IMPLEMENTATION`, `PIPELINING`, `RESP-CODES`, `SASL`, `TOP`, `UIDL`, `USER`, and on its plaintext port 110 names neither USER nor PLAIN (they come after STLS).
+- **Microsoft:** POP needs its own OAuth scope (`POP.AccessAsUser.All`, from Microsoft's guide; not checked live), which Sign in with Microsoft doesn't request, so POP3 accounts are password accounts in 1.0.
+- Real providers' POP3 (Gmail's "POP download" settings, iCloud has none, Outlook.com's POP switch) is the user's soak (ML-089).
+
 ## Provider quirks
 
 What a mail client must know per preset provider (ML-031), from the providers' own help pages, read on 2026-10-05 between 07:50 and 08:05 UTC; nothing was checked with a login. Most pages were read through a fetch tool that returns an extract of the page, so titles and wording come from those extracts; AOL, Mail.ru and Tuta pages were downloaded and read raw. **Unverified** means the provider's documentation doesn't say. What Sealwax does with archive and delete was decided in M4 (`domain::triage`, [ADR-015](DECISIONS.md#adr-015-amendment--m4-gate-decisions-2026-10-06)): archive moves to the Archive folder, else to the `\All` folder (Gmail's All Mail, which takes the Inbox label away), and is unavailable where an account has neither (Zoho's archive isn't an IMAP folder); delete moves to the Trash, and in the Trash deletes for good (`\Deleted` and UID EXPUNGE with UIDPLUS; without it the message stays flagged and hidden), so a provider's own expunge setting, such as Gmail's, decides what happens on its side. The Sent copy is M6's. The links are in the presets.

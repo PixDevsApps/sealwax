@@ -28,6 +28,7 @@ Sealwax handles hostile content (every incoming message), long-lived credentials
 - If a server offers no TLS, the account is refused with an explanation; there is no plaintext mode.
 - Certificates are verified with rustls and the platform verifier (the system trust store). Pinned exceptions for self-signed servers (Proton Bridge) are 1.x ([ADR-007](DECISIONS.md#adr-007--smtp-mime-and-privacy-defaults-2026-10-04)).
 - Authentication prefers OAuth (XOAUTH2 / OAUTHBEARER) and AUTHENTICATE PLAIN over LOGIN.
+- POP3 (M8): only the greeting and STLS cross in plaintext, and anything the server sends after STLS's `+OK` refuses the account (STARTTLS injection); CAPA is read over TLS only; USER and PASS go only over TLS; credentials with CR, LF or NUL are never sent. POP3 logs counts, sizes, timings and the mechanism, never UIDLs.
 
 ### Credentials
 
@@ -100,6 +101,7 @@ Third-party protocol crates are capped at `warn` whatever `RUST_LOG` says: S1 fo
 
 - Private folders are created 0700 and files 0600 (database, blobs, drafts, temporary attachment copies under `$XDG_RUNTIME_DIR/<app-id>/attachments`).
 - The app never edits `~/.config` outside its own folder, `~/.local/state/omarchy` or system files, except through opt-in commands the user confirms: the default mail handler (Make Sealwax the Default Mail App…, which asks first; M6) and Start Sealwax at Login (M7), which asks before it writes `$XDG_CONFIG_HOME/autostart/<app-id>.desktop` and, turned off, deletes only that file.
+- A POP3 account's mail lives only in the store and the blob store once the server deletes it (M8): the reader, attachments and Show Original take it from there, never from a server again, and the disk cap never evicts it.
 - Drafts, their parts and the outbox's built messages live in the store and the blob store (0600); a part's bytes stay until the draft is discarded or sent, even after the part is removed in the editor, and the disk cap never evicts them (M6).
 
 ## Known limitations
