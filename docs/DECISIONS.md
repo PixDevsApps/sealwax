@@ -700,6 +700,10 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 
 **Supersedes:** the M1 measurement's open question (whether the driver's share counts toward the UI bar or the GPU budget) and the amendment above's "the user's decisions at the M5 gate".
 
+### ADR-011 amendment — the growth levels off (2026-10-07)
+
+`reader_memory --opens=N` measured the follow-up the M5 gate set: live, the app's process is flat after 200 opens and WebKit's web process after about 1,000–1,200; from 1,000 to 3,000 opens the process tree stays within 394–422 MiB with no trend (two runs, 399.0 and 399.2 MiB at 3,000); headless the tree stops growing at 200 ([TESTING.md](TESTING.md#reader-memory-over-1000-and-3000-opens--2026-10-07)). By the gate's rule ("fixed before 1.0 if it doesn't level off") no fix is needed; the follow-up is closed. The growth over the first 200 opens stays as measured at M5.
+
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
 **Status:** Accepted — user decision, 2026-10-04.

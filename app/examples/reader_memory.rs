@@ -26,6 +26,10 @@
 //! SEALWAX_HEADLESS_TIMEOUT=600 tools/headless.sh 31 target/release/examples/reader_memory
 //! target/release/examples/reader_memory --live --judge   # live session, authorized runs only
 //! ```
+//!
+//! `--opens=N` (N ≥ 200) goes on opening messages after the 200 and prints the PSS after every 200
+//! more, to see whether the growth levels off (M5's P1 follow-up); the checks still judge the
+//! first 200.
 
 #[path = "reader_support/mod.rs"]
 mod support;
@@ -59,18 +63,24 @@ const WINDOW: (i32, i32) = (1440, 900);
 struct Args {
     live: bool,
     judge: bool,
+    /// Messages opened after the warm-up; the PSS is printed every `OPENED` of them.
+    opens: usize,
 }
 
 fn args() -> Result<Args, String> {
     let mut args = Args {
         live: false,
         judge: false,
+        opens: OPENED,
     };
     for arg in std::env::args().skip(1) {
         match arg.as_str() {
             "--live" => args.live = true,
             "--judge" => args.judge = true,
-            other => return Err(format!("unknown argument {other}")),
+            other => match other.strip_prefix("--opens=").map(str::parse) {
+                Some(Ok(opens)) if opens >= OPENED => args.opens = opens,
+                _ => return Err(format!("unknown argument {other}")),
+            },
         }
     }
     Ok(args)
@@ -307,7 +317,7 @@ struct Filled {
     singles: Vec<MessageId>,
 }
 
-fn fill(scratch: &support::Scratch) -> Result<Filled, String> {
+fn fill(scratch: &support::Scratch, opens: usize) -> Result<Filled, String> {
     let store = &scratch.store;
     let account = store
         .add_account(NewAccount {
@@ -340,7 +350,7 @@ fn fill(scratch: &support::Scratch) -> Result<Filled, String> {
         &scratch.blobs,
         inbox,
         sent,
-        samples::singles(WARM_UP + OPENED, now - 400_000),
+        samples::singles(WARM_UP + opens, now - 400_000),
     )
     .map_err(|error| error.to_string())?;
     Ok(Filled {
@@ -388,7 +398,7 @@ fn main() -> glib::ExitCode {
         None
     };
     let scratch = support::store(&root);
-    let filled = match fill(&scratch) {
+    let filled = match fill(&scratch, args.opens) {
         Ok(filled) => filled,
         Err(error) => {
             eprintln!("could not fill the scratch store: {error}");
@@ -571,6 +581,14 @@ async fn run(
     support::sleep(1000).await;
     let after = measure(true);
     report("after 200 opened", &after);
+    for (index, id) in filled.singles.iter().skip(WARM_UP + OPENED).enumerate() {
+        support::show(reader, &reports, *id).await?;
+        let opened = OPENED + index + 1;
+        if opened.is_multiple_of(OPENED) {
+            support::sleep(1000).await;
+            report(&format!("after {opened} opened"), &measure(true));
+        }
+    }
     if reader.state().live_views > MAX_LIVE_VIEWS {
         failures.push(format!(
             "{} live views after the opens",
