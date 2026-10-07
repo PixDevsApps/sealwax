@@ -371,6 +371,10 @@ pub enum SendError {
     Store,
     #[error("sending failed")]
     Other,
+    /// Sealwax stopped while it built the message (which may be what stopped it); it isn't
+    /// built again until the user sends it again.
+    #[error("Sealwax stopped while it built the message")]
+    Interrupted,
 }
 
 /// Recipient addresses are the user's data: `Debug` prints only how many.
@@ -386,6 +390,7 @@ impl fmt::Debug for SendError {
             SendError::Refused => f.write_str("Refused"),
             SendError::Store => f.write_str("Store"),
             SendError::Other => f.write_str("Other"),
+            SendError::Interrupted => f.write_str("Interrupted"),
         }
     }
 }

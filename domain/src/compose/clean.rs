@@ -8,11 +8,13 @@
 //! become `b` and `i`; bold, italic, underline and line-through in a `style` become `b`, `i`,
 //! `u` and `s` inside the element; Google Docs' `<b style="font-weight:normal">` wrapper is
 //! unwrapped; sectioning blocks become `div`; every `blockquote` becomes a cite quote or an
-//! indent in the composer's own form; images whose source isn't allowed are left out. The
-//! second pass, ammonia, is the allowlist: everything it doesn't allow is gone whatever the
-//! first pass made of the input.
+//! indent in the composer's own form; images whose source isn't allowed are left out; start
+//! tags that would nest deeper than [`html_depth::MAX_DEPTH`] are left out with their content
+//! kept, as WebKit's parser does (M9, N1). The second pass, ammonia, is the allowlist:
+//! everything it doesn't allow is gone whatever the first pass made of the input.
 
 use super::text::escape;
+use crate::html_depth::{self, Nesting};
 use ammonia::{Builder, UrlRelative};
 use html5ever::tokenizer::states::RawKind;
 use html5ever::tokenizer::{
@@ -340,12 +342,17 @@ fn is_image_source(value: &str) -> bool {
         .all(|b| b.is_ascii_alphanumeric() || b"+/=".contains(&b) || b.is_ascii_whitespace())
 }
 
-/// The first pass: presentational markup as the tags the allowlist keeps.
+/// The first pass: presentational markup as the tags the allowlist keeps, and nothing nested
+/// deeper than [`html_depth::MAX_DEPTH`] (its start tags are left out, its content kept).
 fn normalize(html: &str, keep_cid: &dyn Fn(&str) -> bool) -> String {
     let sink = Normalizer {
         out: RefCell::new(String::with_capacity(html.len())),
         stack: RefCell::new(Vec::new()),
+        dropped: Cell::new(0),
+        names: RefCell::new(HashMap::new()),
         raw: Cell::new(Raw::No),
+        nesting: RefCell::new(Nesting::new(html_depth::MAX_DEPTH, true)),
+        skipping: Cell::new(false),
         keep_cid,
     };
     let tokenizer = Tokenizer::new(sink, TokenizerOpts::default());
@@ -379,7 +386,15 @@ struct Open {
 struct Normalizer<'k> {
     out: RefCell<String>,
     stack: RefCell<Vec<Open>>,
+    /// How many of the elements in `stack` are dropped ones.
+    dropped: Cell<usize>,
+    /// How many elements of each name `stack` holds.
+    names: RefCell<HashMap<LocalName, usize>>,
     raw: Cell<Raw>,
+    /// The tree the allowlist's parser will build of the output, counted.
+    nesting: RefCell<Nesting>,
+    /// A raw text element left out as too deep: its text goes too, up to its end tag.
+    skipping: Cell<bool>,
     keep_cid: &'k dyn Fn(&str) -> bool,
 }
 
@@ -387,12 +402,34 @@ impl TokenSink for Normalizer<'_> {
     type Handle = ();
 
     fn process_token(&self, token: Token, _line_number: u64) -> TokenSinkResult<()> {
+        if self.skipping.get() {
+            if let Token::TagToken(tag) = &token
+                && tag.kind == TagKind::EndTag
+            {
+                self.skipping.set(false);
+                self.raw.set(Raw::No);
+            }
+            return TokenSinkResult::Continue;
+        }
         match token {
             Token::TagToken(tag) => match tag.kind {
-                TagKind::StartTag => return self.start(&tag),
-                TagKind::EndTag => self.end(&tag),
+                TagKind::StartTag => {
+                    let mut nesting = self.nesting.borrow_mut();
+                    if !nesting.start(&tag) {
+                        let raw = nesting.raw_text(&tag.name);
+                        self.skipping.set(raw.is_some());
+                        return raw.unwrap_or(TokenSinkResult::Continue);
+                    }
+                    drop(nesting);
+                    return self.start(&tag);
+                }
+                TagKind::EndTag => {
+                    self.nesting.borrow_mut().end(&tag);
+                    self.end(&tag);
+                }
             },
             Token::CharacterTokens(text) => {
+                self.nesting.borrow_mut().text();
                 let mut out = self.out.borrow_mut();
                 match self.raw.get() {
                     Raw::Verbatim => out.push_str(&text),
@@ -419,10 +456,22 @@ impl TokenSink for Normalizer<'_> {
 }
 
 impl Normalizer<'_> {
+    fn push(&self, open: Open) {
+        if open.dropped {
+            self.dropped.set(self.dropped.get() + 1);
+        }
+        *self
+            .names
+            .borrow_mut()
+            .entry(open.name.clone())
+            .or_default() += 1;
+        self.stack.borrow_mut().push(open);
+    }
+
     fn start(&self, tag: &Tag) -> TokenSinkResult<()> {
         let name: &str = &tag.name;
         let void = VOID.contains(&name);
-        let in_drop = self.stack.borrow().iter().any(|open| open.dropped);
+        let in_drop = self.dropped.get() > 0;
         let raw = match name {
             "script" => Some((Raw::Verbatim, TokenSinkResult::RawData(RawKind::ScriptData))),
             "style" | "xmp" | "iframe" | "noembed" | "noframes" | "noscript" => {
@@ -435,7 +484,7 @@ impl Normalizer<'_> {
         if in_drop || DROP.contains(&name) || raw.is_some() {
             self.write_tag(name, &tag.attrs, false);
             if !void {
-                self.stack.borrow_mut().push(Open {
+                self.push(Open {
                     name: tag.name.clone(),
                     written: Some(name.to_owned()),
                     wrappers: Vec::new(),
@@ -475,7 +524,7 @@ impl Normalizer<'_> {
                 out.push('>');
             }
         }
-        self.stack.borrow_mut().push(Open {
+        self.push(Open {
             name: tag.name.clone(),
             written,
             wrappers,
@@ -488,11 +537,15 @@ impl Normalizer<'_> {
     /// inside the elements it implicitly closes; an end tag with no open element passes on.
     fn end(&self, tag: &Tag) {
         self.raw.set(Raw::No);
-        let found = self
-            .stack
-            .borrow()
-            .iter()
-            .rposition(|open| open.name == tag.name);
+        let open = self.names.borrow().get(&tag.name).is_some_and(|n| *n > 0);
+        let found = open
+            .then(|| {
+                self.stack
+                    .borrow()
+                    .iter()
+                    .rposition(|open| open.name == tag.name)
+            })
+            .flatten();
         let mut out = self.out.borrow_mut();
         let Some(index) = found else {
             out.push_str("</");
@@ -501,6 +554,15 @@ impl Normalizer<'_> {
             return;
         };
         let closed = self.stack.borrow_mut().split_off(index);
+        let mut names = self.names.borrow_mut();
+        for open in &closed {
+            if let Some(count) = names.get_mut(&open.name) {
+                *count -= 1;
+            }
+            if open.dropped {
+                self.dropped.set(self.dropped.get() - 1);
+            }
+        }
         for (depth, open) in closed.iter().enumerate().rev() {
             for wrapper in open.wrappers.iter().rev() {
                 out.push_str("</");

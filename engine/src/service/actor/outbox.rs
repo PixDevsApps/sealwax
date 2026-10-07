@@ -4,7 +4,10 @@
 //! Sent copy, upload or deletion comes due.
 //!
 //! **A send:** the message is built from the draft and its parts' bytes off the async threads
-//! (or the bytes an earlier start recorded are read back), the Sent folder's mark is taken, and
+//! (or the bytes an earlier start recorded are read back), the store recording that it is being
+//! built until the build returns: a start that finds it so gives the send back to its draft as
+//! failed instead of building it again, as the build may be what stopped Sealwax (a Drafts-folder
+//! copy left so waits for the draft to change). Then the Sent folder's mark is taken, and
 //! one SMTP connection per round carries every due send: MAIL FROM and RCPT TO, then the store's
 //! durable `send_started`, then DATA. Only a missing answer after the data started is uncertain;
 //! a stop or `Reconnect` while the data goes out is recorded as uncertain before the actor ends,
@@ -139,6 +142,37 @@ pub(super) fn build_drafts_copy(
         .map_err(|_| Unbuilt::Blobs)?;
     let slices: Vec<&[u8]> = parts.iter().map(Vec::as_slice).collect();
     mime::drafts_copy(draft, date, &slices).map_err(Unbuilt::Draft)
+}
+
+/// Runs `build`, the making of `upload`'s Drafts-folder copy, on a blocking thread, recorded as
+/// being built first so that a build that stops Sealwax isn't run again at the next start
+/// (`Store::recover_sends`). `None` when it shouldn't run now: the draft is gone or in the
+/// outbox, or the store couldn't record it (try again shortly).
+pub(super) async fn build_copy<T: Send + 'static>(
+    shared: &Shared,
+    upload: &DraftUpload,
+    build: impl FnOnce() -> Result<T, Unbuilt> + Send + 'static,
+) -> Option<Result<T, Unbuilt>> {
+    match shared
+        .store
+        .draft_building(upload.draft, upload.revision)
+        .recv()
+        .await
+    {
+        Ok(true) => {}
+        Ok(false) => return None,
+        Err(error) => {
+            tracing::warn!(account = upload.account.0, %error, "a build couldn't be recorded");
+            return None;
+        }
+    }
+    let built = tokio::task::spawn_blocking(build)
+        .await
+        .unwrap_or(Err(Unbuilt::Blobs));
+    if let Err(error) = shared.store.draft_built(upload.draft).recv().await {
+        tracing::warn!(account = upload.account.0, %error, "a built copy couldn't be recorded");
+    }
+    Some(built)
 }
 
 /// The store's reason and the app's error for a draft that can't be built.
@@ -387,6 +421,26 @@ impl Submission {
         result
     }
 
+    /// Records that `send`'s message is about to be built, so that a build that stops Sealwax
+    /// isn't run again at the next start (`Store::recover_sends`); `false` when it is no longer
+    /// queued, or the store couldn't record it (tried again shortly).
+    async fn building(&mut self, send: &DueSend) -> bool {
+        match self
+            .shared
+            .store
+            .send_building(send.draft, unix_ms())
+            .recv()
+            .await
+        {
+            Ok(queued) => queued,
+            Err(error) => {
+                tracing::warn!(account = self.account.0, %error, "a build couldn't be recorded");
+                self.retry_by(Instant::now() + self.config().backoff_min);
+                false
+            }
+        }
+    }
+
     /// The message to send: the bytes an earlier start recorded, or built now.
     async fn message(&self, send: &DueSend) -> Result<Built, Unbuilt> {
         let blobs = self.shared.blobs.clone();
@@ -486,7 +540,15 @@ impl Submission {
         seen: u64,
     ) -> Result<Next, Interrupt> {
         let started = Instant::now();
-        let built = match self.message(send).await {
+        let building = send.prepared.is_none();
+        if building && !self.building(send).await {
+            return Ok(Next::Continue);
+        }
+        let built = self.message(send).await;
+        if building && let Err(error) = self.shared.store.send_built(send.draft).recv().await {
+            tracing::warn!(account = self.account.0, %error, "a built message couldn't be recorded");
+        }
+        let built = match built {
             Ok(built) => built,
             Err(Unbuilt::Draft(error)) => {
                 tracing::info!(
@@ -907,9 +969,12 @@ impl Poller {
         let blobs = self.shared.blobs.clone();
         let draft = upload.message.clone();
         let date = unix_seconds();
-        let built = tokio::task::spawn_blocking(move || build_drafts_copy(&blobs, &draft, date))
-            .await
-            .unwrap_or(Err(Unbuilt::Blobs));
+        let build = move || build_drafts_copy(&blobs, &draft, date);
+        let Some(built) = build_copy(&self.shared, &upload, build).await else {
+            let retry = Instant::now() + self.config().backoff_min;
+            self.next_drafts = Some(self.next_drafts.map_or(retry, |next| next.min(retry)));
+            return Ok(());
+        };
         let bytes = match built {
             Ok(bytes) if !message_id.is_empty() => bytes,
             _ => {

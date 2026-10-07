@@ -225,6 +225,7 @@ fn send_error(name: &str) -> Result<(SendError, SendFailure), String> {
         "refused" => (SendError::Refused, SendFailure::Refused),
         "needs-sign-in" => (SendError::NeedsSignIn, SendFailure::NeedsSignIn),
         "other" => (SendError::Other, SendFailure::Other),
+        "interrupted" => (SendError::Interrupted, SendFailure::Interrupted),
         other => return Err(format!("no send error {other}")),
     })
 }

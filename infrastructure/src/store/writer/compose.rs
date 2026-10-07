@@ -53,6 +53,24 @@ pub(crate) enum ComposeJob {
     Recover {
         reply: Sender<Vec<OutboxChange>>,
     },
+    Building {
+        draft: DraftId,
+        now: i64,
+        reply: Sender<bool>,
+    },
+    Built {
+        draft: DraftId,
+        reply: Sender<()>,
+    },
+    DraftBuilding {
+        draft: DraftId,
+        revision: u64,
+        reply: Sender<bool>,
+    },
+    DraftBuilt {
+        draft: DraftId,
+        reply: Sender<()>,
+    },
     DueSends {
         account: AccountId,
         now: i64,
@@ -597,6 +615,22 @@ impl Writer {
             ComposeJob::Recover { reply } => {
                 let _ = reply.try_send(self.recover_sends());
             }
+            ComposeJob::Building { draft, now, reply } => {
+                let _ = reply.try_send(self.send_building(draft, now));
+            }
+            ComposeJob::Built { draft, reply } => {
+                let _ = reply.try_send(self.send_built(draft));
+            }
+            ComposeJob::DraftBuilding {
+                draft,
+                revision,
+                reply,
+            } => {
+                let _ = reply.try_send(self.draft_building(draft, revision));
+            }
+            ComposeJob::DraftBuilt { draft, reply } => {
+                let _ = reply.try_send(self.draft_built(draft));
+            }
             ComposeJob::DueSends {
                 account,
                 now,
@@ -955,7 +989,7 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let changes: Vec<OutboxChange> = tx
+        let mut changes: Vec<OutboxChange> = tx
             .prepare_cached(
                 "UPDATE outbox SET state = ?1 WHERE state = ?2 RETURNING draft, account_id",
             )?
@@ -974,8 +1008,91 @@ impl Writer {
                 "sends interrupted by a stop are uncertain"
             );
         }
+        let building: Vec<(DraftId, AccountId)> = tx
+            .prepare_cached(
+                "SELECT draft, account_id FROM outbox WHERE state = ?1 AND building IS NOT NULL",
+            )?
+            .query_map([QUEUED], |row| {
+                Ok((DraftId(row.get(0)?), AccountId(row.get(1)?)))
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        for (draft, account) in &building {
+            // Its message wasn't built: the outbox row holds no bytes to orphan.
+            let _ = leave_outbox(&tx, *draft, Some(SendFailure::Interrupted), false)?;
+            changes.push(OutboxChange {
+                account: *account,
+                draft: *draft,
+                state: None,
+                failure: Some(SendFailure::Interrupted),
+            });
+        }
+        let copies = tx
+            .prepare_cached(
+                "UPDATE drafts SET upload_refused = max(upload_refused, upload_building), \
+                   upload_building = NULL WHERE upload_building IS NOT NULL",
+            )?
+            .execute([])?;
+        if !building.is_empty() || copies > 0 {
+            tracing::warn!(
+                sends = building.len(),
+                copies,
+                "messages left being built when Sealwax stopped aren't built again by themselves"
+            );
+        }
         self.state.commit_compose(tx, changes.clone(), &[])?;
         Ok(changes)
+    }
+
+    fn send_building(&mut self, id: DraftId, now: i64) -> Result<bool, StoreError> {
+        let changed = self
+            .conn
+            .prepare_cached("UPDATE outbox SET building = ?2 WHERE draft = ?1 AND state = ?3")?
+            .execute(params![id.0, now, QUEUED])?;
+        if changed > 0 {
+            self.state.after_commit();
+        }
+        Ok(changed > 0)
+    }
+
+    fn send_built(&mut self, id: DraftId) -> Result<(), StoreError> {
+        let changed = self
+            .conn
+            .prepare_cached(
+                "UPDATE outbox SET building = NULL WHERE draft = ?1 AND building IS NOT NULL",
+            )?
+            .execute([id.0])?;
+        if changed > 0 {
+            self.state.after_commit();
+        }
+        Ok(())
+    }
+
+    fn draft_building(&mut self, id: DraftId, revision: u64) -> Result<bool, StoreError> {
+        let changed = self
+            .conn
+            .prepare_cached(
+                "UPDATE drafts SET upload_building = ?2 \
+                 WHERE id = ?1 AND NOT EXISTS (SELECT 1 FROM outbox WHERE draft = ?1)",
+            )?
+            .execute(params![id.0, revision as i64])?;
+        if changed > 0 {
+            self.state.after_commit();
+        }
+        Ok(changed > 0)
+    }
+
+    fn draft_built(&mut self, id: DraftId) -> Result<(), StoreError> {
+        let changed = self
+            .conn
+            .prepare_cached(
+                "UPDATE drafts SET upload_building = NULL \
+                 WHERE id = ?1 AND upload_building IS NOT NULL",
+            )?
+            .execute([id.0])?;
+        if changed > 0 {
+            self.state.after_commit();
+        }
+        Ok(())
     }
 
     fn due_sends(&mut self, account: AccountId, now: i64) -> Result<DueSends, StoreError> {

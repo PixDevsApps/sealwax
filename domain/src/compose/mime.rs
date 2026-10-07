@@ -17,8 +17,8 @@ use super::address;
 use super::ids;
 use super::text::header_text;
 use super::{Draft, DraftPart};
-use crate::message;
 use crate::model::Address;
+use crate::{html_depth, message};
 use mail_builder::MessageBuilder;
 use mail_builder::encoders::base64::Base64Encoder;
 use mail_builder::headers::Header;
@@ -201,14 +201,19 @@ pub fn html_document(fragment: &str) -> String {
 }
 
 /// The plain part: the HTML through html2text at [`TEXT_WIDTH`] columns, the signature's
-/// separator line as `-- ` (RFC 3676).
+/// separator line as `-- ` (RFC 3676). HTML nested deeper than [`html_depth::MAX_DEPTH`] goes
+/// through mail-parser's simple converter, whole.
 pub fn plain_text(html: &str) -> String {
-    let converted = catch_unwind(AssertUnwindSafe(|| {
-        html2text::config::plain().string_from_read(html.as_bytes(), TEXT_WIDTH)
-    }));
-    let text = match converted {
-        Ok(Ok(text)) => text,
-        _ => message::html_to_text(html),
+    let text = if html_depth::too_deep(html) {
+        mail_parser::decoders::html::html_to_text(html)
+    } else {
+        let converted = catch_unwind(AssertUnwindSafe(|| {
+            html_depth::render(html2text::config::plain(), html, TEXT_WIDTH)
+        }));
+        match converted {
+            Ok(Ok(text)) => text,
+            _ => message::html_to_text(html),
+        }
     };
     text.lines()
         .map(|line| match line {

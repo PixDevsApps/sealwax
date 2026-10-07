@@ -5,8 +5,8 @@
 //! beside a long download; drafts' copies in the local Drafts folder; the bytes of mail deleted
 //! for good leaving the disk; a message above IMAP's whole-message limit stored whole, kept by
 //! the disk cap and answered from the store only; Refresh's `CheckMail`; messages above the
-//! client's cap kept on the server as header rows; a busy maildrop and LOGIN-DELAY. Test data
-//! and dummy addresses only.
+//! client's cap kept on the server as header rows; a busy maildrop and LOGIN-DELAY; replies
+//! quoting deeply nested HTML filed and sent. Test data and dummy addresses only.
 
 use super::super::ops::unix_ms;
 use super::*;
@@ -19,9 +19,9 @@ use crate::secrets::{SecretKind, SecretStore};
 use crate::service::bodies;
 use crate::service::{EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use base64::Engine as _;
-use sealwax_domain::account::{AccountKey, Endpoint, Security};
-use sealwax_domain::compose::Draft;
-use sealwax_domain::model::{Address, FolderRole};
+use sealwax_domain::account::{AccountKey, Endpoint, Identity, Security};
+use sealwax_domain::compose::{Draft, ReplyKind, ids, reply};
+use sealwax_domain::model::{Address, FolderRole, MessageId};
 use sealwax_domain::triage::Triage;
 use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
@@ -1144,6 +1144,99 @@ async fn a_drafts_copy_is_filed_into_the_local_drafts_folder() {
     })
     .await;
     stop(actor).await;
+}
+
+/// N1 end to end (M9, docs/m9/depth.md): replies quoting the report's message of 14,563 nested
+/// lists, their quote made as the quick reply makes it (never through WebKit), are built on
+/// tokio's 2 MiB blocking threads, one as its Drafts-folder copy and one to send, and the second
+/// goes out once. Before the depth limit building them overflowed such a thread, which aborts
+/// the process.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn replies_quoting_deeply_nested_html_are_filed_and_sent() {
+    let ca = test_ca();
+    let (listener, port) = bind().await;
+    let data = Arc::new(Mutex::new(Vec::new()));
+    tokio::spawn(smtp(listener, ca.server.clone(), data.clone()));
+    let mut h = harness(
+        Pop3Policy::default(),
+        quick(),
+        Some((port, ca.trust.clone())),
+        Fake::default(),
+    )
+    .await;
+    let raw = format!(
+        "From: Avsender <avsender@example.test>\r\nTo: Pop <pop@example.test>\r\n\
+         Subject: Dypt\r\nDate: Wed, 07 Oct 2026 12:00:00 +0200\r\n\
+         Message-ID: <dypt@example.test>\r\nMIME-Version: 1.0\r\n\
+         Content-Type: text/html; charset=utf-8\r\n\r\n{}dypt{}\r\n",
+        "<ul><li>".repeat(14_563),
+        "</li></ul>".repeat(14_563)
+    );
+    let original = reply::Original::parse(raw.as_bytes());
+    let senders = [Identity {
+        name: "Pop".into(),
+        address: "pop@example.test".into(),
+        signature: None,
+    }];
+    let planned = reply::plan(&original, ReplyKind::Reply, &senders);
+    let mut saved = Vec::new();
+    for (n, typed, at) in [
+        (1, "<div>Utkast</div>", unix_ms() - 60_000),
+        (2, "<div>Svar</div>", unix_ms()),
+    ] {
+        let message_id = ids::message_id("pop@example.test", [n; 16]).unwrap();
+        let draft = planned.draft(h.account, MessageId(1), message_id, typed, Vec::new());
+        let reply = h
+            .shared
+            .store
+            .save_draft(SaveDraft {
+                id: None,
+                draft,
+                open: false,
+                now: at,
+            })
+            .recv()
+            .await
+            .unwrap();
+        let sealwax_infrastructure::store::DraftSaved::Saved { id, .. } = reply else {
+            panic!("not saved: {reply:?}");
+        };
+        saved.push(id);
+    }
+    let queued = h
+        .shared
+        .store
+        .queue_send(saved[1], unix_ms())
+        .recv()
+        .await
+        .unwrap();
+    assert!(matches!(queued, SendQueued::Queued { .. }), "{queued:?}");
+    let actor = h.start();
+    let (account, sent) = (h.account, saved[1]);
+    h.until(|event| match event {
+        Event::Sent { account: a, draft } if *a == account && *draft == sent => Some(()),
+        _ => None,
+    })
+    .await;
+    assert_eq!(data.lock().unwrap().len(), 1, "sent once");
+    assert!(data.lock().unwrap()[0].contains("Subject: Re: Dypt"));
+    let drafts = h.folder(FolderRole::Drafts).await;
+    h.eventually(|| {
+        let store = h.shared.store.clone();
+        async move { store.folder_messages(drafts).recv().await.unwrap().len() == 1 }
+    })
+    .await;
+    stop(actor).await;
+    // Each build was recorded as done: a start now finds nothing left being built.
+    assert!(
+        h.shared
+            .store
+            .recover_sends()
+            .recv()
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

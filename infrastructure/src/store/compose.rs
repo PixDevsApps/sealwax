@@ -33,6 +33,7 @@ pub(crate) fn failure_code(failure: SendFailure) -> i64 {
         SendFailure::Refused => 3,
         SendFailure::NeedsSignIn => 4,
         SendFailure::Other => 5,
+        SendFailure::Interrupted => 6,
     }
 }
 
@@ -42,6 +43,7 @@ pub(crate) fn failure_from(code: i64) -> SendFailure {
         2 => SendFailure::TooLarge,
         3 => SendFailure::Refused,
         4 => SendFailure::NeedsSignIn,
+        6 => SendFailure::Interrupted,
         _ => SendFailure::Other,
     }
 }
