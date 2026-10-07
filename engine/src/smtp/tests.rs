@@ -4,6 +4,7 @@ use super::*;
 use crate::net::testing::{Peer, bind, test_ca};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const PASSWORD: Credentials<'static> = Credentials::Password {
     username: "user",
@@ -175,6 +176,50 @@ async fn starttls_is_required_and_then_used() {
         server.await.unwrap(),
         (b"user".to_vec(), b"secret-password".to_vec())
     );
+}
+
+/// STARTTLS response injection (ML-093): a man in the middle sends a fake answer right after
+/// STARTTLS's 220. Read after the handshake, it would pass for the server's answer over TLS
+/// and put every later reply one behind. Anything sent ahead of the handshake ends the check
+/// before TLS starts, so nothing goes over TLS.
+#[tokio::test]
+async fn bytes_after_starttls_s_reply_end_the_check() {
+    let ca = test_ca();
+    let config = ca.server.clone();
+    let (listener, port) = bind().await;
+    let server = tokio::spawn(async move {
+        let mut peer = Peer::accept(&listener).await;
+        peer.send("220 test ESMTP\r\n").await;
+        peer.line().await;
+        peer.send("250-test\r\n250-STARTTLS\r\n250 AUTH PLAIN\r\n")
+            .await;
+        assert_eq!(peer.line().await.unwrap(), "STARTTLS");
+        peer.send("220 2.0.0 go ahead\r\n250-injected\r\n250 AUTH PLAIN\r\n")
+            .await;
+        let Ok(tls) = tokio_rustls::TlsAcceptor::from(config)
+            .accept(peer.into_inner())
+            .await
+        else {
+            return Vec::new();
+        };
+        let mut tls = tokio::io::BufReader::new(tls);
+        let mut lines = Vec::new();
+        let mut line = String::new();
+        while matches!(tls.read_line(&mut line).await, Ok(1..)) {
+            let answer = match line.get(..4).unwrap_or_default() {
+                "EHLO" => "250-test\r\n250 AUTH PLAIN\r\n",
+                "AUTH" => "235 2.7.0 accepted\r\n",
+                _ => "221 bye\r\n",
+            };
+            lines.push(std::mem::take(&mut line));
+            tls.get_mut().write_all(answer.as_bytes()).await.unwrap();
+        }
+        lines
+    });
+    let result = check_login(&endpoint(port, Security::StartTls), PASSWORD, &ca.trust).await;
+    let over_tls = server.await.unwrap();
+    assert_eq!(result, Err(LoginFailure::NoTls));
+    assert!(over_tls.is_empty(), "{over_tls:?}");
 }
 
 #[tokio::test]

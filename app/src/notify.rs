@@ -600,7 +600,7 @@ pub fn count_text(count: usize) -> String {
 }
 
 /// The senders newest first, each once: "Kari", "Kari and Ola", "Kari, Ola and Leah",
-/// "Kari, Ola, Leah and 2 others".
+/// "Kari, Ola, Leah and 2 others"; at most [`BODY_CHARS`] characters.
 pub fn senders_text(names: &[String]) -> String {
     let mut distinct: Vec<&str> = Vec::new();
     for name in names {
@@ -608,7 +608,7 @@ pub fn senders_text(names: &[String]) -> String {
             distinct.push(name);
         }
     }
-    match distinct.as_slice() {
+    let text = match distinct.as_slice() {
         [] => String::new(),
         [one] => (*one).to_owned(),
         [first, second] => format!("{first} and {second}"),
@@ -621,7 +621,8 @@ pub fn senders_text(names: &[String]) -> String {
             };
             format!("{first}, {second}, {third} and {others}")
         }
-    }
+    };
+    clean(&text, BODY_CHARS)
 }
 
 /// Mail text made safe to show on one line: control characters become spaces, direction
@@ -632,8 +633,10 @@ pub fn clean(text: &str, max: usize) -> String {
     let mut count = 0;
     let mut space = false;
     for c in text.chars() {
-        if matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}')
-        {
+        if matches!(
+            c,
+            '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}' | '\u{200e}' | '\u{200f}' | '\u{061c}'
+        ) {
             continue;
         }
         if c.is_control() || c.is_whitespace() {
@@ -969,6 +972,8 @@ mod tests {
         assert_eq!(clean("  Kari \n Nordmann\t", 80), "Kari Nordmann");
         assert_eq!(clean("Faktura\u{202e}fdp.exe", 80), "Fakturafdp.exe");
         assert_eq!(clean("a\u{0007}b\u{2066}c", 80), "a bc");
+        // The Arabic letter mark reorders text too (found in ML-093's review).
+        assert_eq!(clean("a\u{061c}b", 80), "ab");
         assert_eq!(clean("", 80), "");
         assert_eq!(clean("abcdef", 4), "abc…");
         assert_eq!(clean("abcd", 4), "abcd");
@@ -1007,6 +1012,14 @@ mod tests {
             senders_text(&names(&["Kari", "Ola", "Leah", "Ingrid", "Marius"])),
             "Kari, Ola, Leah and 2 others"
         );
+        // Three names of 80 characters and the rest stay within the body's cap (ML-093).
+        let long: Vec<String> = ['a', 'b', 'c', 'd']
+            .iter()
+            .map(|c| c.to_string().repeat(TITLE_CHARS))
+            .collect();
+        let text = senders_text(&long);
+        assert_eq!(text.chars().count(), BODY_CHARS);
+        assert!(text.ends_with('…'));
     }
 
     #[test]

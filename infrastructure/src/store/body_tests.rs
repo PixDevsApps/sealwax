@@ -16,7 +16,7 @@ const T0: i64 = 1_790_000_000;
 
 /// A message whose text runs well past the first sync's 1 KB preview, ending in a word only
 /// the whole body has, with a PDF attached.
-fn raw(n: u32) -> Vec<u8> {
+pub(super) fn raw(n: u32) -> Vec<u8> {
     let filler = "fjord kyst skjærgård lyngheia tindeklatring \r\n".repeat(60);
     format!(
         "From: Avsender {n} <avsender{n}@example.test>\r\nTo: mottaker@example.test\r\n\
@@ -51,7 +51,13 @@ fn header_only(folder: FolderId, uid: u32, date: i64) -> NewMessage {
 }
 
 /// The upgrade the engine builds for a whole message it stored as `key`.
-fn upgrade(message: MessageId, uid: u32, key: BlobKey, raw: &[u8], used: i64) -> BodyUpgrade {
+pub(super) fn upgrade(
+    message: MessageId,
+    uid: u32,
+    key: BlobKey,
+    raw: &[u8],
+    used: i64,
+) -> BodyUpgrade {
     let parsed = message::parse(raw);
     BodyUpgrade {
         message,

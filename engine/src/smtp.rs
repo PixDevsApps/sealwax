@@ -86,7 +86,7 @@ pub(crate) async fn open(
                 .map_err(|error| error.failure())?;
             Box::new(Tls(tls))
         }
-        Security::StartTls => Box::new(tcp),
+        Security::StartTls => Box::new(Plain::new(tcp)),
     };
     let mut conn = AsyncSmtpConnection::connect_with_transport(stream, &hello())
         .await
@@ -278,6 +278,92 @@ pub(crate) fn reply(code: u16, text: &str) -> LoginFailure {
         LoginFailure::WrongPassword
     } else {
         LoginFailure::Other
+    }
+}
+
+/// The first byte of a TLS handshake record; no SMTP command starts with it.
+const HANDSHAKE_RECORD: u8 = 0x16;
+
+/// The plaintext stream of a STARTTLS connection, handed to lettre. lettre reads replies
+/// through a buffer it keeps across its TLS upgrade, so bytes a man in the middle sends after
+/// STARTTLS's 220 would be read as if they came over TLS (STARTTLS response injection, found in
+/// ML-093). Until the handshake starts this hands lettre at most one line per read and keeps
+/// the rest; the handshake's first record fails if anything is kept.
+#[derive(Debug)]
+struct Plain {
+    tcp: TcpStream,
+    /// Read from the socket and not yet handed on.
+    ahead: Vec<u8>,
+    tls: bool,
+}
+
+impl Plain {
+    fn new(tcp: TcpStream) -> Self {
+        Plain {
+            tcp,
+            ahead: Vec::new(),
+            tls: false,
+        }
+    }
+}
+
+impl AsyncTokioStream for Plain {
+    fn peer_addr(&self) -> io::Result<SocketAddr> {
+        self.tcp.peer_addr()
+    }
+}
+
+impl AsyncRead for Plain {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        if self.tls {
+            return Pin::new(&mut self.tcp).poll_read(cx, buf);
+        }
+        if self.ahead.is_empty() {
+            let mut chunk = [0; 4096];
+            let mut read = ReadBuf::new(&mut chunk);
+            std::task::ready!(Pin::new(&mut self.tcp).poll_read(cx, &mut read))?;
+            self.ahead.extend_from_slice(read.filled());
+        }
+        let line = self
+            .ahead
+            .iter()
+            .position(|&byte| byte == b'\n')
+            .map_or(self.ahead.len(), |at| at + 1);
+        let take = line.min(buf.remaining());
+        buf.put_slice(&self.ahead[..take]);
+        self.ahead.drain(..take);
+        Poll::Ready(Ok(()))
+    }
+}
+
+impl AsyncWrite for Plain {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<io::Result<usize>> {
+        if !self.tls && buf.first() == Some(&HANDSHAKE_RECORD) {
+            if !self.ahead.is_empty() {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "data sent ahead of the TLS handshake",
+                )));
+            }
+            self.tls = true;
+        }
+        Pin::new(&mut self.tcp).poll_write(cx, buf)
+    }
+
+    fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.tcp).poll_flush(cx)
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Pin::new(&mut self.tcp).poll_shutdown(cx)
     }
 }
 

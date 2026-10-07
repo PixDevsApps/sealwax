@@ -122,6 +122,48 @@ async fn starttls_asks_capabilities_again_and_falls_back_to_login() {
     );
 }
 
+/// STARTTLS response injection (ML-093): an answer a man in the middle puts right after the
+/// STARTTLS OK is dropped with the plaintext connection's buffer, never read as if it came over
+/// TLS. Read over TLS, this one would leave only XOAUTH2.
+#[tokio::test]
+async fn bytes_after_the_starttls_ok_are_never_read_over_tls() {
+    let ca = test_ca();
+    let config = ca.server.clone();
+    let (listener, port) = bind().await;
+    let server = tokio::spawn(async move {
+        let mut peer = Peer::accept(&listener).await;
+        peer.send("* OK [CAPABILITY IMAP4rev1 STARTTLS AUTH=PLAIN] ready\r\n")
+            .await;
+        let tag = peer.expect("STARTTLS").await;
+        peer.send(&format!(
+            "{tag} OK begin TLS\r\n* CAPABILITY IMAP4rev1 LOGINDISABLED AUTH=XOAUTH2\r\n"
+        ))
+        .await;
+        let mut peer = peer.tls(config).await;
+        let tag = peer.expect("CAPABILITY").await;
+        peer.send("* CAPABILITY IMAP4rev1 AUTH=PLAIN\r\n").await;
+        peer.send(&format!("{tag} OK done\r\n")).await;
+        let tag = peer.expect("AUTHENTICATE PLAIN").await;
+        peer.send("+ \r\n").await;
+        peer.line().await;
+        peer.send(&format!("{tag} OK authenticated\r\n")).await;
+        let tag = peer.expect("CAPABILITY").await;
+        peer.send("* CAPABILITY IMAP4rev1\r\n").await;
+        peer.send(&format!("{tag} OK done\r\n")).await;
+        peer.drain().await
+    });
+    let conn = connect(
+        &endpoint(port, Security::StartTls),
+        PASSWORD,
+        ca.trust.client_config().unwrap(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(conn.mechanism(), Mechanism::Plain);
+    drop(conn);
+    server.await.unwrap();
+}
+
 #[tokio::test]
 async fn implicit_tls_authenticates_with_plain_and_enables_qresync() {
     let ca = test_ca();

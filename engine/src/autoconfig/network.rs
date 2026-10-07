@@ -95,6 +95,9 @@ impl RealNetwork {
             .user_agent(options.user_agent.as_str())
             .https_only(true)
             .no_proxy()
+            // reqwest sends the previous URL, query and all, as the Referer of a redirect it
+            // follows: the address would reach the redirect's host (ML-093).
+            .referer(false)
             .tls_backend_preconfigured((*tls).clone())
             .dns_resolver(Fqdn {
                 resolver: resolver.clone(),
@@ -378,4 +381,17 @@ fn error_text(error: &reqwest::Error) -> String {
         source = inner.source();
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// reqwest sends the previous URL as the Referer of a redirect it follows, and the first URL
+    /// carries the address (ML-093). Its `Debug` names `referer` only while it is on.
+    #[tokio::test]
+    async fn redirects_carry_no_referer() {
+        let network = RealNetwork::new(&DetectOptions::default(), None).expect("a client");
+        assert!(!format!("{:?}", network.http).contains("referer"));
+    }
 }

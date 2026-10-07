@@ -25,6 +25,20 @@ fn referenced(tx: &Connection, key: &BlobKey) -> rusqlite::Result<bool> {
         || compose::held(tx, key)?)
 }
 
+/// Whether a local account's message (one with no key, or a POP3 account's) holds `key`. Blobs
+/// are named by their content, so an IMAP account's cached body can be the very file that is
+/// such a message's only copy, which the disk cap never evicts (found in ML-093's review).
+fn held_locally(tx: &Connection, key: &[u8]) -> rusqlite::Result<bool> {
+    tx.prepare_cached(
+        "SELECT EXISTS(SELECT 1 FROM messages INDEXED BY messages_blob \
+           JOIN folders ON folders.id = messages.folder_id \
+           JOIN accounts ON accounts.id = folders.account_id \
+           WHERE messages.blob_key = ?1 AND (accounts.key IS NULL \
+             OR EXISTS(SELECT 1 FROM pop3_accounts WHERE account_id = accounts.id)))",
+    )?
+    .query_row([key], |row| row.get(0))
+}
+
 /// The columns an upgrade reads from the row it replaces.
 struct Stored {
     folder: FolderId,
@@ -262,6 +276,7 @@ impl Writer {
                         .map(|blob| compose::held(&tx, &blob))
                         .transpose()?
                         .unwrap_or(false)
+                    || held_locally(&tx, &key)?
                 {
                     continue;
                 }
