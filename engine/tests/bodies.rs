@@ -378,11 +378,11 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         assert!(Instant::now() < deadline, "the cap never evicted");
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(
-        blobs.disk_usage().unwrap().files,
-        0,
-        "evicted blobs are deleted"
-    );
+    // The blobs go after the eviction's commit.
+    while blobs.disk_usage().unwrap().files > 0 {
+        assert!(Instant::now() < deadline, "evicted blobs are deleted");
+        std::thread::sleep(Duration::from_millis(10));
+    }
     let target = store.body_targets(vec![ids[0]]).recv_blocking().unwrap();
     assert_eq!(
         (target[0].body_state, target[0].blob),
