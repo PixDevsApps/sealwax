@@ -23,6 +23,7 @@ use crate::notify;
 use crate::oauth;
 use crate::outbox;
 use crate::palette;
+use crate::pop3;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{self, MessageSource, Opened, Position, Reader};
 use crate::search;
@@ -470,7 +471,8 @@ impl AppState {
             key: key.clone(),
             name: account.name,
             address: settings.address,
-            imap: settings.incoming,
+            incoming: settings.incoming,
+            receive: settings.receive,
             smtp: settings.smtp,
         })
     }
@@ -527,6 +529,30 @@ impl AppState {
             (BannerAction::SignIn | BannerAction::TypePassword | BannerAction::Details, None) => {
                 tracing::warn!("a banner button for an account accounts.toml doesn't list");
             }
+        }
+    }
+
+    /// A folder (not All Inboxes) is shown: the engine syncs a server's folder now and keeps it
+    /// current while shown (ML-042); a POP3 account's local folder has nothing to sync and
+    /// nothing older to load (M8).
+    fn folder_opened(&self, folder: FolderId) {
+        if pop3::is_local_folder(self, folder) {
+            if let Some(list) = self.list() {
+                list.older_loaded(folder, 0, true);
+            }
+        } else {
+            let _ = self.engine.send(Command::FolderOpened { folder });
+        }
+    }
+
+    /// The list reached the end of a folder's first-sync window (ML-043): the engine loads
+    /// older mail. A local folder (M8) has none, so the list stops asking at once.
+    fn older_wanted(&self, folder: FolderId) {
+        let local = pop3::is_local_folder(self, folder);
+        if (local || self.engine.send(Command::LoadOlder { folder }).is_err())
+            && let Some(list) = self.list()
+        {
+            list.older_loaded(folder, 0, local);
         }
     }
 
@@ -1188,7 +1214,7 @@ impl AppState {
             };
             let scope = state.mailbox.scope_for_key(key);
             if let Some(ViewScope::Folder(folder)) = scope {
-                let _ = state.engine.send(Command::FolderOpened { folder });
+                state.folder_opened(folder);
             }
             if let Some(shown) = state.list() {
                 shown.show(scope);
@@ -1196,11 +1222,8 @@ impl AppState {
         });
         let weak = Rc::downgrade(self);
         list.connect_older_wanted(move |folder| {
-            if let Some(state) = weak.upgrade()
-                && state.engine.send(Command::LoadOlder { folder }).is_err()
-                && let Some(list) = state.list()
-            {
-                list.older_loaded(folder, 0, false);
+            if let Some(state) = weak.upgrade() {
+                state.older_wanted(folder);
             }
         });
         if self.mailbox.is_ready() {
@@ -1801,14 +1824,19 @@ impl AppState {
     /// The accounts Remove Account offers: those `accounts.toml` lists, so not the local
     /// accounts of fixtures and self-tests.
     fn removable_accounts(&self) -> Vec<Removable> {
-        self.mailbox
-            .accounts()
-            .into_iter()
+        let known = self.mailbox.accounts();
+        let listed = self
+            .preferences()
+            .map(|prefs| prefs.accounts())
+            .unwrap_or_default();
+        known
+            .iter()
             .filter_map(|account| {
                 Some(Removable {
-                    key: account.key?,
-                    name: account.name,
-                    address: account.address,
+                    key: account.key.clone()?,
+                    name: account.name.clone(),
+                    address: account.address.clone(),
+                    pop3: pop3::receives_by_pop3(account.id, &known, &listed),
                 })
             })
             .collect()

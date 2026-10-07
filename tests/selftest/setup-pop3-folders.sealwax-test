@@ -1,0 +1,144 @@
+# A POP3 account's local folders in the app (M8) on a scripted engine: accounts.toml, written by
+# hand, lists Home by POP3 (mail deleted from the server 30 days after the download) and Work
+# by IMAP. Home's folders never tell the engine they were opened and never ask it for older
+# mail, so "Loading older messages…" never shows there; Work's still do. Move to… offers Home's
+# local folders, and its mail actions and Mark Folder as Read queue in the store and wake its
+# actor as an IMAP account's do. The sidebar's words and the banners are the same, naming
+# POP3's server, and typing the password again names it too. Every address, name and server is
+# fictional. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 65 target/debug/sealwax --self-test tests/selftest/setup-pop3-folders.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+triage-mark-read-on-open false
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"home\"\nname = \"Home\"\naddress = \"home@example.test\"\n\n[account.pop3]\nhost = \"pop.example.test\"\nleave_on_server = true\ndelete_after_days = 30\n\n[account.smtp]\nhost = \"smtp.example.test\"\n\n[[account]]\nkey = \"work\"\nname = \"Work\"\naddress = \"work@example.test\"\n\n[account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]\nhost = \"smtp.example.test\"\n"
+triage-account Home home
+triage-account Work work
+assert-account-folders home@example.test Inbox,Drafts,Sent,Archive,Junk,Trash
+
+# The banner reads accounts.toml: a certificate names POP3's server.
+engine-reply status home@example.test certificate
+wait-until assert-setup banner-queue certificate:home
+assert-account-status home@example.test certificate
+assert-label banner-title "Sealwax stopped connecting to Home"
+assert-label banner-body "pop.example.test shows a certificate that no longer verifies, and Sealwax never signs in to a server it can't verify. A network that inspects secure connections can cause this: try another network, then Retry."
+setup-click banner-secondary
+wait-until assert-shown certificate-details true
+screenshot $DIR/../../.local/selftest/setup-pop3-certificate-details.png
+setup-respond certificate-details close
+engine-expect none
+
+# The sidebar's words are IMAP's: syncing, synced, offline, needs sign-in.
+engine-reply status home@example.test syncing
+assert-account-status home@example.test syncing
+engine-reply status home@example.test offline
+assert-account-status home@example.test offline
+engine-reply status home@example.test synced
+assert-account-status home@example.test synced
+wait-until assert-shown banner false
+
+# The server refused the password: typed again, a refusal names POP3's server.
+engine-reply status home@example.test needs-sign-in
+assert-account-status home@example.test needs-sign-in
+wait-until assert-setup banner-queue password:home
+assert-label banner-primary "Type the password again"
+setup-click banner-primary
+assert-setup step password-again
+assert-label setup-title Home
+setup-type setup-password fictional-password-1
+setup-key enter
+engine-expect update-password key=home password=fictional-password-1
+engine-reply password-updated pop3 wrong-password
+assert-setup step password-again
+assert-label setup-alert-title "Wrong password"
+assert-label setup-alert-body "The incoming mail server (POP3) didn't accept it. Check it and try again; if you changed it at your provider, type the new one."
+setup-key enter
+engine-expect update-password key=home
+engine-reply password-updated pop3 unreachable
+assert-label setup-alert-body "Nothing answers at pop.example.test on port 995. Check that you're online, then try again."
+setup-key enter
+engine-expect update-password key=home
+engine-reply password-updated ok
+assert-setup open false
+assert-toast "Password accepted for Home"
+engine-reply status home@example.test synced
+wait-until assert-shown banner false
+setup-dismiss-toasts
+
+# Home's Inbox: no folder-opened, no load-older, no "Loading older messages…", at the end too.
+mail-add Home:inbox 10m "Velkommen hjem" "from=Ingrid Solberg"
+mail-add Home:inbox 20m "Strømregningen" "from=Marius Dahl"
+mail-add Home:inbox 30m "Middag lørdag" read "from=Leah Kim"
+folder inbox Home
+assert-list-count 3
+assert-shown list-older false
+engine-expect none
+list-scroll-end
+assert-shown list-older false
+engine-expect none
+folder archive Home
+assert-shown list-older false
+engine-expect none
+screenshot $DIR/../../.local/selftest/setup-pop3-folders.png
+
+# Work, by IMAP, still syncs the folder it shows and asks for older mail.
+mail-add Work:inbox 10m "Kvartalsrapport" "from=Ingrid Solberg"
+folder inbox Work
+engine-expect folder-opened
+engine-expect load-older
+assert-shown list-older true
+engine-reply older-loaded 0 complete
+wait-until assert-shown list-older false
+
+# Move to… offers Home's local folders; the move queues in the store and wakes its actor.
+folder inbox Home
+engine-expect none
+focus list
+list-select 0
+key v
+assert-move-to open true
+assert-move-to shown "Archive,Drafts,Sent,Junk,Trash"
+type jun
+assert-move-to selected Junk
+key Return
+assert-move-to open false
+assert-list-count 2
+assert-toast "Moved 1 message to Junk"
+engine-expect ops-queued
+toast-undo
+assert-toast Undone
+assert-list-count 3
+engine-expect none
+
+# Archive with e, then Mark Folder as Read; Undo brings the unread back.
+focus list
+list-select 0
+key e
+assert-list-count 2
+engine-expect ops-queued
+assert-sidebar-count Home:inbox 1
+action win.mark-folder-read
+assert-toast "Marked 1 message in Inbox as read"
+assert-sidebar-count Home:inbox 0
+engine-expect ops-queued
+toast-undo
+assert-toast Undone
+assert-sidebar-count Home:inbox 1
+engine-expect none
+
+# Remove Account says what a POP3 account loses for good; the text follows the account chosen.
+action win.remove-account
+wait-until assert-shown remove-account true
+assert-shown remove-account-choice true
+assert-field remove-account-choice "Home — home@example.test"
+assert-text-contains remove-account "This POP3 account's folders are only on this computer: its sent mail, its drafts and mail the server no longer has are gone for good."
+screenshot $DIR/../../.local/selftest/setup-pop3-remove.png
+setup-choose remove-account-choice "Work — work@example.test"
+assert-text-contains remove-account "The mail on the server stays."
+setup-choose remove-account-choice "Home — home@example.test"
+assert-text-contains remove-account "gone for good"
+setup-respond remove-account cancel
+engine-expect none

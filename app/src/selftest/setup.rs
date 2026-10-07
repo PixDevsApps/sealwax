@@ -6,27 +6,27 @@
 //! | --- | --- |
 //! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one; links the assistant opens are recorded from then on, never opened |
 //! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
-//! | `engine-expect detect\|verify\|add-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` and `smtp` (`host:port:tls\|starttls`), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
+//! | `engine-expect detect\|verify\|add-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
 //! | `engine-expect none` | The app sent nothing more |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
 //! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `gmail`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
-//! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
+//! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|pop3\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
 //! | `engine-reply sign-in-open URL` | `SignInOpen` for the last command |
 //! | `engine-reply signed-in ok USERNAME`, `engine-reply signed-in [imap\|smtp] FAILURE` | `SignedIn` (IMAP when no protocol is named) |
-//! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would |
+//! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would; `added ok file` also appends it to the scratch `accounts.toml` through the engine's writer and waits for the app to read it (M8) |
 //! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
 //! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `AccountStatus` for the store's account with ADDRESS: the failure's state, or `Synced` |
 //! | `engine-reply status ADDRESS STATE` | `AccountStatus` for that account: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`, `quota` (ML-048) |
 //! | `engine-reply keyring-unavailable` | `KeyringUnavailable` |
 //! | `engine-reply ops-refused ADDRESS flags\|move\|expunge\|folder-read N` | `OpsRefused` for that account: the server refused N messages' change for good (ML-051) |
-//! | `engine-reply password-updated ok`, `engine-reply password-updated [imap\|smtp] FAILURE` | `PasswordUpdated` for the last command (IMAP when no protocol is named) |
+//! | `engine-reply password-updated ok`, `engine-reply password-updated [imap\|pop3\|smtp] FAILURE` | `PasswordUpdated` for the last command (IMAP when no protocol is named) |
 //! | `desktop-network up\|down`, `desktop-resume` | What the network monitor and logind would report, through the app's own handler |
 //! | `engine-reply body-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `BodyFetched` for the first message of the last `fetch-bodies` taken (its fields: `messages`, `count`); storing the body is `bodies-store`'s (`bodies.rs`) |
 //! | `engine-reply older-loaded FETCHED complete\|more` | `OlderLoaded` for the folder of the last `load-older` taken (its field: `folder`; `folder-opened` has the same) (ML-043) |
 //! | `engine-reply part-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `PartFetched` for the last `fetch-part` taken (its fields: `message`, `part`); `ok` carries the part of the message `files.rs` stored (ML-061) |
 //! | `engine-reply original-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `OriginalFetched` for the last `fetch-original` taken (its field: `message`); `ok` carries the message `files.rs` stored, whole (ML-063) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
-//! | `setup-type NAME TEXT`, `setup-choose NAME tls\|starttls`, `setup-click NAME` | Types into a field, picks a security, clicks a visible, sensitive button |
+//! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`), clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
 //! | `setup-respond NAME RESPONSE` | Answers the alert dialog named NAME (Remove Account's `remove-account`) as its button would |
 //! | `setup-dismiss-toasts` | Closes the toasts shown and queued, as their × would (for previews) |
@@ -36,13 +36,15 @@
 //! | `assert-setup banner-queue ENTRY,…\|none` | Everything the banner has, in order: `keyring`, `certificate:KEY`, `sign-in:KEY`, `password:KEY`, `quota:KEY`, `offline`, `unreachable` |
 //! | `assert-opened last URL\|none`, `assert-opened count N` | The last link handed to the browser opener, and how many were |
 //! | `assert-toast TEXT` | The toast on screen says TEXT (`setup-dismiss-toasts` clears earlier ones) |
-//! | `assert-text-contains NAME TEXT` | A label's text contains TEXT |
+//! | `assert-text-contains NAME TEXT` | A label's, a button's or an alert dialog's text (its heading and body) contains TEXT |
 //! | `assert-field NAME TEXT` | A text field's text or a choice's item (never the password's) |
 //! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in\|certificate\|quota` | The sidebar's state of the account with ADDRESS |
+//! | `assert-account-folders ADDRESS TITLE,…` | The folders the sidebar shows for the account with ADDRESS, role folders first, by the titles it shows (M8) |
 
 use super::{Harness, StepResult, WAIT_TIMEOUT, equal, with_timeout};
 use crate::desktop::DesktopEvent;
 use crate::engine::EngineOptions;
+use crate::preferences::SettingsFile;
 use crate::setup::{self, sources};
 use crate::status::Waiting;
 use crate::window::Attention;
@@ -53,8 +55,8 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
     AccountKey, AccountSettings, AuthMethod, DetectSource, DetectedSettings, Detection, Endpoint,
-    HelpLink, LoginError, LoginFailure, OAuthProvider, Protocol, Security, UnsupportedReason,
-    UsernameForm,
+    HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol, Receive, Security,
+    UnsupportedReason, UsernameForm,
 };
 use sealwax_domain::model::{FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
@@ -86,6 +88,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-text-contains", 2, 2),
     ("assert-field", 2, 2),
     ("assert-account-status", 2, 2),
+    ("assert-account-folders", 2, 2),
     ("assert-opened", 2, 2),
     ("assert-toast", 1, 1),
     ("desktop-network", 1, 1),
@@ -105,6 +108,7 @@ pub fn checks(assertion: &str) -> bool {
             | "assert-text-contains"
             | "assert-field"
             | "assert-account-status"
+            | "assert-account-folders"
             | "assert-opened"
             | "assert-toast"
     )
@@ -253,11 +257,17 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             let dropdown = field
                 .downcast_ref::<gtk::DropDown>()
                 .ok_or_else(|| format!("{} is not a choice", args[0]))?;
-            dropdown.set_selected(match args[1].as_str() {
-                "tls" => 0,
-                "starttls" => 1,
-                other => return Err(format!("use tls or starttls, not {other}")),
-            });
+            // The security's TLS or STARTTLS, or "Incoming mail"'s IMAP or POP3 (M8), by name.
+            let items = dropdown.model().ok_or("the choice has no items")?;
+            let position = (0..items.n_items())
+                .find(|&position| {
+                    items
+                        .item(position)
+                        .and_downcast::<gtk::StringObject>()
+                        .is_some_and(|item| item.string().eq_ignore_ascii_case(&args[1]))
+                })
+                .ok_or_else(|| format!("{} offers no {}", args[0], args[1]))?;
+            dropdown.set_selected(position);
             Ok(())
         }
         "setup-click" => {
@@ -316,6 +326,27 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
 
 pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {
     match assertion {
+        "assert-account-folders" => {
+            let mailbox = harness.state.mailbox();
+            let account = mailbox
+                .accounts()
+                .into_iter()
+                .find(|account| account.address == args[0])
+                .ok_or_else(|| format!("no account has the address {}", args[0]))?;
+            let model = mailbox.sidebar_model();
+            let shown = model
+                .accounts
+                .iter()
+                .find(|shown| shown.name == account.name)
+                .ok_or_else(|| format!("the sidebar doesn't show {}", args[0]))?;
+            let titles: Vec<&str> = shown
+                .role_folders()
+                .into_iter()
+                .chain(&shown.more)
+                .map(|folder| folder.title())
+                .collect();
+            equal("folders", titles.join(",").as_str(), args[1].as_str())
+        }
         "assert-account-status" => {
             let mailbox = harness.state.mailbox();
             let account = mailbox
@@ -442,6 +473,12 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
                     .label()
                     .map(|label| label.to_string())
                     .unwrap_or_default()
+            } else if let Some(dialog) = found.downcast_ref::<adw::AlertDialog>() {
+                format!(
+                    "{}\n{}",
+                    dialog.heading().unwrap_or_default(),
+                    dialog.body()
+                )
             } else {
                 return Err(format!("{} has no text", args[0]));
             };
@@ -504,6 +541,24 @@ fn endpoint_text(endpoint: &Endpoint) -> String {
     format!("{}:{}:{security}", endpoint.host, endpoint.port)
 }
 
+/// How the account receives, as `engine-expect` names it (M8): `imap`, `pop3:leave` (mail kept
+/// on the server), `pop3:leave:N` (deleted there after N days) or `pop3:delete` (deleted once
+/// downloaded).
+fn receive_text(receive: Receive) -> String {
+    match receive {
+        Receive::Imap => "imap".to_owned(),
+        Receive::Pop3(Pop3Policy {
+            leave_on_server: false,
+            ..
+        }) => "pop3:delete".to_owned(),
+        Receive::Pop3(Pop3Policy {
+            delete_after_days: Some(days),
+            ..
+        }) => format!("pop3:leave:{days}"),
+        Receive::Pop3(_) => "pop3:leave".to_owned(),
+    }
+}
+
 fn auth_text(auth: AuthMethod) -> &'static str {
     match auth {
         AuthMethod::Password => "password",
@@ -523,6 +578,8 @@ fn fields(
             ("name", settings.name.clone()),
             ("key", settings.key.to_string()),
             ("imap", endpoint_text(&settings.incoming)),
+            ("incoming", endpoint_text(&settings.incoming)),
+            ("receive", receive_text(settings.receive)),
             ("smtp", endpoint_text(&settings.smtp)),
             ("username", settings.username.clone()),
             ("auth", auth_text(settings.auth).to_owned()),
@@ -822,6 +879,13 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 other => Err(account_error(other)?),
             },
         },
+        ("added", [ok, file]) if ok == "ok" && file == "file" => {
+            write_accounts_file(harness, &last).await?;
+            Event::AccountAdded {
+                request,
+                result: Ok(add_to_store(harness, &last).await?),
+            }
+        }
         ("removed", [outcome]) => Event::AccountRemoved {
             request,
             result: match outcome.as_str() {
@@ -1075,7 +1139,8 @@ fn protocol_named(name: &str) -> Result<Protocol, String> {
     match name {
         "imap" => Ok(Protocol::Imap),
         "smtp" => Ok(Protocol::Smtp),
-        other => Err(format!("use imap or smtp, not {other}")),
+        "pop3" => Ok(Protocol::Pop3),
+        other => Err(format!("use imap, pop3 or smtp, not {other}")),
     }
 }
 
@@ -1127,8 +1192,32 @@ async fn remove_from_store(harness: &Harness, last: &Last) -> Result<(), String>
     Ok(())
 }
 
+/// What the engine does on `AddAccount`, for `accounts.toml` (`added ok file`): the entry
+/// appended through the same writer, with the fake engine's key; then the app's read of it.
+async fn write_accounts_file(harness: &Harness, last: &Last) -> StepResult {
+    let mut settings = last
+        .settings
+        .clone()
+        .ok_or("the last command had no settings")?;
+    settings.key = fake_key(&settings);
+    let prefs = harness
+        .state
+        .preferences()
+        .ok_or("the settings aren't read yet")?;
+    sealwax_infrastructure::accounts::add(&prefs.path(SettingsFile::Accounts), &settings)
+        .map_err(|error| format!("accounts.toml: {error}"))?;
+    let started = Instant::now();
+    while !prefs.accounts().contains(&settings) {
+        if started.elapsed() > WAIT_TIMEOUT {
+            return Err("the app never read the new accounts.toml entry".to_owned());
+        }
+        glib::timeout_future(Duration::from_millis(10)).await;
+    }
+    Ok(())
+}
+
 /// What the engine does on `AddAccount`, for the store: the account and its role folders, so
-/// the sidebar shows it as it would after a real setup.
+/// the sidebar shows it as it would after a real setup; a POP3 account's are local (M8).
 async fn add_to_store(
     harness: &Harness,
     last: &Last,
@@ -1149,8 +1238,12 @@ async fn add_to_store(
             },
         );
     let account = reply.recv().await.map_err(|error| error.to_string())?.value;
+    let inbox = match settings.receive {
+        Receive::Imap => "INBOX",
+        Receive::Pop3(_) => "Inbox",
+    };
     for (role, folder) in [
-        (FolderRole::Inbox, "INBOX"),
+        (FolderRole::Inbox, inbox),
         (FolderRole::Drafts, "Drafts"),
         (FolderRole::Sent, "Sent"),
         (FolderRole::Archive, "Archive"),

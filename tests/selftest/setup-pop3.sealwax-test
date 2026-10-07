@@ -1,0 +1,189 @@
+# A POP3 account in the setup assistant (M8) on a scripted engine: the manual step's "Incoming
+# mail" choice (IMAP by default), POP3's server caption, standard ports (995 with TLS, 110 with
+# STARTTLS) and note; the login check and what its POP3 failures say; the account saved with the
+# safe policy (mail left on the server, never deleted there), written to accounts.toml by the
+# engine's writer, and in the sidebar with its local folders. IMAP's manual step is unchanged
+# when IMAP stays chosen. Every address, name and server is fictional. Screenshots go to
+# .local/selftest/.
+# Run: tools/headless.sh 65 target/debug/sealwax --self-test tests/selftest/setup-pop3.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# Set up manually from the first step: IMAP is chosen, with IMAP's caption and port, no note.
+setup-click add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-click setup-manual-link
+assert-setup step manual
+assert-shown setup-incoming true
+assert-field setup-incoming IMAP
+assert-label setup-imap-host-label "IMAP server"
+assert-field setup-imap-port 993
+assert-field setup-imap-security TLS
+assert-field setup-smtp-port 465
+assert-shown setup-pop3-note false
+assert-setup focus setup-imap-host
+engine-expect none
+
+# POP3: the server is POP3's, the standard port moves to 995, and the note says what POP3 does.
+setup-choose setup-incoming pop3
+assert-field setup-incoming POP3
+assert-label setup-imap-host-label "POP3 server"
+assert-field setup-imap-port 995
+assert-shown setup-pop3-note true
+assert-label setup-pop3-note "Sealwax downloads new mail to folders on this computer and leaves it on the server. To delete it there after some days, set delete_after_days in accounts.toml."
+assert-labelled
+# STARTTLS moves it to 110 and back; SMTP's port stays.
+setup-choose setup-imap-security starttls
+assert-field setup-imap-port 110
+setup-choose setup-incoming imap
+assert-field setup-imap-port 143
+assert-label setup-imap-host-label "IMAP server"
+assert-shown setup-pop3-note false
+setup-choose setup-incoming pop3
+assert-field setup-imap-port 110
+setup-choose setup-imap-security tls
+assert-field setup-imap-port 995
+assert-field setup-smtp-port 465
+# A port typed by hand stays through either change.
+setup-type setup-imap-port 1995
+setup-choose setup-incoming imap
+assert-field setup-imap-port 1995
+setup-choose setup-incoming pop3
+assert-field setup-imap-port 1995
+setup-type setup-imap-port 995
+
+# The checks name POP3's server.
+setup-type setup-imap-host "pop example"
+assert-shown setup-validation true
+assert-label setup-validation "The POP3 server is a name such as pop.example.test, in letters, digits, dots and hyphens, or an IP address."
+assert-sensitive setup-primary false
+setup-type setup-imap-host pop.example.test
+setup-type setup-imap-port 0
+assert-label setup-validation "The POP3 port is a number from 1 to 65535."
+setup-type setup-imap-port 995
+assert-shown setup-validation false
+setup-type setup-smtp-host smtp.example.test
+assert-field setup-manual-username kari@example.test
+setup-type setup-password fictional-password-1
+assert-sensitive setup-primary true
+assert-label setup-primary "Check settings"
+screenshot $DIR/../../.local/selftest/setup-pop3-manual.png
+
+# Check settings: one Verify with POP3's server and the safe policy; no second username.
+setup-key enter
+engine-expect verify address=kari@example.test "name=Kari Nordmann" key= incoming=pop.example.test:995:tls receive=pop3:leave smtp=smtp.example.test:465:tls username=kari@example.test second=none password=fictional-password-1
+assert-setup step checking
+assert-label setup-subtitle "Checking your login with the server…"
+assert-sensitive setup-incoming false
+
+# A wrong password: POP3's server named, the settings as tried, the focus in the password.
+engine-reply verified pop3 wrong-password
+assert-setup step failed
+assert-label setup-title "Couldn't sign in"
+assert-label setup-alert-title "Wrong username or password"
+assert-label setup-alert-body "The incoming mail server (POP3) didn't accept them. Check both, then try again."
+assert-setup focus setup-password
+assert-field setup-incoming POP3
+assert-label setup-imap-host-label "POP3 server"
+assert-field setup-imap-host pop.example.test
+assert-field setup-imap-port 995
+assert-shown setup-pop3-note true
+assert-sensitive setup-incoming true
+engine-expect none
+screenshot $DIR/../../.local/selftest/setup-pop3-wrong-password.png
+
+# Every other POP3 failure from one press of Enter each.
+setup-key enter
+engine-expect verify receive=pop3:leave
+engine-reply verified pop3 unreachable
+assert-label setup-alert-title "Couldn't reach the server"
+assert-label setup-alert-body "Nothing answers at pop.example.test on port 995. Check the server name and port, and that you're online."
+assert-setup focus setup-imap-host
+setup-key enter
+engine-expect verify receive=pop3:leave
+engine-reply verified pop3 no-tls
+assert-label setup-alert-title "No secure connection"
+assert-text-contains setup-alert-body "pop.example.test offers neither TLS nor STARTTLS on port 995"
+setup-key enter
+engine-expect verify
+engine-reply verified pop3 certificate
+assert-text-contains setup-alert-body "pop.example.test showed a certificate Sealwax can't verify."
+setup-key enter
+engine-expect verify
+engine-reply verified pop3 timeout
+assert-text-contains setup-alert-body "pop.example.test took too long to answer."
+setup-key enter
+engine-expect verify
+engine-reply verified pop3 imap-disabled
+assert-label setup-alert-title "POP3 is turned off for this account"
+assert-label setup-alert-body "Turn on POP3 in your provider's web settings, then try again."
+assert-shown setup-alert-link false
+assert-setup focus setup-password
+setup-key enter
+engine-expect verify
+engine-reply verified pop3 oauth
+assert-label setup-alert-body "The incoming mail server (POP3) doesn't take passwords from mail apps. Sealwax offers browser sign-in for Microsoft accounts only."
+setup-key enter
+engine-expect verify
+engine-reply verified pop3 other
+assert-label setup-alert-title "The server refused the sign-in"
+assert-label setup-alert-body "The incoming mail server (POP3) reported a problem Sealwax doesn't recognise. Another mail app downloading from this mailbox at the same time can cause it: close that app, check the settings below, then try again."
+screenshot $DIR/../../.local/selftest/setup-pop3-other.png
+
+# STARTTLS on 110, and SMTP's refusal after POP3 took the login.
+setup-choose setup-imap-security starttls
+assert-field setup-imap-port 110
+setup-type setup-password fictional-password-2
+setup-key enter
+engine-expect verify incoming=pop.example.test:110:starttls receive=pop3:leave password=fictional-password-2
+engine-reply verified smtp wrong-password
+assert-label setup-alert-body "The outgoing mail server (SMTP) didn't accept them. Check both, then try again."
+assert-field setup-incoming POP3
+
+# The login works: the account is saved with POP3's server and the safe policy, the engine
+# writes it to accounts.toml, and the sidebar shows it with its local folders.
+setup-key enter
+engine-expect verify incoming=pop.example.test:110:starttls receive=pop3:leave
+engine-reply verified ok
+engine-expect add-account address=kari@example.test "name=Kari Nordmann" incoming=pop.example.test:110:starttls receive=pop3:leave smtp=smtp.example.test:465:tls username=kari@example.test auth=password sign-in=none password=fictional-password-2
+assert-setup step adding
+assert-label setup-subtitle "Saving the account…"
+engine-reply added ok file
+assert-setup open false
+assert-toast "Added kari@example.test"
+wait-until assert-shown welcome false
+assert-file-contains $TMP/config/sealwax/accounts.toml "# Sealwax accounts (accounts.toml)."
+assert-file-contains $TMP/config/sealwax/accounts.toml "\n[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nusername = \"kari@example.test\"\nauth = \"password\"\n\n[account.pop3]\nhost = \"pop.example.test\"\nport = 110\nsecurity = \"starttls\"\nleave_on_server = true\n\n[account.smtp]\nhost = \"smtp.example.test\"\nport = 465\nsecurity = \"tls\"\n"
+assert-file-lacks $TMP/config/sealwax/accounts.toml "\n[account.imap]"
+assert-file-lacks $TMP/config/sealwax/accounts.toml "\ndelete_after_days"
+assert-file-lacks $TMP/config/sealwax/accounts.toml fictional-password
+assert-account-folders kari@example.test Inbox,Drafts,Sent,Archive,Junk,Trash
+assert-account-status kari@example.test synced
+assert-label sidebar-summary "1 account · synced"
+engine-expect none
+screenshot $DIR/../../.local/selftest/setup-pop3-added.png
+
+# An IMAP account by the manual step afterwards: IMAP chosen again, nothing of POP3 left.
+action win.add-account
+setup-type setup-address ola@example.test
+setup-click setup-manual-link
+assert-field setup-incoming IMAP
+assert-label setup-imap-host-label "IMAP server"
+assert-field setup-imap-port 993
+assert-field setup-imap-host ""
+assert-shown setup-pop3-note false
+setup-type setup-imap-host imap.example.test
+setup-type setup-smtp-host smtp.example.test
+setup-type setup-password fictional-password-3
+setup-key enter
+engine-expect verify address=ola@example.test incoming=imap.example.test:993:tls imap=imap.example.test:993:tls receive=imap second=none
+engine-reply verified imap other
+assert-label setup-alert-body "The incoming mail server (IMAP) reported a problem Sealwax doesn't recognise. Check the settings below, or try again later."
+setup-click setup-close
+assert-setup open false
+engine-expect none

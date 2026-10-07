@@ -1,6 +1,7 @@
 //! Remove Account (ML-038): a confirmation that names what goes, then `Command::RemoveAccount`.
 //! The engine deletes the account's `accounts.toml` entry, its local mail and its keyring
-//! secret; the mail on the server stays. A toast reports the result.
+//! secret; the mail on the server stays. A POP3 account's folders are only on this computer
+//! (M8), so the confirmation says what goes for good. A toast reports the result.
 
 use crate::engine_link::{EngineLink, Subscription};
 use crate::window::Window;
@@ -19,6 +20,8 @@ pub struct Removable {
     pub key: AccountKey,
     pub name: String,
     pub address: String,
+    /// It receives by POP3 (M8): its folders exist only on this computer.
+    pub pop3: bool,
 }
 
 impl Removable {
@@ -29,10 +32,22 @@ impl Removable {
             format!("{} — {}", self.name, self.address)
         }
     }
+
+    /// What goes, for this account.
+    fn body(&self) -> &'static str {
+        if self.pop3 { POP3_BODY } else { BODY }
+    }
 }
 
 const BODY: &str = "Sealwax deletes the account's mail stored on this computer, its password in \
                     the keyring and its entry in accounts.toml. The mail on the server stays.";
+
+/// A POP3 account's: what it downloaded may be gone from the server, and its other folders
+/// never were there.
+const POP3_BODY: &str = "Sealwax deletes the account's mail stored on this computer, its \
+                         password in the keyring and its entry in accounts.toml. This POP3 \
+                         account's folders are only on this computer: its sent mail, its drafts \
+                         and mail the server no longer has are gone for good.";
 
 /// Asks which account to remove, and whether, then sends the command.
 pub fn confirm(window: &Window, engine: &EngineLink, accounts: Vec<Removable>) {
@@ -45,7 +60,7 @@ pub fn confirm(window: &Window, engine: &EngineLink, accounts: Vec<Removable>) {
         } else {
             "Remove an account?".to_owned()
         })
-        .body(BODY)
+        .body(first.body())
         .close_response("cancel")
         .default_response("cancel")
         .build();
@@ -60,6 +75,16 @@ pub fn confirm(window: &Window, engine: &EngineLink, accounts: Vec<Removable>) {
         choice.set_widget_name("remove-account-choice");
         choice.update_property(&[gtk::accessible::Property::Label("Account to remove")]);
         dialog.set_extra_child(Some(&choice));
+        // The body follows the account chosen: a POP3 account loses more.
+        let bodies: Vec<&'static str> = accounts.iter().map(Removable::body).collect();
+        let shown = dialog.downgrade();
+        choice.connect_selected_notify(move |choice| {
+            if let (Some(dialog), Some(body)) =
+                (shown.upgrade(), bodies.get(choice.selected() as usize))
+            {
+                dialog.set_body(body);
+            }
+        });
         choice
     });
     let engine = engine.clone();

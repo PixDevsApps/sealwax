@@ -6,8 +6,8 @@
 //! layout survive the assistant's writes.
 
 use crate::account::{
-    AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider, Protocol, Receive,
-    Security,
+    AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider, Pop3Policy,
+    Protocol, Receive, Security,
 };
 use crate::config::{FileError, article, did_you_mean, entries, parse_toml};
 use std::net::Ipv6Addr;
@@ -20,7 +20,7 @@ pub const ACCOUNTS_FILE: &str = "accounts.toml";
 /// The longest key a hand-written account may have.
 pub const MAX_KEY_LENGTH: usize = 40;
 
-const ACCOUNT_SETTINGS: [&str; 9] = [
+const ACCOUNT_SETTINGS: [&str; 10] = [
     "key",
     "name",
     "address",
@@ -28,10 +28,15 @@ const ACCOUNT_SETTINGS: [&str; 9] = [
     "auth",
     "signature",
     "imap",
+    "pop3",
     "smtp",
     "identity",
 ];
 const ENDPOINT_SETTINGS: [&str; 3] = ["host", "port", "security"];
+/// What `[account.pop3]` has besides the server.
+const POP3_SETTINGS: [&str; 2] = ["leave_on_server", "delete_after_days"];
+/// The most days `delete_after_days` takes: ten years.
+pub const MAX_DELETE_AFTER_DAYS: u32 = 3650;
 const IDENTITY_SETTINGS: [&str; 3] = ["name", "address", "signature"];
 /// The longest signature, in characters.
 pub const MAX_SIGNATURE_CHARS: usize = 10_000;
@@ -161,7 +166,32 @@ pub fn check(account: &AccountSettings) -> Result<(), String> {
             return Err(format!("{}: port 0 is not a port", protocol_name(protocol)));
         }
     }
+    if let Receive::Pop3(policy) = account.receive {
+        policy_fault(policy).map_or(Ok(()), |fault| Err(format!("pop3: {fault}")))?;
+    }
     Ok(())
+}
+
+/// Why a POP3 account's policy can't be written, or nothing.
+fn policy_fault(policy: Pop3Policy) -> Option<&'static str> {
+    match policy.delete_after_days {
+        Some(_) if !policy.leave_on_server => {
+            Some("delete_after_days needs leave_on_server = true")
+        }
+        Some(days) if !(1..=MAX_DELETE_AFTER_DAYS).contains(&days) => {
+            Some("delete_after_days is from 1 to 3650")
+        }
+        _ => None,
+    }
+}
+
+/// The server name an example in a message uses.
+fn example_host(protocol: Protocol) -> &'static str {
+    match protocol {
+        Protocol::Imap => "imap.example.test",
+        Protocol::Smtp => "smtp.example.test",
+        Protocol::Pop3 => "pop.example.test",
+    }
 }
 
 /// One account of the file, where it is.
@@ -376,7 +406,8 @@ impl Reader<'_> {
         let mut address = None;
         let mut username = None;
         let mut auth = AuthMethod::Password;
-        let mut imap = None;
+        let mut incoming: Option<(Endpoint, Receive)> = None;
+        let mut incoming_key: Option<&str> = None;
         let mut smtp = None;
         let mut signature = None;
         let mut identities = Vec::new();
@@ -446,8 +477,32 @@ impl Reader<'_> {
                         );
                     }
                 },
-                "imap" => imap = self.endpoint(Protocol::Imap, value),
-                "smtp" => smtp = self.endpoint(Protocol::Smtp, value),
+                "imap" | "pop3" => {
+                    let pop3 = field_name == "pop3";
+                    let protocol = if pop3 { Protocol::Pop3 } else { Protocol::Imap };
+                    let read = self.server(protocol, value);
+                    if let Some(first) = incoming_key {
+                        self.error(
+                            field.span(),
+                            format!(
+                                "this account already has [account.{first}]: an account \
+                                 receives its mail by IMAP or by POP3, so keep one of the two \
+                                 tables"
+                            ),
+                        );
+                    } else {
+                        incoming_key = Some(field_name);
+                        incoming = read.map(|(endpoint, policy)| {
+                            let receive = if pop3 {
+                                Receive::Pop3(policy)
+                            } else {
+                                Receive::Imap
+                            };
+                            (endpoint, receive)
+                        });
+                    }
+                }
+                "smtp" => smtp = self.server(Protocol::Smtp, value).map(|(server, _)| server),
                 "signature" => signature = self.signature(value),
                 "identity" => identities = self.identities(value),
                 _ if is_secret_name(field_name) => {
@@ -483,8 +538,9 @@ impl Reader<'_> {
                 "this account has no address; add one, like address = \"ada@example.test\"",
             ),
             (
-                imap.is_none() && !table.contains_key("imap"),
-                "this account has no [account.imap] table with its incoming server",
+                incoming_key.is_none(),
+                "this account has no incoming server: add an [account.imap] table, or \
+                 [account.pop3] for POP3",
             ),
             (
                 smtp.is_none() && !table.contains_key("smtp"),
@@ -499,8 +555,8 @@ impl Reader<'_> {
         if self.errors.len() != errors_before {
             return None;
         }
-        let ((key, key_span), name, (address, address_span), imap, smtp) =
-            (key?, name?, address?, imap?, smtp?);
+        let ((key, key_span), name, (address, address_span), (incoming, receive), smtp) =
+            (key?, name?, address?, incoming?, smtp?);
         let identity_spans = identities
             .iter()
             .map(|identity: &ReadIdentity| identity.address_span.clone())
@@ -520,8 +576,8 @@ impl Reader<'_> {
                 name,
                 username: username.unwrap_or_else(|| address.clone()),
                 address,
-                incoming: imap,
-                receive: Receive::Imap,
+                incoming,
+                receive,
                 smtp,
                 auth,
                 signature,
@@ -533,7 +589,13 @@ impl Reader<'_> {
         })
     }
 
-    fn endpoint(&mut self, protocol: Protocol, value: &Spanned<DeValue<'_>>) -> Option<Endpoint> {
+    /// An `[account.imap]`, `[account.pop3]` or `[account.smtp]` table: the server, and for
+    /// POP3 what happens on it to downloaded mail (the default policy for the others).
+    fn server(
+        &mut self,
+        protocol: Protocol,
+        value: &Spanned<DeValue<'_>>,
+    ) -> Option<(Endpoint, Pop3Policy)> {
         let section = format!("account.{}", protocol_name(protocol));
         let Some(table) = value.get_ref().as_table() else {
             self.error(
@@ -546,6 +608,8 @@ impl Reader<'_> {
         let mut host = None;
         let mut port = None;
         let mut security = Security::Tls;
+        let mut policy = Pop3Policy::default();
+        let mut days_span = None;
         for (field, value) in entries(table) {
             let name = field.get_ref().as_ref();
             let span = value.span();
@@ -604,13 +668,42 @@ impl Reader<'_> {
                         );
                     }
                 },
+                "leave_on_server" if protocol == Protocol::Pop3 => match value.get_ref() {
+                    DeValue::Boolean(on) => policy.leave_on_server = *on,
+                    other => self.error(
+                        span,
+                        format!(
+                            "leave_on_server is true (downloaded mail stays on the server) or \
+                             false (it is deleted there once downloaded), not {}",
+                            article(other.type_str())
+                        ),
+                    ),
+                },
+                "delete_after_days" if protocol == Protocol::Pop3 => {
+                    if let Some(days) = self.days(value) {
+                        policy.delete_after_days = Some(days);
+                        days_span = Some(span);
+                    }
+                }
+                _ if POP3_SETTINGS.contains(&name) => self.error(
+                    field.span(),
+                    format!(
+                        "{name} belongs in [account.pop3], for an account that downloads its \
+                         mail by POP3"
+                    ),
+                ),
                 _ if is_secret_name(name) => self.error(field.span(), secret_message(name)),
                 _ => {
+                    let known = ENDPOINT_SETTINGS.into_iter().chain(
+                        POP3_SETTINGS
+                            .into_iter()
+                            .filter(|_| protocol == Protocol::Pop3),
+                    );
                     self.error(
                         field.span(),
                         format!(
                             "unknown setting {name} in [{section}]{}",
-                            did_you_mean(name, ENDPOINT_SETTINGS)
+                            did_you_mean(name, known)
                         ),
                     );
                     if let Some(inner) = value.get_ref().as_table() {
@@ -619,23 +712,67 @@ impl Reader<'_> {
                 }
             }
         }
+        if let Some(span) = days_span
+            && !policy.leave_on_server
+        {
+            self.error(
+                span,
+                "delete_after_days needs leave_on_server = true: with false, mail is deleted \
+                 from the server as soon as it is downloaded; keep one of the two lines",
+            );
+        }
         if host.is_none() && !table.contains_key("host") {
             self.error(
                 value.span(),
                 format!(
-                    "[{section}] has no host; add one, like host = \"{}.example.test\"",
-                    protocol_name(protocol)
+                    "[{section}] has no host; add one, like host = \"{}\"",
+                    example_host(protocol)
                 ),
             );
         }
         if self.errors.len() != errors_before {
             return None;
         }
-        Some(Endpoint {
+        let endpoint = Endpoint {
             host: host?,
             port: port.unwrap_or_else(|| default_port(protocol, security)),
             security,
-        })
+        };
+        Some((endpoint, policy))
+    }
+
+    /// `delete_after_days`: whole days from 1 to [`MAX_DELETE_AFTER_DAYS`].
+    fn days(&mut self, value: &Spanned<DeValue<'_>>) -> Option<u32> {
+        let number = match value.get_ref() {
+            DeValue::Integer(integer) => {
+                i64::from_str_radix(integer.as_str(), integer.radix()).ok()
+            }
+            _ => None,
+        };
+        if let Some(days) = number.and_then(|days| u32::try_from(days).ok())
+            && (1..=MAX_DELETE_AFTER_DAYS).contains(&days)
+        {
+            return Some(days);
+        }
+        let (shown, hint) = match value.get_ref() {
+            DeValue::Integer(integer) if number == Some(0) => (
+                integer.as_str().to_owned(),
+                "; to delete mail as soon as it is downloaded, set leave_on_server = false instead",
+            ),
+            DeValue::Integer(integer) => (integer.as_str().to_owned(), ""),
+            other => (
+                article(other.type_str()),
+                "; leave the line out to keep downloaded mail on the server",
+            ),
+        };
+        self.error(
+            value.span(),
+            format!(
+                "delete_after_days is a whole number of days from 1 to {MAX_DELETE_AFTER_DAYS}, \
+                 not {shown}{hint}"
+            ),
+        );
+        None
     }
 
     /// Every key and every address once.
@@ -688,7 +825,9 @@ fn section_of(name: &str) -> Option<&'static str> {
     if ACCOUNT_SETTINGS.contains(&name) {
         Some("an [[account]] table")
     } else if ENDPOINT_SETTINGS.contains(&name) {
-        Some("[account.imap] or [account.smtp]")
+        Some("[account.imap], [account.pop3] or [account.smtp]")
+    } else if POP3_SETTINGS.contains(&name) {
+        Some("[account.pop3]")
     } else {
         None
     }
@@ -780,16 +919,23 @@ pub fn entry(account: &AccountSettings) -> String {
         table["host"] = value(&endpoint.host);
         table["port"] = value(i64::from(endpoint.port));
         table["security"] = value(security_name(endpoint.security));
-        Item::Table(table)
+        table
     };
+    let mut incoming = endpoint(&account.incoming);
+    if let Receive::Pop3(policy) = account.receive {
+        incoming["leave_on_server"] = value(policy.leave_on_server);
+        if let Some(days) = policy.delete_after_days {
+            incoming["delete_after_days"] = value(i64::from(days));
+        }
+    }
     let mut table = Table::new();
     table["key"] = value(&account.key.0);
     table["name"] = value(&account.name);
     table["address"] = value(&account.address);
     table["username"] = value(&account.username);
     table["auth"] = value(auth_name(account.auth));
-    table[protocol_name(account.receive.protocol())] = endpoint(&account.incoming);
-    table["smtp"] = endpoint(&account.smtp);
+    table[protocol_name(account.receive.protocol())] = Item::Table(incoming);
+    table["smtp"] = Item::Table(endpoint(&account.smtp));
     let mut tables = ArrayOfTables::new();
     tables.push(table);
     let mut document = DocumentMut::new();
@@ -947,6 +1093,17 @@ pub fn default_accounts_file() -> String {
      # port = 993                     # optional: 993 for \"tls\", 143 for \"starttls\"\n\
      # security = \"tls\"               # or \"starttls\"; Sealwax never connects without TLS\n\
      #\n\
+     # [account.pop3]                 # in place of [account.imap], for an account that\n\
+     #                                # downloads its mail by POP3 into folders on this\n\
+     #                                # computer: Inbox, Sent, Drafts, Junk, Trash, Archive\n\
+     # host = \"pop.example.test\"\n\
+     # port = 995                     # optional: 995 for \"tls\", 110 for \"starttls\"\n\
+     # security = \"tls\"\n\
+     # leave_on_server = true         # optional: true keeps downloaded mail on the server;\n\
+     #                                # false deletes it there once it is downloaded\n\
+     # delete_after_days = 30         # optional: deletes it there 30 days after the\n\
+     #                                # download; left out, it stays\n\
+     #\n\
      # [account.smtp]\n\
      # host = \"smtp.example.test\"\n\
      # port = 465                     # optional: 465 for \"tls\", 587 for \"starttls\"\n\
@@ -1044,8 +1201,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn the_default_file_explains_a_valid_account() {
+    /// The default file's example, uncommented, without the block of the incoming server
+    /// `[account.<leave_out>]`: it shows both, IMAP's and POP3's.
+    fn default_example(leave_out: &str) -> String {
         let file = default_accounts_file();
         let example: String = file
             .lines()
@@ -1053,9 +1211,27 @@ mod tests {
             .map(|line| line.strip_prefix("# ").unwrap_or(""))
             .map(|line| format!("{line}\n"))
             .collect();
+        let header = format!("[account.{leave_out}]");
+        example
+            .split("\n\n")
+            .filter(|block| !block.starts_with(&header))
+            .collect::<Vec<_>>()
+            .join("\n\n")
+    }
+
+    #[test]
+    fn the_default_file_explains_a_valid_account() {
+        let example = default_example("pop3");
+        assert!(
+            !example
+                .lines()
+                .any(|line| line.starts_with("[account.pop3]"))
+        );
         let accounts = parse(&example).unwrap();
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].key.0, "work");
+        assert_eq!(accounts[0].receive, Receive::Imap);
+        assert_eq!(accounts[0].incoming.port, 993);
         assert_eq!(accounts[0].smtp.port, 465);
         assert_eq!(
             accounts[0].signature.as_deref(),
@@ -1068,6 +1244,296 @@ mod tests {
                 address: "board@example.test".to_owned(),
                 signature: Some("Ada, for the board".to_owned()),
             }]
+        );
+    }
+
+    #[test]
+    fn the_default_file_explains_a_pop3_account() {
+        let example = default_example("imap");
+        assert!(
+            !example
+                .lines()
+                .any(|line| line.starts_with("[account.imap]"))
+        );
+        let accounts = parse(&example).unwrap();
+        assert_eq!(
+            (&accounts[0].incoming, accounts[0].receive),
+            (
+                &Endpoint {
+                    host: "pop.example.test".to_owned(),
+                    port: 995,
+                    security: Security::Tls,
+                },
+                Receive::Pop3(Pop3Policy {
+                    leave_on_server: true,
+                    delete_after_days: Some(30),
+                })
+            )
+        );
+        assert_eq!(accounts[0].identities.len(), 1);
+        // Both incoming servers uncommented: one too many, said where the second one starts.
+        let both = default_example("none");
+        let found = errors(&both);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(
+            found[0].contains("this account already has [account.imap]"),
+            "{found:?}"
+        );
+    }
+
+    fn pop3_account(key: &str, address: &str, policy: Pop3Policy) -> AccountSettings {
+        AccountSettings {
+            incoming: Endpoint {
+                host: "pop.example.test".to_owned(),
+                port: 995,
+                security: Security::Tls,
+            },
+            receive: Receive::Pop3(policy),
+            ..account(key, address)
+        }
+    }
+
+    const POP3: &str = "[[account]]\nkey = \"home\"\nname = \"Ada Lovelace\"\n\
+                        address = \"ada@example.test\"\n\n[account.pop3]\n\
+                        host = \"pop.example.test\"\n\n[account.smtp]\n\
+                        host = \"smtp.example.test\"\nsecurity = \"starttls\"\n";
+
+    #[test]
+    fn reads_a_pop3_account_with_the_safe_defaults() {
+        let accounts = parse(POP3).unwrap();
+        let expected = AccountSettings {
+            smtp: Endpoint {
+                port: 587,
+                ..account("home", "ada@example.test").smtp
+            },
+            ..pop3_account("home", "ada@example.test", Pop3Policy::default())
+        };
+        assert_eq!(accounts, [expected]);
+        assert_eq!(
+            accounts[0].receive,
+            Receive::Pop3(Pop3Policy {
+                leave_on_server: true,
+                delete_after_days: None,
+            }),
+            "downloaded mail stays on the server and is never deleted there"
+        );
+        let starttls = POP3.replace(
+            "host = \"pop.example.test\"\n",
+            "host = \"pop.example.test\"\nsecurity = \"starttls\"\nleave_on_server = false\n",
+        );
+        let account = &parse(&starttls).unwrap()[0];
+        assert_eq!(
+            (account.incoming.port, account.incoming.security),
+            (110, Security::StartTls)
+        );
+        assert_eq!(
+            account.receive,
+            Receive::Pop3(Pop3Policy {
+                leave_on_server: false,
+                delete_after_days: None,
+            })
+        );
+        let days = POP3.replace(
+            "host = \"pop.example.test\"\n",
+            "host = \"pop.example.test\"\nport = 1995\nleave_on_server = true\n\
+             delete_after_days = 14\n",
+        );
+        let account = &parse(&days).unwrap()[0];
+        assert_eq!(account.incoming.port, 1995);
+        assert_eq!(
+            account.receive,
+            Receive::Pop3(Pop3Policy {
+                leave_on_server: true,
+                delete_after_days: Some(14),
+            })
+        );
+        let longest = POP3.replace(
+            "host = \"pop.example.test\"\n",
+            "host = \"pop.example.test\"\ndelete_after_days = 3650\n",
+        );
+        assert!(parse(&longest).is_ok());
+    }
+
+    #[test]
+    fn pop3_mistakes_say_where_they_are() {
+        let pop3 = |line: &str| {
+            POP3.replace(
+                "host = \"pop.example.test\"\n",
+                &format!("host = \"pop.example.test\"\n{line}\n"),
+            )
+        };
+        let cases: [(String, &str); 12] = [
+            (
+                ONE.replace(
+                    "[account.smtp]",
+                    "[account.pop3]\nhost = \"pop.example.test\"\n\n[account.smtp]",
+                ),
+                "line 9, column 10: this account already has [account.imap]: an account \
+                 receives its mail by IMAP or by POP3, so keep one of the two tables",
+            ),
+            (
+                POP3.replace("[account.pop3]\nhost = \"pop.example.test\"\n\n", ""),
+                "line 1, column 1: this account has no incoming server: add an [account.imap] \
+                 table, or [account.pop3] for POP3",
+            ),
+            (
+                POP3.replace("host = \"pop.example.test\"\n", "port = 995\n"),
+                "line 6, column 1: [account.pop3] has no host; add one, like host = \
+                 \"pop.example.test\"",
+            ),
+            (
+                pop3("leave_on_server = false\ndelete_after_days = 30"),
+                "line 9, column 21: delete_after_days needs leave_on_server = true: with false, \
+                 mail is deleted from the server as soon as it is downloaded",
+            ),
+            (
+                pop3("delete_after_days = 0"),
+                "line 8, column 21: delete_after_days is a whole number of days from 1 to 3650, \
+                 not 0; to delete mail as soon as it is downloaded, set leave_on_server = false \
+                 instead",
+            ),
+            (
+                pop3("delete_after_days = 3651"),
+                "line 8, column 21: delete_after_days is a whole number of days from 1 to 3650, \
+                 not 3651",
+            ),
+            (
+                pop3("delete_after_days = -7"),
+                "line 8, column 21: delete_after_days is a whole number of days from 1 to 3650, \
+                 not -7",
+            ),
+            (
+                pop3("delete_after_days = \"never\""),
+                "line 8, column 21: delete_after_days is a whole number of days from 1 to 3650, \
+                 not a string; leave the line out to keep downloaded mail on the server",
+            ),
+            (
+                pop3("leave_on_server = \"yes\""),
+                "line 8, column 19: leave_on_server is true (downloaded mail stays on the server) \
+                 or false (it is deleted there once downloaded), not a string",
+            ),
+            (
+                pop3("leave_on_sever = true"),
+                "line 8, column 1: unknown setting leave_on_sever in [account.pop3]; did you \
+                 mean leave_on_server?",
+            ),
+            (
+                ONE.replace("security = \"starttls\"", "leave_on_server = true"),
+                "line 11, column 1: leave_on_server belongs in [account.pop3], for an account \
+                 that downloads its mail by POP3",
+            ),
+            (
+                format!("delete_after_days = 30\n{POP3}"),
+                "line 1, column 1: delete_after_days belongs in [account.pop3]; put it under \
+                 that line",
+            ),
+        ];
+        for (text, expected) in cases {
+            let found = errors(&text);
+            assert!(
+                found
+                    .first()
+                    .is_some_and(|error| error.starts_with(expected)),
+                "{expected:?} not in {found:?}"
+            );
+        }
+        let imap_after = POP3.replace(
+            "[account.smtp]",
+            "[account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]",
+        );
+        let found = errors(&imap_after);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(found[0].contains("already has [account.pop3]"), "{found:?}");
+        // A misspelt table: what it may have meant, and the incoming server it then lacks.
+        assert_eq!(
+            errors(&POP3.replace("[account.pop3]", "[account.pop]")),
+            [
+                "line 1, column 1: this account has no incoming server: add an [account.imap] \
+                 table, or [account.pop3] for POP3",
+                "line 6, column 10: unknown setting pop in [[account]]; did you mean pop3?",
+            ]
+        );
+    }
+
+    #[test]
+    fn writes_what_it_reads_for_pop3() {
+        let policies = [
+            Pop3Policy::default(),
+            Pop3Policy {
+                leave_on_server: true,
+                delete_after_days: Some(30),
+            },
+            Pop3Policy {
+                leave_on_server: false,
+                delete_after_days: None,
+            },
+        ];
+        for policy in policies {
+            let account = pop3_account("home", "ada@example.test", policy);
+            let text = entry(&account);
+            assert!(
+                text.contains(
+                    "\n[account.pop3]\nhost = \"pop.example.test\"\nport = 995\n\
+                     security = \"tls\"\n"
+                ),
+                "{text}"
+            );
+            assert!(!text.contains("[account.imap]"), "{text}");
+            assert!(
+                text.contains(&format!("leave_on_server = {}\n", policy.leave_on_server)),
+                "{text}"
+            );
+            assert_eq!(
+                text.contains("delete_after_days"),
+                policy.delete_after_days.is_some()
+            );
+            assert_eq!(parse(&text).unwrap(), std::slice::from_ref(&account));
+        }
+        let header = default_accounts_file();
+        let work = add(&header, &account("work", "ada@work.example.test")).unwrap();
+        let home = pop3_account("home", "ada@example.test", Pop3Policy::default());
+        let both = add(&work, &home).unwrap();
+        assert!(both.starts_with(&work));
+        let read = parse(&both).unwrap();
+        assert_eq!(
+            read.iter()
+                .map(|a| a.receive.protocol())
+                .collect::<Vec<_>>(),
+            [Protocol::Imap, Protocol::Pop3]
+        );
+        let back = remove(&both, &AccountKey("home".into())).unwrap().unwrap();
+        assert_eq!(back, work);
+        let only_home = remove(&both, &AccountKey("work".into())).unwrap().unwrap();
+        assert_eq!(parse(&only_home).unwrap(), [home]);
+    }
+
+    #[test]
+    fn a_pop3_policy_the_file_would_refuse_is_never_written() {
+        for policy in [
+            Pop3Policy {
+                leave_on_server: false,
+                delete_after_days: Some(30),
+            },
+            Pop3Policy {
+                leave_on_server: true,
+                delete_after_days: Some(0),
+            },
+            Pop3Policy {
+                leave_on_server: true,
+                delete_after_days: Some(MAX_DELETE_AFTER_DAYS + 1),
+            },
+        ] {
+            let account = pop3_account("home", "ada@example.test", policy);
+            assert!(check(&account).is_err(), "{policy:?}");
+            assert!(matches!(add("", &account), Err(EditError::Account(_))));
+        }
+        let fine = pop3_account("home", "ada@example.test", Pop3Policy::default());
+        assert_eq!(check(&fine), Ok(()));
+        let mut bad_host = fine;
+        bad_host.incoming.host = "pop.example.test:995".to_owned();
+        assert_eq!(
+            check(&bad_host),
+            Err("pop3: the port goes in port = …, not in host".to_owned())
         );
     }
 
@@ -1275,7 +1741,7 @@ mod tests {
             ),
             (
                 format!("host = \"x\"\n{ONE}"),
-                "line 1, column 1: host belongs in [account.imap] or [account.smtp]",
+                "line 1, column 1: host belongs in [account.imap], [account.pop3] or [account.smtp]",
             ),
             (
                 format!("[acount]\n{ONE}"),
@@ -1454,5 +1920,7 @@ mod tests {
             assert!(host_fault(host).is_some(), "{host}");
         }
         assert_eq!(default_port(Protocol::Smtp, Security::StartTls), 587);
+        assert_eq!(default_port(Protocol::Pop3, Security::Tls), 995);
+        assert_eq!(default_port(Protocol::Pop3, Security::StartTls), 110);
     }
 }

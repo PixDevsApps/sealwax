@@ -13,7 +13,7 @@ use crate::setup::form::security_name;
 use crate::window::{AccountStatus, Attention, Window};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint};
+use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint, Receive};
 
 /// An account as the banner needs it: the store's name and the engine's state for it, and its
 /// `accounts.toml` entry.
@@ -136,8 +136,14 @@ fn details_text(again: &Again) -> (String, String) {
          Sealwax never signs in to a server it can't verify, and this version can't be told to \
          trust one.\n\nTry another network, then Retry. If it keeps happening, ask your provider \
          about its certificate.\n\n{imap}\n{smtp}",
-        host = again.imap.host,
-        imap = server("Incoming mail (IMAP)", &again.imap),
+        host = again.incoming.host,
+        imap = server(
+            match again.receive {
+                Receive::Imap => "Incoming mail (IMAP)",
+                Receive::Pop3(_) => "Incoming mail (POP3)",
+            },
+            &again.incoming
+        ),
         smtp = server("Outgoing mail (SMTP)", &again.smtp),
     );
     (heading, body)
@@ -317,7 +323,8 @@ mod tests {
             key: account.key.clone(),
             name: "Work".to_owned(),
             address: account.address.clone(),
-            imap: account.incoming.clone(),
+            incoming: account.incoming.clone(),
+            receive: account.receive,
             smtp: Endpoint {
                 port: 587,
                 security: Security::StartTls,
@@ -332,5 +339,21 @@ mod tests {
              Outgoing mail (SMTP): smtp.work.example.test, port 587, STARTTLS"
         ));
         assert!(!body.to_lowercase().contains("trust it"));
+        // A POP3 account's incoming server is named as POP3's (M8).
+        let pop3 = Again {
+            incoming: Endpoint {
+                host: "pop.work.example.test".to_owned(),
+                port: 995,
+                security: Security::Tls,
+            },
+            receive: Receive::Pop3(sealwax_domain::account::Pop3Policy::default()),
+            ..again
+        };
+        let (_, body) = details_text(&pop3);
+        assert!(body.contains("pop.work.example.test's no longer verifies"));
+        assert!(body.ends_with(
+            "Incoming mail (POP3): pop.work.example.test, port 995, TLS\n\
+             Outgoing mail (SMTP): smtp.work.example.test, port 587, STARTTLS"
+        ));
     }
 }
