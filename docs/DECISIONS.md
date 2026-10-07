@@ -305,6 +305,10 @@ Built in M8's phase A ([report](m8/pop3-accounts.md)); its proposals wait for th
 
 Built on the user's "HTML size cap". The search text and snippet of an HTML-only message come from its HTML's first 256 KiB (`message::HTML_PARSE_LIMIT`; 1 MiB before): html5ever's tree builder is quadratic in the nesting depth (the review's 990,000-byte nested lists: 19.8 s at sync on an idle machine, now 7.4 s). A reply or forward to an original with more HTML quotes its text (ADR-014's composer). The body text kept for the index stays 256 KiB.
 
+### ADR-005 amendment — schema v12: building marks (M9, 2026-10-07)
+
+`outbox.building` and `drafts.upload_building` record that a send's message or a draft's Drafts-folder copy is being built, until the build returns ([ADR-015 amendment](#adr-015-amendment--a-build-that-stops-sealwax-isnt-run-again-m9-2026-10-07)); v11 stores migrate with both clear, and a newer store is refused as before ([report](m9/depth.md#2-the-outboxs-crash-loop-guard)).
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.
@@ -476,6 +480,10 @@ Built in M6 ([compose rules](m6/compose-domain.md), [sending](m6/send.md)).
 ### ADR-007 amendment — the STARTTLS stream (M9, 2026-10-07)
 
 M9's security review found STARTTLS response injection in submission: lettre 0.11.23 upgrades the stream beneath its own read buffer, so bytes a man in the middle sent right after STARTTLS's `220` were read after the handshake as the server's answers (the scripted test's login check passed while every reply was read one step behind; the password still went over TLS to the real server only). Sealwax now hands lettre a plaintext stream of its own (`engine::smtp::Plain`) that gives at most one line per read until the handshake starts and fails the handshake if anything was read ahead; the login check then fails with `NoTls` and nothing goes over TLS. IMAP and POP3 were already safe (an IMAP injection test added). Checked against scripted servers on the branch ([report](m9/security.md#findings)); the testbed's STARTTLS servers after the merge ([PLAN.md](PLAN.md#m9-phase-a-the-security-review-and-fuzzing-merged--2026-10-07)).
+
+### ADR-007 amendment — the text part of deeply nested HTML (M9, 2026-10-07)
+
+The plain part is html2text's text of the HTML, rendered from a tree at most 1,024 levels deep; HTML whose tags nest deeper than 512 levels (WebKit's parser limit), counted in one pass with html5ever's tokenizer (`domain::html_depth`), gets mail-parser's one-pass text instead. html2text dropped an unfinished render tree recursively and overflowed a 2 MiB thread on 14,563 nested lists, which aborted Sealwax while it built a reply (found by M9's hardening, confirmed end to end by the depth branch's control run). The same rule gives the search text and the snippet (ADR-005), and the cleaner (ADR-014) leaves out start tags deeper than 512, keeping their content. Mail within the limit is converted and cleaned exactly as before (20,061 inputs compared; [report](m9/depth.md)).
 
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
@@ -919,6 +927,10 @@ Built in M6 ([store](m6/drafts-store.md), [sending](m6/send.md), [reply](m6/repl
 ### ADR-015 amendment — POP3 accounts' ops and outbox (M8 phase A, 2026-10-07)
 
 Built in M8's phase A ([report](m8/pop3-accounts.md)). A POP3 account's ops are done at once in the store, with Undo, like a local account's. The outbox's sending is shared by the IMAP and POP3 actors (`outbox::Submission`), at most once as before; a POP3 account's Sent copy is filed into its local Sent folder (`SentCopyDone::Filed`), also when its SMTP server saves one of its own, and its drafts' copies are rows of its local Drafts folder (IMAP's timing: 30 s after the last save, 10 s once closed). Raw messages left by ops done at once are deleted by the POP3 actor after each pass.
+
+### ADR-015 amendment — a build that stops Sealwax isn't run again (M9, 2026-10-07)
+
+Before a send's message or a draft's Drafts-folder copy is built, the store records it (schema v12) until the build returns. At the engine's start, a send left so goes back to its draft, failed (`SendFailure::Interrupted`; never sent, the user sends it again), and a copy left so waits for the draft to change: a message whose build ends the process is built at most once per user action, not at every start. At-most-once sending is unchanged. Verified by store tests, the at-most-once property test (3,000 cases, with a planted fault failing it) and an engine start; no real abort mid-build was tested ([report](m9/depth.md#2-the-outboxs-crash-loop-guard)). The toast's text ("Your message wasn't sent: Sealwax stopped while preparing it. It's back in your drafts.") is a proposal for the user.
 
 ## ADR-016 — Conversation threading (2026-10-04)
 
