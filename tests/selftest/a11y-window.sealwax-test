@@ -59,6 +59,38 @@ assert-focus reader-archive
 key <Shift>Tab
 assert-focus list
 
+# Where the focus lands after a message leaves: where it was (the list, the next message's
+# body, the toolbar button), and after Move to… closes.
+focus list
+key e
+assert-focus list
+list-select 0
+wait-until assert-reader-page message
+focus reader
+key e
+wait-until assert-reader-page message
+assert-focus reader
+focus reader
+key Delete
+wait-until assert-reader-page message
+assert-focus reader
+focus reader-archive
+key Return
+assert-focus reader-archive
+focus list
+key v
+assert-move-to open true
+key Down
+key Return
+assert-move-to open false
+assert-focus list
+focus reader-move-to
+key Return
+assert-move-to open true
+key Return
+assert-move-to open false
+assert-focus reader-move-to
+
 # Menus and the folder menu.
 menu-open list-menu
 assert-accessible window

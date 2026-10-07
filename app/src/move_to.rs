@@ -125,8 +125,10 @@ impl MoveTo {
             .css_classes(["sw-palette-empty", "sw-secondary"])
             .build();
         list.set_placeholder(Some(&empty));
+        // The focus stays in the entry; the list is no Tab stop of its own.
         let scrolled = gtk::ScrolledWindow::builder()
             .child(&list)
+            .focusable(false)
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();

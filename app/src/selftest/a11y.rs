@@ -23,6 +23,7 @@
 //! | `assert-link-opened URI\|none` | The last link the reader opened (after `link-hooks`) |
 //! | `assert-link-dialog open\|closed` | The reader's "Open this link?" dialog |
 //! | `assert-web-focus MESSAGE SELECTOR\|none` | In MESSAGE's HTML body (a sample name), the element with the keyboard focus matches SELECTOR, or nothing in the page has it |
+//! | `assert-shortcut TITLE built\|"not built"` | The open Keyboard Shortcuts dialog lists command TITLE as built, or as "Not available yet" |
 //! | `assert-announced TEXT\|none` | What was announced to screen readers since the last check, joined by ` \| ` |
 
 use super::{Harness, StepResult, broadway, equal, number};
@@ -50,6 +51,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-focus-stop", 1, 2),
     ("assert-dialog", 1, 1),
     ("assert-announced", 1, 1),
+    ("assert-shortcut", 2, 2),
     ("menu-open", 1, 1),
     ("menu-close", 1, 1),
     ("link-hooks", 0, 0),
@@ -250,6 +252,30 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 ("none", "none") | (_, "match") => Ok(()),
                 (wanted, found) => Err(format!("the page's focus is {found}, not {wanted}")),
             }
+        }
+        "assert-shortcut" => {
+            let dialog = harness
+                .window()?
+                .window()
+                .visible_dialog()
+                .ok_or("no dialog is open")?;
+            let mut found = None;
+            walk(dialog.upcast_ref(), &mut |widget| {
+                if found.is_none()
+                    && widget.type_().name() == "AdwShortcutRow"
+                    && let Some(spoken) = name(widget)
+                    && spoken.starts_with(&format!("{} ", arg(0)))
+                {
+                    found = Some(spoken);
+                }
+            });
+            let spoken = found.ok_or_else(|| format!("no row for {}", arg(0)))?;
+            let built = if spoken.contains("Not available yet") {
+                "not built"
+            } else {
+                "built"
+            };
+            equal(&format!("{} ({spoken})", arg(0)), built, arg(1))
         }
         "assert-announced" => {
             let spoken = crate::accessibility::take_announcements();
