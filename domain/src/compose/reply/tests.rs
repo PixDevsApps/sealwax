@@ -236,6 +236,87 @@ fn forward_carries_the_attachments() {
     );
 }
 
+/// An original from Marius whose HTML (with an inline image) is exactly `length` bytes long.
+fn sized_original(length: usize, text: Option<&str>) -> Original {
+    let start = "<p>Hei <b>Ada</b></p><img src=\"cid:logo@example.test\"><p>";
+    let end = "</p><p>slutt</p>";
+    let html = format!(
+        "{start}{}{end}",
+        "x".repeat(length - start.len() - end.len())
+    );
+    assert_eq!(html.len(), length);
+    Original {
+        headers: Headers {
+            from: vec![Address::new("Marius Dahl", "marius@example.test")],
+            to: vec![Address::new("", "ada@example.test")],
+            subject: "Stor".into(),
+            ..Headers::default()
+        },
+        date: None,
+        html: Some(html),
+        text: text.map(str::to_owned),
+        parts: vec![Attachment {
+            part: 2,
+            name: Some("logo.png".into()),
+            size: 8,
+            mime_type: "image/png".into(),
+            content_id: Some("logo@example.test".into()),
+            inline: true,
+        }],
+    }
+}
+
+/// M9 (F14): HTML up to the parse limit is quoted as cleaned HTML, as before; a larger original
+/// is quoted as its text (its plain part when it has one), and a forward carries its inline
+/// image as an attachment instead.
+#[test]
+fn an_original_over_256_kib_of_html_is_quoted_as_text() {
+    let within = sized_original(message::HTML_PARSE_LIMIT, None);
+    let reply = plan(&within, ReplyKind::Reply, &senders());
+    assert!(reply.quote_html.contains("<p>Hei <b>Ada</b></p>"));
+    assert!(
+        reply
+            .quote_html
+            .contains("<img src=\"cid:logo@example.test\">")
+    );
+    assert_eq!(reply.parts.len(), 1);
+
+    let over = sized_original(message::HTML_PARSE_LIMIT + 1, None);
+    let reply = plan(&over, ReplyKind::Reply, &senders());
+    assert!(reply.quote_html.starts_with(&format!(
+        "<div>Marius Dahl wrote:</div><blockquote type=\"cite\" style=\"{QUOTE_STYLE}\"><div>Hei Ada</div>"
+    )));
+    for gone in ["<b>", "<p>", "<img"] {
+        assert!(!reply.quote_html.contains(gone), "{gone}");
+    }
+    assert!(
+        reply
+            .quote_text
+            .starts_with("Marius Dahl wrote:\n> Hei Ada\n")
+    );
+    assert!(reply.parts.is_empty(), "the quote shows no image");
+    let forward = plan(&over, ReplyKind::Forward, &senders());
+    assert!(!forward.quote_html.contains("<img"));
+    let parts: Vec<(&str, Option<&str>, bool)> = forward
+        .parts
+        .iter()
+        .map(|p| (p.mime_type.as_str(), p.content_id.as_deref(), p.inline))
+        .collect();
+    assert_eq!(parts, [("image/png", None, false)]);
+
+    let with_text = sized_original(message::HTML_PARSE_LIMIT + 1, Some("Hei Ada,\n<ren tekst>"));
+    let reply = plan(&with_text, ReplyKind::Reply, &senders());
+    assert!(
+        reply
+            .quote_html
+            .contains("<div>Hei Ada,</div><div>&lt;ren tekst&gt;</div></blockquote>")
+    );
+    assert_eq!(
+        reply.quote_text,
+        "Marius Dahl wrote:\n> Hei Ada,\n> <ren tekst>"
+    );
+}
+
 #[test]
 fn plain_text_originals_are_escaped() {
     let raw = "From: bob@example.test\r\nTo: ada@example.test\r\nSubject: x\r\n\r\n<b>not markup</b>\r\n> quoted\r\n";

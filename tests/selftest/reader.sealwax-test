@@ -27,6 +27,9 @@ screenshot $DIR/../../.local/selftest/reader-plain.png
 reader-show simple
 assert-reader body html-themed
 assert-reader height-exact true
+# Its web process runs in WebKit's sandbox, also when the environment asked for none (M9:
+# tools/ci.sh runs the self-tests with WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS set).
+assert-web-sandbox
 assert-reader banner false
 assert-label reader-recipients "to me"
 assert-reader text-contains "Two small comments"

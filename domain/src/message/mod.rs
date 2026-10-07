@@ -10,7 +10,7 @@ use mail_parser::decoders::base64::base64_decode;
 use mail_parser::{HeaderValue, Message, MessageParser, MimeHeaders, PartType};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
-pub use html::html_to_text;
+pub use html::{HTML_PARSE_LIMIT, html_to_text};
 
 /// Body text kept for the search index, in bytes.
 pub const SEARCH_TEXT_LIMIT: usize = 256 * 1024;

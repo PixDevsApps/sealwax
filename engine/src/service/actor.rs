@@ -20,6 +20,10 @@
 //! progress at most every `progress_every`. New mail goes out as `Event::NewMail` the moment a
 //! pass's step commits it (ML-083), except what the account's own moves put there ([`Moved`]),
 //! and never from older mail.
+//!
+//! An actor that panics (a parser beneath it: imap-proto 0.17.0 on a reply code followed at once
+//! by a non-ASCII character, M9's F15) is started again after the backoff, IMAP and POP3 alike,
+//! with the account shown offline meanwhile ([`supervise`]); one that was stopped stays stopped.
 
 use super::{Shared, bodies, log_in_with_password, log_in_with_token};
 use crate::api::{Event, SyncStatus};
@@ -28,10 +32,12 @@ use crate::imap::{
     SyncError, SyncOptions, SyncReport,
 };
 use crate::smtp::submit::Timeouts;
+use futures_util::FutureExt;
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
 use sealwax_domain::model::{AccountId, BlobKey, FolderId, FolderRole};
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -39,6 +45,8 @@ use tokio::sync::watch;
 mod ops;
 mod outbox;
 mod pop3;
+#[cfg(test)]
+mod tests;
 
 /// How often and how patiently the actors sync. The defaults are proposals for the user.
 #[derive(Clone, Debug)]
@@ -155,13 +163,18 @@ impl Handle {
         let (control, controls) = async_channel::unbounded();
         let (signal, signals) = watch::channel(Signal::default());
         let account = Arc::new(OnceLock::new());
-        let task = tokio::spawn(run(
-            shared.clone(),
-            settings.clone(),
-            account.clone(),
-            controls,
-            signals,
-        ));
+        let task = spawn_supervised(shared, account.clone(), signals.clone(), {
+            let (shared, settings, account) = (shared.clone(), settings.clone(), account.clone());
+            move || {
+                run(
+                    shared.clone(),
+                    settings.clone(),
+                    account.clone(),
+                    controls.clone(),
+                    signals.clone(),
+                )
+            }
+        });
         Handle {
             settings,
             account,
@@ -211,6 +224,87 @@ async fn race<T>(
         interrupt = interrupted(signals.clone(), seen) => Err(interrupt),
         done = work => Ok(done),
     }
+}
+
+/// Runs an account's actor, which `start` makes anew each time, until it ends by itself: only
+/// when it is stopped (removal, quit, `accounts.toml` changed) or its account is gone. One that
+/// panics instead is started again after the backoff a second failed connection waits (from
+/// `backoff_min`, so even a panic at every login never loops), doubling with each panic in a
+/// row; a run longer than `backoff_max` starts the count over. `crashed` hears each panic with
+/// that count. A stop during the wait ends it, and `Reconnect` starts the actor at once.
+pub(super) async fn supervise<F>(
+    config: &SyncConfig,
+    signals: watch::Receiver<Signal>,
+    mut start: impl FnMut() -> F,
+    mut crashed: impl FnMut(u32),
+) where
+    F: Future<Output = ()>,
+{
+    let mut jitter = Jitter::new(AccountId(0));
+    let mut crashes = 0u32;
+    loop {
+        let started = Instant::now();
+        if AssertUnwindSafe(start()).catch_unwind().await.is_ok() {
+            return;
+        }
+        if signals.borrow().stop.is_some() {
+            return;
+        }
+        if started.elapsed() >= config.backoff_max {
+            crashes = 0;
+        }
+        crashes = crashes.saturating_add(1);
+        crashed(crashes);
+        let seen = signals.borrow().reconnects;
+        let delay = backoff_delay(config, crashes.saturating_add(1), jitter.unit());
+        if let Err(Interrupt::Stop(_)) = race(&signals, seen, tokio::time::sleep(delay)).await {
+            return;
+        }
+    }
+}
+
+/// Spawns an account's actor under [`supervise`]: a panic is logged with the account's id and
+/// the count (never the panic's message, which may quote the server), and the account shows
+/// offline until the actor, started again, connects.
+pub(super) fn spawn_supervised<F>(
+    shared: &Arc<Shared>,
+    cell: Arc<OnceLock<AccountId>>,
+    signals: watch::Receiver<Signal>,
+    start: impl FnMut() -> F + Send + 'static,
+) -> tokio::task::JoinHandle<()>
+where
+    F: Future<Output = ()> + Send + 'static,
+{
+    let shared = shared.clone();
+    tokio::spawn(async move {
+        let config = shared.sync.clone();
+        supervise(&config, signals, start, |crashes| {
+            if let Some(event) = crash_report(cell.get().copied(), crashes) {
+                shared.send(event);
+            }
+        })
+        .await;
+    })
+}
+
+/// Logs an actor's panic, and the status the account shows until its actor connects again.
+fn crash_report(account: Option<AccountId>, crashes: u32) -> Option<Event> {
+    let Some(account) = account else {
+        tracing::warn!(
+            crashes,
+            "an account's sync panicked before it began; starting it again after the backoff"
+        );
+        return None;
+    };
+    tracing::warn!(
+        account = account.0,
+        crashes,
+        "the account's sync panicked; starting it again after the backoff"
+    );
+    Some(Event::AccountStatus {
+        account,
+        status: SyncStatus::Offline(LoginFailure::Other),
+    })
 }
 
 /// How long a move whose target UID is unknown keeps its messages out of the target's new mail.
@@ -557,6 +651,16 @@ struct Poller {
     arrivals: async_channel::Sender<Arrived>,
     /// What the op runner moved without learning the new UIDs.
     moved: Moved,
+}
+
+/// The IDLE connection goes with the actor, also when a panic ends it ([`supervise`] starts a
+/// new one with its own).
+impl Drop for Poller {
+    fn drop(&mut self) {
+        if let Some(idle) = self.idle.take() {
+            idle.abort();
+        }
+    }
 }
 
 /// What woke the command connection's loop.
@@ -996,7 +1100,8 @@ impl Poller {
         });
     }
 
-    /// The IDLE connection, once INBOX is known and the server offers IDLE.
+    /// The IDLE connection, once INBOX is known and the server offers IDLE; again after an
+    /// account pass when its task ended, which it does by itself only in a panic.
     fn start_idle(&mut self) {
         let offered = self
             .conn
@@ -1004,6 +1109,14 @@ impl Poller {
             .is_some_and(|conn| conn.caps().has("IDLE"));
         if !offered || self.idling() || self.inbox.borrow().is_none() {
             return;
+        }
+        if let Some(Err(ended)) = self.idle.take().and_then(FutureExt::now_or_never)
+            && ended.is_panic()
+        {
+            tracing::warn!(
+                account = self.account.0,
+                "the account's IDLE connection panicked; starting it again"
+            );
         }
         self.idle = Some(tokio::spawn(idle(
             self.shared.clone(),

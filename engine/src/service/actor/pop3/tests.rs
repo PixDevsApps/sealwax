@@ -72,6 +72,8 @@ struct Server {
     busy: Vec<Busy>,
     /// What CAPA says at the login.
     offers: Offers,
+    /// The next logins panic, one each (M9: an actor that panics is started again).
+    panics: u32,
     /// `CONNECT`, `LIST`, `RETR <uidl>` (`RETR <uidl> cut`, `RETR <uidl> too large`,
     /// `RETR <uidl> outgrew`), `TOP <uidl>`, `DELE <uidl>`, `QUIT`.
     log: Vec<String>,
@@ -233,9 +235,18 @@ impl Connect for FakeConnect {
         _shared: &Shared,
         _settings: &AccountSettings,
     ) -> Result<(FakeSession, Offers), Refused> {
+        let panics = {
+            let mut drop = self.0.lock();
+            drop.log.push("CONNECT".into());
+            drop.logins.push(Instant::now());
+            let panics = drop.panics;
+            drop.panics = panics.saturating_sub(1);
+            panics
+        };
+        if panics > 0 {
+            panic!("injected panic at the login");
+        }
         let mut drop = self.0.lock();
-        drop.log.push("CONNECT".into());
-        drop.logins.push(Instant::now());
         if drop.down {
             return Err(Refused::Login(LoginFailure::Unreachable));
         }
@@ -527,6 +538,56 @@ fn a_status_header_with_r_marks_a_message_read() {
     assert!(
         !read("Subject: x\r\n\r\nStatus: R\r\n"),
         "a body line isn't a header"
+    );
+}
+
+/// M9 (F15): an actor that panics (here at two logins in a row) shows the account offline and
+/// is started again after the backoff; it then downloads, sends nothing twice and stops for
+/// good when stopped.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_panic_starts_the_actor_again_after_the_backoff() {
+    let fake = Fake::with(1..=2);
+    fake.lock().panics = 2;
+    let mut h = harness(Pop3Policy::default(), quick(), None, fake).await;
+    let actor = h.start();
+    h.status(SyncStatus::Offline(LoginFailure::Other)).await;
+    h.status(SyncStatus::Synced).await;
+    let inbox = h.folder(FolderRole::Inbox).await;
+    assert_eq!(h.subjects(inbox).await, ["Melding 2", "Melding 1"]);
+    let logins = h.fake.lock().logins.clone();
+    assert_eq!(logins.len(), 3);
+    // `quick`'s backoff: 50 ms doubling, each drawn between half and all of it.
+    for (gap, least) in logins
+        .windows(2)
+        .map(|pair| pair[1] - pair[0])
+        .zip([25, 50])
+    {
+        assert!(
+            gap >= Duration::from_millis(least),
+            "started again after {gap:?}"
+        );
+    }
+    let offline = h
+        .seen
+        .iter()
+        .filter(|event| {
+            matches!(
+                event,
+                Event::AccountStatus {
+                    status: SyncStatus::Offline(LoginFailure::Other),
+                    ..
+                }
+            )
+        })
+        .count();
+    assert!(offline >= 1);
+    stop(actor).await;
+    let connects = h.fake.count("CONNECT");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        h.fake.count("CONNECT"),
+        connects,
+        "a stopped actor stays stopped"
     );
 }
 

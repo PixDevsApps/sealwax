@@ -500,3 +500,93 @@ fn status_matches(status: ExitStatus, wanted: &str) -> bool {
             .is_ok_and(|code| status.code() == Some(code)),
     }
 }
+
+/// A process as `/proc/<pid>/status` describes it.
+struct Proc {
+    name: String,
+    parent: u32,
+    /// How many PID namespaces it is in (`NSpid` lists its PID in each).
+    namespaces: usize,
+}
+
+fn proc_status(pid: u32) -> Option<Proc> {
+    let status = fs::read_to_string(format!("/proc/{pid}/status")).ok()?;
+    let field = |name: &str| {
+        status
+            .lines()
+            .find_map(|line| line.strip_prefix(name))
+            .map(str::trim)
+    };
+    Some(Proc {
+        name: field("Name:")?.to_owned(),
+        parent: field("PPid:")?.parse().ok()?,
+        namespaces: field("NSpid:").map_or(1, |ids| ids.split_whitespace().count()),
+    })
+}
+
+/// `assert-web-sandbox`: `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS` is gone from Sealwax's
+/// environment, and every WebKit web process Sealwax started runs in WebKit's sandbox: started
+/// by bubblewrap, in a PID namespace of its own (M9). Without the sandbox a web process is
+/// Sealwax's own child, in Sealwax's namespaces.
+pub(super) fn web_sandbox() -> StepResult {
+    let mut problems = Vec::new();
+    if std::env::var_os(crate::config::SANDBOX_OFF_ENV).is_some() {
+        problems.push(format!(
+            "{} is in Sealwax's environment",
+            crate::config::SANDBOX_OFF_ENV
+        ));
+    }
+    let me = std::process::id();
+    let processes: HashMap<u32, Proc> = fs::read_dir("/proc")
+        .map_err(|error| error.to_string())?
+        .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<u32>().ok())
+        .filter_map(|pid| Some((pid, proc_status(pid)?)))
+        .collect();
+    let descends = |mut pid: u32| {
+        while let Some(process) = processes.get(&pid) {
+            if process.parent == me {
+                return true;
+            }
+            pid = process.parent;
+        }
+        false
+    };
+    let web: Vec<(u32, &Proc)> = processes
+        .iter()
+        .filter(|(pid, process)| process.name.starts_with("WebKitWebProces") && descends(**pid))
+        .map(|(pid, process)| (*pid, process))
+        .collect();
+    if web.is_empty() {
+        problems.push("no web process runs".to_owned());
+    }
+    let outside: Vec<String> = web
+        .iter()
+        .filter(|(_, process)| {
+            let parent = processes
+                .get(&process.parent)
+                .map(|parent| parent.name.as_str());
+            process.namespaces < 2 || parent != Some("bwrap")
+        })
+        .map(|(pid, process)| {
+            format!(
+                "{pid} (parent {}, in {} PID namespace(s))",
+                process.parent, process.namespaces
+            )
+        })
+        .collect();
+    if !outside.is_empty() {
+        problems.push(format!(
+            "web processes outside the sandbox: {}",
+            outside.join(", ")
+        ));
+    }
+    if problems.is_empty() {
+        println!(
+            "  # {} web process(es), each in WebKit's sandbox",
+            web.len()
+        );
+        Ok(())
+    } else {
+        Err(problems.join("; "))
+    }
+}

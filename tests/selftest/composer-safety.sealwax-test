@@ -17,6 +17,9 @@ composer-canary
 composer-open new
 composer-wait
 assert-composer theme
+# The composer's web process runs in WebKit's sandbox (M9; tools/ci.sh sets
+# WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS for the self-tests, and Sealwax clears it).
+assert-web-sandbox
 
 # The hostile paste, through the real Ctrl+V.
 composer-focus body

@@ -98,6 +98,8 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-running", 2, 2),
     ("assert-file-contains", 2, 2),
     ("assert-file-lacks", 2, 2),
+    // Every web process Sealwax started is in WebKit's sandbox (M9).
+    ("assert-web-sandbox", 0, 0),
 ];
 
 fn arity(command: &str) -> Option<(usize, usize)> {
