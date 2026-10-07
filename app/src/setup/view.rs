@@ -18,9 +18,32 @@ pub(super) struct ServerFields {
     pub(super) host: gtk::Entry,
     pub(super) port: gtk::Entry,
     pub(super) security: gtk::DropDown,
+    /// The host's caption, which names the protocol.
+    host_caption: gtk::Label,
+}
+
+/// The host's caption and placeholder for a protocol.
+fn server_texts(protocol: Protocol) -> (&'static str, &'static str) {
+    match protocol {
+        Protocol::Imap => ("IMAP server", "imap.example.test"),
+        Protocol::Smtp => ("SMTP server", "smtp.example.test"),
+        Protocol::Pop3 => ("POP3 server", "pop.example.test"),
+    }
 }
 
 impl ServerFields {
+    /// Names the incoming server's protocol: the caption, the placeholder and the accessible
+    /// label follow the "Incoming mail" choice.
+    pub(super) fn name_protocol(&self, protocol: Protocol) {
+        let (caption, placeholder) = server_texts(protocol);
+        if self.host_caption.label() != caption {
+            self.host_caption.set_label(caption);
+            self.host.set_placeholder_text(Some(placeholder));
+            self.host
+                .update_property(&[gtk::accessible::Property::Label(caption)]);
+        }
+    }
+
     pub(super) fn security(&self) -> Security {
         match self.security.selected() {
             1 => Security::StartTls,
@@ -136,7 +159,11 @@ pub(super) struct Widgets {
     pub(super) username_field: gtk::Box,
     pub(super) username: gtk::Entry,
     pub(super) manual: gtk::Box,
-    pub(super) imap: ServerFields,
+    /// "Incoming mail": IMAP or POP3 (M8).
+    pub(super) receive: gtk::DropDown,
+    pop3_note: gtk::Label,
+    /// The incoming server: IMAP's, or POP3's when chosen.
+    pub(super) incoming: ServerFields,
     pub(super) smtp: ServerFields,
     pub(super) manual_username: gtk::Entry,
     pub(super) password_field: gtk::Box,
@@ -180,6 +207,11 @@ fn column(classes: &[&str]) -> gtk::Box {
 
 /// A labelled field: the label above, tied to the control for screen readers.
 fn field(text: &str, control: &impl IsA<gtk::Widget>, name: &str) -> gtk::Box {
+    captioned(text, control, name).0
+}
+
+/// [`field`] and its caption.
+fn captioned(text: &str, control: &impl IsA<gtk::Widget>, name: &str) -> (gtk::Box, gtk::Label) {
     let caption = label(text, &["sw-setup-label"]);
     caption.set_mnemonic_widget(Some(control));
     control
@@ -188,7 +220,7 @@ fn field(text: &str, control: &impl IsA<gtk::Widget>, name: &str) -> gtk::Box {
     let field = named(column(&["sw-setup-field"]), name);
     field.append(&caption);
     field.append(control);
-    field
+    (field, caption)
 }
 
 fn entry(name: &str, placeholder: &str, classes: &[&str]) -> gtk::Entry {
@@ -205,12 +237,14 @@ fn entry(name: &str, placeholder: &str, classes: &[&str]) -> gtk::Entry {
     classed(entry, classes)
 }
 
+/// A server's row. The incoming server's fields keep IMAP's widget names (`setup-imap-host`, …)
+/// when POP3 is chosen.
 fn server_fields(protocol: Protocol) -> (ServerFields, gtk::Box) {
-    let (key, server, placeholder) = match protocol {
-        Protocol::Imap => ("imap", "IMAP server", "imap.example.test"),
-        Protocol::Smtp => ("smtp", "SMTP server", "smtp.example.test"),
-        Protocol::Pop3 => ("pop3", "POP3 server", "pop.example.test"),
+    let key = match protocol {
+        Protocol::Imap | Protocol::Pop3 => "imap",
+        Protocol::Smtp => "smtp",
     };
+    let (server, placeholder) = server_texts(protocol);
     let host = entry(
         &format!("setup-{key}-host"),
         placeholder,
@@ -241,16 +275,42 @@ fn server_fields(protocol: Protocol) -> (ServerFields, gtk::Box) {
         gtk::Box::builder().homogeneous(true).build(),
         &["sw-setup-grid-row"],
     );
-    row.append(&field(server, &host, &format!("setup-{key}-host-field")));
+    let (host_field, host_caption) = captioned(server, &host, &format!("setup-{key}-host-field"));
+    host_caption.set_widget_name(&format!("setup-{key}-host-label"));
+    row.append(&host_field);
     row.append(&pair);
     (
         ServerFields {
             host,
             port,
             security,
+            host_caption,
         },
         row,
     )
+}
+
+/// The manual step's "Incoming mail" choice (M8): IMAP, or POP3 with a note on what POP3 does.
+fn receive_choice() -> (gtk::DropDown, gtk::Box, gtk::Label) {
+    let choice = named(
+        classed(
+            gtk::DropDown::from_strings(&["IMAP", "POP3"]),
+            &["sw-setup-security"],
+        ),
+        "setup-incoming",
+    );
+    // As wide as a server's name, the first of the grid's two halves.
+    let row = classed(
+        gtk::Box::builder().homogeneous(true).build(),
+        &["sw-setup-grid-row"],
+    );
+    row.append(&field("Incoming mail", &choice, "setup-incoming-field"));
+    row.append(&gtk::Box::new(gtk::Orientation::Horizontal, 0));
+    let note = named(
+        label(text::POP3_NOTE, &["sw-setup-hint"]),
+        "setup-pop3-note",
+    );
+    (choice, row, note)
 }
 
 fn link(name: &str) -> gtk::LinkButton {
@@ -260,6 +320,22 @@ fn link(name: &str) -> gtk::LinkButton {
 }
 
 impl Widgets {
+    /// The incoming server's protocol the manual step's "Incoming mail" names.
+    pub(super) fn receive_protocol(&self) -> Protocol {
+        match self.receive.selected() {
+            1 => Protocol::Pop3,
+            _ => Protocol::Imap,
+        }
+    }
+
+    /// Chooses IMAP or POP3 in "Incoming mail".
+    pub(super) fn set_receive_protocol(&self, protocol: Protocol) {
+        self.receive.set_selected(match protocol {
+            Protocol::Pop3 => 1,
+            Protocol::Imap | Protocol::Smtp => 0,
+        });
+    }
+
     /// The assistant's column and the dialog that holds it.
     pub(super) fn build() -> (Self, adw::Dialog) {
         let caption = named(
@@ -409,12 +485,15 @@ impl Widgets {
         let username = entry("setup-username", "", &[]);
         let username_field = field("Username", &username, "setup-username-field");
 
-        let (imap, imap_row) = server_fields(Protocol::Imap);
+        let (receive, receive_row, pop3_note) = receive_choice();
+        let (incoming, incoming_row) = server_fields(Protocol::Imap);
         let (smtp, smtp_row) = server_fields(Protocol::Smtp);
         let manual_username = entry("setup-manual-username", "", &["sw-setup-small"]);
         let manual = named(column(&["sw-setup-section"]), "setup-manual");
         manual.append(&label("Set up manually", &["sw-setup-caption"]));
-        manual.append(&imap_row);
+        manual.append(&receive_row);
+        manual.append(&pop3_note);
+        manual.append(&incoming_row);
         manual.append(&smtp_row);
         manual.append(&field(
             "Username",
@@ -575,7 +654,9 @@ impl Widgets {
             username_field,
             username,
             manual,
-            imap,
+            receive,
+            pop3_note,
+            incoming,
             smtp,
             manual_username,
             password_field,
@@ -747,19 +828,22 @@ impl Widgets {
         }
         set_class(&w.check.glyph, "sw-setup-ok", step == Step::Adding);
 
+        let incoming = w.receive_protocol();
+        w.incoming.name_protocol(incoming);
+        w.pop3_note.set_visible(incoming == Protocol::Pop3);
         let message = problem
             .filter(|problem| {
                 problem.field() != Field::Address || state.address_tried || step != Step::Address
             })
-            .and_then(Problem::message)
+            .and_then(|problem| problem.message(incoming))
             .filter(|_| !busy);
         w.validation.set_visible(message.is_some());
         w.validation_text.set_label(message.unwrap_or_default());
         let invalid = message.and(problem).map(Problem::field);
         for (field, entry) in [
             (Field::Address, &w.address),
-            (Field::ImapHost, &w.imap.host),
-            (Field::ImapPort, &w.imap.port),
+            (Field::IncomingHost, &w.incoming.host),
+            (Field::IncomingPort, &w.incoming.port),
             (Field::SmtpHost, &w.smtp.host),
             (Field::SmtpPort, &w.smtp.port),
         ] {

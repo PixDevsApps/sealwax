@@ -1,0 +1,67 @@
+# Preview screenshots of POP3 accounts in the app (M8) for the gate: the setup assistant's
+# manual step with POP3 chosen, a failed POP3 login, and the account in the sidebar with its
+# local folders and a message open, in matte-black (dark, square corners as on stock Omarchy)
+# and catppuccin-latte (light, corners rounded 8 as on this desktop). A scripted engine
+# answers; every name, address, server and message is fictional. Not part of tools/ci.sh; it
+# writes into tools/progress/public/. Run from the repository root:
+#   tools/headless.sh 66 target/debug/sealwax --self-test tests/selftest/preview-m8-pop3.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+triage-mark-read-on-open false
+
+# The manual step with POP3 chosen and filled in.
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-click setup-manual-link
+setup-choose setup-incoming pop3
+setup-type setup-imap-host pop.example.test
+setup-type setup-smtp-host smtp.example.test
+setup-type setup-password fictional-password
+assert-field setup-imap-port 995
+assert-shown setup-pop3-note true
+screenshot $DIR/../../tools/progress/public/m8-pop3-manual-matte-black-square-2026-10-07.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m8-pop3-manual-catppuccin-latte-rounded-2026-10-07.png
+theme matte-black
+corners 0
+
+# The login check fails: POP3's server named, the settings as tried.
+setup-key enter
+engine-expect verify receive=pop3:leave
+engine-reply verified pop3 wrong-password
+assert-setup step failed
+screenshot $DIR/../../tools/progress/public/m8-pop3-failed-matte-black-square-2026-10-07.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m8-pop3-failed-catppuccin-latte-rounded-2026-10-07.png
+theme matte-black
+corners 0
+
+# The login works: saved, written to accounts.toml, and in the sidebar with its local folders.
+setup-key enter
+engine-expect verify receive=pop3:leave
+engine-reply verified ok
+engine-expect add-account receive=pop3:leave
+engine-reply added ok file
+assert-setup open false
+mail-add "Kari Nordmann:inbox" 10m "Velkommen til Fjordpost" "from=Ingrid Solberg" "text=Hei Kari! Kontoen din er klar. Posten lastes ned til denne maskinen og blir liggende på serveren."
+mail-add "Kari Nordmann:inbox" 2h "Strømregningen for september" "from=Marius Dahl"
+mail-add "Kari Nordmann:inbox" yesterday "Middag lørdag?" read "from=Leah Kim"
+mail-add "Kari Nordmann:inbox" 3d "Bilder fra hytteturen" read attachment "from=Ingrid Solberg"
+folder inbox "Kari Nordmann"
+engine-expect none
+focus list
+list-select 0
+wait-until assert-reader-page message
+setup-dismiss-toasts
+assert-account-folders kari@example.test Inbox,Drafts,Sent,Archive,Junk,Trash
+screenshot $DIR/../../tools/progress/public/m8-pop3-folders-matte-black-square-2026-10-07.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m8-pop3-folders-catppuccin-latte-rounded-2026-10-07.png

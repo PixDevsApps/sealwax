@@ -45,7 +45,8 @@ impl Notice {
 #[derive(Debug, Clone, Copy)]
 pub struct Context<'a> {
     pub provider: Option<&'a str>,
-    pub imap: &'a Endpoint,
+    /// The incoming server tried: IMAP's, or POP3's (M8).
+    pub incoming: &'a Endpoint,
     pub smtp: &'a Endpoint,
     pub app_password: Option<&'a HelpLink>,
     pub enable_imap: Option<&'a HelpLink>,
@@ -62,7 +63,7 @@ fn server(protocol: Protocol) -> &'static str {
 /// Why a login failed and what to do about it.
 pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
     let endpoint = match error.protocol {
-        Protocol::Imap | Protocol::Pop3 => context.imap,
+        Protocol::Imap | Protocol::Pop3 => context.incoming,
         Protocol::Smtp => context.smtp,
     };
     let (host, port) = (&endpoint.host, endpoint.port);
@@ -92,6 +93,13 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
             ),
         )
         .with_link(context.app_password),
+        LoginFailure::ImapDisabled if error.protocol == Protocol::Pop3 => Notice::problem(
+            "POP3 is turned off for this account",
+            format!(
+                "Turn on POP3 in {}'s web settings, then try again.",
+                context.provider.unwrap_or("your provider")
+            ),
+        ),
         LoginFailure::ImapDisabled => Notice::problem(
             "IMAP is turned off for this account",
             format!(
@@ -137,6 +145,15 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
         LoginFailure::Timeout => Notice::problem(
             "The server didn't answer in time",
             format!("{host} took too long to answer. Check that you're online, then try again."),
+        ),
+        // RFC 2449's IN-USE: a POP3 mailbox takes one session at a time.
+        LoginFailure::Other if error.protocol == Protocol::Pop3 => Notice::problem(
+            "The server refused the sign-in",
+            format!(
+                "{server} reported a problem Sealwax doesn't recognise. Another mail app \
+                 downloading from this mailbox at the same time can cause it: close that app, \
+                 check the settings below, then try again."
+            ),
         ),
         LoginFailure::Other => Notice::problem(
             "The server refused the sign-in",
@@ -224,6 +241,12 @@ pub const MICROSOFT_CLIENT_ID_HINT: &str = "It needs a Microsoft client ID: set 
      [oauth.microsoft] in config.toml (Preferences opens it). docs/OAUTH-SETUP.md shows how to \
      register one.";
 
+/// The note under the manual step's "Incoming mail" while POP3 is chosen (M8): where its mail
+/// goes, and that the server keeps it unless `accounts.toml` says otherwise.
+pub const POP3_NOTE: &str = "Sealwax downloads new mail to folders on this computer and \
+     leaves it on the server. To delete it there after some days, set delete_after_days in \
+     accounts.toml.";
+
 /// The toast after an account signed in again.
 pub fn signed_in_again(name: &str) -> String {
     format!("{name} is signed in again")
@@ -233,7 +256,7 @@ pub fn signed_in_again(name: &str) -> String {
 /// be changed on this step, so nothing points at the server settings.
 pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
     let endpoint = match error.protocol {
-        Protocol::Imap | Protocol::Pop3 => context.imap,
+        Protocol::Imap | Protocol::Pop3 => context.incoming,
         Protocol::Smtp => context.smtp,
     };
     let (host, port) = (&endpoint.host, endpoint.port);
@@ -494,7 +517,7 @@ mod tests {
         };
         let context = Context {
             provider: Some("Gmail"),
-            imap: &imap,
+            incoming: &imap,
             smtp: &smtp,
             app_password: Some(&link),
             enable_imap: None,
@@ -547,6 +570,92 @@ mod tests {
             "The outgoing mail server (SMTP) didn't accept them. Check both, then try again."
         );
         assert_eq!(wrong.link, None);
+    }
+
+    #[test]
+    fn a_pop3_failure_names_the_pop3_server() {
+        let (pop3, smtp) = (
+            endpoint("pop.example.test", 995),
+            endpoint("smtp.example.test", 465),
+        );
+        let context = Context {
+            provider: None,
+            incoming: &pop3,
+            smtp: &smtp,
+            app_password: None,
+            enable_imap: None,
+        };
+        let mut titles = Vec::new();
+        for failure in FAILURES {
+            let error = LoginError {
+                protocol: Protocol::Pop3,
+                failure,
+            };
+            let notice = login_failure(&error, &context);
+            assert_eq!(notice.tone, Tone::Problem);
+            assert!(notice.body.ends_with('.'), "{failure:?}: {}", notice.body);
+            assert!(
+                !notice.body.contains("IMAP"),
+                "{failure:?}: {}",
+                notice.body
+            );
+            // An app password is the account's, not the server's.
+            assert!(
+                failure == LoginFailure::AppPasswordRequired
+                    || notice.body.contains("POP3")
+                    || notice.body.contains("pop.example.test"),
+                "{failure:?}: {}",
+                notice.body
+            );
+            titles.push(notice.title);
+            let again = password_again_failure(&error, &context);
+            assert!(!again.body.contains("IMAP"), "{failure:?}: {}", again.body);
+        }
+        titles.dedup();
+        assert_eq!(titles.len(), FAILURES.len(), "one heading per failure");
+        let failure = |failure| {
+            login_failure(
+                &LoginError {
+                    protocol: Protocol::Pop3,
+                    failure,
+                },
+                &context,
+            )
+        };
+        assert_eq!(
+            failure(LoginFailure::WrongPassword).body,
+            "The incoming mail server (POP3) didn't accept them. Check both, then try again."
+        );
+        let off = failure(LoginFailure::ImapDisabled);
+        assert_eq!(off.title, "POP3 is turned off for this account");
+        assert_eq!(
+            off.body,
+            "Turn on POP3 in your provider's web settings, then try again."
+        );
+        assert!(
+            failure(LoginFailure::Unreachable)
+                .body
+                .contains("Nothing answers at pop.example.test on port 995.")
+        );
+        assert!(
+            failure(LoginFailure::Other)
+                .body
+                .contains("Another mail app downloading from this mailbox")
+        );
+        // IMAP's texts stay as they were.
+        let imap = login_failure(
+            &LoginError {
+                protocol: Protocol::Imap,
+                failure: LoginFailure::Other,
+            },
+            &context,
+        );
+        assert_eq!(
+            imap.body,
+            "The incoming mail server (IMAP) reported a problem Sealwax doesn't recognise. \
+             Check the settings below, or try again later."
+        );
+        assert!(POP3_NOTE.contains("leaves it on the server"));
     }
 
     #[test]
@@ -603,7 +712,7 @@ mod tests {
         };
         let context = Context {
             provider: Some("Gmail"),
-            imap: &imap,
+            incoming: &imap,
             smtp: &smtp,
             app_password: Some(&link),
             enable_imap: None,
