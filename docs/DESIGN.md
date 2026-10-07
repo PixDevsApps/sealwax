@@ -1,6 +1,6 @@
 # Design & Interaction System
 
-Synced: 2026-10-06
+Synced: 2026-10-07
 
 The repository docs are the canonical project memory ([ADR-012](DECISIONS.md#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Anything the user changes after approval is recorded here as a dated entry above the affected section.
 
@@ -284,12 +284,21 @@ M7 (accepted at the M7 gate, 2026-10-07, [ADR-017](DECISIONS.md#adr-017-amendmen
 
 Accepted at the M5 gate (2026-10-06, [ADR-017](DECISIONS.md#adr-017-amendment--m5s-keys-accepted-m5-gate-2026-10-06)): **Ctrl+P** Print (the mock's), **Ctrl+U** Show Original, **Ctrl+S** Save as .eml, and **`n`** and **`p`** for Next and Previous Message in Conversation, in the list and the reader (each expands the message it reaches and scrolls to it). Expand and Collapse All Messages, Show Images and Always Show Images from This Sender have no default key.
 
+*As built in M9 (ML-092, [report](m9/accessibility.md)); proposed for the user at M9's gate, no key added:* **Go to Inbox, Sent and Drafts** (`g` then `i`, `t`, `d`) show that folder of the account the list shows (in All Inboxes the selected message's, else the first account's); Go to Inbox in All Inboxes stays there; **Go to Starred** (`g` then `s`) turns on the Starred chip, as there is no Starred folder. **Back to List** (Escape, `u`, in the reader) puts the focus in the list, showing it first in the one-pane layout, and leaves the select mode as Escape did there. Toggle Sidebar (Ctrl+Shift+S, F9) still has no handler. **Tab:** the folder list and the message list are one Tab stop each (Up and Down move inside them); Tab in a plain-text body goes from link to link (selected, its target in the strip, Enter opens it), as WebKit does in an HTML body; Tab in the composer's body moves on to Send and Shift+Tab back to the toolbar instead of typing a tab (a dialog keeps Tab inside it).
+
 ## Accessibility
 
 - Every control has an accessible label; icon-only buttons have tooltips with their shortcut, taken from the keymap in use, so `keys.toml` changes show.
 - A visible accent focus ring; focus order follows the panes left to right.
 - Text contrast is checked per theme (`readable_on`); state is never shown by colour alone (unread is bold as well as dotted).
 - An Orca smoke test of the list, reader and composer is part of M9.
+
+*As built in M9 (ML-092, [report](m9/accessibility.md)):*
+- **Names:** a button's visible label names it for screen readers (GTK's labelled-by relation, which wins over a label property); where the visible label alone is ambiguous the relation is replaced by a name (`accessibility::name_button`): each attachment card's "Open {file}", "Save {file}"; the setup assistant's "IMAP port", "SMTP security" and so on, whose captions say "Port" and "Security"; the plain-text "…" toggle, "Show quoted text" / "Hide quoted text". Icon-only buttons take their name from their tooltip's title. Lists are named ("Folders", "Messages", "Commands", the shortcut sections); every body is "Message body" (HTML) or "Message text" (plain).
+- **States:** toggles say pressed, the conversation's rows and headers and the "…" toggles say expanded or collapsed, the current folder says selected, insensitive controls say disabled, a field the assistant refuses says invalid. Banners are alerts; the link strip is a status.
+- **Spoken without moving the focus:** where Up and Down choose a row while the focus stays in a field (the command palette, Move to…, the search suggestions, the composer's recipient suggestions), the chosen row is announced; so is the link warning when the keyboard reaches a link whose text names another address.
+- **The Tab order** follows the panes left to right and top to bottom, and comes round: the sidebar (compose, the folder list as one stop, `config.toml`), the list's bar (menu, search, chips), the message list (one stop), the reader's toolbar, the conversation (rows, card headers, Details, Reply, Reply all, Forward, the body and its links, attachments, "…"), the quick reply. The composer: From, Attach, Discard, To, Cc · Bcc, Subject, the style menu and the formatting buttons, the body, Send. Dialogs keep Tab inside; Escape closes them and the focus goes back where it was. Panes and empty pages with nothing to operate are no Tab stops of their own, and the focus never stays in WebKit's hidden key-binding widget inside each web view (out of a page it goes on, coming in backwards it goes to the page).
+- **Held by** `assert-accessible` and `tab-chain` in the `a11y-*` self-tests (`app/src/selftest/a11y.rs`), run by `tools/ci.sh --ui`.
 
 ## Mock and gate
 

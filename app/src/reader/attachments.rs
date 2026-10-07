@@ -206,6 +206,9 @@ impl Card {
         meta.append(&size);
         let open = action_button("Open", "reader-attachment-open");
         let save = action_button("Save", "reader-attachment-save");
+        // Every card has its Open and Save: a screen reader hears which file.
+        crate::accessibility::name_button(&open, &format!("Open {name}"));
+        crate::accessibility::name_button(&save, &format!("Save {name}"));
         let dot = || gtk::Label::builder().label("·").build();
         meta.append(&dot());
         meta.append(&open);
@@ -232,6 +235,8 @@ impl Card {
         status_text.set_widget_name("reader-attachment-status");
         let cancel = action_button("Cancel", "reader-attachment-cancel");
         let retry = action_button("Retry", "reader-attachment-retry");
+        crate::accessibility::name_button(&cancel, &format!("Cancel downloading {name}"));
+        crate::accessibility::name_button(&retry, &format!("Retry downloading {name}"));
         status.append(&status_text);
         status.append(&cancel);
         status.append(&retry);

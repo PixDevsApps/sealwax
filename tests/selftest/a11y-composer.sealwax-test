@@ -46,6 +46,18 @@ composer-type "not-an-address,"
 assert-composer chips to kari@example.com
 assert-composer invalid to 1
 assert-accessible composer
+assert-accessible-name composer-to-chip-1-remove "Remove not-an-address"
+# Any chip can go from the keyboard: Shift+Tab from the entry reaches the last chip's ×.
+composer-key <Shift>Tab
+assert-composer focus "GtkButton composer-to-chip-1-remove"
+composer-key <Shift>Tab
+assert-composer focus "GtkButton composer-to-chip-0-remove"
+composer-key Tab
+composer-key Return
+assert-composer invalid to 0
+assert-composer chips to kari@example.com
+assert-composer focus to
+composer-type "not-an-address,"
 composer-click composer-ccbcc
 assert-composer shown composer-cc true
 assert-accessible composer

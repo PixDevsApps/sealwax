@@ -665,7 +665,9 @@ fn chip(address: &Address, valid: bool, name: &str) -> gtk::Box {
                 .icon_name("window-close-symbolic")
                 .tooltip_text(format!("Remove {shown}"))
                 .valign(gtk::Align::Center)
-                .can_focus(false)
+                // A Tab stop, so any chip can go from the keyboard (Backspace removes only the
+                // last); a click leaves the focus in the entry.
+                .focus_on_click(false)
                 .build(),
             &["sw-composer-chip-remove"],
         ),

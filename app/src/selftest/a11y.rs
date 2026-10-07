@@ -895,6 +895,7 @@ async fn tab_chain(harness: &Harness, which: &str, backward: bool, max: usize) -
     let focus_widget = || gtk::prelude::GtkWindowExt::focus(&window);
     let start = focus_widget().ok_or("nothing has the focus to start from")?;
     let mut chain = vec![stop(&start)];
+    let mut left = false;
     let mut result = Err(String::new());
     for _ in 0..max {
         let watch = releases(&window);
@@ -906,7 +907,10 @@ async fn tab_chain(harness: &Harness, which: &str, backward: bool, max: usize) -
             break;
         };
         chain.push(stop(&focus));
-        if focus == start {
+        // Inside a web view the focus moves through the page while GTK's stays on the view:
+        // the chain is round once it left the start and came back.
+        left |= focus != start;
+        if focus == start && left {
             result = Ok(());
             break;
         }

@@ -103,30 +103,11 @@ key <Control>l
 composer-close
 assert-action-log win.compose,win.reply,win.reply-all,win.forward,win.reply,win.reply-all,win.forward
 
-# g waits for its second key: g then s goes to Starred and doesn't star; a mistyped sequence
-# runs nothing; the go-to keys lead to their folders (M9), and g i back to the Inbox.
-assert-folder folder-1
-key g
-key s
-assert-action-log win.go-to-starred
+# g waits for its second key, and a mistyped sequence runs nothing; g after 1.5 s is gone, so s
+# stars. (The go-to keys lead to their folders at the end, after the reader's keys.)
 key g
 key e
 assert-action-log none
-key g
-key t
-assert-action-log win.go-to-sent
-assert-folder folder-2
-key g
-key d
-assert-action-log win.go-to-drafts
-assert-folder folder-7
-key g
-key i
-assert-action-log win.go-to-inbox
-assert-folder folder-1
-list-wait
-list-select 0
-focus list
 key g
 sleep 1700
 key s
@@ -280,3 +261,23 @@ key x
 key space
 sleep 500
 assert-action-log none
+
+# The go-to keys in the list (M9): g then s goes to Starred and doesn't star; t, d and i lead to
+# the shown account's Sent, Drafts and Inbox.
+focus list
+assert-folder folder-1
+key g
+key s
+assert-action-log win.go-to-starred
+key g
+key t
+assert-action-log win.go-to-sent
+assert-folder folder-2
+key g
+key d
+assert-action-log win.go-to-drafts
+assert-folder folder-7
+key g
+key i
+assert-action-log win.go-to-inbox
+assert-folder folder-1

@@ -53,6 +53,15 @@ fn speaks(accessible: &gtk::Accessible) -> bool {
     }
 }
 
+/// Names a button for screen readers apart from its visible label: GTK names a button by its
+/// label (a labelled-by relation, which wins over the label property), so the relation goes.
+/// For buttons whose label alone is ambiguous, such as each attachment card's "Open".
+pub fn name_button(button: &impl IsA<gtk::Widget>, name: &str) {
+    let button = button.as_ref();
+    button.reset_relation(gtk::AccessibleRelation::LabelledBy);
+    button.update_property(&[gtk::accessible::Property::Label(name)]);
+}
+
 /// What a list row shows, as a screen reader would read it: its visible texts, in order.
 pub fn shown_text(widget: &impl IsA<gtk::Widget>) -> String {
     fn collect(widget: &gtk::Widget, parts: &mut Vec<String>) {
@@ -84,22 +93,66 @@ pub fn take_announcements() -> Vec<String> {
 }
 
 /// WebKitGTK parents a zero-sized GtkTextView to each web view only to translate key bindings
-/// (its `KeyBindingTranslator`); it is focusable, so Shift+Tab from the widget after a web view
-/// lands in it, where Tab and Shift+Tab insert tabs that go nowhere: a trap, and an unnamed
-/// text field for a screen reader. This takes it out of the focus chain and hides it from
-/// screen readers, now and whenever WebKit adds one.
+/// (its `KeyBindingTranslator`). It is focusable, so Tab out of the last link of a page and
+/// Shift+Tab from the widget after a web view landed in it, where Tab and Shift+Tab insert tabs
+/// that go nowhere: a trap, and an unnamed text field for a screen reader. The focus doesn't
+/// stay there: out of the page it goes on past the web view, coming in backwards it goes to
+/// the web view (which then goes back through the page). The widget stays focusable: made
+/// unfocusable, WebKit now and then lost the keys it hands back to the reader (`triage-keys`
+/// failed 3 runs of 4). WebKit means it hidden from screen readers, and so it is here.
 pub fn keep_focus_off_key_bindings(view: &impl IsA<gtk::Widget>) {
     let view = view.as_ref();
-    untrap(view);
-    view.connect_realize(untrap);
-    view.connect_map(untrap);
+    let focus = gtk::EventControllerFocus::new();
+    // Into the key-binding widget from outside the web view: a Shift+Tab coming in.
+    focus.connect_enter(|focus| {
+        if let Some(view) = focus.widget() {
+            leave_key_bindings(&view, false);
+        }
+    });
+    // From the web view into it: Tab out of the page's last link.
+    focus.connect_is_focus_notify(|focus| {
+        if !focus.is_focus()
+            && focus.contains_focus()
+            && let Some(view) = focus.widget()
+        {
+            leave_key_bindings(&view, true);
+        }
+    });
+    view.add_controller(focus);
+    hide_key_bindings(view);
+    view.connect_realize(hide_key_bindings);
+    view.connect_map(hide_key_bindings);
 }
 
-fn untrap(view: &gtk::Widget) {
+/// When the focus is on `view`'s key-binding widget once GTK has finished moving it, moves it
+/// on: past the web view (`onwards`), else to the web view itself.
+fn leave_key_bindings(view: &gtk::Widget, onwards: bool) {
+    let view = view.downgrade();
+    gtk::glib::idle_add_local_once(move || {
+        let Some(view) = view.upgrade() else {
+            return;
+        };
+        let landed = view
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focus| {
+                focus.is::<gtk::TextView>() && focus.parent().as_ref() == Some(&view)
+            });
+        if !landed {
+            return;
+        }
+        if onwards {
+            move_focus_past(&view, false);
+        } else {
+            view.grab_focus();
+        }
+    });
+}
+
+fn hide_key_bindings(view: &gtk::Widget) {
     let mut child = view.first_child();
     while let Some(current) = child {
         if current.is::<gtk::TextView>() {
-            current.set_focusable(false);
             current.update_state(&[gtk::accessible::State::Hidden(true)]);
         }
         child = current.next_sibling();

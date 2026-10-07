@@ -79,3 +79,10 @@ assert-web-focus links-5 "[data-sealwax-quote-toggle]"
 key Tab
 assert-web-focus links-5 none
 assert-focus-stop reader-card-header
+
+# Shift+Tab from the next card goes back into the page, through it to the card's buttons, and
+# round the window: never stuck in WebKit's hidden key-binding widget.
+key <Shift>Tab
+assert-focus-stop reader-frame
+tab-chain window backward 80
+assert-tab-chain reader-frame,reader-card-forward,reader-card-reply-all,reader-card-reply,reader-details-toggle,reader-card-header,reader-row,reader-archive,message-list,compose,quick-reply-text,reader-plain,reader-card-header,reader-frame
