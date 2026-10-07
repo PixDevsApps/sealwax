@@ -5,6 +5,11 @@
 //! account saved, after which the dialog closes and the store shows the account. "Set up
 //! manually" opens host, port, security and username for IMAP and SMTP.
 //!
+//! A POP3 account (M8) is added only there: "Incoming mail" chooses IMAP (the default) or POP3,
+//! which names the incoming server POP3's, moves its standard ports along (995 and 110) and
+//! says what POP3 does with mail. Autodetect stays IMAP. The account is saved with the safe
+//! policy, mail left on the server and never deleted there; `accounts.toml` changes it.
+//!
 //! It talks to the engine only through `engine::api` values on the [`EngineLink`]. Every reply
 //! names its request, and a reply to a request the user walked away from is ignored. The
 //! password is wrapped in `Password` as soon as it is read, and nothing typed is logged.
@@ -39,7 +44,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
     AccountKey, AccountSettings, AuthMethod, DetectedSettings, Detection, Endpoint, HelpLink,
-    LoginError, LoginFailure, OAuthProvider, Protocol, Security,
+    LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol, Receive, Security,
 };
 use sealwax_domain::autoconfig::{Finding, Hints, address_domain, presets};
 use sealwax_domain::model::AccountId;
@@ -139,8 +144,10 @@ pub struct Again {
     pub key: AccountKey,
     pub name: String,
     pub address: String,
-    /// The account's servers, which a refused password's message names.
-    pub imap: Endpoint,
+    /// The account's servers, which a refused password's message names: the incoming one is
+    /// IMAP's or POP3's, as `receive` says.
+    pub incoming: Endpoint,
+    pub receive: Receive,
     pub smtp: Endpoint,
 }
 
@@ -464,8 +471,8 @@ impl Assistant {
             &w.address,
             &w.name,
             &w.username,
-            &w.imap.host,
-            &w.imap.port,
+            &w.incoming.host,
+            &w.incoming.port,
             &w.smtp.host,
             &w.smtp.port,
             &w.manual_username,
@@ -484,8 +491,8 @@ impl Assistant {
         for entry in [
             &w.name,
             &w.username,
-            &w.imap.host,
-            &w.imap.port,
+            &w.incoming.host,
+            &w.incoming.port,
             &w.smtp.host,
             &w.smtp.port,
             &w.manual_username,
@@ -495,14 +502,17 @@ impl Assistant {
         }
         let on_password = changed.clone();
         w.password.connect_changed(move |_| on_password());
-        for (protocol, fields) in [(Protocol::Imap, &w.imap), (Protocol::Smtp, &w.smtp)] {
+        for (incoming, fields) in [(true, &w.incoming), (false, &w.smtp)] {
             let weak = self.weak();
             fields.security.connect_selected_notify(move |_| {
                 if let Some(inner) = weak.upgrade() {
-                    Assistant { inner }.security_changed(protocol);
+                    Assistant { inner }.security_changed(incoming);
                 }
             });
         }
+        let receive_changed = self.handler(Assistant::receive_changed);
+        w.receive
+            .connect_selected_notify(move |_| receive_changed());
 
         let back = self.handler(Assistant::back);
         w.back.connect_clicked(move |_| back());
@@ -689,7 +699,7 @@ impl Assistant {
                         &error,
                         &text::Context {
                             provider: state.provider(),
-                            imap: &again.imap,
+                            incoming: &again.incoming,
                             smtp: &again.smtp,
                             app_password: state.app_password(),
                             enable_imap: state.enable_imap(),
@@ -777,14 +787,15 @@ impl Assistant {
     }
 
     /// The manual fields from what detection found, else the standard ports and the address
-    /// as the username.
+    /// as the username; IMAP either way, which detection finds.
     fn fill_manual(&self) {
         let w = &self.inner.widgets;
+        w.set_receive_protocol(Protocol::Imap);
         let state = self.inner.state.borrow();
         let address = form::parse_address(&w.address.text());
         match state.found() {
             Some(settings) => {
-                w.imap.fill(&settings.imap);
+                w.incoming.fill(&settings.imap);
                 w.smtp.fill(&settings.smtp);
                 let typed = state.asks_username().then(|| w.username.text().to_string());
                 let username = typed.or_else(|| {
@@ -796,7 +807,8 @@ impl Assistant {
                     .set_text(username.as_deref().unwrap_or_default());
             }
             None => {
-                for (protocol, fields) in [(Protocol::Imap, &w.imap), (Protocol::Smtp, &w.smtp)] {
+                for (protocol, fields) in [(Protocol::Imap, &w.incoming), (Protocol::Smtp, &w.smtp)]
+                {
                     fields.host.set_text("");
                     fields.security.set_selected(0);
                     fields
@@ -846,6 +858,7 @@ impl Assistant {
                         address,
                         &w.name.text(),
                         settings.imap.clone(),
+                        Receive::Imap,
                         settings.smtp.clone(),
                         first,
                     ),
@@ -860,13 +873,18 @@ impl Assistant {
 
     fn verify_manual(&self) {
         let w = &self.inner.widgets;
-        let (address, imap, smtp, username) = match form::check_manual(&self.manual_fields().form())
-        {
-            Ok(checked) => checked,
-            Err(_) => return,
+        let Ok(checked) = form::check_manual(&self.manual_fields().form()) else {
+            return;
         };
-        let settings = form::settings(&address, &w.name.text(), imap, smtp, username);
-        self.inner.state.borrow_mut().address = Some(address);
+        let settings = form::settings(
+            &checked.address,
+            &w.name.text(),
+            checked.incoming,
+            checked.receive,
+            checked.smtp,
+            checked.username,
+        );
+        self.inner.state.borrow_mut().address = Some(checked.address);
         self.verify(settings, None);
     }
 
@@ -943,7 +961,7 @@ impl Assistant {
                             &error,
                             &text::Context {
                                 provider: found.and_then(|settings| settings.provider.as_deref()),
-                                imap: &attempt.incoming,
+                                incoming: &attempt.incoming,
                                 smtp: &attempt.smtp,
                                 app_password: found
                                     .and_then(|settings| settings.app_password.as_ref()),
@@ -965,7 +983,8 @@ impl Assistant {
                     && let Some(attempt) = attempt
                 {
                     let w = &self.inner.widgets;
-                    w.imap.fill(&attempt.incoming);
+                    w.set_receive_protocol(attempt.receive.protocol());
+                    w.incoming.fill(&attempt.incoming);
                     w.smtp.fill(&attempt.smtp);
                     w.manual_username.set_text(&attempt.username);
                 }
@@ -1105,6 +1124,7 @@ impl Assistant {
                         address,
                         &self.inner.widgets.name.text(),
                         found.imap.clone(),
+                        Receive::Imap,
                         found.smtp.clone(),
                         username,
                     );
@@ -1273,12 +1293,14 @@ impl Assistant {
         self.render();
     }
 
-    /// Switching TLS ↔ STARTTLS moves a standard port along with it.
-    fn security_changed(&self, protocol: Protocol) {
+    /// Switching TLS ↔ STARTTLS moves a standard port along with it; `incoming`: the incoming
+    /// server's (IMAP's or POP3's, as chosen), else SMTP's.
+    fn security_changed(&self, incoming: bool) {
         let w = &self.inner.widgets;
-        let fields = match protocol {
-            Protocol::Imap | Protocol::Pop3 => &w.imap,
-            Protocol::Smtp => &w.smtp,
+        let (protocol, fields) = if incoming {
+            (w.receive_protocol(), &w.incoming)
+        } else {
+            (Protocol::Smtp, &w.smtp)
         };
         let security = fields.security();
         let other = match security {
@@ -1296,13 +1318,34 @@ impl Assistant {
         self.render();
     }
 
+    /// "Incoming mail" switched between IMAP and POP3: the server's caption follows, and a
+    /// standard port moves to the other protocol's (993 ↔ 995, 143 ↔ 110); a typed one stays.
+    fn receive_changed(&self) {
+        let w = &self.inner.widgets;
+        let to = w.receive_protocol();
+        let from = match to {
+            Protocol::Pop3 => Protocol::Imap,
+            Protocol::Imap | Protocol::Smtp => Protocol::Pop3,
+        };
+        let port = w.incoming.port.text();
+        if let Some(moved) = form::moved_port(&port, from, to, w.incoming.security()) {
+            w.incoming.port.set_text(&moved.to_string());
+        }
+        self.render();
+    }
+
     fn manual_fields(&self) -> ManualTexts {
         let w = &self.inner.widgets;
+        let receive = match w.receive_protocol() {
+            Protocol::Pop3 => Receive::Pop3(Pop3Policy::default()),
+            Protocol::Imap | Protocol::Smtp => Receive::Imap,
+        };
         ManualTexts {
             address: w.address.text().to_string(),
-            imap_host: w.imap.host.text().to_string(),
-            imap_port: w.imap.port.text().to_string(),
-            imap_security: w.imap.security(),
+            receive,
+            incoming_host: w.incoming.host.text().to_string(),
+            incoming_port: w.incoming.port.text().to_string(),
+            incoming_security: w.incoming.security(),
             smtp_host: w.smtp.host.text().to_string(),
             smtp_port: w.smtp.port.text().to_string(),
             smtp_security: w.smtp.security(),
@@ -1368,7 +1411,7 @@ impl Assistant {
             }
             Step::Manual | Step::Failed => Some(match self.problem() {
                 Some(problem) => self.field_widget(problem.field()),
-                None => w.imap.host.clone().upcast(),
+                None => w.incoming.host.clone().upcast(),
             }),
             Step::PasswordAgain => Some(w.password.clone().upcast()),
             Step::Microsoft if (self.inner.microsoft)() => {
@@ -1393,7 +1436,7 @@ impl Assistant {
             | LoginFailure::ImapDisabled
             | LoginFailure::OAuthRequired => w.password.clone().upcast(),
             _ => match error.protocol {
-                Protocol::Imap | Protocol::Pop3 => w.imap.host.clone().upcast(),
+                Protocol::Imap | Protocol::Pop3 => w.incoming.host.clone().upcast(),
                 Protocol::Smtp => w.smtp.host.clone().upcast(),
             },
         };
@@ -1404,8 +1447,8 @@ impl Assistant {
         let w = &self.inner.widgets;
         match field {
             Field::Address => w.address.clone().upcast(),
-            Field::ImapHost => w.imap.host.clone().upcast(),
-            Field::ImapPort => w.imap.port.clone().upcast(),
+            Field::IncomingHost => w.incoming.host.clone().upcast(),
+            Field::IncomingPort => w.incoming.port.clone().upcast(),
             Field::SmtpHost => w.smtp.host.clone().upcast(),
             Field::SmtpPort => w.smtp.port.clone().upcast(),
             Field::Username => {
@@ -1437,9 +1480,10 @@ fn focus(widget: &gtk::Widget) {
 /// The manual fields' text, owned, for [`form::check_manual`].
 struct ManualTexts {
     address: String,
-    imap_host: String,
-    imap_port: String,
-    imap_security: Security,
+    receive: Receive,
+    incoming_host: String,
+    incoming_port: String,
+    incoming_security: Security,
     smtp_host: String,
     smtp_port: String,
     smtp_security: Security,
@@ -1450,9 +1494,10 @@ impl ManualTexts {
     fn form(&self) -> form::Manual<'_> {
         form::Manual {
             address: &self.address,
-            imap_host: &self.imap_host,
-            imap_port: &self.imap_port,
-            imap_security: Some(self.imap_security),
+            receive: self.receive,
+            incoming_host: &self.incoming_host,
+            incoming_port: &self.incoming_port,
+            incoming_security: Some(self.incoming_security),
             smtp_host: &self.smtp_host,
             smtp_port: &self.smtp_port,
             smtp_security: Some(self.smtp_security),
