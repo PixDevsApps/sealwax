@@ -976,6 +976,12 @@ Accepted by the user at the M6 gate ("Keep both", 2026-10-06): Paste as Plain Te
 
 **Status:** Accepted at the M7 gate (the user's delegation, 2026-10-07). No registry key was added: Rebuild Search Index and Start Sealwax at Login have none. The search field's own keys while its suggestions show (Down, Up, Tab, Enter, Escape; Down with them closed lists the operators) are the field's, as the composer's recipient suggestions are. The notification actions aren't registry commands.
 
+### ADR-017 amendment — M9's keyboard behaviour accepted (2026-10-07)
+
+**Status:** Accepted — user decision, 2026-10-07 ("Keep all as built (Recommended)").
+
+M9's accessibility pass ([report](m9/accessibility.md#proposals-for-the-users-gate)) added no key; these behaviours stay as built: Tab in the composer's body moves to Send and Shift+Tab to the toolbar (no tab character); the folder list and the message list are one Tab stop each, with Up and Down inside, and the rows of the palette and Move to… are none (their field keeps the focus and the row is announced); a plain-text body's links are reached with Tab and opened with Enter; the recipient chips' × are Tab stops; Go to Starred turns on the Starred chip (there is no Starred folder); the composer's Tab order is the visual order (From, Attach, Discard, To, Cc · Bcc, Subject, the toolbar, the body, Send). Go to Inbox, Starred, Sent and Drafts and Back to List now run with the keys the registry already had.
+
 ## ADR-018 — Logging and privacy (2026-10-04)
 
 **Status:** Accepted — plan approval, 2026-10-04.
