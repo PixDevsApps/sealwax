@@ -209,7 +209,8 @@ fn allowed(tag: &str, attribute: &str, value: &str) -> bool {
         | ("td" | "th", "colspan" | "rowspan")
         | ("ol", "start")
         | ("blockquote", "type" | "style") => true,
-        ("div", "class") => value == clean::SIGNATURE_CLASS,
+        // ammonia leaves `class=""` where it removed every class.
+        ("div", "class") => value.is_empty() || value == clean::SIGNATURE_CLASS,
         _ => false,
     }
 }
