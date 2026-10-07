@@ -1,15 +1,45 @@
 # Sealwax
 
-A fast, beautiful, minimal email client for [Omarchy](https://omarchy.org) — native GTK4 and libadwaita, written in Rust, following your live Omarchy theme and font.
+A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and treating every message as hostile.
 
-![Sealwax in the matte-black theme, showing fictional mail](tools/progress/public/m1-gate-wide-matte-black-square-2026-10-04.png)
+![Sealwax in the matte-black theme, showing a conversation of fictional mail](tools/progress/public/m6-reply-conversation-matte-black-square-2026-10-06.png)
 
-**Status:** M7, search, notifications and background mode, approved on 2026-10-07: search with `from:`, `to:`, `subject:`, `has:attachment`, `is:unread`, `before:` and `after:` and suggestions as you type, new-mail notifications that open the message, and background mode, so closing the window keeps mail syncing (Ctrl+Q quits; `sealwax --background` starts without a window, `sealwax --compose` opens a new message, and Start Sealwax at Login is in the menu). Version 0.3.0, the MVP (M6, compose and send, approved on 2026-10-06), brought a composer in a window of its own with formatting, recipient suggestions, attachments and autosaved drafts, reply, reply all, forward and a quick reply under the conversation, and sending through an outbox with Undo send that never sends a message twice. Before it: whole conversations in the reader with safe links, remote images per sender and attachments that open safely (M5); accounts added without typing server settings (autodetect, passwords and app passwords, or Sign in with Microsoft), new mail through IDLE, and archive, delete, junk, move, star and read/unread at once with Undo, also offline (M2–M4). POP3 comes in M8; real accounts haven't been tried yet.
+## Status
 
-- Product requirements: [docs/PRD.md](docs/PRD.md)
-- Plan and current state: [docs/PLAN.md](docs/PLAN.md)
-- Decisions: [docs/DECISIONS.md](docs/DECISIONS.md)
-- Building: [docs/BUILD.md](docs/BUILD.md); testing: [docs/TESTING.md](docs/TESTING.md)
+**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0 (accessibility, the security review and fuzzing, this documentation, then performance, packaging and the sign-off), is under way. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use. [docs/PLAN.md](docs/PLAN.md) has the current state.
+
+## Features
+
+- **Accounts without server settings:** type your address, and Sealwax finds the servers (its provider list, your domain's autoconfig, Mozilla's ISPDB, DNS). **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for Gmail, iCloud, Fastmail and others, with a link to the provider's page; manual settings for the rest. Several accounts and All Inboxes.
+- **IMAP** with IDLE push and an offline copy of your mail, and **POP3** into local folders (mail left on the server by default).
+- **Reading:** whole conversations; safe HTML (no message script ever runs; nothing remote loads until you allow it, per message or per sender); attachments that open safely, with a warning for programs and disguised files; link warnings; print, Show Original, Save as `.eml`; graceful display of encrypted and signed mail.
+- **Triage:** archive, delete, junk, move, star, read and unread at once, on one message or many, with Undo, also offline.
+- **Writing:** a rich-text composer in its own window, reply, reply all, forward and a quick reply under the conversation; identities and signatures; attachments with the server's size limit checked; drafts saved as you type and kept on the server; an outbox with Undo send that never sends a message twice; `mailto:` links, and becoming the default mail app when you choose.
+- **Search** on this computer with `from:`, `to:`, `subject:`, `has:attachment`, `is:unread`, `before:`, `after:` and suggestions as you type.
+- **New-mail notifications** that open the message, and **background mode**: closing the window keeps mail syncing; Start Sealwax at Login.
+- **Omarchy:** the live theme and font, light and dark; corners that follow Hyprland; no title bar on Hyprland; layouts for wide, half-screen and narrow tiled windows.
+- **Keyboard first:** one-key shortcuts in the list and reader, a command palette (F1), and your own keys in `keys.toml`. Settings live in plain files: `config.toml`, `keys.toml`, `accounts.toml`.
+- **Private:** passwords and tokens only in your keyring; no telemetry; logs without mail content; outgoing mail without your computer's name or a Bcc header.
+
+Not in 1.0: Sign in with Google (Gmail works with an app password), server-side search, folder management, PGP and S/MIME, calendars and contacts beyond autocomplete ([scope](docs/PLAN.md#scope-control)).
+
+## Requirements
+
+Arch Linux on x86_64 with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally hunspell dictionaries for spell checking. Omarchy 4 is the desktop it is made for. Building needs Rust 1.92+.
+
+## Install
+
+Build the Arch package from this repository with its PKGBUILD: [INSTALL.md](INSTALL.md).
+
+## Documentation
+
+- [User guide](docs/USER_GUIDE.md): setup (Microsoft sign-in, app passwords, POP3), reading, writing, search, notifications, every keyboard shortcut, theming, the settings files, privacy and troubleshooting
+- [Install](INSTALL.md): the package, building from source, uninstalling
+- [Security](docs/SECURITY.md): the threat model, the rules and the known limitations
+- [Integrations](docs/INTEGRATIONS.md): Omarchy, Hyprland key bindings and menu entries, providers
+- [Microsoft sign-in setup](docs/OAUTH-SETUP.md): registering a client ID
+- [Building](docs/BUILD.md) and [testing](docs/TESTING.md)
+- [Product requirements](docs/PRD.md), [plan and current state](docs/PLAN.md), [decisions](docs/DECISIONS.md), [design](docs/DESIGN.md)
 - Working on it with an agent: [AGENTS.md](AGENTS.md)
 
 License: MIT.
