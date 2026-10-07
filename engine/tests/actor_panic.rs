@@ -3,8 +3,8 @@
 //! IMAP server (CI, 127.0.0.1 only): the account's actor dies in that panic, the account shows
 //! offline, the actor starts again after the backoff and syncs, new mail included, and the log
 //! names the account and nothing the server sent. A child process checks that the panic's own
-//! report on stderr leaves out its message, which quotes the reply. Its own test binary, because
-//! it installs the global subscriber. Test data only.
+//! report on stderr leaves out its message, which names a character of the reply. Its own test
+//! binary, because it installs the global subscriber. Test data only.
 
 mod fake;
 
@@ -226,7 +226,7 @@ async fn imap_protos_panic_restarts_the_account() {
     }
 }
 
-/// The panic's message quotes the server's reply; Sealwax's panic report leaves it out.
+/// The panic's message names a character of the server's reply; Sealwax's report leaves it out.
 #[test]
 fn a_dependencys_panic_is_reported_without_its_message() {
     if std::env::var_os(CHILD).is_some() {
