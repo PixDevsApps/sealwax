@@ -27,7 +27,7 @@ use crate::pop3;
 use crate::preferences::{self, Preferences, SettingsFile, Update};
 use crate::reader::{self, MessageSource, Opened, Position, Reader};
 use crate::search;
-use crate::setup::{self, Again, remove::Removable};
+use crate::setup::{self, Again, edit::Editable, remove::Removable};
 use crate::shortcuts;
 use crate::status::{self, Waiting};
 use crate::theme::{self, ThemeController};
@@ -43,7 +43,7 @@ use sealwax_domain::account::AccountKey;
 use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::mailto::{self, Mailto};
-use sealwax_domain::model::{FolderId, FolderRole, MessageId};
+use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
 use sealwax_domain::triage::Triage;
 use sealwax_engine::api::{Command, Event};
 use sealwax_engine::service::Engine;
@@ -739,12 +739,7 @@ impl AppState {
             let Some(state) = weak.upgrade() else {
                 return;
             };
-            if let Some(actions) = state.win_actions.borrow().as_ref() {
-                actions.set_available(
-                    ActionId::RemoveAccount,
-                    !state.removable_accounts().is_empty(),
-                );
-            }
+            state.update_account_commands();
             if let (Some(window), Some(list)) = (state.window(), state.list()) {
                 state.fill_sidebar(&window, &list);
             }
@@ -1055,6 +1050,7 @@ impl AppState {
         }
         if update.accounts_changed {
             self.accounts_read.set(true);
+            self.update_account_commands();
             self.mailbox.set_colors(
                 prefs
                     .accounts()
@@ -1128,10 +1124,34 @@ impl AppState {
                 setup::remove::confirm(&window, &state.engine, state.removable_accounts());
             }
         });
+        let weak = Rc::downgrade(self);
+        win_actions.connect(ActionId::EditAccount, move || {
+            if let Some(state) = weak.upgrade() {
+                let account = state.list().and_then(|list| {
+                    let selected = list
+                        .selected_targets()
+                        .ok()
+                        .and_then(|targets| targets.first().map(|target| target.folder));
+                    compose_actions::compose_account(
+                        list.scope(),
+                        selected,
+                        &state.mailbox.folders(),
+                    )
+                });
+                state.edit_account(account);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.sidebar().connect_edit_account(move |key| {
+            if let Some(state) = weak.upgrade() {
+                state.edit_account(mailbox::account_for_key(key));
+            }
+        });
         win_actions.set_available(
             ActionId::RemoveAccount,
             !self.removable_accounts().is_empty(),
         );
+        win_actions.set_available(ActionId::EditAccount, !self.editable_accounts().is_empty());
         window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
         window.set_keymap(&keymap);
         actions::apply_accels(app, &keymap);
@@ -1851,6 +1871,60 @@ impl AppState {
         {
             tracing::warn!("the engine stopped listening");
         }
+    }
+
+    /// Remove Account and Edit Account are available while there is an account to offer.
+    fn update_account_commands(&self) {
+        if let Some(actions) = self.win_actions.borrow().as_ref() {
+            actions.set_available(
+                ActionId::RemoveAccount,
+                !self.removable_accounts().is_empty(),
+            );
+            actions.set_available(ActionId::EditAccount, !self.editable_accounts().is_empty());
+        }
+    }
+
+    /// The accounts Edit Account offers: those both `accounts.toml` and the store list, with
+    /// their label and colour as the file has them, in the sidebar's order.
+    fn editable_accounts(&self) -> Vec<Editable> {
+        let listed = self
+            .preferences()
+            .map(|prefs| prefs.accounts())
+            .unwrap_or_default();
+        self.mailbox
+            .accounts()
+            .iter()
+            .filter_map(|account| {
+                let key = account.key.as_ref()?;
+                let settings = listed.iter().find(|settings| &settings.key == key)?;
+                Some(Editable {
+                    key: key.clone(),
+                    address: settings.address.clone(),
+                    label: settings.label.clone(),
+                    color: settings.color,
+                })
+            })
+            .collect()
+    }
+
+    /// Edit Account, at `account` when it is one the dialog offers, else at the first.
+    fn edit_account(&self, account: Option<AccountId>) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        let accounts = self.editable_accounts();
+        let key = account.and_then(|id| {
+            self.mailbox
+                .accounts()
+                .into_iter()
+                .find(|known| known.id == id)
+                .and_then(|known| known.key)
+        });
+        let chosen = accounts
+            .iter()
+            .position(|editable| Some(&editable.key) == key.as_ref())
+            .unwrap_or_default();
+        setup::edit::open(&window, &self.engine, accounts, chosen);
     }
 
     /// The accounts Remove Account offers: those `accounts.toml` lists, so not the local

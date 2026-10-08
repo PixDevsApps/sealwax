@@ -158,7 +158,7 @@ assert-setup open false
 assert-toast "Added kari@example.test"
 wait-until assert-shown welcome false
 assert-file-contains $TMP/config/sealwax/accounts.toml "# Sealwax accounts (accounts.toml)."
-assert-file-contains $TMP/config/sealwax/accounts.toml "\n[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\ncolor = \"rose\"\naddress = \"kari@example.test\"\nusername = \"kari@example.test\"\nauth = \"password\"\n\n[account.pop3]\nhost = \"pop.example.test\"\nport = 110\nsecurity = \"starttls\"\nleave_on_server = true\n\n[account.smtp]\nhost = \"smtp.example.test\"\nport = 465\nsecurity = \"tls\"\n"
+assert-file-contains $TMP/config/sealwax/accounts.toml "\n[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\ncolor = \"rose\"\nusername = \"kari@example.test\"\nauth = \"password\"\n\n[account.pop3]\nhost = \"pop.example.test\"\nport = 110\nsecurity = \"starttls\"\nleave_on_server = true\n\n[account.smtp]\nhost = \"smtp.example.test\"\nport = 465\nsecurity = \"tls\"\n"
 assert-file-lacks $TMP/config/sealwax/accounts.toml "\n[account.imap]"
 assert-file-lacks $TMP/config/sealwax/accounts.toml "\ndelete_after_days"
 assert-file-lacks $TMP/config/sealwax/accounts.toml fictional-password

@@ -105,7 +105,7 @@ What a POP3 account does:
 - **Add Account** (main menu, palette) adds another account. **All Inboxes** at the top of the sidebar shows the Inboxes of every account together.
 - **Remove Account** (main menu, palette) asks which account and whether, then deletes the account's mail stored on this computer, its password or token in the keyring and its entry in `accounts.toml`. For an IMAP account the mail on the server stays.
 - **Editing `accounts.toml` by hand:** an account whose entry you delete by hand is only detached: it stops syncing and leaves the sidebar, but its local mail and its password stay until the entry comes back or you remove the account in Sealwax.
-- **Renaming or recolouring an account:** set `label` and `color` on its entry in `accounts.toml` ([below](#accountstoml)); the sidebar follows as soon as you save.
+- **Edit Account** (main menu, palette, or a right click on the account's heading in the sidebar) changes what Sealwax calls the account and its colour: **Account name** (empty shows the address) and **Colour**, then **Save**. The name people see on your mail stays. Sealwax writes them as `label` and `color` on the account's entry in `accounts.toml` ([below](#accountstoml)), which you can also edit by hand; the sidebar follows as soon as the file is saved.
 - **A password that stops working** (you changed it, or revoked an app password): a banner says the account "needs you to sign in again", with **Type the password again**. The assistant opens at the password; Sealwax checks the new one on both servers before it keeps it ("Password accepted for …").
 
 ## The window
@@ -321,6 +321,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | View | Toggle Sidebar | Ctrl+Shift+S, F9 | anywhere | `toggle-sidebar` |
 | View | Command Palette | Ctrl+Shift+P, F1 | anywhere | `command-palette` |
 | General | Add Account | — |  | `add-account` |
+| General | Edit Account | — |  | `edit-account` |
 | General | Remove Account | — |  | `remove-account` |
 | General | Keyboard Shortcuts | ?, h, Ctrl+? | ?, h: list and reader; Ctrl+?: anywhere | `shortcuts` |
 | General | Preferences (config.toml) | Ctrl+, | anywhere | `preferences` |

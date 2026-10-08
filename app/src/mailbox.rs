@@ -35,6 +35,11 @@ fn account_key(account: &Account) -> String {
     format!("account-{}", account.id)
 }
 
+/// The account a sidebar account key names.
+pub fn account_for_key(key: &str) -> Option<AccountId> {
+    key.strip_prefix("account-")?.parse().ok().map(AccountId)
+}
+
 /// The sidebar's role for a store folder; the rest go under "More".
 fn sidebar_role(role: StoreRole) -> Option<FolderRole> {
     match role {
@@ -668,6 +673,19 @@ mod tests {
         assert_eq!(model.accounts[1].more[0].role, None);
         assert_eq!(model.all_inboxes_unread(), 16);
         assert_eq!(model.default_selection().as_deref(), Some("folder-1"));
+    }
+
+    #[test]
+    fn account_keys_name_the_store_account() {
+        let account = Account {
+            id: AccountId(42),
+            name: "Work".into(),
+            address: "work@example.test".into(),
+            key: None,
+        };
+        assert_eq!(account_for_key(&account_key(&account)), Some(AccountId(42)));
+        assert_eq!(account_for_key("folder-42"), None);
+        assert_eq!(account_for_key("account-x"), None);
     }
 
     #[test]

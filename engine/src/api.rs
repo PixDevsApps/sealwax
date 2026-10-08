@@ -8,7 +8,8 @@
 //! Sent copy and keeps the Drafts folder's copy of every draft current.
 
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure, OAuthProvider,
+    AccountColor, AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure,
+    OAuthProvider,
 };
 use sealwax_domain::config::Storage;
 use sealwax_domain::model::{AccountId, DraftId, FolderId, MessageId};
@@ -80,6 +81,15 @@ pub enum Command {
     MicrosoftClient { client_id: Option<String> },
     /// Delete the account's settings, secrets, rows and blobs (ML-038).
     RemoveAccount { request: RequestId, key: AccountKey },
+    /// Set what Sealwax calls the account and its colour: its `label` and `color` lines in
+    /// `accounts.toml`, `None` taking a line out (the user's UI tweak, 2026-10-08). The store's
+    /// name follows with the `Accounts` the app sends once it has read the file.
+    EditAccount {
+        request: RequestId,
+        key: AccountKey,
+        label: Option<String>,
+        color: Option<AccountColor>,
+    },
     /// The accounts `accounts.toml` lists, after every read without mistakes: the store follows
     /// them, and every listed account gets its folder list and first INBOX sync.
     Accounts { accounts: Vec<AccountSettings> },
@@ -165,6 +175,10 @@ pub enum Event {
         result: Result<AccountId, AccountError>,
     },
     AccountRemoved {
+        request: RequestId,
+        result: Result<(), AccountError>,
+    },
+    AccountEdited {
         request: RequestId,
         result: Result<(), AccountError>,
     },

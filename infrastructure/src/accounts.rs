@@ -7,7 +7,7 @@
 
 use crate::settings_files::read_optional;
 use crate::xdg::{SealwaxDirs, ensure_private_dir};
-use sealwax_domain::account::{AccountKey, AccountSettings};
+use sealwax_domain::account::{AccountColor, AccountKey, AccountSettings};
 use sealwax_domain::accounts_file::{self, EditError};
 use sealwax_domain::config::FileError;
 use std::fs::{self, File, OpenOptions, Permissions};
@@ -108,6 +108,20 @@ pub fn add(path: &Path, account: &AccountSettings) -> Result<(), AccountsFileErr
 pub fn remove(path: &Path, key: &AccountKey) -> Result<bool, AccountsFileError> {
     edit(path, |text| match text {
         Some(text) => accounts_file::remove(text, key),
+        None => Ok(None),
+    })
+}
+
+/// Sets the label and the colour of the account with `key` in `path` (`None` takes the line
+/// out); false when the file doesn't list it.
+pub fn relabel(
+    path: &Path,
+    key: &AccountKey,
+    label: Option<&str>,
+    color: Option<AccountColor>,
+) -> Result<bool, AccountsFileError> {
+    edit(path, |text| match text {
+        Some(text) => accounts_file::relabel(text, key, label, color),
         None => Ok(None),
     })
 }
@@ -371,6 +385,34 @@ mod tests {
         let missing = dirs.config.join("none.toml");
         assert!(!remove(&missing, &AccountKey("x".into())).unwrap());
         assert!(!missing.exists());
+    }
+
+    #[test]
+    fn relabels_in_place_with_private_modes() {
+        let root = scratch();
+        let path = SealwaxDirs::under(root.path()).accounts_file();
+        let work = AccountKey("work".into());
+        assert!(!relabel(&path, &work, Some("Work"), None).unwrap());
+        assert!(
+            !path.exists(),
+            "no file is made for an account that isn't there"
+        );
+        add(&path, &account("work", "work@example.test")).unwrap();
+        add(&path, &account("home", "home@example.test")).unwrap();
+        assert!(relabel(&path, &work, Some("Work"), Some(AccountColor::Slate)).unwrap());
+        assert_eq!(mode(&path), 0o600);
+        let accounts = read(&path).unwrap();
+        assert_eq!(
+            (accounts[0].title(), accounts[0].color),
+            ("Work", Some(AccountColor::Slate))
+        );
+        assert_eq!(
+            (accounts[1].title(), accounts[1].color),
+            ("home@example.test", None)
+        );
+        assert!(relabel(&path, &work, None, None).unwrap());
+        assert_eq!(read(&path).unwrap()[0].title(), "work@example.test");
+        assert!(!relabel(&path, &AccountKey("gone".into()), Some("X"), None).unwrap());
     }
 
     #[test]

@@ -14,7 +14,7 @@ use std::net::Ipv6Addr;
 use std::ops::Range;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
-use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, value};
+use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, Value, value};
 
 pub const ACCOUNTS_FILE: &str = "accounts.toml";
 /// The longest key a hand-written account may have.
@@ -966,13 +966,13 @@ pub fn entry(account: &AccountSettings) -> String {
     let mut table = Table::new();
     table["key"] = value(&account.key.0);
     table["name"] = value(&account.name);
+    table["address"] = value(&account.address);
     if let Some(label) = &account.label {
         table["label"] = value(label);
     }
     if let Some(color) = account.color {
         table["color"] = value(color.name());
     }
-    table["address"] = value(&account.address);
     table["username"] = value(&account.username);
     table["auth"] = value(auth_name(account.auth));
     table[protocol_name(account.receive.protocol())] = Item::Table(incoming);
@@ -1107,6 +1107,91 @@ pub fn remove(text: &str, key: &AccountKey) -> Result<Option<String>, EditError>
         output
     };
     Ok(Some(output))
+}
+
+/// `text` with the account `key`'s `label` and `color` set as given, `None` taking the line
+/// out; `None` when the file has no such account. A value already written is replaced in place,
+/// its comment kept; a new one goes after the address (the colour after the label). Everything
+/// else stays byte for byte. A file with mistakes, or a label that couldn't be read back, is
+/// refused.
+pub fn relabel(
+    text: &str,
+    key: &AccountKey,
+    label: Option<&str>,
+    color: Option<AccountColor>,
+) -> Result<Option<String>, EditError> {
+    if label.is_some_and(|label| !is_plain_text(label)) {
+        return Err(EditError::Account(
+            "the label is empty or has control characters".to_owned(),
+        ));
+    }
+    let before = parse(text).map_err(EditError::Invalid)?;
+    if !before.iter().any(|account| &account.key == key) {
+        return Ok(None);
+    }
+    let mut document: DocumentMut = text
+        .parse()
+        .map_err(|_| EditError::Invalid(parse_toml(text).err().into_iter().collect()))?;
+    let Some(table) = document
+        .get_mut("account")
+        .and_then(Item::as_array_of_tables_mut)
+        .and_then(|tables| {
+            tables.iter_mut().find(|table| {
+                table.get("key").and_then(Item::as_str).map(str::trim) == Some(key.0.as_str())
+            })
+        })
+    else {
+        return Ok(None);
+    };
+    set_value(table, "label", label, "address");
+    let after_label = if table.contains_key("label") {
+        "label"
+    } else {
+        "address"
+    };
+    set_value(table, "color", color.map(AccountColor::name), after_label);
+    let output = document.to_string();
+    let expected: Vec<AccountSettings> = before
+        .into_iter()
+        .map(|mut account| {
+            if &account.key == key {
+                account.label = label.map(str::to_owned);
+                account.color = color;
+            }
+            account
+        })
+        .collect();
+    if parse(&output).map_err(EditError::Invalid)? != expected {
+        return Err(EditError::Account(
+            "the entry did not read back as written".to_owned(),
+        ));
+    }
+    Ok(Some(output))
+}
+
+/// Sets the string `name` in `table`: in place when it is there (its comment kept), else right
+/// after `after`; `None` removes it.
+fn set_value(table: &mut Table, name: &str, text: Option<&str>, after: &str) {
+    let Some(text) = text else {
+        table.remove(name);
+        return;
+    };
+    if let Some(existing) = table.get_mut(name).and_then(Item::as_value_mut) {
+        let decor = existing.decor().clone();
+        *existing = Value::from(text);
+        *existing.decor_mut() = decor;
+        return;
+    }
+    let order: Vec<String> = table.iter().map(|(key, _)| key.to_owned()).collect();
+    let rank = |key: &str| {
+        let at = |key: &str| order.iter().position(|known| known == key);
+        match at(key) {
+            Some(index) => index as f64,
+            None => at(after).map_or(order.len() as f64, |index| index as f64 + 0.5),
+        }
+    };
+    table.insert(name, value(text));
+    table.sort_values_by(|a, _, b, _| rank(a.get()).total_cmp(&rank(b.get())));
 }
 
 /// The `accounts.toml` the assistant starts from: a header and a commented example, so the
@@ -1319,6 +1404,85 @@ mod tests {
                 "the label is empty or has control characters".to_owned()
             ))
         );
+    }
+
+    #[test]
+    fn relabel_sets_the_label_and_the_color_after_the_address() {
+        let text = format!("# my accounts\n\n{ONE}");
+        let work = AccountKey("work".to_owned());
+        let named = relabel(&text, &work, Some("Work"), Some(AccountColor::Sage))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            named,
+            text.replace(
+                "address = \"ada@example.test\"\n",
+                "address = \"ada@example.test\"\nlabel = \"Work\"\ncolor = \"sage\"\n"
+            )
+        );
+        let account = &parse(&named).unwrap()[0];
+        assert_eq!(
+            (account.title(), account.color),
+            ("Work", Some(AccountColor::Sage))
+        );
+        // Changed again: in place; taken out: the file as it was.
+        let renamed = relabel(&named, &work, Some("Jobb"), Some(AccountColor::Teal))
+            .unwrap()
+            .unwrap();
+        assert!(
+            renamed.contains("label = \"Jobb\"\ncolor = \"teal\"\n"),
+            "{renamed}"
+        );
+        assert_eq!(relabel(&named, &work, None, None).unwrap().unwrap(), text);
+    }
+
+    #[test]
+    fn relabel_keeps_comments_and_the_other_accounts() {
+        let text = "[[account]]\nkey = \"work\"\nname = \"Ada\"\nlabel = \"Old\"   # mine\n\
+                    address = \"ada@example.test\"\n\n[account.imap]\nhost = \"imap.example.test\"\n\n\
+                    [account.smtp]\nhost = \"smtp.example.test\"\n\n# the club\n[[account]]\n\
+                    key = \"club\"\nname = \"Ada\"\naddress = \"club@example.test\"\n\n\
+                    [account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]\n\
+                    host = \"smtp.example.test\"\n";
+        let club = AccountKey("club".to_owned());
+        let changed = relabel(text, &AccountKey("work".to_owned()), Some("New"), None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            changed,
+            text.replace("\"Old\"   # mine", "\"New\"   # mine")
+        );
+        let colored = relabel(text, &club, None, Some(AccountColor::Iris))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            colored,
+            text.replace(
+                "address = \"club@example.test\"\n",
+                "address = \"club@example.test\"\ncolor = \"iris\"\n"
+            )
+        );
+        assert_eq!(parse(&colored).unwrap()[0].title(), "Old");
+    }
+
+    #[test]
+    fn relabel_refuses_what_it_cant_write() {
+        let work = AccountKey("work".to_owned());
+        assert_eq!(
+            relabel(ONE, &AccountKey("nobody".to_owned()), Some("X"), None),
+            Ok(None)
+        );
+        assert_eq!(relabel("", &work, Some("X"), None), Ok(None));
+        assert_eq!(
+            relabel(ONE, &work, Some(" "), None),
+            Err(EditError::Account(
+                "the label is empty or has control characters".to_owned()
+            ))
+        );
+        assert!(matches!(
+            relabel(&format!("{ONE}oops = 1\n"), &work, Some("X"), None),
+            Err(EditError::Invalid(_))
+        ));
     }
 
     /// The default file's example, uncommented, without the block of the incoming server

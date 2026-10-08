@@ -29,6 +29,7 @@
 
 pub mod browser;
 mod colors;
+pub mod edit;
 pub mod form;
 pub mod remove;
 pub mod sources;

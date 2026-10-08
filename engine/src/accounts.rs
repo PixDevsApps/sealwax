@@ -18,7 +18,7 @@
 
 use crate::api::{AccountError, Password};
 use crate::secrets::{SecretKind, SecretStore};
-use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod};
+use sealwax_domain::account::{AccountColor, AccountKey, AccountSettings, AuthMethod};
 use sealwax_domain::accounts_file;
 use sealwax_domain::model::AccountId;
 use sealwax_infrastructure::accounts::{
@@ -189,6 +189,24 @@ impl<S: SecretStore> Accounts<'_, S> {
     }
 
     /// Removes the account with `key`: its entry, store rows, orphaned blobs and secrets.
+    /// Sets the account's `label` and `color` lines in `accounts.toml` (`None` takes one
+    /// out), keeping the rest of the file. The store's name follows with `reconcile`, once the
+    /// app has read the file.
+    pub async fn edit(
+        &self,
+        key: &AccountKey,
+        label: Option<String>,
+        color: Option<AccountColor>,
+    ) -> Result<(), AccountError> {
+        let path = self.paths.settings.clone();
+        let key = key.clone();
+        match blocking(move || files::relabel(&path, &key, label.as_deref(), color)).await? {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(AccountError::Missing),
+            Err(error) => Err(file_error(error)),
+        }
+    }
+
     pub async fn remove(&self, key: &AccountKey) -> Result<(), AccountError> {
         let in_file = match self.listed().await {
             Ok(listed) => listed.iter().any(|known| &known.key == key),
@@ -735,5 +753,26 @@ mod tests {
         listed[0].label = None;
         run(accounts.reconcile(&listed)).unwrap();
         assert_eq!(name(&bench.store).as_deref(), Some("ada@example.test"));
+    }
+
+    #[test]
+    fn edit_writes_the_label_and_the_color() {
+        let bench = Bench::new();
+        let accounts = bench.accounts();
+        let (key, _) = run(accounts.add(settings("ada@example.test"), &password())).unwrap();
+        run(accounts.edit(&key, Some("Work".to_owned()), Some(AccountColor::Mauve))).unwrap();
+        let listed = files::read(&bench.paths.settings).unwrap();
+        assert_eq!(
+            (listed[0].title(), listed[0].color),
+            ("Work", Some(AccountColor::Mauve))
+        );
+        assert_eq!(listed[0].name, "Test Person", "the sender name stays");
+        run(accounts.edit(&key, None, None)).unwrap();
+        let listed = files::read(&bench.paths.settings).unwrap();
+        assert_eq!((listed[0].label.as_deref(), listed[0].color), (None, None));
+        assert_eq!(
+            run(accounts.edit(&AccountKey("gone".into()), None, None)),
+            Err(AccountError::Missing)
+        );
     }
 }

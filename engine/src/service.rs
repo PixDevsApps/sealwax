@@ -21,8 +21,8 @@ use crate::smtp;
 use crate::verify::verify;
 use rustls::ClientConfig;
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, AuthMethod, Endpoint, LoginError, LoginFailure, OAuthProvider,
-    Protocol, Receive,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, Endpoint, LoginError, LoginFailure,
+    OAuthProvider, Protocol, Receive,
 };
 use sealwax_domain::autoconfig::{address_domain, presets};
 use sealwax_domain::model::{AccountId, FolderId};
@@ -338,6 +338,12 @@ enum Job {
         request: RequestId,
         key: AccountKey,
     },
+    Edit {
+        request: RequestId,
+        key: AccountKey,
+        label: Option<String>,
+        color: Option<AccountColor>,
+    },
     /// A re-sign-in's tokens for the account in `settings`.
     SignedInAgain {
         request: RequestId,
@@ -432,6 +438,17 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 continue;
             }
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
+            Command::EditAccount {
+                request,
+                key,
+                label,
+                color,
+            } => Job::Edit {
+                request,
+                key,
+                label,
+                color,
+            },
             Command::UpdatePassword {
                 request,
                 key,
@@ -757,6 +774,15 @@ async fn lane(shared: Arc<Shared>, jobs: async_channel::Receiver<Job>) {
                 shared.access.forget(&key);
                 let result = accounts.remove(&key).await;
                 shared.send(Event::AccountRemoved { request, result });
+            }
+            Job::Edit {
+                request,
+                key,
+                label,
+                color,
+            } => {
+                let result = accounts.edit(&key, label, color).await;
+                shared.send(Event::AccountEdited { request, result });
             }
             Job::SignedInAgain {
                 request,

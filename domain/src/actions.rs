@@ -240,6 +240,7 @@ pub enum ActionId {
     ToggleSidebar,
     CommandPalette,
     AddAccount,
+    EditAccount,
     RemoveAccount,
     KeyboardShortcuts,
     Preferences,
@@ -251,7 +252,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 65] = [
+    pub const ALL: [Self; 66] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -309,6 +310,7 @@ impl ActionId {
         Self::ToggleSidebar,
         Self::CommandPalette,
         Self::AddAccount,
+        Self::EditAccount,
         Self::RemoveAccount,
         Self::KeyboardShortcuts,
         Self::Preferences,
@@ -617,6 +619,13 @@ impl ActionId {
                 menu: Some(MenuSection::Settings),
                 ..command("add-account", "Add Account", General, Scope::Window, &[])
             },
+            // An account's name and colour in Sealwax (the user's UI tweak, 2026-10-08): asks
+            // which account, then the engine writes `accounts.toml`. Available while the file
+            // lists an account; no default key (ADR-017: keys wait for the user).
+            Self::EditAccount => ActionSpec {
+                menu: Some(MenuSection::Settings),
+                ..command("edit-account", "Edit Account", General, Scope::Window, &[])
+            },
             // ML-038: asks which account and whether, then the engine deletes it. Available
             // while `accounts.toml` lists an account.
             Self::RemoveAccount => ActionSpec {
@@ -850,6 +859,7 @@ mod tests {
                 ActionId::ToggleSidebar,
                 ActionId::CommandPalette,
                 ActionId::AddAccount,
+                ActionId::EditAccount,
                 ActionId::RemoveAccount,
                 ActionId::KeyboardShortcuts,
                 ActionId::Preferences,
@@ -940,6 +950,7 @@ mod tests {
         assert!(keys(ActionId::CustomizeShortcuts).is_empty());
         // No default key until the user picks one (ADR-017: keys wait for the user).
         assert!(keys(ActionId::AddAccount).is_empty());
+        assert!(keys(ActionId::EditAccount).is_empty());
         assert!(keys(ActionId::MarkFolderRead).is_empty());
         assert_eq!(keys(ActionId::Print), ["<Control>p"]);
         assert_eq!(keys(ActionId::ShowOriginal), ["<Control>u"]);

@@ -1881,3 +1881,9 @@ button.sw-composer-send:active {
 .sw-composer-problem {
   padding: var(--sw-space-huge);
 }
+
+/* Edit Account (the user's UI tweak, 2026-10-08): the account, its name and its colour, spaced
+   as the setup assistant's fields. */
+.sw-edit-account {
+  border-spacing: calc(2 * var(--sw-space-lg));
+}

@@ -81,3 +81,27 @@ theme matte-black
 corners 0
 resize 1100 900
 screenshot $DIR/../../tools/progress/public/m9-accounts-rail-matte-black-square-2026-10-08.png
+
+# Edit Account from the second account's heading: its menu, then the dialog with both accounts.
+resize 1440 900
+account-menu account-2
+screenshot $DIR/../../tools/progress/public/m9-accounts-heading-menu-matte-black-square-2026-10-08.png
+sidebar-menu-click
+wait-until assert-dialog "Edit an account"
+assert-field edit-account-choice nordmann@example.test
+setup-type edit-account-label Home
+setup-click edit-account-color-sage
+screenshot $DIR/../../tools/progress/public/m9-accounts-edit-matte-black-square-2026-10-08.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m9-accounts-edit-catppuccin-latte-rounded-2026-10-08.png
+setup-respond edit-account save
+engine-expect edit-account label=Home color=sage
+engine-reply edited ok file
+wait-until assert-label account-name:account-2 Home
+assert-color account-name:account-2 text account-sage
+setup-dismiss-toasts
+screenshot $DIR/../../tools/progress/public/m9-accounts-edited-catppuccin-latte-rounded-2026-10-08.png
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m9-accounts-edited-matte-black-square-2026-10-08.png

@@ -228,7 +228,7 @@ fn column(classes: &[&str]) -> gtk::Box {
 }
 
 /// A labelled field: the label above, tied to the control for screen readers.
-fn field(text: &str, control: &impl IsA<gtk::Widget>, name: &str) -> gtk::Box {
+pub(super) fn field(text: &str, control: &impl IsA<gtk::Widget>, name: &str) -> gtk::Box {
     captioned(text, control, name).0
 }
 
@@ -245,7 +245,7 @@ fn captioned(text: &str, control: &impl IsA<gtk::Widget>, name: &str) -> (gtk::B
     (field, caption)
 }
 
-fn entry(name: &str, placeholder: &str, classes: &[&str]) -> gtk::Entry {
+pub(super) fn entry(name: &str, placeholder: &str, classes: &[&str]) -> gtk::Entry {
     let entry = named(
         classed(
             gtk::Entry::builder()
@@ -419,7 +419,7 @@ impl Widgets {
         let name_field = field("Your name", &name, "setup-name-field");
         let label_entry = entry("setup-label", LABEL_PLACEHOLDER, &[]);
         let label_field = field("Account name", &label_entry, "setup-label-field");
-        let colors = ColorChoice::new();
+        let colors = ColorChoice::new("setup");
         let color_field = field("Colour", &colors.root, "setup-color-field");
 
         let sources = named(column(&["sw-setup-sources"]), "setup-sources");

@@ -17,7 +17,8 @@
 //! | `triage-undo-window MS` | Shortens the undo window (the toast shows at least a second) |
 //! | `toast-undo` | Clicks the toast's Undo |
 //! | `sidebar-menu all-inboxes\|[ACCOUNT:]ROLE` | Right-clicks a sidebar folder |
-//! | `sidebar-menu-click` | Clicks the menu's Mark Folder as Read |
+//! | `account-menu KEY` | Right-clicks the heading of the sidebar's account KEY (`account-1`) |
+//! | `sidebar-menu-click` | Clicks the open menu's item: a folder's Mark Folder as Read, an account's Edit Account |
 //! | `action-log` | Records the window's and the application's commands as they run, from now on |
 //! | `measure-triage KEY COUNT` | Presses KEY COUNT times on the selected message and times each from the command's handler to the list's change and to the frame that shows it |
 //! | `assert-focus WHERE` | The keyboard focus is in WHERE (as `focus`) |
@@ -62,6 +63,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("triage-undo-window", 1, 1),
     ("toast-undo", 0, 0),
     ("sidebar-menu", 1, 1),
+    ("account-menu", 1, 1),
     ("sidebar-menu-click", 0, 0),
     ("action-log", 0, 0),
     ("measure-triage", 2, 2),
@@ -223,18 +225,45 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             }
             Ok(())
         }
+        "account-menu" => {
+            let name = format!("heading:{}", arg(0));
+            harness.wait_until_settled().await;
+            let row = harness.widget(&name)?;
+            click_widget(harness, &row, 0, 3).await?;
+            let opened = harness
+                .window()?
+                .sidebar()
+                .menu()
+                .is_some_and(|menu| menu.parent().is_some_and(|row| row.widget_name() == name));
+            if !opened {
+                // As `sidebar-menu`: headless, Broadway's synthetic click may not reach the
+                // gesture.
+                println!("  # opened as the gesture does");
+                if !harness.window()?.sidebar().open_account_menu(arg(0)) {
+                    return Err(format!("no account heading {}", arg(0)));
+                }
+            }
+            harness.wait_until_settled().await;
+            if harness.window()?.sidebar().menu().is_none() {
+                return Err("the menu closed at once".to_owned());
+            }
+            Ok(())
+        }
         "sidebar-menu-click" => {
             let menu = harness
                 .window()?
                 .sidebar()
                 .menu()
-                .ok_or("no folder menu is open")?;
+                .ok_or("no sidebar menu is open")?;
             let button = menu
                 .child()
                 .and_downcast::<gtk::Button>()
                 .ok_or("the menu holds no button")?;
             if !button.is_sensitive() {
-                return Err("Mark Folder as Read is insensitive".to_owned());
+                return Err(format!(
+                    "{} is insensitive",
+                    button.label().unwrap_or_default()
+                ));
             }
             click_button(harness, &button).await
         }

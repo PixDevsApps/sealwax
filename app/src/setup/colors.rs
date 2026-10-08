@@ -1,8 +1,9 @@
 //! The first step's "Colour": a round swatch for each account colour and one for none, as a
 //! radio group. The chosen swatch is the group's one Tab stop; Left and Right (Up and Down,
 //! Home and End) move the choice and the focus along, a click or Space chooses, and Enter
-//! advances as in the step's text fields. Swatches are named `setup-color-<name>`
-//! (`setup-color-none`) for the self-test.
+//! advances as in the step's text fields. The setup assistant and Edit Account each have one,
+//! named `<prefix>-color` and its swatches `<prefix>-color-<name>` (`…-color-none`) for the
+//! self-test.
 
 use crate::window::panes::{classed, named};
 use gtk4 as gtk;
@@ -29,7 +30,7 @@ fn title(color: Option<AccountColor>) -> &'static str {
     color.map_or(NONE_TITLE, AccountColor::title)
 }
 
-fn swatch(color: Option<AccountColor>) -> gtk::Button {
+fn swatch(prefix: &str, color: Option<AccountColor>) -> gtk::Button {
     let dot = classed(
         gtk::Box::builder()
             .halign(gtk::Align::Center)
@@ -48,7 +49,7 @@ fn swatch(color: Option<AccountColor>) -> gtk::Button {
                 .build(),
             &["sw-setup-swatch"],
         ),
-        &format!("setup-color-{name}"),
+        &format!("{prefix}-color-{name}"),
     );
     match color {
         Some(color) => button.add_css_class(&format!("sw-account-{}", color.name())),
@@ -59,7 +60,7 @@ fn swatch(color: Option<AccountColor>) -> gtk::Button {
 }
 
 impl ColorChoice {
-    pub(super) fn new() -> Rc<Self> {
+    pub(super) fn new(prefix: &str) -> Rc<Self> {
         let root = named(
             classed(
                 gtk::Box::builder()
@@ -67,13 +68,13 @@ impl ColorChoice {
                     .build(),
                 &["sw-setup-swatches"],
             ),
-            "setup-color",
+            &format!("{prefix}-color"),
         );
         let swatches: Vec<_> = AccountColor::ALL
             .into_iter()
             .map(Some)
             .chain([None])
-            .map(|color| (color, swatch(color)))
+            .map(|color| (color, swatch(prefix, color)))
             .collect();
         for (_, button) in &swatches {
             root.append(button);
@@ -133,6 +134,8 @@ impl ColorChoice {
             choice.choose(choice.swatches[next].0, true);
             glib::Propagation::Stop
         });
+        // Before the swatch: a button takes Return itself, as a click.
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         choice.root.add_controller(keys);
         choice.choose(None, false);
         choice

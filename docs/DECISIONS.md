@@ -611,6 +611,10 @@ Built in M8's phase A ([report](m8/pop3-setup.md)). A POP3 account has `[account
 
 The user's UI tweak (2026-10-08): two accounts with the same sender name had the same sidebar heading. Two optional settings on `[[account]]`: `label` (plain text, what Sealwax calls the account in the sidebar, banners and menus; left out, the address) and `color` (one of `"rose"`, `"clay"`, `"olive"`, `"sage"`, `"teal"`, `"slate"`, `"iris"`, `"mauve"`, case ignored; left out, none). `name` is now only the sender name. Read with the file's error style (an empty label, an unknown colour listing the eight, "did you mean color?" for `colour`); the setup assistant writes each only when set. The store's account row keeps the label or the address as its name (`AccountSettings::title`), updated whenever `accounts.toml` changes, so existing accounts show their address from the next start; the colour isn't stored, the app reads it from the file. The default file documents both.
 
+### ADR-009 amendment — Edit Account writes the label and the colour (2026-10-08)
+
+The user asked for renaming and recolouring an existing account in the app (2026-10-08, "Add the in-app rename and recolour for existing accounts"). Edit Account sends `Command::EditAccount` (key, label, colour); the engine runs it on its account lane with Add and Remove, so writes never race, and answers `Event::AccountEdited`. It sets the entry's `label` and `color` lines with `toml_edit` (`accounts_file::relabel`): a line already there is replaced in place with its comment, a new one goes after `address`, `None` takes it out, and the rest of the file stays byte for byte; a file with mistakes is refused, and the result must read back as the same accounts with only that entry's label and colour changed. The assistant now writes both after `address` too. The store's name follows with the `Accounts` the app sends once it has read the file.
+
 ## ADR-010 — Name and app-id (2026-10-04)
 
 **Status:** Open. The user decides during M0; it must be accepted before M0 closes, because the data paths, the D-Bus name, the keyring schema and the OAuth consent screen depend on it.
@@ -1027,6 +1031,10 @@ Accepted by the user at the M6 gate ("Keep both", 2026-10-06): Paste as Plain Te
 **Status:** Accepted — user decision, 2026-10-07 ("Keep all as built (Recommended)").
 
 M9's accessibility pass ([report](m9/accessibility.md#proposals-for-the-users-gate)) added no key; these behaviours stay as built: Tab in the composer's body moves to Send and Shift+Tab to the toolbar (no tab character); the folder list and the message list are one Tab stop each, with Up and Down inside, and the rows of the palette and Move to… are none (their field keeps the focus and the row is announced); a plain-text body's links are reached with Tab and opened with Enter; the recipient chips' × are Tab stops; Go to Starred turns on the Starred chip (there is no Starred folder); the composer's Tab order is the visual order (From, Attach, Discard, To, Cc · Bcc, Subject, the toolbar, the body, Send). Go to Inbox, Starred, Sent and Drafts and Back to List now run with the keys the registry already had.
+
+### ADR-017 amendment — Edit Account has no default key (2026-10-08)
+
+Edit Account (the user's UI tweak, 2026-10-08) is in the palette and the main menu with no default key, as Add Account and Remove Account; `keys.toml` can bind one. Its colour swatches' Left, Right, Up, Down, Home, End, Space and Enter are the radio group's own, as the setup assistant's are.
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 

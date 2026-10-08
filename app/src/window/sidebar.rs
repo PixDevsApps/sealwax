@@ -305,7 +305,8 @@ impl SidebarModel {
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum RowKind {
     Folder(String),
-    Header,
+    /// An account's heading, by the account's key.
+    Header(String),
     More(String),
 }
 
@@ -334,14 +335,17 @@ pub struct Sidebar {
     model: RefCell<SidebarModel>,
     selected: RefCell<String>,
     expanded: RefCell<HashSet<String>>,
-    /// A folder row's context menu, while it is open.
+    /// A folder row's or an account heading's context menu, while it is open.
     menu: RefCell<Option<gtk::Popover>>,
     /// Whether Mark Folder as Read applies to a folder key, and what it does.
     mark_read: RefCell<Option<MarkRead>>,
+    /// What an account heading's Edit Account does, given the account's key.
+    edit_account: RefCell<Option<EditAccount>>,
     weak: RefCell<std::rc::Weak<Sidebar>>,
 }
 
 type MarkRead = (Rc<dyn Fn(&str) -> bool>, Rc<dyn Fn(&str)>);
+type EditAccount = Rc<dyn Fn(&str)>;
 
 impl Sidebar {
     /// `tooltips` names the keys of the buttons that run a registry command.
@@ -458,6 +462,7 @@ impl Sidebar {
             expanded: RefCell::new(HashSet::new()),
             menu: RefCell::new(None),
             mark_read: RefCell::new(None),
+            edit_account: RefCell::new(None),
             weak: RefCell::new(std::rc::Weak::new()),
         });
         sidebar.weak.replace(Rc::downgrade(&sidebar));
@@ -589,6 +594,12 @@ impl Sidebar {
             .replace(Some((Rc::new(applies), Rc::new(activate))));
     }
 
+    /// Gives every account heading a context menu with Edit Account (the user's UI tweak,
+    /// 2026-10-08), opened by a right click; `activate` gets the account's key.
+    pub fn connect_edit_account(&self, activate: impl Fn(&str) + 'static) {
+        self.edit_account.replace(Some(Rc::new(activate)));
+    }
+
     /// Opens the context menu of the folder row `key`, as a right click does.
     pub fn open_menu(&self, key: &str) -> bool {
         let row = self
@@ -600,6 +611,23 @@ impl Sidebar {
         match row {
             Some(row) => {
                 self.show_menu(&row, key);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Opens the context menu of the account `key`'s heading, as a right click does.
+    pub fn open_account_menu(&self, key: &str) -> bool {
+        let row = self
+            .rows
+            .borrow()
+            .iter()
+            .find(|row| row.kind == RowKind::Header(key.to_owned()))
+            .map(|row| row.widget.clone());
+        match row {
+            Some(row) => {
+                self.show_account_menu(&row, key);
                 true
             }
             None => false,
@@ -633,16 +661,52 @@ impl Sidebar {
         if !enabled {
             button.set_tooltip_text(Some("Nothing here is unread"));
         }
+        let key = key.to_owned();
+        self.popup(row, &button, "folder-menu", move || activate(&key));
+    }
+
+    /// An account heading's menu: Edit Account for that account.
+    fn show_account_menu(&self, row: &gtk::ListBoxRow, key: &str) {
+        self.close_menu();
+        let Some(activate) = self.edit_account.borrow().clone() else {
+            return;
+        };
+        let button = named(
+            classed(
+                gtk::Button::builder()
+                    .label(ActionId::EditAccount.title())
+                    .build(),
+                &["flat", "sw-menu-item"],
+            ),
+            "account-menu-edit",
+        );
+        let key = key.to_owned();
+        // After the closed menu has put the focus back, so the dialog keeps it.
+        self.popup(row, &button, "account-menu", move || {
+            let (activate, key) = (activate.clone(), key.clone());
+            glib::idle_add_local_once(move || activate(&key));
+        });
+    }
+
+    /// Shows `button` in a context menu named `name` under `row`; a click closes the menu and
+    /// runs `activate`.
+    fn popup(
+        &self,
+        row: &gtk::ListBoxRow,
+        button: &gtk::Button,
+        name: &str,
+        activate: impl Fn() + 'static,
+    ) {
         let popover = named(
             classed(
                 gtk::Popover::builder()
-                    .child(&button)
+                    .child(button)
                     .has_arrow(false)
                     .position(gtk::PositionType::Bottom)
                     .build(),
                 &["sw-folder-menu"],
             ),
-            "folder-menu",
+            name,
         );
         popover.set_parent(row);
         // The focus goes back where it was (the list, or the row for Menu and Shift+F10), once
@@ -662,13 +726,12 @@ impl Sidebar {
                 }
             });
         });
-        let key = key.to_owned();
         button.connect_clicked(glib::clone!(
             #[weak]
             popover,
             move |_| {
                 popover.popdown();
-                activate(&key);
+                activate();
             }
         ));
         popover.popup();
@@ -721,6 +784,24 @@ impl Sidebar {
             }
         });
         row.add_controller(keys);
+    }
+
+    /// A right click on an account heading opens its menu. The heading takes no keyboard
+    /// focus; Edit Account is in the palette and the main menu.
+    fn add_account_menu_trigger(&self, row: &gtk::ListBoxRow, key: &str) {
+        let click = gtk::GestureClick::builder().button(3).build();
+        let weak = self.weak.borrow().clone();
+        let target = key.to_owned();
+        click.connect_pressed(move |gesture, _, _, _| {
+            if let (Some(sidebar), Some(row)) = (
+                weak.upgrade(),
+                gesture.widget().and_downcast::<gtk::ListBoxRow>(),
+            ) {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+                sidebar.show_account_menu(&row, &target);
+            }
+        });
+        row.add_controller(click);
     }
 
     /// Opens or closes an account's "More" folders.
@@ -851,8 +932,10 @@ impl Sidebar {
             }
         }
         for row in &rows {
-            if let RowKind::Folder(key) = &row.kind {
-                self.add_menu_triggers(&row.widget, key);
+            match &row.kind {
+                RowKind::Folder(key) => self.add_menu_triggers(&row.widget, key),
+                RowKind::Header(key) => self.add_account_menu_trigger(&row.widget, key),
+                RowKind::More(_) => {}
             }
             self.list.append(&row.widget);
         }
@@ -1107,7 +1190,7 @@ fn header_row(account: &SidebarAccount) -> Row {
     ))]);
     Row {
         widget,
-        kind: RowKind::Header,
+        kind: RowKind::Header(account.key.clone()),
         more_of: None,
         arrow: None,
     }

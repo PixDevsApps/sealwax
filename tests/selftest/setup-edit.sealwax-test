@@ -1,0 +1,130 @@
+# Edit Account (the UI tweak of 2026-10-08) on a scripted engine: unavailable without an account
+# that accounts.toml lists; then a dialog with the account's name (the address when empty) and
+# colour, filled from accounts.toml. Save sends the key, the label and the colour, and the
+# sidebar's heading follows; Cancel, or Save with nothing changed, sends nothing. With two
+# accounts it asks which, starting at the one the list shows, or at the one whose heading was
+# right-clicked. Every address and name is fictional.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-edit.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# Nothing to edit yet: the command is hidden from the menu and the palette.
+assert-action-enabled win.edit-account false
+
+# One account, saved to accounts.toml in the colour the assistant offered.
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-12
+setup-key enter
+engine-expect verify address=kari@example.test
+engine-reply verified ok
+engine-expect add-account label=none color=rose
+engine-reply added ok file
+wait-until assert-setup open false
+setup-dismiss-toasts
+wait-until assert-action-enabled win.edit-account true
+assert-label account-name:account-1 kari@example.test
+
+# The dialog: the account's name empty (the address as its placeholder), its colour chosen.
+action win.edit-account
+assert-dialog "Edit kari@example.test"
+assert-shown edit-account-choice false
+assert-field edit-account-label ""
+assert-accessible-name edit-account-label "Account name"
+assert-accessible-name edit-account-color "Colour"
+assert-accessible-state edit-account-color-rose checked true
+assert-accessible dialog
+assert-focus-stop edit-account-label
+tab-chain window forward 20
+assert-tab-chain edit-account-label,edit-account-color-rose,edit-account-label
+screenshot $DIR/../../.local/selftest/edit-account.png
+
+# Cancel sends nothing; Save with nothing changed sends nothing either.
+setup-respond edit-account cancel
+engine-expect none
+action win.edit-account
+setup-respond edit-account save
+engine-expect none
+
+# A name and another colour: the key, the label and the colour go to the engine, which writes
+# accounts.toml; the heading takes them, the sender name stays.
+action win.edit-account
+setup-type edit-account-label Work
+setup-click edit-account-color-teal
+assert-accessible-state edit-account-color-teal checked true
+setup-respond edit-account save
+engine-expect edit-account key=kari label=Work color=teal
+engine-reply edited ok file
+assert-toast "Saved Work"
+assert-file-contains $TMP/config/sealwax/accounts.toml "name = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nlabel = \"Work\"\ncolor = \"teal\"\n"
+wait-until assert-label account-name:account-1 Work
+assert-color account-name:account-1 text account-teal
+assert-color status:account-1 background account-teal
+setup-dismiss-toasts
+
+# A second account; Edit Account starts at the account the list shows, and the dialog asks which.
+action win.add-account
+setup-type setup-address ola@example.test
+setup-key enter
+engine-expect detect address=ola@example.test
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-13
+setup-key enter
+engine-expect verify address=ola@example.test
+engine-reply verified ok
+engine-expect add-account label=none color=rose
+engine-reply added ok file
+wait-until assert-setup open false
+setup-dismiss-toasts
+folder inbox ola@example.test
+engine-expect folder-opened
+action win.edit-account
+assert-dialog "Edit an account"
+assert-field edit-account-choice ola@example.test
+assert-field edit-account-label ""
+assert-accessible-state edit-account-color-rose checked true
+assert-accessible dialog
+# Another account chosen: its name and colour fill the fields.
+setup-choose edit-account-choice "Work — kari@example.test"
+assert-field edit-account-label Work
+assert-accessible-state edit-account-color-teal checked true
+setup-respond edit-account cancel
+engine-expect none
+
+# A right click on a heading opens Edit Account at that account. The name taken out and Enter
+# in the field saves: the address names the account again.
+account-menu account-1
+assert-shown account-menu-edit true
+sidebar-menu-click
+wait-until assert-dialog "Edit an account"
+assert-field edit-account-choice "Work — kari@example.test"
+setup-type edit-account-label ""
+key Return
+engine-expect edit-account key=kari label=none color=teal
+engine-reply edited ok file
+assert-toast "Saved kari@example.test"
+wait-until assert-label account-name:account-1 kari@example.test
+setup-dismiss-toasts
+
+# The arrows and Enter on the colours: the next colour, saved.
+action win.edit-account
+assert-field edit-account-choice ola@example.test
+setup-choose edit-account-choice kari@example.test
+focus edit-account-color-teal
+key Right
+assert-accessible-state edit-account-color-slate checked true
+assert-focus-stop edit-account-color-slate
+key Return
+engine-expect edit-account key=kari label=none color=slate
+# A refusal is said in a toast; the sidebar keeps what the file has.
+engine-reply edited settings-file
+assert-toast "Couldn't save kari@example.test: accounts.toml could not be written"
+assert-color account-name:account-1 text account-teal

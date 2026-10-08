@@ -6,7 +6,7 @@
 //! | --- | --- |
 //! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one; links the assistant opens are recorded from then on, never opened |
 //! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
-//! | `engine-expect detect\|verify\|add-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `label` and `color` (`none` for none), `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
+//! | `engine-expect detect\|verify\|add-account\|edit-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `label` and `color` (`none` for none), `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
 //! | `engine-expect none` | The app sent nothing more |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
 //! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
@@ -14,6 +14,7 @@
 //! | `engine-reply sign-in-open URL` | `SignInOpen` for the last command |
 //! | `engine-reply signed-in ok USERNAME`, `engine-reply signed-in [imap\|smtp] FAILURE` | `SignedIn` (IMAP when no protocol is named) |
 //! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would; `added ok file` also appends it to the scratch `accounts.toml` through the engine's writer and waits for the app to read it (M8) |
+//! | `engine-reply edited ok [file]\|settings-file\|missing` | `AccountEdited`; `ok file` first writes the label and colour of the last `EditAccount` to the scratch `accounts.toml` through the engine's writer, waits for the app to read them, and names the store's account by its title as the engine's reconcile would |
 //! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
 //! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `AccountStatus` for the store's account with ADDRESS: the failure's state, or `Synced` |
 //! | `engine-reply status ADDRESS STATE` | `AccountStatus` for that account: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`, `quota` (ML-048) |
@@ -54,9 +55,9 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, AuthMethod, DetectSource, DetectedSettings, Detection, Endpoint,
-    HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol, Receive, Security,
-    UnsupportedReason, UsernameForm,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, DetectSource, DetectedSettings,
+    Detection, Endpoint, HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol,
+    Receive, Security, UnsupportedReason, UsernameForm,
 };
 use sealwax_domain::model::{FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
@@ -120,6 +121,8 @@ struct Last {
     request: RequestId,
     settings: Option<AccountSettings>,
     key: Option<AccountKey>,
+    /// An `EditAccount`'s label and colour, for `key`.
+    look: Option<(Option<String>, Option<AccountColor>)>,
 }
 
 struct Fake {
@@ -633,6 +636,23 @@ fn fields(
             Some(*request),
             vec![("key", key.to_string())],
         ),
+        Command::EditAccount {
+            request,
+            key,
+            label,
+            color,
+        } => (
+            "edit-account",
+            Some(*request),
+            vec![
+                ("key", key.to_string()),
+                ("label", label.clone().unwrap_or_else(|| "none".to_owned())),
+                (
+                    "color",
+                    color.map_or("none", |color| color.name()).to_owned(),
+                ),
+            ],
+        ),
         Command::SignIn {
             request,
             provider,
@@ -803,7 +823,13 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
         request: request.unwrap_or_default(),
         settings: settings(&command).cloned(),
         key: match &command {
-            Command::RemoveAccount { key, .. } => Some(key.clone()),
+            Command::RemoveAccount { key, .. } | Command::EditAccount { key, .. } => {
+                Some(key.clone())
+            }
+            _ => None,
+        },
+        look: match &command {
+            Command::EditAccount { label, color, .. } => Some((label.clone(), *color)),
             _ => None,
         },
     }));
@@ -897,6 +923,20 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 result: Ok(add_to_store(harness, &last).await?),
             }
         }
+        ("edited", [ok, file]) if ok == "ok" && file == "file" => {
+            relabel_accounts_file(harness, &last).await?;
+            Event::AccountEdited {
+                request,
+                result: Ok(()),
+            }
+        }
+        ("edited", [outcome]) => Event::AccountEdited {
+            request,
+            result: match outcome.as_str() {
+                "ok" => Ok(()),
+                other => Err(account_error(other)?),
+            },
+        },
         ("removed", [outcome]) => Event::AccountRemoved {
             request,
             result: match outcome.as_str() {
@@ -1224,6 +1264,58 @@ async fn write_accounts_file(harness: &Harness, last: &Last) -> StepResult {
         }
         glib::timeout_future(Duration::from_millis(10)).await;
     }
+    Ok(())
+}
+
+/// What the engine does on `EditAccount` (`edited ok file`): the account's label and colour
+/// written through the same writer, the app's read of them, and the store's name as the
+/// engine's `reconcile` sets it once the app sends the file.
+async fn relabel_accounts_file(harness: &Harness, last: &Last) -> StepResult {
+    let key = last
+        .key
+        .clone()
+        .ok_or("the last command named no account")?;
+    let (label, color) = last
+        .look
+        .clone()
+        .ok_or("the last command was no EditAccount")?;
+    let prefs = harness
+        .state
+        .preferences()
+        .ok_or("the settings aren't read yet")?;
+    let path = prefs.path(SettingsFile::Accounts);
+    if !sealwax_infrastructure::accounts::relabel(&path, &key, label.as_deref(), color)
+        .map_err(|error| format!("accounts.toml: {error}"))?
+    {
+        return Err(format!("accounts.toml has no account {key}"));
+    }
+    let started = Instant::now();
+    let settings = loop {
+        let read = prefs
+            .accounts()
+            .into_iter()
+            .find(|settings| settings.key == key && settings.label == label);
+        if let Some(settings) = read.filter(|settings| settings.color == color) {
+            break settings;
+        }
+        if started.elapsed() > WAIT_TIMEOUT {
+            return Err("the app never read the edited accounts.toml entry".to_owned());
+        }
+        glib::timeout_future(Duration::from_millis(10)).await;
+    };
+    let reply = harness
+        .state
+        .mailbox()
+        .store()
+        .ok_or("the store is not open")?
+        .ensure_account(
+            key,
+            NewAccount {
+                name: settings.title().to_owned(),
+                address: settings.address.clone(),
+            },
+        );
+    reply.recv().await.map_err(|error| error.to_string())?;
     Ok(())
 }
 
