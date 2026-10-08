@@ -6,18 +6,18 @@ A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 an
 
 ## Status
 
-**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0, is under way: accessibility, the security review and fuzzing and this documentation are done; UI polish is next, then performance, packaging and the sign-off. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use. [docs/PLAN.md](docs/PLAN.md) has the current state.
+**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0, is under way: accessibility, the security review and fuzzing and this documentation are done; UI polish is in progress (account names and colours, Edit Account, folding accounts, resizable panes so far), then performance, packaging and the sign-off. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use. [docs/PLAN.md](docs/PLAN.md) has the current state.
 
 ## Features
 
-- **Accounts without server settings:** type your address, and Sealwax finds the servers (its provider list, your domain's autoconfig, Mozilla's ISPDB, DNS). **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for iCloud, Fastmail, Yahoo and others, with a link to the provider's page; manual settings for the rest. Several accounts and All Inboxes.
+- **Accounts without server settings:** type your address, and Sealwax finds the servers (its provider list, your domain's autoconfig, Mozilla's ISPDB, DNS). **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for iCloud, Fastmail, Yahoo and others, with a link to the provider's page; manual settings for the rest. Several accounts and All Inboxes, each account with a name and a muted colour of your choosing, folding away in the sidebar.
 - **IMAP** with IDLE push and an offline copy of your mail, and **POP3** into local folders (mail left on the server by default).
 - **Reading:** whole conversations; safe HTML (no message script ever runs; nothing remote loads until you allow it, per message or per sender); attachments that open safely, with a warning for programs and disguised files; link warnings; print, Show Original, Save as `.eml`; graceful display of encrypted and signed mail.
 - **Triage:** archive, delete, junk, move, star, read and unread at once, on one message or many, with Undo, also offline.
 - **Writing:** a rich-text composer in its own window, reply, reply all, forward and a quick reply under the conversation; identities and signatures; attachments with the server's size limit checked; drafts saved as you type and kept on the server; an outbox with Undo send that never sends a message twice; `mailto:` links, and becoming the default mail app when you choose.
 - **Search** on this computer with `from:`, `to:`, `subject:`, `has:attachment`, `is:unread`, `before:`, `after:` and suggestions as you type.
 - **New-mail notifications** that open the message, and **background mode**: closing the window keeps mail syncing; Start Sealwax at Login.
-- **Omarchy:** the live theme and font, light and dark; corners that follow Hyprland; no title bar on Hyprland; layouts for wide, half-screen and narrow tiled windows.
+- **Omarchy:** the live theme and font, light and dark; corners that follow Hyprland; no title bar on Hyprland; layouts for wide, half-screen and narrow tiled windows, with panes you can drag wider or narrower.
 - **Keyboard first:** one-key shortcuts in the list and reader, a command palette (F1), and your own keys in `keys.toml`. Settings live in plain files: `config.toml`, `keys.toml`, `accounts.toml`.
 - **Private:** passwords and tokens only in your keyring; no telemetry; logs without mail content; outgoing mail without your computer's name or a Bcc header.
 
