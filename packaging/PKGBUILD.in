@@ -45,11 +45,14 @@ package() {
   # command line with no Sealwax running asks the bus to start it.
   install -Dm644 packaging/io.github.pixdevsapps.Sealwax.service \
     "$pkgdir/usr/share/dbus-1/services/io.github.pixdevsapps.Sealwax.service"
-  # The icon (tools/make-icons.py): the wax seal, from 16 to 512 px.
+  # The icon (tools/make-icons.py): the wax seal, from 16 to 512 px, and the scalable SVG that
+  # carries the 512 px one.
   for size in 16 24 32 48 64 128 256 512; do
     install -Dm644 "packaging/icons/hicolor/${size}x$size/apps/io.github.pixdevsapps.Sealwax.png" \
       "$pkgdir/usr/share/icons/hicolor/${size}x$size/apps/io.github.pixdevsapps.Sealwax.png"
   done
+  install -Dm644 packaging/icons/hicolor/scalable/apps/io.github.pixdevsapps.Sealwax.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.pixdevsapps.Sealwax.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/sealwax/LICENSE"
   install -Dm644 README.md "$pkgdir/usr/share/doc/sealwax/README.md"
   install -Dm644 docs/INTEGRATIONS.md "$pkgdir/usr/share/doc/sealwax/INTEGRATIONS.md"

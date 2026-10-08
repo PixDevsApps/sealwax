@@ -77,7 +77,7 @@ sudo pacman -U sealwax-0.3.0-1-x86_64.pkg.tar.zst    # the version in the name f
 | `/usr/bin/sealwax` | The program |
 | `/usr/share/applications/io.github.pixdevsapps.Sealwax.desktop` | The launcher entry; it also declares Sealwax a `mailto:` handler, which becomes the default only when you choose it in Sealwax |
 | `/usr/share/dbus-1/services/io.github.pixdevsapps.Sealwax.service` | D-Bus activation: launchers start Sealwax through the session bus, and so does `sealwax` typed with no Sealwax running |
-| `/usr/share/icons/hicolor/*/apps/io.github.pixdevsapps.Sealwax.png` | The icon (16 to 512 px) |
+| `/usr/share/icons/hicolor/*/apps/io.github.pixdevsapps.Sealwax.png`, `…/scalable/apps/io.github.pixdevsapps.Sealwax.svg` | The icon (16 to 512 px, and scalable) |
 | `/usr/share/licenses/sealwax/LICENSE` | The MIT license |
 | `/usr/share/doc/sealwax/README.md`, `INTEGRATIONS.md` | Docs |
 
