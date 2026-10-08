@@ -1,0 +1,58 @@
+# Preview screenshots of the composer docked in the main window (the user's UI tweak,
+# 2026-10-08): a new message open at the bottom right over a conversation, minimized to its
+# header, expanded over the dimmed panes, and three drafts side by side (the oldest minimized),
+# in matte-black (dark, square corners as on stock Omarchy) and catppuccin-latte (light, corners
+# rounded 8 as on this desktop). The stand-in backend; every name, address and message is
+# fictional.
+# Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the repository root:
+#   tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/preview-m9-composer.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+conversation-add trip
+focus list
+conversation-show trip-6
+composer-backend stand-in
+
+# A new message, open.
+action win.compose
+composer-wait
+composer-type "kari@example.com,"
+composer-focus subject
+composer-type "Møte i morgen"
+composer-focus body
+composer-insert "Hei Kari, kan vi flytte møtet til klokka 10? Jeg tar med kvartalstallene."
+screenshot $DIR/../../tools/progress/public/m9-composer-open-matte-black-square-2026-10-08.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m9-composer-open-catppuccin-latte-rounded-2026-10-08.png
+
+# Minimized to its header, named by the subject.
+composer-click composer-minimize
+screenshot $DIR/../../tools/progress/public/m9-composer-minimized-catppuccin-latte-rounded-2026-10-08.png
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m9-composer-minimized-matte-black-square-2026-10-08.png
+
+# Expanded over the dimmed panes.
+composer-pointer composer-title
+composer-click composer-expand
+screenshot $DIR/../../tools/progress/public/m9-composer-expanded-matte-black-square-2026-10-08.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m9-composer-expanded-catppuccin-latte-rounded-2026-10-08.png
+composer-click composer-expand
+
+# Three drafts: the newest open at the left, the older ones minimized.
+action win.compose
+composer-wait
+action win.compose
+composer-wait
+screenshot $DIR/../../tools/progress/public/m9-composer-several-catppuccin-latte-rounded-2026-10-08.png
+theme matte-black
+corners 0
+screenshot $DIR/../../tools/progress/public/m9-composer-several-matte-black-square-2026-10-08.png

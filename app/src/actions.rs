@@ -160,6 +160,17 @@ pub fn install_window_actions(window: &impl IsA<gio::ActionMap>) -> ActionSet {
     )
 }
 
+/// Adds the composer's actions (`win.send`, `win.bold`, ...) to `group`, which a composer card
+/// inserts as its own `win` group: inside the card they hide the window's of the same names.
+pub fn install_composer_actions(group: &impl IsA<gio::ActionMap>) -> ActionSet {
+    ActionSet::install(
+        group,
+        ActionId::ALL
+            .into_iter()
+            .filter(|id| id.scope() == Scope::Composer),
+    )
+}
+
 /// Installs the keymap's application accelerators; actions without any get none.
 pub fn apply_accels(app: &impl IsA<gtk::Application>, keymap: &Keymap) {
     for id in ActionId::ALL {

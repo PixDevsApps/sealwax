@@ -1,9 +1,9 @@
-# The composer's requests and drafts (M6: ML-067, ML-071's autosave, PRD C5): a window for each
+# The composer's requests and drafts (M6: ML-067, ML-071's autosave, PRD C5): a card for each
 # request kind (New, Reply, Reply All, Forward, Quick Reply, a server draft, a stored draft),
-# the draft saved at most 5 s behind the typing ("Draft saved HH:MM"), saved when the window
-# closes and when Quit saves them all, kept open after the main window closes, and Discard
-# asking first when there is something to lose. The stand-in backend's drafts; every name and
-# address is fictional.
+# the draft saved at most 5 s behind the typing ("Draft saved HH:MM"), saved when the card
+# closes, when Quit saves them all and when the main window closes with it, and Discard asking
+# first when there is something to lose. The stand-in backend's drafts; every name and address
+# is fictional.
 # Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/composer-drafts.sealwax-test
 
 desktop tiling
@@ -120,22 +120,26 @@ composer-wait
 composer-focus subject
 composer-type "second"
 composer-save-all
+assert-composer count 0
 assert-composer stored 9 html "saved on quit"
 assert-composer stored 10 subject second
 
-# The main window closes; the composer keeps Sealwax running and saves when it closes.
+# The main window closes (into background mode): its cards save their drafts first and go
+# with it.
 background true
 composer-open new
 composer-wait
 composer-focus body
 composer-insert "kept after the main window"
 close-window
-assert-window false
-assert-composer count 3
-composer-pick 2
-composer-close
-composer-pick 0
+wait-until assert-window false
+assert-composer count 0
 assert-composer stored 11 html "kept after the main window"
 
-# Quit with composers open: their drafts are saved, then Sealwax ends.
+# A composer with no main window shows one; Quit saves its draft, then Sealwax ends.
+composer-open new
+wait-until assert-window true
+composer-wait
+composer-focus body
+composer-insert "saved by quit"
 quit

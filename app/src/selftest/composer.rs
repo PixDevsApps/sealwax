@@ -1,11 +1,11 @@
-//! Self-test commands for the composer window (M6: ML-067, ML-071, ML-072, ML-079), against the
-//! app's own composer, on the store's backend (the app's) or, after `composer-backend stand-in`,
-//! phase A's in-memory stand-in, whose records the `sent`, `saves`, `stored` … checks read; the
-//! `db`, `outbox` and `open-drafts` checks read the store. Keys and typing go through Broadway as
-//! real key presses to the composer window (`broadway.rs`); `composer-insert` types through the
-//! editor's helper instead. Toolbar buttons are clicked with `emit_clicked` (Broadway's clicks
-//! aim at the main window's surface). Every name, address and message is fictional; the
-//! canary listens on 127.0.0.1 only.
+//! Self-test commands for the composer (M6: ML-067, ML-071, ML-072, ML-079), a card docked in
+//! the main window since the user's UI tweak of 2026-10-08, against the app's own composer, on
+//! the store's backend (the app's) or, after `composer-backend stand-in`, phase A's in-memory
+//! stand-in, whose records the `sent`, `saves`, `stored` … checks read; the `db`, `outbox` and
+//! `open-drafts` checks read the store. Keys and typing go through Broadway as real key presses
+//! to the main window (`broadway.rs`); `composer-insert` types through the editor's helper
+//! instead. Toolbar buttons are clicked with `emit_clicked`. Every name, address and message is
+//! fictional; the canary listens on 127.0.0.1 only.
 //!
 //! | Command | What it does |
 //! | --- | --- |
@@ -23,7 +23,8 @@
 //! | `composer-caret start\|end\|TEXT` | Puts the caret there (before TEXT) |
 //! | `composer-select TEXT` | Selects TEXT in the body |
 //! | `composer-click NAME` | Clicks the button NAME (`composer-bold`, `composer-send`, a chip's remove…) |
-//! | `composer-action NAME` | Activates `win.NAME` on the composer window |
+//! | `composer-pointer NAME [X Y]` | A real click (Broadway's) on the widget NAME in the main window, in its middle or X, Y px from its top left (`composer-title`, `composer-backdrop`…) |
+//! | `composer-action NAME` | Activates `win.NAME` on the card (its own `win` group) |
 //! | `composer-style TAG` | Picks a paragraph style (`p`, `h1`, `h2`, `h3`, `pre`) |
 //! | `composer-link URL\|- apply\|remove\|cancel` | Answers the open link dialog |
 //! | `composer-discard-answer discard\|cancel` | Answers the open discard dialog |
@@ -38,15 +39,18 @@
 //! | `composer-limit BYTES\|none` | The stand-in's submission limit |
 //! | `composer-identity LABEL NAME ADDRESS` | An identity every account can send from |
 //! | `composer-from N` | Picks sender N on the From chip |
-//! | `composer-close` | Closes the composer window as the user would |
+//! | `composer-close` | Closes the card as its Close button does |
 //! | `composer-save-all` | Saves every open draft as Quit does |
 //! | `composer-edit-for MS EVERY` | Types a character through the helper every EVERY ms for MS ms |
 //! | `composer-measure-attach PATH` | Attaches PATH and reports how long the GTK thread went without a turn |
 //! | `composer-typing N` | Types N characters as key presses and reports key → change (Broadway's; informational) |
-//! | `composer-screenshot PATH` | Renders the composer window to PATH |
-//! | `assert-composer count N` | Open composer windows |
+//! | `composer-screenshot PATH` | Renders the main window, the card in it, to PATH |
+//! | `assert-composer count N` | Open composers |
+//! | `assert-composer state open\|minimized\|expanded` | The card's state in the dock |
+//! | `assert-composer bounds X,Y,W,H` | The card's rectangle in the dock, in px |
+//! | `assert-composer backdrop BOOL` | The backdrop of an expanded card shows |
 //! | `assert-composer loaded\|spell BOOL` | The body is loaded; spell checking is on |
-//! | `assert-composer labelled` | Every control of the composer window has an accessible name, and icon-only ones a tooltip |
+//! | `assert-composer labelled` | Every control of the card has an accessible name, and icon-only ones a tooltip |
 //! | `assert-composer theme` | The body's background is the theme's |
 //! | `assert-composer eval SCRIPT VALUE` | SCRIPT, run in the helper's world, gives VALUE |
 //! | `assert-composer stored ID FIELD TEXT` | The stand-in's draft ID holds TEXT in FIELD |
@@ -73,7 +77,7 @@
 //! | `assert-composer save-lag MS` | Every edit was followed by a save within MS ms |
 //! | `assert-composer sent\|discarded\|closed N` | What the stand-in recorded |
 //! | `assert-composer last-sent FIELD TEXT` | The last sent draft's to, cc, bcc, subject, from or html contains TEXT |
-//! | `assert-composer ran NAMES\|none` | The commands the window ran since the last check |
+//! | `assert-composer ran NAMES\|none` | The commands the card ran since the last check |
 //! | `assert-composer canary N`, `refused N`, `remote N` | Canary hits; what the view refused; non-local loads |
 //! | `assert-composer cid-served N` | At least N `cid:` images served |
 //! | `assert-composer undo\|redo BOOL` | WebKit has something to undo or redo |
@@ -117,6 +121,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("composer-caret", 1, 1),
     ("composer-select", 1, 1),
     ("composer-click", 1, 1),
+    ("composer-pointer", 1, 3),
     ("composer-action", 1, 1),
     ("composer-style", 1, 1),
     ("composer-link", 2, 2),
@@ -184,7 +189,7 @@ fn composer() -> Result<Composer, String> {
         Some(index) => composers.get(index).cloned(),
         None => composers.last().cloned(),
     };
-    found.ok_or_else(|| "there is no composer window".to_owned())
+    found.ok_or_else(|| "there is no composer".to_owned())
 }
 
 fn stand_in() -> Result<Rc<composer::backend::StandIn>, String> {
@@ -290,7 +295,9 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "composer-focus" => {
             let composer = composer()?;
-            composer.window().present();
+            if let Some(window) = composer.window() {
+                window.present();
+            }
             focus_target(&composer, arg(0))?.grab_focus();
             if arg(0) == "body" {
                 page_focused(&composer).await?;
@@ -345,9 +352,19 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             settle(harness).await;
             Ok(())
         }
+        "composer-pointer" => {
+            let widget = harness.widget(arg(0))?;
+            let at = match (args.get(1), args.get(2)) {
+                (Some(x), Some(y)) => Some((number(x)? as f64, number(y)? as f64)),
+                _ => None,
+            };
+            super::triage::click_at(harness, &widget, at).await?;
+            settle(harness).await;
+            Ok(())
+        }
         "composer-action" => {
             let composer = composer()?;
-            WidgetExt::activate_action(composer.window(), &format!("win.{}", arg(0)), None)
+            WidgetExt::activate_action(composer.root(), &format!("win.{}", arg(0)), None)
                 .map_err(|_| format!("no action win.{}", arg(0)))?;
             settle(harness).await;
             Ok(())
@@ -355,7 +372,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         "composer-style" => {
             let composer = composer()?;
             WidgetExt::activate_action(
-                composer.window(),
+                composer.root(),
                 "composer.style",
                 Some(&arg(0).to_variant()),
             )
@@ -400,7 +417,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 .map(|path| scratch(harness, path))
                 .collect::<Result<Vec<_>, _>>()?;
             composer::answer_chooser(paths);
-            WidgetExt::activate_action(composer.window(), "win.attach-file", None)
+            WidgetExt::activate_action(composer.root(), "win.attach-file", None)
                 .map_err(|_| "no attach action".to_owned())?;
             settle(harness).await;
             Ok(())
@@ -527,14 +544,10 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             settle(harness).await;
             Ok(())
         }
-        // Broadway, unlike a compositor, gives the focus back to no window when one closes.
         "composer-close" => {
             let composer = composer()?;
             LAST_ID.with(|last| last.set(composer.id()));
-            composer.window().close();
-            if let Ok(main) = harness.window() {
-                main.window().present();
-            }
+            composer.close();
             settle(harness).await;
             Ok(())
         }
@@ -562,7 +575,8 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         "composer-screenshot" => {
             let composer = composer()?;
             let path = Path::new(arg(0));
-            super::screenshot::capture(composer.window(), path)?;
+            let window = composer.window().ok_or("the composer is in no window")?;
+            super::screenshot::capture(&window, path)?;
             println!("  # {}", super::normalise(path).display());
             Ok(())
         }
@@ -655,7 +669,10 @@ fn focus_target(composer: &Composer, name: &str) -> Result<gtk::Widget, String> 
 }
 
 fn focus_name(composer: &Composer) -> String {
-    let Some(focus) = gtk::prelude::GtkWindowExt::focus(composer.window()) else {
+    let Some(focus) = composer
+        .window()
+        .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window))
+    else {
         return "none".to_owned();
     };
     for name in ["body", "subject", "to", "cc", "bcc"] {
@@ -671,7 +688,7 @@ fn focus_name(composer: &Composer) -> String {
 fn dialog(composer: &Composer, name: &str) -> Result<adw::AlertDialog, String> {
     composer
         .window()
-        .visible_dialog()
+        .and_then(|window| window.visible_dialog())
         .and_downcast::<adw::AlertDialog>()
         .filter(|dialog| dialog.widget_name() == name)
         .ok_or_else(|| format!("{name} is not open"))
@@ -708,9 +725,12 @@ fn press(spec: &str) -> StepResult {
     broadway::key(keyval.into_glib(), state).map_err(|error| error.to_string())
 }
 
-/// The composer window's key and button releases, counted, and the count now.
+/// The key and button releases of the composer's window, counted, and the count now.
 fn releases(composer: &Composer) -> (Rc<Cell<u64>>, u64) {
-    let window: gtk::Window = composer.window().clone().upcast();
+    let Some(window) = composer.window() else {
+        return (Rc::default(), 0);
+    };
+    let window: gtk::Window = window.upcast();
     let counter = RELEASES.with(|releases| {
         let mut releases = releases.borrow_mut();
         match releases.as_ref() {
@@ -880,7 +900,7 @@ async fn measure_attach(harness: &Harness, path: &str) -> StepResult {
     };
     let started = Instant::now();
     composer::answer_chooser(vec![path]);
-    WidgetExt::activate_action(composer.window(), "win.attach-file", None)
+    WidgetExt::activate_action(composer.root(), "win.attach-file", None)
         .map_err(|_| "no attach action".to_owned())?;
     let mut done = false;
     while started.elapsed() < WAIT {
@@ -946,10 +966,14 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
     let arg = |index: usize| args.get(index).map(String::as_str).unwrap_or_default();
     let what = arg(0);
     if what == "count" {
+        return equal("composers", composer::composers().len(), number(arg(1))?);
+    }
+    if what == "backdrop" {
+        let dock = harness.window()?.dock().clone();
         return equal(
-            "composer windows",
-            composer::composers().len(),
-            number(arg(1))?,
+            "the backdrop shown",
+            dock.backdrop_shown(),
+            boolean(arg(1))?,
         );
     }
     if matches!(
@@ -967,8 +991,29 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
     let composer = composer()?;
     match what {
         "loaded" => equal("loaded", composer.is_loaded(), boolean(arg(1))?),
+        "state" => equal("state", composer.state().name(), arg(1)),
+        "bounds" => {
+            let dock = harness.window()?.dock().widget().clone();
+            let bounds = composer
+                .root()
+                .compute_bounds(&dock)
+                .ok_or("the card has no bounds")?;
+            let got = format!(
+                "{},{},{},{}",
+                bounds.x().round(),
+                bounds.y().round(),
+                bounds.width().round(),
+                bounds.height().round()
+            );
+            println!(
+                "  # the card at {got} in a {}×{} dock",
+                dock.width(),
+                dock.height()
+            );
+            equal("the card's bounds", got.as_str(), arg(1))
+        }
         "labelled" => {
-            let problems = super::unlabelled(composer.window().upcast_ref());
+            let problems = super::unlabelled(composer.root().upcast_ref());
             if problems.is_empty() {
                 Ok(())
             } else {
@@ -1015,7 +1060,7 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 .widget("composer-title")
                 .and_downcast::<gtk::Label>()
                 .map(|label| label.label().to_string())
-                .unwrap_or_else(|| composer.window().title().unwrap_or_default().to_string())
+                .unwrap_or_default()
                 .as_str(),
             arg(1),
         ),

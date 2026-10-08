@@ -11,6 +11,7 @@
 //! away under its heading, or opens them).
 
 pub mod banner;
+pub mod dock;
 pub mod empty;
 pub mod panes;
 pub mod resize;
@@ -144,6 +145,8 @@ struct Inner {
     welcome_hint: gtk::Label,
     /// The most important account or desktop state (ML-032, ML-048), over every pane.
     banner: Banner,
+    /// The composer's cards over the panes.
+    dock: dock::Dock,
     toasts: adw::ToastOverlay,
     folder: gio::SimpleAction,
     pane: gio::SimpleAction,
@@ -300,9 +303,10 @@ impl Window {
             .build();
         let banner = Banner::new();
         panes.set_vexpand(true);
+        let dock = dock::Dock::new(&panes);
         let stacked = gtk::Box::new(gtk::Orientation::Vertical, 0);
         stacked.append(&banner.root);
-        stacked.append(&panes);
+        stacked.append(dock.widget());
         let toasts = adw::ToastOverlay::new();
         toasts.set_child(Some(&stacked));
         let window = adw::ApplicationWindow::builder()
@@ -420,6 +424,7 @@ impl Window {
                 welcome,
                 welcome_hint,
                 banner,
+                dock,
                 toasts,
                 folder,
                 pane,
@@ -520,6 +525,11 @@ impl Window {
 
     pub fn window(&self) -> &adw::ApplicationWindow {
         &self.inner.window
+    }
+
+    /// Where the composer's cards go (the user's UI tweak, 2026-10-08).
+    pub fn dock(&self) -> &dock::Dock {
+        &self.inner.dock
     }
 
     /// The sidebar's and the message list's widths, as dragged (the defaults until then).

@@ -170,11 +170,12 @@ composer-key BackSpace
 assert-action-log none
 assert-composer ran none
 
-# The app's accelerators reach the composer's own commands: Ctrl+N opens another composer.
+# The app's accelerators work in a composer: Ctrl+N is the main window's Compose, another card.
 composer-key <Control>n
 wait-until assert-composer count 2
+assert-action-log win.compose
 composer-pick 0
-assert-composer ran compose
+assert-composer ran none
 composer-pick 1
 composer-close
 wait-until assert-composer count 1

@@ -104,7 +104,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                     .ok_or("no composer is open")?;
                 let watched = vec![(
                     "composer",
-                    composer.window().upcast_ref::<gtk::Widget>().downgrade(),
+                    composer.root().upcast_ref::<gtk::Widget>().downgrade(),
                 )];
                 WATCHED.with(|current| current.replace(watched));
                 return Ok(());

@@ -50,35 +50,40 @@ sleep 500
 assert-bus-owner true
 assert-file-lacks $TMP/testbus/daemon.err first-frame
 
-# Given to the running Sealwax: `--background` shows nothing; `--compose` opens a composer alone.
+# Given to the running Sealwax: `--background` shows nothing; `--compose` shows the main window
+# with a composer card in it (the user's UI tweak, 2026-10-08), on the running engine: no
+# second engine.
 test-bus-spawn second --background
 wait-process second 0
-test-bus-spawn third --compose
-wait-process third 0
-wait-until assert-file-contains $TMP/testbus/daemon.err "compose requested kind=New(None)"
 sleep 500
 assert-file-lacks $TMP/testbus/daemon.err first-frame
-
-# An activation shows the main window on the running engine: no second engine.
-test-bus-activate
+test-bus-spawn third --compose
+wait-process third 0
+wait-until assert-file-contains $TMP/testbus/daemon.err "compose requested kind=New"
 wait-until assert-file-contains $TMP/testbus/daemon.err first-frame
 assert-file-count $TMP/testbus/daemon.err "engine started" 2
 assert-file-count $TMP/testbus/daemon.err "engine started without a window" 1
 assert-file-lacks $TMP/testbus/daemon.err kari@example.test
+
+# An activation shows the same window: still one engine.
+test-bus-activate
+sleep 500
+assert-file-count $TMP/testbus/daemon.err "engine started" 2
 test-bus-signal TERM
 wait-until assert-bus-owner false
 assert-file-contains $TMP/testbus/daemon.err "SIGTERM: quitting"
 assert-file-contains $TMP/testbus/daemon.err "engine stopped"
 test-bus-stop
 
-# `--compose` with no Sealwax running: a composer window alone, and the engine without a window.
+# `--compose` with no Sealwax running: the main window with a composer card in it, and the
+# engine after its first frame.
 test-bus-start
 test-bus-spawn first --compose
 wait-process first 0
-wait-until assert-file-contains $TMP/testbus/daemon.err "compose requested kind=New(None)"
-wait-until assert-file-contains $TMP/testbus/daemon.err "engine started without a window"
-sleep 500
-assert-file-lacks $TMP/testbus/daemon.err first-frame
+wait-until assert-file-contains $TMP/testbus/daemon.err "compose requested kind=New"
+wait-until assert-file-contains $TMP/testbus/daemon.err first-frame
+wait-until assert-file-contains $TMP/testbus/daemon.err "engine started"
+assert-file-lacks $TMP/testbus/daemon.err "engine started without a window"
 test-bus-signal TERM
 wait-until assert-bus-owner false
 test-bus-stop

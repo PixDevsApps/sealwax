@@ -476,6 +476,16 @@ fn modifiers(spec: &str) -> Result<u32, String> {
 /// relative to the window's), the window's shadow, which the surface includes, and the widget's
 /// place in its window or popover.
 fn centre(harness: &Harness, widget: &gtk::Widget) -> Result<(f64, f64), String> {
+    point(harness, widget, None)
+}
+
+/// Where the point `at` px from `widget`'s top left corner (its middle without one) is on the
+/// Broadway screen.
+fn point(
+    harness: &Harness,
+    widget: &gtk::Widget,
+    at: Option<(f64, f64)>,
+) -> Result<(f64, f64), String> {
     harness.window()?;
     if !widget.is_mapped() {
         return Err(format!("{} isn't on screen", widget.widget_name()));
@@ -490,10 +500,28 @@ fn centre(harness: &Harness, widget: &gtk::Widget) -> Result<(f64, f64), String>
         top += f64::from(popup.position_y());
     }
     let (shadow_x, shadow_y) = native.surface_transform();
+    let (x, y) = at.unwrap_or((
+        f64::from(bounds.width() / 2.0),
+        f64::from(bounds.height() / 2.0),
+    ));
     Ok((
-        left + shadow_x + f64::from(bounds.x() + bounds.width() / 2.0),
-        top + shadow_y + f64::from(bounds.y() + bounds.height() / 2.0),
+        left + shadow_x + f64::from(bounds.x()) + x,
+        top + shadow_y + f64::from(bounds.y()) + y,
     ))
+}
+
+/// A real primary click `at` px from `widget`'s top left corner (in its middle without one).
+pub(super) async fn click_at(
+    harness: &Harness,
+    widget: &gtk::Widget,
+    at: Option<(f64, f64)>,
+) -> StepResult {
+    let (x, y) = point(harness, widget, at)?;
+    let watch = releases(harness);
+    broadway::click(x, y, 0, 1).map_err(|error| error.to_string())?;
+    delivered(harness, watch, 1).await;
+    harness.wait_until_settled().await;
+    Ok(())
 }
 
 async fn click_widget(

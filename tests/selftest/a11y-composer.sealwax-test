@@ -1,16 +1,23 @@
-# The accessibility pass (M9, ML-092) on the composer window, on phase A's stand-in backend:
-# every control on screen has an accessible name, a role that says what it is and the states its
-# role needs (assert-accessible), with recipient chips, the suggestions, the From and style
-# menus, attachment cards, the size warning, the link dialog and the discard dialog; Tab and
-# Shift+Tab (real key presses) go From → Attach → Discard → To → Cc · Bcc → Subject → the
-# toolbar → the body → Send and round again, and Tab in the body moves on instead of typing a
-# tab. The chosen suggestion is announced, as the entry keeps the focus. Every name, address and
+# The accessibility pass (M9, ML-092) on the composer, docked in the main window since the
+# user's UI tweak of 2026-10-08, on phase A's stand-in backend: every control on screen has an
+# accessible name, a role that says what it is and the states its role needs
+# (assert-accessible), with recipient chips, the suggestions, the From and style menus,
+# attachment cards, the size warning, the link dialog and the discard dialog; Tab and Shift+Tab
+# (real key presses) go through the card after the panes: From → Attach → Discard → Minimize →
+# Expand → Close → To → Cc · Bcc → Subject → the toolbar → the body → Send, then round the
+# window to the sidebar's compose button and back into the card; Tab in the body moves on
+# instead of typing a tab. The chosen suggestion is announced, as the entry keeps the focus.
+# Minimizing gives the focus back to the mail, restoring takes it again. Every name, address and
 # file is fictional.
 # Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-composer.sealwax-test
 
 desktop tiling
+fixtures --count 40 --seed 9 --folders spread
 resize 1440 900
-mail-account Work
+triage-mark-read-on-open false
+list-wait
+list-select 0
+wait-until assert-reader-page message
 composer-backend stand-in
 composer-identity Support "Work Support" support@example.test
 composer-make-file $TMP/files/Kvartalsrapport.pdf 212000
@@ -23,12 +30,33 @@ assert-accessible-name composer-subject Subject
 assert-accessible-name composer-send Send
 assert-accessible-name composer-from "Send from"
 assert-accessible-name composer-bold Bold
+assert-accessible-name composer-minimize Minimize
+assert-accessible-name composer-expand Expand
+assert-accessible-name composer-close "Save and close"
+assert-accessible-role composer group
+assert-accessible-name composer "New message"
 
-# The Tab order, from the To field round and back.
-tab-chain composer forward 40
-assert-tab-chain composer-to-entry,composer-ccbcc,composer-subject,composer-style,composer-bold,composer-clear-formatting,composer-body,composer-send,composer-from,composer-attach,composer-discard,composer-to-entry
-tab-chain composer backward 40
-assert-tab-chain composer-to-entry,composer-discard,composer-attach,composer-from,composer-send,composer-body,composer-clear-formatting,composer-bold,composer-style,composer-subject,composer-ccbcc,composer-to-entry
+# The Tab order, from the To field round the window and back.
+tab-chain composer forward 80
+assert-tab-chain composer-to-entry,composer-ccbcc,composer-subject,composer-style,composer-bold,composer-clear-formatting,composer-body,composer-send,compose,message-list,quick-reply-text,composer-from,composer-attach,composer-discard,composer-minimize,composer-expand,composer-close,composer-to-entry
+tab-chain composer backward 80
+assert-tab-chain composer-to-entry,composer-close,composer-expand,composer-minimize,composer-discard,composer-attach,composer-from,quick-reply-text,message-list,compose,composer-send,composer-body,composer-clear-formatting,composer-bold,composer-style,composer-subject,composer-ccbcc,composer-to-entry
+
+# Minimized, the card keeps its header's buttons and gives the focus back to where it was
+# before it took it (the message list); restored, it takes the focus again.
+composer-click composer-minimize
+assert-composer state minimized
+assert-focus-stop message-list
+assert-accessible composer
+assert-accessible-name composer-minimize Restore
+composer-click composer-minimize
+assert-composer state open
+assert-composer focus to
+composer-click composer-expand
+assert-composer state expanded
+assert-accessible-name composer-expand Shrink
+composer-click composer-expand
+assert-composer state open
 
 # Tab in the body moves on, Shift+Tab back; no tab is typed.
 composer-focus body

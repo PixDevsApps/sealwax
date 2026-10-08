@@ -294,7 +294,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
 fn roots(harness: &Harness, which: &str) -> Result<Vec<gtk::Widget>, String> {
     match which {
         "window" => Ok(vec![harness.window()?.window().clone().upcast()]),
-        "composer" => Ok(vec![composer_window()?.upcast()]),
+        "composer" => Ok(vec![composer_root()?]),
         "dialog" => harness
             .window()?
             .window()
@@ -309,11 +309,21 @@ fn roots(harness: &Harness, which: &str) -> Result<Vec<gtk::Widget>, String> {
     }
 }
 
+/// The newest composer card.
+fn composer_root() -> Result<gtk::Widget, String> {
+    crate::composer::composers()
+        .last()
+        .map(|composer| composer.root().clone().upcast())
+        .ok_or_else(|| "there is no composer".to_owned())
+}
+
+/// The window the newest composer card is docked in.
 fn composer_window() -> Result<gtk::Window, String> {
     crate::composer::composers()
         .last()
-        .map(|composer| composer.window().clone().upcast())
-        .ok_or_else(|| "there is no composer window".to_owned())
+        .and_then(|composer| composer.window())
+        .map(|window| window.upcast())
+        .ok_or_else(|| "there is no composer".to_owned())
 }
 
 /// The widget named `name` in any window, the setup assistant's included.

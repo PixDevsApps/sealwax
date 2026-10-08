@@ -653,6 +653,16 @@ The brand colours belong to the icon and wordmark only; the app's chrome keeps f
 
 **Consequence:** the working names are replaced in one change once the S6 spike (running at the time of the decision) has finished, so its build isn't broken mid-run; the Notion hub and board are renamed at once; card IDs stay `ML-nnn`.
 
+### ADR-010 amendment — the app icon is the wax seal alone (2026-10-08)
+
+**Status:** user decision, 2026-10-08: "I only want the red Sealwax with the "@" symbol inside, it should look authentic, like it was done in the old days. No background or frame around it", and "You can also use Higgsfield if you need".
+
+**Decision:** the app icon is a photographic red wax seal with an @ in its impression (a raised border ring and a ring of beads around it), on a transparent background: no envelope tile, no frame, no shadow. It replaces the brand canvas's envelope tile and its simplified 64 px seal.
+
+- **Source:** generated with Higgsfield's GPT Image 2.5 (high quality, 2K, transparent background) from a written prompt (an antique hand-poured crimson seal seen from above, irregular rounded edge, a brass stamp's impression with a serif @ in relief, light from the upper left); the first of two candidates (job `5001b9d2-677b-459d-9c5e-1831a2486dbc`), trimmed to the seal and kept at 1024 px as `packaging/icons/source/sealwax-seal.png`. A procedurally drawn SVG seal was tried first and looked more like a digital emboss.
+- **Files:** PNGs at 16, 24, 32, 48, 64, 128, 256 and 512 px (`tools/make-icons.py`), the sizes up to 64 px with a little more contrast and sharpening; no scalable SVG, since a photograph-lit seal can't be redrawn the same at every size and GTK would pick a scalable icon between the fixed ones. Below 32 px the @ no longer reads; the seal's shape does.
+- **Unchanged:** the brand colours of the wordmark, and the chrome following the Omarchy theme (ADR-004).
+
 ## ADR-011 — Reading pane: approach A with hardened WebKit (2026-10-04)
 
 **Status:** Proposed. S2 decides; approach B is the fallback.
@@ -870,6 +880,19 @@ Built in M6 ([composer](m6/composer.md), [compose rules](m6/compose-domain.md), 
 - **Live, on the user's session** (authorized at M6's start; `app/examples/composer_live.rs`, 144 Hz, the window tiled 1709×1400): an edit to the painted frame in the real composer's editor, p50 8.15 ms and p95 9.94 ms in a small document (n=80) and p50 10.15 ms, p95 12.35 ms above a 199 KB quoted thread (n=40); scrolling that thread at 1,500 px/s, frame interval p95 14.62 ms over 282 frames. S7's open items "typing in the real composer" and "long-quote scrolling without acceleration" are closed; the 60 Hz re-measure stays the user's.
 - **Spell check** stays off without a dictionary (this machine has none).
 
+### ADR-014 amendment — the composer docked in the main window (2026-10-08)
+
+**Status:** user decision, 2026-10-08 (a UI tweak, with a screenshot of Gmail's composer: "I want the email composer to open inline (like the Gmail composer in the screenshot), not in a new tile as it does now"). It reverses the M6-start amendment above: the composer is no longer a window of its own.
+
+**Decision:** each draft is a **card docked over the panes** at the main window's bottom right (`window::dock`), with the same content as the window had. Its header adds **Minimize** (the card shrinks to its header, 300 px wide, named by the subject; a click on the header opens it), **Expand** (up to 1,000 × 820 px in the middle of the panes over a dimmed backdrop, the other cards hidden; Shrink or a click on the backdrop puts it back) and **Close** ("Save and close": the draft is kept, or discarded when nothing was typed into a new one). An open card is 640 × 600 px, 16 px from the right edge; newer cards open to the left of older ones and the oldest open ones minimize when they no longer fit; while one pane fills the window an open card fills the panes above the minimized ones.
+
+- **Actions:** each card inserts its own `win` action group holding only the Composer commands (`actions::install_composer_actions`); inside the card it hides the main window's actions of the same names. The Composer scope's keys are attached to the card (bubble) and before WebKit on the body (capture), as they were to the window. The application accelerators (Compose's Ctrl+N, the command palette, Search, Refresh…) are the main window's and work from a card; the palette opened in a card lists and runs the card's commands too (`palette::present_titled` takes the card's group).
+- **Focus:** a card the user opens takes the focus (To while it is empty, else the body); drafts reopened after a crash open without taking it (the main window's list keeps it). Minimizing, closing or sending gives the focus back to where it was before the card took it, else to the message list. In the Tab order the cards come after the panes. Escape in a card stops there, so it never leaves the list's select mode behind it.
+- **No main window:** a `mailto:` link, `--compose` or a notification's Open with no main window shown shows one and docks the card in it (a composer window alone before, ML-078). `--compose` to a running Sealwax brings its window forward.
+- **Closing the main window** (into background mode) first saves every card's draft and closes the cards, the drafts kept; Quit saves them too (`composer::save_all`, `composer::keep_drafts_on_close`).
+
+**Consequences:** a composer can no longer be tiled beside the main window or moved to another workspace; Hyprland's close no longer applies to it. The self-test commands take the card (`assert-composer state|bounds|backdrop`, `composer-pointer`); `reply-mailto-alone` became `reply-mailto-start`; new `composer-dock`.
+
 ## ADR-015 — Op queue: optimistic overlay, Undo, at-most-once send (2026-10-04)
 
 **Status:** Proposed.
@@ -1043,6 +1066,10 @@ Edit Account (the user's UI tweak, 2026-10-08) is in the palette and the main me
 ### ADR-017 amendment — the folder list's heading keys, proposed (2026-10-08)
 
 Built with the UI tweaks of 2026-10-08, for the user's decision: account headings are rows of the folder list, reached with Up and Down; on one, Enter or Space folds or opens the account, Left folds and Right opens it (the tree convention), and Menu or Shift+F10 opens its menu (Edit Account), as on folder rows. No registry command or key was added; dragging the borders has no keyboard way.
+
+### ADR-017 amendment — the docked composer adds no key (2026-10-08)
+
+The composer docked in the main window (ADR-014's amendment of 2026-10-08) adds no registry command and no key: Minimize, Expand and Close are buttons in the card's header, reached with Tab. The Composer scope's keys are unchanged. M6's note that Hyprland's close closes a composer no longer applies; its Close button does. Escape in a card does nothing, as in the composer window, and no longer reaches the main window. Keys for the card (closing it, moving between it and the mail) are the user's decision and none was proposed yet.
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 

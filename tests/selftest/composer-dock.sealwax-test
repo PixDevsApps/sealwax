@@ -1,0 +1,151 @@
+# The composer docked in the main window (the user's UI tweak, 2026-10-08), as Gmail's: a card
+# at the window's bottom right instead of a window of its own. Minimized it is its header, a
+# click there opens it; expanded it fills the middle of the panes over a backdrop, whose click
+# shrinks it back; newer cards open left of older ones, and the oldest minimize when they no
+# longer fit; while one pane fills the window an open card fills the panes above the minimized
+# ones. The focus goes back to the mail when a card minimizes or closes. The command palette
+# opened in a card runs its commands, and Escape there leaves the list's select mode alone. The
+# stand-in backend; every name, address and message is fictional.
+# Run: tools/headless.sh 72 target/debug/sealwax --self-test tests/selftest/composer-dock.sealwax-test
+
+desktop tiling
+fixtures --count 40 --seed 9 --folders spread
+resize 1440 900
+triage-mark-read-on-open false
+list-wait
+list-select 0
+wait-until assert-reader-page message
+composer-backend stand-in
+focus list
+
+# Compose: a card 640 × 600 px at the bottom right, 16 px from the edge, the focus in To.
+action win.compose
+composer-wait
+assert-composer count 1
+assert-composer state open
+assert-composer bounds 784,300,640,600
+assert-composer backdrop false
+assert-composer focus to
+assert-composer title "New message"
+assert-accessible composer
+
+# Minimized: its header alone, 300 px wide, named by the subject; the focus back in the list. A
+# click on its header opens it again, the focus in the body once To has a recipient.
+composer-type "kari@example.com,"
+composer-focus subject
+composer-type "Plans"
+composer-click composer-minimize
+assert-composer state minimized
+assert-composer title Plans
+assert-composer bounds 1124,851,300,49
+assert-composer shown composer-from false
+assert-composer shown composer-subject false
+assert-focus list
+composer-pointer composer-title
+assert-composer state open
+assert-composer title "New message"
+assert-composer focus body
+
+# Expanded: 1,000 × 820 px in the middle of the panes, over the backdrop; a click on the
+# backdrop shrinks it back.
+composer-click composer-expand
+assert-composer state expanded
+assert-composer bounds 220,40,1000,820
+assert-composer backdrop true
+composer-pointer composer-backdrop 20 20
+assert-composer state open
+assert-composer backdrop false
+assert-composer bounds 784,300,640,600
+
+# A second card opens left of the first; a third doesn't fit beside them, so both older ones
+# minimize, the oldest rightmost.
+action win.compose
+composer-wait
+assert-composer count 2
+composer-pick 1
+assert-composer bounds 132,300,640,600
+composer-pick 0
+assert-composer state open
+action win.compose
+composer-wait
+assert-composer count 3
+composer-pick 0
+assert-composer state minimized
+assert-composer bounds 1124,851,300,49
+composer-pick 1
+assert-composer state minimized
+assert-composer bounds 812,851,300,49
+composer-pick 2
+assert-composer state open
+assert-composer bounds 160,300,640,600
+# Expanding one hides the others; opening a minimized one puts the expanded one back.
+composer-click composer-expand
+assert-composer state expanded
+composer-pick 0
+assert-composer shown composer-title false
+composer-pick 2
+composer-click composer-expand
+assert-composer state open
+
+# One pane: the open card fills the panes above the two minimized ones.
+resize 800 700
+composer-pick 2
+wait-until assert-composer bounds 0,0,800,602
+composer-pick 0
+assert-composer bounds 0,651,800,49
+composer-pick 1
+assert-composer bounds 0,602,800,49
+# Opening another there (the oldest, whose header is lowest) minimizes the one open before.
+composer-pointer composer-title
+composer-pick 0
+assert-composer state open
+composer-pick 2
+assert-composer state minimized
+resize 1440 900
+
+# Close: the cards go, the untouched ones discarded and the others kept.
+composer-pick 2
+composer-close
+composer-pick 0
+composer-close
+wait-until assert-composer count 1
+assert-composer discarded 1
+composer-pick 0
+assert-composer state minimized
+composer-close
+wait-until assert-composer count 0
+assert-composer discarded 2
+assert-composer closed 1
+
+# The focus goes back to where it was before the card took it.
+focus list
+action win.compose
+composer-wait
+assert-composer focus to
+composer-close
+wait-until assert-composer count 0
+assert-focus list
+
+# The command palette from a card lists and runs the card's commands.
+action win.compose
+composer-wait
+composer-focus body
+action-log
+key <Control><Shift>p
+assert-dialog "Command Palette"
+type "bold"
+key Return
+wait-until assert-dialog none
+assert-action-log win.command-palette
+assert-composer ran bold
+assert-composer focus body
+
+# Escape in a card stays there: the list's select mode is left alone.
+focus list
+key x
+assert-select-mode true
+composer-focus body
+composer-key Escape
+assert-select-mode true
+composer-close
+wait-until assert-composer count 0

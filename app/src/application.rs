@@ -698,7 +698,7 @@ impl AppState {
                 .borrow()
                 .as_ref()
                 .is_some_and(|set| set.is_available(id))
-            || (id.scope() == Scope::Composer && crate::composer::window::runs(id))
+            || (id.scope() == Scope::Composer && crate::composer::card::runs(id))
     }
 
     /// Quits the application: the one path for signals, the exit timer and the Quit action.
@@ -915,41 +915,26 @@ impl AppState {
         }
     }
 
-    /// `--compose` (ML-084): a new message. With the main window shown it is the window's
-    /// Compose (from the account the list shows); without it the composer window opens alone,
-    /// as a `mailto:` link's does (M6), from the first account.
+    /// `--compose` (ML-084): a new message, the window's Compose (from the account the list
+    /// shows). The composer docks in the main window (the user's UI tweak, 2026-10-08), so the
+    /// window shows first when it isn't.
     fn compose_new(self: &Rc<Self>, app: &SealwaxApplication) {
-        if let Some(window) = self.window() {
-            let compose = ActionId::Compose.detailed_name();
-            if WidgetExt::activate_action(window.window(), &compose, None).is_err() {
-                tracing::warn!("the window has no Compose command");
-            }
-            return;
-        }
-        let before = crate::composer::composers().len();
-        composer::open(app, ComposeRequest::New { account: None });
-        if crate::composer::composers().len() > before {
-            self.start_engine_without_window();
-        } else {
-            self.show_main_window(app);
+        let window = self.window_or_new(app);
+        self.present(&window);
+        let compose = ActionId::Compose.detailed_name();
+        if WidgetExt::activate_action(window.window(), &compose, None).is_err() {
+            tracing::warn!("the window has no Compose command");
         }
     }
 
-    /// `mailto:` links from the command line or D-Bus `Open`. With no main window shown yet
-    /// (a link from a browser, or background mode after the window closed) they open composer
-    /// windows alone (M6); otherwise, or when none of them opened, the main window shows too.
+    /// `mailto:` links from the command line or D-Bus `Open`: a composer for each in the main
+    /// window, shown first when it isn't (a link from a browser, or background mode after the
+    /// window closed).
     fn compose_links(self: &Rc<Self>, app: &SealwaxApplication, uris: &[&str]) {
-        let alone = self.window().is_none() && !uris.is_empty();
-        let before = crate::composer::composers().len();
-        let window = (!alone).then(|| self.window_or_new(app));
+        let window = self.window_or_new(app);
         for uri in uris {
             compose(app, uri);
         }
-        if alone && crate::composer::composers().len() > before {
-            self.start_engine_without_window();
-            return;
-        }
-        let window = window.unwrap_or_else(|| self.window_or_new(app));
         self.present(&window);
     }
 
@@ -1086,7 +1071,9 @@ impl AppState {
         win_actions.connect(ActionId::CommandPalette, move || {
             if let (Some(window), Some(state)) = (target.upgrade(), weak.upgrade()) {
                 let titles = state.command_titles();
-                palette::present_titled(&window, &prefs.keymap(), &move |id| {
+                // In a composer the palette lists and runs its commands too.
+                let composer = composer::focused(&window).map(|composer| composer.action_group());
+                palette::present_titled(&window, &prefs.keymap(), composer, &move |id| {
                     titles
                         .iter()
                         .find(|(candidate, _)| *candidate == id)
@@ -2362,6 +2349,7 @@ impl AppState {
         // Known to the state before its handlers are installed: they look it up there.
         self.window.replace(Some(window.clone()));
         self.install_window(app, &window);
+        composer::keep_drafts_on_close(window.window());
         self.remember_layout(&window);
         self.update_banner();
         window

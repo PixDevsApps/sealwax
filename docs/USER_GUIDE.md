@@ -1,6 +1,6 @@
 # Sealwax user guide
 
-Synced: 2026-10-07
+Synced: 2026-10-08
 
 This guide is for people who use Sealwax every day. It describes Sealwax 0.3.0 as built through M8 (POP3 accounts), before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
 
@@ -180,7 +180,7 @@ The same commands are buttons in the reader's toolbar, and hovering a row shows 
 
 ## Writing mail
 
-**The composer.** **New message** (or `c`, Ctrl+N) opens a composer in its own window, which Hyprland tiles beside the main window. It has:
+**The composer.** **New message** (or `c`, Ctrl+N) opens a composer at the bottom right of the main window, over the mail, as in Gmail. It has:
 
 - the **From** chip: the account's address and its other identities;
 - **To**, with **Cc · Bcc** to add those fields; recipients become chips, and suggestions come from the addresses in your mail, people you have written to first;
@@ -189,11 +189,13 @@ The same commands are buttons in the reader's toolbar, and hovering a row shows 
 - the body;
 - attachments, "Draft saved" with the time, and **Send** (Ctrl+Enter).
 
+The buttons at the right of its header **minimize** it to a bar at the bottom of the window (it shows the subject; click the bar to open it again), **expand** it to a larger card in the middle of the window (click beside it, or **Shrink**, to put it back), and **close** it, keeping the draft. You can have several open at once: each new one opens to the left of the others, and the oldest minimize when there is no more room. In a narrow window the composer fills the window. While you write, the window's own shortcuts still work: Ctrl+N starts another message, and the command palette (Ctrl+Shift+P or F1) also lists the composer's commands. Minimizing or closing the composer puts the keyboard focus back where it was. Without a Sealwax window open (a `mailto:` link, `sealwax --compose`), the window opens with the composer in it. Closing the window keeps every draft in it.
+
 Pasted text keeps simple formatting and loses the rest; **Paste as Plain Text** (Ctrl+Shift+V) pastes it without any. Spell checking works when a hunspell dictionary for your language is installed (`hunspell-en_us`, for example); the languages come from your locale.
 
 **Reply, Reply All, Forward.** `r` (Ctrl+R), `a` (Ctrl+Shift+R) and `f` (Ctrl+L), or the three buttons on each expanded message's card. They answer the message you are on in the reader. A reply goes out from the address the message was sent to, when that is one of your identities.
 
-**Quick reply.** Under a conversation there is a plain-text box, "Reply to" and a name. Ctrl+Enter sends; **Open Reply in Composer** (Ctrl+Shift+E) moves what you typed into a full composer window. What you type is saved as a draft, so it is there again after a restart.
+**Quick reply.** Under a conversation there is a plain-text box, "Reply to" and a name. Ctrl+Enter sends; **Open Reply in Composer** (Ctrl+Shift+E) moves what you typed into a full composer. What you type is saved as a draft, so it is there again after a restart.
 
 **Drafts.** Sealwax saves a draft while you type, at most a few seconds behind you, and keeps a copy in the account's Drafts folder on the server (on this computer only for POP3 accounts). Closing the composer keeps the draft; a new message closed before you typed anything is thrown away. **Discard Draft** deletes it, and asks first when there is something to lose. A message in a Drafts folder opens in the composer with Enter, `o` or a double click, or **Edit draft** on its card.
 
@@ -340,7 +342,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 
 **Not built yet.** Toggle Sidebar (Ctrl+Shift+S, F9) is in the keymap, but its keys do nothing yet; the Keyboard Shortcuts dialog marks it "Not available yet".
 
-**Moving with Tab.** Tab and Shift+Tab go through the window from left to right: the sidebar (the new-message button, the folder list, `config.toml`), the list's bar, the message list, the reader's toolbar and the conversation, then round again. The folder list and the message list are one stop each: Up and Down move inside them. In a message, Tab goes from link to link (in a plain-text message too: the link is selected, its address shows at the bottom of the reader, and Enter opens it), then on to the "…" that shows quoted text. In the composer, Tab in the message moves on to **Send** and Shift+Tab back to the toolbar, instead of typing a tab. A dialog keeps Tab inside it, and Escape closes it.
+**Moving with Tab.** Tab and Shift+Tab go through the window from left to right: the sidebar (the new-message button, the folder list, `config.toml`), the list's bar, the message list, the reader's toolbar and the conversation, then round again. The folder list and the message list are one stop each: Up and Down move inside them. In a message, Tab goes from link to link (in a plain-text message too: the link is selected, its address shows at the bottom of the reader, and Enter opens it), then on to the "…" that shows quoted text. An open composer comes after the reader in that order: From, Attach, Discard, Minimize, Expand, Close, To, and on to Send. In the composer, Tab in the message moves on to **Send** and Shift+Tab back to the toolbar, instead of typing a tab. A dialog keeps Tab inside it, and Escape closes it.
 
 **The list's own keys,** which `keys.toml` can't change: Up and Down move the selection; Shift with Up, Down, `j` or `k` extends it; Escape leaves the select mode. On a folder in the sidebar, Menu or Shift+F10 opens its menu.
 

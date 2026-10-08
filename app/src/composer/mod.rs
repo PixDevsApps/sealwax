@@ -1,25 +1,28 @@
-//! The composer (M6, ML-067): a window of its own for each draft (the user's choice at M6's
-//! start, 2026-10-06), so Hyprland tiles it beside the main window and a `mailto:` link never
-//! takes over what the reader shows. [`open`] is the one way in: the main window's Compose,
-//! Reply, Reply All, Forward and Edit Draft, the quick reply's expansion, `mailto:` links, and
-//! drafts reopened after a restart or an Undo send.
+//! The composer (M6, ML-067): a card for each draft, docked at the main window's bottom right
+//! as Gmail's composer (the user's UI tweak, 2026-10-08; a window of its own for each draft
+//! since M6's start). [`open`] is the one way in: the main window's Compose, Reply, Reply All,
+//! Forward and Edit Draft, the quick reply's expansion, `mailto:` links, and drafts reopened
+//! after a restart or an Undo send. With no main window shown it shows one first.
 //!
-//! Each window is an application window: it keeps Sealwax running while it is open, also
-//! after the main window closed. Everything it needs from outside goes through
-//! [`backend::Backend`]: phase A's [`backend::StandIn`] until phase B sets the real one with
-//! [`set_backend`]. Quit saves every open draft first ([`save_all`]).
+//! Everything a card needs from outside goes through [`backend::Backend`]: phase A's
+//! [`backend::StandIn`] until phase B sets the real one with [`set_backend`]. Quit, and the
+//! main window closing, save every open draft first ([`save_all`], [`keep_drafts_on_close`]).
 
 pub mod attachments;
 pub mod backend;
+pub mod card;
 pub mod editor;
 mod js;
 pub mod recipients;
 pub mod store_backend;
-pub mod window;
 
 use crate::application::SealwaxApplication;
 use backend::{Backend, StandIn};
-use gtk4::prelude::ObjectExt;
+pub use card::{Composer, Ending};
+use gtk4 as gtk;
+use gtk4::glib;
+use gtk4::prelude::*;
+use libadwaita as adw;
 use sealwax_domain::compose::ReplyKind;
 use sealwax_domain::mailto::Mailto;
 use sealwax_domain::model::{AccountId, DraftId, MessageId};
@@ -29,9 +32,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 use store_backend::StoreBackend;
-pub use window::{Composer, Ending};
 
-/// What a composer window starts from.
+/// What a composer starts from.
 #[derive(Clone)]
 pub enum ComposeRequest {
     /// A new message from `account`: the one the list shows, or the first account.
@@ -77,13 +79,30 @@ thread_local! {
     static KEYS_FOLLOWED: Cell<bool> = const { Cell::new(false) };
 }
 
-/// Opens a composer window for `request`. The window shows at once; the backend fills it.
+/// Opens a composer card for `request` in the main window, shown first if it isn't, and puts
+/// the keyboard focus in it. The card shows at once; the backend fills it.
 pub fn open(app: &SealwaxApplication, request: ComposeRequest) {
+    open_card(app, request, true);
+}
+
+fn open_card(app: &SealwaxApplication, request: ComposeRequest, focus: bool) {
     tracing::info!(kind = ?request, "compose requested");
     REQUESTS.with(|requests| requests.borrow_mut().push(request.clone()));
     follow_keys(app);
+    let state = app.state();
+    let window = match state.window() {
+        Some(window) => window,
+        None => {
+            state.show_main_window(app);
+            let Some(window) = state.window() else {
+                tracing::warn!("composer: no main window to dock in");
+                return;
+            };
+            window
+        }
+    };
     let backend = backend(app);
-    let composer = Composer::open(app, backend, request);
+    let composer = Composer::open(app, window.dock(), backend, request, focus);
     OPEN.with(|open| open.borrow_mut().push(composer));
 }
 
@@ -92,17 +111,25 @@ pub fn requests() -> Vec<ComposeRequest> {
     REQUESTS.with(|requests| requests.borrow().clone())
 }
 
-/// The composer windows open now, oldest first.
+/// The composers open now, oldest first.
 pub fn composers() -> Vec<Composer> {
     OPEN.with(|open| open.borrow().clone())
 }
 
-/// Whether a composer window is open.
+/// Whether a composer is open.
 pub fn is_open() -> bool {
     OPEN.with(|open| !open.borrow().is_empty())
 }
 
-/// Makes `backend` the one new composer windows use (phase B: the store and the engine).
+/// The composer holding the keyboard focus of `window`.
+pub fn focused(window: &impl IsA<gtk::Window>) -> Option<Composer> {
+    let focus = gtk::prelude::GtkWindowExt::focus(window.as_ref())?;
+    composers()
+        .into_iter()
+        .find(|composer| composer.holds(&focus))
+}
+
+/// Makes `backend` the one new composers use (phase B: the store and the engine).
 pub fn set_backend(backend: Rc<dyn Backend>) {
     BACKEND.with(|current| current.replace(Some(backend)));
 }
@@ -127,7 +154,7 @@ pub fn use_stand_in(app: &SealwaxApplication) -> Rc<StandIn> {
     stand_in
 }
 
-/// Makes the store's backend the one new composer windows use: the app does at startup.
+/// Makes the store's backend the one new composers use: the app does at startup.
 pub fn use_store(app: &SealwaxApplication) -> Rc<StoreBackend> {
     let store = StoreBackend::new(&app.state());
     STORE.with(|current| current.replace(Some(store.clone())));
@@ -140,9 +167,9 @@ pub fn store_backend() -> Option<Rc<StoreBackend>> {
     STORE.with(|store| store.borrow().clone())
 }
 
-/// Reopens the drafts whose windows were open when Sealwax last stopped (a crash, a kill, a
-/// logout): after the first frame, once the store is ready. Drafts a window shows already are
-/// left alone.
+/// Reopens the drafts whose composers were open when Sealwax last stopped (a crash, a kill, a
+/// logout): after the first frame, once the store is ready, open in the dock but leaving the
+/// keyboard focus where it is. Drafts a composer shows already are left alone.
 pub fn reopen_drafts(app: &SealwaxApplication) {
     let ready = app.state().mailbox().wait_ready();
     let app = app.downgrade();
@@ -170,7 +197,7 @@ pub fn reopen_drafts(app: &SealwaxApplication) {
             );
         }
         for id in reopened {
-            open(&app, ComposeRequest::Draft(id));
+            open_card(&app, ComposeRequest::Draft(id), false);
         }
     });
 }
@@ -197,18 +224,51 @@ fn chooser_answer() -> Option<Vec<PathBuf>> {
     CHOOSER.with(|chooser| chooser.take())
 }
 
-/// Forgets a window that was destroyed.
-fn forget(window: &libadwaita::ApplicationWindow) {
-    OPEN.with(|open| {
-        open.borrow_mut()
-            .retain(|composer| composer.window() != window)
+/// Forgets a card that went.
+fn forget(root: &gtk::Box) {
+    OPEN.with(|open| open.borrow_mut().retain(|composer| composer.root() != root));
+}
+
+/// Saves every open draft and lets the cards go; Quit waits for it (at most [`SAVE_ON_QUIT`])
+/// before it destroys the windows.
+pub async fn save_all() {
+    save(composers()).await;
+}
+
+/// The main window closing (into background mode, or for good) first saves the drafts its
+/// cards hold and lets them go, at most [`SAVE_ON_QUIT`]; Quit has saved them already.
+pub fn keep_drafts_on_close(window: &adw::ApplicationWindow) {
+    window.connect_close_request(|window| {
+        let held: Vec<Composer> = composers()
+            .into_iter()
+            .filter(|composer| composer.window().as_ref() == Some(window))
+            .collect();
+        if held.is_empty() {
+            return glib::Propagation::Proceed;
+        }
+        let hold = window.application().map(|app| app.hold());
+        let target = window.downgrade();
+        glib::spawn_future_local(async move {
+            save(held).await;
+            if let Some(window) = target.upgrade() {
+                window.close();
+            }
+            drop(hold);
+        });
+        glib::Propagation::Stop
+    });
+    // A window destroyed without closing (Quit has saved the drafts) has let its cards go by
+    // then.
+    window.connect_destroy(|window| {
+        for composer in composers() {
+            if composer.window().is_none_or(|docked| &docked == window) {
+                composer.release();
+            }
+        }
     });
 }
 
-/// Saves every open draft and lets the windows go; Quit waits for it (at most
-/// [`SAVE_ON_QUIT`]) before it destroys them.
-pub async fn save_all() {
-    let composers = composers();
+async fn save(composers: Vec<Composer>) {
     let saving = async move {
         for composer in composers {
             composer.save_and_release().await;
@@ -220,7 +280,7 @@ pub async fn save_all() {
     }
 }
 
-/// `keys.toml` changes reach every open composer window.
+/// `keys.toml` changes reach every open composer.
 fn follow_keys(app: &SealwaxApplication) {
     if KEYS_FOLLOWED.with(|followed| followed.replace(true)) {
         return;

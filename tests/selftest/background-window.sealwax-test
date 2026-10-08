@@ -2,8 +2,8 @@
 # Sealwax running (an application hold) and the first close sends the one-time notice, recorded
 # by background.rs instead of a notification server; activation, a second launch and the
 # notice's click build a new main window on the same store; `--background` to a running Sealwax
-# shows nothing and `--compose` is the window's Compose; `[background] enabled` in config.toml
-# applies live; Quit ends it all. Every name and address is fictional.
+# shows nothing and `--compose` is the window's Compose (a card in it); `[background] enabled`
+# in config.toml applies live; Quit ends it all. Every name and address is fictional.
 # Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/background-window.sealwax-test
 
 desktop tiling
@@ -54,7 +54,8 @@ assert-activations 4
 assert-hidden-start false
 assert-window true
 
-# `--compose` given to a running Sealwax with its window shown: the window's Compose.
+# `--compose` given to a running Sealwax with its window shown: the window's Compose, a card
+# in that window, which comes forward.
 spawn --compose
 wait-until assert-compose-requests 1
 assert-compose-last new none
@@ -62,7 +63,7 @@ wait-until assert-composer count 1
 background-watch composer
 composer-close
 wait-until assert-composer count 0
-assert-activations 4
+assert-activations 5
 sleep 500
 assert-freed
 

@@ -1,10 +1,11 @@
 //! The command palette (F1, Ctrl+Shift+P): a search entry over the commands the window can run
 //! now, each with its keys, ranked by Stet's matcher. Typing filters, Up and Down move, Enter
-//! runs the selected command and Escape closes; a click runs a row.
+//! runs the selected command and Escape closes; a click runs a row. Opened from a composer card,
+//! it lists and runs that card's commands as well.
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
-use gtk4::{gdk, glib};
+use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::actions::{ActionId, Scope};
@@ -45,6 +46,8 @@ struct Inner {
     list: glib::WeakRef<gtk::ListBox>,
     scrolled: glib::WeakRef<gtk::ScrolledWindow>,
     window: glib::WeakRef<gtk::ApplicationWindow>,
+    /// The composer card's actions, when it was opened from one.
+    composer: Option<gio::ActionGroup>,
     items: Vec<Item>,
     shown: RefCell<Vec<Item>>,
 }
@@ -57,11 +60,17 @@ pub struct Palette {
     inner: Rc<Inner>,
 }
 
-/// The commands of `window` the palette lists: in the palette and enabled now.
-fn items(window: &gtk::ApplicationWindow, keymap: &Keymap, titles: &Titles) -> Vec<Item> {
+/// The commands of `window` (and of the composer card `composer`) the palette lists: in the
+/// palette and enabled now.
+fn items(
+    window: &gtk::ApplicationWindow,
+    composer: Option<&gio::ActionGroup>,
+    keymap: &Keymap,
+    titles: &Titles,
+) -> Vec<Item> {
     ActionId::ALL
         .into_iter()
-        .filter(|id| id.spec().palette && is_enabled(window, *id))
+        .filter(|id| id.spec().palette && is_enabled(window, composer, *id))
         .map(|id| Item {
             id,
             title: titles(id).unwrap_or_else(|| id.title().to_owned()),
@@ -71,11 +80,16 @@ fn items(window: &gtk::ApplicationWindow, keymap: &Keymap, titles: &Titles) -> V
         .collect()
 }
 
-fn is_enabled(window: &gtk::ApplicationWindow, id: ActionId) -> bool {
+fn is_enabled(
+    window: &gtk::ApplicationWindow,
+    composer: Option<&gio::ActionGroup>,
+    id: ActionId,
+) -> bool {
     match id.scope() {
         Scope::App => window
             .application()
             .is_some_and(|app| app.is_action_enabled(id.name())),
+        Scope::Composer => composer.is_some_and(|group| group.is_action_enabled(id.name())),
         _ => window.is_action_enabled(id.name()),
     }
 }
@@ -86,13 +100,15 @@ pub type Titles = dyn Fn(ActionId) -> Option<String>;
 
 impl Palette {
     pub fn new(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Self {
-        Self::titled(window, keymap, &|_| None)
+        Self::titled(window, keymap, None, &|_| None)
     }
 
-    /// A palette whose commands take their titles from `titles` where it has one.
+    /// A palette whose commands take their titles from `titles` where it has one, with the
+    /// composer card's commands from `composer`.
     pub fn titled(
         window: &impl IsA<gtk::ApplicationWindow>,
         keymap: &Keymap,
+        composer: Option<gio::ActionGroup>,
         titles: &Titles,
     ) -> Self {
         let window = window.as_ref();
@@ -140,7 +156,8 @@ impl Palette {
             list: list.downgrade(),
             scrolled: scrolled.downgrade(),
             window: window.downgrade(),
-            items: items(window, keymap, titles),
+            items: items(window, composer.as_ref(), keymap, titles),
+            composer,
             shown: RefCell::new(Vec::new()),
         });
         connect(&inner, &entry, &list);
@@ -206,16 +223,18 @@ impl Palette {
 
 /// Builds a palette for `window` and opens it.
 pub fn present(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Palette {
-    present_titled(window, keymap, &|_| None)
+    present_titled(window, keymap, None, &|_| None)
 }
 
-/// Builds a palette for `window` whose commands take their titles from `titles`, and opens it.
+/// Builds a palette for `window` (with the composer card's commands from `composer`) whose
+/// commands take their titles from `titles`, and opens it.
 pub fn present_titled(
     window: &impl IsA<gtk::ApplicationWindow>,
     keymap: &Keymap,
+    composer: Option<gio::ActionGroup>,
     titles: &Titles,
 ) -> Palette {
-    let palette = Palette::titled(window, keymap, titles);
+    let palette = Palette::titled(window, keymap, composer, titles);
     palette.present();
     palette
 }
@@ -354,6 +373,12 @@ impl Inner {
     fn run(&self, id: ActionId) {
         if let Some(dialog) = self.dialog.upgrade() {
             dialog.close();
+        }
+        if id.scope() == Scope::Composer {
+            if let Some(composer) = &self.composer {
+                composer.activate_action(id.name(), None);
+            }
+            return;
         }
         let Some(window) = self.window.upgrade() else {
             return;

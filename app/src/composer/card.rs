@@ -1,16 +1,18 @@
-//! One composer window (ML-067, ML-071, ML-072, ML-079): the approved mock's "New message"
-//! frame. The header has the title, the From chip, Attach and Discard; then the To row with
-//! "Cc · Bcc" (Cc and Bcc hidden until asked for), the subject, the formatting toolbar that
-//! follows the editor's state, the body, and the footer with the attachments, "Draft saved"
-//! and Send. The window's own `win.` actions run the registry's Composer commands, and the
-//! Composer scope's keys reach them from the fields (bubble phase, so entries keep their own
+//! One composer card (ML-067, ML-071, ML-072, ML-079): the approved mock's "New message"
+//! frame, docked in the main window as Gmail's composer (the user's UI tweak, 2026-10-08; a
+//! window of its own before). The header has the title, the From chip, Attach and Discard, then
+//! Minimize, Expand and Close; then the To row with "Cc · Bcc" (Cc and Bcc hidden until asked
+//! for), the subject, the formatting toolbar that follows the editor's state, the body, and the
+//! footer with the attachments, "Draft saved" and Send. The card's own `win.` actions run the
+//! registry's Composer commands (they hide the main window's of the same names inside it), and
+//! the Composer scope's keys reach them from the fields (bubble phase, so entries keep their own
 //! keys) and from the body (capture phase, before WebKit: Ctrl+B and Ctrl+I toggle once, and
 //! Ctrl+Z is the editor's undo).
 //!
-//! The window shows at once; the draft fills it when the backend has prepared it. It is saved
+//! The card shows at once; the draft fills it when the backend has prepared it. It is saved
 //! 1.5 s after the typing stops and at least every 4 s while it goes on (PRD C5: at most 5 s
-//! behind), and when the window closes; the window stays hidden until that last save is done,
-//! holding the application.
+//! behind), and when the card closes; the card hides at once and goes when that last save is
+//! done, holding the application.
 
 use super::attachments::{self, Tray};
 use super::backend::{Backend, Prepared, Refusal, Sender, id_domain};
@@ -19,8 +21,8 @@ use super::recipients::{LABEL_WIDTH, RecipientField};
 use super::{ComposeRequest, chooser_answer};
 use crate::actions::{self, ActionSet, ScopedShortcuts};
 use crate::application::SealwaxApplication;
-use crate::palette;
 use crate::theme::ListenerId;
+use crate::window::dock::{CardState, Dock, WeakDock};
 use crate::window::panes::{classed, icon, icon_button, named};
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -37,8 +39,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-/// The mock's composer frame.
-pub const DEFAULT_SIZE: (i32, i32) = (1000, 820);
 /// The draft is saved this long after the last edit…
 pub const IDLE_SAVE: Duration = Duration::from_millis(1500);
 /// …and at most this long after the first unsaved one (PRD C5: at most 5 s behind).
@@ -89,14 +89,15 @@ pub const STYLES: [(&str, &str); 5] = [
     ("pre", "Preformatted"),
 ];
 
-/// Whether a composer window runs `id`: the Keyboard Shortcuts dialog lists its commands as
-/// built though the main window's action set doesn't run them.
+/// Whether a composer runs `id`: the Keyboard Shortcuts dialog lists its commands as built
+/// though the main window's action set doesn't run them.
 pub fn runs(id: ActionId) -> bool {
     COMMANDS.contains(&id)
 }
 
-/// Every command the window runs.
-const COMMANDS: [ActionId; 20] = [
+/// Every command a composer runs. Compose and the command palette are the main window's, whose
+/// keys work in a card too.
+const COMMANDS: [ActionId; 18] = [
     ActionId::Send,
     ActionId::AttachFile,
     ActionId::ShowCcBcc,
@@ -115,8 +116,6 @@ const COMMANDS: [ActionId; 20] = [
     ActionId::ComposerUndo,
     ActionId::ComposerRedo,
     ActionId::PasteAsText,
-    ActionId::Compose,
-    ActionId::CommandPalette,
 ];
 
 /// The commands that need the editor page loaded.
@@ -137,7 +136,7 @@ const EDITING: [ActionId; 14] = [
     ActionId::PasteAsText,
 ];
 
-/// How the window ended.
+/// How the card ended.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ending {
     Open,
@@ -147,14 +146,20 @@ pub enum Ending {
     Discarded,
 }
 
-/// A composer window.
+/// A composer card.
 #[derive(Clone)]
 pub struct Composer {
     inner: Rc<Inner>,
 }
 
 struct Widgets {
+    header: gtk::Box,
     title: gtk::Label,
+    /// Hidden while the card is minimized: the From chip and its dot, Attach and Discard.
+    header_tools: Vec<gtk::Widget>,
+    minimize: gtk::Button,
+    expand: gtk::Button,
+    close: gtk::Button,
     from: gtk::MenuButton,
     from_label: gtk::Label,
     from_list: gtk::ListBox,
@@ -177,10 +182,19 @@ struct Widgets {
 
 struct Inner {
     app: glib::WeakRef<SealwaxApplication>,
-    window: adw::ApplicationWindow,
+    root: gtk::Box,
+    dock: WeakDock,
+    state: Cell<CardState>,
+    /// The title the request gave ("New message", "Reply to …").
+    request_title: RefCell<String>,
+    /// Where the focus was outside the card when it took it: it goes back there.
+    return_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
+    /// The card takes the focus when its body is ready.
+    focus_on_ready: Cell<bool>,
     widgets: Widgets,
     editor: Editor,
     backend: Rc<dyn Backend>,
+    group: gio::SimpleActionGroup,
     actions: ActionSet,
     shortcuts: Vec<ScopedShortcuts>,
     keymap: RefCell<Keymap>,
@@ -207,18 +221,21 @@ struct Inner {
     theme_listener: Cell<Option<ListenerId>>,
     /// Images taken from the clipboard or a drop, by the helper's token, not yet stored.
     adopting: RefCell<HashSet<String>>,
-    /// The window's resources are let go (`finish`).
+    /// The card's resources are let go (`finish`).
     released: Cell<bool>,
     /// A new draft: closed before anything was typed, it is discarded rather than kept.
     fresh: Cell<bool>,
 }
 
 impl Composer {
-    /// Builds the window for `request`, shows it at once and fills it when the draft is ready.
+    /// Builds the card for `request` in `dock`, shows it at once and fills it when the draft is
+    /// ready; with `focus` the card takes the keyboard focus then.
     pub fn open(
         app: &SealwaxApplication,
+        dock: &Dock,
         backend: Rc<dyn Backend>,
         request: ComposeRequest,
+        focus: bool,
     ) -> Composer {
         let state = app.state();
         let theme_controller = state.theme();
@@ -242,27 +259,34 @@ impl Composer {
         let engine = EditorEngine::shared(&state.config().dirs.cache);
         engine.set_blobs(backend.blobs());
         let editor = Editor::new(&engine, &theme);
-        let window = adw::ApplicationWindow::builder()
-            .application(app)
-            .title("New message")
-            .default_width(DEFAULT_SIZE.0)
-            .default_height(DEFAULT_SIZE.1)
-            .build();
-        window.add_css_class("sw-composer");
-        let widgets = build(&window, &editor, &keymap, state.config().tiling);
-        let actions = actions::install_window_actions(&window);
-        let window_keys = ScopedShortcuts::new(Scope::Composer, &keymap);
-        window_keys.attach(&window, gtk::PropagationPhase::Bubble);
+        let (root, widgets) = build(&editor, &keymap);
+        let group = gio::SimpleActionGroup::new();
+        let actions = actions::install_composer_actions(&group);
+        root.insert_action_group("win", Some(&group));
+        let card_keys = ScopedShortcuts::new(Scope::Composer, &keymap);
+        card_keys.attach(&root, gtk::PropagationPhase::Bubble);
         let body_keys = ScopedShortcuts::new(Scope::Composer, &keymap);
         body_keys.attach(editor.view(), gtk::PropagationPhase::Capture);
+        let return_focus = dock
+            .widget()
+            .root()
+            .and_downcast::<gtk::Window>()
+            .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window))
+            .map(|widget| widget.downgrade());
         let inner = Rc::new(Inner {
             app: app.downgrade(),
-            window,
+            root,
+            dock: dock.downgrade(),
+            state: Cell::new(CardState::Open),
+            request_title: RefCell::new("New message".to_owned()),
+            return_focus: RefCell::new(return_focus),
+            focus_on_ready: Cell::new(focus),
             widgets,
             editor,
             backend,
+            group,
             actions,
-            shortcuts: vec![window_keys, body_keys],
+            shortcuts: vec![card_keys, body_keys],
             keymap: RefCell::new(keymap),
             id: Cell::new(None),
             account: Cell::new(AccountId::default()),
@@ -296,14 +320,54 @@ impl Composer {
             inner.theme_listener.set(Some(id));
         }
         inner.connect();
-        inner.window.present();
+        let weak = Rc::downgrade(&inner);
+        dock.add(&inner.root, move |state| {
+            if let Some(inner) = weak.upgrade() {
+                inner.apply_state(state);
+            }
+        });
+        if focus {
+            inner.take_focus();
+        }
         let starting = inner.clone();
         glib::spawn_future_local(async move { starting.start(request).await });
         Composer { inner }
     }
 
-    pub fn window(&self) -> &adw::ApplicationWindow {
-        &self.inner.window
+    /// The card.
+    pub fn root(&self) -> &gtk::Box {
+        &self.inner.root
+    }
+
+    /// The window the card is docked in.
+    pub fn window(&self) -> Option<adw::ApplicationWindow> {
+        self.inner.window()
+    }
+
+    /// Whether `widget` is inside the card.
+    pub fn holds(&self, widget: &gtk::Widget) -> bool {
+        widget.is_ancestor(&self.inner.root)
+            || widget == self.inner.root.upcast_ref::<gtk::Widget>()
+    }
+
+    /// The card's `win.` actions: the palette runs the Composer commands there.
+    pub fn action_group(&self) -> gio::ActionGroup {
+        self.inner.group.clone().upcast()
+    }
+
+    pub fn state(&self) -> CardState {
+        self.inner.state.get()
+    }
+
+    /// Minimizes the card to its header, opens it, or expands it, as its header's buttons do.
+    pub fn set_state(&self, state: CardState) {
+        self.inner.change_state(state, true);
+    }
+
+    /// Closes the card as its Close button does: the draft is kept (discarded when nothing was
+    /// typed into a new one).
+    pub fn close(&self) {
+        self.inner.close();
     }
 
     pub fn editor(&self) -> &Editor {
@@ -394,10 +458,10 @@ impl Composer {
         self.inner.widgets.style_label.label().to_string()
     }
 
-    /// A named widget of the window.
+    /// A named widget of the card.
     pub fn widget(&self, name: &str) -> Option<gtk::Widget> {
         let mut found = None;
-        find(self.inner.window.upcast_ref(), name, &mut found);
+        find(self.inner.root.upcast_ref(), name, &mut found);
         found
     }
 
@@ -410,7 +474,7 @@ impl Composer {
         self.inner.collect().await
     }
 
-    /// Takes `paths` as files dropped on the window: over the body, images go inline.
+    /// Takes `paths` as files dropped on the card: over the body, images go inline.
     pub fn drop_files(&self, paths: Vec<PathBuf>, over_body: bool) {
         self.inner.drop_files(paths, over_body);
     }
@@ -423,8 +487,12 @@ impl Composer {
         self.inner.keymap.replace(keymap.clone());
     }
 
-    /// Saves the draft now and lets the window go: for Quit, while every window is about to
-    /// be destroyed.
+    /// Lets the card's resources go without saving: its window is gone.
+    pub fn release(&self) {
+        self.inner.destroyed();
+    }
+
+    /// Saves the draft now and lets the card go: for Quit, and for its window closing.
     pub async fn save_and_release(&self) {
         let inner = &self.inner;
         if inner.ending.get() != Ending::Open {
@@ -436,6 +504,7 @@ impl Composer {
             inner.backend.close(id);
         }
         inner.ending.set(Ending::Closed);
+        inner.finish();
     }
 }
 
@@ -475,13 +544,8 @@ fn key_text(keymap: &Keymap, id: ActionId) -> String {
         .unwrap_or_default()
 }
 
-fn build(
-    window: &adw::ApplicationWindow,
-    editor: &Editor,
-    keymap: &Keymap,
-    tiling: bool,
-) -> Widgets {
-    // The header: the title, the From chip, Attach and Discard.
+fn build(editor: &Editor, keymap: &Keymap) -> (gtk::Box, Widgets) {
+    // The header: the title, the From chip, Attach and Discard, then Minimize, Expand and Close.
     let title = named(
         classed(
             gtk::Label::builder().label("New message").build(),
@@ -544,6 +608,27 @@ fn build(
         "composer-discard",
     );
     discard.set_action_name(Some(&ActionId::DiscardDraft.detailed_name()));
+    let minimize = named(
+        icon_button(
+            &["window-minimize-symbolic", "go-down-symbolic"],
+            "Minimize",
+        ),
+        "composer-minimize",
+    );
+    let expand = named(
+        icon_button(&["view-fullscreen-symbolic"], "Expand"),
+        "composer-expand",
+    );
+    let close = named(
+        icon_button(&["window-close-symbolic"], "Save and close"),
+        "composer-close",
+    );
+    let header_end = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .build();
+    header_end.append(&attach);
+    header_end.append(&discard);
+    let divider = separator();
     let header = classed(
         gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -554,12 +639,17 @@ fn build(
     header.append(&dot);
     header.append(&from);
     header.append(&gtk::Box::builder().hexpand(true).build());
-    header.append(&attach);
-    header.append(&discard);
-    if !tiling {
-        header.append(&gtk::WindowControls::new(gtk::PackType::End));
-    }
-    let handle = gtk::WindowHandle::builder().child(&header).build();
+    header.append(&header_end);
+    header.append(&divider);
+    header.append(&minimize);
+    header.append(&expand);
+    header.append(&close);
+    let header_tools = vec![
+        dot.upcast(),
+        from.clone().upcast(),
+        header_end.upcast(),
+        divider.upcast(),
+    ];
 
     // The fields.
     let to = RecipientField::new("To", "composer-to");
@@ -813,17 +903,35 @@ fn build(
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
+        .vexpand(true)
         .build();
-    content.append(&handle);
     content.append(&fields);
     content.append(&toolbar);
     content.append(&body);
     content.append(&bottom);
     let toasts = adw::ToastOverlay::new();
     toasts.set_child(Some(&content));
-    window.set_content(Some(&toasts));
-    Widgets {
+    toasts.set_vexpand(true);
+    let root = named(
+        classed(
+            gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .accessible_role(gtk::AccessibleRole::Group)
+                .overflow(gtk::Overflow::Hidden)
+                .build(),
+            &["sw-composer"],
+        ),
+        "composer",
+    );
+    root.append(&header);
+    root.append(&toasts);
+    let widgets = Widgets {
+        header,
         title,
+        header_tools,
+        minimize,
+        expand,
+        close,
         from,
         from_label,
         from_list,
@@ -842,7 +950,8 @@ fn build(
         warning,
         saved,
         toasts,
-    }
+    };
+    (root, widgets)
 }
 
 impl Inner {
@@ -874,7 +983,59 @@ impl Inner {
             }
         });
         styles.add_action(&style);
-        self.window.insert_action_group("composer", Some(&styles));
+        self.root.insert_action_group("composer", Some(&styles));
+
+        let weak = Rc::downgrade(self);
+        self.widgets.minimize.connect_clicked(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                let state = if inner.state.get() == CardState::Minimized {
+                    CardState::Open
+                } else {
+                    CardState::Minimized
+                };
+                inner.change_state(state, true);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.widgets.expand.connect_clicked(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                let state = if inner.state.get() == CardState::Expanded {
+                    CardState::Open
+                } else {
+                    CardState::Expanded
+                };
+                inner.change_state(state, true);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        self.widgets.close.connect_clicked(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                inner.close();
+            }
+        });
+        // A click on a minimized card's header opens it; its buttons take their own clicks.
+        let click = gtk::GestureClick::new();
+        let weak = Rc::downgrade(self);
+        click.connect_released(move |gesture, _, _, _| {
+            if let Some(inner) = weak.upgrade()
+                && inner.state.get() == CardState::Minimized
+            {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+                inner.change_state(CardState::Open, true);
+            }
+        });
+        self.widgets.header.add_controller(click);
+        // Escape stops at the card: the main window's own (leaving the select mode) is the
+        // list's business.
+        let escape = gtk::EventControllerKey::new();
+        escape.connect_key_pressed(|_, key, _, modifiers| {
+            if key == gdk::Key::Escape && modifiers.is_empty() {
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        self.root.add_controller(escape);
 
         let weak = Rc::downgrade(self);
         self.editor.set_handler(move |event| {
@@ -900,17 +1061,9 @@ impl Inner {
             });
         }
         let weak = Rc::downgrade(self);
-        self.widgets.subject.connect_changed(move |subject| {
+        self.widgets.subject.connect_changed(move |_| {
             if let Some(inner) = weak.upgrade() {
-                let text = subject.text();
-                inner.window.set_title(Some(
-                    if text.trim().is_empty() {
-                        inner.widgets.title.label().to_string()
-                    } else {
-                        text.to_string()
-                    }
-                    .as_str(),
-                ));
+                inner.show_title();
                 inner.changed();
             }
         });
@@ -948,27 +1101,138 @@ impl Inner {
             let over_body = inner
                 .editor
                 .view()
-                .compute_bounds(&inner.window)
+                .compute_bounds(&inner.root)
                 .is_some_and(|bounds| {
                     bounds.contains_point(&gtk::graphene::Point::new(x as f32, y as f32))
                 });
             inner.drop_files(paths, over_body);
             true
         });
-        self.window.add_controller(drop);
+        self.root.add_controller(drop);
+    }
 
-        let weak = Rc::downgrade(self);
-        self.window
-            .connect_close_request(move |_| match weak.upgrade() {
-                Some(inner) => inner.close_requested(),
-                None => glib::Propagation::Proceed,
-            });
-        let weak = Rc::downgrade(self);
-        self.window.connect_destroy(move |_| {
-            if let Some(inner) = weak.upgrade() {
-                inner.destroyed();
+    fn window(&self) -> Option<adw::ApplicationWindow> {
+        self.root.root().and_downcast::<adw::ApplicationWindow>()
+    }
+
+    /// The header's title: the request's, or, while the card is minimized to it, the subject
+    /// once there is one (what the window's title said before cards). The card is named so.
+    fn show_title(&self) {
+        let subject = self.widgets.subject.text();
+        let request = self.request_title.borrow().clone();
+        let title = if self.state.get() == CardState::Minimized && !subject.trim().is_empty() {
+            subject.to_string()
+        } else {
+            request.clone()
+        };
+        self.widgets.title.set_label(&title);
+        let name = if subject.trim().is_empty() {
+            request
+        } else {
+            subject.to_string()
+        };
+        self.root
+            .update_property(&[gtk::accessible::Property::Label(&name)]);
+    }
+
+    /// Asks the dock for `state`; `user` when the user asked, so the focus follows.
+    fn change_state(self: &Rc<Self>, state: CardState, user: bool) {
+        if self.ending.get() != Ending::Open {
+            return;
+        }
+        let Some(dock) = self.dock.upgrade() else {
+            return;
+        };
+        dock.set_state(&self.root, state);
+        if user && state != CardState::Minimized {
+            self.take_focus();
+        }
+    }
+
+    /// What the dock put the card in: a minimized card shows its header only.
+    fn apply_state(&self, state: CardState) {
+        self.state.set(state);
+        if state == CardState::Minimized {
+            self.give_back_focus();
+        }
+        let minimized = state == CardState::Minimized;
+        self.widgets.toasts.set_visible(!minimized);
+        for tool in &self.widgets.header_tools {
+            tool.set_visible(!minimized);
+        }
+        let (icons, label): (&[&str], &str) = if minimized {
+            (&["go-up-symbolic"], "Restore")
+        } else {
+            (
+                &["window-minimize-symbolic", "go-down-symbolic"],
+                "Minimize",
+            )
+        };
+        set_icon(&self.widgets.minimize, icons, label);
+        let (icons, label): (&[&str], &str) = if state == CardState::Expanded {
+            (&["view-restore-symbolic"], "Shrink")
+        } else {
+            (&["view-fullscreen-symbolic"], "Expand")
+        };
+        set_icon(&self.widgets.expand, icons, label);
+        for (class, on) in [
+            ("sw-composer-minimized", minimized),
+            ("sw-composer-expanded", state == CardState::Expanded),
+        ] {
+            if on {
+                self.root.add_css_class(class);
+            } else {
+                self.root.remove_css_class(class);
             }
-        });
+        }
+        self.show_title();
+    }
+
+    /// Puts the focus in the card: the To field while it is empty, else the body.
+    fn take_focus(&self) {
+        if self.state.get() == CardState::Minimized {
+            return;
+        }
+        if let Some(window) = self.window() {
+            let focus = gtk::prelude::GtkWindowExt::focus(&window);
+            if focus
+                .as_ref()
+                .is_none_or(|focus| !focus.is_ancestor(&self.root))
+            {
+                self.return_focus
+                    .replace(focus.map(|focus| focus.downgrade()));
+            }
+        }
+        if !self.loaded.get() || self.widgets.to.is_empty() {
+            self.widgets.to.entry().grab_focus();
+        } else {
+            self.editor.view().grab_focus();
+        }
+    }
+
+    /// The focus leaves the card for where it was before it came in, while that is still on
+    /// screen; else the main window finds it a place (the list).
+    fn give_back_focus(&self) {
+        let Some(window) = self.window() else {
+            return;
+        };
+        let inside = gtk::prelude::GtkWindowExt::focus(&window)
+            .is_some_and(|focus| focus.is_ancestor(&self.root));
+        if !inside {
+            return;
+        }
+        let back = self
+            .return_focus
+            .borrow()
+            .as_ref()
+            .and_then(glib::WeakRef::upgrade)
+            .filter(|widget| {
+                !widget.is_ancestor(&self.root) && widget.is_mapped() && widget.is_sensitive()
+            });
+        match back {
+            Some(widget) if widget.grab_focus() => {}
+            _ => gtk::prelude::GtkWindowExt::set_focus(&window, None::<&gtk::Widget>),
+        }
     }
 
     async fn start(self: Rc<Self>, request: ComposeRequest) {
@@ -1021,10 +1285,7 @@ impl Inner {
         } = prepared;
         self.id.set(Some(id));
         self.account.set(draft.account);
-        self.widgets.title.set_label(&title);
-        if draft.subject.trim().is_empty() {
-            self.window.set_title(Some(&title));
-        }
+        self.request_title.replace(title);
         *self.domain.borrow_mut() = id_domain(&draft.from.email);
         let index = senders
             .iter()
@@ -1053,6 +1314,7 @@ impl Inner {
             self.show_cc_bcc(false);
         }
         self.widgets.subject.set_text(&draft.subject);
+        self.show_title();
         let (inline, attached): (Vec<DraftPart>, Vec<DraftPart>) = draft
             .parts
             .iter()
@@ -1183,12 +1445,21 @@ impl Inner {
         let (undo, redo) = self.editor.history();
         self.actions.set_applies(ActionId::ComposerUndo, undo);
         self.actions.set_applies(ActionId::ComposerRedo, redo);
-        if self.widgets.to.is_empty() {
-            self.widgets.to.entry().grab_focus();
-        } else {
+        if !self.widgets.to.is_empty() {
             let _ = self.editor.eval("sealwaxComposer.caretAtStart()").await;
-            self.editor.view().grab_focus();
         }
+        // Unless the user went elsewhere while the draft was prepared.
+        if self.focus_on_ready.get() && self.holds_focus() {
+            self.take_focus();
+        }
+    }
+
+    /// Whether the keyboard focus is in the card, or nowhere in its window.
+    fn holds_focus(&self) -> bool {
+        self.window().is_some_and(|window| {
+            gtk::prelude::GtkWindowExt::focus(&window)
+                .is_none_or(|focus| focus.is_ancestor(&self.root))
+        })
     }
 
     fn show_state(&self, state: &BlockState) {
@@ -1238,21 +1509,6 @@ impl Inner {
             ActionId::DiscardDraft => {
                 let inner = self.clone();
                 glib::spawn_future_local(async move { inner.discard().await });
-                return;
-            }
-            ActionId::Compose => {
-                if let Some(app) = self.app.upgrade() {
-                    super::open(
-                        &app,
-                        ComposeRequest::New {
-                            account: Some(self.account.get()),
-                        },
-                    );
-                }
-                return;
-            }
-            ActionId::CommandPalette => {
-                palette::present(&self.window, &self.keymap.borrow());
                 return;
             }
             ActionId::InsertLink => {
@@ -1495,7 +1751,8 @@ impl Inner {
                     .title("Attach Files")
                     .modal(true)
                     .build();
-                let Ok(files) = dialog.open_multiple_future(Some(&self.window)).await else {
+                let window = self.window();
+                let Ok(files) = dialog.open_multiple_future(window.as_ref()).await else {
                     return;
                 };
                 (0..files.n_items())
@@ -1695,7 +1952,7 @@ impl Inner {
             dialog.set_widget_name("composer-discard-dialog");
             dialog.add_responses(&[("cancel", "Cancel"), ("discard", "Discard")]);
             dialog.set_response_appearance("discard", adw::ResponseAppearance::Destructive);
-            let answer = dialog.choose_future(Some(&self.window)).await;
+            let answer = dialog.choose_future(Some(&self.root)).await;
             if answer != "discard" {
                 return;
             }
@@ -1778,16 +2035,19 @@ impl Inner {
                 editor.view().grab_focus();
             });
         });
-        dialog.present(Some(&self.window));
+        dialog.present(Some(&self.root));
     }
 
     fn paste_text(self: &Rc<Self>) {
-        let focused = gtk::prelude::GtkWindowExt::focus(&self.window);
+        let focused = self
+            .window()
+            .and_then(|window| gtk::prelude::GtkWindowExt::focus(&window))
+            .filter(|widget| widget.is_ancestor(&self.root));
         if let Some(text) = focused.and_then(|widget| widget.downcast::<gtk::Text>().ok()) {
             text.emit_paste_clipboard();
             return;
         }
-        let clipboard = self.window.clipboard();
+        let clipboard = self.root.clipboard();
         let editor = self.editor.clone();
         glib::spawn_future_local(async move {
             if let Ok(Some(text)) = clipboard.read_text_future().await {
@@ -1796,15 +2056,15 @@ impl Inner {
         });
     }
 
-    fn close_requested(self: &Rc<Self>) -> glib::Propagation {
-        if self.ending.get() != Ending::Open {
-            return glib::Propagation::Proceed;
-        }
-        if self.closing.replace(true) {
-            return glib::Propagation::Stop;
+    /// The Close button: the card hides at once and goes once its draft is saved, or
+    /// discarded when nothing was typed into a new one.
+    fn close(self: &Rc<Self>) {
+        if self.ending.get() != Ending::Open || self.closing.replace(true) {
+            return;
         }
         self.cancel_timer();
-        self.window.set_visible(false);
+        self.give_back_focus();
+        self.root.set_visible(false);
         let hold = self.app.upgrade().map(|app| app.hold());
         let inner = self.clone();
         glib::spawn_future_local(async move {
@@ -1827,15 +2087,18 @@ impl Inner {
             inner.finish();
             drop(hold);
         });
-        glib::Propagation::Stop
     }
 
-    /// Lets the window go: its draft was sent, discarded or saved and closed.
+    /// Lets the card go: its draft was sent, discarded or saved and closed.
     fn finish(&self) {
+        self.give_back_focus();
         self.destroyed();
-        self.window.destroy();
+        if let Some(dock) = self.dock.upgrade() {
+            dock.remove(&self.root);
+        }
     }
 
+    /// Lets the card's resources go: when it finishes, or when its window goes first.
     fn destroyed(&self) {
         if self.released.replace(true) {
             return;
@@ -1850,8 +2113,15 @@ impl Inner {
             controller.disconnect(id);
         }
         self.editor.release();
-        super::forget(&self.window);
+        super::forget(&self.root);
     }
+}
+
+/// Puts `icons` on an icon-only `button`, named `label`.
+fn set_icon(button: &gtk::Button, icons: &[&str], label: &str) {
+    button.set_child(Some(&icon(icons)));
+    button.set_tooltip_text(Some(label));
+    button.update_property(&[gtk::accessible::Property::Label(label)]);
 }
 
 fn sender_text(sender: &Sender) -> String {
