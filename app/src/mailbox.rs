@@ -19,7 +19,7 @@ use sealwax_infrastructure::store::{
 };
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::path::Path;
 use std::rc::{Rc, Weak};
@@ -54,13 +54,15 @@ fn sidebar_role(role: StoreRole) -> Option<FolderRole> {
 }
 
 /// Accounts and folders as the sidebar shows them: role folders with their unread counts (drafts
-/// for Drafts), other folders under "More", each account in its colour from `accounts.toml`.
-/// An account the engine hasn't reported on shows as synced.
+/// for Drafts), other folders under "More", each account in its colour from `accounts.toml` and
+/// folded away when the remembered layout says so. An account the engine hasn't reported on
+/// shows as synced.
 pub fn sidebar_model(
     accounts: &[Account],
     folders: &[Folder],
     statuses: &HashMap<AccountId, AccountStatus>,
     colors: &HashMap<AccountKey, AccountColor>,
+    collapsed: &HashSet<AccountKey>,
 ) -> SidebarModel {
     SidebarModel {
         accounts: accounts
@@ -94,6 +96,10 @@ pub fn sidebar_model(
                         .as_ref()
                         .and_then(|key| colors.get(key))
                         .copied(),
+                    collapsed: account
+                        .key
+                        .as_ref()
+                        .is_some_and(|key| collapsed.contains(key)),
                     status: statuses
                         .get(&account.id)
                         .copied()
@@ -231,6 +237,7 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         &folders.value,
         &HashMap::new(),
         &HashMap::new(),
+        &HashSet::new(),
     )
     .default_selection()
     .and_then(|key| scope_for_key(&key, &folders.value));
@@ -279,6 +286,8 @@ pub struct Mailbox {
     statuses: RefCell<HashMap<AccountId, AccountStatus>>,
     /// Each account's colour, as `accounts.toml` last said.
     colors: RefCell<HashMap<AccountKey, AccountColor>>,
+    /// The accounts folded away in the sidebar, as the remembered layout says.
+    collapsed: RefCell<HashSet<AccountKey>>,
     accounts: RefCell<Vec<Account>>,
     folders: RefCell<Vec<Folder>>,
     /// The version the folder list was read at; change events up to it are already in it.
@@ -451,6 +460,7 @@ impl Mailbox {
             &self.folders.borrow(),
             &self.statuses.borrow(),
             &self.colors.borrow(),
+            &self.collapsed.borrow(),
         )
     }
 
@@ -474,6 +484,14 @@ impl Mailbox {
     pub fn set_colors(self: &Rc<Self>, colors: HashMap<AccountKey, AccountColor>) {
         if *self.colors.borrow() != colors {
             self.colors.replace(colors);
+            self.queue_sidebar();
+        }
+    }
+
+    /// Folds the accounts with these keys away in the sidebar, and opens the others.
+    pub fn set_collapsed(self: &Rc<Self>, collapsed: HashSet<AccountKey>) {
+        if *self.collapsed.borrow() != collapsed {
+            self.collapsed.replace(collapsed);
             self.queue_sidebar();
         }
     }
@@ -657,10 +675,18 @@ mod tests {
             (AccountKey("work".into()), AccountColor::Sage),
             (AccountKey("gone".into()), AccountColor::Rose),
         ]);
-        let model = sidebar_model(&accounts, &folders, &HashMap::new(), &colors);
+        let model = sidebar_model(
+            &accounts,
+            &folders,
+            &HashMap::new(),
+            &colors,
+            &HashSet::from([AccountKey("work".into())]),
+        );
         assert_eq!(model.accounts.len(), 2);
         assert_eq!(model.accounts[0].color, None, "a local account has no key");
         assert_eq!(model.accounts[1].color, Some(AccountColor::Sage));
+        assert!(!model.accounts[0].collapsed);
+        assert!(model.accounts[1].collapsed, "folded by its key");
         let personal = &model.accounts[0];
         assert_eq!(personal.key, "account-1");
         assert_eq!(personal.folders.len(), 2);

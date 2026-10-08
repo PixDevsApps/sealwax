@@ -42,6 +42,7 @@ use libadwaita::subclass::prelude::*;
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
+use sealwax_domain::layout::Layout;
 use sealwax_domain::mailto::{self, Mailto};
 use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
 use sealwax_domain::triage::Triage;
@@ -225,6 +226,7 @@ impl SealwaxApplication {
             triage_listening: Cell::new(false),
             reader_listening: Cell::new(false),
             accounts_read: Cell::new(false),
+            layout: RefCell::new(None),
             keyring_missing: Cell::new(false),
             keyring_dismissed: Cell::new(false),
             network: Cell::new(true),
@@ -307,6 +309,8 @@ pub struct AppState {
     reader_listening: Cell<bool>,
     /// `accounts.toml` has been read without mistakes at least once.
     accounts_read: Cell<bool>,
+    /// The window's remembered layout (`layout.toml`), once read.
+    layout: RefCell<Option<Layout>>,
     /// The engine keeps secrets in memory: no Secret Service answered (ML-048).
     keyring_missing: Cell<bool>,
     /// The no-keyring banner was dismissed for this session.
@@ -969,6 +973,7 @@ impl AppState {
     /// for at most `theme::STARTUP_WAIT` (about 9 ms here); the settings are read off the GTK
     /// thread, and the first window waits up to `SETTINGS_WAIT` for them.
     fn start_settings(self: &Rc<Self>, app: &SealwaxApplication) {
+        self.read_layout();
         let prefs = Preferences::start(&self.config.dirs);
         let theme = ThemeController::start(prefs.config().appearance, theme::STARTUP_WAIT);
         let app_actions = actions::install_app_actions(app);
@@ -1873,6 +1878,109 @@ impl AppState {
         }
     }
 
+    /// Reads `layout.toml` off the GTK thread; the first window waits up to `SETTINGS_WAIT`
+    /// for it, so its panes start at the widths they were dragged to.
+    fn read_layout(self: &Rc<Self>) {
+        let path = self.config.dirs.layout_file();
+        let weak = Rc::downgrade(self);
+        let (sender, receiver) = async_channel::bounded(1);
+        glib::spawn_future_local(async move {
+            let layout = gio::spawn_blocking(move || sealwax_infrastructure::layout::read(&path))
+                .await
+                .unwrap_or_default();
+            if let Some(state) = weak.upgrade() {
+                state.apply_layout(layout);
+            }
+            let _ = sender.send(()).await;
+        });
+        self.hold_first_window(async move {
+            if mailbox::with_timeout(receiver.recv(), SETTINGS_WAIT)
+                .await
+                .is_none()
+            {
+                tracing::debug!("the first window stopped waiting for its layout");
+            }
+        });
+    }
+
+    /// The remembered layout on the window and in the sidebar's model.
+    fn apply_layout(&self, layout: Layout) {
+        self.mailbox
+            .set_collapsed(layout.collapsed.iter().cloned().collect());
+        if let Some(window) = self.window() {
+            window.set_pane_widths(
+                layout
+                    .sidebar_width
+                    .map_or(window::SIDEBAR_WIDTH, f64::from),
+                layout.list_width.map_or(window::LIST_WIDTH, f64::from),
+            );
+        }
+        self.layout.replace(Some(layout));
+    }
+
+    /// Changes the remembered layout with `change` and writes it off the GTK thread.
+    fn change_layout(&self, change: impl FnOnce(&mut Layout)) {
+        let mut layout = self.layout.borrow().clone().unwrap_or_default();
+        change(&mut layout);
+        self.mailbox
+            .set_collapsed(layout.collapsed.iter().cloned().collect());
+        self.layout.replace(Some(layout.clone()));
+        let path = self.config.dirs.layout_file();
+        glib::spawn_future_local(async move {
+            let written =
+                gio::spawn_blocking(move || sealwax_infrastructure::layout::write(&path, &layout))
+                    .await;
+            if let Ok(Err(error)) = written {
+                tracing::warn!(%error, "the window's layout can't be saved");
+            }
+        });
+    }
+
+    /// The window's dragged widths and folded accounts go into the remembered layout.
+    fn remember_layout(self: &Rc<Self>, window: &Window) {
+        if let Some(layout) = self.layout.borrow().as_ref() {
+            window.set_pane_widths(
+                layout
+                    .sidebar_width
+                    .map_or(window::SIDEBAR_WIDTH, f64::from),
+                layout.list_width.map_or(window::LIST_WIDTH, f64::from),
+            );
+        }
+        let weak = Rc::downgrade(self);
+        window.connect_pane_widths(move |sidebar, list| {
+            if let Some(state) = weak.upgrade() {
+                state.change_layout(|layout| {
+                    let width = |width: f64, default: f64| {
+                        (width != default).then_some(width.round() as u32)
+                    };
+                    layout.sidebar_width = width(sidebar, window::SIDEBAR_WIDTH);
+                    layout.list_width = width(list, window::LIST_WIDTH);
+                });
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window
+            .sidebar()
+            .connect_collapsed(move |account, collapsed| {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                let key = mailbox::account_for_key(account).and_then(|id| {
+                    state
+                        .mailbox
+                        .accounts()
+                        .into_iter()
+                        .find(|known| known.id == id)
+                        .and_then(|known| known.key)
+                });
+                if let Some(key) = key {
+                    state.change_layout(|layout| {
+                        layout.set_collapsed(&key, collapsed);
+                    });
+                }
+            });
+    }
+
     /// Remove Account and Edit Account are available while there is an account to offer.
     fn update_account_commands(&self) {
         if let Some(actions) = self.win_actions.borrow().as_ref() {
@@ -2254,6 +2362,7 @@ impl AppState {
         // Known to the state before its handlers are installed: they look it up there.
         self.window.replace(Some(window.clone()));
         self.install_window(app, &window);
+        self.remember_layout(&window);
         self.update_banner();
         window
     }

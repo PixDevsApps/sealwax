@@ -236,6 +236,17 @@ window.sw-one-pane .sw-list-pane {
   border-right: none;
 }
 
+/* The drag handles beside the borders (the user's UI tweak, 2026-10-08): unseen until the
+   pointer is on one, then the border beside it doubles in the accent. */
+.sw-pane-handle {
+  min-width: var(--sw-space-md);
+}
+
+.sw-pane-handle:hover,
+.sw-pane-handle.sw-dragging {
+  box-shadow: inset calc(2 * var(--sw-control-border-width)) 0 var(--accent-bg-color);
+}
+
 /* Alone in the window, the list's bar is set off from it, as in the mock's narrow window. */
 window.sw-one-pane .sw-list-pane .sw-pane-bar {
   border-bottom: var(--sw-control-border-width) solid var(--border-color);
@@ -319,7 +330,9 @@ list.sw-folder-list {
 }
 
 .sw-sidebar-heading {
-  padding: var(--sw-space-huge) var(--sw-space-xl) var(--sw-space-md);
+  /* The space above as a margin, so a heading's hover (it folds) is even round its text. */
+  margin-top: calc(var(--sw-space-huge) - var(--sw-space-md));
+  padding: var(--sw-space-md) var(--sw-space-xl);
   font-size: var(--sw-text-caption);
   letter-spacing: 0.08em;
   color: var(--sw-secondary-fg-color);
@@ -327,6 +340,28 @@ list.sw-folder-list {
 
 .sw-sidebar-heading > box {
   border-spacing: var(--sw-space-lg);
+}
+
+/* A heading folds its account's folders away and opens them (the user's UI tweak,
+   2026-10-08): the row's corners and hover as a folder row's, its arrow quiet. */
+row.sw-sidebar-heading {
+  min-height: 0;
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+}
+
+row.sw-sidebar-heading:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+row.sw-sidebar-heading:active {
+  background: var(--sw-pressed-bg-color);
+}
+
+.sw-heading-arrow {
+  -gtk-icon-size: var(--sw-text-small);
+  color: var(--sw-secondary-fg-color);
 }
 
 .sw-account-name {

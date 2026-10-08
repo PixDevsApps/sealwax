@@ -84,6 +84,11 @@ impl SealwaxDirs {
         self.config.join("accounts.toml")
     }
 
+    /// The window's layout between runs (`domain::layout`).
+    pub fn layout_file(&self) -> PathBuf {
+        self.state.join(sealwax_domain::layout::LAYOUT_FILE)
+    }
+
     /// The SQLite store.
     pub fn store_file(&self) -> PathBuf {
         self.data.join("store.sqlite")

@@ -684,12 +684,13 @@ impl Harness {
                 }
             }
             "assert-folder-shown" => {
-                let shown = self
-                    .window()?
-                    .sidebar()
-                    .visible_keys()
-                    .iter()
-                    .any(|key| key == arg(0));
+                // A folder's key, or a store folder as `ACCOUNT:ROLE`.
+                let wanted = if arg(0).contains(':') {
+                    mail::folder_key_for(self, arg(0))?
+                } else {
+                    arg(0).to_owned()
+                };
+                let shown = self.window()?.sidebar().visible_keys().contains(&wanted);
                 equal(
                     &format!("{} in the sidebar", arg(0)),
                     shown,

@@ -174,6 +174,8 @@ pub struct SidebarAccount {
     pub name: String,
     /// Its colour (`accounts.toml`): the heading's name and synced dot, the rail's initial.
     pub color: Option<AccountColor>,
+    /// Its folders are folded away under its heading (the window's remembered layout).
+    pub collapsed: bool,
     pub status: AccountStatus,
     /// Its role folders; shown in [`FolderRole`] order.
     pub folders: Vec<SidebarFolder>,
@@ -341,11 +343,16 @@ pub struct Sidebar {
     mark_read: RefCell<Option<MarkRead>>,
     /// What an account heading's Edit Account does, given the account's key.
     edit_account: RefCell<Option<EditAccount>>,
+    /// The accounts whose folders are folded away, by key.
+    collapsed: RefCell<HashSet<String>>,
+    /// Told when an account is folded away (true) or opened again.
+    collapse_changed: RefCell<Option<CollapseChanged>>,
     weak: RefCell<std::rc::Weak<Sidebar>>,
 }
 
 type MarkRead = (Rc<dyn Fn(&str) -> bool>, Rc<dyn Fn(&str)>);
 type EditAccount = Rc<dyn Fn(&str)>;
+type CollapseChanged = Rc<dyn Fn(&str, bool)>;
 
 impl Sidebar {
     /// `tooltips` names the keys of the buttons that run a registry command.
@@ -463,6 +470,8 @@ impl Sidebar {
             menu: RefCell::new(None),
             mark_read: RefCell::new(None),
             edit_account: RefCell::new(None),
+            collapsed: RefCell::new(HashSet::new()),
+            collapse_changed: RefCell::new(None),
             weak: RefCell::new(std::rc::Weak::new()),
         });
         sidebar.weak.replace(Rc::downgrade(&sidebar));
@@ -521,16 +530,29 @@ impl Sidebar {
         }
     }
 
-    /// Where the keyboard focus enters the folder list: the folder shown, else the first row.
+    /// Where the keyboard focus enters the folder list: the folder shown, else the heading of
+    /// its folded account, else the first row.
     fn entry_row(&self) -> Option<gtk::ListBoxRow> {
         if !self.list.is_mapped() {
             return None;
         }
         let rows = self.rows.borrow();
         let usable = |row: &&Row| row.widget.is_mapped() && row.widget.is_sensitive();
+        let folded = self
+            .model
+            .borrow()
+            .accounts
+            .iter()
+            .find(|account| account.contains(&self.selected.borrow()))
+            .map(|account| RowKind::Header(account.key.clone()));
         rows.iter()
             .filter(usable)
             .find(|row| row.widget.has_css_class("sw-current"))
+            .or_else(|| {
+                rows.iter()
+                    .filter(usable)
+                    .find(|row| Some(&row.kind) == folded.as_ref())
+            })
             .or_else(|| {
                 rows.iter()
                     .filter(usable)
@@ -552,6 +574,14 @@ impl Sidebar {
         self.expanded
             .borrow_mut()
             .retain(|account| model.accounts.iter().any(|a| &a.key == account));
+        self.collapsed.replace(
+            model
+                .accounts
+                .iter()
+                .filter(|account| account.collapsed)
+                .map(|account| account.key.clone())
+                .collect(),
+        );
         self.model.replace(model);
         self.selected.replace(selected.to_owned());
         self.reveal_selected();
@@ -580,6 +610,44 @@ impl Sidebar {
 
     pub fn is_expanded(&self, account: &str) -> bool {
         self.expanded.borrow().contains(account)
+    }
+
+    /// Whether `account`'s folders are folded away under its heading.
+    pub fn is_collapsed(&self, account: &str) -> bool {
+        self.collapsed.borrow().contains(account)
+    }
+
+    /// Folds `account`'s folders away under its heading, or opens them again (a click, Enter
+    /// or Space on the heading; Left folds, Right opens). The folder shown stays shown.
+    pub fn toggle_collapsed(&self, account: &str) {
+        if !self
+            .model
+            .borrow()
+            .accounts
+            .iter()
+            .any(|a| a.key == account)
+        {
+            return;
+        }
+        let collapsed = {
+            let mut set = self.collapsed.borrow_mut();
+            if set.remove(account) {
+                false
+            } else {
+                set.insert(account.to_owned());
+                true
+            }
+        };
+        self.rebuild_list();
+        let handler = self.collapse_changed.borrow().clone();
+        if let Some(handler) = handler {
+            handler(account, collapsed);
+        }
+    }
+
+    /// Runs `handler` with the account's key when it is folded away (true) or opened again.
+    pub fn connect_collapsed(&self, handler: impl Fn(&str, bool) + 'static) {
+        self.collapse_changed.replace(Some(Rc::new(handler)));
     }
 
     /// Gives every folder row a context menu with Mark Folder as Read (ML-052): a right click,
@@ -786,9 +854,39 @@ impl Sidebar {
         row.add_controller(keys);
     }
 
-    /// A right click on an account heading opens its menu. The heading takes no keyboard
-    /// focus; Edit Account is in the palette and the main menu.
-    fn add_account_menu_trigger(&self, row: &gtk::ListBoxRow, key: &str) {
+    /// A right click, Menu or Shift+F10 on an account heading opens its menu; Left folds the
+    /// account's folders away and Right opens them (a click, Enter or Space toggles).
+    fn add_heading_triggers(&self, row: &gtk::ListBoxRow, key: &str) {
+        let keys = gtk::EventControllerKey::new();
+        let weak = self.weak.borrow().clone();
+        let target = key.to_owned();
+        keys.connect_key_pressed(move |controller, key, _, state| {
+            let (Some(sidebar), Some(row)) = (
+                weak.upgrade(),
+                controller.widget().and_downcast::<gtk::ListBoxRow>(),
+            ) else {
+                return glib::Propagation::Proceed;
+            };
+            let menu = key == gtk::gdk::Key::Menu
+                || (key == gtk::gdk::Key::F10
+                    && state.contains(gtk::gdk::ModifierType::SHIFT_MASK));
+            let collapsed = sidebar.is_collapsed(&target);
+            let fold = match key {
+                gtk::gdk::Key::Left | gtk::gdk::Key::KP_Left => !collapsed,
+                gtk::gdk::Key::Right | gtk::gdk::Key::KP_Right => collapsed,
+                _ => false,
+            };
+            if menu {
+                sidebar.show_account_menu(&row, &target);
+                glib::Propagation::Stop
+            } else if fold {
+                sidebar.toggle_collapsed(&target);
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        row.add_controller(keys);
         let click = gtk::GestureClick::builder().button(3).build();
         let weak = self.weak.borrow().clone();
         let target = key.to_owned();
@@ -874,7 +972,8 @@ impl Sidebar {
         let (action, target) = match kind {
             Some(RowKind::Folder(key)) => ("nav.folder", key),
             Some(RowKind::More(account)) => ("nav.more", account),
-            _ => return,
+            Some(RowKind::Header(account)) => ("nav.collapse", account),
+            None => return,
         };
         if let Err(error) = self
             .list
@@ -906,8 +1005,13 @@ impl Sidebar {
                 false,
             ));
         }
+        let collapsed = self.collapsed.borrow();
         for account in &model.accounts {
-            rows.push(header_row(account));
+            let folded = collapsed.contains(&account.key);
+            rows.push(header_row(account, folded));
+            if folded {
+                continue;
+            }
             for folder in account.role_folders() {
                 let (icons, class) = folder.role.map_or((FOLDER_ICONS, "sw-role-other"), |role| {
                     (role.icons(), role.class())
@@ -934,11 +1038,12 @@ impl Sidebar {
         for row in &rows {
             match &row.kind {
                 RowKind::Folder(key) => self.add_menu_triggers(&row.widget, key),
-                RowKind::Header(key) => self.add_account_menu_trigger(&row.widget, key),
+                RowKind::Header(key) => self.add_heading_triggers(&row.widget, key),
                 RowKind::More(_) => {}
             }
             self.list.append(&row.widget);
         }
+        drop(collapsed);
         drop(expanded);
         drop(model);
         if let Some(kind) = focused
@@ -1143,9 +1248,10 @@ fn color_account(widget: &impl IsA<gtk::Widget>, color: Option<AccountColor>) {
     }
 }
 
-/// The account's heading: its status dot, its name (upper-cased by `style.css`) and its
-/// status in words, the dot and the name in the account's colour.
-fn header_row(account: &SidebarAccount) -> Row {
+/// The account's heading: its status dot, its name (upper-cased by `style.css`), its unread
+/// count while its folders are folded away, its status in words and the arrow that folds and
+/// opens it, the dot and the name in the account's colour.
+fn header_row(account: &SidebarAccount, collapsed: bool) -> Row {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     color_account(&content, account.color);
     content.append(&named(
@@ -1164,6 +1270,13 @@ fn header_row(account: &SidebarAccount) -> Row {
         ),
         &format!("account-name:{}", account.key),
     ));
+    let unread = account.unread();
+    if collapsed && unread > 0 {
+        content.append(&named(
+            count_label(unread, true),
+            &format!("heading-count:{}", account.key),
+        ));
+    }
     content.append(&named(
         classed(
             gtk::Label::new(Some(account.status.label())),
@@ -1171,29 +1284,34 @@ fn header_row(account: &SidebarAccount) -> Row {
         ),
         &format!("status-text:{}", account.key),
     ));
+    let arrow = named(
+        classed(gtk::Image::new(), &["sw-heading-arrow"]),
+        &format!("heading-arrow:{}", account.key),
+    );
+    content.append(&arrow);
     let widget = named(
         classed(
             gtk::ListBoxRow::builder()
                 .child(&content)
-                .activatable(false)
                 .selectable(false)
-                .focusable(false)
                 .build(),
             &["sw-sidebar-heading"],
         ),
         &format!("heading:{}", account.key),
     );
-    widget.update_property(&[gtk::accessible::Property::Label(&format!(
-        "{}, {}",
-        account.name,
-        account.status.label()
-    ))]);
-    Row {
+    let mut label = format!("{}, {}", account.name, account.status.label());
+    if collapsed && unread > 0 {
+        label.push_str(&format!(", {unread} unread"));
+    }
+    widget.update_property(&[gtk::accessible::Property::Label(&label)]);
+    let row = Row {
         widget,
         kind: RowKind::Header(account.key.clone()),
         more_of: None,
-        arrow: None,
-    }
+        arrow: Some(arrow),
+    };
+    set_expanded(&row, !collapsed);
+    row
 }
 
 fn more_row(account: &SidebarAccount, open: bool) -> Row {
@@ -1368,6 +1486,7 @@ mod tests {
                     key: "a".to_owned(),
                     name: "Personal".to_owned(),
                     color: None,
+                    collapsed: false,
                     status: AccountStatus::Synced,
                     folders: vec![
                         folder("a/trash", "Papirkurv", Some(FolderRole::Trash), 0),
@@ -1381,6 +1500,7 @@ mod tests {
                     key: "b".to_owned(),
                     name: "Work".to_owned(),
                     color: None,
+                    collapsed: false,
                     status: AccountStatus::Syncing,
                     folders: vec![folder("b/inbox", "INBOX", Some(FolderRole::Inbox), 4)],
                     more: vec![],

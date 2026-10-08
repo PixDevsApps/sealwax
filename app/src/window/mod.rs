@@ -6,12 +6,14 @@
 //! the window.
 //!
 //! The `nav` action group drives the navigation: `nav.folder` (the folder shown, by key),
-//! `nav.pane` (`folders`, `list` or `reader`: the page shown when one pane fits) and `nav.more`
-//! (opens or closes an account's "More" folders).
+//! `nav.pane` (`folders`, `list` or `reader`: the page shown when one pane fits), `nav.more`
+//! (opens or closes an account's "More" folders) and `nav.collapse` (folds an account's folders
+//! away under its heading, or opens them).
 
 pub mod banner;
 pub mod empty;
 pub mod panes;
+pub mod resize;
 pub mod sidebar;
 pub mod tooltips;
 
@@ -24,8 +26,9 @@ use libadwaita::prelude::*;
 use panes::{PaneBar, ReaderColumn, classed, icon_button, menu_button, named, title_block};
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
+use sealwax_domain::layout::{LIST_WIDTHS, SIDEBAR_WIDTHS};
 use sidebar::{Sidebar, compose_button};
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use tooltips::Tooltips;
 
@@ -46,6 +49,8 @@ pub const ADD_ACCOUNT_ACTION: &str = "win.add-account";
 pub const SIDEBAR_WIDTH: f64 = 220.0;
 pub const RAIL_WIDTH: f64 = 56.0;
 pub const LIST_WIDTH: f64 = 380.0;
+/// The least room a dragged border leaves the reader, in px; more when its toolbar needs it.
+pub const READER_MIN_WIDTH: f64 = 360.0;
 /// Narrower windows show the rail instead of the sidebar…
 pub const WIDE_WIDTH: f64 = 1280.0;
 /// …and narrower still, one pane at a time.
@@ -103,6 +108,7 @@ pub fn tiling_desktop() -> bool {
 }
 
 type FolderHandler = Box<dyn Fn(&Window, &str)>;
+type WidthsHandler = Rc<dyn Fn(f64, f64)>;
 
 #[derive(Clone)]
 pub struct Window {
@@ -145,6 +151,16 @@ struct Inner {
     /// Widgets the self-test finds by name.
     named: Vec<gtk::Widget>,
     folder_handlers: RefCell<Vec<FolderHandler>>,
+    /// The widths the sidebar and the message list were dragged to (DESIGN.md "Layout").
+    sidebar_width: Cell<f64>,
+    list_width: Cell<f64>,
+    /// The rail shows: the folders pane is the rail's width, whatever was dragged.
+    rail_on: Cell<bool>,
+    /// The drag handles on the left edges of the mail area and the reader.
+    sidebar_handle: gtk::Box,
+    list_handle: gtk::Box,
+    /// Told the widths when a drag ends or a double click resets one.
+    widths_changed: RefCell<Option<WidthsHandler>>,
 }
 
 impl Window {
@@ -226,6 +242,9 @@ impl Window {
             "reader-pane",
         );
         reader_pane.add_top_bar(&reader_bar.root);
+        let list_handle = resize::handle("list-handle");
+        let reader_area = gtk::Overlay::builder().child(&reader_pane).build();
+        reader_area.add_overlay(&list_handle);
 
         let welcome_bar = PaneBar::new(
             tiling,
@@ -259,7 +278,7 @@ impl Window {
 
         let mail = adw::NavigationSplitView::builder()
             .sidebar(&page("Messages", "list", &list_pane))
-            .content(&page("Message", "reader", &reader_pane))
+            .content(&page("Message", "reader", &reader_area))
             .sidebar_width_unit(adw::LengthUnit::Px)
             .min_sidebar_width(LIST_WIDTH)
             .max_sidebar_width(LIST_WIDTH)
@@ -268,9 +287,12 @@ impl Window {
         content.add_named(&welcome, Some("welcome"));
         content.add_named(&mail, Some("mail"));
         content.set_visible_child_name("welcome");
+        let sidebar_handle = resize::handle("sidebar-handle");
+        let mail_area = gtk::Overlay::builder().child(&content).build();
+        mail_area.add_overlay(&sidebar_handle);
         let panes = adw::NavigationSplitView::builder()
             .sidebar(&page("Folders", "folders", &sidebar.root))
-            .content(&page("Mail", "mail", &content))
+            .content(&page("Mail", "mail", &mail_area))
             .sidebar_width_unit(adw::LengthUnit::Px)
             .min_sidebar_width(SIDEBAR_WIDTH)
             .max_sidebar_width(SIDEBAR_WIDTH)
@@ -296,9 +318,10 @@ impl Window {
 
         let shown = true.to_value();
         let hidden = false.to_value();
+        // The rail's width is set as it applies (`connect_actions`): a setter would put back
+        // the width from before the rail, not the one dragged since.
         let rail = breakpoint(WIDE_WIDTH);
-        rail.add_setter(&panes, "min-sidebar-width", Some(&RAIL_WIDTH.to_value()));
-        rail.add_setter(&panes, "max-sidebar-width", Some(&RAIL_WIDTH.to_value()));
+        rail.add_setter(&sidebar_handle, "visible", Some(&hidden));
         rail.add_setter(
             &sidebar.stack,
             "visible-child-name",
@@ -312,6 +335,8 @@ impl Window {
         narrow.add_setter(&panes, "collapsed", Some(&shown));
         narrow.add_setter(&mail, "collapsed", Some(&shown));
         narrow.add_setter(&list_compose, "visible", Some(&shown));
+        narrow.add_setter(&sidebar_handle, "visible", Some(&hidden));
+        narrow.add_setter(&list_handle, "visible", Some(&hidden));
         for bar in [&sidebar.bar, &list_bar, &reader_bar, &welcome_bar] {
             bar.narrow_setters(&narrow);
         }
@@ -340,10 +365,12 @@ impl Window {
             &Pane::List.name().to_variant(),
         );
         let more = gio::SimpleAction::new("more", Some(glib::VariantTy::STRING));
+        let collapse = gio::SimpleAction::new("collapse", Some(glib::VariantTy::STRING));
         let group = gio::SimpleActionGroup::new();
         group.add_action(&folder);
         group.add_action(&pane);
         group.add_action(&more);
+        group.add_action(&collapse);
         window.insert_action_group("nav", Some(&group));
 
         let named = [
@@ -399,14 +426,20 @@ impl Window {
                 tooltips,
                 named,
                 folder_handlers: RefCell::new(Vec::new()),
+                sidebar_width: Cell::new(SIDEBAR_WIDTH),
+                list_width: Cell::new(LIST_WIDTH),
+                rail_on: Cell::new(false),
+                sidebar_handle,
+                list_handle,
+                widths_changed: RefCell::new(None),
             }),
         };
-        this.connect_actions(&more);
+        this.connect_actions(&more, &collapse);
         this.update_heading();
         this
     }
 
-    fn connect_actions(&self, more: &gio::SimpleAction) {
+    fn connect_actions(&self, more: &gio::SimpleAction, collapse: &gio::SimpleAction) {
         let inner = &self.inner;
         inner.folder.connect_activate(glib::clone!(
             #[weak(rename_to = inner)]
@@ -439,6 +472,15 @@ impl Window {
                 }
             }
         ));
+        collapse.connect_activate(glib::clone!(
+            #[weak(rename_to = inner)]
+            self.inner,
+            move |_, parameter| {
+                if let Some(account) = parameter.and_then(|parameter| parameter.str()) {
+                    inner.sidebar.toggle_collapsed(account);
+                }
+            }
+        ));
         for split in [&inner.panes, &inner.mail] {
             split.connect_show_content_notify(glib::clone!(
                 #[weak(rename_to = inner)]
@@ -446,6 +488,29 @@ impl Window {
                 move |_| Window { inner }.sync_pane()
             ));
         }
+        inner.rail.connect_apply(glib::clone!(
+            #[weak(rename_to = inner)]
+            self.inner,
+            move |_| {
+                inner.rail_on.set(true);
+                Window { inner }.apply_widths();
+            }
+        ));
+        inner.rail.connect_unapply(glib::clone!(
+            #[weak(rename_to = inner)]
+            self.inner,
+            move |_| {
+                inner.rail_on.set(false);
+                Window { inner }.apply_widths();
+            }
+        ));
+        resize::connect(
+            &inner.panes,
+            vec![
+                (inner.sidebar_handle.clone(), self.handle_moves(true)),
+                (inner.list_handle.clone(), self.handle_moves(false)),
+            ],
+        );
         inner.window.connect_current_breakpoint_notify(glib::clone!(
             #[weak(rename_to = inner)]
             self.inner,
@@ -455,6 +520,123 @@ impl Window {
 
     pub fn window(&self) -> &adw::ApplicationWindow {
         &self.inner.window
+    }
+
+    /// The sidebar's and the message list's widths, as dragged (the defaults until then).
+    pub fn pane_widths(&self) -> (f64, f64) {
+        (self.inner.sidebar_width.get(), self.inner.list_width.get())
+    }
+
+    /// Sets the sidebar's and the message list's widths, each held to its range (as a
+    /// remembered layout does at start).
+    pub fn set_pane_widths(&self, sidebar: f64, list: f64) {
+        let inner = &self.inner;
+        inner.sidebar_width.set(clamp_to(sidebar, &SIDEBAR_WIDTHS));
+        inner.list_width.set(clamp_to(list, &LIST_WIDTHS));
+        self.apply_widths();
+    }
+
+    /// Runs `handler` with the widths when a drag ends or a double click resets one.
+    pub fn connect_pane_widths(&self, handler: impl Fn(f64, f64) + 'static) {
+        self.inner.widths_changed.replace(Some(Rc::new(handler)));
+    }
+
+    /// The widths on the split views: the folders pane is the rail's while the rail shows.
+    fn apply_widths(&self) {
+        let inner = &self.inner;
+        let folders = if inner.rail_on.get() {
+            RAIL_WIDTH
+        } else {
+            inner.sidebar_width.get()
+        };
+        inner.panes.set_min_sidebar_width(folders);
+        inner.panes.set_max_sidebar_width(folders);
+        inner.mail.set_min_sidebar_width(inner.list_width.get());
+        inner.mail.set_max_sidebar_width(inner.list_width.get());
+    }
+
+    /// What the handle of the sidebar's border (`sidebar`) or the message list's does: drags
+    /// it within its range, short of leaving the reader less than [`READER_MIN_WIDTH`] or its
+    /// own minimum.
+    fn handle_moves(&self, sidebar: bool) -> resize::Moves {
+        let inner = &self.inner;
+        let width = move |inner: &Inner| {
+            if sidebar {
+                inner.sidebar_width.get()
+            } else {
+                inner.list_width.get()
+            }
+        };
+        let weak = Rc::downgrade(inner);
+        let start = move || weak.upgrade().map_or(0.0, |inner| width(&inner));
+        let weak = Rc::downgrade(inner);
+        let drag = move |wanted: f64| {
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            let window = f64::from(inner.window.width());
+            let (range, others) = if sidebar {
+                (&SIDEBAR_WIDTHS, inner.list_width.get())
+            } else {
+                let folders = if inner.rail_on.get() {
+                    RAIL_WIDTH
+                } else {
+                    inner.sidebar_width.get()
+                };
+                (&LIST_WIDTHS, folders)
+            };
+            let (reader, ..) = inner.reader_pane.measure(gtk::Orientation::Horizontal, -1);
+            let room = window - others - READER_MIN_WIDTH.max(f64::from(reader));
+            // No narrower than the pane's content allows (the list's chips), so the width kept
+            // is the width shown.
+            let pane: &gtk::Widget = if sidebar {
+                inner.sidebar.root.upcast_ref()
+            } else {
+                inner.list_pane.upcast_ref()
+            };
+            let (minimum, ..) = pane.measure(gtk::Orientation::Horizontal, -1);
+            let width = clamp_to(wanted.min(room), range).max(f64::from(minimum));
+            if sidebar {
+                inner.sidebar_width.set(width);
+            } else {
+                inner.list_width.set(width);
+            }
+            Window { inner }.apply_widths();
+        };
+        let weak = Rc::downgrade(inner);
+        let done = move || {
+            if let Some(inner) = weak.upgrade() {
+                Window { inner }.widths_changed();
+            }
+        };
+        let weak = Rc::downgrade(inner);
+        let reset = move || {
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            if sidebar {
+                inner.sidebar_width.set(SIDEBAR_WIDTH);
+            } else {
+                inner.list_width.set(LIST_WIDTH);
+            }
+            let window = Window { inner };
+            window.apply_widths();
+            window.widths_changed();
+        };
+        resize::Moves {
+            start: Box::new(start),
+            drag: Box::new(drag),
+            done: Box::new(done),
+            reset: Box::new(reset),
+        }
+    }
+
+    fn widths_changed(&self) {
+        let handler = self.inner.widths_changed.borrow().clone();
+        if let Some(handler) = handler {
+            let (sidebar, list) = self.pane_widths();
+            handler(sidebar, list);
+        }
     }
 
     pub fn present(&self) {
@@ -707,6 +889,13 @@ impl Window {
             .cloned()
             .or_else(|| find_named(self.inner.window.upcast_ref(), name))
     }
+}
+
+/// `width` held to `range`, in px.
+fn clamp_to(width: f64, range: &std::ops::RangeInclusive<u32>) -> f64 {
+    width
+        .round()
+        .clamp(f64::from(*range.start()), f64::from(*range.end()))
 }
 
 fn page(title: &str, tag: &str, child: &impl IsA<gtk::Widget>) -> adw::NavigationPage {

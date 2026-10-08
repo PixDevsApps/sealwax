@@ -1,0 +1,115 @@
+# The window's layout (the UI tweaks of 2026-10-08): an account's folders fold away under its
+# heading and open again (a click, Enter, Left and Right), the folded heading counting the
+# account's unread mail; the borders beside the sidebar and the message list drag, within their
+# ranges and short of squeezing the reader, a double click putting the default back; the widths
+# and the folded accounts are written to layout.toml and come back with a new window; the
+# reader's column fills the pane up to 1,200 px. Every name and message is fictional.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/window-layout.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+triage-account Work work
+triage-account Club club
+mail-add Work:inbox 10m "Kvartalsrapport" "from=Ingrid Solberg"
+mail-add Work:inbox 20m "Styremøte torsdag" "from=Marius Dahl"
+mail-add Club:inbox 30m "Dugnad lørdag" "from=Leah Kim"
+folder inbox Work
+wait-until assert-sidebar-count Work:inbox 2
+assert-folder-shown Work:inbox true
+assert-shown heading-count:account-1 false
+assert-accessible-state heading:account-1 expanded true
+
+# A click on the heading folds the account's folders away; the folder shown stays shown, and
+# the heading counts the account's unread mail.
+click heading:account-1
+assert-folder-shown Work:inbox false
+assert-folder-shown Work:sent false
+assert-folder-shown Club:inbox true
+assert-accessible-state heading:account-1 expanded false
+assert-label heading-count:account-1 2
+assert-label list-title Inbox
+wait-until assert-file-contains $TMP/state/sealwax/layout.toml "collapsed = [\"work\"]"
+screenshot $DIR/../../.local/selftest/window-layout-folded.png
+
+# From the keyboard: Right opens it, Left folds it, Enter toggles; the heading keeps the focus.
+focus heading:account-1
+key Right
+assert-folder-shown Work:inbox true
+assert-focus-stop heading:account-1
+key Left
+assert-folder-shown Work:inbox false
+key Return
+assert-folder-shown Work:inbox true
+key Return
+assert-folder-shown Work:inbox false
+assert-accessible window
+
+# Dragging the borders: the sidebar and the list widen and narrow within their ranges.
+assert-width sidebar 220
+assert-width list 380
+drag sidebar-handle 60
+assert-width sidebar 280
+drag list-handle 100
+assert-width list 480
+drag sidebar-handle -200
+assert-width sidebar 160
+drag sidebar-handle 400
+assert-width sidebar 360
+wait-until assert-file-contains $TMP/state/sealwax/layout.toml "sidebar_width = 360\nlist_width = 480\n"
+screenshot $DIR/../../.local/selftest/window-layout-dragged.png
+
+# The reader keeps at least 360 px: at 1280 px the list can't take the rest.
+resize 1280 900
+drag list-handle 300
+assert-shown reader true
+assert-max-width list 560
+# A double click puts the default back, and the file forgets the widths.
+double-click sidebar-handle
+assert-width sidebar 220
+double-click list-handle
+assert-width list 380
+wait-until assert-file-lacks $TMP/state/sealwax/layout.toml "_width"
+assert-file-contains $TMP/state/sealwax/layout.toml "collapsed = [\"work\"]"
+
+# The rail keeps its own width and no sidebar handle; the list's still drags.
+drag sidebar-handle 40
+drag list-handle 40
+resize 1100 900
+assert-layout rail
+assert-width sidebar 56
+assert-shown sidebar-handle false
+assert-shown list-handle true
+resize 1440 900
+assert-layout wide
+assert-width sidebar 260
+assert-width list 420
+resize 800 900
+assert-layout narrow
+assert-shown list-handle false
+resize 1440 900
+
+# A new window (background mode) comes back as it was left.
+close-window
+wait-until assert-window false
+bus-activate
+wait-until assert-window true
+resize 1440 900
+wait-until assert-width sidebar 260
+assert-width list 420
+assert-folder-shown Work:inbox false
+assert-folder-shown Club:inbox true
+
+# The reader's column fills its pane within its margins, up to 1,200 px.
+mail-add Club:inbox 40m "Referat" "from=Anna Berg" "text=Referat fra styremøtet."
+folder inbox Club
+focus list
+list-select 0
+wait-until assert-reader-page message
+assert-width sidebar 260
+assert-width list 420
+assert-width reader 760
+assert-width reader-column 712
+resize 2560 900
+assert-width reader-column 1200
+assert-centred reader-column

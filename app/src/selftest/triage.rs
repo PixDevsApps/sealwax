@@ -11,6 +11,8 @@
 //! | `check-row POS` | Ticks or unticks a row's checkbox, as a click on it does |
 //! | `hover-row POS` | Moves the pointer over a row |
 //! | `hover NAME` | Moves the pointer to the middle of the widget named NAME (a scrollbar shows itself) |
+//! | `double-click NAME` | Two primary clicks in the middle of the widget named NAME |
+//! | `drag NAME DX` | Presses the primary button in the middle of the widget named NAME, moves the pointer DX px across (left when negative) and releases it |
 //! | `click-quick POS archive\|delete\|star` | Hovers a row and clicks its quick action |
 //! | `triage-account NAME KEY` | An account with a key, as `accounts.toml` lists one, and its six role folders (OpsQueued goes to it) |
 //! | `triage-mark-read-on-open true\|false` | Switches marking a message read when the reader shows it |
@@ -56,6 +58,8 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("check-row", 1, 1),
     ("hover-row", 1, 1),
     ("hover", 1, 1),
+    ("drag", 2, 2),
+    ("double-click", 1, 1),
     ("click-quick", 2, 2),
     ("click", 1, 2),
     ("triage-account", 2, 2),
@@ -143,6 +147,25 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             broadway::hover(x, y).map_err(|error| error.to_string())?;
             glib::timeout_future(Duration::from_millis(300)).await;
             harness.wait_until_settled().await;
+            Ok(())
+        }
+        "double-click" => {
+            let widget = harness.widget(arg(0))?;
+            let (x, y) = centre(harness, &widget)?;
+            broadway::double_click(x, y).map_err(|error| error.to_string())?;
+            glib::timeout_future(Duration::from_millis(100)).await;
+            harness.wait_until_settled().await;
+            Ok(())
+        }
+        "drag" => {
+            let widget = harness.widget(arg(0))?;
+            let distance: f64 = arg(1)
+                .parse()
+                .map_err(|_| format!("expected a distance in px, got {}", arg(1)))?;
+            let (x, y) = centre(harness, &widget)?;
+            let watch = releases(harness);
+            broadway::drag((x, y), (x + distance, y), 8).map_err(|error| error.to_string())?;
+            delivered(harness, watch, 1).await;
             Ok(())
         }
         "click-quick" => {

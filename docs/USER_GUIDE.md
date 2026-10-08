@@ -114,7 +114,7 @@ What a POP3 account does:
 
 Three panes, left to right:
 
-- **The sidebar:** **New message** at the top; **All Inboxes**; each account with its Inbox, Drafts, Sent, Archive, Junk and Trash and their unread counts, its other folders under **More folders**; at the bottom a summary of the accounts and a button that opens `config.toml`.
+- **The sidebar:** **New message** at the top; **All Inboxes**; each account with its Inbox, Drafts, Sent, Archive, Junk and Trash and their unread counts, its other folders under **More folders**; at the bottom a summary of the accounts and a button that opens `config.toml`. Click an account's heading (or press Enter, Space, Left or Right on it) to fold its folders away under it; folded, the heading shows the account's unread count. Sealwax remembers which accounts are folded.
 - **The message list:** the search field, the filter chips **All**, **Unread**, **Starred** and **Attachments**, then the messages in sections: Today, Yesterday, This week, This month, Older. A row shows the sender, the time, the subject, a two-line preview, and marks for unread, starred, attachments and the size of the conversation. The **main menu** button is at the end of the list's bar.
 - **The reader:** the selected message's conversation ([Reading mail](#reading-mail)).
 
@@ -125,6 +125,8 @@ The layout follows the window's width, so it works tiled:
 | 1280 px or more | Sidebar, list and reader |
 | 900–1279 px | A narrow rail of icons and counts instead of the sidebar |
 | Under 900 px | One pane at a time, with a back button |
+
+**Drag the borders** between the sidebar and the list, and between the list and the reader, to make a pane wider or narrower; double-click a border to put its default width back. The sidebar takes 160 to 360 px and the list 280 to 640 px, and the reader always keeps room for its toolbar. Sealwax remembers the widths. The message in the reader fills the reader's width up to 1,200 px.
 
 On Hyprland the window has no title bar; on other desktops the window controls sit at the ends of the pane bars.
 
@@ -518,7 +520,7 @@ Sealwax writes a plain-text log of what it does, never with message content, add
 | --- | --- |
 | Settings (`config.toml`, `keys.toml`, `accounts.toml`) | `~/.config/sealwax/` |
 | Your mail: the store (`store.sqlite`) and message files (`blobs/`) | `~/.local/share/sealwax/` |
-| Small state (the background notice, unfinished account changes) | `~/.local/state/sealwax/` |
+| Small state (the window's layout in `layout.toml`, the background notice, unfinished account changes) | `~/.local/state/sealwax/` |
 | Cache (the reader's content filters, which Sealwax makes again) | `~/.cache/sealwax/` |
 | Attachments you opened (emptied at the next start and at logout) | `$XDG_RUNTIME_DIR/io.github.pixdevsapps.Sealwax/attachments/` |
 | Passwords and sign-in tokens | Your keyring, as items with `application` = `io.github.pixdevsapps.Sealwax` |

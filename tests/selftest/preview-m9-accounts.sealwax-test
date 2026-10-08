@@ -105,3 +105,23 @@ screenshot $DIR/../../tools/progress/public/m9-accounts-edited-catppuccin-latte-
 theme matte-black
 corners 0
 screenshot $DIR/../../tools/progress/public/m9-accounts-edited-matte-black-square-2026-10-08.png
+
+# The layout tweaks: Home folded under its heading (its unread counted there), the borders
+# dragged, and the reader's column filling a wide pane, at 1920 px.
+mail-add Work:inbox 10m "Melding fra Nordnet Kundeservice" html "from=Nordnet" "text=Hei, du har fått en melding fra oss. Du kan lese meldingen ved å logge inn. Hilsen, Nordnet."
+mail-add Home:inbox 20m "Dugnad lørdag" "from=Leah Kim"
+resize 1920 1000
+click heading:account-2
+drag sidebar-handle 30
+drag list-handle 40
+folder inbox Work
+focus list
+list-select 0
+wait-until assert-reader-page message
+hover list-title
+sleep 1500
+setup-dismiss-toasts
+screenshot $DIR/../../tools/progress/public/m9-layout-matte-black-square-2026-10-08.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m9-layout-catppuccin-latte-rounded-2026-10-08.png

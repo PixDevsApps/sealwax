@@ -15,6 +15,7 @@ pub mod fuzz;
 pub mod html_depth;
 pub mod html_scan;
 pub mod keymap;
+pub mod layout;
 pub mod links;
 pub mod mailto;
 pub mod message;

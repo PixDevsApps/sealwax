@@ -6,8 +6,9 @@ use gtk4::gio;
 use gtk4::prelude::*;
 use libadwaita as adw;
 
-/// The reader's text column on wide windows (DESIGN.md: about 760 px of body text).
-pub const READER_COLUMN: i32 = 760;
+/// The reader's column at its widest: it fills the reader pane up to this (the user's UI
+/// tweak, 2026-10-08; 760 px before).
+pub const READER_COLUMN: i32 = 1200;
 
 /// An icon-only button. `label` is its tooltip and its accessible label; `icons` are tried in
 /// order, so a name the icon theme lacks falls back to the next.

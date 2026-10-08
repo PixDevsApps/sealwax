@@ -52,6 +52,7 @@ fn account(
         key: key.to_owned(),
         name: name.to_owned(),
         color: None,
+        collapsed: false,
         status,
         folders: roles
             .into_iter()

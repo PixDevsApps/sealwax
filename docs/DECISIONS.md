@@ -615,6 +615,10 @@ The user's UI tweak (2026-10-08): two accounts with the same sender name had the
 
 The user asked for renaming and recolouring an existing account in the app (2026-10-08, "Add the in-app rename and recolour for existing accounts"). Edit Account sends `Command::EditAccount` (key, label, colour); the engine runs it on its account lane with Add and Remove, so writes never race, and answers `Event::AccountEdited`. It sets the entry's `label` and `color` lines with `toml_edit` (`accounts_file::relabel`): a line already there is replaced in place with its comment, a new one goes after `address`, `None` takes it out, and the rest of the file stays byte for byte; a file with mistakes is refused, and the result must read back as the same accounts with only that entry's label and colour changed. The assistant now writes both after `address` too. The store's name follows with the `Accounts` the app sends once it has read the file.
 
+### ADR-009 amendment — the window's layout in layout.toml (2026-10-08)
+
+The user's UI tweaks (2026-10-08) let the sidebar's and the message list's borders drag and an account's folders fold away. Sealwax remembers both in `$XDG_STATE_HOME/sealwax/layout.toml` (`sidebar_width`, `list_width`, `collapsed` as account keys): state, not a setting, so it isn't among the settings files, it is read leniently (anything unknown, or a width out of range, means the default) and nothing in it is ever logged. It is written atomically (0600) by the `accounts.toml` writer as the user drags or folds, off the GTK thread, and read before the first window shows (waiting at most 150 ms). A width equal to the default isn't written. Deleting the file puts the defaults back.
+
 ## ADR-010 — Name and app-id (2026-10-04)
 
 **Status:** Open. The user decides during M0; it must be accepted before M0 closes, because the data paths, the D-Bus name, the keyring schema and the OAuth consent screen depend on it.
@@ -1035,6 +1039,10 @@ M9's accessibility pass ([report](m9/accessibility.md#proposals-for-the-users-ga
 ### ADR-017 amendment — Edit Account has no default key (2026-10-08)
 
 Edit Account (the user's UI tweak, 2026-10-08) is in the palette and the main menu with no default key, as Add Account and Remove Account; `keys.toml` can bind one. Its colour swatches' Left, Right, Up, Down, Home, End, Space and Enter are the radio group's own, as the setup assistant's are.
+
+### ADR-017 amendment — the folder list's heading keys, proposed (2026-10-08)
+
+Built with the UI tweaks of 2026-10-08, for the user's decision: account headings are rows of the folder list, reached with Up and Down; on one, Enter or Space folds or opens the account, Left folds and Right opens it (the tree convention), and Menu or Shift+F10 opens its menu (Edit Account), as on folder rows. No registry command or key was added; dragging the borders has no keyboard way.
 
 ## ADR-018 — Logging and privacy (2026-10-04)
 

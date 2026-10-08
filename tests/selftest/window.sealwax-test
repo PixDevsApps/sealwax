@@ -29,7 +29,8 @@ assert-shown reader-empty true
 list sample
 screenshot $DIR/../../.local/selftest/window-1440-no-message.png
 
-# ≥ 1280 px: sidebar (220) · list (380) · reader, its text column centred and at most 760 px.
+# ≥ 1280 px: sidebar (220) · list (380) · reader, its column filling the pane within its margins
+# (24 px each side), centred and at most 1,200 px.
 reader sample
 assert-width sidebar 220
 assert-width list 380
@@ -37,8 +38,8 @@ assert-width reader 840
 assert-shown rail false
 assert-shown folder-list true
 assert-shown reader-column true
-assert-max-width reader-column 760
-assert-width reader-column 760
+assert-max-width reader-column 1200
+assert-width reader-column 792
 assert-centred reader-column
 assert-labelled
 screenshot $DIR/../../.local/selftest/window-1440.png

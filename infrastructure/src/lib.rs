@@ -4,6 +4,7 @@
 pub mod accounts;
 pub mod blobs;
 pub mod ingest;
+pub mod layout;
 pub mod logging;
 pub mod omarchy;
 pub mod settings_files;

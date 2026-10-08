@@ -155,9 +155,59 @@ pub fn click(x: f64, y: f64, state: u32, button: u32) -> io::Result<()> {
     Ok(())
 }
 
+/// Two primary clicks at `(x, y)` close together: a double click.
+pub fn double_click(x: f64, y: f64) -> io::Result<()> {
+    let shared = shared()?;
+    let at = shared.move_to(x, y, 0)?;
+    for _ in 0..2 {
+        for (event, state) in [(EVENT_BUTTON_PRESS, BUTTON1), (EVENT_BUTTON_RELEASE, 0)] {
+            let mut words = vec![event];
+            words.extend(at);
+            words.extend([i64::from(state), 1]);
+            shared.send(&words)?;
+        }
+    }
+    shared.skew.fetch_add(1_000, Ordering::Relaxed);
+    Ok(())
+}
+
 /// Moves the pointer to `(x, y)` on Broadway's screen, as hovering does.
 pub fn hover(x: f64, y: f64) -> io::Result<()> {
     shared()?.move_to(x, y, 0).map(|_| ())
+}
+
+/// Presses the primary button at `from`, moves the pointer to `to` in `steps` even steps with
+/// the button held, and releases it there: a drag. While the button is held the events stay on
+/// the surface that took the press, as a compositor keeps them, even over a tooltip that shows
+/// meanwhile.
+pub fn drag(from: (f64, f64), to: (f64, f64), steps: u32) -> io::Result<()> {
+    let shared = shared()?;
+    let at = shared.move_to(from.0, from.1, 0)?;
+    let mut press = vec![EVENT_BUTTON_PRESS];
+    press.extend(at);
+    press.extend([i64::from(BUTTON1), 1]);
+    shared.send(&press)?;
+    let (id, left, top) = (at[0], at[2] - at[4], at[3] - at[5]);
+    let steps = steps.max(1);
+    let mut last = at;
+    for step in 1..=steps {
+        let share = f64::from(step) / f64::from(steps);
+        let (x, y) = (
+            (from.0 + (to.0 - from.0) * share).round() as i64,
+            (from.1 + (to.1 - from.1) * share).round() as i64,
+        );
+        last = [id, id, x, y, x - left, y - top];
+        let mut moved = vec![EVENT_POINTER_MOVE];
+        moved.extend(last);
+        moved.push(i64::from(BUTTON1));
+        shared.send(&moved)?;
+    }
+    let mut release = vec![EVENT_BUTTON_RELEASE];
+    release.extend(last);
+    release.extend([0, 1]);
+    shared.send(&release)?;
+    shared.skew.fetch_add(1_000, Ordering::Relaxed);
+    Ok(())
 }
 
 fn shared() -> io::Result<&'static Arc<Shared>> {

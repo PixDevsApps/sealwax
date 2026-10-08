@@ -86,6 +86,7 @@ pub fn window(app: &adw::Application, reader: &Reader, size: (i32, i32)) -> Wind
             key: "personal".into(),
             name: "Personal".into(),
             color: None,
+            collapsed: false,
             status: AccountStatus::Synced,
             folders: vec![SidebarFolder {
                 key: "personal/inbox".into(),
