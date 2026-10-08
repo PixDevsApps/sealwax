@@ -234,6 +234,8 @@ impl Running {
         let settings = AccountSettings {
             key: AccountKey(String::new()),
             name: "POP3 testbed".into(),
+            label: None,
+            color: None,
             address: format!("{USER}@example.test"),
             incoming: Endpoint {
                 host: "127.0.0.1".into(),

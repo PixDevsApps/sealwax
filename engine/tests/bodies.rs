@@ -246,6 +246,8 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
     let settings = AccountSettings {
         key: AccountKey(String::new()),
         name: "Bodies".into(),
+        label: None,
+        color: None,
         address: "bodies@example.test".into(),
         incoming: endpoint.clone(),
         receive: sealwax_domain::account::Receive::Imap,

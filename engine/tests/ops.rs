@@ -143,6 +143,8 @@ impl Running {
         let settings = AccountSettings {
             key: AccountKey(String::new()),
             name: "ops".into(),
+            label: None,
+            color: None,
             address: "ops@example.test".into(),
             incoming: fake.endpoint(),
             receive: sealwax_domain::account::Receive::Imap,

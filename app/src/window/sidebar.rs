@@ -9,7 +9,7 @@
 //! activates `nav.folder` with the folder's key; the window answers with
 //! [`Sidebar::set_selected`]. For the self-test, rows are named `folder:<key>` (their counts
 //! `count:<key>`), account headings `heading:<account>` (their dots `status:<account>`, their
-//! words `status-text:<account>`), rail buttons `rail:<key>` (their badges `badge:<key>`) and
+//! names `account-name:<account>`, their words `status-text:<account>`), rail buttons `rail:<key>` (their badges `badge:<key>`) and
 //! `rail-account:<account>` (their dots `rail-status:<account>`), and the `config.toml` buttons
 //! `config` and `rail-config`.
 
@@ -20,6 +20,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use sealwax_domain::account::AccountColor;
 use sealwax_domain::actions::ActionId;
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -171,6 +172,8 @@ impl SidebarFolder {
 pub struct SidebarAccount {
     pub key: String,
     pub name: String,
+    /// Its colour (`accounts.toml`): the heading's name and synced dot, the rail's initial.
+    pub color: Option<AccountColor>,
     pub status: AccountStatus,
     /// Its role folders; shown in [`FolderRole`] order.
     pub folders: Vec<SidebarFolder>,
@@ -1049,22 +1052,34 @@ fn status_dot(status: AccountStatus) -> gtk::Box {
     dot
 }
 
+/// Marks `widget` with the account's colour, which `style.css` gives the parts inside it.
+fn color_account(widget: &impl IsA<gtk::Widget>, color: Option<AccountColor>) {
+    if let Some(color) = color {
+        widget.add_css_class("sw-account-colored");
+        widget.add_css_class(&format!("sw-account-{}", color.name()));
+    }
+}
+
 /// The account's heading: its status dot, its name (upper-cased by `style.css`) and its
-/// status in words.
+/// status in words, the dot and the name in the account's colour.
 fn header_row(account: &SidebarAccount) -> Row {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    color_account(&content, account.color);
     content.append(&named(
         status_dot(account.status),
         &format!("status:{}", account.key),
     ));
-    content.append(&classed(
-        gtk::Label::builder()
-            .label(&account.name)
-            .xalign(0.0)
-            .hexpand(true)
-            .ellipsize(gtk::pango::EllipsizeMode::End)
-            .build(),
-        &["sw-account-name"],
+    content.append(&named(
+        classed(
+            gtk::Label::builder()
+                .label(&account.name)
+                .xalign(0.0)
+                .hexpand(true)
+                .ellipsize(gtk::pango::EllipsizeMode::End)
+                .build(),
+            &["sw-account-name"],
+        ),
+        &format!("account-name:{}", account.key),
     ));
     content.append(&named(
         classed(
@@ -1197,6 +1212,7 @@ fn rail_account(account: &SidebarAccount) -> gtk::Button {
         .halign(gtk::Align::Center)
         .valign(gtk::Align::Center)
         .build();
+    color_account(&content, account.color);
     content.append(&classed(
         gtk::Label::new(Some(&initial)),
         &["sw-rail-initial"],
@@ -1268,6 +1284,7 @@ mod tests {
                 SidebarAccount {
                     key: "a".to_owned(),
                     name: "Personal".to_owned(),
+                    color: None,
                     status: AccountStatus::Synced,
                     folders: vec![
                         folder("a/trash", "Papirkurv", Some(FolderRole::Trash), 0),
@@ -1280,6 +1297,7 @@ mod tests {
                 SidebarAccount {
                     key: "b".to_owned(),
                     name: "Work".to_owned(),
+                    color: None,
                     status: AccountStatus::Syncing,
                     folders: vec![folder("b/inbox", "INBOX", Some(FolderRole::Inbox), 4)],
                     more: vec![],

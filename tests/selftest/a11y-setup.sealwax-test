@@ -18,10 +18,39 @@ assert-dialog "Add an account"
 assert-accessible dialog
 assert-accessible-name setup-address "Email address"
 assert-accessible-name setup-name "Your name"
+assert-accessible-name setup-label "Account name"
 tab-chain window forward 20
-assert-tab-chain setup-address,setup-name,setup-manual-link,setup-close,setup-address
+assert-tab-chain setup-address,setup-name,setup-label,setup-color-rose,setup-manual-link,setup-close,setup-address
 tab-chain window backward 20
-assert-tab-chain setup-address,setup-close,setup-manual-link,setup-name,setup-address
+assert-tab-chain setup-address,setup-close,setup-manual-link,setup-color-rose,setup-label,setup-name,setup-address
+
+# The colours (the UI tweak of 2026-10-08): a radio group with one Tab stop, the first colour no
+# account has chosen; the arrows move the choice and the focus, round the row.
+assert-accessible-role setup-color radio-group
+assert-accessible-name setup-color "Colour"
+assert-accessible-role setup-color-rose radio
+assert-accessible-name setup-color-rose "Rose"
+assert-accessible-state setup-color-rose checked true
+assert-accessible-state setup-color-teal checked false
+assert-accessible-name setup-color-none "No colour"
+focus setup-color-rose
+key Right
+assert-accessible-state setup-color-clay checked true
+assert-accessible-state setup-color-rose checked false
+assert-focus-stop setup-color-clay
+key End
+assert-accessible-state setup-color-none checked true
+key Right
+assert-accessible-state setup-color-rose checked true
+key Left
+assert-accessible-state setup-color-none checked true
+key Home
+assert-accessible-state setup-color-rose checked true
+assert-focus-stop setup-color-rose
+assert-accessible dialog
+tab-chain window forward 20
+assert-tab-stops 6
+focus setup-address
 
 # Looking up the provider, then the password.
 setup-type setup-address kari@example.test

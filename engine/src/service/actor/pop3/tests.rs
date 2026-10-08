@@ -355,6 +355,8 @@ async fn harness(
     let settings = AccountSettings {
         key,
         name: "Pop".into(),
+        label: None,
+        color: None,
         address: "pop@example.test".into(),
         incoming: endpoint(9),
         receive: Receive::Pop3(policy),

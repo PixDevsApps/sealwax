@@ -7,6 +7,7 @@ use super::{Harness, StepResult};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{graphene, gsk};
+use sealwax_domain::account::AccountColor;
 use sealwax_domain::theme::{Rgb, Theme};
 use std::collections::HashMap;
 
@@ -33,7 +34,17 @@ fn role(theme: &Theme, name: &str) -> Result<Rgb, String> {
         "error-soft" => theme.ui.error_soft,
         "warning-soft" => theme.ui.warning_soft,
         "card" => theme.ui.card,
-        other => return Err(format!("no colour role {other}")),
+        other => {
+            let color = other
+                .strip_prefix("account-")
+                .and_then(AccountColor::from_name)
+                .ok_or_else(|| format!("no colour role {other}"))?;
+            let index = AccountColor::ALL
+                .iter()
+                .position(|known| *known == color)
+                .unwrap_or_default();
+            theme.mail.accounts[index]
+        }
     })
 }
 

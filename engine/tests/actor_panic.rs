@@ -143,6 +143,8 @@ async fn imap_protos_panic_restarts_the_account() {
             settings: AccountSettings {
                 key: AccountKey(String::new()),
                 name: "Panic".into(),
+                label: None,
+                color: None,
                 address: "panic@example.test".into(),
                 incoming: fake.endpoint(),
                 receive: Receive::Imap,

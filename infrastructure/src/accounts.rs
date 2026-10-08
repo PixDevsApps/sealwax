@@ -316,6 +316,8 @@ mod tests {
         AccountSettings {
             key: AccountKey(key.to_owned()),
             name: "Test Person".to_owned(),
+            label: None,
+            color: None,
             address: address.to_owned(),
             incoming: endpoint("imap.example.test", 993),
             receive: sealwax_domain::account::Receive::Imap,

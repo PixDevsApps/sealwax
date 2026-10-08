@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-Synced: 2026-10-06
+Synced: 2026-10-08
 
 The repository docs are the canonical project memory ([ADR-012](#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Dated entries describe the state at that date; newer entries and amendments take precedence. ADRs written before the naming decision call the app "Mail", its working name; it is **Sealwax** ([ADR-010](#adr-010-accepted--sealwax-2026-10-04)).
 
@@ -182,6 +182,12 @@ Built as decided ([report](m1/theme.md)), with these details:
 - Status colours keep a theme's own red, yellow and green when every two are at least 20° of hue apart, and are turned otherwise (11 of 22 stock themes).
 - Avatar initials take `readable_on(tint, #ffffff, #1b1b1f)`, at least 4.5:1 for any accent.
 - Startup blocks for the first read up to 500 ms (about 9 ms here); forcing libadwaita's colour scheme costs about 18 ms more only when the session's scheme disagrees with the theme. Helper programs have deadlines (2 s; `hyprctl` 300 ms). `SEALWAX_OMARCHY_STATE` points the app at a scratch state folder for tests.
+
+### ADR-004 amendment — account colours (2026-10-08)
+
+**Status:** Accepted — the user's UI tweak, 2026-10-08 ("have an option to choose a beautiful muted color to that account").
+
+An account may have a colour the user picks, the one colour in the chrome that doesn't come from the palette. Eight named colours (rose, clay, olive, sage, teal, slate, iris, mauve) are fixed OKLCH hues 35–55° apart; the theme layer sets their lightness and chroma per mode (0.74 and 0.065 on dark themes, 0.52 and 0.075 on light ones, as muted as the live theme's own colours at about 0.03–0.07) and moves the lightness away from the background until each reads at 4.5:1 on the window and the sidebar, in every stock theme (`domain/tests/theme.rs`). OKLCH rather than HSL keeps the eight equally light; palette positions couldn't give named hues (matte-black's `green` is amber). The colours reach CSS as `--sw-account-<name>-color`; the sidebar's heading name and synced dot take them, never the warning and error dots.
 
 ## ADR-005 — SQLite with FTS5 plus a blob store (2026-10-04)
 
@@ -600,6 +606,10 @@ Two sections, read with the file's error style, following the user's decisions a
 ### ADR-009 amendment — POP3 accounts in accounts.toml (M8 phase A, 2026-10-07)
 
 Built in M8's phase A ([report](m8/pop3-setup.md)). A POP3 account has `[account.pop3]` in place of `[account.imap]`, exactly one of the two: `host`, `port` (995 for `"tls"`, 110 for `"starttls"` when left out), `security`, `leave_on_server` (default `true`) and `delete_after_days` (1–3650, only with `leave_on_server = true`; left out, mail stays on the server). Read with the file's error style (positions, did-you-mean, both tables or neither, the policy's contradictions); the assistant writes it with `leave_on_server` spelled out and offers no policy choice (the lead's recommendation, for the gate). In code, `AccountSettings::imap` became `incoming`, with `receive` saying which protocol (the M8 contract).
+
+### ADR-009 amendment — an account's label and colour (2026-10-08)
+
+The user's UI tweak (2026-10-08): two accounts with the same sender name had the same sidebar heading. Two optional settings on `[[account]]`: `label` (plain text, what Sealwax calls the account in the sidebar, banners and menus; left out, the address) and `color` (one of `"rose"`, `"clay"`, `"olive"`, `"sage"`, `"teal"`, `"slate"`, `"iris"`, `"mauve"`, case ignored; left out, none). `name` is now only the sender name. Read with the file's error style (an empty label, an unknown colour listing the eight, "did you mean color?" for `colour`); the setup assistant writes each only when set. The store's account row keeps the label or the address as its name (`AccountSettings::title`), updated whenever `accounts.toml` changes, so existing accounts show their address from the next start; the colour isn't stored, the app reads it from the file. The default file documents both.
 
 ## ADR-010 — Name and app-id (2026-10-04)
 

@@ -1,6 +1,7 @@
 use super::color::{Rgb, distinct_pairs, readable_on};
 use super::palette::{Mode, Palette};
 use super::shell::{ControlState, ControlStates};
+use crate::account::AccountColor;
 
 /// The hues the status colours turn to when a theme can't tell its `red`, `yellow` and
 /// `green` apart ([`distinct_pairs`]): error, warning, success. Matte-black's are two reds
@@ -155,6 +156,45 @@ fn first_letters<'a>(words: impl Iterator<Item = &'a str>) -> String {
         .collect()
 }
 
+/// The account colours' OKLCH lightness and chroma to start from, per mode: muted pastels on
+/// dark themes, deeper tones on light ones (the user's UI tweak, 2026-10-08).
+pub const ACCOUNT_LIGHTNESS_DARK: f64 = 0.74;
+pub const ACCOUNT_LIGHTNESS_LIGHT: f64 = 0.52;
+pub const ACCOUNT_CHROMA_DARK: f64 = 0.065;
+pub const ACCOUNT_CHROMA_LIGHT: f64 = 0.075;
+
+/// Each [`AccountColor`] for `palette`, in [`AccountColor::ALL`]'s order: its hue at the mode's
+/// lightness and chroma, the chroma lowered where sRGB can't show it, the lightness moved away
+/// from the background, a hundredth at a time, until the colour reads as text at
+/// [`TEXT_CONTRAST`] on the window and the sidebar backgrounds.
+pub fn account_colors(palette: &Palette) -> [Rgb; AccountColor::ALL.len()] {
+    let (start, chroma, step) = match palette.mode {
+        Mode::Dark => (ACCOUNT_LIGHTNESS_DARK, ACCOUNT_CHROMA_DARK, 0.01),
+        Mode::Light => (ACCOUNT_LIGHTNESS_LIGHT, ACCOUNT_CHROMA_LIGHT, -0.01),
+    };
+    let surfaces = [palette.background, palette.dark_background];
+    AccountColor::ALL.map(|color| {
+        let at = |lightness: f64| {
+            let mut chroma = chroma;
+            loop {
+                if let Some(rgb) = Rgb::from_oklch(lightness, chroma, color.hue()) {
+                    return rgb;
+                }
+                chroma -= 0.005;
+            }
+        };
+        (0..=100)
+            .map(|steps| (start + step * f64::from(steps)).clamp(0.0, 1.0))
+            .map(at)
+            .find(|rgb| {
+                surfaces
+                    .iter()
+                    .all(|surface| rgb.contrast(*surface) >= TEXT_CONTRAST)
+            })
+            .unwrap_or_else(|| readable_on(palette.dark_background, Rgb::WHITE, Rgb::BLACK))
+    })
+}
+
 /// Secondary text starts as `foreground` mixed this far toward `background`, in percent
 /// (DESIGN.md).
 pub const SECONDARY_MIX: u8 = 35;
@@ -228,6 +268,8 @@ pub struct MailRoles {
     /// The background tinted 18 % (dark) or 14 % (light) toward the accent.
     pub selected_chip_background: Rgb,
     pub avatars: [AvatarTint; AVATAR_TINTS],
+    /// [`account_colors`].
+    pub accounts: [Rgb; AccountColor::ALL.len()],
 }
 
 impl MailRoles {
@@ -250,6 +292,7 @@ impl MailRoles {
             selected_chip,
             selected_chip_background: chip_background,
             avatars: avatar_tints(p.accent, p.mode),
+            accounts: account_colors(p),
         }
     }
 

@@ -51,6 +51,7 @@ fn account(
     SidebarAccount {
         key: key.to_owned(),
         name: name.to_owned(),
+        color: None,
         status,
         folders: roles
             .into_iter()

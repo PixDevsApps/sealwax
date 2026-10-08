@@ -367,6 +367,28 @@ list.sw-folder-list {
   background: var(--error-color);
 }
 
+/* Account colours (the user's UI tweak, 2026-10-08): each class sets --sw-account-color for
+   what is inside it, from the theme's --sw-account-<name>-color, which reads as text on the
+   window and the sidebar. The heading's name and its synced dot take it; a dot that warns
+   keeps the warning's colour. */
+.sw-account-rose { --sw-account-color: var(--sw-account-rose-color); }
+.sw-account-clay { --sw-account-color: var(--sw-account-clay-color); }
+.sw-account-olive { --sw-account-color: var(--sw-account-olive-color); }
+.sw-account-sage { --sw-account-color: var(--sw-account-sage-color); }
+.sw-account-teal { --sw-account-color: var(--sw-account-teal-color); }
+.sw-account-slate { --sw-account-color: var(--sw-account-slate-color); }
+.sw-account-iris { --sw-account-color: var(--sw-account-iris-color); }
+.sw-account-mauve { --sw-account-color: var(--sw-account-mauve-color); }
+
+.sw-account-colored .sw-account-name,
+.sw-account-colored .sw-rail-initial {
+  color: var(--sw-account-color);
+}
+
+.sw-account-colored .sw-status-dot.sw-synced {
+  background: var(--sw-account-color);
+}
+
 .sw-sidebar-footer {
   padding: var(--sw-space-xl) var(--sw-space-xl) 0;
   border-top: var(--sw-control-border-width) solid var(--border-color);
@@ -1017,6 +1039,16 @@ dialog.sw-setup sheet {
   border-spacing: calc(2 * var(--sw-space-lg));
 }
 
+/* The column scrolls under the sheet's right padding, so the scrollbar sits in that gutter,
+   6 px from the edge, instead of over the fields (the user's UI tweak, 2026-10-08). */
+scrolledwindow.sw-setup-scroller {
+  margin-right: calc(var(--sw-space-md) - 2 * var(--sw-space-xxxl));
+}
+
+.sw-setup-column {
+  padding-right: calc(2 * var(--sw-space-xxxl) - var(--sw-space-md));
+}
+
 .sw-setup-section {
   border-spacing: var(--sw-space-xl);
 }
@@ -1052,6 +1084,54 @@ entry.sw-setup-entry:focus-within {
 
 entry.sw-setup-entry.sw-setup-invalid {
   border-color: var(--error-color);
+}
+
+/* "Colour": round swatches in the account colours and one without; the chosen one ringed in
+   the text colour. */
+.sw-setup-swatches {
+  border-spacing: var(--sw-space-sm);
+}
+
+button.sw-setup-swatch {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--sw-space-xs);
+  border: var(--sw-control-border-width) solid transparent;
+  border-radius: 9999px;
+  background: none;
+  box-shadow: none;
+}
+
+button.sw-setup-swatch:hover {
+  border-color: var(--border-color);
+}
+
+button.sw-setup-swatch.sw-chosen {
+  border-color: var(--window-fg-color);
+}
+
+button.sw-setup-swatch:focus-visible {
+  outline: 2px solid var(--accent-bg-color);
+  outline-offset: 1px;
+}
+
+.sw-setup-swatch-dot {
+  min-width: calc(2 * var(--sw-space-xl));
+  min-height: calc(2 * var(--sw-space-xl));
+  border-radius: 9999px;
+  background: var(--sw-account-color);
+}
+
+.sw-setup-swatch-none .sw-setup-swatch-dot {
+  min-width: calc(2 * var(--sw-space-xl) - 2 * var(--sw-control-border-width));
+  min-height: calc(2 * var(--sw-space-xl) - 2 * var(--sw-control-border-width));
+  border: var(--sw-control-border-width) dashed var(--sw-secondary-fg-color);
+  background: none;
+}
+
+.sw-setup-swatch-name {
+  margin-left: var(--sw-space-md);
+  color: var(--sw-secondary-fg-color);
 }
 
 dropdown.sw-setup-security > button {

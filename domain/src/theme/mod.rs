@@ -16,10 +16,11 @@ pub use color::{Rgb, distinct, distinct_pairs, hue_distance, readable_on};
 pub use css::{COMPONENT_SIZES, avatar_class};
 pub use palette::{Mode, Palette, resolve_colors};
 pub use roles::{
+    ACCOUNT_CHROMA_DARK, ACCOUNT_CHROMA_LIGHT, ACCOUNT_LIGHTNESS_DARK, ACCOUNT_LIGHTNESS_LIGHT,
     AVATAR_HUE_STEP, AVATAR_LIGHTNESS_DARK, AVATAR_LIGHTNESS_LIGHT, AVATAR_SATURATION,
     AVATAR_TINTS, AvatarTint, BORDER_MIX, INITIALS_DARK, INITIALS_LIGHT, MailRoles, RowRoles,
-    SECONDARY_MIX, STATUS_HUES, STATUS_MIN_GAP, TEXT_CONTRAST, UiRoles, avatar_index, avatar_tints,
-    initials, secondary_text, secondary_text_on,
+    SECONDARY_MIX, STATUS_HUES, STATUS_MIN_GAP, TEXT_CONTRAST, UiRoles, account_colors,
+    avatar_index, avatar_tints, initials, secondary_text, secondary_text_on,
 };
 pub use shell::{ControlState, ControlStates, SPACING_TOKENS, ShellValues, Spacing};
 pub use typography::{

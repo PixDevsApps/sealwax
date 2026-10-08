@@ -81,6 +81,14 @@ expression: theme.css()
   --sw-avatar-5-fg-color: #1b1b1f;
   --sw-avatar-6-bg-color: #b7e1d7;
   --sw-avatar-6-fg-color: #1b1b1f;
+  --sw-account-rose-color: #8c5458;
+  --sw-account-clay-color: #875a3b;
+  --sw-account-olive-color: #71632d;
+  --sw-account-sage-color: #476f48;
+  --sw-account-teal-color: #207070;
+  --sw-account-slate-color: #3f6a8e;
+  --sw-account-iris-color: #655f8e;
+  --sw-account-mauve-color: #84587a;
   --sw-font-chrome: "JetBrainsMono Nerd Font", monospace;
   --sw-font-reading: "Liberation Sans", sans-serif;
   --sw-font-mono: "JetBrainsMono Nerd Font", monospace;

@@ -81,6 +81,8 @@ pub fn settings(imap: Endpoint, smtp: Endpoint, username: &str) -> AccountSettin
     AccountSettings {
         key: AccountKey("testbed".into()),
         name: "Testbed".into(),
+        label: None,
+        color: None,
         address: format!("{username}@example.test"),
         incoming: imap,
         receive: sealwax_domain::account::Receive::Imap,

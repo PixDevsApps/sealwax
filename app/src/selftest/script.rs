@@ -76,6 +76,9 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-height", 2, 2),
     ("assert-max-width", 2, 2),
     ("assert-centred", 1, 1),
+    // The first widget lies wholly right of the second (the setup assistant's scrollbar beside
+    // its fields).
+    ("assert-right-of", 2, 2),
     ("assert-sensitive", 2, 2),
     ("assert-label", 2, 2),
     ("assert-tooltip", 2, 2),

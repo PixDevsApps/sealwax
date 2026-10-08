@@ -23,6 +23,7 @@ triage-mark-read-on-open false
 setup-click add-account
 setup-type setup-address triage@example.test
 setup-type setup-name Triage
+setup-type setup-label Triage
 setup-click setup-manual-link
 setup-type setup-imap-host 127.0.0.1
 setup-type setup-imap-port 14993
@@ -127,6 +128,7 @@ wait-until assert-shown add-account true
 setup-click add-account
 setup-type setup-address triage@example.test
 setup-type setup-name Triage
+setup-type setup-label Triage
 setup-click setup-manual-link
 setup-type setup-imap-host 127.0.0.1
 setup-type setup-imap-port 14993
@@ -161,6 +163,7 @@ wait-until assert-shown add-account true
 setup-click add-account
 setup-type setup-address triage@example.test
 setup-type setup-name Triage
+setup-type setup-label Triage
 setup-click setup-manual-link
 setup-type setup-imap-host 127.0.0.1
 setup-type setup-imap-port 16993
@@ -249,6 +252,7 @@ wait-until assert-shown add-account true
 setup-click add-account
 setup-type setup-address triage@example.test
 setup-type setup-name Triage
+setup-type setup-label Triage
 setup-click setup-manual-link
 setup-type setup-imap-host 127.0.0.1
 setup-type setup-imap-port 16993

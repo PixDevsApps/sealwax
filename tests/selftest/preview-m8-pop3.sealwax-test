@@ -17,6 +17,7 @@ triage-mark-read-on-open false
 action win.add-account
 setup-type setup-address kari@example.test
 setup-type setup-name "Kari Nordmann"
+setup-type setup-label "Kari Nordmann"
 setup-click setup-manual-link
 setup-choose setup-incoming pop3
 setup-type setup-imap-host pop.example.test

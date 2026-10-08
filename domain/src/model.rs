@@ -43,6 +43,8 @@ id!(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Account {
     pub id: AccountId,
+    /// What Sealwax calls the account: `accounts.toml`'s label, else the address. The sender
+    /// name is the settings' own.
     pub name: String,
     pub address: String,
     /// Its key in `accounts.toml` and the keyring; `None` for a local account with no server

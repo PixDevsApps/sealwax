@@ -1207,6 +1207,8 @@ mod tests {
         AccountSettings {
             key: AccountKey("k".into()),
             name: "n".into(),
+            label: None,
+            color: None,
             address: "a@example.test".into(),
             incoming: endpoint("imap.example.test"),
             receive: sealwax_domain::account::Receive::Imap,

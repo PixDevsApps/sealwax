@@ -17,6 +17,7 @@ assert-setup banner-queue none
 action win.add-account
 setup-type setup-address kari@example.test
 setup-type setup-name "Kari Nordmann"
+setup-type setup-label "Kari Nordmann"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -29,6 +30,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address ola@example.test
 setup-type setup-name "Ola Hansen"
+setup-type setup-label "Ola Hansen"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -41,6 +43,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address anne@example.test
 setup-type setup-name "Anne Berg"
+setup-type setup-label "Anne Berg"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -53,6 +56,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address per@example.test
 setup-type setup-name "Per Lie"
+setup-type setup-label "Per Lie"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -64,7 +68,7 @@ engine-expect add-account
 engine-reply added ok
 assert-setup open false
 # accounts.toml, as the engine wrote it; Kari's says Microsoft.
-write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.kari.example.test\"\n\n[account.smtp]\nhost = \"smtp.kari.example.test\"\n\n[[account]]\nkey = \"ola\"\nname = \"Ola Hansen\"\naddress = \"ola@example.test\"\n\n[account.imap]\nhost = \"imap.ola.example.test\"\n\n[account.smtp]\nhost = \"smtp.ola.example.test\"\n\n[[account]]\nkey = \"anne\"\nname = \"Anne Berg\"\naddress = \"anne@example.test\"\n\n[account.imap]\nhost = \"imap.anne.example.test\"\n\n[account.smtp]\nhost = \"smtp.anne.example.test\"\n\n[[account]]\nkey = \"per\"\nname = \"Per Lie\"\naddress = \"per@example.test\"\n\n[account.imap]\nhost = \"imap.per.example.test\"\n\n[account.smtp]\nhost = \"smtp.per.example.test\"\n"
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\nlabel = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nauth = \"microsoft\"\n\n[account.imap]\nhost = \"imap.kari.example.test\"\n\n[account.smtp]\nhost = \"smtp.kari.example.test\"\n\n[[account]]\nkey = \"ola\"\nname = \"Ola Hansen\"\nlabel = \"Ola Hansen\"\naddress = \"ola@example.test\"\n\n[account.imap]\nhost = \"imap.ola.example.test\"\n\n[account.smtp]\nhost = \"smtp.ola.example.test\"\n\n[[account]]\nkey = \"anne\"\nname = \"Anne Berg\"\nlabel = \"Anne Berg\"\naddress = \"anne@example.test\"\n\n[account.imap]\nhost = \"imap.anne.example.test\"\n\n[account.smtp]\nhost = \"smtp.anne.example.test\"\n\n[[account]]\nkey = \"per\"\nname = \"Per Lie\"\nlabel = \"Per Lie\"\naddress = \"per@example.test\"\n\n[account.imap]\nhost = \"imap.per.example.test\"\n\n[account.smtp]\nhost = \"smtp.per.example.test\"\n"
 wait-until assert-label sidebar-summary "4 accounts · all synced"
 setup-dismiss-toasts
 

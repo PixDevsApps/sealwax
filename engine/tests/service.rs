@@ -196,6 +196,8 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
     let settings = AccountSettings {
         key: AccountKey(String::new()),
         name: "Service".into(),
+        label: None,
+        color: None,
         address: "service@example.test".into(),
         incoming: endpoint.clone(),
         receive: sealwax_domain::account::Receive::Imap,

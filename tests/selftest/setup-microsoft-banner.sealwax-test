@@ -65,7 +65,7 @@ assert-account-status ola@example.test needs-sign-in
 wait-until assert-label sidebar-summary "3 accounts · sign-in needed"
 wait-until assert-setup sign-in-needed ola
 wait-until assert-shown banner true
-assert-label banner-title "Ola Hansen needs you to sign in again"
+assert-label banner-title "ola@example.test needs you to sign in again"
 assert-label banner-primary "Type the password again"
 engine-reply sync-finished ola@example.test
 wait-until assert-shown banner false
@@ -75,14 +75,14 @@ assert-setup sign-in-needed none
 engine-reply sync-failed kari@example.test wrong-password
 wait-until assert-shown banner true
 assert-setup sign-in-needed kari
-assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-label banner-title "kari@example.test needs you to sign in again"
 assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
 assert-label banner-primary "Sign in"
 assert-sensitive banner-primary true
 # Anne's too: still one banner, naming the first and counting the other.
 engine-reply sync-failed anne@example.test sign-in-declined
 assert-setup sign-in-needed kari,anne
-assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-label banner-title "kari@example.test needs you to sign in again"
 assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in. 1 more account needs it too."
 # The look: across the window's top, the error tint with the text colour, the theme's fonts.
 assert-color banner-strip background error-soft
@@ -114,7 +114,7 @@ assert-setup open true
 engine-expect sign-in address=kari@example.test provider=microsoft account=kari
 assert-setup step signing-in
 assert-label setup-caption "Sign in again"
-assert-label setup-title "Kari Nordmann"
+assert-label setup-title kari@example.test
 assert-label setup-subtitle "Sealwax keeps your mail; nothing syncs until you sign in."
 assert-field setup-address kari@example.test
 assert-sensitive setup-address false
@@ -149,11 +149,11 @@ engine-reply signed-in ok kari@example.test
 assert-setup open false
 engine-expect none
 assert-shown banner true
-assert-label banner-title "Kari Nordmann needs you to sign in again"
+assert-label banner-title "kari@example.test needs you to sign in again"
 # Kari syncs: the banner moves on to Anne.
 engine-reply sync-finished kari@example.test
 assert-account-status kari@example.test synced
-wait-until assert-label banner-title "Anne Berg needs you to sign in again"
+wait-until assert-label banner-title "anne@example.test needs you to sign in again"
 assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
 assert-setup sign-in-needed anne
 

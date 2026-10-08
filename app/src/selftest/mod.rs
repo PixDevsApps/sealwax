@@ -632,6 +632,16 @@ impl Harness {
                 }
             }
             "assert-centred" => self.check_centred(arg(0)),
+            "assert-right-of" => {
+                let (right, left) = (self.bounds(arg(0))?, self.bounds(arg(1))?);
+                let gap = right.x() - (left.x() + left.width());
+                println!("  # {} starts {gap} px right of {}", arg(0), arg(1));
+                if gap >= 0.0 {
+                    Ok(())
+                } else {
+                    Err(format!("{} overlaps {} by {} px", arg(0), arg(1), -gap))
+                }
+            }
             "assert-sensitive" => {
                 let widget = self.widget(arg(0))?;
                 equal(

@@ -122,6 +122,8 @@ fn settings(address: &str) -> AccountSettings {
     AccountSettings {
         key: AccountKey(String::new()),
         name: "No Secret".to_owned(),
+        label: None,
+        color: None,
         address: address.to_owned(),
         incoming: endpoint("imap.example.test", 993),
         receive: sealwax_domain::account::Receive::Imap,
@@ -349,6 +351,8 @@ async fn no_token_reaches_a_file_or_a_log() {
             settings: AccountSettings {
                 key: AccountKey(String::new()),
                 name: "Tokens".into(),
+                label: None,
+                color: None,
                 address: TOKEN_ADDRESS.into(),
                 incoming: imap.endpoint(),
                 receive: sealwax_domain::account::Receive::Imap,

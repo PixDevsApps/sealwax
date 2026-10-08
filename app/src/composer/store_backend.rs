@@ -78,16 +78,11 @@ pub fn senders(account: &Account, settings: &[AccountSettings]) -> Vec<Identity>
     }
 }
 
-fn chips(account: &Account, senders: &[Identity]) -> Vec<Sender> {
+fn chips(senders: &[Identity]) -> Vec<Sender> {
     senders
         .iter()
-        .enumerate()
-        .map(|(index, identity)| Sender {
-            label: if index == 0 {
-                account.name.clone()
-            } else {
-                identity.name.clone()
-            },
+        .map(|identity| Sender {
+            label: identity.name.clone(),
             address: identity::from_address(identity),
             signature: identity.signature.clone(),
         })
@@ -380,7 +375,7 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
         }
         None => context.create(draft.clone()).await?,
     };
-    let senders = chips(&account, &context.senders(&account));
+    let senders = chips(&context.senders(&account));
     Ok(Prepared {
         id,
         draft,

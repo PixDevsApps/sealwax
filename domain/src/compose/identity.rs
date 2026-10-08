@@ -111,6 +111,8 @@ mod tests {
         AccountSettings {
             key: AccountKey("work".into()),
             name: "Ada Lovelace".into(),
+            label: None,
+            color: None,
             address: "ada@example.test".into(),
             incoming: endpoint.clone(),
             receive: crate::account::Receive::Imap,

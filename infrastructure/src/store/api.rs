@@ -101,6 +101,7 @@ pub struct Versioned<T> {
 /// A new account row.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NewAccount {
+    /// What Sealwax calls the account (`AccountSettings::title`).
     pub name: String,
     pub address: String,
 }

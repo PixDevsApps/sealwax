@@ -147,7 +147,7 @@ impl<S: SecretStore> Accounts<'_, S> {
         }
 
         let row = NewAccount {
-            name: settings.name.clone(),
+            name: settings.title().to_owned(),
             address: settings.address.clone(),
         };
         let id = match self.store.ensure_account(key.clone(), row).recv().await {
@@ -310,7 +310,8 @@ impl<S: SecretStore> Accounts<'_, S> {
     }
 
     /// Makes the store match `accounts.toml`: a row for every entry (also after the store was
-    /// deleted), names and addresses updated, and accounts the file no longer lists detached.
+    /// deleted), names (each account's title: its label, else its address) and addresses
+    /// updated, and accounts the file no longer lists detached.
     /// Returns the store ids in the order of `accounts`.
     pub async fn reconcile(
         &self,
@@ -322,7 +323,7 @@ impl<S: SecretStore> Accounts<'_, S> {
                 (
                     account.key.clone(),
                     NewAccount {
-                        name: account.name.clone(),
+                        name: account.title().to_owned(),
                         address: account.address.clone(),
                     },
                 )
@@ -483,6 +484,8 @@ mod tests {
         AccountSettings {
             key: AccountKey(String::new()),
             name: "Test Person".to_owned(),
+            label: None,
+            color: None,
             address: address.to_owned(),
             incoming: endpoint("imap.example.test", 993),
             receive: sealwax_domain::account::Receive::Imap,
@@ -702,5 +705,35 @@ mod tests {
                 .is_empty(),
             "an account the file no longer lists is detached"
         );
+    }
+
+    #[test]
+    fn the_store_names_an_account_by_its_label_else_its_address() {
+        let bench = Bench::new();
+        let accounts = bench.accounts();
+        let (key, id) = run(accounts.add(settings("ada@example.test"), &password())).unwrap();
+        let name = |store: &Store| {
+            store
+                .accounts()
+                .recv_blocking()
+                .unwrap()
+                .value
+                .into_iter()
+                .find(|account| account.id == id)
+                .map(|account| account.name)
+        };
+        assert_eq!(
+            name(&bench.store).as_deref(),
+            Some("ada@example.test"),
+            "not the sender name"
+        );
+        let mut listed = files::read(&bench.paths.settings).unwrap();
+        assert_eq!(listed[0].key, key);
+        listed[0].label = Some("Work".to_owned());
+        run(accounts.reconcile(&listed)).unwrap();
+        assert_eq!(name(&bench.store).as_deref(), Some("Work"));
+        listed[0].label = None;
+        run(accounts.reconcile(&listed)).unwrap();
+        assert_eq!(name(&bench.store).as_deref(), Some("ada@example.test"));
     }
 }

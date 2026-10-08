@@ -147,6 +147,8 @@ impl Running {
         let settings = AccountSettings {
             key: AccountKey(String::new()),
             name: name.into(),
+            label: None,
+            color: None,
             address: format!("{name}@example.test"),
             incoming: fake.endpoint(),
             receive: sealwax_domain::account::Receive::Imap,
@@ -427,6 +429,8 @@ async fn failed_connections_back_off_and_reconnect_tries_at_once() {
         settings: AccountSettings {
             key: AccountKey(String::new()),
             name: "Backoff".into(),
+            label: None,
+            color: None,
             address: "backoff@example.test".into(),
             incoming: fake.endpoint(),
             receive: sealwax_domain::account::Receive::Imap,
@@ -840,6 +844,8 @@ async fn two_accounts_sync_at_once_and_the_engine_stops_quickly() {
             settings: AccountSettings {
                 key: AccountKey(String::new()),
                 name: name.into(),
+                label: None,
+                color: None,
                 address: format!("{name}@example.test"),
                 incoming: fake.endpoint(),
                 receive: sealwax_domain::account::Receive::Imap,

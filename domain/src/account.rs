@@ -93,12 +93,102 @@ impl Default for Pop3Policy {
     }
 }
 
+/// A muted colour that marks an account in the sidebar (the user's UI tweak, 2026-10-08): a
+/// fixed hue whose lightness and chroma the theme layer sets per mode, so its text reads on
+/// light and dark themes alike.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AccountColor {
+    Rose,
+    Clay,
+    Olive,
+    Sage,
+    Teal,
+    Slate,
+    Iris,
+    Mauve,
+}
+
+impl AccountColor {
+    /// Every colour, in the order the setup assistant shows them: round the colour wheel.
+    pub const ALL: [Self; 8] = [
+        Self::Rose,
+        Self::Clay,
+        Self::Olive,
+        Self::Sage,
+        Self::Teal,
+        Self::Slate,
+        Self::Iris,
+        Self::Mauve,
+    ];
+
+    /// Its name in `accounts.toml` and in CSS: `"sage"`.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Rose => "rose",
+            Self::Clay => "clay",
+            Self::Olive => "olive",
+            Self::Sage => "sage",
+            Self::Teal => "teal",
+            Self::Slate => "slate",
+            Self::Iris => "iris",
+            Self::Mauve => "mauve",
+        }
+    }
+
+    /// What the setup assistant and screen readers call it: `"Sage"`.
+    pub const fn title(self) -> &'static str {
+        match self {
+            Self::Rose => "Rose",
+            Self::Clay => "Clay",
+            Self::Olive => "Olive",
+            Self::Sage => "Sage",
+            Self::Teal => "Teal",
+            Self::Slate => "Slate",
+            Self::Iris => "Iris",
+            Self::Mauve => "Mauve",
+        }
+    }
+
+    /// Its hue in OKLCH, in degrees.
+    pub const fn hue(self) -> f64 {
+        match self {
+            Self::Rose => 15.0,
+            Self::Clay => 55.0,
+            Self::Olive => 95.0,
+            Self::Sage => 145.0,
+            Self::Teal => 195.0,
+            Self::Slate => 245.0,
+            Self::Iris => 290.0,
+            Self::Mauve => 335.0,
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|color| color.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// The first colour none of `used` has, else the first.
+    pub fn first_unused(used: &[Self]) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|color| !used.contains(color))
+            .unwrap_or(Self::Rose)
+    }
+}
+
 /// One account as `accounts.toml` holds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AccountSettings {
     pub key: AccountKey,
-    /// The sender name on outgoing mail and the account's label in the sidebar.
+    /// The sender name on outgoing mail.
     pub name: String,
+    /// What Sealwax calls the account in the sidebar, banners and menus; `None` shows the
+    /// address ([`AccountSettings::title`]).
+    pub label: Option<String>,
+    /// The account's colour in the sidebar; `None` keeps the theme's plain heading.
+    pub color: Option<AccountColor>,
     pub address: String,
     /// The server mail comes from: IMAP's, or POP3's when `receive` says so.
     pub incoming: Endpoint,
@@ -112,6 +202,13 @@ pub struct AccountSettings {
     /// The other addresses the account sends from (aliases, PRD A6), from
     /// `[[account.identity]]` (M6, ML-070).
     pub identities: Vec<Identity>,
+}
+
+impl AccountSettings {
+    /// What Sealwax calls the account: its label, else its address.
+    pub fn title(&self) -> &str {
+        self.label.as_deref().unwrap_or(&self.address)
+    }
 }
 
 /// An address the account sends from besides its own (PRD A6): an alias with its own sender
@@ -252,7 +349,7 @@ pub struct LoginError {
 
 #[cfg(test)]
 mod tests {
-    use super::UsernameForm;
+    use super::{AccountColor, UsernameForm};
 
     #[test]
     fn username_forms_apply_to_an_address() {
@@ -267,5 +364,31 @@ mod tests {
         );
         assert_eq!(UsernameForm::Other.apply(address), None);
         assert_eq!(UsernameForm::LocalPart.apply("@example.test"), None);
+    }
+
+    #[test]
+    fn account_colors_read_by_name_and_go_round_the_wheel() {
+        for color in AccountColor::ALL {
+            assert_eq!(AccountColor::from_name(color.name()), Some(color));
+            assert_eq!(color.title().to_lowercase(), color.name());
+        }
+        assert_eq!(AccountColor::from_name(" Sage "), Some(AccountColor::Sage));
+        assert_eq!(AccountColor::from_name("green"), None);
+        let hues = AccountColor::ALL.map(AccountColor::hue);
+        assert!(hues.windows(2).all(|pair| pair[1] - pair[0] >= 40.0));
+        assert!(hues[0] + 360.0 - hues[7] >= 40.0);
+    }
+
+    #[test]
+    fn the_first_unused_color_is_offered() {
+        assert_eq!(AccountColor::first_unused(&[]), AccountColor::Rose);
+        assert_eq!(
+            AccountColor::first_unused(&[AccountColor::Rose, AccountColor::Olive]),
+            AccountColor::Clay
+        );
+        assert_eq!(
+            AccountColor::first_unused(&AccountColor::ALL),
+            AccountColor::Rose
+        );
     }
 }

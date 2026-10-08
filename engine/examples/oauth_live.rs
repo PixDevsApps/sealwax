@@ -320,6 +320,8 @@ async fn sign_in_and_add(
         settings: AccountSettings {
             key: AccountKey(String::new()),
             name: "ML-032 live check".into(),
+            label: None,
+            color: None,
             address: address.to_owned(),
             incoming: imap,
             receive: sealwax_domain::account::Receive::Imap,

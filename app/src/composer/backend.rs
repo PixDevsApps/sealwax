@@ -26,7 +26,7 @@ pub type Local<T> = Pin<Box<dyn Future<Output = T>>>;
 /// An address a draft can be sent from: the account's own or one of its identities (PRD A6).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sender {
-    /// What the From chip calls it: the account's name, or the identity's.
+    /// What the From chip calls it: the sender name the address goes out with.
     pub label: String,
     /// The sender name and address the message goes out with.
     pub address: Address,

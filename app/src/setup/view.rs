@@ -2,7 +2,8 @@
 //! footer, built once and shown or hidden for the screen on view. Every class is a `sw-setup-*`
 //! class of `style.css`; every part a self-test checks has a `setup-*` name.
 
-use super::form::{Field, Problem};
+use super::colors::ColorChoice;
+use super::form::{Field, Naming, Problem};
 use super::sources::{self, Sources, State as SourceState};
 use super::text::{self, Tone};
 use super::{CONTENT_HEIGHT, CONTENT_WIDTH, State, Step};
@@ -12,6 +13,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use sealwax_domain::account::{Endpoint, HelpLink, Protocol, Security};
 use std::cell::RefCell;
+use std::rc::Rc;
 
 /// One server's manual fields.
 pub(super) struct ServerFields {
@@ -161,6 +163,11 @@ pub(super) struct Widgets {
     pub(super) address: gtk::Entry,
     pub(super) name_field: gtk::Box,
     pub(super) name: gtk::Entry,
+    /// What Sealwax calls the account; the address when left empty.
+    label_field: gtk::Box,
+    pub(super) label: gtk::Entry,
+    color_field: gtk::Box,
+    pub(super) colors: Rc<ColorChoice>,
     pub(super) sources: gtk::Box,
     pub(super) found: gtk::Box,
     pub(super) found_lines: [gtk::Label; 4],
@@ -344,7 +351,19 @@ fn link(name: &str) -> gtk::LinkButton {
     classed(link, &["sw-setup-link"])
 }
 
+/// The account name's placeholder before an address is typed.
+const LABEL_PLACEHOLDER: &str = "Shown in the sidebar";
+
 impl Widgets {
+    /// The sender name, the account's name and its colour, as typed and chosen.
+    pub(super) fn naming(&self) -> Naming {
+        Naming {
+            name: self.name.text().to_string(),
+            label: self.label.text().to_string(),
+            color: self.colors.chosen(),
+        }
+    }
+
     /// The incoming server's protocol the manual step's "Incoming mail" names.
     pub(super) fn receive_protocol(&self) -> Protocol {
         match self.receive.selected() {
@@ -398,6 +417,10 @@ impl Widgets {
         let name = entry("setup-name", "Shown to the people you write to", &[]);
         name.set_input_purpose(gtk::InputPurpose::Name);
         let name_field = field("Your name", &name, "setup-name-field");
+        let label_entry = entry("setup-label", LABEL_PLACEHOLDER, &[]);
+        let label_field = field("Account name", &label_entry, "setup-label-field");
+        let colors = ColorChoice::new();
+        let color_field = field("Colour", &colors.root, "setup-color-field");
 
         let sources = named(column(&["sw-setup-sources"]), "setup-sources");
 
@@ -571,6 +594,8 @@ impl Widgets {
             alert.upcast_ref::<gtk::Widget>(),
             address_field.upcast_ref(),
             name_field.upcast_ref(),
+            label_field.upcast_ref(),
+            color_field.upcast_ref(),
             sources.upcast_ref(),
             found.upcast_ref(),
             microsoft_box.upcast_ref(),
@@ -584,12 +609,16 @@ impl Widgets {
         }
         // Not a Tab stop of its own while every field waits (checking the login): the focus
         // would land on an unnamed pane.
-        let scroller = gtk::ScrolledWindow::builder()
-            .hscrollbar_policy(gtk::PolicyType::Never)
-            .vexpand(true)
-            .focusable(false)
-            .child(&content)
-            .build();
+        let scroller = classed(
+            gtk::ScrolledWindow::builder()
+                .hscrollbar_policy(gtk::PolicyType::Never)
+                .vexpand(true)
+                .focusable(false)
+                .child(&content)
+                .build(),
+            &["sw-setup-scroller"],
+        );
+        scroller.vscrollbar().set_widget_name("setup-scrollbar");
 
         let manual_link = named(
             classed(
@@ -669,6 +698,10 @@ impl Widgets {
             address,
             name_field,
             name,
+            label_field,
+            label: label_entry,
+            color_field,
+            colors,
             sources,
             found,
             found_lines,
@@ -762,6 +795,16 @@ impl Widgets {
         ));
         w.name_field
             .set_visible(matches!(shown, Step::Address | Step::Manual));
+        // Every way to the manual settings passes the first step, which keeps what it chose;
+        // shown there too, they would push the manual step's message out of view.
+        w.label_field.set_visible(shown == Step::Address);
+        w.color_field.set_visible(shown == Step::Address);
+        // The placeholder shows what an empty name gives: the address.
+        let typed = w.address.text();
+        w.label.set_placeholder_text(Some(match typed.trim() {
+            "" => LABEL_PLACEHOLDER,
+            address => address,
+        }));
 
         let listed = matches!(
             shown,
@@ -899,9 +942,11 @@ impl Widgets {
         // under them, the sign-in card's text and the waiting box with its Cancel stay
         // readable.
         let frozen = matches!(step, Step::Checking | Step::Adding | Step::SigningIn);
-        let fields: [&gtk::Widget; 7] = [
+        let fields: [&gtk::Widget; 9] = [
             w.address_field.upcast_ref(),
             w.name_field.upcast_ref(),
+            w.label_field.upcast_ref(),
+            w.color_field.upcast_ref(),
             w.sources.upcast_ref(),
             w.found.upcast_ref(),
             w.username_field.upcast_ref(),

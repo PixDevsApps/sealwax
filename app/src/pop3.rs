@@ -69,6 +69,8 @@ mod tests {
         AccountSettings {
             key: AccountKey(key.to_owned()),
             name: key.to_owned(),
+            label: None,
+            color: None,
             address: format!("{key}@example.test"),
             incoming: endpoint("pop.example.test"),
             receive,

@@ -7,6 +7,7 @@ use super::color::Rgb;
 use super::roles::avatar_index;
 use super::typography::css_family;
 use super::webview::{PAPER, PAPER_TEXT};
+use crate::account::AccountColor;
 use std::fmt::Write as _;
 
 /// Component sizes from the approved mock at the default text size, in px; they scale with
@@ -167,6 +168,13 @@ impl Theme {
             push(
                 &format!("--sw-avatar-{index}-fg-color"),
                 tint.foreground.to_string(),
+            );
+        }
+
+        for (color, value) in AccountColor::ALL.iter().zip(mail.accounts) {
+            push(
+                &format!("--sw-account-{}-color", color.name()),
+                value.to_string(),
             );
         }
 

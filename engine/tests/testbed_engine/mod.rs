@@ -170,6 +170,8 @@ impl TestEngine {
         let settings = AccountSettings {
             key: AccountKey(String::new()),
             name: user.into(),
+            label: None,
+            color: None,
             address: format!("{user}@example.test"),
             incoming: imap,
             receive: sealwax_domain::account::Receive::Imap,

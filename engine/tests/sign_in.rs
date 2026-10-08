@@ -83,6 +83,8 @@ impl Setup {
         AccountSettings {
             key: AccountKey(String::new()),
             name: "Microsoft".into(),
+            label: None,
+            color: None,
             address: ADDRESS.into(),
             incoming: self.imap.endpoint(),
             receive: sealwax_domain::account::Receive::Imap,

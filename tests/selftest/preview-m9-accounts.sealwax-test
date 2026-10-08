@@ -1,0 +1,83 @@
+# Preview screenshots of the UI tweaks of 2026-10-08: the setup assistant's first step with
+# "Account name" and "Colour", the password step whose list scrolls with its scrollbar beside
+# the fields, and two accounts in the sidebar told apart by name and colour, in matte-black
+# (dark, square corners as on stock Omarchy) and catppuccin-latte (light, corners rounded 8 as
+# on this desktop). A scripted engine answers; every name, address and server is fictional.
+# Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the repository root:
+#   tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/preview-m9-accounts.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# The first step: the address, the sender name, the account's name and its colour.
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-type setup-label Work
+setup-click setup-color-teal
+screenshot $DIR/../../tools/progress/public/m9-accounts-address-matte-black-square-2026-10-08.png
+theme catppuccin-latte
+corners 8
+screenshot $DIR/../../tools/progress/public/m9-accounts-address-catppuccin-latte-rounded-2026-10-08.png
+theme matte-black
+corners 0
+
+# Every source listed and settings to confirm: the column scrolls, its scrollbar beside the
+# fields.
+setup-key enter
+engine-expect detect
+engine-reply progress preset
+engine-reply progress autoconfig
+engine-reply progress ispdb
+engine-reply progress mx
+engine-reply progress srv
+engine-reply progress probe
+engine-reply detected confirm
+setup-type setup-password fictional-password
+assert-setup step password
+assert-right-of setup-scrollbar setup-password
+assert-right-of setup-scrollbar setup-username
+hover setup-scrollbar
+screenshot $DIR/../../tools/progress/public/m9-accounts-scroll-matte-black-square-2026-10-08.png
+
+# Saved with its name and colour, then a second account with neither typed: the address names
+# it, and it takes the first colour no account has.
+setup-key enter
+engine-expect verify label=Work color=teal
+engine-reply verified ok
+engine-expect add-account "name=Kari Nordmann" label=Work color=teal
+engine-reply added ok file
+assert-setup open false
+action win.add-account
+setup-type setup-address nordmann@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect
+engine-reply detected fjordpost
+setup-type setup-password fictional-password
+setup-key enter
+engine-expect verify label=none color=rose
+engine-reply verified ok
+engine-expect add-account label=none color=rose
+engine-reply added ok file
+assert-setup open false
+setup-dismiss-toasts
+assert-label account-name:account-1 Work
+assert-label account-name:account-2 nordmann@example.test
+assert-color account-name:account-1 text account-teal
+assert-color account-name:account-2 text account-rose
+assert-color status:account-1 background account-teal
+screenshot $DIR/../../tools/progress/public/m9-accounts-sidebar-matte-black-square-2026-10-08.png
+theme catppuccin-latte
+corners 8
+assert-color account-name:account-1 text account-teal
+screenshot $DIR/../../tools/progress/public/m9-accounts-sidebar-catppuccin-latte-rounded-2026-10-08.png
+
+# The rail (900–1279 px): the other account's initial in its colour.
+theme matte-black
+corners 0
+resize 1100 900
+screenshot $DIR/../../tools/progress/public/m9-accounts-rail-matte-black-square-2026-10-08.png

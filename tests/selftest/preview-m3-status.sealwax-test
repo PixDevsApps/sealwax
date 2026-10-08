@@ -14,6 +14,7 @@ engine-attach
 action win.add-account
 setup-type setup-address kari@example.test
 setup-type setup-name "Kari Nordmann"
+setup-type setup-label "Kari Nordmann"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -26,6 +27,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address ola@example.test
 setup-type setup-name "Ola Hansen"
+setup-type setup-label "Ola Hansen"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -38,6 +40,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address anne@example.test
 setup-type setup-name "Anne Berg"
+setup-type setup-label "Anne Berg"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -50,6 +53,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address per@example.test
 setup-type setup-name "Per Lie"
+setup-type setup-label "Per Lie"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -62,6 +66,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address siri@example.test
 setup-type setup-name "Siri Dahl"
+setup-type setup-label "Siri Dahl"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost
@@ -74,6 +79,7 @@ engine-reply added ok
 action win.add-account
 setup-type setup-address tor@example.test
 setup-type setup-name "Tor Moe"
+setup-type setup-label "Tor Moe"
 setup-key enter
 engine-expect detect
 engine-reply detected fjordpost

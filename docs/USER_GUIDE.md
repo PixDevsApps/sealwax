@@ -33,7 +33,7 @@ With no account yet, the window shows **No accounts yet** and an **Add an accoun
 
 ### The setup assistant
 
-1. **Email address** and **Your name** (the name the people you write to see), then **Next**.
+1. **Email address** and **Your name** (the name the people you write to see); **Account name**, what Sealwax calls the account in the sidebar ("Work", "Personal"; left empty, the address); and **Colour**, one of eight muted colours for the account's heading in the sidebar, or none. The assistant offers the first colour no other account has; Left and Right move between the colours. Then **Next**.
 2. **Looking up your provider…** Sealwax finds the server settings itself. It checks, side by side: its built-in list of the big providers, your domain's own HTTPS autoconfig, Mozilla's ISPDB (only the domain is sent), your domain's DNS records (MX and SRV), and finally a few likely server names over TLS. The search stops after 10 seconds at most.
 3. **The settings found**, then either a password field or **Sign in with Microsoft**. When the settings came only from your mail provider's servers rather than your own domain, the assistant shows them for you to confirm, with the username. Where a provider gives you an account name that isn't your address, the assistant asks for it.
 4. **Checking your login with the server…** Sealwax logs in to the incoming server (IMAP or POP3) and the outgoing server (SMTP) before it saves anything. If the login to settings it found is refused, it tries once more with the other usual username (your full address, or only the part before the @).
@@ -105,6 +105,7 @@ What a POP3 account does:
 - **Add Account** (main menu, palette) adds another account. **All Inboxes** at the top of the sidebar shows the Inboxes of every account together.
 - **Remove Account** (main menu, palette) asks which account and whether, then deletes the account's mail stored on this computer, its password or token in the keyring and its entry in `accounts.toml`. For an IMAP account the mail on the server stays.
 - **Editing `accounts.toml` by hand:** an account whose entry you delete by hand is only detached: it stops syncing and leaves the sidebar, but its local mail and its password stay until the entry comes back or you remove the account in Sealwax.
+- **Renaming or recolouring an account:** set `label` and `color` on its entry in `accounts.toml` ([below](#accountstoml)); the sidebar follows as soon as you save.
 - **A password that stops working** (you changed it, or revoked an app password): a banner says the account "needs you to sign in again", with **Type the password again**. The assistant opens at the password; Sealwax checks the new one on both servers before it keeps it ("Password accepted for …").
 
 ## The window
@@ -127,7 +128,7 @@ The layout follows the window's width, so it works tiled:
 
 On Hyprland the window has no title bar; on other desktops the window controls sit at the ends of the pane bars.
 
-**Account status.** Each account's heading has a dot and a word: synced, syncing…, offline, mailbox full, needs sign-in or bad certificate. A state that needs you shows as a **banner** across the top of the window, the most important first: no keyring, a certificate that no longer verifies, a sign-in or password needed, a message that may have been sent, a full mailbox, offline. Short results (archived, sent, saved) show as **toasts** at the bottom.
+**Account status.** Each account's heading has its name (the account name you gave it, else its address), a dot and a word: synced, syncing…, offline, mailbox full, needs sign-in or bad certificate. An account with a colour shows its name and its synced dot in that colour; a dot that warns stays the warning's colour. A state that needs you shows as a **banner** across the top of the window, the most important first: no keyring, a certificate that no longer verifies, a sign-in or password needed, a message that may have been sent, a full mailbox, offline. Short results (archived, sent, saved) show as **toasts** at the bottom.
 
 **What syncs.** Sealwax keeps a copy of your mail on this computer, so the list shows at once and works offline. New mail in the Inbox arrives as soon as the server reports it (IMAP IDLE); the account's other folders are checked every couple of minutes, and **Refresh** (F5, Ctrl+Alt+R or the main menu) checks every account now. A folder's first sync keeps its last 90 days of mail (at least 200 messages, at most 5,000); scroll to the end of the list to load older messages, 200 at a time ("Loading older messages…"). Inbox, Sent, Drafts, Archive, Junk and Trash sync by themselves; another folder syncs once you have opened it. The unread counts are the server's, including mail older than what the list holds.
 
@@ -362,6 +363,7 @@ Sealwax follows your **live Omarchy theme**. Its colours come from the current t
 - **Fonts:** `chrome_font = "sans"` puts the sidebar, list and toolbars in the sans-serif font; `reading_font = "mono"` puts message text in the monospace font.
 - **Outside Omarchy** Sealwax uses one of two built-in palettes, light or dark, following the desktop's dark-style preference; corners follow Hyprland when it runs, and are square elsewhere unless `corner_radius` says otherwise.
 - **Avatars** are initials on a colour from the theme. Sealwax never fetches pictures (no Gravatar, BIMI or favicons).
+- **Account colours** are the one colour you choose rather than the theme: eight fixed, muted hues. Their lightness follows the theme, so an account's name reads as well on a light theme as on a dark one.
 
 ## Settings files
 
@@ -407,6 +409,8 @@ The setup assistant adds and removes accounts here, keeping your comments and la
 key = "work"                  # the account's name in the keyring and the store; keep it
 name = "Ada Lovelace"         # your name as the people you write to see it
 address = "ada@example.com"
+label = "Work"                # what Sealwax calls the account; the address by default
+color = "sage"                # its colour in the sidebar
 signature = """
 Ada Lovelace
 Analytical Engines Ltd."""
@@ -427,8 +431,10 @@ address = "board@example.com"
 | Table | Setting | Default | Meaning |
 | --- | --- | --- | --- |
 | `[[account]]` | `key` | — (required) | The account's stable name: 1 to 40 of `a`–`z`, `0`–`9`, `-` and `_`. The assistant makes a random one |
-| | `name` | — (required) | Your name as the people you write to see it, and the account's label |
+| | `name` | — (required) | Your name as the people you write to see it |
 | | `address` | — (required) | The account's email address |
+| | `label` | the address | What Sealwax calls the account: the sidebar, banners and menus |
+| | `color` | none | The account's colour in the sidebar: `"rose"`, `"clay"`, `"olive"`, `"sage"`, `"teal"`, `"slate"`, `"iris"` or `"mauve"`. Each is a fixed hue whose lightness Sealwax sets so it reads on your theme, light or dark |
 | | `username` | the address | The login name, when it isn't the address |
 | | `auth` | `"password"` | `"password"` (a password or app password, kept in the keyring) or `"microsoft"` (Sign in with Microsoft) |
 | | `signature` | none | Plain text put under your messages after a `-- ` line; at most 10,000 characters |

@@ -1055,6 +1055,13 @@ impl AppState {
         }
         if update.accounts_changed {
             self.accounts_read.set(true);
+            self.mailbox.set_colors(
+                prefs
+                    .accounts()
+                    .into_iter()
+                    .filter_map(|account| Some((account.key, account.color?)))
+                    .collect(),
+            );
             self.send_accounts();
             self.update_banner();
         }
@@ -1091,7 +1098,14 @@ impl AppState {
             if let Some(state) = weak.upgrade()
                 && let Some(window) = state.window()
             {
-                setup::open(&window, &state.engine, state.microsoft_available());
+                let used: Vec<_> = state
+                    .preferences()
+                    .map(|prefs| prefs.accounts())
+                    .unwrap_or_default()
+                    .iter()
+                    .filter_map(|account| account.color)
+                    .collect();
+                setup::open(&window, &state.engine, state.microsoft_available(), &used);
             }
         });
         let weak = Rc::downgrade(self);

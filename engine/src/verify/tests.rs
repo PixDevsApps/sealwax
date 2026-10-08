@@ -115,6 +115,8 @@ fn settings(imap: u16, smtp: u16) -> AccountSettings {
     AccountSettings {
         key: AccountKey("test".into()),
         name: "Test".into(),
+        label: None,
+        color: None,
         address: "first@example.test".into(),
         incoming: endpoint(imap),
         receive: sealwax_domain::account::Receive::Imap,

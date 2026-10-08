@@ -362,6 +362,8 @@ fn parts_and_originals_are_fetched_on_demand_and_answered_once() {
             settings: AccountSettings {
                 key: AccountKey(String::new()),
                 name: "Parts".into(),
+                label: None,
+                color: None,
                 address: ADDRESS.into(),
                 incoming: endpoint.clone(),
                 receive: sealwax_domain::account::Receive::Imap,

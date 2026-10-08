@@ -3,6 +3,7 @@
 //! here reads the system.
 
 use proptest::prelude::*;
+use sealwax_domain::account::AccountColor;
 use sealwax_domain::theme::{
     AvatarTint, BORDER_MIX, BodyStyle, FontFamilies, MEASURE_CSS, Mode, Palette, Rgb,
     SECONDARY_MIX, ShellValues, Theme, ThemeInputs, ThemeOptions, ThemeSource, avatar_index,
@@ -131,6 +132,9 @@ fn roles(theme: &Theme) -> String {
             "avatar {index} {} on {}",
             tint.foreground, tint.background
         );
+    }
+    for (color, value) in AccountColor::ALL.iter().zip(m.accounts) {
+        let _ = writeln!(text, "account {} {value}", color.name());
     }
     text
 }
@@ -278,6 +282,33 @@ fn secondary_text_reaches_aa_on_the_window_and_the_list() {
                 contrast >= TEXT_CONTRAST,
                 "{name}: {secondary} on the {surface} {background} is {contrast:.2}"
             );
+        }
+    }
+}
+
+/// The account colours are sidebar text: AA on the window and the sidebar in every theme, each
+/// still near its own hue, and no two alike.
+#[test]
+fn account_colors_read_as_text_and_stay_apart() {
+    for (name, theme) in all_themes() {
+        let colors = theme.mail.accounts;
+        for (color, value) in AccountColor::ALL.iter().zip(colors) {
+            assert!(
+                reads_on_window_and_list(&theme, value),
+                "{name}: {} {value} doesn't read on {} and {}",
+                color.name(),
+                theme.palette.background,
+                theme.palette.dark_background
+            );
+        }
+        for (index, a) in colors.iter().enumerate() {
+            for b in &colors[index + 1..] {
+                let distance = rgb_distance(*a, *b);
+                assert!(
+                    distance >= 20.0,
+                    "{name}: {a} and {b} are {distance:.1} apart"
+                );
+            }
         }
     }
 }

@@ -28,6 +28,7 @@
 //! failures do.
 
 pub mod browser;
+mod colors;
 pub mod form;
 pub mod remove;
 pub mod sources;
@@ -43,8 +44,8 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, AuthMethod, DetectedSettings, Detection, Endpoint, HelpLink,
-    LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol, Receive, Security,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, DetectedSettings, Detection, Endpoint,
+    HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol, Receive, Security,
 };
 use sealwax_domain::autoconfig::{Finding, Hints, address_domain, presets};
 use sealwax_domain::model::AccountId;
@@ -304,8 +305,14 @@ pub fn current() -> Option<Assistant> {
     CURRENT.with(|current| current.borrow().clone())
 }
 
-/// Add Account: opens the assistant over `window`, or shows the one already open there.
-pub fn open(window: &Window, engine: &EngineLink, microsoft: MicrosoftAvailable) -> Assistant {
+/// Add Account: opens the assistant over `window`, or shows the one already open there. A new
+/// one offers the first colour none of the accounts has (`used`).
+pub fn open(
+    window: &Window,
+    engine: &EngineLink,
+    microsoft: MicrosoftAvailable,
+    used: &[AccountColor],
+) -> Assistant {
     let parent = window.window();
     if let Some(open) = current() {
         if open.is_over(window) {
@@ -315,6 +322,11 @@ pub fn open(window: &Window, engine: &EngineLink, microsoft: MicrosoftAvailable)
         open.close();
     }
     let assistant = Assistant::new(engine, window.toasts(), microsoft);
+    assistant
+        .inner
+        .widgets
+        .colors
+        .choose(Some(AccountColor::first_unused(used)), false);
     CURRENT.with(|current| current.replace(Some(assistant.clone())));
     assistant.inner.dialog.present(Some(parent));
     assistant.render();
@@ -470,6 +482,7 @@ impl Assistant {
         for entry in [
             &w.address,
             &w.name,
+            &w.label,
             &w.username,
             &w.incoming.host,
             &w.incoming.port,
@@ -482,6 +495,8 @@ impl Assistant {
         }
         let on_enter = advance.clone();
         w.password.connect_activate(move |_| on_enter());
+        let on_swatch = advance.clone();
+        w.colors.connect_enter(move || on_swatch());
         let on_click = advance.clone();
         w.primary.connect_clicked(move |_| on_click());
 
@@ -582,7 +597,7 @@ impl Assistant {
         }
     }
 
-    /// What Enter does in the focused field.
+    /// What Enter does in the focused field or colour.
     pub fn press_enter(&self) -> Result<(), String> {
         let focus = self
             .inner
@@ -591,6 +606,9 @@ impl Assistant {
             .ok_or("nothing in the assistant has the focus")?;
         if focus.is::<gtk::Text>() {
             focus.emit_by_name::<()>("activate", &[]);
+            Ok(())
+        } else if self.inner.widgets.colors.has_focus() {
+            self.inner.widgets.colors.enter();
             Ok(())
         } else {
             Err(format!(
@@ -856,7 +874,7 @@ impl Assistant {
                 (
                     form::settings(
                         address,
-                        &w.name.text(),
+                        &w.naming(),
                         settings.imap.clone(),
                         Receive::Imap,
                         settings.smtp.clone(),
@@ -878,7 +896,7 @@ impl Assistant {
         };
         let settings = form::settings(
             &checked.address,
-            &w.name.text(),
+            &w.naming(),
             checked.incoming,
             checked.receive,
             checked.smtp,
@@ -1122,7 +1140,7 @@ impl Assistant {
                 .map(|(found, address)| {
                     let mut settings = form::settings(
                         address,
-                        &self.inner.widgets.name.text(),
+                        &self.inner.widgets.naming(),
                         found.imap.clone(),
                         Receive::Imap,
                         found.smtp.clone(),

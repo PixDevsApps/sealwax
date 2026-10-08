@@ -21,6 +21,7 @@ engine-start $DIR/../../tools/testbed/certs/ca.pem
 setup-click add-account
 setup-type setup-address alice@example.test
 setup-type setup-name Alice
+setup-type setup-label Alice
 setup-click setup-manual-link
 setup-choose setup-incoming pop3
 setup-type setup-imap-host 127.0.0.1

@@ -399,6 +399,8 @@ async fn a_new_password_is_checked_stored_and_the_account_syncs_again() {
     let settings = AccountSettings {
         key: AccountKey(String::new()),
         name: "Password".into(),
+        label: None,
+        color: None,
         address: ADDRESS.into(),
         incoming: imap.endpoint(),
         receive: sealwax_domain::account::Receive::Imap,

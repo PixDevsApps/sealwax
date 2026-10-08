@@ -10,6 +10,7 @@
 //! | `click-row POS [ctrl\|shift\|ctrl+shift]` | Clicks a list row with the primary button |
 //! | `check-row POS` | Ticks or unticks a row's checkbox, as a click on it does |
 //! | `hover-row POS` | Moves the pointer over a row |
+//! | `hover NAME` | Moves the pointer to the middle of the widget named NAME (a scrollbar shows itself) |
 //! | `click-quick POS archive\|delete\|star` | Hovers a row and clicks its quick action |
 //! | `triage-account NAME KEY` | An account with a key, as `accounts.toml` lists one, and its six role folders (OpsQueued goes to it) |
 //! | `triage-mark-read-on-open true\|false` | Switches marking a message read when the reader shows it |
@@ -53,6 +54,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("click-row", 1, 2),
     ("check-row", 1, 1),
     ("hover-row", 1, 1),
+    ("hover", 1, 1),
     ("click-quick", 2, 2),
     ("click", 1, 2),
     ("triage-account", 2, 2),
@@ -132,6 +134,14 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             let (x, y) = centre(harness, row.upcast_ref())?;
             broadway::hover(x, y).map_err(|error| error.to_string())?;
             hovered(harness, &row).await
+        }
+        "hover" => {
+            let widget = harness.widget(arg(0))?;
+            let (x, y) = centre(harness, &widget)?;
+            broadway::hover(x, y).map_err(|error| error.to_string())?;
+            glib::timeout_future(Duration::from_millis(300)).await;
+            harness.wait_until_settled().await;
+            Ok(())
         }
         "click-quick" => {
             let row = row_widget(harness, arg(0))?;

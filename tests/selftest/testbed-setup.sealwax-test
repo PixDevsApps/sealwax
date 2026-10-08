@@ -18,6 +18,7 @@ engine-start $DIR/../../tools/testbed/certs/ca.pem
 setup-click add-account
 setup-type setup-address alice@example.test
 setup-type setup-name Alice
+setup-type setup-label Alice
 setup-click setup-manual-link
 assert-setup step manual
 setup-type setup-imap-host 127.0.0.1
@@ -65,6 +66,7 @@ wait-until assert-setup open false
 action win.add-account
 setup-type setup-address perf@example.test
 setup-type setup-name Perf
+setup-type setup-label Perf
 setup-click setup-manual-link
 setup-type setup-imap-host 127.0.0.1
 setup-type setup-imap-port 16993

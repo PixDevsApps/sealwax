@@ -87,6 +87,8 @@ fn a_listed_pop3_account_gets_its_local_folders_and_leaves_nothing_when_removed(
     let settings = AccountSettings {
         key: key.clone(),
         name: "Pop".into(),
+        label: None,
+        color: None,
         address: "pop@example.test".into(),
         incoming: endpoint(closed_port()),
         receive: Receive::Pop3(Pop3Policy::default()),

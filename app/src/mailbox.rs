@@ -10,6 +10,7 @@ use crate::window::{
     ALL_INBOXES, AccountStatus, FolderRole, SidebarAccount, SidebarFolder, SidebarModel,
 };
 use gtk4::glib;
+use sealwax_domain::account::{AccountColor, AccountKey};
 use sealwax_domain::model::{Account, AccountId, Folder, FolderId, FolderRole as StoreRole};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{
@@ -48,12 +49,13 @@ fn sidebar_role(role: StoreRole) -> Option<FolderRole> {
 }
 
 /// Accounts and folders as the sidebar shows them: role folders with their unread counts (drafts
-/// for Drafts), other folders under "More". An account the engine hasn't reported on shows as
-/// synced.
+/// for Drafts), other folders under "More", each account in its colour from `accounts.toml`.
+/// An account the engine hasn't reported on shows as synced.
 pub fn sidebar_model(
     accounts: &[Account],
     folders: &[Folder],
     statuses: &HashMap<AccountId, AccountStatus>,
+    colors: &HashMap<AccountKey, AccountColor>,
 ) -> SidebarModel {
     SidebarModel {
         accounts: accounts
@@ -82,6 +84,11 @@ pub fn sidebar_model(
                 SidebarAccount {
                     key: account_key(account),
                     name: account.name.clone(),
+                    color: account
+                        .key
+                        .as_ref()
+                        .and_then(|key| colors.get(key))
+                        .copied(),
                     status: statuses
                         .get(&account.id)
                         .copied()
@@ -214,9 +221,14 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         .folders()
         .recv_blocking()
         .map_err(|error| error.to_string())?;
-    let scope = sidebar_model(&accounts.value, &folders.value, &HashMap::new())
-        .default_selection()
-        .and_then(|key| scope_for_key(&key, &folders.value));
+    let scope = sidebar_model(
+        &accounts.value,
+        &folders.value,
+        &HashMap::new(),
+        &HashMap::new(),
+    )
+    .default_selection()
+    .and_then(|key| scope_for_key(&key, &folders.value));
     let thresholds = glib::DateTime::now_local()
         .ok()
         .and_then(|now| Thresholds::at(&now).ok());
@@ -260,6 +272,8 @@ pub struct Mailbox {
     blobs: RefCell<Option<BlobStore>>,
     /// What the engine last reported for each account.
     statuses: RefCell<HashMap<AccountId, AccountStatus>>,
+    /// Each account's colour, as `accounts.toml` last said.
+    colors: RefCell<HashMap<AccountKey, AccountColor>>,
     accounts: RefCell<Vec<Account>>,
     folders: RefCell<Vec<Folder>>,
     /// The version the folder list was read at; change events up to it are already in it.
@@ -431,6 +445,7 @@ impl Mailbox {
             &self.accounts.borrow(),
             &self.folders.borrow(),
             &self.statuses.borrow(),
+            &self.colors.borrow(),
         )
     }
 
@@ -446,6 +461,14 @@ impl Mailbox {
     /// Shows what the engine reported for `account` in the sidebar.
     pub fn set_status(self: &Rc<Self>, account: AccountId, status: AccountStatus) {
         if self.statuses.borrow_mut().insert(account, status) != Some(status) {
+            self.queue_sidebar();
+        }
+    }
+
+    /// Shows the accounts in the colours `accounts.toml` gives them.
+    pub fn set_colors(self: &Rc<Self>, colors: HashMap<AccountKey, AccountColor>) {
+        if *self.colors.borrow() != colors {
+            self.colors.replace(colors);
             self.queue_sidebar();
         }
     }
@@ -625,8 +648,14 @@ mod tests {
             folder(4, 2, "INBOX", StoreRole::Inbox, 4),
             folder(5, 2, "All Mail", StoreRole::All, 9),
         ];
-        let model = sidebar_model(&accounts, &folders, &HashMap::new());
+        let colors = HashMap::from([
+            (AccountKey("work".into()), AccountColor::Sage),
+            (AccountKey("gone".into()), AccountColor::Rose),
+        ]);
+        let model = sidebar_model(&accounts, &folders, &HashMap::new(), &colors);
         assert_eq!(model.accounts.len(), 2);
+        assert_eq!(model.accounts[0].color, None, "a local account has no key");
+        assert_eq!(model.accounts[1].color, Some(AccountColor::Sage));
         let personal = &model.accounts[0];
         assert_eq!(personal.key, "account-1");
         assert_eq!(personal.folders.len(), 2);

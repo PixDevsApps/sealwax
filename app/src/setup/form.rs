@@ -3,8 +3,8 @@
 //! engine.
 
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, AuthMethod, DetectedSettings, Endpoint, Protocol, Receive,
-    Security,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, DetectedSettings, Endpoint, Protocol,
+    Receive, Security,
 };
 use std::net::{IpAddr, Ipv6Addr};
 
@@ -110,16 +110,26 @@ pub fn usernames(
     Some((username, second))
 }
 
-/// The settings to check and save. Without a name the address labels the account.
+/// What the first step names: the sender name, the account's name in Sealwax and its colour.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Naming {
+    pub name: String,
+    pub label: String,
+    pub color: Option<AccountColor>,
+}
+
+/// The settings to check and save. Without a name the address is the sender name; without a
+/// label, or with the address typed as one, the address names the account.
 pub fn settings(
     address: &Address,
-    name: &str,
+    naming: &Naming,
     incoming: Endpoint,
     receive: Receive,
     smtp: Endpoint,
     username: String,
 ) -> AccountSettings {
-    let name = name.trim();
+    let name = naming.name.trim();
+    let label = naming.label.trim();
     AccountSettings {
         // The engine gives a new account its random key (ML-034).
         key: AccountKey(String::new()),
@@ -128,6 +138,9 @@ pub fn settings(
         } else {
             name.to_owned()
         },
+        label: (!label.is_empty() && !label.eq_ignore_ascii_case(&address.text))
+            .then(|| label.to_owned()),
+        color: naming.color,
         address: address.text.clone(),
         incoming,
         receive,
@@ -395,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_fall_back_to_the_address_for_a_name() {
+    fn settings_fall_back_to_the_address_for_a_name_and_a_label() {
         let kari = address("Kari@Example.test");
         let endpoint = |host: &str, port| Endpoint {
             host: host.to_owned(),
@@ -404,25 +417,38 @@ mod tests {
         };
         let settings = settings(
             &kari,
-            "  ",
+            &Naming {
+                name: "  ".to_owned(),
+                label: " kari@example.test ".to_owned(),
+                color: None,
+            },
             endpoint("imap.example.test", 143),
             Receive::Imap,
             endpoint("smtp.example.test", 587),
             "kari".to_owned(),
         );
         assert_eq!(settings.name, "Kari@Example.test");
+        assert_eq!(settings.label, None, "the address typed as the label");
+        assert_eq!(settings.title(), "Kari@Example.test");
+        assert_eq!(settings.color, None);
         assert_eq!(settings.key, AccountKey(String::new()));
         assert_eq!(settings.auth, AuthMethod::Password);
         assert_eq!(settings.receive, Receive::Imap);
         let pop3 = super::settings(
             &kari,
-            " Kari Nordmann ",
+            &Naming {
+                name: " Kari Nordmann ".to_owned(),
+                label: " Work ".to_owned(),
+                color: Some(AccountColor::Sage),
+            },
             endpoint("pop.example.test", 110),
             Receive::Pop3(Pop3Policy::default()),
             settings.smtp.clone(),
             "kari".to_owned(),
         );
         assert_eq!(pop3.name, "Kari Nordmann");
+        assert_eq!(pop3.title(), "Work");
+        assert_eq!(pop3.color, Some(AccountColor::Sage));
         assert_eq!(pop3.incoming.host, "pop.example.test");
         assert_eq!(pop3.receive, Receive::Pop3(Pop3Policy::default()));
     }

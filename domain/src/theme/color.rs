@@ -153,6 +153,40 @@ impl Rgb {
         }
     }
 
+    /// The colour at OKLCH `lightness` (0–1), `chroma` and `hue` (degrees), or `None` outside
+    /// sRGB. OKLab (Björn Ottosson, 2020) keeps the lightness even across hues, which HSL
+    /// doesn't: an HSL yellow is far lighter than its blue.
+    pub fn from_oklch(lightness: f64, chroma: f64, hue: f64) -> Option<Self> {
+        let (a, b) = (
+            chroma * hue.to_radians().cos(),
+            chroma * hue.to_radians().sin(),
+        );
+        let l = (lightness + 0.396_337_777_4 * a + 0.215_803_757_3 * b).powi(3);
+        let m = (lightness - 0.105_561_345_8 * a - 0.063_854_172_8 * b).powi(3);
+        let s = (lightness - 0.089_484_177_5 * a - 1.291_485_548 * b).powi(3);
+        let linear = [
+            4.076_741_662_1 * l - 3.307_711_591_3 * m + 0.230_969_929_2 * s,
+            -1.268_438_004_6 * l + 2.609_757_401_1 * m - 0.341_319_396_5 * s,
+            -0.004_196_086_3 * l - 0.703_418_614_7 * m + 1.707_614_701 * s,
+        ];
+        if linear
+            .iter()
+            .any(|value| !(-1e-4..=1.0 + 1e-4).contains(value))
+        {
+            return None;
+        }
+        let [r, g, b] = linear.map(|value| {
+            let value = value.clamp(0.0, 1.0);
+            let encoded = if value <= 0.003_130_8 {
+                12.92 * value
+            } else {
+                1.055 * value.powf(1.0 / 2.4) - 0.055
+            };
+            (encoded * 255.0).round().clamp(0.0, 255.0) as u8
+        });
+        Some(Self { r, g, b })
+    }
+
     /// `rgba(r, g, b, alpha)` for CSS, alpha clamped to 0–1.
     pub fn with_alpha(self, alpha: f64) -> String {
         let alpha = (alpha.clamp(0.0, 1.0) * 1000.0).round() / 1000.0;
@@ -369,6 +403,22 @@ mod tests {
             20.0,
         );
         assert!(neon[2].to_hsl().1 <= 0.76, "{}", neon[2]);
+    }
+
+    #[test]
+    fn oklch_matches_known_colours() {
+        // From an independent OKLab implementation (the scratch check of 2026-10-08).
+        assert_eq!(Rgb::from_oklch(1.0, 0.0, 0.0), Some(Rgb::WHITE));
+        assert_eq!(Rgb::from_oklch(0.0, 0.0, 0.0), Some(Rgb::BLACK));
+        assert_eq!(
+            Rgb::from_oklch(0.74, 0.065, 145.0),
+            Some(Rgb::from_hex(0x92b692))
+        );
+        assert_eq!(
+            Rgb::from_oklch(0.52, 0.075, 245.0),
+            Some(Rgb::from_hex(0x426d91))
+        );
+        assert_eq!(Rgb::from_oklch(0.9, 0.3, 30.0), None, "outside sRGB");
     }
 
     #[test]

@@ -150,7 +150,7 @@ assert-field setup-incoming POP3
 setup-key enter
 engine-expect verify incoming=pop.example.test:110:starttls receive=pop3:leave
 engine-reply verified ok
-engine-expect add-account address=kari@example.test "name=Kari Nordmann" incoming=pop.example.test:110:starttls receive=pop3:leave smtp=smtp.example.test:465:tls username=kari@example.test auth=password sign-in=none password=fictional-password-2
+engine-expect add-account address=kari@example.test "name=Kari Nordmann" label=none color=rose incoming=pop.example.test:110:starttls receive=pop3:leave smtp=smtp.example.test:465:tls username=kari@example.test auth=password sign-in=none password=fictional-password-2
 assert-setup step adding
 assert-label setup-subtitle "Saving the account…"
 engine-reply added ok file
@@ -158,13 +158,22 @@ assert-setup open false
 assert-toast "Added kari@example.test"
 wait-until assert-shown welcome false
 assert-file-contains $TMP/config/sealwax/accounts.toml "# Sealwax accounts (accounts.toml)."
-assert-file-contains $TMP/config/sealwax/accounts.toml "\n[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\nusername = \"kari@example.test\"\nauth = \"password\"\n\n[account.pop3]\nhost = \"pop.example.test\"\nport = 110\nsecurity = \"starttls\"\nleave_on_server = true\n\n[account.smtp]\nhost = \"smtp.example.test\"\nport = 465\nsecurity = \"tls\"\n"
+assert-file-contains $TMP/config/sealwax/accounts.toml "\n[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\ncolor = \"rose\"\naddress = \"kari@example.test\"\nusername = \"kari@example.test\"\nauth = \"password\"\n\n[account.pop3]\nhost = \"pop.example.test\"\nport = 110\nsecurity = \"starttls\"\nleave_on_server = true\n\n[account.smtp]\nhost = \"smtp.example.test\"\nport = 465\nsecurity = \"tls\"\n"
 assert-file-lacks $TMP/config/sealwax/accounts.toml "\n[account.imap]"
 assert-file-lacks $TMP/config/sealwax/accounts.toml "\ndelete_after_days"
 assert-file-lacks $TMP/config/sealwax/accounts.toml fictional-password
 assert-account-folders kari@example.test Inbox,Drafts,Sent,Archive,Junk,Trash
 assert-account-status kari@example.test synced
 assert-label sidebar-summary "1 account · synced"
+# Named by its address (no account name typed), in the colour the assistant offered: the
+# heading's name and its synced dot (the UI tweak of 2026-10-08).
+assert-label account-name:account-1 kari@example.test
+assert-color account-name:account-1 text account-rose
+assert-color status:account-1 background account-rose
+# Another colour written by hand in accounts.toml recolours the heading as the file is read.
+write-file $TMP/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\ncolor = \"sage\"\naddress = \"kari@example.test\"\n\n[account.pop3]\nhost = \"pop.example.test\"\nport = 110\nsecurity = \"starttls\"\n\n[account.smtp]\nhost = \"smtp.example.test\"\n"
+wait-until assert-color account-name:account-1 text account-sage
+assert-color status:account-1 background account-sage
 engine-expect none
 screenshot $DIR/../../.local/selftest/setup-pop3-added.png
 

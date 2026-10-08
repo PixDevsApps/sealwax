@@ -6,8 +6,8 @@
 //! layout survive the assistant's writes.
 
 use crate::account::{
-    AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider, Pop3Policy,
-    Protocol, Receive, Security,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider,
+    Pop3Policy, Protocol, Receive, Security,
 };
 use crate::config::{FileError, article, did_you_mean, entries, parse_toml};
 use std::net::Ipv6Addr;
@@ -20,9 +20,11 @@ pub const ACCOUNTS_FILE: &str = "accounts.toml";
 /// The longest key a hand-written account may have.
 pub const MAX_KEY_LENGTH: usize = 40;
 
-const ACCOUNT_SETTINGS: [&str; 10] = [
+const ACCOUNT_SETTINGS: [&str; 12] = [
     "key",
     "name",
+    "label",
+    "color",
     "address",
     "username",
     "auth",
@@ -148,6 +150,13 @@ pub fn check(account: &AccountSettings) -> Result<(), String> {
     }
     if !is_plain_text(&account.name) {
         return Err("the name is empty or has control characters".to_owned());
+    }
+    if account
+        .label
+        .as_deref()
+        .is_some_and(|label| !is_plain_text(label))
+    {
+        return Err("the label is empty or has control characters".to_owned());
     }
     if !is_valid_address(&account.address) {
         return Err("the address is not an email address".to_owned());
@@ -403,6 +412,8 @@ impl Reader<'_> {
         let errors_before = self.errors.len();
         let mut key = None;
         let mut name = None;
+        let mut label = None;
+        let mut color = None;
         let mut address = None;
         let mut username = None;
         let mut auth = AuthMethod::Password;
@@ -434,6 +445,27 @@ impl Reader<'_> {
                             name = Some(text);
                         } else {
                             self.error(span, "name can't be empty or hold control characters");
+                        }
+                    }
+                }
+                "label" => {
+                    if let Some(text) = self.string("label", value) {
+                        if is_plain_text(&text) {
+                            label = Some(text);
+                        } else {
+                            self.error(
+                                span,
+                                "label can't be empty or hold control characters; leave the \
+                                 line out to show the address",
+                            );
+                        }
+                    }
+                }
+                "color" => {
+                    if let Some(text) = self.string("color", value) {
+                        match AccountColor::from_name(&text) {
+                            Some(found) => color = Some(found),
+                            None => self.error(span, color_message()),
                         }
                     }
                 }
@@ -521,7 +553,7 @@ impl Reader<'_> {
             ),
             (
                 name.is_none() && !table.contains_key("name"),
-                "this account has no name, the sender name and sidebar label; add one, like \
+                "this account has no name, the sender name on its mail; add one, like \
                  name = \"Ada Lovelace\"",
             ),
             (
@@ -565,6 +597,8 @@ impl Reader<'_> {
             account: AccountSettings {
                 key,
                 name,
+                label,
+                color,
                 username: username.unwrap_or_else(|| address.clone()),
                 address,
                 incoming,
@@ -811,6 +845,16 @@ impl Reader<'_> {
     }
 }
 
+/// What `color` takes, every name listed.
+fn color_message() -> String {
+    let names: Vec<String> = AccountColor::ALL
+        .iter()
+        .map(|color| format!("\"{}\"", color.name()))
+        .collect();
+    let (last, rest) = names.split_last().expect("there are colours");
+    format!("color is one of {} or {last}", rest.join(", "))
+}
+
 /// Where a setting written outside an account belongs.
 fn section_of(name: &str) -> Option<&'static str> {
     if ACCOUNT_SETTINGS.contains(&name) {
@@ -922,6 +966,12 @@ pub fn entry(account: &AccountSettings) -> String {
     let mut table = Table::new();
     table["key"] = value(&account.key.0);
     table["name"] = value(&account.name);
+    if let Some(label) = &account.label {
+        table["label"] = value(label);
+    }
+    if let Some(color) = account.color {
+        table["color"] = value(color.name());
+    }
     table["address"] = value(&account.address);
     table["username"] = value(&account.username);
     table["auth"] = value(auth_name(account.auth));
@@ -1072,8 +1122,12 @@ pub fn default_accounts_file() -> String {
      #\n\
      # [[account]]\n\
      # key = \"work\"                   # its name in the keyring and the store; keep it\n\
-     # name = \"Ada Lovelace\"          # the sender name and the sidebar label\n\
+     # name = \"Ada Lovelace\"          # the sender name on your mail\n\
      # address = \"ada@example.test\"\n\
+     # label = \"Work\"                 # optional: the account's name in Sealwax; the address\n\
+     #                                # by default\n\
+     # color = \"sage\"                 # optional: its colour in the sidebar: rose, clay,\n\
+     #                                # olive, sage, teal, slate, iris or mauve\n\
      # username = \"ada@example.test\"  # optional: the address by default\n\
      # auth = \"password\"              # or \"microsoft\" for Sign in with Microsoft\n\
      # signature = \"\"\"\n\
@@ -1117,6 +1171,8 @@ mod tests {
         AccountSettings {
             key: AccountKey(key.to_owned()),
             name: "Ada Lovelace".to_owned(),
+            label: None,
+            color: None,
             address: address.to_owned(),
             incoming: Endpoint {
                 host: "imap.example.test".to_owned(),
@@ -1193,6 +1249,78 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_label_and_the_color_are_optional() {
+        let account = &parse(ONE).unwrap()[0];
+        assert_eq!((account.label.as_deref(), account.color), (None, None));
+        assert_eq!(
+            account.title(),
+            "ada@example.test",
+            "the address by default"
+        );
+        let text = ONE.replace(
+            "name = \"Ada Lovelace\"\n",
+            "name = \"Ada Lovelace\"\nlabel = \" Work \"\ncolor = \"Teal\"\n",
+        );
+        let account = &parse(&text).unwrap()[0];
+        assert_eq!(account.title(), "Work");
+        assert_eq!(account.color, Some(AccountColor::Teal));
+        assert_eq!(account.name, "Ada Lovelace", "the sender name stays");
+    }
+
+    #[test]
+    fn a_wrong_label_or_color_is_a_mistake() {
+        let text = ONE.replace(
+            "name = \"Ada Lovelace\"\n",
+            "name = \"Ada Lovelace\"\nlabel = \"  \"\ncolor = \"green\"\n",
+        );
+        assert_eq!(
+            errors(&text),
+            [
+                "line 4, column 9: label can't be empty or hold control characters; leave the \
+                 line out to show the address",
+                "line 5, column 9: color is one of \"rose\", \"clay\", \"olive\", \"sage\", \
+                 \"teal\", \"slate\", \"iris\" or \"mauve\"",
+            ]
+        );
+        let text = ONE.replace(
+            "name = \"Ada Lovelace\"\n",
+            "name = \"Ada\"\ncolour = \"sage\"\n",
+        );
+        let found = errors(&text);
+        assert!(
+            found[0].contains("unknown setting colour in [[account]]; did you mean color?"),
+            "{found:?}"
+        );
+    }
+
+    #[test]
+    fn the_assistant_writes_the_label_and_the_color() {
+        let mut new = account("k3j5x8m2q9wa", "ada@example.test");
+        new.label = Some("Work".to_owned());
+        new.color = Some(AccountColor::Iris);
+        let written = add("", &new).unwrap();
+        assert!(
+            written.contains("label = \"Work\"\ncolor = \"iris\"\n"),
+            "{written}"
+        );
+        assert_eq!(parse(&written), Ok(vec![new.clone()]));
+        new.label = None;
+        new.color = None;
+        let written = add("", &new).unwrap();
+        assert!(
+            !written.contains("label") && !written.contains("color"),
+            "{written}"
+        );
+        new.label = Some("Work\n".to_owned());
+        assert_eq!(
+            add("", &new),
+            Err(EditError::Account(
+                "the label is empty or has control characters".to_owned()
+            ))
+        );
+    }
+
     /// The default file's example, uncommented, without the block of the incoming server
     /// `[account.<leave_out>]`: it shows both, IMAP's and POP3's.
     fn default_example(leave_out: &str) -> String {
@@ -1222,6 +1350,8 @@ mod tests {
         let accounts = parse(&example).unwrap();
         assert_eq!(accounts.len(), 1);
         assert_eq!(accounts[0].key.0, "work");
+        assert_eq!(accounts[0].title(), "Work");
+        assert_eq!(accounts[0].color, Some(AccountColor::Sage));
         assert_eq!(accounts[0].receive, Receive::Imap);
         assert_eq!(accounts[0].incoming.port, 993);
         assert_eq!(accounts[0].smtp.port, 465);
