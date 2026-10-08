@@ -74,6 +74,12 @@ setup-key enter
 engine-expect verify username=kari@example.test
 assert-setup step checking
 assert-accessible dialog
+# While it checks, every field waits: Tab and Shift+Tab go between Back and Close (until
+# 2026-10-08 the form's scroller took the press and kept the focus on Close).
+tab-chain window forward 20
+assert-tab-chain setup-back,setup-close,setup-back
+tab-chain window backward 20
+assert-tab-chain setup-back,setup-close,setup-back
 engine-reply verified imap wrong-password
 assert-setup step failed
 assert-accessible dialog

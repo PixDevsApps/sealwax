@@ -234,7 +234,7 @@ impl Window {
         batch.widget.set_widget_name("reader-batch");
         let reader = gtk::Stack::builder().vexpand(true).build();
         reader.add_named(&reader_empty, Some("empty"));
-        reader.add_named(&column.scroller, Some("message"));
+        reader.add_named(&column.root, Some("message"));
         reader.add_named(&batch.widget, Some("batch"));
         reader.set_visible_child_name("empty");
         let reader_pane = named(
@@ -319,6 +319,7 @@ impl Window {
             .content(&toasts)
             .build();
         window.add_css_class("sw-window");
+        crate::accessibility::forget_stale_focus(&window);
 
         let shown = true.to_value();
         let hidden = false.to_value();

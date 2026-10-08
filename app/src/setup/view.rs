@@ -613,7 +613,6 @@ impl Widgets {
             gtk::ScrolledWindow::builder()
                 .hscrollbar_policy(gtk::PolicyType::Never)
                 .vexpand(true)
-                .focusable(false)
                 .child(&content)
                 .build(),
             &["sw-setup-scroller"],
@@ -658,7 +657,7 @@ impl Widgets {
         sheet.append(&caption);
         sheet.append(&title);
         sheet.append(&subtitle);
-        sheet.append(&scroller);
+        sheet.append(&crate::accessibility::tab_through(&scroller));
         sheet.append(&footer);
         let close = named(
             icon_button(&["window-close-symbolic"], "Cancel (Escape)"),

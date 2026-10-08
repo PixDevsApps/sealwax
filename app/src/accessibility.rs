@@ -1,10 +1,16 @@
 //! What screen readers and the keyboard need beyond each widget's own label (M9, ML-092):
-//! spoken announcements for lists that move while the focus stays in their search field, and
-//! the keyboard focus kept out of WebKit's hidden key-binding widget.
+//! spoken announcements for lists that move while the focus stays in their search field, the
+//! keyboard focus kept out of WebKit's hidden key-binding widget, and scrolled panes Tab goes
+//! through.
 
 use gtk4 as gtk;
+use gtk4::glib;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
+use libadwaita as adw;
+use libadwaita::prelude::*;
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 thread_local! {
     /// Whether announcements are kept for the self-tests (`assert-announced`).
@@ -238,4 +244,81 @@ pub fn move_focus_past(widget: &gtk::Widget, backward: bool) -> bool {
         after.into_iter().chain(before).collect()
     };
     order.iter().any(|candidate| candidate.grab_focus())
+}
+
+/// Each container the focus is in keeps the child it is in as its focus child, and Tab into a
+/// container that has one starts there, past the controls before it. When the focused widget
+/// itself leaves the window (a message list's row as the list shows another folder), GTK
+/// (4.22) clears only its parent's, and the focus moves on from the orphan: the list's pane
+/// still pointed at its list, and the next Tab from the sidebar went past the search field and
+/// the chips. As the focus moves, this clears what the containers the focus was in still point
+/// at, unless it leads to the focus.
+pub fn forget_stale_focus(window: &impl IsA<gtk::Window>) {
+    let around: Rc<RefCell<Vec<glib::WeakRef<gtk::Widget>>>> = Rc::default();
+    window.connect_focus_widget_notify(move |window| {
+        let focus = gtk::prelude::GtkWindowExt::focus(window);
+        let leads = |child: &gtk::Widget| {
+            focus
+                .as_ref()
+                .is_some_and(|focus| focus == child || focus.is_ancestor(child))
+        };
+        for container in around.borrow().iter().filter_map(glib::WeakRef::upgrade) {
+            if container.focus_child().is_some_and(|child| !leads(&child)) {
+                container.set_focus_child(None::<&gtk::Widget>);
+            }
+        }
+        let mut containers = Vec::new();
+        let mut parent = focus.and_then(|focus| focus.parent());
+        while let Some(current) = parent {
+            parent = current.parent();
+            containers.push(current.downgrade());
+        }
+        around.replace(containers);
+    });
+}
+
+mod tab_through {
+    use super::*;
+    use adw::subclass::prelude::*;
+
+    #[derive(Default)]
+    pub struct TabThrough;
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for TabThrough {
+        const NAME: &'static str = "SealwaxTabThrough";
+        type Type = super::TabThrough;
+        type ParentType = adw::Bin;
+    }
+
+    impl ObjectImpl for TabThrough {}
+
+    impl WidgetImpl for TabThrough {
+        /// Moved only when the focus is now inside.
+        fn focus(&self, direction: gtk::DirectionType) -> bool {
+            self.parent_focus(direction) && self.obj().focus_child().is_some()
+        }
+    }
+
+    impl BinImpl for TabThrough {}
+}
+
+glib::wrapper! {
+    /// A scrolled pane that Tab goes through ([`tab_through`]).
+    pub struct TabThrough(ObjectSubclass<tab_through::TabThrough>)
+        @extends adw::Bin, gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+/// Makes `scroller` no Tab stop of its own, and wraps it so that Tab goes on past it when
+/// nothing in it takes the focus; the wrapper goes where the scroller would. GTK's scrolled
+/// window (4.22) claims the Tab press when no child takes the focus and it can't take it
+/// itself, so the focus stayed where it was for good: the reader's Next button with no message
+/// open, the list's last chip over an empty folder. Shift+Tab round the window's start skipped
+/// the pane instead, as GTK clears the focus before it wraps and the message list takes it back.
+pub fn tab_through(scroller: &gtk::ScrolledWindow) -> gtk::Widget {
+    scroller.set_focusable(false);
+    let wrapper: TabThrough = glib::Object::new();
+    wrapper.set_child(Some(scroller));
+    wrapper.upcast()
 }

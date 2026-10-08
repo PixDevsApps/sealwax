@@ -239,13 +239,13 @@ fn empty_state_parts(
 /// Scrolls when the window is too low for it; never a Tab stop of its own, which a screen
 /// reader would find unnamed (its buttons, if any, still are).
 fn centred(state: &gtk::Box) -> gtk::Widget {
-    gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vexpand(true)
-        .focusable(false)
-        .child(state)
-        .build()
-        .upcast()
+    crate::accessibility::tab_through(
+        &gtk::ScrolledWindow::builder()
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vexpand(true)
+            .child(state)
+            .build(),
+    )
 }
 
 #[cfg(test)]

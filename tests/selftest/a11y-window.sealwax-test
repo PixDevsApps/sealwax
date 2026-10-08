@@ -3,8 +3,8 @@
 # states its role needs (assert-accessible, app/src/selftest/a11y.rs), and Tab and Shift+Tab
 # (real key presses through Broadway) go through the panes left to right and come back where
 # they started: folders, then the list's bar and the list, then the reader's toolbar and the
-# conversation. The folder list and the message list are one Tab stop each (Up and Down move
-# inside them). Every message is fictional.
+# conversation, also with no message open. The folder list and the message list are one Tab
+# stop each (Up and Down move inside them). Every message is fictional.
 # Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-window.sealwax-test
 
 desktop tiling
@@ -38,6 +38,39 @@ tab-chain window forward 80
 assert-tab-chain folder:folder-1,config,list-menu,list-search,chip-all,chip-attachments,message-list,reader-archive,reader-next,reader-subject,quick-reply-text,compose,folder:folder-1
 tab-chain window backward 80
 assert-tab-chain folder:folder-1,compose,quick-reply-text,reader-subject,reader-next,reader-archive,message-list,chip-attachments,chip-all,list-search,list-menu,config,folder:folder-1
+
+# With no message open, Tab goes on past the reader's Next button to the sidebar, and Shift+Tab
+# round the start reaches the reader's toolbar (2026-10-08: the reader's empty page took the
+# press and kept the focus on Next for good): with messages but none selected, and in an empty
+# folder, whose list is no stop.
+folder sent
+folder inbox
+list-wait
+assert-list-selected none
+assert-reader-page empty
+focus folder:folder-1
+tab-chain window forward 80
+assert-tab-chain folder:folder-1,config,list-menu,list-search,chip-all,chip-attachments,message-list,reader-more,reader-previous,reader-next,compose,folder:folder-1
+tab-chain window backward 80
+assert-tab-chain folder:folder-1,compose,reader-next,reader-previous,reader-more,message-list,chip-attachments,chip-all,list-search,list-menu,config,folder:folder-1
+focus list
+tab-chain window forward 80
+assert-tab-chain message-list,reader-more,reader-previous,reader-next,compose,folder:folder-1,config,list-search,message-list
+tab-chain window backward 80
+assert-tab-chain message-list,chip-attachments,list-search,config,folder:folder-1,compose,reader-next,reader-previous,reader-more,message-list
+folder trash
+list-wait
+assert-list-empty "No messages"
+assert-reader-page empty
+focus folder:folder-6
+tab-chain window forward 80
+assert-tab-chain folder:folder-6,config,list-menu,list-search,chip-all,chip-attachments,reader-more,reader-previous,reader-next,compose,folder:folder-6
+tab-chain window backward 80
+assert-tab-chain folder:folder-6,compose,reader-next,reader-previous,reader-more,chip-attachments,chip-all,list-search,list-menu,config,folder:folder-6
+folder inbox
+list-wait
+list-select 0
+wait-until assert-reader-page message
 
 # The folder list is one stop: Tab leaves it from any row, and comes back to the folder shown.
 focus folder:folder-1

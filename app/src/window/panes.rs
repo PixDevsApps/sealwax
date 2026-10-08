@@ -132,6 +132,8 @@ impl PaneBar {
 /// plain maximum, as the mock's `max-width`: the clamp doesn't ease toward it), while the
 /// reader's toolbar above it stretches. Its margins are `style.css`'s.
 pub struct ReaderColumn {
+    /// What goes in the reader's stack: the scroller, which Tab goes through.
+    pub root: gtk::Widget,
     pub scroller: gtk::ScrolledWindow,
     /// Holds the reader's content (`Window::set_reader`).
     pub slot: adw::Bin,
@@ -154,10 +156,13 @@ impl ReaderColumn {
         let scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
-            .focusable(false)
             .child(&clamp)
             .build();
-        Self { scroller, slot }
+        Self {
+            root: crate::accessibility::tab_through(&scroller),
+            scroller,
+            slot,
+        }
     }
 }
 
