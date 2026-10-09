@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a83a9428fe60dcc79b88c4beb3b6d56ad29d93fb4c20bbc4f07069f547c0e4cb # shrinks to trusted = Senders { addresses: 0, domains: 0 }, blocked = Senders { addresses: 0, domains: 0 }, rules = [Rule { name: 0 chars, enabled: false, matching: All, conditions: [Field { field: From, operator: Matches, value: 3 chars }], actions: [] }]

@@ -108,3 +108,10 @@ path = "fuzz_targets/imap.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "sieve"
+path = "fuzz_targets/sieve.rs"
+test = false
+doc = false
+bench = false
