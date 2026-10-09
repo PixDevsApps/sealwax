@@ -141,6 +141,7 @@ pub fn sidebar_model(
     statuses: &HashMap<AccountId, AccountStatus>,
     colors: &HashMap<AccountKey, AccountColor>,
     collapsed: &HashSet<AccountKey>,
+    more_open: &HashSet<AccountKey>,
     folded: &HashMap<AccountKey, BTreeSet<String>>,
 ) -> SidebarModel {
     SidebarModel {
@@ -165,6 +166,7 @@ pub fn sidebar_model(
                         .key
                         .as_ref()
                         .is_some_and(|key| collapsed.contains(key)),
+                    more_open: account.key.as_ref().map(|key| more_open.contains(key)),
                     status: statuses
                         .get(&account.id)
                         .copied()
@@ -303,6 +305,7 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         &HashMap::new(),
         &HashMap::new(),
         &HashSet::new(),
+        &HashSet::new(),
         &HashMap::new(),
     )
     .default_selection()
@@ -354,6 +357,8 @@ pub struct Mailbox {
     colors: RefCell<HashMap<AccountKey, AccountColor>>,
     /// The accounts folded away in the sidebar, as the remembered layout says.
     collapsed: RefCell<HashSet<AccountKey>>,
+    /// The accounts whose "More folders" were left open, as the remembered layout says.
+    more_open: RefCell<HashSet<AccountKey>>,
     /// The folders whose subfolders the sidebar folds away, by account and whole name.
     folded: RefCell<HashMap<AccountKey, BTreeSet<String>>>,
     accounts: RefCell<Vec<Account>>,
@@ -529,6 +534,7 @@ impl Mailbox {
             &self.statuses.borrow(),
             &self.colors.borrow(),
             &self.collapsed.borrow(),
+            &self.more_open.borrow(),
             &self.folded.borrow(),
         )
     }
@@ -561,6 +567,15 @@ impl Mailbox {
     pub fn set_collapsed(self: &Rc<Self>, collapsed: HashSet<AccountKey>) {
         if *self.collapsed.borrow() != collapsed {
             self.collapsed.replace(collapsed);
+            self.queue_sidebar();
+        }
+    }
+
+    /// Opens the "More folders" of the accounts with these keys in the sidebar, and closes the
+    /// others'.
+    pub fn set_more_open(self: &Rc<Self>, more_open: HashSet<AccountKey>) {
+        if *self.more_open.borrow() != more_open {
+            self.more_open.replace(more_open);
             self.queue_sidebar();
         }
     }
@@ -760,9 +775,15 @@ mod tests {
             &HashMap::new(),
             &colors,
             &HashSet::from([AccountKey("work".into())]),
+            &HashSet::from([AccountKey("work".into())]),
             &HashMap::new(),
         );
         assert_eq!(model.accounts.len(), 2);
+        assert_eq!(
+            model.accounts[0].more_open, None,
+            "a local account's isn't remembered"
+        );
+        assert_eq!(model.accounts[1].more_open, Some(true));
         assert_eq!(model.accounts[0].color, None, "a local account has no key");
         assert_eq!(model.accounts[1].color, Some(AccountColor::Sage));
         assert!(!model.accounts[0].collapsed);
@@ -811,6 +832,7 @@ mod tests {
             &folders,
             &HashMap::new(),
             &HashMap::new(),
+            &HashSet::new(),
             &HashSet::new(),
             &folded,
         );

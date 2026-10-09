@@ -1910,6 +1910,8 @@ impl AppState {
         self.mailbox
             .set_collapsed(layout.collapsed.iter().cloned().collect());
         self.mailbox
+            .set_more_open(layout.more_open.iter().cloned().collect());
+        self.mailbox
             .set_folded(layout.folded.clone().into_iter().collect());
         if let Some(window) = self.window() {
             window.set_pane_widths(
@@ -1928,6 +1930,8 @@ impl AppState {
         change(&mut layout);
         self.mailbox
             .set_collapsed(layout.collapsed.iter().cloned().collect());
+        self.mailbox
+            .set_more_open(layout.more_open.iter().cloned().collect());
         self.mailbox
             .set_folded(layout.folded.clone().into_iter().collect());
         self.layout.replace(Some(layout.clone()));
@@ -1986,6 +1990,25 @@ impl AppState {
                 }
             });
         let weak = Rc::downgrade(self);
+        window.sidebar().connect_more(move |account, open| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let key = mailbox::account_for_key(account).and_then(|id| {
+                state
+                    .mailbox
+                    .accounts()
+                    .into_iter()
+                    .find(|known| known.id == id)
+                    .and_then(|known| known.key)
+            });
+            if let Some(key) = key {
+                state.change_layout(|layout| {
+                    layout.set_more_open(&key, open);
+                });
+            }
+        });
+        let weak = Rc::downgrade(self);
         window.sidebar().connect_folded(move |folder, folded| {
             let Some(state) = weak.upgrade() else {
                 return;
@@ -2007,6 +2030,29 @@ impl AppState {
                     layout.set_folded(&key, &folder.name, folded);
                 });
             }
+        });
+    }
+
+    /// A folder renamed in Sealwax: its fold and its subfolders' follow it in the remembered
+    /// layout, so the sidebar shows them as the user left them.
+    pub(crate) fn folder_renamed(
+        &self,
+        account: AccountId,
+        old: &str,
+        new: &str,
+        delimiter: Option<char>,
+    ) {
+        let key = self
+            .mailbox
+            .accounts()
+            .into_iter()
+            .find(|known| known.id == account)
+            .and_then(|known| known.key);
+        let Some(key) = key else {
+            return;
+        };
+        self.change_layout(|layout| {
+            layout.rename_folded(&key, old, new, delimiter);
         });
     }
 

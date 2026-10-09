@@ -53,6 +53,7 @@ fn account(
         name: name.to_owned(),
         color: None,
         collapsed: false,
+        more_open: None,
         status,
         folders: roles
             .into_iter()

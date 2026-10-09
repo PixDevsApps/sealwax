@@ -205,6 +205,9 @@ pub struct SidebarAccount {
     pub color: Option<AccountColor>,
     /// Its folders are folded away under its heading (the window's remembered layout).
     pub collapsed: bool,
+    /// Whether its "More" was left open (the remembered layout); `None` for an account the
+    /// layout can't name (no key), whose "More" keeps its state only while Sealwax runs.
+    pub more_open: Option<bool>,
     pub status: AccountStatus,
     /// Its role folders, each with the folders under it; shown in [`FolderRole`] order.
     pub folders: Vec<SidebarFolder>,
@@ -400,6 +403,7 @@ pub struct Sidebar {
     folded: RefCell<HashSet<String>>,
     /// Told when a folder's subfolders are folded away (true) or opened again.
     fold_changed: RefCell<Option<CollapseChanged>>,
+    more_changed: RefCell<Option<CollapseChanged>>,
     weak: RefCell<std::rc::Weak<Sidebar>>,
 }
 
@@ -539,6 +543,7 @@ impl Sidebar {
             collapse_changed: RefCell::new(None),
             folded: RefCell::new(HashSet::new()),
             fold_changed: RefCell::new(None),
+            more_changed: RefCell::new(None),
             weak: RefCell::new(std::rc::Weak::new()),
         });
         sidebar.weak.replace(Rc::downgrade(&sidebar));
@@ -654,9 +659,21 @@ impl Sidebar {
 
     /// Shows `model` with `selected` picked.
     pub fn set_model(&self, model: SidebarModel, selected: &str) {
-        self.expanded
-            .borrow_mut()
-            .retain(|account| model.accounts.iter().any(|a| &a.key == account));
+        {
+            let mut expanded = self.expanded.borrow_mut();
+            expanded.retain(|account| model.accounts.iter().any(|a| &a.key == account));
+            for account in &model.accounts {
+                match account.more_open {
+                    Some(true) => {
+                        expanded.insert(account.key.clone());
+                    }
+                    Some(false) => {
+                        expanded.remove(&account.key);
+                    }
+                    None => {}
+                }
+            }
+        }
         self.collapsed.replace(
             model
                 .accounts
@@ -1244,6 +1261,19 @@ impl Sidebar {
             }
         }
         self.apply_visibility();
+        self.more_changed(account, expanded);
+    }
+
+    /// Runs `handler` with the account's key when its "More" opens (true) or closes.
+    pub fn connect_more(&self, handler: impl Fn(&str, bool) + 'static) {
+        self.more_changed.replace(Some(Rc::new(handler)));
+    }
+
+    fn more_changed(&self, account: &str, open: bool) {
+        let handler = self.more_changed.borrow().clone();
+        if let Some(handler) = handler {
+            handler(account, open);
+        }
     }
 
     /// The key of the folder row marked as the one shown.
@@ -1299,8 +1329,16 @@ impl Sidebar {
             .accounts
             .iter()
             .find(|account| account.in_more(&selected));
-        match holder {
-            Some(account) => self.expanded.borrow_mut().insert(account.key.clone()),
+        let opened = holder
+            .filter(|account| self.expanded.borrow_mut().insert(account.key.clone()))
+            .map(|account| account.key.clone());
+        drop(selected);
+        drop(model);
+        match opened {
+            Some(account) => {
+                self.more_changed(&account, true);
+                true
+            }
             None => false,
         }
     }
@@ -1936,6 +1974,7 @@ mod tests {
                     name: "Personal".to_owned(),
                     color: None,
                     collapsed: false,
+                    more_open: None,
                     status: AccountStatus::Synced,
                     folders: vec![
                         folder("a/trash", "Papirkurv", Some(FolderRole::Trash), 0),
@@ -1950,6 +1989,7 @@ mod tests {
                     name: "Work".to_owned(),
                     color: None,
                     collapsed: false,
+                    more_open: None,
                     status: AccountStatus::Syncing,
                     folders: vec![folder("b/inbox", "INBOX", Some(FolderRole::Inbox), 4)],
                     more: vec![],

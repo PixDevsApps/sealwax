@@ -244,8 +244,12 @@ pub fn run(state: &Rc<AppState>, id: ActionId, key: &str) {
     }
     let engine = state.engine();
     match id {
-        ActionId::NewFolder => ask_name(&window, &engine, context, Ask::New(Some(folder.id))),
-        ActionId::RenameFolder => ask_name(&window, &engine, context, Ask::Rename(folder.id)),
+        ActionId::NewFolder => {
+            ask_name(state, &window, &engine, context, Ask::New(Some(folder.id)))
+        }
+        ActionId::RenameFolder => {
+            ask_name(state, &window, &engine, context, Ask::Rename(folder.id))
+        }
         ActionId::DeleteFolder => confirm_delete(&window, &engine, context, folder.id),
         _ => {}
     }
@@ -256,7 +260,7 @@ pub fn new_at_top(state: &Rc<AppState>, account: AccountId) {
     let (Some(window), Some(context)) = (state.window(), context(state, account)) else {
         return;
     };
-    ask_name(&window, &state.engine(), context, Ask::New(None));
+    ask_name(state, &window, &state.engine(), context, Ask::New(None));
 }
 
 /// What the name dialog asks for.
@@ -285,7 +289,14 @@ fn offline_text(context: &Context) -> String {
 }
 
 /// The name dialog: New Folder, New Subfolder or Rename Folder.
-fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
+fn ask_name(
+    state: &Rc<AppState>,
+    window: &Window,
+    engine: &EngineLink,
+    context: Context,
+    ask: Ask,
+) {
+    let state = Rc::downgrade(state);
     let (heading, response, label, current, name) = match ask {
         Ask::New(None) => (
             format!("New Folder in {}", context.account_name),
@@ -483,7 +494,11 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
             }
         };
         let after: Option<Rc<dyn Fn()>> = renamed.map(|(account, old, new, delimiter)| {
+            let state = state.clone();
             Rc::new(move || {
+                if let Some(state) = state.upgrade() {
+                    state.folder_renamed(account, &old, &new, delimiter);
+                }
                 crate::rules::folder_renamed(account, old.clone(), new.clone(), delimiter);
             }) as Rc<dyn Fn()>
         });

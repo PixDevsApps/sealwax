@@ -2,7 +2,8 @@
 # it by its last level, a level a step indented: the Inbox's under the Inbox among the role
 # folders, the others under "More folders" in name order. A folder with subfolders folds them
 # away with its arrow, Left and Right; screen readers hear each row's level and the parents'
-# expanded state; the folds are written to layout.toml and come back with a new window; picking
+# expanded state; the folds and an open "More folders" are written to layout.toml and come back
+# with a new window, as the user left them (their word, 2026-10-09); picking
 # a folder under a folded one opens it. The folder row's menu offers New Subfolder, Rename and
 # Delete Folder where they apply, the account heading's New Folder. Every name is fictional.
 # Run: tools/headless.sh 81 target/debug/sealwax --self-test tests/selftest/folders-tree.sealwax-test
@@ -27,6 +28,7 @@ folder inbox Work
 assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash"
 action nav.more::account-1
 assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash,Arkiv 2019,Kunder,>Acme,>Fjord,Prosjekter/Høst"
+wait-until assert-file-contains $TMP/state/sealwax/layout.toml "more_open = [\"work\"]\n"
 assert-folder-level Work:inbox 1
 assert-folder-level Work:INBOX/Kvitteringer 2
 assert-folder-level Work:INBOX/Kvitteringer/2026 3
@@ -79,7 +81,6 @@ wait-until assert-window false
 bus-activate
 wait-until assert-window true
 resize 1440 900
-action nav.more::account-1
 wait-until assert-folder-expanded Work:Kunder false
 assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash,Arkiv 2019,Kunder,Prosjekter/Høst"
 folder-arrow Work:Kunder
