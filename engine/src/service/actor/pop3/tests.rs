@@ -1675,3 +1675,84 @@ async fn refresh_and_reconnect_wait_out_the_login_delay() {
     );
     stop(actor).await;
 }
+
+/// The account's rules run on a POP3 account's new mail (ADR-020): a move to Junk applies at
+/// once and isn't new mail, a copy is stored again from the message's bytes, the rest stays.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rules_run_on_downloaded_mail_and_copies_are_stored_again() {
+    let mut h = harness(Pop3Policy::default(), quick(), None, Fake::with(1..=3)).await;
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    let junk = h.folder(FolderRole::Junk).await;
+    let archive = h.folder(FolderRole::Archive).await;
+    let inbox = h.folder(FolderRole::Inbox).await;
+    let names = h.shared.store.folders().recv().await.unwrap().value;
+    let name = |id: FolderId| {
+        names
+            .iter()
+            .find(|folder| folder.id == id)
+            .unwrap()
+            .name
+            .clone()
+    };
+    let script = format!(
+        "require [\"fileinto\", \"copy\", \"imap4flags\"];\n\
+         if header :is \"subject\" \"Melding 4\" {{ addflag \"$Junk\"; fileinto \"{}\"; stop; }}\n\
+         if address :is \"from\" \"avsender5@example.test\" {{ fileinto :copy \"{}\"; }}\n",
+        name(junk),
+        name(archive)
+    );
+    sealwax_infrastructure::rules::write(&h.shared.paths.rules, &h.settings.key, &script).unwrap();
+    h.fake.add(4);
+    h.fake.add(5);
+    h.fake.add(6);
+    let account = h.account;
+    let mut announced = Vec::new();
+    while announced.len() < 2 {
+        announced.extend(
+            h.until(|event| match event {
+                Event::NewMail {
+                    account: id,
+                    messages,
+                    ..
+                } if *id == account => Some(messages.clone()),
+                _ => None,
+            })
+            .await,
+        );
+    }
+    h.eventually(|| {
+        let store = h.shared.store.clone();
+        async move {
+            store
+                .page(ViewSpec::folder(archive), 0, 10)
+                .recv()
+                .await
+                .is_ok_and(|page| page.rows.len() == 1)
+        }
+    })
+    .await;
+    assert_eq!(h.subjects(junk).await, ["Melding 4"]);
+    assert_eq!(h.subjects(archive).await, ["Melding 5"]);
+    assert_eq!(
+        h.subjects(inbox).await,
+        [
+            "Melding 6",
+            "Melding 5",
+            "Melding 3",
+            "Melding 2",
+            "Melding 1"
+        ]
+    );
+    let subjects: Vec<String> = {
+        let mut out = Vec::new();
+        for id in &announced {
+            let detail = h.shared.store.message(*id).recv().await.unwrap().value;
+            out.push(detail.unwrap().summary.subject);
+        }
+        out.sort();
+        out
+    };
+    assert_eq!(subjects, ["Melding 5", "Melding 6"], "Junk isn't new mail");
+    stop(actor).await;
+}

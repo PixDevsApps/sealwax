@@ -3,7 +3,8 @@
 //! arrives in the account's Inbox and Junk, before `Event::NewMail` (mail a rule sends to Junk or
 //! Trash doesn't notify), and on request for a folder (`Command::ApplyRules`). What the script
 //! decides becomes ops in the op queue, as the user's own triage does: one move, the copies
-//! before it, and flags. A header the store doesn't keep costs one header fetch for the messages
+//! before it, and flags; a POP3 account's copies are stored again from the message's bytes, as
+//! it has no server to copy on. A header the store doesn't keep costs one header fetch for the messages
 //! that need it (the stored original when the body is downloaded). A script that can't run runs
 //! nothing and is reported once per change of its file. Nothing of a message or a script
 //! reaches the log: counts and ids only.
@@ -16,6 +17,7 @@ use sealwax_domain::model::{
     AccountId, Flags, Folder, FolderId, FolderRole, MessageDetail, MessageId,
 };
 use sealwax_domain::sieve::{self, MessageView, Outcome, Script};
+use sealwax_infrastructure::ingest::{self, RawMessage};
 use sealwax_infrastructure::rules as files;
 use sealwax_infrastructure::store::{RuleChange, RuleChanges};
 use std::collections::{HashMap, HashSet};
@@ -377,10 +379,15 @@ async fn account_of(shared: &Shared, folder: FolderId) -> Result<Option<Account>
         return Ok(None);
     };
     let Some(key) = shared
-        .actors()
-        .iter()
-        .find(|(_, actor)| actor.account() == Some(found.account))
-        .map(|(key, _)| key.clone())
+        .store
+        .accounts()
+        .recv()
+        .await
+        .map_err(|_| RulesError::Store)?
+        .value
+        .into_iter()
+        .find(|candidate| candidate.id == found.account)
+        .and_then(|candidate| candidate.key)
     else {
         return Ok(None);
     };
@@ -419,6 +426,12 @@ async fn run(
         return Ok(None);
     };
     let fetch = needs_headers(&script);
+    let local = shared
+        .store
+        .is_pop3_account(account_id)
+        .recv()
+        .await
+        .map_err(|_| RulesError::Store)?;
     let mut ran = Ran::default();
     let mut dropped = 0u32;
     for chunk in messages.chunks(CHUNK) {
@@ -437,6 +450,7 @@ async fn run(
             HashMap::new()
         };
         let mut queued = Vec::new();
+        let mut copies = Vec::new();
         for detail in &details {
             let fields = raw
                 .remove(&detail.summary.id)
@@ -456,10 +470,32 @@ async fn run(
             {
                 ran.junked.insert(detail.summary.id);
             }
+            let mut changes = planned.changes;
+            if local {
+                for change in &changes {
+                    if let (RuleChange::Copy { to }, Some(blob)) = (change, detail.blob) {
+                        copies.push(RawCopy {
+                            to: *to,
+                            blob,
+                            flags: detail.summary.flags,
+                            keywords: detail.keywords.clone(),
+                            date: detail.summary.date,
+                        });
+                    }
+                }
+                changes.retain(|change| !matches!(change, RuleChange::Copy { .. }));
+            }
+            if changes.is_empty() {
+                ran.changed += 1;
+                continue;
+            }
             queued.push(RuleChanges {
                 message: detail.summary.id,
-                changes: planned.changes,
+                changes,
             });
+        }
+        if !copies.is_empty() {
+            copy_locally(shared, account_id, copies).await;
         }
         if queued.is_empty() {
             continue;
@@ -490,6 +526,52 @@ async fn run(
         "rules ran"
     );
     Ok(Some(ran))
+}
+
+/// A copy for an account without a server: the message's bytes stored again in `to`.
+struct RawCopy {
+    to: FolderId,
+    blob: sealwax_domain::model::BlobKey,
+    flags: Flags,
+    keywords: Vec<String>,
+    date: i64,
+}
+
+/// Stores `copies` from their bytes in the blob store; a copy whose bytes are gone is skipped.
+async fn copy_locally(shared: &Arc<Shared>, account: AccountId, copies: Vec<RawCopy>) {
+    let blobs = shared.blobs.clone();
+    let count = copies.len();
+    let prepared = tokio::task::spawn_blocking(move || {
+        let raws: Vec<RawMessage> = copies
+            .into_iter()
+            .filter_map(|copy| {
+                Some(RawMessage {
+                    folder: copy.to,
+                    uid: None,
+                    flags: copy.flags,
+                    keywords: copy.keywords,
+                    internal_date: Some(copy.date),
+                    raw: blobs.get(&copy.blob).ok()?,
+                })
+            })
+            .collect();
+        ingest::prepare(&blobs, raws, 1)
+    })
+    .await;
+    let messages = match prepared {
+        Ok(Ok(prepared)) => prepared.messages,
+        _ => {
+            tracing::warn!(
+                account = account.0,
+                copies = count,
+                "rules' copies couldn't be read"
+            );
+            return;
+        }
+    };
+    if let Err(error) = shared.store.ingest(messages).recv().await {
+        tracing::warn!(account = account.0, %error, "rules' copies couldn't be stored");
+    }
 }
 
 /// The full headers of `details`: from the stored original when the body is downloaded, else
