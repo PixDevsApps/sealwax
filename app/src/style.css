@@ -1947,3 +1947,9 @@ button.sw-composer-send:active {
 .sw-edit-account {
   border-spacing: calc(2 * var(--sw-space-lg));
 }
+
+/* A folder's name (M9: New Folder, New Subfolder, Rename Folder): the caption, the field and
+   why a name can't be used. */
+.sw-folder-dialog {
+  border-spacing: var(--sw-space-md);
+}

@@ -349,16 +349,25 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
     entry.set_widget_name("folder-name");
     entry.update_property(&[gtk::accessible::Property::Label("Folder name")]);
     caption.set_mnemonic_widget(Some(&entry));
+    // Why the name can't be used, as the setup assistant says it: a warning sign and the words.
     let problem = gtk::Label::builder()
         .xalign(0.0)
         .wrap(true)
+        .hexpand(true)
+        .css_classes(["sw-setup-validation-text"])
+        .build();
+    problem.set_widget_name("folder-name-problem");
+    let problem_line = gtk::Box::builder()
         .visible(false)
         .css_classes(["sw-setup-validation"])
         .build();
-    problem.set_widget_name("folder-name-problem");
+    let warning = crate::window::panes::icon(&["dialog-warning-symbolic"]);
+    warning.add_css_class("sw-setup-alert-icon");
+    problem_line.append(&warning);
+    problem_line.append(&problem);
     content.append(&caption);
     content.append(&entry);
-    content.append(&problem);
+    content.append(&problem_line);
     dialog.set_extra_child(Some(&content));
     dialog.set_property("focus-widget", &entry);
 
@@ -367,10 +376,11 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
     // What the typed name would be sent as, while it can be.
     let checked: Rc<RefCell<Option<String>>> = Rc::default();
     let validate = {
-        let (context, dialog, problem, touched, checked) = (
+        let (context, dialog, problem, problem_line, touched, checked) = (
             context.clone(),
             dialog.downgrade(),
             problem.clone(),
+            problem_line.clone(),
             touched.clone(),
             checked.clone(),
         );
@@ -404,7 +414,7 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
                 Err(Some(problem)) if touched.get() => Some(problem.message()),
                 _ => None,
             };
-            problem.set_visible(message.is_some());
+            problem_line.set_visible(message.is_some());
             problem.set_label(message.as_deref().unwrap_or_default());
             let invalid = message.is_some();
             if invalid {

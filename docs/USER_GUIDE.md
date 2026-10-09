@@ -1,6 +1,6 @@
 # Sealwax user guide
 
-Synced: 2026-10-08
+Synced: 2026-10-09
 
 This guide is for people who use Sealwax every day. It describes Sealwax 0.3.0 as built through M8 (POP3 accounts), before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
 
@@ -9,6 +9,7 @@ This guide is for people who use Sealwax every day. It describes Sealwax 0.3.0 a
 - [The window](#the-window)
 - [Reading mail](#reading-mail)
 - [Triage: archive, delete, move, undo](#triage-archive-delete-move-undo)
+- [Folders: new, rename, delete](#folders-new-rename-delete)
 - [Writing mail](#writing-mail)
 - [Search](#search)
 - [Notifications and background mode](#notifications-and-background-mode)
@@ -114,7 +115,7 @@ What a POP3 account does:
 
 Three panes, left to right:
 
-- **The sidebar:** **New message** at the top; **All Inboxes**; each account with its Inbox, Drafts, Sent, Archive, Junk and Trash and their unread counts, its other folders under **More folders** (other mail programs' housekeeping folders are left out: Outlook's Sync Issues and, on Outlook.com and Microsoft 365, Notes and Outbox; Mailspring's folder while it is empty); at the bottom a summary of the accounts and a button that opens `config.toml`. Click an account's heading (or press Enter, Space, Left or Right on it) to fold its folders away under it; folded, the heading shows the account's unread count. Sealwax remembers which accounts are folded.
+- **The sidebar:** **New message** at the top; **All Inboxes**; each account with its Inbox, Drafts, Sent, Archive, Junk and Trash and their unread counts, its other folders under **More folders** (other mail programs' housekeeping folders are left out: Outlook's Sync Issues and, on Outlook.com and Microsoft 365, Notes and Outbox; Mailspring's folder while it is empty); at the bottom a summary of the accounts and a button that opens `config.toml`. Click an account's heading (or press Enter, Space, Left or Right on it) to fold its folders away under it; folded, the heading shows the account's unread count. Sealwax remembers which accounts are folded. Subfolders show indented under their folder by their own name, the Inbox's under the Inbox; a folder with subfolders has an arrow that folds them away (or press Left on it, and Right to open them again), and Sealwax remembers that too ([Folders](#folders-new-rename-delete)).
 - **The message list:** the search field, the filter chips **All**, **Unread**, **Starred** and **Attachments**, then the messages in sections: Today, Yesterday, This week, This month, Older. A row shows the sender, the time, the subject, a two-line preview, and marks for unread, starred, attachments and the size of the conversation. The **main menu** button is at the end of the list's bar.
 - **The reader:** the selected message's conversation ([Reading mail](#reading-mail)).
 
@@ -177,6 +178,20 @@ The same commands are buttons in the reader's toolbar, and hovering a row shows 
 **Several messages.** Ctrl+click adds a message, Shift+click selects a range, and Shift with `j`/`k` or Down/Up extends the selection from the keyboard. `x` or Space selects the message under the cursor and turns the list into a select mode with checkboxes, where `j`/`k` move without changing the selection. Every command applies to every selected message; the reader shows how many are selected, with buttons. Escape leaves the select mode. Move to… can't move messages between accounts.
 
 **Offline.** Every action shows at once, on this computer, and waits for the server when it can't be reached. The offline banner counts what waits ("3 waiting") and Sealwax sends it when the network is back. If a server refuses a change, a toast says so and the messages are back where they were.
+
+## Folders: new, rename, delete
+
+Right-click a folder in the sidebar (or press Menu or Shift+F10 on it) for **New Subfolder…**, **Rename Folder…** and **Delete Folder…**; right-click an account's heading for **New Folder…** at the top of the account. The palette's **New Folder…**, **Rename Folder…** and **Delete Folder…** act on the folder the list shows. None has a key; `keys.toml` can give them one (`new-folder`, `rename-folder`, `delete-folder`).
+
+- **Names.** Type the folder's name and press Enter or **Create** (**Rename**). Sealwax checks the name as you type and says why one can't be used: it is empty, it holds the character that separates folders on that account (`/` or `.`), `*` or `%`, or a line break, a folder beside it has that name already (whatever the case), or it is a name Sealwax hides (Sync Issues, and on Outlook.com and Microsoft 365 Notes and Outbox, at the top of the account; Mailspring). Names may have any other letters, æ, ø, å and emoji included.
+- **Special folders** (Inbox, Drafts, Sent, Archive, Junk, Trash) keep their names and places: they can't be renamed or deleted, and neither can a folder that holds one. They can have subfolders. Some servers mark a folder as one that can't have subfolders; New Subfolder is then unavailable, and its tooltip says why.
+- **Where a new folder goes.** New Subfolder makes it under the folder; New Folder at the top of the account, or, on servers that keep every folder under the Inbox, under the Inbox.
+- **Renaming** a folder renames the folders under it too. Its messages stay, already downloaded, and an open folder stays open.
+- **Deleting** asks first: "Delete “Kunder” and everything in it?", with how many subfolders and messages go. **The server deletes them for good**; Cancel is the default. A deleted folder that was shown leaves the list at the account's Inbox.
+- **Online only.** An IMAP account's folders change on its server, so the account must be connected: offline, the dialog says so and sends nothing. A POP3 account's folders are on this computer and change at once.
+- **The result** shows as a toast: "Created “Reiser”", or why not, a server's refusal in the server's own words. Sealwax subscribes to the folders it makes and renames, so other mail programs that show only subscribed folders see them too.
+
+Move to… shows a subfolder by its own name with the folders above it beside it ("Acme" · "Kunder / 2026").
 
 ## Writing mail
 
@@ -347,7 +362,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 
 **Moving with Tab.** Tab and Shift+Tab go through the window from left to right: the sidebar (the new-message button, the folder list, `config.toml`), the list's bar, the message list, the reader's toolbar and the conversation, then round again. The folder list and the message list are one stop each: Up and Down move inside them. In a message, Tab goes from link to link (in a plain-text message too: the link is selected, its address shows at the bottom of the reader, and Enter opens it), then on to the "…" that shows quoted text. An open composer comes after the reader in that order: From, Attach, Discard, Minimize, Expand, Close, To, and on to Send. In the composer, Tab in the message moves on to **Send** and Shift+Tab back to the toolbar, instead of typing a tab. A dialog keeps Tab inside it, and Escape closes it.
 
-**The list's own keys,** which `keys.toml` can't change: Up and Down move the selection; Shift with Up, Down, `j` or `k` extends it; Escape leaves the select mode. On a folder in the sidebar, Menu or Shift+F10 opens its menu.
+**The list's own keys,** which `keys.toml` can't change: Up and Down move the selection; Shift with Up, Down, `j` or `k` extends it; Escape leaves the select mode. On a folder in the sidebar, Menu or Shift+F10 opens its menu, and on a folder with subfolders Left folds them away and Right opens them.
 
 **Customizing keys.** **Customize Shortcuts (keys.toml)** (main menu, palette) opens `~/.config/sealwax/keys.toml` in your text editor, creating it with every command and its default keys commented out. A line names a command and lists its keys, which replace the defaults; `[]` leaves it without a key:
 
