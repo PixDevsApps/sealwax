@@ -175,7 +175,8 @@ fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {
             equal("the file Open File opened", last.as_str(), arg(0))
         }
         "assert-rules-dialog" => {
-            let page = rules::dialog::current().map_or_else(|| "closed".to_owned(), |shown| shown.page());
+            let page =
+                rules::dialog::current().map_or_else(|| "closed".to_owned(), |shown| shown.page());
             equal("the Rules dialog", page.as_str(), arg(0))
         }
         "assert-rules-set" => {

@@ -551,10 +551,17 @@ mod tests {
         assert_eq!(draft.name, "Kari Nordmann");
         assert_eq!(
             draft.conditions,
-            [condition(FieldChoice::From, Operator::Is, "kari@example.test")]
+            [condition(
+                FieldChoice::From,
+                Operator::Is,
+                "kari@example.test"
+            )]
         );
         assert_eq!(draft.actions[0].choice, ActionChoice::MoveTo);
-        assert_eq!(draft.actions[0].folder, None, "the folder is the user's to choose");
+        assert_eq!(
+            draft.actions[0].folder, None,
+            "the folder is the user's to choose"
+        );
         assert_eq!(draft.to_rule().err(), Some(Problem::NoFolder));
         let unnamed = Draft::from_message("kari@example.test", " ", None);
         assert_eq!(unnamed.name, "kari@example.test");

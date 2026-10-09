@@ -98,10 +98,7 @@ fn write(place: &Place, set: &RuleSet) -> Result<Option<SystemTime>, SaveError> 
 
 /// Reads the account's rules, lets `edit` change them and writes them when it says it did:
 /// Always Junk and Never Junk from a message, and their Undo. Whether `edit` changed them.
-pub fn change(
-    place: &Place,
-    edit: impl FnOnce(&mut RuleSet) -> bool,
-) -> Result<bool, ChangeError> {
+pub fn change(place: &Place, edit: impl FnOnce(&mut RuleSet) -> bool) -> Result<bool, ChangeError> {
     let loaded = load(place);
     let mut set = loaded.set.map_err(ChangeError::Unreadable)?;
     if !edit(&mut set) {
@@ -122,7 +119,8 @@ pub struct Listed {
 }
 
 fn holds(list: &[String], address: &str) -> bool {
-    list.iter().any(|held| held.eq_ignore_ascii_case(address.trim()))
+    list.iter()
+        .any(|held| held.eq_ignore_ascii_case(address.trim()))
 }
 
 /// Always Junk (`always`) or Never Junk for `address`: on that list, off the other.
@@ -178,7 +176,8 @@ pub fn follow_rename(
     new: &str,
     delimiter: Option<char>,
 ) -> Result<bool, ChangeError> {
-    let before = |name: &str| folders::renamed(name, new, old, delimiter).unwrap_or(name.to_owned());
+    let before =
+        |name: &str| folders::renamed(name, new, old, delimiter).unwrap_or(name.to_owned());
     let read_with = Place {
         folders: Folders {
             inbox: before(&place.folders.inbox),
@@ -297,10 +296,7 @@ mod tests {
         let edited = "require [\"fileinto\"];\nif header :contains \"subject\" \"x\" { \
                       fileinto \"Arkiv\"; } elsif true { keep; }\n";
         rules::write(&place.dir, &place.key, edited).unwrap();
-        assert_eq!(
-            save(&place, &set, loaded.modified),
-            Err(SaveError::Changed)
-        );
+        assert_eq!(save(&place, &set, loaded.modified), Err(SaveError::Changed));
         assert_eq!(
             rules::read(&place.dir, &place.key).unwrap().as_deref(),
             Some(edited)

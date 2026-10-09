@@ -226,7 +226,11 @@ impl Shown {
 
     /// Why the open editor can't save, if it can't.
     pub fn editor_problem(&self) -> Option<&'static str> {
-        self.inner.editor.borrow().as_ref().and_then(Editor::problem)
+        self.inner
+            .editor
+            .borrow()
+            .as_ref()
+            .and_then(Editor::problem)
     }
 }
 
@@ -320,15 +324,14 @@ impl Inner {
             (_, Some(problem)) => {
                 let why = match problem {
                     Unreadable::Script(error) => text::script_error(error),
-                    Unreadable::File => text::problem_text(
-                        &sealwax_engine::api::RulesError::File,
-                    ),
+                    Unreadable::File => text::problem_text(&sealwax_engine::api::RulesError::File),
                 };
                 self.notice.set_title("The rules file can't be read");
                 self.notice.set_description(Some(&format!(
                     "{why}. Fix it in the file, or remove the file to start again."
                 )));
-                self.notice.set_header_suffix(Some(&self.open_file_button()));
+                self.notice
+                    .set_header_suffix(Some(&self.open_file_button()));
                 self.notice.set_visible(true);
             }
             (Some(set), None) if set.is_hand_written() => {
@@ -337,7 +340,8 @@ impl Inner {
                     "Parts of the rules file are Sieve written by hand. They run as written, in \
                      their place among the rules; change them in the file.",
                 ));
-                self.notice.set_header_suffix(Some(&self.open_file_button()));
+                self.notice
+                    .set_header_suffix(Some(&self.open_file_button()));
                 self.notice.set_visible(true);
             }
             _ => {
@@ -417,7 +421,10 @@ impl Inner {
                     self.add_row(&self.rules, &row);
                 }
                 Item::HandWritten(written) => {
-                    let lines = written.lines().filter(|line| !line.trim().is_empty()).count();
+                    let lines = written
+                        .lines()
+                        .filter(|line| !line.trim().is_empty())
+                        .count();
                     let row = named(
                         adw::ActionRow::builder()
                             .title("Written by hand")
@@ -492,7 +499,11 @@ impl Inner {
         let weak = self.weak.borrow().clone();
         let edit_rule = move || {
             if let Some(inner) = weak.upgrade() {
-                let draft = match inner.set.borrow().as_ref().and_then(|set| set.items.get(index))
+                let draft = match inner
+                    .set
+                    .borrow()
+                    .as_ref()
+                    .and_then(|set| set.items.get(index))
                 {
                     Some(Item::Rule(rule)) => Draft::from_rule(rule),
                     _ => return,
@@ -586,19 +597,17 @@ impl Inner {
                 added
             });
             if !added {
-                inner.toast(&format!("{typed} isn't an address or a domain, or is listed"));
+                inner.toast(&format!(
+                    "{typed} isn't an address or a domain, or is listed"
+                ));
             }
         });
         self.add_row(group, &add);
     }
 
     fn toast(&self, text: &str) {
-        self.toasts.add_toast(
-            adw::Toast::builder()
-                .title(text)
-                .use_markup(false)
-                .build(),
-        );
+        self.toasts
+            .add_toast(adw::Toast::builder().title(text).use_markup(false).build());
     }
 
     /// Changes the rules held with `edit` and saves them when it says it changed them.
@@ -614,7 +623,12 @@ impl Inner {
     }
 
     fn change_rule(&self, index: usize, edit: impl FnOnce(&mut Rule)) {
-        let changed = match self.set.borrow_mut().as_mut().and_then(|set| set.items.get_mut(index)) {
+        let changed = match self
+            .set
+            .borrow_mut()
+            .as_mut()
+            .and_then(|set| set.items.get_mut(index))
+        {
             Some(Item::Rule(rule)) => {
                 edit(rule);
                 true
@@ -698,7 +712,11 @@ impl Inner {
 
     /// The editor over the rules, for the rule at `index` or a new one.
     fn edit(&self, index: Option<usize>, draft: &Draft) {
-        let title = if index.is_some() { "Edit Rule" } else { "New Rule" };
+        let title = if index.is_some() {
+            "Edit Rule"
+        } else {
+            "New Rule"
+        };
         let targets = self.account.targets();
         let weak = self.weak.borrow().clone();
         let editor = editor::new(title, draft, targets, move |rule| {
@@ -826,7 +844,8 @@ impl Inner {
                     }
                     Some(Err(SaveError::Changed)) => {
                         inner.saving.set(false);
-                        inner.toast("The rules file changed outside Sealwax; it shows as it is now");
+                        inner
+                            .toast("The rules file changed outside Sealwax; it shows as it is now");
                         inner.load(None);
                         return;
                     }

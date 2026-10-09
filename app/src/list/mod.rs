@@ -1893,9 +1893,7 @@ impl MessageList {
             && !state.contains(gdk::ModifierType::CONTROL_MASK)
         {
             return match self.cursor_position() {
-                Some(position) if self.open_context_menu(position, None) => {
-                    glib::Propagation::Stop
-                }
+                Some(position) if self.open_context_menu(position, None) => glib::Propagation::Stop,
                 _ => glib::Propagation::Proceed,
             };
         }
@@ -1988,11 +1986,7 @@ impl MessageList {
     /// Runs `handler` when a row's menu is asked for (a right click, Menu or Shift+F10), once
     /// the row is selected: with where the menu points, in the message list's coordinates.
     pub fn connect_context_menu(&self, handler: impl Fn(gdk::Rectangle) + 'static) {
-        self.inner
-            .handlers
-            .menu
-            .borrow_mut()
-            .push(Rc::new(handler));
+        self.inner.handlers.menu.borrow_mut().push(Rc::new(handler));
     }
 
     /// Opens the menu of the row at `position`, at the point `at` (a right click) or under the

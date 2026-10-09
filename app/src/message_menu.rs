@@ -152,10 +152,8 @@ fn show(state: &Rc<AppState>, view: &gtk::ListView, at: gdk::Rectangle) {
             content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
         }
         for entry in section {
-            let enabled = gtk::prelude::ActionGroupExt::is_action_enabled(
-                window.window(),
-                entry.id.name(),
-            );
+            let enabled =
+                gtk::prelude::ActionGroupExt::is_action_enabled(window.window(), entry.id.name());
             let title = gtk::Label::builder()
                 .label(&entry.title)
                 .xalign(0.0)
@@ -206,7 +204,10 @@ fn show(state: &Rc<AppState>, view: &gtk::ListView, at: gdk::Rectangle) {
                         )
                         .is_err()
                         {
-                            tracing::warn!(action = id.name(), "the message menu's command is gone");
+                            tracing::warn!(
+                                action = id.name(),
+                                "the message menu's command is gone"
+                            );
                         }
                     });
                 }

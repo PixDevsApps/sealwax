@@ -57,7 +57,11 @@ pub struct Editor {
 impl Editor {
     /// Whether Save can run, and why not.
     pub fn problem(&self) -> Option<&'static str> {
-        self.inner.draft().to_rule().err().map(|problem| problem.text())
+        self.inner
+            .draft()
+            .to_rule()
+            .err()
+            .map(|problem| problem.text())
     }
 }
 
@@ -205,7 +209,9 @@ pub fn new(
     let weak = Rc::downgrade(&inner);
     inner.name.connect_changed(move |_| changed(&weak));
     let weak = Rc::downgrade(&inner);
-    inner.matching.connect_selected_notify(move |_| changed(&weak));
+    inner
+        .matching
+        .connect_selected_notify(move |_| changed(&weak));
     let weak = Rc::downgrade(&inner);
     add_condition.connect_clicked(move |_| {
         if let Some(inner) = weak.upgrade() {

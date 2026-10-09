@@ -309,15 +309,13 @@ fn shown_account(state: &AppState) -> Option<Account> {
             .and_then(|targets| targets.first().map(|target| target.folder));
         crate::compose_actions::compose_account(list.scope(), selected, &folders)
     });
-    shown
-        .and_then(|id| Account::of(state, id))
-        .or_else(|| {
-            state
-                .mailbox()
-                .accounts()
-                .iter()
-                .find_map(|account| Account::of(state, account.id))
-        })
+    shown.and_then(|id| Account::of(state, id)).or_else(|| {
+        state
+            .mailbox()
+            .accounts()
+            .iter()
+            .find_map(|account| Account::of(state, account.id))
+    })
 }
 
 /// The folder a sidebar key names, when the rules can run on it.
@@ -329,10 +327,7 @@ fn folder_of_key(state: &AppState, key: &str) -> Result<FolderId, &'static str> 
 }
 
 fn runs_on(state: &AppState, folder: FolderId) -> Result<(), &'static str> {
-    let folder = state
-        .mailbox()
-        .folder(folder)
-        .ok_or("The folder is gone")?;
+    let folder = state.mailbox().folder(folder).ok_or("The folder is gone")?;
     if !folder.selectable {
         return Err("This folder holds no messages");
     }
@@ -427,9 +422,7 @@ fn applies_with(
             .map_err(|why| *why)
     };
     match id {
-        ActionId::EditRules => shown_account(state)
-            .map(drop)
-            .ok_or("No account has rules"),
+        ActionId::EditRules => shown_account(state).map(drop).ok_or("No account has rules"),
         ActionId::ApplyRules => shown_folder(state).map(drop),
         ActionId::NewRuleFromMessage => account().map(drop),
         ActionId::JunkSender => match account()?.role(FolderRole::Junk) {
@@ -869,8 +862,7 @@ pub fn open_file(state: &AppState, place: &Place) {
         opener(&path);
         return;
     }
-    if gdk::Display::default()
-        .is_some_and(|display| display.type_().name() == "GdkBroadwayDisplay")
+    if gdk::Display::default().is_some_and(|display| display.type_().name() == "GdkBroadwayDisplay")
     {
         tracing::warn!("the rules file doesn't open from a headless (Broadway) run");
         return;
@@ -930,8 +922,7 @@ pub fn folder_renamed(account: AccountId, old: String, new: String, delimiter: O
     let place = account.place(&state);
     glib::spawn_future_local(async move {
         let shown = folders::leaf(&old, delimiter).to_owned();
-        let followed =
-            file::run(move || file::follow_rename(&place, &old, &new, delimiter)).await;
+        let followed = file::run(move || file::follow_rename(&place, &old, &new, delimiter)).await;
         let Some(state) = app_state() else {
             return;
         };
@@ -942,7 +933,10 @@ pub fn folder_renamed(account: AccountId, old: String, new: String, delimiter: O
             }
             Some(Ok(false)) => {}
             _ => {
-                tracing::info!(account = account.id.0, "the rules didn't follow a renamed folder");
+                tracing::info!(
+                    account = account.id.0,
+                    "the rules didn't follow a renamed folder"
+                );
                 let toast = adw::Toast::builder()
                     .title(format!(
                         "Rules that file into “{shown}” still name it: the rules file can't be \

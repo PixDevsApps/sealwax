@@ -468,11 +468,8 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
                 // The rules that file into it follow it once the rename is done (ADR-020).
                 if let Some(folder) = context.folder(folder) {
                     let delimiter = folder.delimiter;
-                    let new = folders::child(
-                        folders::parent(&folder.name, delimiter),
-                        delimiter,
-                        &name,
-                    );
+                    let new =
+                        folders::child(folders::parent(&folder.name, delimiter), delimiter, &name);
                     renamed = Some((context.account, folder.name.clone(), new, delimiter));
                 }
                 (
@@ -490,7 +487,15 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
                 crate::rules::folder_renamed(account, old.clone(), new.clone(), delimiter);
             }) as Rc<dyn Fn()>
         });
-        send(&engine, &toasts, context.account, change, done, failed, after);
+        send(
+            &engine,
+            &toasts,
+            context.account,
+            change,
+            done,
+            failed,
+            after,
+        );
     });
     dialog.present(Some(window.window()));
 }

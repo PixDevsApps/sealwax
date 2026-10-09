@@ -672,13 +672,7 @@ impl Controller {
     /// Queues a user's `action` on `targets` that comes with a change outside the store: its
     /// toast says `lead` after what the action did, and its Undo also runs `undo` (M9: Always
     /// and Never Junk Messages from Sender, whose sender a rules list gained).
-    pub fn queue_with(
-        &self,
-        action: Triage,
-        targets: Vec<Target>,
-        lead: String,
-        undo: Also,
-    ) {
+    pub fn queue_with(&self, action: Triage, targets: Vec<Target>, lead: String, undo: Also) {
         let Some(outcome) = self.start(action, targets, Origin::User) else {
             return;
         };
@@ -1526,6 +1520,60 @@ mod tests {
                 drain(&context);
                 assert_eq!(backend.calls.borrow().last().unwrap(), "undo 4");
                 assert_eq!(notices.borrow().last().unwrap().text, "Undone");
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn an_action_with_a_change_beside_it_says_both_and_undoes_both() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let (controller, _backend, _engine, _events) = controller();
+                let notices: Rc<RefCell<Vec<Notice>>> = Rc::default();
+                let record = notices.clone();
+                controller.connect_notice(move |notice| record.borrow_mut().push(notice.clone()));
+                let undone = Rc::new(Cell::new(0));
+                let count = undone.clone();
+                controller.queue_with(
+                    Triage::Junk,
+                    vec![target(1, 1, Flags::NONE)],
+                    "Mail from kari@example.test goes to Junk from now on".to_owned(),
+                    Rc::new(move || count.set(count.get() + 1)),
+                );
+                drain(&context);
+                let notice = notices.borrow().last().cloned().expect("a toast");
+                assert_eq!(
+                    notice.text,
+                    "Moved 1 message to Junk. Mail from kari@example.test goes to Junk from now on"
+                );
+                assert!(notice.undo.is_some());
+                controller.undo(None);
+                drain(&context);
+                assert_eq!(
+                    undone.get(),
+                    1,
+                    "Undo takes back the change beside the action"
+                );
+                // Another action becomes the last: its Undo leaves the change alone.
+                controller.queue_with(
+                    Triage::Junk,
+                    vec![target(2, 1, Flags::NONE)],
+                    "Mail from ola@example.test goes to Junk from now on".to_owned(),
+                    Rc::new({
+                        let count = undone.clone();
+                        move || count.set(count.get() + 1)
+                    }),
+                );
+                drain(&context);
+                context.block_on(controller.run(
+                    Triage::Archive,
+                    vec![target(3, 1, Flags::NONE)],
+                    Origin::User,
+                ));
+                controller.undo(None);
+                drain(&context);
+                assert_eq!(undone.get(), 1);
             })
             .unwrap();
     }

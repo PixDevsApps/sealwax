@@ -308,10 +308,7 @@ mod tests {
             .unwrap();
         let text = problem_text(&RulesError::Script(error.clone()));
         assert!(
-            text.starts_with(&format!(
-                "Line {}, column {}: ",
-                error.line, error.column
-            )),
+            text.starts_with(&format!("Line {}, column {}: ", error.line, error.column)),
             "{text}"
         );
         assert_eq!(failed_title("Work"), "Rules in Work can't run");
