@@ -109,7 +109,7 @@ Built as the S6 amendment says: an `adw::Application` subclass whose `command-li
 
 ### ADR-003 amendment — the message list on the store (M1, 2026-10-04)
 
-Built as m1/list.md records.
+As built in M1:
 - **Opening.** One thread opens the blob store and the store at `startup`, reads accounts and folders, and opens the first window's view (100 rows and today's section counts), then hands everything to the GTK thread. The first window waits for the first rows for at most 300 ms, alongside the settings' 150 ms. Headless with a 10k store this took 2.65–2.98 ms.
 - **The model.** The list model applies change events strictly in version order. Pages apply only at the model's version; newer pages wait, and older ones are dropped and requested again. A version gap or `Reload` reopens the view.
 - **Growth.** After every reset the list shows 40 rows, then grows by 40 a frame (S6's trim).
@@ -123,7 +123,7 @@ Built as m1/list.md records.
 
 ### ADR-003 amendment — the engine service and autodetect (M2, 2026-10-05)
 
-Built in M2 (`engine::service`, `engine::autoconfig`; reports m2/imap.md).
+Built in M2 (`engine::service`, `engine::autoconfig`).
 
 - **The service:** one thread (`sealwax-service`) runs the engine's two-worker runtime and the command loop. The app starts it once the first frame is painted, so neither the engine nor the keyring delays it, attaches its `EngineLink` to the engine's channels, and stops it before the store closes. Stopping takes under 1 ms when nothing is in flight.
 - **One store:** the app holds the store in an `Arc` and lends it to the engine, which writes what it syncs; the app closes it at shutdown, after the engine has stopped.
@@ -224,7 +224,7 @@ Real providers are still to check when test accounts exist.
 
 ### ADR-005 amendment — schema v1 and the blob store built (M1, 2026-10-04)
 
-Built as m1/store.md records.
+As built in M1:
 
 **Schema v1:**
 - S3's schema with S1's additions: folder wire name, delimiter, attributes, sync state; message keywords, In-Reply-To, References.
@@ -281,7 +281,7 @@ Built in M4's phase A.
 
 ### ADR-005 amendment — schema v8: the senders whose images load (M5, 2026-10-06)
 
-Built as m5/files.md records. Migration v8 adds `remote_senders(address PRIMARY KEY, added) WITHOUT ROWID`: lower-case addresses whose remote images load without asking (ML-058), with when each was added. The list is the user's, not an account's: it stays when an account is removed. Its writes bump no store version and send no change event. The conversation view (ML-057) added no migration: `Store::conversation` walks v1's `messages_thread (thread_id, date)` index (≤ 1.66 ms cold for 150 messages at 100,000).
+Migration v8 adds `remote_senders(address PRIMARY KEY, added) WITHOUT ROWID`: lower-case addresses whose remote images load without asking (ML-058), with when each was added. The list is the user's, not an account's: it stays when an account is removed. Its writes bump no store version and send no change event. The conversation view (ML-057) added no migration: `Store::conversation` walks v1's `messages_thread (thread_id, date)` index (≤ 1.66 ms cold for 150 messages at 100,000).
 
 ### ADR-005 amendment — schema v9: drafts, the outbox and contacts (M6, 2026-10-06)
 
@@ -424,7 +424,7 @@ Found by M4's randomized triage suite: the folder pass's new-mail fetch also upd
 
 ### ADR-006 amendment — parts and originals on demand (M5, 2026-10-06)
 
-Built as m5/files.md records. `Command::FetchPart` fetches `BODY.PEEK[<section>.MIME]` and `BODY.PEEK[<section>]` by the section the store recorded, and `Command::FetchOriginal` fetches `BODY.PEEK[]`, on the account's body connection after EXAMINE and the UIDVALIDITY check, ahead of body batches, one at a time, retried once after a cut. Nothing is stored and nothing is marked `\Seen`; a vanished UID or a new UIDVALIDITY is `Gone`. The reader uses them for a large message stored as its text parts: its attachments, its inline images (served as the type the stored message declares) and Show Original and Save as .eml. On the testbed a 12 MB original took 25–63 ms and its 4.4 MB attachment 28–43 ms, byte for byte.
+`Command::FetchPart` fetches `BODY.PEEK[<section>.MIME]` and `BODY.PEEK[<section>]` by the section the store recorded, and `Command::FetchOriginal` fetches `BODY.PEEK[]`, on the account's body connection after EXAMINE and the UIDVALIDITY check, ahead of body batches, one at a time, retried once after a cut. Nothing is stored and nothing is marked `\Seen`; a vanished UID or a new UIDVALIDITY is `Gone`. The reader uses them for a large message stored as its text parts: its attachments, its inline images (served as the type the stored message declares) and Show Original and Save as .eml. On the testbed a 12 MB original took 25–63 ms and its 4.4 MB attachment 28–43 ms, byte for byte.
 
 ### ADR-006 amendment — new mail reported per committed step (M7, 2026-10-07)
 
@@ -478,7 +478,7 @@ Built in M2.
 
 ### ADR-007 amendment — interop checked on the testbed (M6 start, 2026-10-06)
 
-**Status:** user decision at M6's start ("Mailpit + your test (Recommended)", 2026-10-06). S7's interop check, rendering Sealwax's mail in Gmail web, Outlook web and Thunderbird, needed test accounts and send approvals; real accounts became the user's own test once the app is finished (2026-10-05), and Thunderbird isn't installed here. So M6's exit criterion is met on the testbed: every message Sealwax sends in the testbed suites is caught by Mailpit (or delivered by Stalwart's submission port), round-tripped through mail-parser, and scanned for a Bcc header and the host name. Rendering in the three clients moves to the user's own test (a P1 follow-up in PLAN.md).
+**Status:** user decision at M6's start ("Mailpit + your test (Recommended)", 2026-10-06). S7's interop check, rendering Sealwax's mail in Gmail web, Outlook web and Thunderbird, needed test accounts and send approvals; real accounts became the user's own test once the app is finished (2026-10-05), and Thunderbird isn't installed here. So M6's exit criterion is met on the testbed: every message Sealwax sends in the testbed suites is caught by Mailpit (or delivered by Stalwart's submission port), round-tripped through mail-parser, and scanned for a Bcc header and the host name. Rendering in the three clients moves to the user's own test (a P1 follow-up).
 
 ### ADR-007 amendment — the MIME builder and submission as built (M6, 2026-10-06)
 
@@ -568,7 +568,7 @@ Built in M3.
 
 **Status:** Accepted — user decision, 2026-10-09: "build my client ID into the release packages", answering the lead's question whether users must register their own.
 
-**Decision:** Sealwax's packages build in the owner's Microsoft client ID ("Sealwax (dev)", [OAUTH-SETUP.md](OAUTH-SETUP.md#as-registered-on-2026-10-05)), so Sign in with Microsoft works as installed. `tools/package-source.py` takes it from `SEALWAX_MICROSOFT_CLIENT_ID`, else from the builder's `~/.config/sealwax/config.toml` (`[oauth.microsoft] client_id`), checks it is a GUID, and writes it into the generated PKGBUILD under `.local/` only, whose `build()` exports it for `option_env!`; `--no-client-id` leaves it out, and the script says which source it used without printing the ID. The ID is never committed: the repository's `PKGBUILD.in` holds a placeholder. `config.toml`'s `client_id` still wins over the built-in one. Builds from source without one still say "Microsoft sign-in isn't available in this build of Sealwax yet." The ID is a public client's (PKCE, no secret); the protection is Microsoft's sign-in page. Work accounts in other organizations may still need their admin's consent until the publisher is verified (PLAN.md follow-up).
+**Decision:** Sealwax's packages build in the owner's Microsoft client ID ("Sealwax (dev)", [OAUTH-SETUP.md](OAUTH-SETUP.md#as-registered-on-2026-10-05)), so Sign in with Microsoft works as installed. `tools/package-source.py` takes it from `SEALWAX_MICROSOFT_CLIENT_ID`, else from the builder's `~/.config/sealwax/config.toml` (`[oauth.microsoft] client_id`), checks it is a GUID, and writes it into the generated PKGBUILD under `.local/` only, whose `build()` exports it for `option_env!`; `--no-client-id` leaves it out, and the script says which source it used without printing the ID. The ID is never committed: the repository's `PKGBUILD.in` holds a placeholder. `config.toml`'s `client_id` still wins over the built-in one. Builds from source without one still say "Microsoft sign-in isn't available in this build of Sealwax yet." The ID is a public client's (PKCE, no secret); the protection is Microsoft's sign-in page. Work accounts in other organizations may still need their admin's consent until the publisher is verified (an open follow-up).
 
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
@@ -737,7 +737,7 @@ The layers and the sizing change as follows (SECURITY.md carries the security ru
 
 ### ADR-011 amendment — the reader as built in M1 (2026-10-04)
 
-Built as m1/reader.md records, with every layer of the S2 amendment. Additions:
+Built with every layer of the S2 amendment. Additions:
 - **One engine per process:**
   - one web context and ephemeral session (cookies never accepted, TLS errors fail);
   - one compiled content filter;
@@ -756,7 +756,7 @@ Built as m1/reader.md records, with every layer of the S2 amendment. Additions:
 
 ### ADR-011 amendment — the reader as built in M5 (2026-10-06)
 
-Built as m5/conversation.md and m5/rendering.md record. Every layer of the S2 amendment stays; the hostile suite runs in `tools/ci.sh --ui` (60 cases) with a DNS canary.
+Every layer of the S2 amendment stays; the hostile suite runs in `tools/ci.sh --ui` (60 cases) with a DNS canary.
 - **Live views:** at most `MAX_LIVE_VIEWS` (4). Expanded HTML bodies within one column height of the visible part hold one, nearest first; the others give theirs back and keep their measured height; a focused body keeps its view; a spare view measures the nearest unmeasured body. A view that comes back gets the content filter again unless its message or sender is allowed. Changes above the visible part are held still by moving the column's scroll in the frame clock's layout phase.
 - **`cid:`** answers come from the main loop, asynchronously, and only for the load that asked (epochs per view); parts the store doesn't hold come from `FetchPart`.
 - **Links:** the isolated world reports the hovered or focused link; the reader shows its target and, when the link's text names another registrable domain (`domain::links`, the PSL) or its address hides a name before `@`, warns and asks before opening. Plain-text bodies link only http(s), `www.` and mailto.
@@ -792,15 +792,15 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 
 **Status:** Accepted — user decision, 2026-10-04.
 
-**Decision:** The Markdown in this repository (`docs/` plus README and AGENTS) is the project memory, as in Stet (its ADR-012). Notion holds a mirror for overview: the private hub "Mail (working name) — Product Development" and its "Mail Development Kanban" (cards ML-001 to ML-096, same fields and views as the Hertz board). When a task changes state in PLAN.md, its card is updated in the same session. If Notion can't be reached, PLAN.md gets a "Notion sync pending" note. PLAN.md wins any conflict; work never waits on Notion.
+**Decision:** The Markdown in this repository (`docs/` plus README and AGENTS) is the project memory, as in Stet (its ADR-012). Notion holds a mirror for overview: the private hub "Mail (working name) — Product Development" and its "Mail Development Kanban" (cards ML-001 to ML-096, same fields and views as the Hertz board). When a task changes state in the plan, its card is updated in the same session. If Notion can't be reached, the plan gets a "Notion sync pending" note. The plan wins any conflict; work never waits on Notion.
 
 **Reason:** the user wanted a kanban for overview. Stet showed that a second canonical source drifts and that work must not stop when the connector is unavailable; a mirror keeps both benefits.
 
-**Consequence:** OPERATING.md carries the sync rule. The hub and board are renamed when ADR-010 is accepted.
+**Consequence:** the operating guide carries the sync rule. The hub and board are renamed when ADR-010 is accepted.
 
 ### ADR-012 amendment — the working docs stay local (2026-10-09)
 
-**Status:** Accepted — user decision, 2026-10-09: "I do not want the plan in my repository …, these should be kept local, as they are just for me", then "PLAN.md and the other working docs" and "Remove from history too".
+**Status:** Accepted — user decision, 2026-10-09: "I do not want the plan in my repository …, these should be kept local, as they are just for me"; asked which files and whether the history too, they chose the plan with the other working docs, removed from the history as well.
 
 **Decision:** The plan, the product requirements, the operating guide, the research notes, the agents' guide, the milestone reports (`docs/m1/`–`docs/m9/`) and the spike reports (`docs/spikes/`) stay on the owner's disk as the project memory, ignored by git and never pushed; every commit of the history was rewritten without them and force-pushed with the tags. The repository keeps the docs for users and contributors: README, INSTALL, the user guide, building, testing, design, these decisions, security, integrations, OAuth setup and the release notes, which no longer link to the local ones in their user-facing parts (TESTING, DESIGN and these decisions still name local reports as references). A test that read a milestone report reads it only when it is there.
 
@@ -810,11 +810,11 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 
 **Status:** Accepted — plan approval, 2026-10-04.
 
-**Decision:** 1.0 is the scope in PLAN.md "Scope control": IMAP and SMTP with autodetect and OAuth, conversations, safe reading, triage with Undo, the WYSIWYG composer with drafts and outbox, local search, notifications, background mode, the mailto handler, the live theme, the keyboard set and print; POP3 sits in M8 and can move to 1.x by user decision. Everything else is on the 1.x, Later or Never lists.
+**Decision:** 1.0 is the scope in the plan's "Scope control" list: IMAP and SMTP with autodetect and OAuth, conversations, safe reading, triage with Undo, the WYSIWYG composer with drafts and outbox, local search, notifications, background mode, the mailto handler, the live theme, the keyboard set and print; POP3 sits in M8 and can move to 1.x by user decision. Everything else is on the 1.x, Later or Never lists.
 
 **Reason:** the user asked for the core functions, the common protocols and automatic setup first. The review on 2026-10-04 moved COMPRESS, pinned certificates, schedule send, snooze, folder management, server search, rules, List-Unsubscribe and Gmail labels to 1.x.
 
-**Consequence:** moving an item into 1.0 needs a user decision, recorded as a dated PLAN.md entry and an amendment here.
+**Consequence:** moving an item into 1.0 needs a user decision, recorded as a dated entry in the plan and an amendment here.
 
 ### ADR-013 amendment — Sign in with Google to 1.x (2026-10-04)
 
@@ -982,7 +982,7 @@ Built in M4. The app queues every triage action with `Store::queue_triage` (Mark
 
 **Status:** accepted for triage by the user at the M4 gate ("Accept all", 2026-10-06); the at-most-once send stays M6's.
 - **The defaults as built:** the undo window 7 s; no toast for one message's read or star change; a message marked read when it opens; the next message selected after an action; deleting from the Trash asks nothing and can be undone only while it hasn't reached the server; Mark Folder as Read waits for the window too; done ops kept for Undo from the newest 50 actions; 5 attempts, then a change is refused; moves and deletions retried while the mailbox is full; the offline banner counts the changes waiting.
-- **Not built:** Undo of a folder marked read after its window (a proposal, P2 in PLAN.md).
+- **Not built:** Undo of a folder marked read after its window (a P2 proposal).
 
 ### ADR-015 amendment — the outbox as built (M6, 2026-10-06)
 
@@ -995,7 +995,7 @@ Built in M6; the at-most-once send this ADR left to M6.
 
 ### ADR-015 amendment — M6 gate decisions (2026-10-06)
 
-**Status:** accepted by the user at the M6 gate ("Accept all (Recommended)", 2026-10-06); this ADR's at-most-once send is built and accepted. The proposals in this ADR's, ADR-007's, ADR-009's and ADR-014's M6 amendments stand as built: the undo-send window 7 s; one refused recipient refuses the whole send; a send uncertain once the message's bytes start going out; the Sent copy skipped for servers that save their own (Microsoft, Gmail), else looked for from the mark and appended; one SMTP connection per round of due sends; sends kept queued while the login needs fixing, retried without a cap; drafts to the Drafts folder 30 s after the last save while open, 10 s once closed; plain-text signatures; remote images in quotes kept and never loaded in the composer; forwards without In-Reply-To or References; no User-Agent or X-Mailer; References trimmed to 20; the HTML parser crates capped in the logs. At the same gate: text on the accent keeps the 3:1 `docs/m1/theme.md` states; Enter, `o` and a double click open a Drafts-folder message in the composer; the keys in [ADR-017's M6 amendment](#adr-017-amendment--m6s-keys-accepted-m6-gate-2026-10-06).
+**Status:** accepted by the user at the M6 gate ("Accept all (Recommended)", 2026-10-06); this ADR's at-most-once send is built and accepted. The proposals in this ADR's, ADR-007's, ADR-009's and ADR-014's M6 amendments stand as built: the undo-send window 7 s; one refused recipient refuses the whole send; a send uncertain once the message's bytes start going out; the Sent copy skipped for servers that save their own (Microsoft, Gmail), else looked for from the mark and appended; one SMTP connection per round of due sends; sends kept queued while the login needs fixing, retried without a cap; drafts to the Drafts folder 30 s after the last save while open, 10 s once closed; plain-text signatures; remote images in quotes kept and never loaded in the composer; forwards without In-Reply-To or References; no User-Agent or X-Mailer; References trimmed to 20; the HTML parser crates capped in the logs. At the same gate: text on the accent keeps its 3:1 contrast; Enter, `o` and a double click open a Drafts-folder message in the composer; the keys in [ADR-017's M6 amendment](#adr-017-amendment--m6s-keys-accepted-m6-gate-2026-10-06).
 
 ### ADR-015 amendment — POP3 accounts' ops and outbox (M8 phase A, 2026-10-07)
 
@@ -1054,7 +1054,7 @@ Built in M3.
 
 ### ADR-016 amendment — the conversation view as built (M5, 2026-10-06)
 
-Built as m5/conversation.md records. `Store::conversation(id)` reads the selected message's conversation in one snapshot, oldest first: rows a pending move or expunge or `\Deleted` hides are left out (never the selected one); copies of one Message-ID show once (the selected copy, else Inbox, Archive, All Mail, Sent, other folders, Drafts, Junk, Trash); the Trash and Junk show only when the selected message is there. The reader expands the selected message, the unread ones and the latest; over 100 messages it keeps the first, the latest 10 and the expanded ones and folds the rest into "N earlier messages", revealed 50 a click. Messages arriving while it is shown join as unread rows. The list's conversation size still counts every message of the conversation (a design question at the gate). Threads over 100 messages are folded by the reader, which this ADR's "collapse their middle" asked for.
+`Store::conversation(id)` reads the selected message's conversation in one snapshot, oldest first: rows a pending move or expunge or `\Deleted` hides are left out (never the selected one); copies of one Message-ID show once (the selected copy, else Inbox, Archive, All Mail, Sent, other folders, Drafts, Junk, Trash); the Trash and Junk show only when the selected message is there. The reader expands the selected message, the unread ones and the latest; over 100 messages it keeps the first, the latest 10 and the expanded ones and folds the rest into "N earlier messages", revealed 50 a click. Messages arriving while it is shown join as unread rows. The list's conversation size still counts every message of the conversation (a design question at the gate). Threads over 100 messages are folded by the reader, which this ADR's "collapse their middle" asked for.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 
@@ -1200,11 +1200,11 @@ The engine runs an account's script on the mail its passes report as new in the 
 
 ### ADR-020 amendment — the rules in the app as built (B2, 2026-10-09)
 
-Five registry commands without keys, at the registry's end in a new Rules category: Rules… (the main menu, the palette, the account heading's menu), Create Rule from Message…, Always and Never Junk Messages from Sender (on the selection, one sender, one account with a key), Apply Rules to This Folder (the palette on the folder shown, the folder row's menu, the Rules dialog). The message row gets a right-click menu (Menu and Shift+F10 as the list's own keys) whose items run the registry's commands on the row clicked, selected first, or on the selection it is in. The Rules dialog (`adw::Dialog`) lists one account's rules with a summary, a switch, Move Up/Down, Edit and Delete (Undo), the always- and never-junk senders, Apply to Folder…; hand-written Sieve stays in place as "Written by hand" with "Edited by hand" and Open File, and a file that can't be read is shown with where and why and nothing else. The editor's Save waits for `Rule::validate`. The app reads and writes `rules/<key>.sieve` itself, off the GTK thread through one serial queue, atomically, and never over a file changed since it was read; the engine picks the file up by its modification time, so no command is added. Always / Never Junk list the sender and move the messages as Move to Junk / Not Junk do, and one Undo takes back both. `RulesFailed` is a banner entry per account (after the uncertain sends, before offline) with Open File, cleared when the file runs again, which the app also checks whenever the rules folder changes; `RulesApplied` is a toast. A folder renamed in Sealwax takes the rules that file into it along; a deleted one leaves them. Menu and Shift+F10 on a message row are a proposal for the user (ADR-017), as are the other open questions in the report.
+Five registry commands without keys, at the registry's end in a new Rules category: Rules… (the main menu, the palette, the account heading's menu), Create Rule from Message…, Always and Never Junk Messages from Sender (on the selection, one sender, one account with a key), Apply Rules to This Folder (the palette on the folder shown, the folder row's menu, the Rules dialog). The message row gets a right-click menu (Menu and Shift+F10 as the list's own keys) whose items run the registry's commands on the row clicked, selected first, or on the selection it is in. The Rules dialog (`adw::Dialog`) lists one account's rules with a summary, a switch, Move Up/Down, Edit and Delete (Undo), the always- and never-junk senders, Apply to Folder…; hand-written Sieve stays in place as "Written by hand" with "Edited by hand" and Open File, and a file that can't be read is shown with where and why and nothing else. The editor's Save waits for `Rule::validate`. The app reads and writes `rules/<key>.sieve` itself, off the GTK thread through one serial queue, atomically, and never over a file changed since it was read; the engine picks the file up by its modification time, so no command is added. Always / Never Junk list the sender and move the messages as Move to Junk / Not Junk do, and one Undo takes back both. `RulesFailed` is a banner entry per account (after the uncertain sends, before offline) with Open File, cleared when the file runs again, which the app also checks whenever the rules folder changes; `RulesApplied` is a toast. A folder renamed in Sealwax takes the rules that file into it along; a deleted one leaves them. Menu and Shift+F10 on a message row are a proposal for the user (ADR-017), as are the other open questions raised while building it.
 
 ### ADR-020 amendment — the user's decisions on folders and rules (2026-10-09)
 
-**Status:** Accepted — user decisions, 2026-10-09, answering the reports' questions: (1) "Keep": Menu and Shift+F10 open a message row's menu ([ADR-017 amendment](#adr-017-amendment--menu-and-shiftf10-open-a-messages-menu-2026-10-09)); (2) "Folders with subfolders should start at the state the user left the app when the app is closed. New top-level folders go under the Inbox.": folds, and an open More folders, are remembered and follow a rename ([ADR-009 amendment](#adr-009-amendment--the-sidebar-comes-back-as-the-user-left-it-2026-10-09)), and new top folders go under the Inbox where every folder is under it, as built; (3) "Stay as is": Undo of Always or Never Junk also takes the sender off the list; (4) "Keep": the Rules dialog saves each change at once, and deleting a rule offers Undo instead of asking. More folders in name order wasn't answered and stays as built.
+**Status:** Accepted — user decisions, 2026-10-09, answering the questions raised while building them: (1) "Keep": Menu and Shift+F10 open a message row's menu ([ADR-017 amendment](#adr-017-amendment--menu-and-shiftf10-open-a-messages-menu-2026-10-09)); (2) "Folders with subfolders should start at the state the user left the app when the app is closed. New top-level folders go under the Inbox.": folds, and an open More folders, are remembered and follow a rename ([ADR-009 amendment](#adr-009-amendment--the-sidebar-comes-back-as-the-user-left-it-2026-10-09)), and new top folders go under the Inbox where every folder is under it, as built; (3) "Stay as is": Undo of Always or Never Junk also takes the sender off the list; (4) "Keep": the Rules dialog saves each change at once, and deleting a rule offers Undo instead of asking. More folders in name order wasn't answered and stays as built.
 
 ### ADR-020 amendment — a rule saved runs on the Inbox's mail (2026-10-09)
 

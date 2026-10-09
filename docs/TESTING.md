@@ -17,7 +17,7 @@ Evidence rules: record only what was actually run, with date, command, machine a
 | Rules (B2) | The editor's draft and its checks, the rules' words (summaries, toasts, the banner), the rules file read, written, changed and followed after a rename off the GTK thread and never over an edit, an action with a change beside it undone with it | `app/src/rules/` (`draft.rs`, `text.rs`, `file.rs`, `mod.rs`), `app/src/triage.rs` (`an_action_with_a_change_beside_it_says_both_and_undoes_both`); the self-tests `rules-dialog`, `rules-menu`, `rules-events` | Yes |
 | UI (headless) | The app on GTK Broadway with a private D-Bus bus, self-terminating; `sealwax --self-test` scripts (`tests/selftest/`) that resize, activate actions, assert layout and state, take screenshots, and load fixture stores (`store-dir`, `fixtures`); `app/examples/theme_switch.rs` and `app/examples/palette.rs` | `tools/headless.sh`, `bash tools/ci.sh --ui` | Yes (scripts except `preview*`, `perf-*`, `live-*` and `testbed-*`) |
 | Security | Hostile-HTML suite against a local HTTP canary and a DNS canary (M5); secret grep over config, database and logs; outgoing-mail checks (no Bcc, no hostname); STARTTLS and STLS injection; every fuzz target's entry point over `fuzz/corpus/` (M9) | `app/examples/hostile.rs` in `tools/ci.sh --ui`; `app/` and `engine/` tests | Yes |
-| Fuzzing | 13 coverage-guided libFuzzer targets on the stable toolchain (M9, ML-093): message parsing, HTML, text, links, attachment names, autoconfig XML, search, `mailto:`, the config files, the theme, POP3, IMAP, and Sieve rules (parse, check, run, and the rules model written and read back; m9/sieve.md); crashes kept as regression inputs | `fuzz/` (its own workspace), `tools/fuzz.sh <target> [seconds]` | The corpus only, through `cargo test`; fuzzing by hand |
+| Fuzzing | 13 coverage-guided libFuzzer targets on the stable toolchain (M9, ML-093): message parsing, HTML, text, links, attachment names, autoconfig XML, search, `mailto:`, the config files, the theme, POP3, IMAP, and Sieve rules (parse, check, run, and the rules model written and read back); crashes kept as regression inputs | `fuzz/` (its own workspace), `tools/fuzz.sh <target> [seconds]` | The corpus only, through `cargo test`; fuzzing by hand |
 | Live | Real Wayland session (NVIDIA rendering, notifications, activation, fcitx5) and real test accounts | Manual or agent with authorization | No |
 
 ## Headless runs
@@ -25,7 +25,7 @@ Evidence rules: record only what was actually run, with date, command, machine a
 - Always through `tools/headless.sh <display> <cmd...>`: Broadway backend, a private D-Bus bus that starts no services, `GSETTINGS_BACKEND=memory`, `ADW_DISABLE_PORTAL=1`, a time limit (`SEALWAX_HEADLESS_TIMEOUT`, default 300 s).
 - The app exits by itself after `SEALWAX_EXIT_AFTER_MS`; the CI smoke run greps for `first-frame`.
 - Parallel agents use different display numbers; CI uses `SEALWAX_CI_DISPLAY` (default 19).
-- `sealwax --self-test <script>` (ported from Stet) runs the real app on Broadway and a `.sealwax-test` script against it, printing TAP; the commands are in m1/shell.md. `tools/ci.sh --ui` runs every `tests/selftest/*.sealwax-test` except `preview*`, which write the gate's screenshots into `tools/progress/public/`. The harness attaches a stand-in Broadway client reporting a 2560×1600 screen (without one Broadway clamps windows to 1024×768), switches `GTK_A11Y=none` to `test` so accessible labels can be checked, turns animations off and waits for a painted frame after every step. Since M4 its clicks go to the surface under the point (a popover's over the window's), in surface coordinates, with the crossing events and grab replies `broadway.js` sends, so buttons, checkboxes and popover items take real clicks.
+- `sealwax --self-test <script>` (ported from Stet) runs the real app on Broadway and a `.sealwax-test` script against it, printing TAP; the commands are listed in the module comments of `app/src/selftest/`. `tools/ci.sh --ui` runs every `tests/selftest/*.sealwax-test` except `preview*`, which write the gate's screenshots into `tools/progress/public/`. The harness attaches a stand-in Broadway client reporting a 2560×1600 screen (without one Broadway clamps windows to 1024×768), switches `GTK_A11Y=none` to `test` so accessible labels can be checked, turns animations off and waits for a painted frame after every step. Since M4 its clicks go to the surface under the point (a popover's over the window's), in surface coordinates, with the crossing events and grab replies `broadway.js` sends, so buttons, checkboxes and popover items take real clicks.
 - Self-tests read a scratch Omarchy state (`SEALWAX_OMARCHY_STATE` under the run's scratch root), never the desktop's: the built-in palette until a script runs `theme NAME` (a stock palette from `tests/theme/`, swapped in as `omarchy-theme-set` does); `corners auto|PX` sets the corner radius. Look assertions compare what GTK draws with the applied theme: `assert-color`, `assert-contrast`, `assert-radius`, `assert-font`, `assert-height`, `assert-tooltip`; since 2026-10-08 `assert-color` also takes the account colours as roles (`account-sage`, …), and `assert-right-of` and `hover` check where a widget sits and move the pointer onto it (the setup assistant's scrollbar).
 - Body downloads (ML-044) run the app's own reader against the same fake engine: `bodies-add` stores synthetic samples as headers and a preview, `engine-expect fetch-bodies` takes the reader's request, `bodies-store` does the engine's store upgrade and `engine-reply body-fetched ok|offline|needs-sign-in|gone|store|other` answers; `assert-body` and `assert-body-text` check the reader (`app/src/selftest/bodies.rs`, `reader-bodies.sealwax-test`).
 - The conversation view (M5, ML-057) runs the app's own list and reader (`app/src/selftest/conversation.rs`): sample conversations filed into the app's store, real clicks on rows, headers and folds through Broadway, programmatic scrolling that checks the live-view cap, blank bodies and kept heights at every step, arrivals and moves (`reader-conversation`, `reader-conversation-views`).
@@ -69,7 +69,7 @@ Measured with release builds unless noted; each entry names its spike or milesto
 
 ## Acceptance by milestone
 
-The exit criteria in PLAN.md are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
+Each milestone's exit criteria are the acceptance list. Results go here as dated entries, newest first, with screenshots in `tools/progress/`.
 
 ## Results
 
@@ -154,7 +154,7 @@ Machine as M5's; rustc 1.98.1.
 | The accessibility audit (ML-092), five scripts in `tools/ci.sh --ui` | `a11y-window` 121 steps, `a11y-reader` 68, `a11y-composer` 80, `a11y-setup` 102, `a11y-dialogs` 125: every control named with a role and its states, no Tab trap, the planned Tab chains, plain-text links by Tab, Go to and Back to List | Pass (Orca not run) |
 | SMTP STARTTLS fix (F1) and every testbed suite on `main`: `bash tools/ci.sh --testbed` on `45ec99b`, 12:35–13:15 | All 16 suites passed (`actor_testbed` 9, `append_testbed` 5, `bodies_testbed` 1, `log_grep` 1, `newmail_testbed` 5, `ops_testbed` 12, `outbox_testbed` 6, `parts_testbed` 1, `password` 1, `pop3_accounts_testbed` 2, `pop3_testbed` 7, `send_testbed` 6, `sync_testbed` 9, `testbed` 5, `write_testbed` 9, S1's 8); login and submission over STARTTLS on Stalwart 587 and Mailpit | Pass |
 | The user's three security changes (phase B): `domain/tests/html_cap.rs` and probes, release, one run each | 990,000 bytes of nested lists at sync 19.8 s → 7.4 s; open `<ul>` 175 s → 6.3 s; open `<s>` over 300 s → 36.7 s; an actor restarted 105 ms after imap-proto's panic and received new mail; the web processes under bubblewrap with the variable set. Branch CI: 1,319 passed, 0 failed, 96 ignored; 67 scripts, 6,333 steps; the hostile suite clean (after one `triage-frames` flake) | Pass; a P1 stack overflow found (html2text, nested lists) |
-| The depth limit and the crash-loop guard (phase B) | `domain/tests/html_depth.rs` on 2 MiB threads (every step at most 120 ms on the report's inputs); `html_depth::tests` (the count against html5ever's tree; 20,000 random soups at most 3 levels short; the same output on 20,061 inputs within the limit); deep regression inputs in `fuzz/corpus/`; the store's v11 → v12 migration and build marks; the at-most-once property test with "stopped while building" (3,000 cases); an engine start reporting `SendFailed(Interrupted)`; a POP3 reply end to end. Each new test group overflowed on the base commit's code (control). Branch CI: 1,334 passed, 0 failed, 96 ignored; 67 scripts, 6,333 steps; the hostile suite clean. On `main` (`tools/ci.sh --ui --testbed`, 16:59–17:52): 1,335 passed, 0 failed, 96 ignored; 67 scripts, 6,333 steps; the hostile suite clean; all 16 testbed suites passed | Pass |
+| The depth limit and the crash-loop guard (phase B) | `domain/tests/html_depth.rs` on 2 MiB threads (every step at most 120 ms on the measured inputs); `html_depth::tests` (the count against html5ever's tree; 20,000 random soups at most 3 levels short; the same output on 20,061 inputs within the limit); deep regression inputs in `fuzz/corpus/`; the store's v11 → v12 migration and build marks; the at-most-once property test with "stopped while building" (3,000 cases); an engine start reporting `SendFailed(Interrupted)`; a POP3 reply end to end. Each new test group overflowed on the base commit's code (control). Branch CI: 1,334 passed, 0 failed, 96 ignored; 67 scripts, 6,333 steps; the hostile suite clean. On `main` (`tools/ci.sh --ui --testbed`, 16:59–17:52): 1,335 passed, 0 failed, 96 ignored; 67 scripts, 6,333 steps; the hostile suite clean; all 16 testbed suites passed | Pass |
 | CI on `main` after the three merges: `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui`, 12:23–12:35 | 1,306 passed, 0 failed, 93 ignored; 67 scripts, 6,331 steps; the hostile suite clean. Three earlier runs stopped: the S7 spike's Bcc check (a random id spelled "bcc"; fixed) and twice `triage-frames`' junk step (a load-sensitive stall that `bb23c4e`, before M9, shows as often; a follow-up) | Pass |
 | CI on the branches | Guide: `tools/ci.sh` 1,280 passed, 0 failed, 93 ignored. Security: `tools/ci.sh --ui` on `abfdd99` 1,303 passed, 0 failed, 93 ignored, 62 scripts (5,818 steps), the hostile suite clean. Accessibility: `tools/ci.sh --ui` on `9d2f583` 1,281 passed, 0 failed, 93 ignored, 67 scripts (6,331 steps), the hostile suite clean | Pass |
 
@@ -236,7 +236,7 @@ Machine: AMD Ryzen 9 5900X, 62 GiB, NVIDIA RTX 3070 Ti, Linux 7.2.5-3-omarchy, W
 | Trace-level log grep (`log_grep`, the send, APPEND and outbox flows) | No password, token, address, subject, body or folder name; it caught html5ever's debug output carrying a draft's body, now capped ([ADR-018](DECISIONS.md#adr-018-amendment--the-html-parser-capped-m6-2026-10-06)) | Pass |
 | The drafts store (100,000 messages, release) | A 200 KB draft saves in p99 1.24 ms idle (p95 25 ms during a 20,000-message ingest); suggestions p95 ≤ 13.2 ms with 50,000 extra contacts; the at-most-once property test 3,000 cases | Pass |
 
-- **Flaky:** `write_testbed` failed once in the gate run (Stalwart's NO to a move back from Junk) and passed 3 of 3 on re-runs; `list-older` failed one step once under load (a late "folder opened" after All Inboxes) and passed 4 of 4 alone. Follow-ups in PLAN.md.
+- **Flaky:** `write_testbed` failed once in the gate run (Stalwart's NO to a move back from Junk) and passed 3 of 3 on re-runs; `list-older` failed one step once under load (a late "folder opened" after All Inboxes) and passed 4 of 4 alone.
 - **Not verified:** rendering in Gmail web, Outlook web and Thunderbird (the user's own test, ADR-007); Microsoft's SMTP with a token and its own Sent copy; faults on a STARTTLS submission port or on Mailpit; the portal's file chooser and a real drag from a file manager into the composer; the 60 Hz re-measure (the user's); screen readers.
 
 ### M5 integrated: conversations, files and remote content, rendering and safety — 2026-10-06
@@ -327,7 +327,7 @@ On `main` after every M3 merge (`60b7054`), development machine (Ryzen 9 5900X, 
 | New mail ≤ 5 s through IDLE (APPEND's OK → in the store, 20 samples a run) | Dovecot p50 500–501 ms, max 512 ms (its own notification delay); Stalwart p50 6 ms |
 | Faults through the proxy | Cuts mid-FETCH (first sync, flag fetch, new mail) and while idling, and a 5 s black hole lifted with `Reconnect` (everything stored 17–24 ms after it): nothing lost or duplicated |
 | No-change account pass, `perf` (10,000 messages), release | p50 5.9–7.3 ms on Dovecot, 0.3–0.7 ms on Stalwart, 8.8–35.1 ms with IMAP4rev1's full flag scans (worst 41.3 ms); S1's bars 200 ms and 2 s |
-| Soak harness, 30 minutes (the actor's agent) | Four accounts, 2,548 changes, six faults (a cut, black holes with and without `Reconnect`, two suspends): four checks equal to the servers, the store's check clean. The 6-hour run waits for the user (PLAN.md) |
+| Soak harness, 30 minutes (the actor's agent) | Four accounts, 2,548 changes, six faults (a cut, black holes with and without `Reconnect`, two suspends): four checks equal to the servers, the store's check clean. The 6-hour run waits for the user |
 | Account status (ML-048) | `status-banners` 257/257, `status-password` 182/182, `status-offline` 118/118; engine `password.rs` and `keyring_fallback.rs`; `UpdatePassword` on the testbed as `bob` |
 | Threading and All Inboxes (ML-046, ML-047), release measurements on 3–5 fixture accounts of 90,000–100,000 messages | Property test 64 cases a CI run, 5,000 once (passed); All Inboxes opens ≤ 32.3 ms cold; one new message's diff p99 ≤ 5.2 ms (one maximum 24.9 ms on a cold cache under load); deep filtered pages 0.3–1.7 ms warm, ≤ 17.7 ms cold |
 | Gate previews | `preview-m3-status` 180/180 (28 images), `preview-m3` 54/54 (8 images): `tools/progress/public/m3-*-2026-10-05.png` |
@@ -430,7 +430,7 @@ Release builds on the live Hyprland session: 3440×1440 at 144 Hz, NVIDIA RTX 30
 
 ### M1 reader (ML-027) and the integrated app — 2026-10-04
 
-Headless on Broadway; report m1/reader.md.
+Headless on Broadway.
 
 | Check | Result |
 | --- | --- |
@@ -496,7 +496,7 @@ Release builds, 16:00–16:18 CEST: 18 self-closing live runs on Hyprland under 
 
 ### S1 IMAP library and sync model (ML-009) and the testbed (ML-005) — 2026-10-04
 
-Release build, localhost testbed (Dovecot 2.4.5 full, Dovecot IMAP4rev1-only, Stalwart 0.16.24), Ryzen 9 5900X; final run 14:54–15:03 on a freshly recreated and reseeded testbed. Evidence: `spikes/s1-imap/evidence/2026-10-04.log` (produced by `evidence/run.sh`); report spikes/S1-imap.md.
+Release build, localhost testbed (Dovecot 2.4.5 full, Dovecot IMAP4rev1-only, Stalwart 0.16.24), Ryzen 9 5900X; final run 14:54–15:03 on a freshly recreated and reseeded testbed. Evidence: `spikes/s1-imap/evidence/2026-10-04.log` (produced by `evidence/run.sh`).
 
 | Bar | Result | Verdict |
 | --- | --- | --- |
@@ -568,7 +568,7 @@ Release builds; four headless runs (display 23) and five self-closing live runs 
 
 ### S4 autodetect (ML-012) — 2026-10-04
 
-Release builds, 12:01–12:25 UTC, residential network in Norway; report spikes/S4-autodetect.md.
+Release builds, 12:01–12:25 UTC, residential network in Norway.
 
 | Bar | Result | Verdict |
 | --- | --- | --- |
@@ -584,7 +584,7 @@ At the M0 gate (2026-10-04) the user declined the Norwegian-preset fix; S4b (ML-
 
 ### S4b autodetect, general rules (ML-098) — 2026-10-04
 
-Release builds, 14:23–14:45 UTC, residential network in Norway, cold DNS at 1.1.1.1; report spikes/S4b-autodetect.md. Rubric frozen 14:10 UTC before any code, rules frozen 14:28:35, held-out list frozen 14:42:23 (sha256 `a8d32d12…6281c`, re-checked by the lead) before any request to its domains.
+Release builds, 14:23–14:45 UTC, residential network in Norway, cold DNS at 1.1.1.1. Rubric frozen 14:10 UTC before any code, rules frozen 14:28:35, held-out list frozen 14:42:23 (sha256 `a8d32d12…6281c`, re-checked by the lead) before any request to its domains.
 
 | Bar | Result | Verdict |
 | --- | --- | --- |
