@@ -7,7 +7,7 @@
 //! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one; links the assistant opens are recorded from then on, never opened |
 //! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
 //! | `engine-expect detect\|verify\|add-account\|edit-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `label` and `color` (`none` for none), `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
-//! | `engine-expect none` | The app sent nothing more |
+//! | `engine-expect none [but KIND,…]` | The app sent nothing more, or only commands of those kinds (`load-older,folder-opened`: what the list sends by itself) |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
 //! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
 //! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|pop3\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
@@ -821,10 +821,19 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
     let fake = fake()?;
     if args[0] == "none" {
         harness.wait_until_settled().await;
-        return match fake.commands.try_recv() {
-            Ok(command) => Err(format!("the app sent {}", fields(&command, None).0)),
-            Err(_) => Ok(()),
+        // `none but KIND,…`: commands of those kinds the list sends by itself are let through.
+        let allowed: Vec<&str> = match args.get(1).map(String::as_str) {
+            Some("but") => args.get(2).map_or("", String::as_str).split(',').collect(),
+            Some(other) => return Err(format!("use engine-expect none [but KIND,…], not {other}")),
+            None => Vec::new(),
         };
+        while let Ok(command) = fake.commands.try_recv() {
+            let kind = fields(&command, None).0;
+            if !allowed.contains(&kind) {
+                return Err(format!("the app sent {kind}"));
+            }
+        }
+        return Ok(());
     }
     let command = with_timeout(fake.commands.recv(), WAIT_TIMEOUT)
         .await

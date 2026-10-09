@@ -514,30 +514,28 @@ fn confirm_delete(window: &Window, engine: &EngineLink, context: Context, folder
 }
 
 /// What a delete takes: "The server deletes “Kunder”, its 2 subfolders and the 14 messages in
-/// them for good."
+/// them, for good."
 fn delete_text(name: &str, subfolders: usize, messages: u32, local: bool) -> String {
-    let folders = match subfolders {
-        0 => format!("“{name}”"),
-        1 => format!("“{name}”, its subfolder"),
-        count => format!("“{name}”, its {count} subfolders"),
-    };
-    let held = match (messages, subfolders) {
-        (0, 0) => " It holds no messages.".to_owned(),
-        (0, _) => " They hold no messages.".to_owned(),
-        (1, 0) => " with the message in it".to_owned(),
-        (1, _) => " with the message in them".to_owned(),
-        (count, 0) => format!(" with the {count} messages in it"),
-        (count, _) => format!(" with the {count} messages in them"),
-    };
     let (who, place) = if local {
         ("Sealwax deletes", " from this computer")
     } else {
         ("The server deletes", "")
     };
-    if messages == 0 {
-        format!("{who} {folders}{place} for good.{held}")
-    } else {
-        format!("{who} {folders}{held}{place} for good.")
+    let under = match subfolders {
+        0 => String::new(),
+        1 => "its subfolder".to_owned(),
+        count => format!("its {count} subfolders"),
+    };
+    let held = match messages {
+        1 => "the message".to_owned(),
+        count => format!("the {count} messages"),
+    };
+    let within = if subfolders == 0 { "it" } else { "them" };
+    match (subfolders, messages) {
+        (0, 0) => format!("{who} “{name}”{place} for good. It holds no messages."),
+        (_, 0) => format!("{who} “{name}” and {under}{place} for good. They hold no messages."),
+        (0, _) => format!("{who} “{name}” and {held} in {within}{place}, for good."),
+        _ => format!("{who} “{name}”, {under} and {held} in {within}{place}, for good."),
     }
 }
 
@@ -772,11 +770,11 @@ mod tests {
     fn deletes_say_what_goes() {
         assert_eq!(
             delete_text("Kunder", 2, 14, false),
-            "The server deletes “Kunder”, its 2 subfolders with the 14 messages in them for good."
+            "The server deletes “Kunder”, its 2 subfolders and the 14 messages in them, for good."
         );
         assert_eq!(
             delete_text("Acme", 0, 1, false),
-            "The server deletes “Acme” with the message in it for good."
+            "The server deletes “Acme” and the message in it, for good."
         );
         assert_eq!(
             delete_text("Acme", 0, 0, true),
@@ -784,7 +782,12 @@ mod tests {
         );
         assert_eq!(
             delete_text("Kunder", 1, 0, false),
-            "The server deletes “Kunder”, its subfolder for good. They hold no messages."
+            "The server deletes “Kunder” and its subfolder for good. They hold no messages."
+        );
+        assert_eq!(
+            delete_text("Kunder", 1, 3, true),
+            "Sealwax deletes “Kunder”, its subfolder and the 3 messages in them from this \
+             computer, for good."
         );
     }
 

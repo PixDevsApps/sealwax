@@ -196,7 +196,6 @@ pub(super) async fn apply(
         .into_iter()
         .filter(|folder| folder.account == account)
         .collect();
-    let store = mailbox.store().ok_or("the store is not open")?;
     let under = |id| -> Result<Vec<_>, String> {
         let top = known
             .iter()
@@ -212,8 +211,10 @@ pub(super) async fn apply(
         FolderChange::Create { parent, name } => {
             let parent = parent.and_then(|id| known.iter().find(|folder| folder.id == id));
             let whole = folders::child(parent.map(|parent| parent.name.as_str()), Some('/'), name);
-            let reply = store.upsert_folder(FolderSpec::local(account, &whole, FolderRole::Other));
-            drop(store);
+            let reply = mailbox
+                .store()
+                .ok_or("the store is not open")?
+                .upsert_folder(FolderSpec::local(account, &whole, FolderRole::Other));
             reply.recv().await.map_err(|error| error.to_string())?;
         }
         FolderChange::Rename { folder, name } => {
@@ -239,14 +240,18 @@ pub(super) async fn apply(
                     })
                 })
                 .collect();
-            let reply = store.rename_folders(account, renames);
-            drop(store);
+            let reply = mailbox
+                .store()
+                .ok_or("the store is not open")?
+                .rename_folders(account, renames);
             reply.recv().await.map_err(|error| error.to_string())?;
         }
         FolderChange::Delete { folder } => {
             let ids = under(*folder)?.into_iter().map(|known| known.id).collect();
-            let reply = store.delete_folders(account, ids);
-            drop(store);
+            let reply = mailbox
+                .store()
+                .ok_or("the store is not open")?
+                .delete_folders(account, ids);
             reply.recv().await.map_err(|error| error.to_string())?;
         }
     }
