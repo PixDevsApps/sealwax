@@ -3,7 +3,7 @@
 //! moves (UID MOVE, and the COPY path, forced where MOVE is offered), deleting for good and a
 //! folder marked read, each checked against the server afterwards; S1's lost replies of MOVE,
 //! COPY, the `\Deleted` STORE and UID EXPUNGE through the fault proxy, retried, over several
-//! seeds; and the timings of flags and moves on 1, 50 and 500 messages. They need the Docker
+//! seeds; a rule's copy (ADR-020), and its retry making no second copy; and the timings of flags and moves on 1, 50 and 500 messages. They need the Docker
 //! testbed running and seeded, and use only the users `ops` (direct) and `opsfault` (through
 //! the proxy), whose folders they empty and fill with synthetic messages:
 //!
@@ -24,7 +24,7 @@ use sealwax_domain::account::{Endpoint, Security};
 use sealwax_domain::message;
 use sealwax_domain::model::Flags;
 use sealwax_engine::imap::write::{
-    self, Done, Mark, Move, Moving, OpFolder, WriteError, WriteFailure,
+    self, Copy, Done, Mark, Move, Moving, OpFolder, WriteError, WriteFailure,
 };
 use sealwax_engine::imap::{self, ConnectOptions, Connection, Credentials, ImapError};
 use snapshot::Rng;
@@ -477,6 +477,56 @@ fn moves_junk_and_not_junk_on_every_server() {
                 reset(&mut test).await;
                 test.logout().await;
             }
+        }
+    });
+}
+
+#[test]
+#[ignore = "needs the testbed: tools/testbed/up.sh && tools/testbed/seed.sh"]
+fn a_rules_copy_on_every_server_and_its_retry_makes_no_second() {
+    runtime().block_on(async {
+        for server in SERVERS {
+            let mut test = client(server, "ops").await;
+            reset(&mut test).await;
+            let mut rng = Rng(23);
+            fill(&mut test, INBOX, "copy", 3, "\\Seen", &mut rng).await;
+            let rows = read(&mut test, INBOX).await;
+            let messages = moving(&rows);
+            let mut conn = engine(server.tls, "ops", true).await;
+            let mark = write::mark_target(&mut conn, ARCHIVE).await.unwrap();
+            let inbox = opened(&mut conn, INBOX).await;
+            let copy = |retry| Copy {
+                from: inbox,
+                to: ARCHIVE,
+                messages: &messages,
+                mark: Some(mark),
+                retry,
+            };
+            write::copy_messages(&mut conn, copy(false)).await.unwrap();
+            let archive = read(&mut test, ARCHIVE).await;
+            assert_eq!(ids(&archive), ids(&rows), "{}: each copied", server.name);
+            assert!(
+                archive.iter().all(|row| row.flags.contains(Flags::SEEN)),
+                "{}: flags travel with a copy",
+                server.name
+            );
+            assert_eq!(
+                read(&mut test, INBOX).await.len(),
+                3,
+                "{}: the messages stay",
+                server.name
+            );
+            write::copy_messages(&mut conn, copy(true)).await.unwrap();
+            assert_eq!(
+                read(&mut test, ARCHIVE).await.len(),
+                3,
+                "{}: a retry finds the copies and makes none",
+                server.name
+            );
+            println!("{}: 3 copied once, the retry copied nothing", server.name);
+            conn.logout().await;
+            reset(&mut test).await;
+            test.logout().await;
         }
     });
 }
