@@ -73,6 +73,18 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M9 rules in the app (B2) — 2026-10-09
+
+Report: [m9/rules-app.md](m9/rules-app.md). Branch `m9-rules-app` (on `main` with A1 merged); machine as M5's; rustc 1.98.1.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Unit tests: `cargo test -p sealwax --lib rules` and `triage` | 13 new (`rules::draft` 5, `rules::text` 3, `rules::file` 3, `rules` 1, `triage` 1), all passing; the registry's, the menu's and the keymap tables' tests updated for the five commands | Pass |
+| Self-tests by hand, display 85 | `rules-dialog` 140/140, `rules-menu` 140/140, `rules-events` 109/109; `a11y-window` and `a11y-dialogs` with their new sections, all steps | Pass |
+| Branch CI, `SEALWAX_CI_DISPLAY=86 bash tools/ci.sh --ui` on `75d368f`, 09:36–09:50 | Formatting and Clippy with `-D warnings` clean; 1,477 passed, 0 failed, 98 ignored (75 test results); 75 scripts, 7,455 of 7,455 steps (`a11y-window` 177, `a11y-dialogs` 168); the hostile suite clean (60 cases, 0 DNS lookups in production, 274 s) | Pass |
+
+- **Not verified:** a real account and the real engine reading a file the dialog saved (the engine's side is B1's tests); a pointer right click reaching the row's gesture (Broadway's doesn't headless; `row-menu` opens the menu as the gesture does, Menu and Shift+F10 were pressed for real); Open File on the desktop; what Orca says; a live look.
+
 ### M9 folders (A1): create, rename and delete, the folder tree — 2026-10-09
 
 Report: [m9/folders.md](m9/folders.md). Branch `m9-folders`; machine as M5's; rustc 1.98.1.
