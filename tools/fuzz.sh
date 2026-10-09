@@ -18,7 +18,7 @@
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
-targets=(message html text links attachment autoconfig search mailto config theme pop3 imap)
+targets=(message html text links attachment autoconfig search mailto config theme pop3 imap sieve)
 triple=x86_64-unknown-linux-gnu
 export CARGO_TARGET_DIR=$PWD/target/fuzz
 export CARGO_PROFILE_DEV_DEBUG=line-tables-only

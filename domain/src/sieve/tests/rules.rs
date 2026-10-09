@@ -281,7 +281,7 @@ fn every_condition_and_action_round_trips() {
 #[test]
 fn matches_reads_back_as_begins_or_ends_with_when_it_is_one() {
     let mut set = RuleSet::default();
-    for value in ["faktura*", "*.pdf", "*", "a\\*", "a*b"] {
+    for value in ["faktura*", "*.pdf", "*", "a\\*", "a*b", "*\\ø", "\\**"] {
         set.items.push(Item::Rule(rule(
             "",
             Match::Any,
@@ -306,6 +306,8 @@ fn matches_reads_back_as_begins_or_ends_with_when_it_is_one() {
             (Operator::Matches, "*".to_owned()),
             (Operator::Matches, "a\\*".to_owned()),
             (Operator::Matches, "a*b".to_owned()),
+            (Operator::Matches, "*\\ø".to_owned()),
+            (Operator::BeginsWith, "*".to_owned()),
         ]
     );
 }
@@ -566,6 +568,37 @@ fn sections_need_their_marker_and_their_place() {
         renamed.is_hand_written(),
         "another Junk folder than the account's"
     );
+}
+
+/// Found by fuzzing: an unnamed rule written without `# rule:[]` took a name comment left above
+/// it as its own when read back, and a rule under an always-junk marker read back as the section.
+#[test]
+fn names_and_markers_belong_to_the_command_right_below() {
+    let texts = [
+        "require \"fileinto\";\n# rule:[]\n# a note\n# rule:[]\nif true\n{\n\tfileinto \"A\";\n}\n",
+        "require \"fileinto\";\n# rule:[Old]\n# a note\nif true\n{\n\tfileinto \"A\";\n}\n",
+        "# Sealwax: always junk\nrequire [\"fileinto\", \"imap4flags\"];\nif address :is \"from\" \
+         \"spam@example.test\"\n{\n\tremoveflag \"$NotJunk\";\n\taddflag \"$Junk\";\n\tfileinto \
+         \"Junk\";\n\tstop;\n}\n",
+        "require [\"fileinto\", \"imap4flags\"];\n# Sealwax: always junk\n# rule:[Spam]\nif address \
+         :is \"from\" \"spam@example.test\"\n{\n\tremoveflag \"$NotJunk\";\n\taddflag \
+         \"$Junk\";\n\tfileinto \"Junk\";\n\tstop;\n}\n",
+    ];
+    for text in texts {
+        let first = read(text);
+        assert!(
+            first.blocked.is_empty() && first.rules().count() == 1,
+            "{text}"
+        );
+        let written = render(&first);
+        assert_eq!(read(&written), first, "{written}");
+    }
+    let unnamed = read(texts[1]);
+    assert_eq!(
+        unnamed.rules().next().map(|rule| rule.name.as_str()),
+        Some("")
+    );
+    assert!(render(&unnamed).contains("# rule:[Old]\n# a note\n# rule:[]\nif true\n"));
 }
 
 #[test]

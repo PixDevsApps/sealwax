@@ -12,7 +12,7 @@ use super::super::lexer::Comment;
 use super::super::parser::{Tree, parse, parse_test};
 use super::{
     ALWAYS_JUNK, Action, Condition, Field, Folders, Item, Match, NEVER_JUNK, Operator, Rule,
-    RuleSet, Senders, Writer, clean,
+    RuleSet, Senders, Writer, clean, escape_wildcards,
 };
 use std::collections::BTreeSet;
 use std::ops::Range;
@@ -23,9 +23,9 @@ const EVERY_EXTENSION: &str = "require [\"fileinto\",\"copy\",\"imap4flags\",\"e
 
 impl RuleSet {
     /// Reads an account's script. The never-junk section is recognised only first, the
-    /// always-junk rule only after it (or first), each under its marker comment; a rule is an
-    /// `if` with no `elsif` or `else`, perhaps under `# rule:[Name]`, holding no comment but a
-    /// disabled rule's test. Anything else is an [`Item::HandWritten`]. An error when the script
+    /// always-junk rule only after it (or first), each with its marker as the comment right
+    /// above it; a rule is an `if` with no `elsif` or `else`, named by a `# rule:[Name]` right
+    /// above it, holding no comment but a disabled rule's test. Anything else is an [`Item::HandWritten`]. An error when the script
     /// doesn't parse or uses Sieve outside the subset.
     pub fn read(text: &str, folders: &Folders) -> Result<RuleSet, Error> {
         let tree = parse(text)?;
@@ -149,8 +149,8 @@ impl Reader<'_> {
         marker: &str,
     ) -> Option<(Senders, Range<usize>)> {
         let found = comments_in(&self.tree.comments, gap.clone())
-            .iter()
-            .rfind(|comment| comment.hash && comment.text.trim() == marker)?;
+            .last()
+            .filter(|comment| comment.hash && comment.text.trim() == marker)?;
         if !comments_in(&self.tree.comments, span.start..span.end).is_empty() {
             return None;
         }
@@ -210,10 +210,9 @@ impl Reader<'_> {
         let mut actions = actions_of(block, self.folders)?;
         actions.sort_by_key(Action::rank);
         let name = comments_in(&self.tree.comments, gap.clone())
-            .iter()
+            .last()
             .filter(|comment| comment.hash)
-            .filter_map(|comment| Some((rule_name(&comment.text)?, comment.start..comment.end)))
-            .next_back();
+            .and_then(|comment| Some((rule_name(&comment.text)?, comment.start..comment.end)));
         let rule = Rule {
             name: name
                 .as_ref()
@@ -447,13 +446,9 @@ fn operator_of(kind: MatchType, key: &str) -> (Operator, String) {
         MatchType::Is => (Operator::Is, key.to_owned()),
         MatchType::Contains => (Operator::Contains, key.to_owned()),
         MatchType::Matches => {
-            if let Some(value) = key.strip_suffix('*').and_then(literal)
-                && !value.is_empty()
-            {
+            if let Some(value) = key.strip_suffix('*').and_then(literal) {
                 (Operator::BeginsWith, value)
-            } else if let Some(value) = key.strip_prefix('*').and_then(literal)
-                && !value.is_empty()
-            {
+            } else if let Some(value) = key.strip_prefix('*').and_then(literal) {
                 (Operator::EndsWith, value)
             } else {
                 (Operator::Matches, key.to_owned())
@@ -462,8 +457,14 @@ fn operator_of(kind: MatchType, key: &str) -> (Operator, String) {
     }
 }
 
-/// A `:matches` pattern without wildcards, as the text it matches.
+/// A `:matches` pattern without wildcards, as the text it matches; `None` too when the text,
+/// escaped again, isn't the pattern (`\ø` for `ø`), or is empty.
 fn literal(pattern: &str) -> Option<String> {
+    let value = unescape(pattern)?;
+    (!value.is_empty() && escape_wildcards(&value) == pattern).then_some(value)
+}
+
+fn unescape(pattern: &str) -> Option<String> {
     let mut value = String::with_capacity(pattern.len());
     let mut chars = pattern.chars();
     while let Some(c) = chars.next() {

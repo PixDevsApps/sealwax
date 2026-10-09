@@ -110,7 +110,7 @@ tools/headless.sh 21 target/debug/sealwax --self-test tests/selftest/testbed-pop
 ## Fuzzing and the advisory check (M9)
 
 ```sh
-bash tools/fuzz.sh list                    # the 12 targets
+bash tools/fuzz.sh list                    # the 13 targets
 bash tools/fuzz.sh message 900             # build, then fuzz one target for 900 s
 bash tools/fuzz.sh all 600 4               # every target, 600 s each, 4 at a time
 bash tools/fuzz.sh repro html target/fuzz-artifacts/html/crash-…   # one input again

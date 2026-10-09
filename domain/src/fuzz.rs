@@ -11,6 +11,7 @@ use crate::config::Config;
 use crate::keymap::{Binding, Keymap};
 use crate::model::{AccountId, Address, MessageId};
 use crate::search::{self, Date, hints};
+use crate::sieve::{self, Folders, MessageView, Outcome, RuleSet};
 use crate::theme::{Palette, resolve_colors};
 use crate::{
     accounts_file, attachment, flowed, html_scan, links, mailto, message, quotes, reading, snippet,
@@ -552,6 +553,138 @@ pub fn theme(data: &[u8]) {
     let _ = Palette::from_colors(&raw);
 }
 
+/// A message for the Sieve target: `name: value` lines; an address header's addresses are each
+/// comma-separated part's `<…>`, or the part itself when it holds an `@`.
+struct SieveMessage<'a> {
+    headers: Vec<(String, &'a str)>,
+    size: u64,
+    mailbox: &'static str,
+}
+
+impl<'a> SieveMessage<'a> {
+    fn parse(text: &'a str, mailbox: &'static str) -> SieveMessage<'a> {
+        let headers = text
+            .lines()
+            .take(64)
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim()))
+            .collect();
+        SieveMessage {
+            headers,
+            size: text.len() as u64,
+            mailbox,
+        }
+    }
+}
+
+impl MessageView for SieveMessage<'_> {
+    fn header(&self, name: &str) -> Vec<&str> {
+        self.headers
+            .iter()
+            .filter(|(header, _)| header == name)
+            .map(|(_, value)| *value)
+            .collect()
+    }
+
+    fn addresses(&self, name: &str) -> Vec<&str> {
+        self.header(name)
+            .into_iter()
+            .flat_map(|value| value.split(','))
+            .filter_map(|part| match (part.find('<'), part.rfind('>')) {
+                (Some(open), Some(close)) if open < close => Some(&part[open + 1..close]),
+                _ => Some(part.trim()).filter(|part| part.contains('@')),
+            })
+            .collect()
+    }
+
+    fn size(&self) -> u64 {
+        self.size
+    }
+
+    fn flags(&self) -> Vec<&str> {
+        vec!["\\Seen", "$Forwarded"]
+    }
+
+    fn mailbox(&self) -> &str {
+        self.mailbox
+    }
+}
+
+/// A Sieve script, and after its first NUL a message as `name: value` lines, through the rules'
+/// parser, checker and evaluator (in the Inbox and in Junk); then the rules model read from the
+/// script, written again and read back: the same rules, a script that checks, and for mail in
+/// the Inbox the same outcome as the script read.
+pub fn sieve(data: &[u8]) {
+    let (text, message) = two(data);
+    let script = match sieve::compile(&text) {
+        Ok(script) => script,
+        Err(error) => {
+            let lines = text.split('\n').count();
+            assert!(
+                error.line >= 1 && error.line as usize <= lines && error.column >= 1,
+                "an error outside the script"
+            );
+            return;
+        }
+    };
+    let _ = script.headers();
+    let inbox = SieveMessage::parse(&message, "INBOX");
+    for message in [&inbox, &SieveMessage::parse(&message, "Junk")] {
+        sieve_outcome(&sieve::evaluate(&script, message), message.mailbox);
+    }
+    let folders = Folders::default();
+    let rules = RuleSet::read(&text, &folders).expect("a script that checks reads as rules");
+    let written = rules
+        .render(&folders)
+        .expect("rules read from a script write");
+    let rewritten = sieve::compile(&written).expect("written rules check");
+    let again = RuleSet::read(&written, &folders).expect("written rules read");
+    assert!(again == rules, "rules read back differently");
+    assert!(
+        sieve::evaluate(&script, &inbox) == sieve::evaluate(&rewritten, &inbox),
+        "writing the rules again changed what they do"
+    );
+}
+
+/// What an outcome promises: the message goes somewhere, each folder once and never the one it
+/// is in, flags are IMAP flags, and no rule sets `\Deleted`.
+fn sieve_outcome(outcome: &Outcome, mailbox: &str) {
+    assert!(
+        outcome.keep || !outcome.filed.is_empty() || outcome.discard,
+        "a message neither kept, filed nor discarded"
+    );
+    assert!(outcome.keep || outcome.flags.is_empty());
+    for (index, filed) in outcome.filed.iter().enumerate() {
+        assert!(!filed.folder.is_empty() && !filed.folder.chars().any(char::is_control));
+        assert!(filed.folder != mailbox, "filed into the folder it is in");
+        assert!(
+            outcome.filed[..index]
+                .iter()
+                .all(|other| other.folder != filed.folder),
+            "filed twice into a folder"
+        );
+    }
+    for change in std::iter::once(&outcome.flags).chain(outcome.filed.iter().map(|f| &f.flags)) {
+        for flag in change.add.iter().chain(&change.remove) {
+            assert!(!flag.is_empty() && !flag.chars().any(|c| c == ' ' || c.is_control()));
+        }
+        assert!(
+            !change
+                .add
+                .iter()
+                .any(|flag| flag.eq_ignore_ascii_case("\\Deleted")),
+            "a rule set \\Deleted"
+        );
+        assert!(
+            change.add.iter().all(|flag| !change
+                .remove
+                .iter()
+                .any(|other| other.eq_ignore_ascii_case(flag))),
+            "a flag both added and removed"
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -620,5 +753,10 @@ mod tests {
     #[test]
     fn theme_corpus() {
         corpus("theme", super::theme);
+    }
+
+    #[test]
+    fn sieve_corpus() {
+        corpus("sieve", super::sieve);
     }
 }

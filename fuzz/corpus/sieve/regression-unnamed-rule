@@ -1,0 +1,17 @@
+require ["fileinto","copy","imap4flags"];
+# rule:[]
+# rumuire ["fiquire ["fileinto","copy","imap4flags"];
+# rule:[]
+# rumuire ["fileinto","copy","imap4flags"];
+#rule:[]
+if true
+{
+	fileinto :copy "Arkiv";
+}
+# leinto","copy","imap4flags"];
+#rule:[]
+if true
+{
+	fileinto :copy "Arkiv";
+}
+# rum:: yes

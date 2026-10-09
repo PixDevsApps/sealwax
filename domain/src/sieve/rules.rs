@@ -8,8 +8,9 @@
 //!    back to the Inbox with `$NotJunk`, and the section ends with `stop`, so ordinary rules
 //!    never pull spam out of Junk;
 //! 3. the "always junk" rule: blocked senders' mail goes to Junk with `$Junk`;
-//! 4. the user's rules in order, each `# rule:[Name]` and one `if`, a disabled one
-//!    `if false # <its test>`, Roundcube's way; hand-written commands keep their place and text.
+//! 4. the user's rules in order, each `# rule:[Name]` (`# rule:[]` unnamed) and one `if`, a
+//!    disabled one `if false # <its test>`, Roundcube's way; hand-written commands keep their
+//!    place and text.
 //!
 //! Folder names are the folders' full names as the store's `Folder::name` holds them (decoded,
 //! with the server's delimiter and prefix: `INBOX.Kunder`, `Kunder/2026`). That is what Sieve's
@@ -532,10 +533,8 @@ impl<'f> Writer<'f> {
     }
 
     fn rule(&mut self, rule: &Rule) {
-        let name = clean(&rule.name);
-        if !name.is_empty() {
-            let _ = writeln!(self.out, "# rule:[{name}]");
-        }
+        // Written for an unnamed rule too, so no comment above it reads back as its name.
+        let _ = writeln!(self.out, "# rule:[{}]", clean(&rule.name));
         let test = conditions(rule.matching, &rule.conditions);
         if rule.enabled {
             let _ = write!(self.out, "if {test}\n{{\n");
