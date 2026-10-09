@@ -762,6 +762,41 @@ async fn an_own_move_found_by_the_targets_sync_is_not_new_mail() {
     );
 }
 
+/// A move the server confirms without COPYUID: the store can't place the messages, so the
+/// target's pass runs right after it and they show there, counted, without waiting for the
+/// account pass; their arrival there isn't new mail.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_move_without_copyuid_shows_in_its_target_at_once() {
+    let fake = fake(Flavor::Qresync).await;
+    {
+        let mut world = fake.world();
+        world.moves = true;
+        world.copyuid = fake::CopyUid::Absent;
+        world.create("Kunder", &[]);
+    }
+    let mut run = Running::start(&fake, config());
+    let account = run.add(&fake).await;
+    let inbox = run.folder(account, "INBOX").await;
+    let kunder = run.folder(account, "Kunder").await;
+    idling(&fake, Flavor::Qresync).await;
+    assert_eq!(run.shown(kunder).await, 0);
+    let moving: Vec<MessageId> = run.rows_from(inbox, 1).await.into_iter().take(2).collect();
+    run.queue(Triage::MoveTo(kunder), moving).await;
+    let placed = within(Duration::from_secs(5), || async {
+        run.shown(kunder).await == 2 && run.store.pending_ops(account).recv().await.unwrap() == 0
+    })
+    .await;
+    assert!(
+        placed.is_some(),
+        "the target's pass placed them, well before the 60 s account pass"
+    );
+    assert_eq!(run.shown(inbox).await, 18);
+    assert_eq!(fake.world().mailboxes["Kunder"].messages.len(), 2);
+    run.drain(Duration::from_millis(500)).await;
+    assert_eq!(run.announced(kunder), Vec::new(), "not new mail");
+    run.stop();
+}
+
 const RULES: &str = "require [\"fileinto\", \"imap4flags\"];
 # rule:[Kunder]
 if header :is \"subject\" \"Fake message 21\" { addflag \"\\\\Flagged\"; fileinto \"Kunder\"; stop; }

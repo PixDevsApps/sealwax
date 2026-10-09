@@ -691,6 +691,11 @@ fn a_move_without_a_new_uid_leaves_the_message_to_the_targets_sync() {
         .recv_blocking()
         .unwrap();
     assert!(recorded.orphaned_blobs.is_empty());
+    assert_eq!(
+        recorded.unplaced,
+        [fx.archive],
+        "the archive's pass is wanted now"
+    );
     assert!(!held_ids(&fx.store, fx.inbox).contains_key(&1));
     assert!(held_ids(&fx.store, fx.archive).is_empty());
     arrive(
@@ -720,7 +725,8 @@ fn a_move_the_targets_sync_stored_first_is_not_duplicated() {
         vec![message(fx.archive, 40, Flags::NONE)],
     )[0];
     let mut views = Views::open(&fx.store, &all_views(&fx));
-    fx.store
+    let recorded = fx
+        .store
         .ops_done(OpsDone {
             ops: group.ops,
             new_uids: vec![(1, 40)],
@@ -729,6 +735,7 @@ fn a_move_the_targets_sync_stored_first_is_not_duplicated() {
         })
         .recv_blocking()
         .unwrap();
+    assert!(recorded.unplaced.is_empty(), "placed by its new UID");
     views.settle(&fx.store);
     assert_eq!(
         held_ids(&fx.store, fx.archive),

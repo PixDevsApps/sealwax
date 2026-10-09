@@ -202,6 +202,9 @@ pub struct Recorded {
     pub version: StoreVersion,
     /// Raw messages no remaining row refers to; the caller deletes them from the blob store.
     pub orphaned_blobs: Vec<BlobKey>,
+    /// Folders the moved messages went to without the store knowing where (no new UID, or the
+    /// folder never synced): they left their folder, and the target's pass fetches them.
+    pub unplaced: Vec<FolderId>,
 }
 
 /// How the server refused ops.

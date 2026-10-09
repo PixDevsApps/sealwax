@@ -683,6 +683,7 @@ impl Writer {
         let (by_message, reads) = given(&tx, &done.ops)?;
         let mut plans = Vec::new();
         let mut folders = BTreeSet::new();
+        let mut unplaced = BTreeSet::new();
         let mut refusals = Refusals::default();
         for (message, ids) in by_message {
             let full = chain(&tx, message)?;
@@ -728,6 +729,7 @@ impl Writer {
                 .map(|(_, new)| *new);
             let (Some(uidvalidity), Some(uid)) = (uidvalidity, new_uid) else {
                 // Where it went is unknown: the target's sync fetches it.
+                unplaced.insert(target);
                 refusals.refuse(&tx, found.account, target, &rest)?;
                 plans.push(RowPlan {
                     row: found,
@@ -815,6 +817,7 @@ impl Writer {
         Ok(Recorded {
             version: committed.version,
             orphaned_blobs: committed.orphaned_blobs,
+            unplaced: unplaced.into_iter().collect(),
         })
     }
 

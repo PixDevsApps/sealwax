@@ -66,6 +66,10 @@ enum Ran {
     /// Its folder's UIDVALIDITY isn't the ops': a pass resets the folder and the store finds
     /// the messages again by Message-ID.
     Resync(FolderId),
+    /// Done, but the store couldn't place the messages in this folder (a move without COPYUID,
+    /// into a folder never synced, or a copy): its pass fetches them now, so they show there,
+    /// counted, at once rather than at the account pass.
+    Place(FolderId),
 }
 
 /// A write's outcome, or what stopped it before the server was asked.
@@ -105,7 +109,7 @@ impl Poller {
                         self.lost();
                         return Ok(());
                     }
-                    Ran::Resync(folder) => resync.push(folder),
+                    Ran::Resync(folder) | Ran::Place(folder) => resync.push(folder),
                 }
             }
             resync.sort_unstable();
@@ -202,8 +206,16 @@ impl Poller {
                         rehomed.filter_map(|message| message.message_id.as_deref()),
                     );
                 }
-                self.record_done(&group, done).await;
-                Ran::Recorded
+                let unplaced = self.record_done(&group, done).await;
+                match target {
+                    Some(to)
+                        if matches!(group.action, OpAction::Copy { .. })
+                            || unplaced.contains(&to) =>
+                    {
+                        Ran::Place(to)
+                    }
+                    _ => Ran::Recorded,
+                }
             }
             Outcome::Written(Err(error)) if error.is_connection() => {
                 tracing::info!(
@@ -347,7 +359,8 @@ impl Poller {
         Ok(Outcome::Written(written))
     }
 
-    async fn record_done(&mut self, group: &OpGroup, done: Done) {
+    /// Records `done`; replies with the folders the store couldn't place moved messages in.
+    async fn record_done(&mut self, group: &OpGroup, done: Done) -> Vec<FolderId> {
         let recorded = self
             .shared
             .store
@@ -359,16 +372,21 @@ impl Poller {
             })
             .recv()
             .await;
-        match recorded {
-            Ok(recorded) => discard(&self.shared, recorded.orphaned_blobs).await,
+        let unplaced = match recorded {
+            Ok(recorded) => {
+                discard(&self.shared, recorded.orphaned_blobs).await;
+                recorded.unplaced
+            }
             Err(error) => {
                 tracing::warn!(account = self.account.0, %error, "a done op group couldn't be recorded");
+                Vec::new()
             }
-        }
+        };
         if matches!(group.action, OpAction::Move { .. } | OpAction::Expunge) && self.quota {
             self.quota = false;
             self.status.set(self.healthy());
         }
+        unplaced
     }
 
     /// A refusal or a failure to try again later, by its class.

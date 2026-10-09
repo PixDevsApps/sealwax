@@ -73,6 +73,20 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M9 a move the store can't place syncs its target — 2026-10-09
+
+[ADR-015 amendment](DECISIONS.md#adr-015-amendment--a-move-the-store-cant-place-syncs-its-target-at-once-2026-10-09). On `main` at `eda25f3` with the change in the working tree; this machine, rustc 1.98.1.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The user's store, read-only (`sqlite3 -readonly`, counts and ids only), 14:5x | The rule's folder (id 17, created that day): 6 rows, 4 unread; its 6 moves recorded without a new UID (`ops.new_uid` empty, the server sends no COPYUID); the journal: the folder's first sync at 14:44:09 fetched 6, 71 s after the moves were due | The cause |
+| Engine, `a_move_without_copyuid_shows_in_its_target_at_once` (new; fake server with MOVE, no COPYUID, a target never synced) | Before the fix: failed (nothing in the target after 5 s; the account pass is 60 s). After: 2 messages shown and counted in the target with no ops pending, the Inbox at 18, nothing announced as new mail there; 0.56 s | Pass |
+| Store, `a_move_without_a_new_uid_…` and `a_move_the_targets_sync_stored_first_…` | `Recorded::unplaced` names the target without a new UID, and nothing when the new UID places it | Pass |
+| `cargo test -p sealwax-engine -p sealwax-infrastructure` | Every suite passed, none failed | Pass |
+| CI, `SEALWAX_CI_DISPLAY=72 bash tools/ci.sh --ui`, 14:54–15:08 | Formatting and Clippy with `-D warnings` clean; 1,481 passed, 0 failed, 98 ignored; 75 scripts, 7,503 of 7,503 steps; the hostile suite clean (60 cases, 273 s) | Pass |
+
+- **Not verified:** the user's server itself (their next try); a copy's target pass on a real server; a very large never-synced target (its first sync is its window, as when opened; not timed).
+
 ### M9 a rule saved runs on the Inbox's mail — 2026-10-09
 
 [ADR-020 amendment](DECISIONS.md#adr-020-amendment--a-rule-saved-runs-on-the-inboxs-mail-2026-10-09). On `main` at `164fa60` with the change in the working tree; this machine (Linux 7.2.5, 24 threads), rustc 1.98.1.
