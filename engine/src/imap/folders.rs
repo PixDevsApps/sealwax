@@ -1,13 +1,13 @@
 //! The folder list (ML-036): LIST with SPECIAL-USE and STATUS return options where offered,
-//! names decoded from modified UTF-7, roles by SPECIAL-USE and then the name table, the
-//! server's MESSAGES and UNSEEN for folders the store hasn't synced yet and for what a windowed
-//! folder leaves below its floor (ML-043), and UIDNEXT, UIDVALIDITY and HIGHESTMODSEQ for the
-//! account pass's change check (ML-041).
+//! names decoded from modified UTF-7, other mail programs' housekeeping left out (`hidden`),
+//! roles by SPECIAL-USE and then the name table, the server's MESSAGES and UNSEEN for folders
+//! the store hasn't synced yet and for what a windowed folder leaves below its floor (ML-043),
+//! and UIDNEXT, UIDVALIDITY and HIGHESTMODSEQ for the account pass's change check (ML-041).
 
 use super::connection::Connection;
 use super::error::{ImapError, SyncError};
 use super::raw::{self, quote};
-use super::{mutf7, roles};
+use super::{hidden, mutf7, roles};
 use async_imap::imap_proto::{MailboxDatum, NameAttribute, Response, StatusAttribute};
 use sealwax_domain::model::{AccountId, FolderId, FolderRole};
 use sealwax_infrastructure::store::{FolderSpec, ServerCounts, ServerStatus, Store};
@@ -182,15 +182,32 @@ pub async fn list(conn: &mut Connection) -> Result<Vec<ListedFolder>, ImapError>
     if let Some(name) = stale {
         found.statuses.remove(&name);
     }
-    Ok(listed(found.entries, &found.statuses))
+    Ok(listed(found.entries, &found.statuses, conn.microsoft()))
 }
 
-/// Decodes names and assigns roles.
-fn listed(entries: Vec<Entry>, statuses: &HashMap<String, FolderStatus>) -> Vec<ListedFolder> {
-    let names: Vec<String> = entries
-        .iter()
-        .map(|entry| mutf7::display_name(&entry.name_raw))
-        .collect();
+/// Decodes names, leaves out the folders `hidden` names and assigns roles to the rest;
+/// `microsoft` for an account on Microsoft's servers.
+fn listed(
+    entries: Vec<Entry>,
+    statuses: &HashMap<String, FolderStatus>,
+    microsoft: bool,
+) -> Vec<ListedFolder> {
+    let (entries, names): (Vec<Entry>, Vec<String>) = entries
+        .into_iter()
+        .map(|entry| {
+            let name = mutf7::display_name(&entry.name_raw);
+            (entry, name)
+        })
+        .filter(|(entry, name)| {
+            let shown = hidden::Entry {
+                name,
+                delimiter: entry.delimiter,
+                selectable: roles::selectable(&entry.attributes),
+                messages: statuses.get(&entry.name_raw).and_then(|s| s.messages),
+            };
+            !hidden::hidden(&shown, microsoft)
+        })
+        .unzip();
     let role_entries: Vec<roles::Entry<'_>> = entries
         .iter()
         .zip(&names)
@@ -306,6 +323,7 @@ mod tests {
                 entry("Bad &Jjo", &[]),
             ],
             &statuses,
+            false,
         );
         assert_eq!(folders[0].role, FolderRole::Inbox);
         assert_eq!(
@@ -325,5 +343,51 @@ mod tests {
         assert_eq!(folders[4].name, "Prosjekter/Høst 📬 2026");
         assert_eq!(folders[5].name, "Bad &Jjo", "invalid names show raw");
         assert_eq!(folders[5].counts, None);
+    }
+
+    #[test]
+    fn housekeeping_folders_are_left_out() {
+        let empty = FolderStatus {
+            messages: Some(0),
+            unseen: Some(0),
+            ..FolderStatus::default()
+        };
+        let statuses = HashMap::from([
+            ("Outbox".to_owned(), empty),
+            ("Mailspring/Snoozed".to_owned(), empty),
+            (
+                "INBOX/Mailspring".to_owned(),
+                FolderStatus {
+                    messages: Some(1),
+                    ..empty
+                },
+            ),
+        ]);
+        let entries = || {
+            vec![
+                entry("INBOX", &[]),
+                entry("Sent", &["\\Sent"]),
+                entry("Notes", &[]),
+                entry("Outbox", &[]),
+                entry("Synkroniseringsfeil", &["\\HasChildren"]),
+                entry("Synkroniseringsfeil/Konflikter", &[]),
+                entry("Mailspring", &["\\Noselect"]),
+                entry("Mailspring/Snoozed", &[]),
+                entry("INBOX/Mailspring", &[]),
+            ]
+        };
+        let names = |folders: Vec<ListedFolder>| -> Vec<String> {
+            folders.into_iter().map(|folder| folder.name).collect()
+        };
+        assert_eq!(
+            names(listed(entries(), &statuses, true)),
+            ["INBOX", "Sent", "INBOX/Mailspring"]
+        );
+        let elsewhere = listed(entries(), &statuses, false);
+        assert_eq!(elsewhere[1].role, FolderRole::Sent);
+        assert_eq!(
+            names(elsewhere),
+            ["INBOX", "Sent", "Notes", "Outbox", "INBOX/Mailspring"]
+        );
     }
 }

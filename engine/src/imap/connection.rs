@@ -4,6 +4,7 @@
 //! plaintext but the STARTTLS command itself.
 
 use super::error::{ImapError, rejection};
+use super::hidden;
 use super::raw::{self, Session};
 use crate::net;
 use async_imap::imap_proto::{Capability, Response, ResponseCode, Status};
@@ -76,6 +77,8 @@ pub struct Connection {
     caps: Caps,
     qresync: bool,
     mechanism: Mechanism,
+    /// The server is Microsoft's (Outlook.com or Microsoft 365), by its host.
+    microsoft: bool,
     /// The wire name of the mailbox selected or examined, if any.
     pub(crate) selected: Option<String>,
 }
@@ -109,6 +112,11 @@ impl Connection {
         self.qresync || self.caps.has("CONDSTORE")
     }
 
+    /// The server is Microsoft's (Outlook.com or Microsoft 365), by its host.
+    pub fn microsoft(&self) -> bool {
+        self.microsoft
+    }
+
     /// Ends the session politely; errors don't matter any more.
     pub async fn logout(self) {
         self.logout_within(Duration::from_secs(2)).await;
@@ -127,6 +135,7 @@ impl Connection {
             caps,
             qresync,
             mechanism,
+            microsoft,
             selected,
         } = self;
         (
@@ -135,6 +144,7 @@ impl Connection {
                 caps,
                 qresync,
                 mechanism,
+                microsoft,
                 selected,
             },
         )
@@ -145,6 +155,7 @@ impl Connection {
             caps,
             qresync,
             mechanism,
+            microsoft,
             selected,
         } = parts;
         Connection {
@@ -152,6 +163,7 @@ impl Connection {
             caps,
             qresync,
             mechanism,
+            microsoft,
             selected,
         }
     }
@@ -162,6 +174,7 @@ pub(crate) struct Parts {
     caps: Caps,
     qresync: bool,
     mechanism: Mechanism,
+    microsoft: bool,
     selected: Option<String>,
 }
 
@@ -372,6 +385,7 @@ async fn connect_inner(
         caps,
         qresync,
         mechanism,
+        microsoft: hidden::microsoft_host(&endpoint.host),
         selected: None,
     })
 }

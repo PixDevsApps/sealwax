@@ -1,19 +1,20 @@
 //! The sync engine against a fake IMAP server (no network beyond 127.0.0.1, in CI): QRESYNC,
 //! CONDSTORE-only and IMAP4rev1 paths, UIDVALIDITY resets, the count check's UID diff, folders
-//! that disappear, the first-sync window and older mail, the folder policy, connections cut in
-//! the middle of a FETCH, and a short randomized run per flavour.
+//! that disappear, other mail programs' housekeeping left out, the first-sync window and older
+//! mail, the folder policy, connections cut in the middle of a FETCH, and a short randomized run
+//! per flavour.
 
 mod fake;
 mod snapshot;
 
 use fake::{Fake, Flavor, Mailbox, NOW};
-use sealwax_domain::model::{AccountId, Flags, FolderId};
+use sealwax_domain::model::{AccountId, Flags, FolderId, FolderRole};
 use sealwax_domain::sync::Window;
 use sealwax_engine::imap::{
     Connection, Elsewhere, FolderLocks, SyncOptions, SyncReport, load_older, sync_account,
     sync_folder,
 };
-use sealwax_infrastructure::store::{NewAccount, Store, StoreOptions, SyncState};
+use sealwax_infrastructure::store::{FolderSpec, NewAccount, Store, StoreOptions, SyncState};
 use snapshot::{Folder, Rng};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -348,6 +349,71 @@ fn folders_gone_from_the_server_leave_the_store() {
         assert_eq!(diverged(&fake, &store, account).await, Vec::<String>::new());
         assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());
         store.close().unwrap();
+    });
+}
+
+#[test]
+fn housekeeping_folders_leave_the_store_and_snoozed_mail_shows_mailsprings() {
+    runtime().block_on(async {
+        for flavor in Flavor::ALL {
+            let fake = Fake::start(flavor).await;
+            seed(&fake);
+            {
+                let mut world = fake.world();
+                world.create("Notes", &[]);
+                world.create("Synkroniseringsfeil", &[]);
+                world.create("Synkroniseringsfeil/Konflikter", &[]);
+                world.create("Mailspring", &["\\Noselect"]);
+                world.create("Mailspring/Snoozed", &[]);
+            }
+            let (_dir, store, account) = store();
+            let held = [
+                "Synkroniseringsfeil",
+                "Synkroniseringsfeil/Konflikter",
+                "Mailspring",
+                "Mailspring/Snoozed",
+            ]
+            .map(|name| FolderSpec {
+                account,
+                name: name.into(),
+                name_raw: name.into(),
+                delimiter: Some('/'),
+                role: FolderRole::Other,
+                attributes: Vec::new(),
+                selectable: name != "Mailspring",
+                server_counts: None,
+            });
+            store.upsert_folders(held.to_vec()).recv().await.unwrap();
+            let stored = async || {
+                let mut names: Vec<String> = store
+                    .account_folders(account)
+                    .recv()
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|state| state.name_raw)
+                    .collect();
+                names.sort();
+                names
+            };
+            let mut conn = fake.connect().await;
+            let report = account_pass(&mut conn, &store, account, &options()).await;
+            assert_eq!(report.stats.folders_removed, 4, "{flavor:?}");
+            assert_eq!(
+                stored().await,
+                ["Arkiv2", "INBOX", "Notes", "Sendt"],
+                "{flavor:?}: Notes stays off Microsoft's servers"
+            );
+            fake.world().append("Mailspring/Snoozed", 1, &[]);
+            account_pass(&mut conn, &store, account, &options()).await;
+            assert_eq!(
+                stored().await,
+                ["Arkiv2", "INBOX", "Mailspring/Snoozed", "Notes", "Sendt"],
+                "{flavor:?}"
+            );
+            assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());
+            store.close().unwrap();
+        }
     });
 }
 

@@ -114,7 +114,7 @@ What a POP3 account does:
 
 Three panes, left to right:
 
-- **The sidebar:** **New message** at the top; **All Inboxes**; each account with its Inbox, Drafts, Sent, Archive, Junk and Trash and their unread counts, its other folders under **More folders**; at the bottom a summary of the accounts and a button that opens `config.toml`. Click an account's heading (or press Enter, Space, Left or Right on it) to fold its folders away under it; folded, the heading shows the account's unread count. Sealwax remembers which accounts are folded.
+- **The sidebar:** **New message** at the top; **All Inboxes**; each account with its Inbox, Drafts, Sent, Archive, Junk and Trash and their unread counts, its other folders under **More folders** (other mail programs' housekeeping folders are left out: Outlook's Sync Issues and, on Outlook.com and Microsoft 365, Notes and Outbox; Mailspring's folder while it is empty); at the bottom a summary of the accounts and a button that opens `config.toml`. Click an account's heading (or press Enter, Space, Left or Right on it) to fold its folders away under it; folded, the heading shows the account's unread count. Sealwax remembers which accounts are folded.
 - **The message list:** the search field, the filter chips **All**, **Unread**, **Starred** and **Attachments**, then the messages in sections: Today, Yesterday, This week, This month, Older. A row shows the sender, the time, the subject, a two-line preview, and marks for unread, starred, attachments and the size of the conversation. The **main menu** button is at the end of the list's bar.
 - **The reader:** the selected message's conversation ([Reading mail](#reading-mail)).
 
