@@ -287,6 +287,14 @@ impl<S: SecretStore> Accounts<'_, S> {
                 "account removed"
             );
         }
+        // The rules go with the account (ADR-020); a file left behind only waits for a key.
+        let dir = self.paths.rules.clone();
+        let rules = key.clone();
+        if let Err(error) =
+            blocking(move || sealwax_infrastructure::rules::remove(&dir, &rules)).await?
+        {
+            tracing::warn!(%error, "the removed account's rules file stays");
+        }
 
         self.secrets.delete_account(&key.0).await.map_err(|error| {
             tracing::warn!(%error, "the removed account's secrets stay until recovery");

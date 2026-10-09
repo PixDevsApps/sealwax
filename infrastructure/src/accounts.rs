@@ -49,6 +49,8 @@ pub struct AccountPaths {
     pub settings: PathBuf,
     /// `$XDG_STATE_HOME/sealwax/accounts-pending`: additions and removals in progress.
     pub pending: PathBuf,
+    /// `$XDG_CONFIG_HOME/sealwax/rules`: the accounts' Sieve scripts (ADR-020).
+    pub rules: PathBuf,
 }
 
 impl AccountPaths {
@@ -56,6 +58,7 @@ impl AccountPaths {
         Self {
             settings: dirs.accounts_file(),
             pending: dirs.state.join("accounts-pending"),
+            rules: dirs.rules_dir(),
         }
     }
 }

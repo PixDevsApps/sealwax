@@ -3,7 +3,7 @@
 //! their commit, through IDLE and through polling, in batches past 200, from any synced folder;
 //! nothing for a first sync, a UIDVALIDITY reset, older mail, mail stored before a restart (a new
 //! connection on the same store), or the account's own moves into a folder (re-homed, or found
-//! by the target's sync after a cut).
+//! by the target's sync after a cut). The account's rules run on new mail first (ADR-020).
 //! Synthetic data only.
 
 mod fake;
@@ -13,7 +13,7 @@ use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod};
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use sealwax_domain::sync::Window;
 use sealwax_domain::triage::Triage;
-use sealwax_engine::api::{Command, Event, Password, SyncStatus};
+use sealwax_engine::api::{Command, Event, Password, RulesError, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::imap::{self, Arrived, FolderLocks, SyncOptions};
 use sealwax_engine::net::Trust;
@@ -728,4 +728,128 @@ async fn an_own_move_found_by_the_targets_sync_is_not_new_mail() {
         announced.into_iter().collect::<BTreeSet<_>>(),
         run.rows_from(inbox, uid).await
     );
+}
+
+const RULES: &str = "require [\"fileinto\", \"imap4flags\"];
+# rule:[Kunder]
+if header :is \"subject\" \"Fake message 21\" { addflag \"\\\\Flagged\"; fileinto \"Kunder\"; stop; }
+# rule:[Spam]
+if header :is \"x-spam-flag\" \"YES\" { addflag \"$Junk\"; fileinto \"Junk\"; stop; }
+";
+
+/// The flags of a fake mailbox's messages, by UID.
+fn server(fake: &Fake, name: &str) -> Vec<(u32, Vec<String>)> {
+    fake.world().mailboxes[name]
+        .messages
+        .iter()
+        .map(|(uid, message)| (*uid, message.flags.clone()))
+        .collect()
+}
+
+/// The account's rules run on new mail before it is announced: a rule's move and flag reach the
+/// server, mail a rule sends to Junk isn't new mail, a header the store doesn't keep is fetched
+/// for its test; a file that can't run is reported once and runs nothing; Apply Rules runs the
+/// rules on a folder's messages.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rules_run_on_new_mail_before_it_is_announced() {
+    let fake = fake(Flavor::Qresync).await;
+    {
+        let mut world = fake.world();
+        world.create("Junk", &["\\Junk"]);
+        world.create("Kunder", &[]);
+    }
+    let mut run = Running::start(&fake, config());
+    let account = run.add(&fake).await;
+    let inbox = run.folder(account, "INBOX").await;
+    let key = run
+        .store
+        .accounts()
+        .recv()
+        .await
+        .unwrap()
+        .value
+        .into_iter()
+        .find(|found| found.id == account)
+        .and_then(|found| found.key)
+        .unwrap();
+    let rules = SealwaxDirs::under(run.dir.path()).rules_dir();
+    sealwax_infrastructure::rules::write(&rules, &key, RULES).unwrap();
+    idling(&fake, Flavor::Qresync).await;
+    {
+        let mut world = fake.world();
+        world.append("INBOX", 0, &[]);
+        world.append_extra("INBOX", "X-Spam-Flag: YES\r\n");
+        world.append("INBOX", 0, &[]);
+    }
+    let moved = within(WAIT, || async {
+        fake.world().mailboxes["Kunder"].messages.len() == 1
+            && fake.world().mailboxes["Junk"].messages.len() == 1
+    })
+    .await;
+    assert!(moved.is_some(), "the rules' moves reach the server");
+    assert_eq!(server(&fake, "Kunder")[0].1, ["\\Flagged"]);
+    assert_eq!(server(&fake, "Junk")[0].1, ["$Junk"]);
+    let inbox_uids: Vec<u32> = server(&fake, "INBOX").iter().map(|(uid, _)| *uid).collect();
+    assert_eq!(inbox_uids, (1..=20).chain([23]).collect::<Vec<_>>());
+    let announced = run.announced_count(inbox, 2).await;
+    run.drain(Duration::from_millis(500)).await;
+    assert_eq!(
+        run.announced(inbox).len(),
+        2,
+        "the message the rules sent to Junk isn't new mail"
+    );
+    assert_eq!(announced.len(), 2);
+    assert!(
+        fake.world().count("BODY.PEEK[HEADER]") >= 1,
+        "X-Spam-Flag isn't stored: the headers were fetched"
+    );
+
+    sealwax_infrastructure::rules::write(&rules, &key, "if foo {").unwrap();
+    fake.world().append("INBOX", 0, &[]);
+    let error = run
+        .event(WAIT, |event| match event {
+            Event::RulesFailed { account: id, error } if *id == account => Some(error.clone()),
+            _ => None,
+        })
+        .await;
+    assert!(matches!(error, RulesError::Script(_)), "{error:?}");
+    run.announced_count(inbox, 3).await;
+    fake.world().append("INBOX", 0, &[]);
+    run.announced_count(inbox, 4).await;
+    run.drain(Duration::from_millis(300)).await;
+    let reported = run
+        .seen
+        .iter()
+        .filter(|event| matches!(event, Event::RulesFailed { .. }))
+        .count();
+    assert_eq!(reported, 1, "once per change of the file");
+    assert_eq!(server(&fake, "INBOX").len(), 23, "nothing ran");
+
+    sealwax_infrastructure::rules::write(
+        &rules,
+        &key,
+        "require \"fileinto\"; if header :is \"subject\" \"Fake message 1\" { fileinto \"Kunder\"; }",
+    )
+    .unwrap();
+    run.send(Command::ApplyRules {
+        request: 7,
+        folder: inbox,
+    });
+    let applied = run
+        .event(WAIT, |event| match event {
+            Event::RulesApplied {
+                request: 7,
+                folder,
+                result,
+            } if *folder == inbox => Some(result.clone()),
+            _ => None,
+        })
+        .await;
+    assert_eq!(applied, Ok(1));
+    let moved = within(WAIT, || async {
+        fake.world().mailboxes["Kunder"].messages.len() == 2
+    })
+    .await;
+    assert!(moved.is_some(), "Apply Rules moved message 1");
+    run.stop();
 }

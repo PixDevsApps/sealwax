@@ -381,7 +381,8 @@ impl Moved {
 }
 
 /// Hands each step's new mail to the app as `Event::NewMail`, without the messages the
-/// account's own moves put there, until every pass's end of the channel is gone.
+/// account's own moves put there, until every pass's end of the channel is gone. The account's
+/// rules run on it first (ADR-020); what they send to Junk or Trash isn't new mail.
 async fn forward_new_mail(
     shared: Arc<Shared>,
     account: AccountId,
@@ -407,6 +408,7 @@ async fn forward_new_mail(
         } else {
             kept = messages;
         }
+        let kept = super::rules::on_arrival(&shared, folder, kept).await;
         if kept.is_empty() {
             continue;
         }

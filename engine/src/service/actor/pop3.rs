@@ -769,6 +769,11 @@ impl Downloads {
         self.stored
             .extend(uidls.into_iter().map(|(uidl, whole)| (uidl, (at, whole))));
         let messages: Vec<MessageId> = stored.ids.into_iter().flatten().collect();
+        let messages = if self.new_mail && !messages.is_empty() {
+            super::super::rules::on_arrival(&passes.shared, passes.inbox, messages).await
+        } else {
+            messages
+        };
         if self.new_mail && !messages.is_empty() {
             tracing::debug!(
                 account = passes.account.0,

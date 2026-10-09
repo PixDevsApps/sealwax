@@ -22,7 +22,9 @@ use super::actor::Signal;
 use super::{Shared, log_in_with_password, log_in_with_token};
 use crate::api::{BodyError, Event, FetchedPart, Original, SyncStatus};
 use crate::bodies::{enforce_cap, prefetch_ids};
-use crate::imap::bodies::{BodyFetchError, Sink, fetch_bodies, fetch_original, fetch_part};
+use crate::imap::bodies::{
+    BodyFetchError, Sink, fetch_bodies, fetch_headers, fetch_original, fetch_part,
+};
 use crate::imap::{Connection, ImapError};
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure, Receive};
 use sealwax_domain::config::Storage;
@@ -61,12 +63,20 @@ enum Extra {
     Part { source: PartSource, part: u32 },
     /// A message whole, for Show Original and Save as .eml (ML-063).
     Original { target: BodyTarget },
+    /// The headers of messages of one folder, for rules (ADR-020); answered on `reply`, never
+    /// as an event.
+    Headers {
+        folder: FolderId,
+        uids: Vec<(MessageId, u32)>,
+        reply: tokio::sync::oneshot::Sender<Result<HashMap<MessageId, Vec<u8>>, BodyError>>,
+    },
 }
 
 /// What an [`Extra`] brought back.
 enum Fetched {
     Part(FetchedPart),
     Original(Original),
+    Headers(HashMap<MessageId, Vec<u8>>),
 }
 
 impl Extra {
@@ -74,25 +84,33 @@ impl Extra {
         match self {
             Extra::Part { source, .. } => source.folder,
             Extra::Original { target } => target.folder,
+            Extra::Headers { folder, .. } => *folder,
         }
     }
 
     /// Its one answer.
-    fn answer(&self, shared: &Shared, result: Result<Fetched, BodyError>) {
+    fn answer(self, shared: &Shared, result: Result<Fetched, BodyError>) {
         match self {
             Extra::Part { source, part } => {
                 let result = result.and_then(|fetched| match fetched {
                     Fetched::Part(part) => Ok(part),
-                    Fetched::Original(_) => Err(BodyError::Other),
+                    _ => Err(BodyError::Other),
                 });
-                answer_part(shared, source.message, *part, result);
+                answer_part(shared, source.message, part, result);
             }
             Extra::Original { target } => {
                 let result = result.and_then(|fetched| match fetched {
                     Fetched::Original(original) => Ok(original),
-                    Fetched::Part(_) => Err(BodyError::Other),
+                    _ => Err(BodyError::Other),
                 });
                 answer_original(shared, target.message, result);
+            }
+            Extra::Headers { reply, .. } => {
+                let result = result.and_then(|fetched| match fetched {
+                    Fetched::Headers(headers) => Ok(headers),
+                    _ => Err(BodyError::Other),
+                });
+                let _ = reply.send(result);
             }
         }
     }
@@ -109,6 +127,17 @@ impl Extra {
             Extra::Original { target } => fetch_original(conn, folder, target.uid)
                 .await?
                 .map(|bytes| Fetched::Original(Original(bytes))),
+            Extra::Headers { uids, .. } => {
+                let wanted: Vec<u32> = uids.iter().map(|(_, uid)| *uid).collect();
+                match fetch_headers(conn, folder, &wanted).await? {
+                    Some(mut by_uid) => Ok(Fetched::Headers(
+                        uids.iter()
+                            .filter_map(|(message, uid)| Some((*message, by_uid.remove(uid)?)))
+                            .collect(),
+                    )),
+                    None => Err(BodyError::Gone),
+                }
+            }
         })
     }
 }
@@ -348,6 +377,31 @@ pub(super) fn request_original(shared: &Arc<Shared>, message: MessageId) {
             Err(error) => answer_original(&shared, message, Err(error)),
         }
     });
+}
+
+/// The headers of `uids` (messages of `folder` and their UIDs) as the server has them, fetched
+/// on the account's body connection before any body batch (rules, ADR-020). Messages the server
+/// no longer has are left out.
+pub(super) async fn headers(
+    shared: &Arc<Shared>,
+    account: AccountId,
+    folder: FolderId,
+    uids: Vec<(MessageId, u32)>,
+) -> Result<HashMap<MessageId, Vec<u8>>, BodyError> {
+    if uids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let (reply, answer) = tokio::sync::oneshot::channel();
+    enqueue_extra(
+        shared,
+        account,
+        Extra::Headers {
+            folder,
+            uids,
+            reply,
+        },
+    );
+    answer.await.unwrap_or(Err(BodyError::Other))
 }
 
 /// Moves a queued message to the front of its account's queue.

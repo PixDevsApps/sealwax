@@ -70,6 +70,8 @@ pub struct Message {
     /// INTERNALDATE, Unix seconds.
     pub date: i64,
     pub message_id: String,
+    /// Header lines besides the fixed ones, each ending in CRLF (rules' tests, ADR-020).
+    pub extra: String,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -324,9 +326,19 @@ impl World {
             modseq: 0,
             date: NOW - days * 86_400 + 3_600,
             message_id: message_id.to_owned(),
+            extra: String::new(),
         };
         let uid = self.put(name, message);
         self.changed();
+        uid
+    }
+
+    /// A new message with `extra` header lines (each ending in CRLF); returns its UID.
+    pub fn append_extra(&mut self, name: &str, extra: &str) -> u32 {
+        let uid = self.append(name, 0, &[]);
+        if let Some(message) = self.mailbox(name).messages.get_mut(&uid) {
+            message.extra = extra.to_owned();
+        }
         uid
     }
 
@@ -655,9 +667,9 @@ fn search_date(text: &str) -> i64 {
 fn header(message: &Message, uid: u32) -> String {
     format!(
         "Date: Mon, 5 Oct 2026 09:00:00 +0000\r\nFrom: \"Fake Sender\" <sender@example.test>\r\n\
-         To: <test@example.test>\r\nSubject: Fake message {uid}\r\nMessage-ID: <{}>\r\n\
+         To: <test@example.test>\r\nSubject: Fake message {uid}\r\nMessage-ID: <{}>\r\n{}\
          MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n",
-        message.message_id
+        message.message_id, message.extra
     )
 }
 
@@ -1112,6 +1124,7 @@ fn uid_command(
     }
     let whole = items.to_ascii_uppercase().contains("BODY.PEEK[]");
     let headers = items.to_ascii_uppercase().contains("HEADER.FIELDS");
+    let header_only = items.to_ascii_uppercase().contains("BODY.PEEK[HEADER]");
     let fields = items
         .find("HEADER.FIELDS (")
         .map(|at| group(&items[at + 14..]).0.to_owned())
@@ -1146,6 +1159,12 @@ fn uid_command(
             out.push_str(&format!(
                 "* {seq} FETCH (UID {uid} BODY[] {{{}}}\r\n{full})\r\n",
                 full.len()
+            ));
+        } else if header_only {
+            let head = header(message, *uid);
+            out.push_str(&format!(
+                "* {seq} FETCH (UID {uid} BODY[HEADER] {{{}}}\r\n{head})\r\n",
+                head.len()
             ));
         } else if headers {
             let full = header(message, *uid);
@@ -1662,6 +1681,7 @@ async fn append(
                     modseq: 0,
                     date: NOW,
                     message_id,
+                    extra: String::new(),
                 },
             );
             world.changed();

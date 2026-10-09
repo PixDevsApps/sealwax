@@ -141,6 +141,13 @@ pub enum Command {
         request: RequestId,
         account: AccountId,
     },
+    /// Run the account's rules on every message the store holds in `folder`, as if each had
+    /// just arrived there (Apply Rules to This Folder, ADR-020). Answered with one
+    /// `RulesApplied`.
+    ApplyRules {
+        request: RequestId,
+        folder: FolderId,
+    },
     /// Stop every connection and the runtime.
     Shutdown,
 }
@@ -259,6 +266,30 @@ pub enum Event {
         folder: FolderId,
         messages: Vec<MessageId>,
     },
+    /// `ApplyRules` ran: `Ok` counts the messages a rule moved, copied or flagged.
+    RulesApplied {
+        request: RequestId,
+        folder: FolderId,
+        result: Result<u32, RulesError>,
+    },
+    /// The account's rules file can't be run, so no rule runs until it changes (ADR-020). Sent
+    /// once per change of the file.
+    RulesFailed {
+        account: AccountId,
+        error: RulesError,
+    },
+}
+
+/// Why an account's rules didn't run.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RulesError {
+    /// The script doesn't parse, or uses what Sealwax doesn't run. Its `Debug` leaves out the
+    /// message; the app may show it.
+    Script(sealwax_domain::sieve::Error),
+    /// The file can't be read: over 1 MiB, not UTF-8, or not readable.
+    File,
+    /// The store couldn't be read or written.
+    Store,
 }
 
 /// A part downloaded for `FetchPart`, its transfer encoding decoded. Message content: its

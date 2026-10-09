@@ -422,3 +422,43 @@ fn a_panic_beneath_the_parser_is_caught() {
     let raw = include_bytes!("../../../fuzz/known/mail-parser-debug-assert.eml");
     assert_eq!(parse(raw).size, raw.len() as u64);
 }
+
+#[test]
+fn header_fields_are_unfolded_decoded_and_in_order() {
+    let raw = b"From: =?utf-8?q?Kari_Nordmann?= <kari@example.test>\r\n\
+To: ola@example.test, \"Per\" <per@example.test>\r\n\
+Subject: =?iso-8859-1?q?F=E5ktura?= mars\r\n\
+X-Spam-Status: Yes, score=7.1\r\n\x20required=5.0 tests=BAYES_99\r\n\
+X-Spam-Flag: YES\r\n\
+Date: Thu, 08 Oct 2026 10:00:00 +0200\r\n\
+\r\n\
+Body: not a header\r\n";
+    let fields = header_fields(raw);
+    let names: Vec<&str> = fields.iter().map(|field| field.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "from",
+            "to",
+            "subject",
+            "x-spam-status",
+            "x-spam-flag",
+            "date"
+        ]
+    );
+    assert_eq!(fields[0].value, "Kari Nordmann <kari@example.test>");
+    assert_eq!(fields[0].addresses, ["kari@example.test"]);
+    assert_eq!(
+        fields[1].addresses,
+        ["ola@example.test", "per@example.test"]
+    );
+    assert_eq!(fields[2].value, "Fåktura mars");
+    assert_eq!(
+        fields[3].value,
+        "Yes, score=7.1 required=5.0 tests=BAYES_99"
+    );
+    assert_eq!(fields[4].value, "YES");
+    assert_eq!(fields[5].value, "Thu, 08 Oct 2026 10:00:00 +0200");
+    assert!(header_fields(b"").is_empty());
+    assert!(header_fields(b"\r\nno header").is_empty());
+}

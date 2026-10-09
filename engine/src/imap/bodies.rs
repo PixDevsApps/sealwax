@@ -641,5 +641,30 @@ pub async fn fetch_original(
         .ok_or(BodyError::Gone))
 }
 
+/// Fetches the headers of the messages at `uids` of `folder` (`BODY.PEEK[HEADER]`, for rules
+/// that test a header the store doesn't keep, ADR-020), after the UIDVALIDITY check; nothing is
+/// stored and nothing is marked `\Seen`. UIDs the server no longer has are left out; `None` when
+/// the folder's UIDVALIDITY isn't the store's.
+pub async fn fetch_headers(
+    conn: &mut Connection,
+    folder: &FolderSync,
+    uids: &[u32],
+) -> Result<Option<HashMap<u32, Vec<u8>>>, ImapError> {
+    let uidvalidity = examine(conn, &folder.name_raw).await?;
+    if uidvalidity.is_none() || uidvalidity != folder.uidvalidity {
+        return Ok(None);
+    }
+    let mut headers = HashMap::new();
+    for chunk in uids.chunks(500) {
+        let fetched = uid_fetch(conn, chunk, "UID BODY.PEEK[HEADER]").await?;
+        headers.extend(
+            fetched
+                .into_iter()
+                .filter_map(|(uid, mut found)| Some((uid, found.sections.remove("HEADER")?))),
+        );
+    }
+    Ok(Some(headers))
+}
+
 #[cfg(test)]
 mod tests;

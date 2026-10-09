@@ -698,6 +698,11 @@ fn fields(
         Command::LoadOlder { folder } => {
             ("load-older", None, vec![("folder", folder.0.to_string())])
         }
+        Command::ApplyRules { request, folder } => (
+            "apply-rules",
+            Some(*request),
+            vec![("folder", folder.0.to_string())],
+        ),
         Command::FetchBodies { messages } => (
             "fetch-bodies",
             None,

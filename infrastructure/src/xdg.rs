@@ -84,6 +84,11 @@ impl SealwaxDirs {
         self.config.join("accounts.toml")
     }
 
+    /// The accounts' rules, one Sieve script each (ADR-020).
+    pub fn rules_dir(&self) -> PathBuf {
+        self.config.join(crate::rules::RULES_DIR)
+    }
+
     /// The window's layout between runs (`domain::layout`).
     pub fn layout_file(&self) -> PathBuf {
         self.state.join(sealwax_domain::layout::LAYOUT_FILE)

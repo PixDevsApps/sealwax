@@ -38,6 +38,7 @@ use zeroize::Zeroizing;
 
 mod actor;
 mod bodies;
+mod rules;
 
 pub use actor::{SyncConfig, backoff_delay};
 
@@ -196,6 +197,8 @@ struct Shared {
     bodies: bodies::Bodies,
     /// Each account's submission size limit, once read (`SubmissionLimit`).
     limits: Mutex<HashMap<AccountId, Option<u64>>>,
+    /// Each account's rules as last read (ADR-020).
+    rules: rules::Cache,
 }
 
 impl Shared {
@@ -221,6 +224,7 @@ impl Shared {
             sync: config.sync,
             bodies: bodies::Bodies::default(),
             limits: Mutex::default(),
+            rules: rules::Cache::default(),
         }
     }
 
@@ -465,6 +469,10 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
             }
             Command::FetchBodies { messages } => {
                 bodies::request(&shared, messages, true);
+                continue;
+            }
+            Command::ApplyRules { request, folder } => {
+                tokio::spawn(rules::apply(shared.clone(), request, folder));
                 continue;
             }
             Command::FetchPart { message, part } => {

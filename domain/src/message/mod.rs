@@ -85,6 +85,76 @@ fn parse_message(raw: &[u8]) -> ParsedMessage {
     }
 }
 
+/// One header field as rules read it (ADR-020): the name in lower case, the value unfolded and
+/// RFC 2047-decoded, and for an address field each address as `local@domain`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HeaderField {
+    pub name: String,
+    pub value: String,
+    pub addresses: Vec<String>,
+}
+
+/// The header fields of a raw message, or of its header alone, in order. Input without a header
+/// yields none, and so does a panic in the parser beneath.
+pub fn header_fields(raw: &[u8]) -> Vec<HeaderField> {
+    catch_unwind(AssertUnwindSafe(|| fields(raw))).unwrap_or_default()
+}
+
+fn fields(raw: &[u8]) -> Vec<HeaderField> {
+    let Some(message) = MessageParser::default().parse_headers(raw) else {
+        return Vec::new();
+    };
+    message
+        .headers()
+        .iter()
+        .map(|header| {
+            let (value, addresses) = match header.value() {
+                HeaderValue::Text(text) => (text.to_string(), Vec::new()),
+                HeaderValue::TextList(list) => (list.join(", "), Vec::new()),
+                HeaderValue::Address(address) => {
+                    let text = address
+                        .iter()
+                        .map(|addr| match (addr.name(), addr.address()) {
+                            (Some(name), Some(email)) => format!("{name} <{email}>"),
+                            (None, Some(email)) => email.to_owned(),
+                            (Some(name), None) => name.to_owned(),
+                            (None, None) => String::new(),
+                        })
+                        .filter(|text| !text.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    let emails = address
+                        .iter()
+                        .filter_map(|addr| addr.address())
+                        .map(str::to_owned)
+                        .collect();
+                    (text, emails)
+                }
+                _ => (
+                    unfold(raw, header.offset_start, header.offset_end),
+                    Vec::new(),
+                ),
+            };
+            HeaderField {
+                name: header.name().to_ascii_lowercase(),
+                value: unfold_text(&value).trim().to_owned(),
+                addresses,
+            }
+        })
+        .collect()
+}
+
+/// A header's raw value.
+fn unfold(raw: &[u8], start: u32, end: u32) -> String {
+    let bytes = raw.get(start as usize..end as usize).unwrap_or_default();
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+/// `text` without its line breaks: a folded line's leading space stays (RFC 5322 section 2.2.3).
+fn unfold_text(text: &str) -> String {
+    text.chars().filter(|c| !matches!(c, '\r' | '\n')).collect()
+}
+
 /// The subject without reply and forward prefixes (English, Nordic, German, French, Chinese).
 pub fn base_subject(subject: &str) -> &str {
     const PREFIXES: [&str; 14] = [
