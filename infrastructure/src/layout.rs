@@ -41,6 +41,7 @@ mod tests {
             sidebar_width: Some(250),
             list_width: None,
             collapsed: vec![AccountKey("work".into())],
+            more_open: vec![AccountKey("work".into())],
             folded: Default::default(),
         };
         write(&path, &layout).unwrap();
