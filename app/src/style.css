@@ -359,7 +359,8 @@ row.sw-sidebar-heading:active {
   background: var(--sw-pressed-bg-color);
 }
 
-.sw-heading-arrow {
+.sw-heading-arrow,
+.sw-folder-arrow {
   -gtk-icon-size: var(--sw-text-small);
   color: var(--sw-secondary-fg-color);
 }

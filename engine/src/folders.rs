@@ -121,24 +121,11 @@ fn has_role(folder: &Known) -> bool {
 /// folder is under it (`INBOX.` servers), else none. NAMESPACE (RFC 2342) would say; its reply
 /// is one imap-proto 0.17 can't read (see `imap::manage`).
 fn top_parent(folders: &[Known]) -> Option<&Known> {
-    let inbox = folders
+    let names: Vec<(&str, Option<char>)> = folders
         .iter()
-        .find(|folder| folder.name_raw.eq_ignore_ascii_case("INBOX"))?;
-    let delimiter = inbox.delimiter?;
-    let mut others = folders
-        .iter()
-        .filter(|folder| folder.id != inbox.id)
-        .peekable();
-    others.peek()?;
-    let length = inbox.name_raw.len();
-    others
-        .all(|folder| {
-            let name = folder.name_raw.as_str();
-            name.is_char_boundary(length)
-                && name[..length].eq_ignore_ascii_case(&inbox.name_raw)
-                && name[length..].starts_with(delimiter)
-        })
-        .then_some(inbox)
+        .map(|folder| (folder.name_raw.as_str(), folder.delimiter))
+        .collect();
+    folders::top_parent(&names).map(|index| &folders[index])
 }
 
 /// The account's hierarchy delimiter for a folder at its top.

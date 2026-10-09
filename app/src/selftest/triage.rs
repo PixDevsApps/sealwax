@@ -20,7 +20,7 @@
 //! | `toast-undo` | Clicks the toast's Undo |
 //! | `sidebar-menu all-inboxes\|[ACCOUNT:]ROLE` | Right-clicks a sidebar folder |
 //! | `account-menu KEY` | Right-clicks the heading of the sidebar's account KEY (`account-1`) |
-//! | `sidebar-menu-click` | Clicks the open menu's item: a folder's Mark Folder as Read, an account's Edit Account |
+//! | `sidebar-menu-click [NAME]` | Clicks the open menu's item named NAME (`folder-menu-rename`, `account-menu-new-folder`, …), else its first: a folder's Mark Folder as Read, an account's Edit Account |
 //! | `action-log` | Records the window's and the application's commands as they run, from now on |
 //! | `measure-triage KEY COUNT` | Presses KEY COUNT times on the selected message and times each from the command's handler to the list's change and to the frame that shows it |
 //! | `assert-focus WHERE` | The keyboard focus is in WHERE (as `focus`) |
@@ -32,7 +32,7 @@
 //! | `assert-row-check POS none\|true\|false` | A row's checkbox: hidden, ticked, not ticked |
 //! | `assert-row-quick POS BOOL` | Whether a row shows its quick actions |
 //! | `assert-move-to open\|shown\|selected VALUE` | The Move to… picker: open (BOOL), the folders shown (`A,B`), the folder Enter picks |
-//! | `assert-sidebar-menu closed\|enabled\|disabled` | The folder menu, and its Mark Folder as Read |
+//! | `assert-sidebar-menu closed\|enabled\|disabled [NAME]` | The sidebar's menu, and its item named NAME, else its first (Mark Folder as Read) |
 //! | `assert-action-log NAMES\|none` | The commands run since the last check, in order (`win.archive,win.star`) |
 
 use super::{Harness, StepResult, WAIT_TIMEOUT, broadway, equal, number};
@@ -68,7 +68,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("toast-undo", 0, 0),
     ("sidebar-menu", 1, 1),
     ("account-menu", 1, 1),
-    ("sidebar-menu-click", 0, 0),
+    ("sidebar-menu-click", 0, 1),
     ("action-log", 0, 0),
     ("measure-triage", 2, 2),
     ("assert-focus", 1, 1),
@@ -81,7 +81,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-row-check", 2, 2),
     ("assert-row-quick", 2, 2),
     ("assert-move-to", 2, 2),
-    ("assert-sidebar-menu", 1, 1),
+    ("assert-sidebar-menu", 1, 2),
     ("assert-action-log", 1, 1),
 ];
 
@@ -273,15 +273,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             Ok(())
         }
         "sidebar-menu-click" => {
-            let menu = harness
-                .window()?
-                .sidebar()
-                .menu()
-                .ok_or("no sidebar menu is open")?;
-            let button = menu
-                .child()
-                .and_downcast::<gtk::Button>()
-                .ok_or("the menu holds no button")?;
+            let button = menu_item(harness, args.first().map(String::as_str))?;
             if !button.is_sensitive() {
                 return Err(format!(
                     "{} is insensitive",
@@ -393,15 +385,16 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
         "assert-sidebar-menu" => {
             let state = match harness.window()?.sidebar().menu() {
                 None => "closed",
-                Some(menu) => {
-                    let sensitive = menu
-                        .child()
-                        .and_downcast::<gtk::Button>()
-                        .is_some_and(|button| button.is_sensitive());
-                    if sensitive { "enabled" } else { "disabled" }
+                Some(_) => {
+                    let item = menu_item(harness, args.get(1).map(String::as_str))?;
+                    if item.is_sensitive() {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
                 }
             };
-            equal("folder menu", state, arg(0))
+            equal("sidebar menu", state, arg(0))
         }
         "assert-action-log" => {
             let log = LOG
@@ -418,6 +411,30 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             Ok(())
         }
         other => Err(format!("unknown command {other}")),
+    }
+}
+
+/// The open sidebar menu's item named `name`, else its first.
+fn menu_item(harness: &Harness, name: Option<&str>) -> Result<gtk::Button, String> {
+    let window = harness.window()?;
+    let sidebar = window.sidebar();
+    sidebar.menu().ok_or("no sidebar menu is open")?;
+    let items = sidebar.menu_items();
+    match name {
+        None => items
+            .into_iter()
+            .next()
+            .ok_or_else(|| "the menu holds no item".to_owned()),
+        Some(name) => {
+            let names: Vec<String> = items
+                .iter()
+                .map(|item| item.widget_name().to_string())
+                .collect();
+            items
+                .into_iter()
+                .find(|item| item.widget_name() == name)
+                .ok_or_else(|| format!("the menu has no {name}, only {}", names.join(", ")))
+        }
     }
 }
 

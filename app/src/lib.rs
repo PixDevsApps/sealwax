@@ -15,6 +15,7 @@ pub mod default_handler;
 pub mod desktop;
 pub mod engine;
 pub mod engine_link;
+pub mod folders;
 pub mod go_to;
 pub mod list;
 pub mod mailbox;

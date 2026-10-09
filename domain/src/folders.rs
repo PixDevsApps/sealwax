@@ -40,6 +40,31 @@ pub fn child(parent: Option<&str>, delimiter: Option<char>, leaf: &str) -> Strin
     }
 }
 
+/// Which of an account's folders (`name`, `delimiter`) new folders at its top go under: the
+/// Inbox, where every other folder is under it (servers that keep the personal folders under
+/// `INBOX.`), else none. With the Inbox alone there is no telling, so none.
+pub fn top_parent(folders: &[(&str, Option<char>)]) -> Option<usize> {
+    let (inbox, (name, delimiter)) = folders
+        .iter()
+        .enumerate()
+        .find(|(_, (name, _))| name.eq_ignore_ascii_case("INBOX"))?;
+    let delimiter = (*delimiter)?;
+    let length = name.len();
+    let mut others = folders
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != inbox)
+        .peekable();
+    others.peek()?;
+    others
+        .all(|(_, (other, _))| {
+            other.is_char_boundary(length)
+                && other[..length].eq_ignore_ascii_case(name)
+                && other[length..].starts_with(delimiter)
+        })
+        .then_some(inbox)
+}
+
 /// `name` once the folder `old` (itself or one above it) is renamed `new`: renaming "Kunder" to
 /// "Klienter" makes "Kunder/Acme" "Klienter/Acme". `None` when `name` isn't within `old`.
 pub fn renamed(name: &str, old: &str, new: &str, delimiter: Option<char>) -> Option<String> {
@@ -151,6 +176,20 @@ mod tests {
         assert_eq!(child(Some("Kunder"), SLASH, "Acme"), "Kunder/Acme");
         assert_eq!(child(None, SLASH, "Acme"), "Acme");
         assert_eq!(child(Some("INBOX"), DOT, "Høst 📬"), "INBOX.Høst 📬");
+    }
+
+    #[test]
+    fn new_top_folders_go_under_an_inbox_that_holds_every_folder() {
+        let inbox_server = [("INBOX", DOT), ("INBOX.Sent", DOT), ("inbox.Kunder", DOT)];
+        assert_eq!(top_parent(&inbox_server), Some(0));
+        let flat = [("INBOX", SLASH), ("Sent", SLASH), ("INBOX/Kunder", SLASH)];
+        assert_eq!(top_parent(&flat), None);
+        assert_eq!(top_parent(&[("INBOX", DOT)]), None, "the Inbox alone");
+        assert_eq!(top_parent(&[("INBOX", None), ("INBOXES", None)]), None);
+        assert_eq!(
+            top_parent(&[("Sent", DOT), ("INBOX", DOT), ("INBOXé.x", DOT)]),
+            None
+        );
     }
 
     #[test]

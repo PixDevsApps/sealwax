@@ -26,6 +26,7 @@
 //! | `engine-reply older-loaded FETCHED complete\|more` | `OlderLoaded` for the folder of the last `load-older` taken (its field: `folder`; `folder-opened` has the same) (ML-043) |
 //! | `engine-reply part-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `PartFetched` for the last `fetch-part` taken (its fields: `message`, `part`); `ok` carries the part of the message `files.rs` stored (ML-061) |
 //! | `engine-reply original-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `OriginalFetched` for the last `fetch-original` taken (its field: `message`); `ok` carries the message `files.rs` stored, whole (ML-063) |
+//! | `engine-reply folder-changed ok\|offline\|taken\|not-allowed\|missing\|lost\|store`, `engine-reply folder-changed refused TEXT` | `FolderChanged` for the last `create-folder`, `rename-folder` or `delete-folder` taken (their fields: `account`, `parent` (`none`), `folder`, `name`); `ok` first makes the change in the app's store as the engine would (`folders.rs`); `refused` carries TEXT as the server's words (M9) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`), clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -59,11 +60,13 @@ use sealwax_domain::account::{
     Detection, Endpoint, HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol,
     Receive, Security, UnsupportedReason, UsernameForm,
 };
-use sealwax_domain::model::{FolderId, FolderRole, MessageId};
+use sealwax_domain::folders::NameProblem;
+use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
-    AccountError, BodyError, Command, Event, FetchedPart, FolderChange, Original, Password,
-    Refused, RequestId, SyncStatus,
+    AccountError, BodyError, Command, Event, FetchedPart, FolderChange, FolderError, Original,
+    Password, Refused, RequestId, SyncStatus,
 };
+use sealwax_engine::imap::ServerText;
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
 use sealwax_infrastructure::store::{FolderSpec, NewAccount};
@@ -123,6 +126,8 @@ struct Last {
     key: Option<AccountKey>,
     /// An `EditAccount`'s label and colour, for `key`.
     look: Option<(Option<String>, Option<AccountColor>)>,
+    /// A `ChangeFolder`'s account and change.
+    folder: Option<(AccountId, FolderChange)>,
 }
 
 struct Fake {
@@ -859,6 +864,12 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
             Command::EditAccount { label, color, .. } => Some((label.clone(), *color)),
             _ => None,
         },
+        folder: match &command {
+            Command::ChangeFolder {
+                account, change, ..
+            } => Some((*account, change.clone())),
+            _ => None,
+        },
     }));
     equal("command", kind, args[0].as_str())?;
     for pair in &args[1..] {
@@ -993,6 +1004,36 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 failure: login_failure(failure)?,
             }),
         },
+        ("folder-changed", outcome) => {
+            let (account, change) = last
+                .folder
+                .clone()
+                .ok_or("the last command was no ChangeFolder")?;
+            let result = match outcome {
+                [ok] if ok == "ok" => {
+                    super::folders::apply(harness, account, &change).await?;
+                    Ok(())
+                }
+                [refused, text] if refused == "refused" => {
+                    Err(FolderError::Refused(ServerText::new(text.clone())))
+                }
+                [other] => Err(match other.as_str() {
+                    "offline" => FolderError::Offline,
+                    "taken" => FolderError::Name(NameProblem::Taken),
+                    "not-allowed" => FolderError::NotAllowed,
+                    "missing" => FolderError::Missing,
+                    "lost" => FolderError::Lost,
+                    "store" => FolderError::Store,
+                    other => return Err(format!("no folder-changed outcome {other}")),
+                }),
+                _ => return Err("folder-changed takes an outcome".to_owned()),
+            };
+            Event::FolderChanged {
+                request,
+                account,
+                result,
+            }
+        }
         ("password-updated", [ok]) if ok == "ok" => Event::PasswordUpdated {
             request,
             result: Ok(()),

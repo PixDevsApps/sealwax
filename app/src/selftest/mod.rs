@@ -13,6 +13,7 @@ mod broadway;
 mod composer;
 mod conversation;
 mod files;
+mod folders;
 mod mail;
 mod notify;
 mod outbox;
@@ -428,6 +429,7 @@ impl Harness {
             "test-bus-signal" => self.test_bus_signal(arg(0)).await,
             "test-bus-stop" => self.stop_test_bus().await,
             command if a11y::handles(command) => a11y::step(self, command, args).await,
+            command if folders::handles(command) => folders::step(self, command, args).await,
             command if conversation::handles(command) => {
                 conversation::step(self, command, args).await
             }
