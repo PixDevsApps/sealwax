@@ -440,13 +440,15 @@ impl AppState {
                     .unwrap_or_default()
             })
             .collect();
-        status::queue(
+        let mut queue = status::queue(
             &accounts,
             self.keyring_missing.get() && !self.keyring_dismissed.get(),
             self.network.get(),
             self.pending_ops.get() + outbox::waiting_sends(),
             &uncertain,
-        )
+        );
+        crate::rules::add_waiting(self, &mut queue);
+        queue
     }
 
     /// The accounts that must sign in again, in the sidebar's order: with Microsoft in the
@@ -526,6 +528,7 @@ impl AppState {
             }
             (BannerAction::Retry, _) => self.retry(),
             (BannerAction::Decide, _) => outbox::decide(self),
+            (BannerAction::OpenRules, _) => crate::rules::open_shown(self),
             (BannerAction::Dismiss, _) => {
                 self.keyring_dismissed.set(true);
                 self.update_banner();
@@ -790,6 +793,7 @@ impl AppState {
         outbox::install(self);
         notify::install(self);
         search::install(self);
+        crate::rules::install(self);
         background::install(app, self);
         if let Some(options) = self.config.engine.clone() {
             let ready = self.mailbox.wait_ready();
@@ -1152,6 +1156,7 @@ impl AppState {
         compose_actions::install(self, window, &win_actions);
         crate::go_to::install(self, &win_actions);
         crate::folders::install(self, window, &win_actions);
+        crate::rules::install_window(self, window, &win_actions);
         self.win_actions.replace(Some(win_actions));
     }
 
@@ -1168,6 +1173,7 @@ impl AppState {
         GtkWindowExt::set_focus(window.window(), Some(list.list_view()));
         list.keep_focus(window.window());
         self.install_triage(window, &list, win_actions);
+        crate::message_menu::install(self, &list);
 
         // The window's handlers find the window and the list through the state, never by a
         // clone of their own: a clone would keep a window closed into background mode alive.
@@ -1314,6 +1320,7 @@ impl AppState {
             if let Some(state) = weak.upgrade() {
                 if state.triage().is_some_and(|triage| triage.can_undo()) {
                     outbox::forget_last();
+                    crate::rules::forget_last();
                 }
                 state.refresh_commands();
             }
@@ -1351,6 +1358,7 @@ impl AppState {
         actions.connect(ActionId::Undo, move || {
             if let Some(state) = weak.upgrade()
                 && !outbox::undo_last(&state)
+                && !crate::rules::undo_last(&state)
                 && let Some(triage) = state.triage()
             {
                 triage.undo(None);
@@ -1649,6 +1657,7 @@ impl AppState {
             .map(|id| (id, triage::availability(id, &targets, &folders).title))
             .filter(|(id, title)| *title != id.title())
             .map(|(id, title)| (id, title.to_owned()))
+            .chain(crate::rules::titles(self))
             .collect()
     }
 
@@ -1695,10 +1704,13 @@ impl AppState {
             ActionId::MarkFolderRead,
             list.query().is_empty() && self.unread_in(list.scope()) > 0,
         );
-        let undo = self.triage().is_some_and(|triage| triage.can_undo()) || outbox::can_undo();
+        let undo = self.triage().is_some_and(|triage| triage.can_undo())
+            || outbox::can_undo()
+            || crate::rules::can_undo();
         actions.set_applies(ActionId::Undo, undo);
         compose_actions::refresh(actions, &list, &targets, &folders);
         crate::folders::refresh(self, actions);
+        crate::rules::refresh(self, actions);
     }
 
     /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place

@@ -28,6 +28,9 @@ pub enum Attention {
     /// Sealwax stopped while it was sending a message from the account: it may have been sent,
     /// and it is never sent again without the user's word (M6, ADR-015).
     UncertainSend { name: String },
+    /// The account's rules file can't run, so no rule runs until it is fixed (M9, ADR-020):
+    /// `problem` says where and why ("Line 3, column 7: …").
+    RulesFailed { name: String, problem: String },
     /// The desktop has no network (`network`), or no account's server answers; `waiting`
     /// changes wait for a server.
     Offline {
@@ -52,6 +55,8 @@ pub enum BannerAction {
     Dismiss,
     /// Ask what became of the uncertain send shown: send again, it was sent, or back to a draft.
     Decide,
+    /// Open the rules file of the account shown in the desktop's editor.
+    OpenRules,
 }
 
 /// The strip's tint: the error or warning colour's soft background, or the card's.
@@ -66,9 +71,10 @@ impl Attention {
     pub fn tone(&self) -> Tone {
         match self {
             Self::CertificateChanged { .. } | Self::SignIn { .. } => Tone::Error,
-            Self::QuotaFull { .. } | Self::UncertainSend { .. } | Self::Offline { .. } => {
-                Tone::Warning
-            }
+            Self::QuotaFull { .. }
+            | Self::UncertainSend { .. }
+            | Self::RulesFailed { .. }
+            | Self::Offline { .. } => Tone::Warning,
             Self::NoKeyring => Tone::Neutral,
         }
     }
@@ -84,6 +90,7 @@ impl Attention {
             Self::SignIn { .. } => &["dialog-password-symbolic", "dialog-warning-symbolic"],
             Self::QuotaFull { .. } => &["drive-harddisk-symbolic", "dialog-warning-symbolic"],
             Self::UncertainSend { .. } => &["mail-send-symbolic", "dialog-warning-symbolic"],
+            Self::RulesFailed { .. } => &["dialog-warning-symbolic"],
             Self::Offline { .. } => &[
                 "network-offline-symbolic",
                 "network-wireless-offline-symbolic",
@@ -100,6 +107,7 @@ impl Attention {
             Self::SignIn { name, .. } => format!("{name} needs you to sign in again"),
             Self::QuotaFull { name } => format!("{name}'s mailbox is full"),
             Self::UncertainSend { .. } => "A message may have been sent".to_owned(),
+            Self::RulesFailed { name, .. } => crate::rules::text::failed_title(name),
             Self::Offline { network: true, .. } => "You're offline".to_owned(),
             Self::Offline { accounts: 1, .. } => "Can't reach your mail server".to_owned(),
             Self::Offline { .. } => "Can't reach your mail servers".to_owned(),
@@ -133,6 +141,7 @@ impl Attention {
                 "Sealwax stopped while it was sending a message from {name}, so the server may \
                  have it. Look in your Sent folder, or ask a recipient, before you send it again."
             ),
+            Self::RulesFailed { problem, .. } => crate::rules::text::failed_body(problem),
             Self::Offline {
                 network: true,
                 waiting: 0,
@@ -177,6 +186,7 @@ impl Attention {
                 Some(("Type the password again", BannerAction::TypePassword)),
             ],
             Self::UncertainSend { .. } => [None, Some(("Choose…", BannerAction::Decide))],
+            Self::RulesFailed { .. } => [None, Some(("Open File", BannerAction::OpenRules))],
             Self::QuotaFull { .. } | Self::Offline { .. } => [None, None],
         }
     }
@@ -185,7 +195,10 @@ impl Attention {
     fn per_account(&self) -> bool {
         matches!(
             self,
-            Self::CertificateChanged { .. } | Self::SignIn { .. } | Self::QuotaFull { .. }
+            Self::CertificateChanged { .. }
+                | Self::SignIn { .. }
+                | Self::QuotaFull { .. }
+                | Self::RulesFailed { .. }
         )
     }
 

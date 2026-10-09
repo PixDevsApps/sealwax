@@ -7,6 +7,7 @@
 
 use gtk4::{gio, glib};
 use sealwax_domain::account::AccountKey;
+use sealwax_domain::folders;
 use sealwax_domain::sieve::{self, Folders, Invalid, RuleSet};
 use sealwax_infrastructure::rules;
 use std::cell::RefCell;
@@ -110,6 +111,94 @@ pub fn change(
     Ok(true)
 }
 
+/// What the lists held of a sender before Always Junk or Never Junk put it on one, so Undo
+/// puts them back as they were.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Listed {
+    /// The file changed.
+    pub changed: bool,
+    pub was_blocked: bool,
+    pub was_trusted: bool,
+}
+
+fn holds(list: &[String], address: &str) -> bool {
+    list.iter().any(|held| held.eq_ignore_ascii_case(address.trim()))
+}
+
+/// Always Junk (`always`) or Never Junk for `address`: on that list, off the other.
+pub fn list_sender(place: &Place, address: &str, always: bool) -> Result<Listed, ChangeError> {
+    let (mut was_blocked, mut was_trusted) = (false, false);
+    let changed = change(place, |set| {
+        was_blocked = holds(&set.blocked.addresses, address);
+        was_trusted = holds(&set.trusted.addresses, address);
+        if always {
+            set.always_junk(address)
+        } else {
+            set.never_junk(address)
+        }
+    })?;
+    Ok(Listed {
+        changed,
+        was_blocked,
+        was_trusted,
+    })
+}
+
+/// Undo of [`list_sender`]: the lists hold `address` again as `listed` says they did.
+pub fn unlist_sender(
+    place: &Place,
+    address: &str,
+    always: bool,
+    listed: Listed,
+) -> Result<bool, ChangeError> {
+    change(place, |set| {
+        let mut changed = false;
+        if always && !listed.was_blocked {
+            changed |= set.blocked.remove_address(address);
+        }
+        if !always && !listed.was_trusted {
+            changed |= set.trusted.remove_address(address);
+        }
+        if listed.was_blocked {
+            changed |= set.blocked.add_address(address);
+        }
+        if listed.was_trusted {
+            changed |= set.trusted.add_address(address);
+        }
+        changed
+    })
+}
+
+/// The folder `old` (and every folder under it) is now `new`: the rules that file into them
+/// follow, and the spam sections are read with the names the Inbox and Junk had. Hand-written
+/// Sieve is left as written. Whether the file changed.
+pub fn follow_rename(
+    place: &Place,
+    old: &str,
+    new: &str,
+    delimiter: Option<char>,
+) -> Result<bool, ChangeError> {
+    let before = |name: &str| folders::renamed(name, new, old, delimiter).unwrap_or(name.to_owned());
+    let read_with = Place {
+        folders: Folders {
+            inbox: before(&place.folders.inbox),
+            junk: before(&place.folders.junk),
+        },
+        ..place.clone()
+    };
+    let loaded = load(&read_with);
+    if loaded.modified.is_none() {
+        return Ok(false);
+    }
+    let mut set = loaded.set.map_err(ChangeError::Unreadable)?;
+    let moved = super::rename_folders(&mut set, old, new, delimiter);
+    if !moved && read_with.folders == place.folders {
+        return Ok(false);
+    }
+    save(place, &set, loaded.modified).map_err(ChangeError::Save)?;
+    Ok(true)
+}
+
 /// Why [`change`] didn't change the file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChangeError {
@@ -206,7 +295,7 @@ mod tests {
         // A text editor saves the file meanwhile: the dialog's save is refused.
         std::thread::sleep(std::time::Duration::from_millis(20));
         let edited = "require [\"fileinto\"];\nif header :contains \"subject\" \"x\" { \
-                      fileinto \"Arkiv\"; }\n";
+                      fileinto \"Arkiv\"; } elsif true { keep; }\n";
         rules::write(&place.dir, &place.key, edited).unwrap();
         assert_eq!(
             save(&place, &set, loaded.modified),
@@ -229,6 +318,85 @@ mod tests {
             check(&place.dir, &place.key),
             Err(Unreadable::Script(_))
         ));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_sender_listed_and_unlisted_comes_back_as_it_was() {
+        let root = scratch("senders");
+        let place = place(&root);
+        assert_eq!(
+            change(&place, |set| set.never_junk("kari@example.test")),
+            Ok(true)
+        );
+        let listed = list_sender(&place, "Kari@example.test", true).unwrap();
+        assert_eq!(
+            listed,
+            Listed {
+                changed: true,
+                was_blocked: false,
+                was_trusted: true,
+            }
+        );
+        let set = load(&place).set.unwrap();
+        assert_eq!(set.blocked.addresses, ["Kari@example.test"]);
+        assert!(set.trusted.addresses.is_empty(), "off the other list");
+        assert_eq!(
+            unlist_sender(&place, "Kari@example.test", true, listed),
+            Ok(true)
+        );
+        let set = load(&place).set.unwrap();
+        assert!(set.blocked.addresses.is_empty());
+        assert_eq!(set.trusted.addresses, ["Kari@example.test"]);
+        let again = list_sender(&place, "kari@example.test", false).unwrap();
+        assert!(!again.changed && again.was_trusted, "already trusted");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rules_follow_a_renamed_folder_in_the_file() {
+        let root = scratch("rename");
+        let mut place = place(&root);
+        place.folders = Folders {
+            inbox: "INBOX".to_owned(),
+            junk: "INBOX/Spam".to_owned(),
+        };
+        assert_eq!(
+            follow_rename(&place, "Kunder", "Klienter", Some('/')),
+            Ok(false),
+            "no file, nothing written"
+        );
+        assert!(!place.path().unwrap().exists());
+        let script = "require [\"fileinto\",\"imap4flags\"];\n# rule:[Acme]\nif header \
+                      :contains \"from\" \"acme.example.test\"\n{\n\tfileinto \
+                      \"Kunder/Acme\";\n}\n";
+        rules::write(&place.dir, &place.key, script).unwrap();
+        change(&place, |set| set.always_junk("offers@example.test")).unwrap();
+        assert_eq!(
+            follow_rename(&place, "Kunder", "Klienter", Some('/')),
+            Ok(true)
+        );
+        let written = rules::read(&place.dir, &place.key).unwrap().unwrap();
+        assert!(written.contains("fileinto \"Klienter/Acme\""), "{written}");
+        assert!(!written.contains("Kunder/Acme"));
+        // The Junk folder renamed (as no role folder is in Sealwax): the spam sections follow.
+        let renamed = Place {
+            folders: Folders {
+                inbox: "INBOX".to_owned(),
+                junk: "INBOX/Uønsket".to_owned(),
+            },
+            ..place.clone()
+        };
+        assert_eq!(
+            follow_rename(&renamed, "INBOX/Spam", "INBOX/Uønsket", Some('/')),
+            Ok(true)
+        );
+        let set = load(&renamed).set.unwrap();
+        assert!(!set.is_hand_written(), "the sections read back as sections");
+        assert_eq!(set.blocked.addresses, ["offers@example.test"]);
+        let written = rules::read(&place.dir, &place.key).unwrap().unwrap();
+        assert!(written.contains("\"INBOX/Uønsket\""));
+        assert!(!written.contains("INBOX/Spam"));
         let _ = std::fs::remove_dir_all(&root);
     }
 }

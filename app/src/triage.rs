@@ -522,6 +522,8 @@ impl Notice {
 }
 
 type NoticeHandler = Rc<dyn Fn(&Notice)>;
+/// What Undo of an action also runs.
+type Also = Rc<dyn Fn()>;
 type Listener = Rc<dyn Fn()>;
 
 /// Plans, queues and undoes triage, and reports outcomes as notices.
@@ -536,6 +538,9 @@ struct Inner {
     engine: EngineLink,
     /// The last undoable action.
     last: Cell<Option<BatchId>>,
+    /// What Undo of the last action takes back besides its ops, for its batch (M9: a sender
+    /// put on a rules list with the move that came with it).
+    also: RefCell<Option<(BatchId, Also)>>,
     notices: RefCell<Vec<NoticeHandler>>,
     changed: RefCell<Vec<Listener>>,
     answered: RefCell<Vec<Listener>>,
@@ -555,6 +560,7 @@ impl Controller {
                 directory,
                 engine,
                 last: Cell::new(None),
+                also: RefCell::new(None),
                 notices: RefCell::new(Vec::new()),
                 changed: RefCell::new(Vec::new()),
                 answered: RefCell::new(Vec::new()),
@@ -634,6 +640,7 @@ impl Controller {
     }
 
     fn set_last(&self, last: Option<BatchId>) {
+        self.inner.also.take();
         self.inner.last.set(last);
         let listeners = self.inner.changed.borrow().clone();
         for listener in listeners {
@@ -659,6 +666,32 @@ impl Controller {
             if let Some(notice) = this.finish(outcome).await {
                 this.notify(&notice);
             }
+        });
+    }
+
+    /// Queues a user's `action` on `targets` that comes with a change outside the store: its
+    /// toast says `lead` after what the action did, and its Undo also runs `undo` (M9: Always
+    /// and Never Junk Messages from Sender, whose sender a rules list gained).
+    pub fn queue_with(
+        &self,
+        action: Triage,
+        targets: Vec<Target>,
+        lead: String,
+        undo: Also,
+    ) {
+        let Some(outcome) = self.start(action, targets, Origin::User) else {
+            return;
+        };
+        let this = self.clone();
+        self.spawn(async move {
+            let Some(mut notice) = this.finish(outcome).await else {
+                return;
+            };
+            notice.text = format!("{}. {lead}", notice.text);
+            if let Some(batch) = notice.undo {
+                this.inner.also.replace(Some((batch, undo)));
+            }
+            this.notify(&notice);
         });
     }
 
@@ -824,7 +857,16 @@ impl Controller {
         if batch.is_some_and(|batch| batch != last) {
             return;
         }
+        let also = self
+            .inner
+            .also
+            .take()
+            .filter(|(batch, _)| *batch == last)
+            .map(|(_, also)| also);
         self.set_last(None);
+        if let Some(also) = also {
+            also();
+        }
         let pending = self.inner.backend.undo(last);
         let this = self.clone();
         self.spawn(async move {

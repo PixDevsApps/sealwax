@@ -4,18 +4,39 @@
 
 use super::draft::{SizeUnit, operator_label};
 use crate::triage::folder_title;
-use sealwax_domain::model::Folder;
+use sealwax_domain::folders;
+use sealwax_domain::model::{Folder, FolderRole};
 use sealwax_domain::sieve::{self, Action, Condition, Field, Match, Rule};
 use sealwax_engine::api::RulesError;
 
 /// What a folder is called in a rule's words: a role folder by its role's name, another by its
-/// full name; a name the account doesn't have is marked missing (a rule filing into it keeps
-/// the message where it is).
+/// path, the folders above it first ("Inbox / Kunder", a role folder above by its role's
+/// name); a name the account doesn't have is marked missing (a rule filing into it keeps the
+/// message where it is).
 pub fn folder_label(name: &str, folders: &[Folder]) -> String {
-    match folders.iter().find(|folder| folder.name == name) {
-        Some(folder) => folder_title(folder),
-        None => format!("{name} (missing)"),
+    let Some(folder) = folders.iter().find(|folder| folder.name == name) else {
+        return format!("{name} (missing)");
+    };
+    if !matches!(folder.role, FolderRole::Other | FolderRole::All) {
+        return folder_title(folder);
     }
+    let mut levels = vec![folders::leaf(&folder.name, folder.delimiter).to_owned()];
+    let mut current = folder.name.as_str();
+    while let Some(parent) = folders::parent(current, folder.delimiter) {
+        levels.push(
+            folders
+                .iter()
+                .find(|candidate| candidate.name == parent)
+                .filter(|parent| !matches!(parent.role, FolderRole::Other | FolderRole::All))
+                .map_or_else(
+                    || folders::leaf(parent, folder.delimiter).to_owned(),
+                    folder_title,
+                ),
+        );
+        current = parent;
+    }
+    levels.reverse();
+    levels.join(" / ")
 }
 
 /// A size in the largest unit that divides it: "5 MB", "300 KB", "1500 bytes".
@@ -186,7 +207,7 @@ pub fn dialog_title(account: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::model::{AccountId, FolderId, FolderRole};
+    use sealwax_domain::model::{AccountId, FolderId};
     use sealwax_domain::sieve::Operator;
 
     fn folders() -> Vec<Folder> {
@@ -194,14 +215,17 @@ mod tests {
             (1, "INBOX", FolderRole::Inbox),
             (2, "Junk", FolderRole::Junk),
             (3, "INBOX.Kunder", FolderRole::Other),
+            (4, "INBOX.Kunder.Acme", FolderRole::Other),
         ]
         .into_iter()
         .map(|(id, name, role)| Folder {
             id: FolderId(id),
             account: AccountId(1),
             name: name.to_owned(),
+            delimiter: Some('.'),
             role,
             selectable: true,
+            inferiors: true,
             total: 0,
             unread: 0,
         })
@@ -228,7 +252,11 @@ mod tests {
         };
         assert_eq!(
             summary(&rule, &folders),
-            "From contains kari@example.test → Move to INBOX.Kunder"
+            "From contains kari@example.test → Move to Inbox / Kunder"
+        );
+        assert_eq!(
+            folder_label("INBOX.Kunder.Acme", &folders),
+            "Inbox / Kunder / Acme"
         );
         let any = Rule {
             matching: Match::Any,

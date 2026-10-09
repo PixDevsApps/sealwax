@@ -35,7 +35,7 @@
 //! | `assert-setup open\|step\|sources\|focus VALUE` | The assistant's state |
 //! | `assert-setup client-id set\|none` | Whether a Microsoft client ID is in use (`config.toml`; self-tests have no built-in one) |
 //! | `assert-setup sign-in-needed KEY,…\|none` | The accounts the window's banner asks to sign in again, in order |
-//! | `assert-setup banner-queue ENTRY,…\|none` | Everything the banner has, in order: `keyring`, `certificate:KEY`, `sign-in:KEY`, `password:KEY`, `quota:KEY`, `offline`, `unreachable` |
+//! | `assert-setup banner-queue ENTRY,…\|none` | Everything the banner has, in order: `keyring`, `certificate:KEY`, `sign-in:KEY`, `password:KEY`, `quota:KEY`, `rules:KEY`, `offline`, `unreachable` |
 //! | `assert-opened last URL\|none`, `assert-opened count N` | The last link handed to the browser opener, and how many were |
 //! | `assert-toast TEXT` | The toast on screen says TEXT (`setup-dismiss-toasts` clears earlier ones) |
 //! | `assert-text-contains NAME TEXT` | A label's, a button's or an alert dialog's text (its heading and body) contains TEXT |
@@ -532,6 +532,7 @@ fn waiting_name(waiting: &Waiting) -> String {
         Attention::SignIn { browser: false, .. } => "password",
         Attention::QuotaFull { .. } => "quota",
         Attention::UncertainSend { .. } => "uncertain",
+        Attention::RulesFailed { .. } => "rules",
         Attention::Offline { network: true, .. } => "offline",
         Attention::Offline { .. } => "unreachable",
     };
