@@ -61,15 +61,18 @@ pub enum Category {
     Compose,
     View,
     General,
+    /// The account's mail rules (ADR-020, M9).
+    Rules,
 }
 
 impl Category {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Navigation,
         Self::Messages,
         Self::Compose,
         Self::View,
         Self::General,
+        Self::Rules,
     ];
 
     pub const fn label(self) -> &'static str {
@@ -79,6 +82,7 @@ impl Category {
             Self::Compose => "Compose",
             Self::View => "View",
             Self::General => "General",
+            Self::Rules => "Rules",
         }
     }
 }
@@ -249,10 +253,15 @@ pub enum ActionId {
     StartAtLogin,
     DefaultMailApp,
     Quit,
+    EditRules,
+    NewRuleFromMessage,
+    JunkSender,
+    TrustSender,
+    ApplyRules,
 }
 
 impl ActionId {
-    pub const ALL: [Self; 66] = [
+    pub const ALL: [Self; 71] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -319,6 +328,11 @@ impl ActionId {
         Self::StartAtLogin,
         Self::DefaultMailApp,
         Self::Quit,
+        Self::EditRules,
+        Self::NewRuleFromMessage,
+        Self::JunkSender,
+        Self::TrustSender,
+        Self::ApplyRules,
     ];
 
     pub const fn spec(self) -> ActionSpec {
@@ -705,6 +719,38 @@ impl ActionId {
                 menu: Some(MenuSection::Quit),
                 ..command("quit", "Quit", General, Scope::App, &["<Control>q"])
             },
+            // The account's rules (ADR-020, M9): the Rules dialog for the account the list shows,
+            // the message commands on the selected messages' sender, and Apply Rules on the
+            // folder shown. No default keys until the user picks them (ADR-017).
+            Self::EditRules => ActionSpec {
+                menu: Some(MenuSection::Settings),
+                ..command("edit-rules", "Rules…", Rules, Scope::Window, &[])
+            },
+            Self::NewRuleFromMessage => on_selection(
+                "new-rule-from-message",
+                "Create Rule from Message…",
+                Rules,
+                &[],
+            ),
+            Self::JunkSender => on_selection(
+                "junk-sender",
+                "Always Junk Messages from Sender",
+                Rules,
+                &[],
+            ),
+            Self::TrustSender => on_selection(
+                "trust-sender",
+                "Never Junk Messages from Sender",
+                Rules,
+                &[],
+            ),
+            Self::ApplyRules => command(
+                "apply-rules",
+                "Apply Rules to This Folder",
+                Rules,
+                Scope::Window,
+                &[],
+            ),
         }
     }
 
@@ -866,6 +912,7 @@ mod tests {
                 ActionId::CustomizeShortcuts,
                 ActionId::StartAtLogin,
                 ActionId::Quit,
+                ActionId::EditRules,
             ]
         );
         assert!(!ActionId::CommandPalette.spec().palette);
@@ -900,6 +947,9 @@ mod tests {
                 ActionId::ReplyAll,
                 ActionId::Forward,
                 ActionId::EditDraft,
+                ActionId::NewRuleFromMessage,
+                ActionId::JunkSender,
+                ActionId::TrustSender,
             ]
         );
         for id in needs {
@@ -998,5 +1048,19 @@ mod tests {
         ] {
             assert!(keys(id).is_empty(), "{id:?}");
         }
+        // M9's rules (ADR-020): no default keys until the user picks them.
+        for id in [
+            ActionId::EditRules,
+            ActionId::NewRuleFromMessage,
+            ActionId::JunkSender,
+            ActionId::TrustSender,
+            ActionId::ApplyRules,
+        ] {
+            assert!(keys(id).is_empty(), "{id:?}");
+            assert_eq!(id.category(), Category::Rules, "{id:?}");
+            assert!(id.spec().palette, "{id:?}");
+        }
+        assert_eq!(ActionId::EditRules.detailed_name(), "win.edit-rules");
+        assert_eq!(ActionId::ApplyRules.detailed_name(), "win.apply-rules");
     }
 }

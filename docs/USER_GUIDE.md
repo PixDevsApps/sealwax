@@ -334,6 +334,11 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | General | Start Sealwax at Login | — |  | `start-at-login` |
 | General | Make Sealwax the Default Mail App… | — |  | `default-mail-app` |
 | General | Quit | Ctrl+Q | anywhere | `quit` |
+| Rules | Rules… | — |  | `edit-rules` |
+| Rules | Create Rule from Message… | — |  | `new-rule-from-message` |
+| Rules | Always Junk Messages from Sender | — |  | `junk-sender` |
+| Rules | Never Junk Messages from Sender | — |  | `trust-sender` |
+| Rules | Apply Rules to This Folder | — |  | `apply-rules` |
 <!-- end of the keymap table -->
 
 "—" means the command has no key: the palette, a menu or a button reaches it, and `keys.toml` can give it one.

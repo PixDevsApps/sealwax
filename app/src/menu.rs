@@ -77,6 +77,7 @@ mod tests {
                     "app.preferences",
                     "app.customize-shortcuts",
                     "app.start-at-login",
+                    "win.edit-rules",
                 ],
                 vec!["app.quit"],
             ]
