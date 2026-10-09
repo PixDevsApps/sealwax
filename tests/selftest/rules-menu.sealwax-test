@@ -2,7 +2,8 @@
 # engine: the menu from a right click and from Menu and Shift+F10, on the row clicked (selected
 # first) or on the selection it is in; Always Junk and Never Junk with Undo (the message moved and
 # the sender listed, both taken back); a list change alone with Undo from z; Create Rule from
-# Message from a sender and from a list. Every name and address is fictional.
+# Message from a sender, the rule then run on the Inbox's mail and taken back with z, and from a
+# list. Every name and address is fictional.
 # Run: tools/headless.sh 85 target/debug/sealwax --self-test tests/selftest/rules-menu.sealwax-test
 
 desktop tiling
@@ -148,8 +149,21 @@ wait-until assert-rules-dialog rules
 rules-wait
 assert-rules-set "Kari Nordmann:on"
 wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if allof (address :is \"from\" \"karinordmann@example.test\")"
+# The rule runs at once on the mail already in the Inbox: both of the sender's messages move to
+# Kunder and leave the Inbox; z in the list takes the run back once the dialog is closed.
+engine-expect apply-rules folder=1 "rule=Kari Nordmann"
+rules-applied 2 Work:Kunder
+wait-until assert-toast "Moved 2 messages from Inbox to Kunder"
+wait-until assert-list-count 2
+assert-undoable true
+setup-dismiss-toasts
 key Escape
 wait-until assert-rules-dialog closed
+focus list
+key z
+wait-until assert-toast Undone
+wait-until assert-list-count 4
+setup-dismiss-toasts
 
 # A message from a list offers its List-Id instead.
 list-select 2

@@ -20,7 +20,7 @@ use sealwax_engine::net::Trust;
 use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
 use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
-use sealwax_infrastructure::store::{NewAccount, QueueTriage, Store, StoreOptions};
+use sealwax_infrastructure::store::{BatchId, NewAccount, QueueTriage, Store, StoreOptions};
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::collections::BTreeSet;
 use std::future::Future;
@@ -155,6 +155,24 @@ impl Running {
         }
     }
 
+    /// `RulesApplied` for `request` on `folder`: its result and batch.
+    async fn rules_applied(
+        &mut self,
+        request: u64,
+        folder: FolderId,
+    ) -> (Result<u32, RulesError>, Option<BatchId>) {
+        self.event(WAIT, |event| match event {
+            Event::RulesApplied {
+                request: id,
+                folder: at,
+                result,
+                batch,
+            } if *id == request && *at == folder => Some((result.clone(), *batch)),
+            _ => None,
+        })
+        .await
+    }
+
     /// Reads every event for `quiet`, into `seen`.
     async fn drain(&mut self, quiet: Duration) {
         let deadline = Instant::now() + quiet;
@@ -244,6 +262,20 @@ impl Running {
             .unwrap()
             .unwrap()
             .messages
+    }
+
+    /// The messages `folder` shows, the pending moves' overlay included.
+    async fn shown(&self, folder: FolderId) -> u32 {
+        self.store
+            .folders()
+            .recv()
+            .await
+            .unwrap()
+            .value
+            .into_iter()
+            .find(|found| found.id == folder)
+            .unwrap()
+            .total
     }
 
     /// The messages every `NewMail` read so far named, by folder.
@@ -834,22 +866,86 @@ async fn rules_run_on_new_mail_before_it_is_announced() {
     run.send(Command::ApplyRules {
         request: 7,
         folder: inbox,
+        rule: None,
+        undo_window: Duration::ZERO,
     });
-    let applied = run
-        .event(WAIT, |event| match event {
-            Event::RulesApplied {
-                request: 7,
-                folder,
-                result,
-            } if *folder == inbox => Some(result.clone()),
-            _ => None,
-        })
-        .await;
+    let (applied, batch) = run.rules_applied(7, inbox).await;
     assert_eq!(applied, Ok(1));
+    assert!(batch.is_some(), "one batch for Undo");
     let moved = within(WAIT, || async {
         fake.world().mailboxes["Kunder"].messages.len() == 2
     })
     .await;
     assert!(moved.is_some(), "Apply Rules moved message 1");
+
+    // One rule just saved runs alone, whatever the account's file holds; its moves wait for
+    // the undo window, so Undo brings the messages back without the server.
+    sealwax_infrastructure::rules::write(&rules, &key, "if foo {").unwrap();
+    let rule = "require \"fileinto\";\n# rule:[Two]\nif anyof (header :is \"subject\" \"Fake message 2\", header :is \"subject\" \"Fake message 3\")\n{\n\tfileinto \"Kunder\";\n}\n";
+    run.send(Command::ApplyRules {
+        request: 8,
+        folder: inbox,
+        rule: Some(rule.to_owned()),
+        undo_window: Duration::from_secs(60),
+    });
+    let (applied, batch) = run.rules_applied(8, inbox).await;
+    assert_eq!(applied, Ok(2));
+    assert_eq!(run.shown(inbox).await, 20, "gone from the Inbox at once");
+    assert_eq!(run.store.pending_ops(account).recv().await.unwrap(), 2);
+    let undone = run.store.undo(batch.unwrap()).recv().await.unwrap();
+    assert_eq!(undone.restored, 2, "{undone:?}");
+    assert_eq!(run.shown(inbox).await, 22, "back in the Inbox");
+    assert_eq!(run.store.pending_ops(account).recv().await.unwrap(), 0);
+    run.drain(Duration::from_millis(300)).await;
+    assert_eq!(
+        fake.world().mailboxes["Kunder"].messages.len(),
+        2,
+        "nothing reached the server"
+    );
+    run.send(Command::ApplyRules {
+        request: 11,
+        folder: inbox,
+        rule: Some(rule.to_owned()),
+        undo_window: Duration::ZERO,
+    });
+    assert_eq!(run.rules_applied(11, inbox).await.0, Ok(2));
+    let moved = within(WAIT, || async {
+        fake.world().mailboxes["Kunder"].messages.len() == 4
+    })
+    .await;
+    assert!(
+        moved.is_some(),
+        "without the window the moves reach the server"
+    );
+
+    run.send(Command::ApplyRules {
+        request: 9,
+        folder: inbox,
+        undo_window: Duration::ZERO,
+        rule: Some(
+            "require \"fileinto\"; if header :is \"subject\" \"Nothing\" { fileinto \"Kunder\"; }"
+                .to_owned(),
+        ),
+    });
+    assert_eq!(run.rules_applied(9, inbox).await, (Ok(0), None));
+    run.send(Command::ApplyRules {
+        request: 10,
+        folder: inbox,
+        undo_window: Duration::ZERO,
+        rule: Some("if foo {".to_owned()),
+    });
+    let (applied, batch) = run.rules_applied(10, inbox).await;
+    assert!(matches!(applied, Err(RulesError::Script(_))), "{applied:?}");
+    assert_eq!(batch, None);
+    run.drain(Duration::from_millis(300)).await;
+    let reported = run
+        .seen
+        .iter()
+        .filter(|event| matches!(event, Event::RulesFailed { .. }))
+        .count();
+    assert_eq!(
+        reported, 1,
+        "a rule that doesn't parse isn't the file's problem"
+    );
     run.stop();
 }

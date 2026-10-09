@@ -1,9 +1,10 @@
 //! An account's rules (ADR-020, docs/m9/folders-rules.md): its Sieve script, read from
 //! `rules/<key>.sieve` and compiled once per change of the file, run by Sealwax on the mail that
 //! arrives in the account's Inbox and Junk, before `Event::NewMail` (mail a rule sends to Junk or
-//! Trash doesn't notify), and on request for a folder (`Command::ApplyRules`). What the script
-//! decides becomes ops in the op queue, as the user's own triage does: one move, the copies
-//! before it, and flags; a POP3 account's copies are stored again from the message's bytes, as
+//! Trash doesn't notify), and on request for a folder (`Command::ApplyRules`, with the account's
+//! script or one rule just saved). What the script decides becomes ops in the op queue, as the
+//! user's own triage does, one batch per run that Undo takes back: one move, the copies before
+//! it, and flags; a POP3 account's copies are stored again from the message's bytes, as
 //! it has no server to copy on. A header the store doesn't keep costs one header fetch for the messages
 //! that need it (the stored original when the body is downloaded). A script that can't run runs
 //! nothing and is reported once per change of its file. Nothing of a message or a script
@@ -19,10 +20,10 @@ use sealwax_domain::model::{
 use sealwax_domain::sieve::{self, MessageView, Outcome, Script};
 use sealwax_infrastructure::ingest::{self, RawMessage};
 use sealwax_infrastructure::rules as files;
-use sealwax_infrastructure::store::{RuleChange, RuleChanges};
+use sealwax_infrastructure::store::{BatchId, RuleChange, RuleChanges};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// The headers the store keeps, which answer a test without a fetch.
 const STORED: [&str; 9] = [
@@ -37,7 +38,7 @@ const STORED: [&str; 9] = [
     "references",
 ];
 
-/// Messages run per store round trip on `ApplyRules`.
+/// Messages read per store round trip; what a run decides is queued at its end, one batch.
 const CHUNK: usize = 200;
 
 /// Each account's script as last read, by key.
@@ -411,21 +412,39 @@ struct Ran {
     changed: u32,
     /// Messages a rule moved to Junk or Trash.
     junked: HashSet<MessageId>,
+    /// The run's changes, for Undo: one batch.
+    batch: Option<BatchId>,
 }
 
-/// Runs the account's script on `messages` of `folder` and queues what it decides. `Ok(None)`
-/// when the account has no rules.
+/// Runs the account's script on `messages` of `folder` and queues what it decides, due at
+/// `not_before`. `Ok(None)` when the account has no rules.
 async fn run(
     shared: &Arc<Shared>,
     account: &Account,
     folder: FolderId,
     messages: &[MessageId],
+    not_before: i64,
 ) -> Result<Option<Ran>, RulesError> {
-    let account_id = account.id;
-    let Some(script) = script(shared, account_id, &account.key).await? else {
+    let Some(script) = script(shared, account.id, &account.key).await? else {
         return Ok(None);
     };
-    let fetch = needs_headers(&script);
+    run_script(shared, account, &script, folder, messages, not_before)
+        .await
+        .map(Some)
+}
+
+/// Runs `script` on `messages` of `folder` and queues what it decides, all of it in one batch
+/// due at `not_before` (Unix ms; 0 for at once).
+async fn run_script(
+    shared: &Arc<Shared>,
+    account: &Account,
+    script: &Script,
+    folder: FolderId,
+    messages: &[MessageId],
+    not_before: i64,
+) -> Result<Ran, RulesError> {
+    let account_id = account.id;
+    let fetch = needs_headers(script);
     let local = shared
         .store
         .is_pop3_account(account_id)
@@ -434,6 +453,7 @@ async fn run(
         .map_err(|_| RulesError::Store)?;
     let mut ran = Ran::default();
     let mut dropped = 0u32;
+    let mut queued = Vec::new();
     for chunk in messages.chunks(CHUNK) {
         let mut details = Vec::with_capacity(chunk.len());
         for id in chunk {
@@ -449,14 +469,13 @@ async fn run(
         } else {
             HashMap::new()
         };
-        let mut queued = Vec::new();
         let mut copies = Vec::new();
         for detail in &details {
             let fields = raw
                 .remove(&detail.summary.id)
                 .map(|bytes| header_fields(&bytes));
             let view = View::new(detail, &account.mailbox, fields);
-            let outcome = sieve::evaluate(&script, &view);
+            let outcome = sieve::evaluate(script, &view);
             let planned = plan(&outcome, folder, &account.folders);
             dropped += u32::from(planned.dropped);
             if planned.changes.is_empty() {
@@ -497,16 +516,16 @@ async fn run(
         if !copies.is_empty() {
             copy_locally(shared, account_id, copies).await;
         }
-        if queued.is_empty() {
-            continue;
-        }
+    }
+    if !queued.is_empty() {
         let result = shared
             .store
-            .queue_rules(queued)
+            .queue_rules(queued, not_before)
             .recv()
             .await
             .map_err(|_| RulesError::Store)?;
         ran.changed += result.applied;
+        ran.batch = result.batch;
         for account in result.accounts {
             wake(shared, account, actor::Control::Ops);
         }
@@ -525,7 +544,7 @@ async fn run(
         changed = ran.changed,
         "rules ran"
     );
-    Ok(Some(ran))
+    Ok(ran)
 }
 
 /// A copy for an account without a server: the message's bytes stored again in `to`.
@@ -644,7 +663,7 @@ pub(super) async fn on_arrival(
             return messages;
         }
     };
-    match run(shared, &account, folder, &messages).await {
+    match run(shared, &account, folder, &messages, 0).await {
         Ok(Some(ran)) if !ran.junked.is_empty() => messages
             .into_iter()
             .filter(|message| !ran.junked.contains(message))
@@ -657,8 +676,27 @@ pub(super) async fn on_arrival(
     }
 }
 
-/// `ApplyRules`: the account's rules on every message the store holds in `folder`.
-pub(super) async fn apply(shared: Arc<Shared>, request: RequestId, folder: FolderId) {
+/// When a run the user started is due: after the undo window (Unix ms), or at once.
+fn after(undo_window: Duration) -> i64 {
+    if undo_window.is_zero() {
+        return 0;
+    }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_millis() as i64);
+    now.saturating_add(i64::try_from(undo_window.as_millis()).unwrap_or(i64::MAX))
+}
+
+/// `ApplyRules`: the account's rules, or `rule` alone, on every message the store holds in
+/// `folder`, due after `undo_window`.
+pub(super) async fn apply(
+    shared: Arc<Shared>,
+    request: RequestId,
+    folder: FolderId,
+    rule: Option<String>,
+    undo_window: Duration,
+) {
+    let not_before = after(undo_window);
     let result = async {
         let messages: Vec<MessageId> = shared
             .store
@@ -670,17 +708,31 @@ pub(super) async fn apply(shared: Arc<Shared>, request: RequestId, folder: Folde
             .map(|message| message.id)
             .collect();
         let Some(account) = account_of(&shared, folder).await? else {
-            return Ok(0);
+            return Ok(None);
         };
-        Ok(run(&shared, &account, folder, &messages)
-            .await?
-            .map_or(0, |ran| ran.changed))
+        match rule {
+            Some(text) => {
+                let script = sieve::compile(&text).map_err(RulesError::Script)?;
+                run_script(&shared, &account, &script, folder, &messages, not_before)
+                    .await
+                    .map(Some)
+            }
+            None => run(&shared, &account, folder, &messages, not_before).await,
+        }
     }
     .await;
+    let (result, batch) = match result {
+        Ok(ran) => {
+            let ran = ran.unwrap_or_default();
+            (Ok(ran.changed), ran.batch)
+        }
+        Err(error) => (Err(error), None),
+    };
     shared.send(Event::RulesApplied {
         request,
         folder,
         result,
+        batch,
     });
 }
 

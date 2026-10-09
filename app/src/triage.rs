@@ -689,6 +689,12 @@ impl Controller {
         });
     }
 
+    /// Makes `batch`, queued outside the controller (rules the user ran on a folder, ADR-020),
+    /// the last action: `z`, Ctrl+Z and [`Controller::undo_then`] take it back.
+    pub fn adopt(&self, batch: BatchId) {
+        self.set_last(Some(batch));
+    }
+
     /// The same, for tests: the notice instead of the handlers.
     pub async fn run(
         &self,
@@ -845,6 +851,13 @@ impl Controller {
 
     /// Undoes the last action, if it is `batch` (the toast's) or any (`None`: `z`, Ctrl+Z).
     pub fn undo(&self, batch: Option<BatchId>) {
+        let this = self.clone();
+        self.undo_then(batch, move |notice| this.notify(notice));
+    }
+
+    /// The same, telling `tell` what came back instead of the notice handlers (the Rules
+    /// dialog says it over the window).
+    pub fn undo_then(&self, batch: Option<BatchId>, tell: impl Fn(&Notice) + 'static) {
         let Some(last) = self.inner.last.get() else {
             return;
         };
@@ -869,11 +882,11 @@ impl Controller {
             match undone {
                 Ok(undone) => {
                     this.wake(&undone.accounts);
-                    this.notify(&Notice::plain(undone_text(&undone)));
+                    tell(&Notice::plain(undone_text(&undone)));
                 }
                 Err(error) => {
                     tracing::warn!("an undo wasn't queued: {error}");
-                    this.notify(&Notice::plain("The change couldn't be undone".into()));
+                    tell(&Notice::plain("The change couldn't be undone".into()));
                 }
             }
         });

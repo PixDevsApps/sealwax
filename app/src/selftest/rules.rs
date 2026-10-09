@@ -10,7 +10,7 @@
 //! | `rules-opener` | Open File records the paths it would open instead of opening them |
 //! | `rules-wait` | Waits until the Rules dialog has saved every change |
 //! | `rules-failed KEY LINE COLUMN TEXT`, `rules-failed KEY file` | `Event::RulesFailed` for the account with KEY: a script error at LINE and COLUMN saying TEXT, or a file that can't be read |
-//! | `rules-applied N\|store\|file` | `Event::RulesApplied` for the oldest Apply Rules request waiting: N messages changed, or why the rules didn't run |
+//! | `rules-applied N\|store\|file [FOLDER]` | `Event::RulesApplied` for the oldest Apply Rules request waiting: N messages changed, or why the rules didn't run; with FOLDER (`Work:Kunder`), the list's first N rows move there through the store's rules queue, waiting for the undo window as the engine queues them, and the event carries their batch |
 //! | `row-menu POS` | Right-clicks the list's row POS through Broadway (opened as the gesture opens it when the click doesn't reach it headless) |
 //! | `row-menu-click NAME` | Clicks the open message menu's item NAME (`message-menu-junk-sender`) through Broadway |
 //! | `assert-rules-opened NAME\|none` | The file name Open File last opened |
@@ -30,20 +30,21 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::model::AccountId;
+use sealwax_domain::model::{AccountId, Flags};
 use sealwax_domain::sieve::{self, Item};
 use sealwax_engine::api::{Event, RulesError};
+use sealwax_infrastructure::store::{BatchId, RuleChange, RuleChanges};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 /// The commands this module adds to the script format, with their argument counts.
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("rules-opener", 0, 0),
     ("rules-wait", 0, 0),
     ("rules-failed", 2, 4),
-    ("rules-applied", 1, 1),
+    ("rules-applied", 1, 2),
     ("row-menu", 1, 1),
     ("row-menu-click", 1, 1),
     ("assert-rules-opened", 1, 1),
@@ -104,10 +105,17 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             let request = *rules::pending_applies()
                 .first()
                 .ok_or("no Apply Rules request is waiting")?;
-            let result = match arg(0) {
-                "store" => Err(RulesError::Store),
-                "file" => Err(RulesError::File),
-                count => Ok(number(count)? as u32),
+            let (result, batch) = match arg(0) {
+                "store" => (Err(RulesError::Store), None),
+                "file" => (Err(RulesError::File), None),
+                count => {
+                    let count = number(count)? as u32;
+                    let batch = match args.get(1) {
+                        Some(folder) => Some(move_rows(harness, count, folder).await?),
+                        None => None,
+                    };
+                    (Ok(count), batch)
+                }
             };
             let folder = sealwax_domain::model::FolderId(0);
             super::setup::emit(
@@ -116,6 +124,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                     request,
                     folder,
                     result,
+                    batch,
                 },
             )
             .await
@@ -157,6 +166,47 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         _ => check(harness, command, args),
     }
+}
+
+/// Moves the list's first `count` rows to `folder` as a rules run does: one batch in the store's
+/// rules queue, due after the undo window.
+async fn move_rows(harness: &Harness, count: u32, folder: &str) -> Result<BatchId, String> {
+    let to = super::mail::find_folder(harness, folder)?.id;
+    let list = super::mail::list(harness)?;
+    let messages = (0..count)
+        .map(|position| {
+            list.target_at(position)
+                .map(|target| RuleChanges {
+                    message: target.id,
+                    changes: vec![RuleChange::Move {
+                        to,
+                        add: Flags::NONE,
+                        remove: Flags::NONE,
+                    }],
+                })
+                .ok_or_else(|| format!("row {position} isn't loaded"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let window = harness
+        .state
+        .triage()
+        .map_or(crate::triage::UNDO_WINDOW, |triage| triage.window());
+    let due = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| since.as_millis() as i64)
+        + window.as_millis() as i64;
+    let store = harness
+        .state
+        .mailbox()
+        .shared_store()
+        .ok_or("the store is not open")?;
+    let queued = store
+        .queue_rules(messages, due)
+        .recv()
+        .await
+        .map_err(|error| error.to_string())?;
+    harness.wait_until_settled().await;
+    queued.batch.ok_or_else(|| "nothing was queued".to_owned())
 }
 
 fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {

@@ -24,7 +24,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::model::FolderId;
+use sealwax_domain::model::{AccountId, FolderId};
 use sealwax_domain::sieve::{Item, Rule, RuleSet};
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
@@ -65,6 +65,8 @@ struct Inner {
     modified: Cell<Option<SystemTime>>,
     saving: Cell<bool>,
     dirty: Cell<bool>,
+    /// Rules saved from the editor that run on the Inbox's mail once the file holds them.
+    runs: RefCell<Vec<Rule>>,
     editor: RefCell<Option<Editor>>,
     /// Where the keyboard focus goes after the next fill, the first that can take it.
     focus_next: RefCell<Vec<String>>,
@@ -80,6 +82,17 @@ pub fn current() -> Option<Shown> {
     OPEN.with(|open| open.borrow().upgrade())
         .filter(|inner| inner.dialog.is_mapped())
         .map(|inner| Shown { inner })
+}
+
+/// Shows `toast` in the dialog when it is open for `account`; `false` when it isn't.
+pub fn show_toast(account: AccountId, toast: &adw::Toast) -> bool {
+    match current() {
+        Some(shown) if shown.inner.account.id == account => {
+            shown.inner.toasts.add_toast(toast.clone());
+            true
+        }
+        _ => false,
+    }
 }
 
 /// The account's rules file changed elsewhere (Always Junk, Never Junk, a renamed folder):
@@ -180,6 +193,7 @@ pub fn open(state: &Rc<AppState>, account: Account, start: Start) {
         modified: Cell::new(None),
         saving: Cell::new(false),
         dirty: Cell::new(false),
+        runs: RefCell::new(Vec::new()),
         editor: RefCell::new(None),
         focus_next: RefCell::new(Vec::new()),
         weak: RefCell::new(Weak::new()),
@@ -723,11 +737,25 @@ impl Inner {
                 return;
             };
             inner.change(|set| {
-                match index {
-                    Some(index) if matches!(set.items.get(index), Some(Item::Rule(_))) => {
-                        set.items[index] = Item::Rule(rule);
-                    }
-                    _ => set.items.push(Item::Rule(rule)),
+                let before = match index {
+                    Some(index) => match set.items.get_mut(index) {
+                        Some(Item::Rule(old)) => Some(std::mem::replace(old, rule.clone())),
+                        _ => None,
+                    },
+                    None => None,
+                };
+                if before.is_none() {
+                    set.items.push(Item::Rule(rule.clone()));
+                }
+                // A new rule, or one whose conditions or actions changed, runs on the mail
+                // already in the Inbox once the file holds it.
+                let changed = before.is_none_or(|old| {
+                    old.matching != rule.matching
+                        || old.conditions != rule.conditions
+                        || old.actions != rule.actions
+                });
+                if rule.enabled && changed {
+                    inner.runs.borrow_mut().push(rule);
                 }
                 true
             });
@@ -830,6 +858,7 @@ impl Inner {
                     inner.saving.set(false);
                     return;
                 };
+                let runs = inner.runs.take();
                 let place = inner.place.clone();
                 drop(inner);
                 let saved = file::run(move || file::save(&place, &set, expected)).await;
@@ -840,6 +869,11 @@ impl Inner {
                     Some(Ok(modified)) => {
                         inner.modified.set(modified);
                         super::saved(&inner.account);
+                        if let Some(state) = inner.state.upgrade() {
+                            for rule in &runs {
+                                super::apply_rule(&state, &inner.account, rule);
+                            }
+                        }
                     }
                     Some(Err(SaveError::Changed)) => {
                         inner.saving.set(false);

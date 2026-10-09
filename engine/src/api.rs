@@ -17,6 +17,7 @@ use sealwax_domain::account::{
 use sealwax_domain::config::Storage;
 use sealwax_domain::folders::NameProblem;
 use sealwax_domain::model::{AccountId, DraftId, FolderId, MessageId};
+use sealwax_infrastructure::store::BatchId;
 use std::fmt;
 use zeroize::Zeroizing;
 
@@ -146,11 +147,15 @@ pub enum Command {
         account: AccountId,
     },
     /// Run the account's rules on every message the store holds in `folder`, as if each had
-    /// just arrived there (Apply Rules to This Folder, ADR-020). Answered with one
-    /// `RulesApplied`.
+    /// just arrived there (Apply Rules to This Folder, ADR-020); with `rule`, that Sieve script
+    /// instead of the account's (a rule just saved in the Rules dialog, run on its Inbox). What
+    /// they change waits `undo_window` before it reaches the server, as the user's own moves
+    /// do, so Undo puts it back at once. Answered with one `RulesApplied`.
     ApplyRules {
         request: RequestId,
         folder: FolderId,
+        rule: Option<String>,
+        undo_window: std::time::Duration,
     },
     /// Create, rename or delete one of `account`'s folders (ADR-020). An IMAP account's change
     /// runs on its command connection, online only; a POP3 account's local folders change at
@@ -311,11 +316,13 @@ pub enum Event {
         folder: FolderId,
         messages: Vec<MessageId>,
     },
-    /// `ApplyRules` ran: `Ok` counts the messages a rule moved, copied or flagged.
+    /// `ApplyRules` ran: `Ok` counts the messages a rule moved, copied or flagged; `batch` is
+    /// what Undo takes back, `None` when nothing was queued.
     RulesApplied {
         request: RequestId,
         folder: FolderId,
         result: Result<u32, RulesError>,
+        batch: Option<BatchId>,
     },
     /// The account's rules file can't be run, so no rule runs until it changes (ADR-020). Sent
     /// once per change of the file.

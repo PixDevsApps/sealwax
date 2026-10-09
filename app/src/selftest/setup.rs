@@ -704,10 +704,18 @@ fn fields(
         Command::LoadOlder { folder } => {
             ("load-older", None, vec![("folder", folder.0.to_string())])
         }
-        Command::ApplyRules { request, folder } => (
+        Command::ApplyRules {
+            request,
+            folder,
+            rule,
+            ..
+        } => (
             "apply-rules",
             Some(*request),
-            vec![("folder", folder.0.to_string())],
+            vec![
+                ("folder", folder.0.to_string()),
+                ("rule", rule.as_deref().map_or("none".to_owned(), rule_name)),
+            ],
         ),
         Command::FetchBodies { messages } => (
             "fetch-bodies",
@@ -803,6 +811,16 @@ fn fields(
             (kind, Some(*request), fields)
         }
         Command::Shutdown => ("shutdown", None, Vec::new()),
+    }
+}
+
+/// The name of the one rule an `ApplyRules` runs (a rule just saved), `?` when it holds
+/// something else.
+fn rule_name(script: &str) -> String {
+    let set = sealwax_domain::sieve::RuleSet::read(script, &Default::default());
+    match set.as_ref().map(|set| set.rules().collect::<Vec<_>>()) {
+        Ok(rules) if rules.len() == 1 => crate::rules::text::rule_title(rules[0]).to_owned(),
+        _ => "?".to_owned(),
     }
 }
 

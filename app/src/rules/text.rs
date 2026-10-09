@@ -176,6 +176,47 @@ pub fn applied_text(result: &Result<u32, RulesError>, folder: &str) -> String {
     }
 }
 
+/// Where a rule moves the messages it matches, as the sidebar names the folder, Junk or Trash
+/// (as the engine plans it: Move to Junk before Move to folder, before Delete); `None` for a
+/// rule that leaves them where they are.
+pub fn moved_to(rule: &Rule, folders: &[Folder]) -> Option<String> {
+    let has = |wanted: fn(&Action) -> bool| rule.actions.iter().any(wanted);
+    if has(|action| matches!(action, Action::MoveToJunk)) {
+        return Some("Junk".to_owned());
+    }
+    let moved = rule.actions.iter().find_map(|action| match action {
+        Action::MoveTo(name) => Some(match folders.iter().find(|folder| folder.name == *name) {
+            Some(folder) if matches!(folder.role, FolderRole::Other | FolderRole::All) => {
+                folders::leaf(&folder.name, folder.delimiter).to_owned()
+            }
+            Some(folder) => folder_title(folder),
+            None => name.clone(),
+        }),
+        _ => None,
+    });
+    moved.or_else(|| has(|action| matches!(action, Action::Delete)).then(|| "Trash".to_owned()))
+}
+
+/// The toast while a rule just saved runs on the mail already in `folder`.
+pub fn rule_applying_text(name: &str, folder: &str) -> String {
+    format!("Applying “{name}” to {folder}…")
+}
+
+/// What a rule just saved did to the mail already in `folder`, or why it didn't run.
+pub fn rule_applied_text(
+    result: &Result<u32, RulesError>,
+    name: &str,
+    moved_to: Option<&str>,
+    folder: &str,
+) -> String {
+    match (result, moved_to) {
+        (Ok(0), _) => format!("No message in {folder} matches “{name}”"),
+        (Ok(count), Some(to)) => format!("Moved {} from {folder} to {to}", messages(*count)),
+        (Ok(count), None) => format!("“{name}” changed {} in {folder}", messages(*count)),
+        (Err(error), _) => format!("“{name}” didn't run. {}", problem_text(error)),
+    }
+}
+
 /// What Always Junk or Never Junk did to the sender's list, as a sentence of its own.
 pub fn listed_text(always: bool, address: &str, changed: bool) -> String {
     match (always, changed) {
@@ -352,5 +393,72 @@ mod tests {
         );
         assert_eq!(sender_title(false, None), "Never Junk Messages from Sender");
         assert_eq!(dialog_title("Work"), "Rules for Work");
+    }
+
+    #[test]
+    fn a_rule_just_saved_says_where_it_moved_the_inbox_mail() {
+        let folders = folders();
+        let rule = |actions: Vec<Action>| Rule {
+            name: "Kunder".to_owned(),
+            enabled: true,
+            matching: Match::All,
+            conditions: vec![from_contains("kari@example.test")],
+            actions,
+        };
+        let to = |actions| moved_to(&rule(actions), &folders);
+        assert_eq!(
+            to(vec![
+                Action::MarkRead,
+                Action::MoveTo("INBOX.Kunder.Acme".to_owned())
+            ]),
+            Some("Acme".to_owned())
+        );
+        assert_eq!(
+            to(vec![
+                Action::MoveTo("INBOX.Kunder".to_owned()),
+                Action::MoveToJunk
+            ]),
+            Some("Junk".to_owned())
+        );
+        assert_eq!(to(vec![Action::Delete]), Some("Trash".to_owned()));
+        assert_eq!(
+            to(vec![
+                Action::Delete,
+                Action::MoveTo("INBOX.Kunder".to_owned())
+            ]),
+            Some("Kunder".to_owned()),
+            "a fileinto keeps the message filed"
+        );
+        assert_eq!(
+            to(vec![
+                Action::Star,
+                Action::CopyTo("INBOX.Kunder".to_owned())
+            ]),
+            None
+        );
+        assert_eq!(
+            rule_applying_text("Kunder", "Inbox"),
+            "Applying “Kunder” to Inbox…"
+        );
+        assert_eq!(
+            rule_applied_text(&Ok(3), "Kunder", Some("Kunder"), "Inbox"),
+            "Moved 3 messages from Inbox to Kunder"
+        );
+        assert_eq!(
+            to(vec![Action::MoveTo("Junk".to_owned())]),
+            Some("Junk".to_owned())
+        );
+        assert_eq!(
+            rule_applied_text(&Ok(1), "Stjerne", None, "Inbox"),
+            "“Stjerne” changed 1 message in Inbox"
+        );
+        assert_eq!(
+            rule_applied_text(&Ok(0), "Kunder", Some("Kunder"), "Inbox"),
+            "No message in Inbox matches “Kunder”"
+        );
+        assert_eq!(
+            rule_applied_text(&Err(RulesError::Store), "Kunder", None, "Inbox"),
+            "“Kunder” didn't run. The mail store couldn't be read"
+        );
     }
 }

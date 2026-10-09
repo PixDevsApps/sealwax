@@ -8,6 +8,10 @@
 //! - **Always / Never Junk** put the sender's address on a list, save the file, and act on the
 //!   selected messages at once (to Junk, or from Junk to the Inbox, with the junk keywords, as
 //!   Move to Junk and Not Junk do), with Undo taking back both.
+//! - **A rule saved** in the editor, new or with changed conditions or actions, runs at once on
+//!   the mail already in its account's Inbox, alone (the dialog sends it once the file is
+//!   written); Apply Rules runs them all on a folder. Either run is the last action, with Undo:
+//!   its moves wait for the undo window as the user's own do.
 //! - **Events:** `RulesFailed` puts up the window's banner, "Rules in {account} can't run",
 //!   with the line and column and Open File, until the file runs again (the folder is watched:
 //!   a broken file shows as soon as it is saved, and a fixed one clears); `RulesApplied` is a
@@ -36,10 +40,10 @@ use sealwax_domain::account::AccountKey;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::folders;
 use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole, MessageId};
-use sealwax_domain::sieve::{Action, Folders, Item, RuleSet};
+use sealwax_domain::sieve::{Action, Folders, Item, Rule, RuleSet};
 use sealwax_domain::triage::Triage;
 use sealwax_engine::api::{Command, Event, RequestId, RulesError};
-use sealwax_infrastructure::store::ViewScope;
+use sealwax_infrastructure::store::{BatchId, ViewScope};
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::path::Path;
@@ -177,14 +181,24 @@ struct Revert {
 
 type Opener = Rc<dyn Fn(&Path)>;
 
+/// A run of the rules waiting for the engine's answer.
+struct Applying {
+    /// The folder's name in the toasts.
+    folder: String,
+    /// A rule just saved, run alone: its name, where it moves mail, and its account, whose
+    /// Rules dialog shows the toasts while it is open.
+    rule: Option<(String, Option<String>, AccountId)>,
+    /// The toast that says it runs.
+    toast: adw::Toast,
+}
+
 #[derive(Default)]
 struct Shared {
     state: RefCell<Weak<AppState>>,
     /// The accounts whose rules can't run, and why, in the order they were found.
     problems: RefCell<Vec<(AccountId, String)>>,
-    /// Apply Rules requests waiting for the engine: the folder's name and the toast that says
-    /// they run.
-    applying: RefCell<HashMap<RequestId, (String, adw::Toast)>>,
+    /// Apply Rules requests and rules just saved, waiting for the engine.
+    applying: RefCell<HashMap<RequestId, Applying>>,
     /// The last action, when it was a list change alone (Always or Never Junk with no message
     /// to move), and when its Undo stops.
     last: RefCell<Option<Revert>>,
@@ -219,7 +233,8 @@ pub fn install(state: &Rc<AppState>) {
             request,
             folder: _,
             result,
-        } => applied(*request, result),
+            batch,
+        } => applied(*request, result, *batch),
         _ => {}
     });
     shared.subscription.replace(Some(subscription));
@@ -686,50 +701,141 @@ pub fn undo_last(state: &Rc<AppState>) -> bool {
 }
 
 /// Apply Rules to This Folder: the account's rules on every message `folder` holds, by the
-/// engine; a toast says they run, then what they changed.
+/// engine; a toast says they run, then what they changed, with Undo.
 pub fn apply(state: &Rc<AppState>, folder: FolderId) {
     let title = state
         .mailbox()
         .folder(folder)
         .map(|folder| triage::folder_title(&folder))
         .unwrap_or_default();
+    let running = text::applying_text(&title);
+    run(state, folder, None, title, None, running);
+}
+
+/// A rule just saved in the Rules dialog: it runs alone on the mail already in its account's
+/// Inbox, as if it had just arrived there; what it moves leaves the Inbox at once, with Undo.
+pub fn apply_rule(state: &Rc<AppState>, account: &Account, rule: &Rule) {
+    let Some(inbox) = account.role(FolderRole::Inbox) else {
+        return;
+    };
+    let set = RuleSet {
+        items: vec![Item::Rule(rule.clone())],
+        ..RuleSet::default()
+    };
+    let Ok(script) = set.render(&account.sieve_folders()) else {
+        return;
+    };
+    let title = triage::folder_title(inbox);
+    let name = text::rule_title(rule).to_owned();
+    let running = text::rule_applying_text(&name, &title);
+    let moved_to = text::moved_to(rule, &account.folders);
+    run(
+        state,
+        inbox.id,
+        Some(script),
+        title,
+        Some((name, moved_to, account.id)),
+        running,
+    );
+}
+
+/// Asks the engine to run the rules, or `script`, on `folder`, with a toast while they run.
+fn run(
+    state: &Rc<AppState>,
+    folder: FolderId,
+    script: Option<String>,
+    title: String,
+    rule: Option<(String, Option<String>, AccountId)>,
+    running: String,
+) {
+    let account = rule.as_ref().map(|(_, _, account)| *account);
     let engine = state.engine();
     let request = engine.next_request();
+    let undo_window = state
+        .triage()
+        .map_or(triage::UNDO_WINDOW, |triage| triage.window());
     if engine
-        .send(Command::ApplyRules { request, folder })
+        .send(Command::ApplyRules {
+            request,
+            folder,
+            rule: script,
+            undo_window,
+        })
         .is_err()
     {
         let toast = adw::Toast::builder()
             .title("Not connected to the mail engine")
             .use_markup(false)
             .build();
-        state.show_toast(&toast, false);
+        show(state, account, &toast);
         return;
     }
     let toast = adw::Toast::builder()
-        .title(text::applying_text(&title))
+        .title(running)
         .use_markup(false)
         .timeout(0)
         .build();
-    state.show_toast(&toast, false);
-    shared()
-        .applying
-        .borrow_mut()
-        .insert(request, (title, toast));
+    show(state, account, &toast);
+    shared().applying.borrow_mut().insert(
+        request,
+        Applying {
+            folder: title,
+            rule,
+            toast,
+        },
+    );
 }
 
-fn applied(request: RequestId, result: &Result<u32, RulesError>) {
-    let Some((title, running)) = shared().applying.borrow_mut().remove(&request) else {
+/// Shows `toast` in the account's Rules dialog while it is open, else in the main window.
+fn show(state: &AppState, account: Option<AccountId>, toast: &adw::Toast) {
+    if !account.is_some_and(|account| dialog::show_toast(account, toast)) {
+        state.show_toast(toast, false);
+    }
+}
+
+fn applied(request: RequestId, result: &Result<u32, RulesError>, batch: Option<BatchId>) {
+    let Some(applying) = shared().applying.borrow_mut().remove(&request) else {
         return;
     };
-    running.dismiss();
-    if let Some(state) = app_state() {
-        let toast = adw::Toast::builder()
-            .title(text::applied_text(result, &title))
-            .use_markup(false)
-            .build();
-        state.show_toast(&toast, false);
+    applying.toast.dismiss();
+    let Some(state) = app_state() else {
+        return;
+    };
+    let (title, account) = match &applying.rule {
+        Some((name, moved_to, account)) => (
+            text::rule_applied_text(result, name, moved_to.as_deref(), &applying.folder),
+            Some(*account),
+        ),
+        None => (text::applied_text(result, &applying.folder), None),
+    };
+    let toast = adw::Toast::builder().title(title).use_markup(false).build();
+    // What the run changed is the last action: Undo (here, `z` and Ctrl+Z) takes it back.
+    if let (Ok(1..), Some(batch), Some(triage)) = (result, batch, state.triage()) {
+        triage.adopt(batch);
+        let window = triage.window();
+        toast.set_timeout(window.as_millis().div_ceil(1000).max(1) as u32);
+        toast.set_priority(adw::ToastPriority::High);
+        toast.set_button_label(Some("Undo"));
+        let weak = Rc::downgrade(&state);
+        toast.connect_button_clicked(move |_| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            if let Some(triage) = state.triage() {
+                let weak = Rc::downgrade(&state);
+                triage.undo_then(Some(batch), move |notice| {
+                    if let Some(state) = weak.upgrade() {
+                        let toast = adw::Toast::builder()
+                            .title(notice.text.as_str())
+                            .use_markup(false)
+                            .build();
+                        show(&state, account, &toast);
+                    }
+                });
+            }
+        });
     }
+    show(&state, account, &toast);
 }
 
 /// The account's rules can run again (`None`), or can't, and why.

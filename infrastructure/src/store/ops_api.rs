@@ -249,13 +249,20 @@ impl Store {
     }
 
     /// Queues what an account's rules decided for messages that arrived, as one batch due at
-    /// once, with its overlay: moves and flags as triage queues them, copies as their own ops
-    /// before them. Local accounts' moves and flags apply at once; their copies are left to the
-    /// caller (counted as `NoTarget`), as there is no server to copy on. A message whose pending
-    /// ops already take it away, or a move to its own folder or to a folder of another account,
-    /// is left alone.
-    pub fn queue_rules(&self, messages: Vec<RuleChanges>) -> Reply<Queued> {
-        self.write(|reply| WriteJob::Ops(OpsJob::Rules { messages, reply }))
+    /// `not_before` (0 for at once; a run the user started waits for the undo window, so its
+    /// Undo puts the messages back without the server), with its overlay: moves and flags as
+    /// triage queues them, copies as their own ops before them. Local accounts' moves and flags
+    /// apply at once; their copies are left to the caller (counted as `NoTarget`), as there is
+    /// no server to copy on. A message whose pending ops already take it away, or a move to its
+    /// own folder or to a folder of another account, is left alone.
+    pub fn queue_rules(&self, messages: Vec<RuleChanges>, not_before: i64) -> Reply<Queued> {
+        self.write(|reply| {
+            WriteJob::Ops(OpsJob::Rules {
+                messages,
+                not_before,
+                reply,
+            })
+        })
     }
 
     /// Marks every message of `folder` read, the server's unread below a windowed folder's floor

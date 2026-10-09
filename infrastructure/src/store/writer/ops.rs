@@ -41,6 +41,7 @@ pub(crate) enum OpsJob {
     },
     Rules {
         messages: Vec<RuleChanges>,
+        not_before: i64,
         reply: Sender<Queued>,
     },
     Undo {
@@ -100,8 +101,12 @@ impl Writer {
             } => {
                 let _ = reply.try_send(self.folder_read(folder, not_before));
             }
-            OpsJob::Rules { messages, reply } => {
-                let _ = reply.try_send(self.rules(&messages));
+            OpsJob::Rules {
+                messages,
+                not_before,
+                reply,
+            } => {
+                let _ = reply.try_send(self.rules(&messages, not_before));
             }
             OpsJob::Undo { batch, reply } => {
                 let _ = reply.try_send(self.undo(batch));
@@ -314,7 +319,7 @@ impl Writer {
         })
     }
 
-    fn rules(&mut self, messages: &[RuleChanges]) -> Result<Queued, StoreError> {
+    fn rules(&mut self, messages: &[RuleChanges], not_before: i64) -> Result<Queued, StoreError> {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -389,7 +394,7 @@ impl Writer {
                     change,
                     prior_folder: at,
                     prior_flags: prior,
-                    not_before: 0,
+                    not_before,
                 };
                 if let Change::Move { to, .. } = change {
                     at = to;

@@ -64,6 +64,17 @@ engine-expect apply-rules folder=1
 rules-applied 0
 wait-until assert-toast "No rule matched in Inbox"
 setup-dismiss-toasts
+# What they changed is the last action: the toast's Undo takes it back.
+action win.apply-rules
+engine-expect apply-rules folder=1 rule=none
+rules-applied 1 Work:Arkiv
+wait-until assert-toast "Rules changed 1 message in Inbox"
+wait-until assert-list-count 0
+assert-undoable true
+toast-undo
+wait-until assert-toast Undone
+wait-until assert-list-count 1
+setup-dismiss-toasts
 folder all-inboxes
 assert-action-enabled win.apply-rules false
 folder inbox Work

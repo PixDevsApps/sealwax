@@ -1,6 +1,7 @@
 # The Rules dialog (M9, ADR-020) for an account with a key, on a scripted engine: no rules yet;
 # New Rule in the editor, whose Save waits for a value and a folder; the rule saved to the file
-# in Roundcube's form; a second rule; reorder, switch off, edit and delete with Undo; the
+# in Roundcube's form, then run alone on the mail already in the Inbox, with Undo; a second
+# rule; reorder, switch off, edit (a switched-off rule doesn't run) and delete with Undo; the
 # senders' lists with their field; a file edited by hand shows "Edited by hand" with Open File
 # and keeps its text; a file that can't be read says where; a save over a file changed meanwhile
 # is refused. Every name and address is fictional.
@@ -15,8 +16,12 @@ triage-account Work work
 folder-add Work Kunder
 folder-add Work Kunder/Acme
 mail-add Work:inbox 10m "Tilbud" "from=Kari Nordmann"
+mail-add Work:inbox 20m "Faktura" "from=Kari Nordmann"
 folder inbox Work
 engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+assert-list-count 2
 
 # No file: no rules; the palette's Rules… opens the dialog for the account shown.
 action win.edit-rules
@@ -49,6 +54,21 @@ wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "# rule:[Ku
 assert-file-contains $TMP/config/sealwax/rules/work.sieve "if allof (header :contains \"from\" \"kari@example.test\")"
 assert-file-contains $TMP/config/sealwax/rules/work.sieve "fileinto \"Kunder\";"
 
+# Once the file holds it, the rule runs alone on the mail already in the Inbox: what it moves
+# leaves the Inbox at once, and the dialog's toast says where, with Undo (as `z` would).
+engine-expect apply-rules folder=1 rule=Kunder
+assert-toast "Applying “Kunder” to Inbox…"
+rules-applied 2 Work:Kunder
+wait-until assert-toast "Moved 2 messages from Inbox to Kunder"
+wait-until assert-list-count 0
+assert-undoable true
+assert-accessible dialog
+toast-undo
+wait-until assert-toast "Undone"
+wait-until assert-list-count 2
+assert-undoable false
+setup-dismiss-toasts
+
 # A second rule with a header, a size and two actions.
 setup-click rules-new
 wait-until assert-rules-dialog edit
@@ -74,6 +94,11 @@ rules-wait
 assert-rules-set "Kunder:on,Store vedlegg:on"
 assert-rule-row 1 "Store vedlegg" "x-priority contains 1 or Size over 5 MB → Star, Stop"
 wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if anyof (header :contains \"x-priority\" \"1\", size :over 5M)"
+engine-expect apply-rules folder=1 "rule=Store vedlegg"
+assert-toast "Applying “Store vedlegg” to Inbox…"
+rules-applied 0
+wait-until assert-toast "No message in Inbox matches “Store vedlegg”"
+setup-dismiss-toasts
 
 # Move Up, the switch, Edit.
 assert-sensitive rule-up-0 false
@@ -98,6 +123,7 @@ wait-until assert-rules-dialog rules
 rules-wait
 assert-rule-row 1 Kunder "From is kari@example.test → Move to Kunder"
 wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if false # allof (address :is \"from\" \"kari@example.test\")"
+engine-expect none but load-older,folder-opened
 
 # Delete, then Undo in the dialog's toast.
 click rule-delete-0

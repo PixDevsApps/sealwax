@@ -473,8 +473,19 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 bodies::request(&shared, messages, true);
                 continue;
             }
-            Command::ApplyRules { request, folder } => {
-                tokio::spawn(rules::apply(shared.clone(), request, folder));
+            Command::ApplyRules {
+                request,
+                folder,
+                rule,
+                undo_window,
+            } => {
+                tokio::spawn(rules::apply(
+                    shared.clone(),
+                    request,
+                    folder,
+                    rule,
+                    undo_window,
+                ));
                 continue;
             }
             Command::FetchPart { message, part } => {

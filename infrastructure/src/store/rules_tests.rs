@@ -8,7 +8,7 @@ use super::ops_tests::{
 use super::*;
 
 fn rules(store: &Store, messages: Vec<RuleChanges>) -> Queued {
-    store.queue_rules(messages).recv_blocking().unwrap()
+    store.queue_rules(messages, 0).recv_blocking().unwrap()
 }
 
 fn done(store: &Store, group: &OpGroup, new_uids: Vec<(u32, u32)>) {
