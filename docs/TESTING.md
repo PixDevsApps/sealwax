@@ -73,6 +73,24 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.0, the first public release — 2026-10-09
+
+[ADR-021](DECISIONS.md#adr-021--a-public-repository-releases-on-github-and-the-aur-2026-10-09). `v0.4.0` is `b4fc4fe`; this machine, rustc 1.98.1, WebKitGTK 2.52.6.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the 0.4.0 tree, `SEALWAX_CI_DISPLAY=72 bash tools/ci.sh --ui` (21:34–21:43) | Stopped at `triage-frames`: Sealwax crashed in GTK's icon lookup 0.09 s after the first frame (`object_ref: assertion '!object_already_finalized'`, SIGSEGV in `gtk_icon_theme_lookup_icon`), the open intermittent crash; 1,482 tests and 67 scripts (6,687 steps) had passed | The known crash |
+| CI again, on `7836445` (21:44–21:57) | 1,482 passed, 0 failed, 98 ignored; 75 scripts, 7,507 of 7,507 steps; the hostile suite clean (60 cases, 273 s) | Pass |
+| The package build's `check()` on `7836445` (`tools/release.py build`, 21:57–22:01) | 760 passed, **1 failed**: `rules_run_on_new_mail_before_it_is_announced` read the Inbox before the rules' moves had finished (the fake server has no MOVE: UID COPY, then `\Deleted` and UID EXPUNGE; the test waited only for the copies) | A test race, fixed in `b4fc4fe` |
+| That test, the old and the fixed binary, each run 24 at a time with a busy loop on each of the 24 cores, five rounds | Old: 20 of 120 failed; fixed: 0 of 120. Without the load, 12 at a time: 0 of 60 each. A capture of 24 old runs under load: 6 failed on the race, 1 on a later assertion (`RulesFailed` reported twice where once was expected; cause not found, a follow-up) | Pass |
+| `cargo fmt --check`, Clippy (`-p sealwax-engine --all-targets -D warnings`), `cargo test -p sealwax-engine --test newmail` on `b4fc4fe` | Clean; 13 passed | Pass |
+| `python3 tools/release.py build` on `v0.4.0` (22:22–22:26) | makepkg's `check()` 1,067 passed, 0 failed, 90 ignored; only "Skipping dependency checks"; the binary says `sealwax 0.4.0`, carries the client ID (compared, never printed) and no path of the home folder; the AUR tarball holds exactly the package's `usr/` entries, all owned by root | Pass |
+| `packaging/aur/sealwax-bin/PKGBUILD.in` built with makepkg against the local tarball (a scratch folder, not installed) | A package of the same files, owned by root, its binary identical to the release package's; `provides = sealwax=0.4.0` | Pass |
+| The public repository | `main` and the tags pushed to the new `PixDevsApps/sealwax`; GitHub answers "No commit found" for the old `main` (`cef353c`) and 404 for `docs/PLAN.md`; `sealwax-archive` private | Pass |
+| The release `v0.4.0` (`tools/release.py github`) | Four files; INSTALL.md's download URL (`releases/latest/download/sealwax-x86_64.pkg.tar.zst`) downloaded with curl: the same SHA-256 as the build, read by `pacman -Qp` as `sealwax 0.4.0-1` | Pass |
+
+- **Not verified:** installing from the download (`pacman -U`); the AUR package on the AUR (not published: the AUR closed new accounts); uninstalling.
+
 ### M9 a narrow design sits on the theme — 2026-10-09
 
 The user's request (a newsletter's column on a light grey wrapper across a dark reader). On `main` at `1425cf9` with the change in the working tree; this machine, WebKitGTK 2.52.6, headless (Broadway, display 72).
