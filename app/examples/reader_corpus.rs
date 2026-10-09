@@ -19,7 +19,8 @@
 //! ```
 //!
 //! `--previews` saves the gate's screenshots of a few templates in both themes into
-//! `tools/progress/public/`. `--no-snapshots` skips the two blank-frame checks, which render the
+//! `tools/progress/public/`; `--bodies` saves every HTML body's whole document, as WebKit
+//! renders it, into `.local/corpus/bodies/`. `--no-snapshots` skips the two blank-frame checks, which render the
 //! whole view, to measure the GPU memory without them (PLAN.md's follow-up). Exits 0 when no body is blank, every height is exact and stable,
 //! the canary saw nothing and GLib wrote no critical; times and overflow are recorded, not
 //! judged.
@@ -99,6 +100,8 @@ struct Row {
     dark_query: bool,
     declares_dark: bool,
     body_background: String,
+    /// A paper body's column sits on the theme's background (the reader's margins script).
+    fitted: bool,
     ready_ms: f64,
     painted_ms: f64,
     failures: Vec<String>,
@@ -390,6 +393,7 @@ fn main() -> glib::ExitCode {
     let _ = sealwax_infrastructure::logging::init();
     let args: Vec<String> = std::env::args().skip(1).collect();
     let previews = args.iter().any(|arg| arg == "--previews");
+    let bodies = args.iter().any(|arg| arg == "--bodies");
     let snapshots = !args.iter().any(|arg| arg == "--no-snapshots");
     let only: Option<Vec<String>> = args
         .iter()
@@ -473,7 +477,7 @@ fn main() -> glib::ExitCode {
             glib::spawn_future_local(async move {
                 let ok = run(
                     &theme, &reader, &window, &state, &messages, &filled, &canary, previews,
-                    snapshots,
+                    snapshots, bodies,
                 )
                 .await
                 .unwrap_or_else(|error| {
@@ -505,6 +509,7 @@ async fn run(
     canary: &Canary,
     previews: bool,
     snapshots: bool,
+    bodies: bool,
 ) -> Result<bool, String> {
     let reports = support::shown_reports(reader);
     if std::env::var_os("BROADWAY_DISPLAY").is_some() {
@@ -531,6 +536,9 @@ async fn run(
                 .ok_or_else(|| format!("{} wasn't stored", message.id))?;
             let row = measure(reader, &reports, window, message, id, mode, snapshots).await;
             print_row(&row);
+            if bodies && row.width > 0 {
+                save_body(reader, &format!("{mode}-{}", message.id)).await?;
+            }
             if previews && PREVIEWS.contains(&message.id.as_str()) {
                 let date = glib::DateTime::now_local()
                     .and_then(|now| now.format("%Y-%m-%d"))
@@ -592,7 +600,7 @@ async fn run(
     }
     let ok = failures.is_empty() && total.is_quiet() && criticals == 0;
     println!(
-        "SUMMARY messages={} rows={} html={} paper={} themed={} heights_ok={}/{} stable={}/{} \
+        "SUMMARY messages={} rows={} html={} paper={} fitted={} themed={} heights_ok={}/{} stable={}/{} \
          blank_webkit={} blank_gtk={} overflow={} dark_query={} open_ready_p50={:.1} \
          open_ready_p95={:.1} open_painted_p50={:.1} open_painted_p95={:.1} scroll_frames={} \
          scroll_p95={:.2} canary_connections={} canary_tls={} criticals={criticals} {}",
@@ -600,6 +608,7 @@ async fn run(
         rows.len(),
         html_rows.len(),
         count(&|row| row.style == "paper"),
+        count(&|row| row.fitted),
         count(&|row| row.style == "themed"),
         count(&|row| row.height_ok),
         html_rows.len(),
@@ -720,6 +729,9 @@ async fn measure(
     row.dark_query = first.dark;
     row.declares_dark = first.declares_dark;
     row.body_background = first.body_background.clone();
+    row.fitted = std::iter::successors(view.parent(), |widget| widget.parent())
+        .find(|widget| widget.widget_name() == "reader-frame")
+        .is_some_and(|frame| frame.has_css_class("sw-paper-fitted"));
     let capped = height >= sealwax_app::reader::MAX_VIEW_HEIGHT;
     row.height_ok = (capped
         || ((first.document - height).abs() <= 1 && first.document <= first.inner_height + 1))
@@ -925,7 +937,7 @@ fn print_row(row: &Row) {
     println!(
         "ROW theme={} id={} group={} kind={} style={} evidence={} size={}x{} document={} \
          height_ok={} stable={} scroll_width={} overflow={} blank_webkit={:?} blank_gtk={:?} \
-         dark_query={} declares_dark={} body_bg={:?} ready_ms={:.1} painted_ms={:.1} \
+         dark_query={} declares_dark={} body_bg={:?} fitted={} ready_ms={:.1} painted_ms={:.1} \
          failures={:?}",
         row.theme,
         row.id,
@@ -945,10 +957,31 @@ fn print_row(row: &Row) {
         row.dark_query,
         row.declares_dark,
         row.body_background,
+        row.fitted,
         row.ready_ms,
         row.painted_ms,
         row.failures,
     );
+}
+
+/// Saves the shown body's whole document, as WebKit renders it, as
+/// `.local/corpus/bodies/<name>.png`.
+async fn save_body(reader: &Reader, name: &str) -> Result<(), String> {
+    let view = reader.web_view().ok_or("the body's view went away")?;
+    let texture = view
+        .snapshot_future(
+            webkit6::SnapshotRegion::FullDocument,
+            webkit6::SnapshotOptions::NONE,
+        )
+        .await
+        .map_err(|error| format!("WebKit snapshot: {error}"))?;
+    let path = repository().join(format!(".local/corpus/bodies/{name}.png"));
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    texture
+        .save_to_png(&path)
+        .map_err(|error| error.to_string())
 }
 
 /// The rows as a tab-separated table, for the report.
@@ -956,14 +989,14 @@ fn write_results(rows: &[Row]) -> Result<(), String> {
     let mut table = String::from(
         "theme\tid\tgroup\tkind\tstyle\tevidence\twidth\theight\tdocument\theight_ok\tstable\t\
          scroll_width\toverflow\tblank_webkit\tblank_gtk\tdark_query\tdeclares_dark\tbody_bg\t\
-         ready_ms\tpainted_ms\n",
+         fitted\tready_ms\tpainted_ms\n",
     );
     let mut by_id: BTreeMap<&str, usize> = BTreeMap::new();
     for row in rows {
         *by_id.entry(&row.id).or_default() += 1;
         let _ = writeln!(
             table,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:?}\t{:?}\t{}\t{}\t{}\t{:.1}\t{:.1}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{:?}\t{:?}\t{}\t{}\t{}\t{}\t{:.1}\t{:.1}",
             row.theme,
             row.id,
             row.group,
@@ -982,6 +1015,7 @@ fn write_results(rows: &[Row]) -> Result<(), String> {
             row.dark_query,
             row.declares_dark,
             row.body_background,
+            row.fitted,
             row.ready_ms,
             row.painted_ms,
         );

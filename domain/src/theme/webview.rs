@@ -21,6 +21,10 @@ pub const PAPER_TEXT: Rgb = Rgb::from_hex(0x1f1f1f);
 pub const MEASURE_CSS: &str =
     "html,body{height:max-content!important;min-height:0!important;max-height:none!important}";
 
+/// The custom property that carries the theme's background into a paper body, for the space
+/// beside a design narrower than the view.
+pub const MARGINS_COLOR: &str = "--sealwax-margins-color";
+
 /// How a body is shown, decided by the reader's colour heuristic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BodyStyle {
@@ -53,7 +57,8 @@ impl Theme {
     /// paint a dark canvas behind a light design that declares `color-scheme: light dark`.
     /// Paper paints no background of its own, so a message's body background reaches the
     /// canvas as in a browser (a dark-mode design fills the card), and the view's white shows
-    /// where the message paints none.
+    /// where the message paints none. Its `--sealwax-margins-color` is the theme's background,
+    /// for the reader's script that puts a narrow design's column on it.
     pub fn webview_css(&self, style: BodyStyle) -> String {
         let mut css = String::with_capacity(1024);
         css.push_str(MEASURE_CSS);
@@ -63,8 +68,10 @@ impl Theme {
             BodyStyle::Paper => {
                 let _ = write!(
                     css,
-                    ":root{{color-scheme:light!important}}\n\
-                     html{{color:{PAPER_TEXT}}}\n"
+                    ":root{{color-scheme:light!important;\
+                     {MARGINS_COLOR}:{margins}!important}}\n\
+                     html{{color:{PAPER_TEXT}}}\n",
+                    margins = self.palette.background,
                 );
             }
         }
@@ -179,7 +186,11 @@ mod tests {
         let theme = theme(Mode::Dark, ReadingFont::Sans);
         let css = theme.webview_css(BodyStyle::Paper);
         assert!(css.starts_with(MEASURE_CSS));
-        assert!(css.contains(":root{color-scheme:light!important}"));
+        assert!(css.contains(":root{color-scheme:light!important;"));
+        assert!(css.contains(&format!(
+            "{MARGINS_COLOR}:{}!important}}",
+            theme.palette.background
+        )));
         assert!(css.contains("html{color:#1f1f1f}"));
         assert!(
             !css.contains("background"),

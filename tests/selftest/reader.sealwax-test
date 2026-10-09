@@ -36,13 +36,14 @@ assert-reader text-contains "Two small comments"
 screenshot $DIR/../../.local/selftest/reader-simple.png
 
 # A styled newsletter keeps its design on paper; its logo comes through cid:, its remote
-# images stay hidden behind the banner.
+# images stay hidden behind the banner. Its 600 px column sits on the theme's background.
 reader-show newsletter
 assert-reader body html-paper
 assert-reader banner true
 assert-reader cid-loaded 1
 assert-reader remote-loaded 0
 assert-reader height-exact true
+assert-reader margins true
 screenshot $DIR/../../.local/selftest/reader-newsletter.png
 
 # An inline image is shown in place, not as an attachment card.
@@ -98,9 +99,10 @@ reader-show latin1
 assert-reader text-contains blåbærsyltetøy
 assert-label reader-sender "Åse Nygård"
 
-# A dark newsletter stays dark on the paper card.
+# A dark newsletter stays dark on the paper card, which it fills: its text spans the view.
 reader-show dark-promo
 assert-reader body html-paper
+assert-reader margins false
 screenshot $DIR/../../.local/selftest/reader-dark-promo.png
 
 # Hidden for three seconds, the reader gives its view back; shown again, it renders again.
@@ -114,6 +116,8 @@ action nav.pane::reader
 wait-until assert-reader released false
 assert-reader body html-paper
 assert-reader height-exact true
+assert-reader margins true
+screenshot $DIR/../../.local/selftest/reader-newsletter-narrow.png
 resize 1440 900
 
 assert-reader live-views-at-most 4

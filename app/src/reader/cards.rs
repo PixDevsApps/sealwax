@@ -709,6 +709,22 @@ impl Inner {
                     self.links.hover(view.as_ref(), hover.as_ref());
                 }
             }
+            ViewEvent::Margins(fitted) => {
+                self.with_page(key, |page| {
+                    if let Some(html) = page
+                        .item(id)
+                        .and_then(|item| item.card.as_ref())
+                        .and_then(|card| card.html.as_ref())
+                        .filter(|html| ours(html))
+                    {
+                        if *fitted {
+                            html.frame.add_css_class("sw-paper-fitted");
+                        } else {
+                            html.frame.remove_css_class("sw-paper-fitted");
+                        }
+                    }
+                });
+            }
             ViewEvent::Quotes { .. } => {}
             ViewEvent::Refused(refused) => {
                 tracing::debug!(?refused, "reader: refused what a message asked for");

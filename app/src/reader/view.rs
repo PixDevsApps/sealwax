@@ -220,6 +220,155 @@ const QUOTES_JS: &str = r#"(() => {
   show(false);
 })();"#;
 
+/// Fits a styled body to its own width (DESIGN.md "HTML mail inside the theme"): when its
+/// design is a column narrower than the view, such as a newsletter's 600 px table on a coloured
+/// wrapper, the space beside the column takes the theme's background (the reader stylesheet's
+/// `--sealwax-margins-color`) and the body is clipped to the column, wrappers' backgrounds and
+/// borders with it. The column holds every box narrower than its container that shows text or
+/// media; centred text beside them must fit within it. A design with other text, an image or a
+/// background image across a box as wide as its container fills the view and stays as it is.
+/// Only the root's background and the body's clip change, so the layout never moves; the column
+/// is found again whenever the root's size changes. The state goes out as `margins`.
+const MARGINS_JS: &str = r#"(() => {
+  const load = SEALWAX_LOAD;
+  const root = document.documentElement;
+  const body = document.body;
+  const post = (fitted) => window.webkit.messageHandlers.margins.postMessage({load, fitted});
+  if (!root || !body) { post(false); return; }
+  const LIMIT = 3000;
+  const MEDIA = 'img,svg,video,canvas,picture,iframe,object,embed,input,button,textarea,select';
+  const blank = /^[\s\u00a0\u034f\u200b-\u200d\u2060\ufeff]*$/;
+  const clear = (colour) => colour === 'transparent' || /^rgba\(.*,\s*0\)$/.test(colour);
+  const shown = (style) =>
+    style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+  const px = (style, name) => parseFloat(style.getPropertyValue(name)) || 0;
+  const PROPS = ['background-color', 'background-image', 'background-size',
+    'background-position', 'background-repeat', 'clip-path'];
+  let saved = [];
+  const keep = (element) => saved.push([element, PROPS.map((name) =>
+    [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)])]);
+  const restore = () => {
+    for (const [element, values] of saved) {
+      for (const [name, value, priority] of values) {
+        if (value) element.style.setProperty(name, value, priority);
+        else element.style.removeProperty(name);
+      }
+    }
+    saved = [];
+  };
+  const set = (element, name, value) => element.style.setProperty(name, value, 'important');
+  const find = () => {
+    if (getComputedStyle(root).backgroundImage !== 'none') return null;
+    const width = root.getBoundingClientRect().width;
+    let left = Infinity;
+    let right = -Infinity;
+    const add = (box) => {
+      left = Math.min(left, box.left);
+      right = Math.max(right, box.right);
+    };
+    const text = {left: Infinity, right: -Infinity};
+    const addText = (box) => {
+      text.left = Math.min(text.left, box.left);
+      text.right = Math.max(text.right, box.right);
+    };
+    let clipped = false;
+    const stack = [[body, 0, width]];
+    let seen = 0;
+    while (stack.length) {
+      const [element, outerLeft, outerRight] = stack.pop();
+      if (++seen > LIMIT) return null;
+      const style = getComputedStyle(element);
+      if (!shown(style)) continue;
+      const box = element.getBoundingClientRect();
+      const media = element.matches(MEDIA);
+      if (box.width < 3 || box.height < 3) {
+        if (!media && style.overflowX === 'visible' && style.overflowY === 'visible') {
+          for (const child of element.children) stack.push([child, outerLeft, outerRight]);
+        }
+        continue;
+      }
+      const display = style.display;
+      let stretched = /^table-(row|row-group|header-group|footer-group)$/.test(display);
+      if (display === 'table-cell') {
+        stretched = [...element.parentElement.children].every((cell) => cell === element
+          || getComputedStyle(cell).display !== 'table-cell'
+          || cell.getBoundingClientRect().width < 3);
+      } else if (!stretched) {
+        const slack = (side) => Math.min(16, Math.max(0, px(style, 'margin-' + side))) + 1.5;
+        stretched = box.left <= outerLeft + slack('left')
+          && box.right >= outerRight - slack('right');
+      }
+      if (!stretched) {
+        if (media || !blank.test(element.textContent) || element.querySelector(MEDIA)) add(box);
+        continue;
+      }
+      if (element === body) clipped = true;
+      if (media || style.backgroundImage !== 'none') return null;
+      const centred = /center/.test(style.textAlign);
+      const innerLeft = box.left + px(style, 'border-left-width') + px(style, 'padding-left');
+      const innerRight = box.right - px(style, 'border-right-width') - px(style, 'padding-right');
+      for (const child of element.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (blank.test(child.data)) continue;
+          if (!centred) return null;
+          const range = document.createRange();
+          range.selectNodeContents(child);
+          addText(range.getBoundingClientRect());
+        } else if (child.nodeType === Node.ELEMENT_NODE) {
+          const childStyle = getComputedStyle(child);
+          if (childStyle.display === 'inline' && shown(childStyle)
+            && !blank.test(child.textContent)) {
+            const area = child.getBoundingClientRect();
+            if (area.width >= 1 && area.height >= 1) {
+              if (!centred) return null;
+              addText(area);
+              continue;
+            }
+          }
+          stack.push([child, innerLeft, innerRight]);
+        }
+      }
+    }
+    if (left === Infinity || right - left > width - 48) return null;
+    if (text.left < left - 1 || text.right > right + 1) return null;
+    return {left: Math.floor(left), right: Math.ceil(right), clipped};
+  };
+  let fitted = null;
+  const run = () => {
+    restore();
+    let column = null;
+    try { column = find(); } catch (error) { column = null; }
+    if (column) {
+      const rootColour = getComputedStyle(root).backgroundColor;
+      const bodyColour = getComputedStyle(body).backgroundColor;
+      const canvas = !clear(rootColour) ? rootColour
+        : !clear(bodyColour) ? bodyColour : 'rgb(255, 255, 255)';
+      const rootBox = root.getBoundingClientRect();
+      keep(root);
+      set(root, 'background-color', 'var(--sealwax-margins-color, transparent)');
+      set(root, 'background-image', 'linear-gradient(' + canvas + ',' + canvas + ')');
+      set(root, 'background-size', (column.right - column.left) + 'px 100%');
+      set(root, 'background-position', (column.left - rootBox.left) + 'px 0');
+      set(root, 'background-repeat', 'repeat-y');
+      if (column.clipped) {
+        const box = body.getBoundingClientRect();
+        const from = (column.left - box.left) + 'px';
+        const to = (column.right - box.left) + 'px';
+        keep(body);
+        set(body, 'clip-path', 'polygon(' + from + ' -100000px, ' + to + ' -100000px, '
+          + to + ' calc(100% + 100000px), ' + from + ' calc(100% + 100000px))');
+      }
+    }
+    if (fitted !== !!column) {
+      fitted = !!column;
+      post(fitted);
+    }
+  };
+  run();
+  new ResizeObserver(run).observe(root);
+  window.addEventListener('load', run, {once: true});
+})();"#;
+
 /// A link the user activated in a message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Link {
@@ -279,6 +428,9 @@ pub enum ViewEvent {
         blocks: u32,
         expanded: bool,
     },
+    /// A styled body's column sits on the theme's background (`true`), or the body fills the
+    /// view as designed; sent with the first look and whenever it changes.
+    Margins(bool),
     Refused(Refused),
     /// The web process ended; the view shows nothing until it loads again.
     Crashed,
@@ -299,6 +451,8 @@ struct State {
     committed: Cell<bool>,
     /// Loads collapse the quoted history behind "…" (the page's choice per body).
     collapse_quotes: Cell<bool>,
+    /// Loads fit a styled body's margins to its column (the page's choice per body).
+    fit_margins: Cell<bool>,
     handler: RefCell<Option<Handler>>,
     height: Cell<i32>,
 }
@@ -326,7 +480,9 @@ impl MessageView {
         related: Option<&webkit6::WebView>,
     ) -> Self {
         let ucm = webkit6::UserContentManager::new();
-        for name in ["height", "frame", "loaded", "link", "hover", "quotes"] {
+        for name in [
+            "height", "frame", "loaded", "link", "hover", "quotes", "margins",
+        ] {
             ucm.register_script_message_handler(name, Some(WORLD));
         }
         let settings = hardened_settings(fonts);
@@ -405,6 +561,12 @@ impl MessageView {
         self.state.collapse_quotes.set(collapse);
     }
 
+    /// Whether the next loads fit a styled body's margins to its column: the page sets it for
+    /// paper bodies. Off for a blank view.
+    pub fn set_fit_margins(&self, fit: bool) {
+        self.state.fit_margins.set(fit);
+    }
+
     /// A new load: fresh helper scripts that tag their reports with its number, and one
     /// navigation decision expected for it.
     fn start(&self, html: &str) {
@@ -413,7 +575,11 @@ impl MessageView {
         self.state.committed.set(false);
         self.ucm.remove_all_scripts();
         let tagged = |script: &str| script.replace("SEALWAX_LOAD", &load.to_string());
-        let mut scripts = vec![tagged(HEIGHT_JS), tagged(LINKS_JS)];
+        let mut scripts = Vec::new();
+        if self.state.fit_margins.get() {
+            scripts.push(tagged(MARGINS_JS));
+        }
+        scripts.extend([tagged(HEIGHT_JS), tagged(LINKS_JS)]);
         if self.state.collapse_quotes.get() {
             scripts.push(tagged(QUOTES_JS));
         }
@@ -450,6 +616,7 @@ impl MessageView {
     pub(super) fn blank(&self, filter: Option<&webkit6::UserContentFilter>) {
         self.state.handler.replace(None);
         self.state.collapse_quotes.set(false);
+        self.state.fit_margins.set(false);
         if self.view.parent().is_some() {
             self.view.unparent();
         }
@@ -603,6 +770,25 @@ impl MessageView {
                         blocks: number("blocks").max(0.0) as u32,
                         expanded,
                     });
+                }
+            ),
+        );
+        self.ucm.connect_script_message_received(
+            Some("margins"),
+            glib::clone!(
+                #[strong]
+                state,
+                move |_, value| {
+                    let load = value
+                        .object_get_property("load")
+                        .map_or(-1.0, |value| value.to_double());
+                    if load != state.load.get() as f64 {
+                        return;
+                    }
+                    let fitted = value
+                        .object_get_property("fitted")
+                        .is_some_and(|value| value.to_boolean());
+                    state.emit(ViewEvent::Margins(fitted));
                 }
             ),
         );
@@ -882,7 +1068,7 @@ mod tests {
     /// (SECURITY.md "Message rendering", ML-093).
     #[test]
     fn helper_scripts_load_nothing() {
-        for script in [HEIGHT_JS, LINKS_JS, QUOTES_JS] {
+        for script in [HEIGHT_JS, LINKS_JS, QUOTES_JS, MARGINS_JS] {
             for call in [
                 "fetch",
                 "XMLHttpRequest",
@@ -902,6 +1088,15 @@ mod tests {
                 assert!(!script.contains(call), "{call}");
             }
         }
+    }
+
+    /// The margins take the colour the paper stylesheet sets.
+    #[test]
+    fn margins_take_the_stylesheet_colour() {
+        assert!(MARGINS_JS.contains(&format!(
+            "var({}, transparent)",
+            sealwax_domain::theme::MARGINS_COLOR
+        )));
     }
 
     /// A feature WebKit renamed would silently stay on.

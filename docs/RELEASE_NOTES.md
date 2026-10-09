@@ -28,7 +28,7 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 - **The user guide, README and INSTALL**; the guide is installed in `/usr/share/doc/sealwax/`.
 - **A security review and fuzzing:** three fixes found by the review (an SMTP STARTTLS injection, a Referer leak, and POP3 mail that the disk limit could remove when an IMAP account held the same message); 13 fuzz targets; search text, previews and replies read at most 256 KiB of a message's HTML; deeply nested HTML flattened so it can't exhaust the stack; a sync that crashes starts again after a pause.
 - **The accessibility pass:** the audit in CI, Go to and Back to List.
-- **Interface:** account names and colours and Edit Account; folding accounts; resizable panes and a wider reader; the composer docked in the main window; the wax-seal icon; housekeeping folders other mail programs create (Outlook's Sync Issues, Notes and Outbox on Microsoft's servers, an empty Mailspring folder) left out.
+- **Interface:** account names and colours and Edit Account; folding accounts; resizable panes and a wider reader; the composer docked in the main window; the wax-seal icon; styled mail narrower than the reader sitting on your theme's background instead of a wide white page; housekeeping folders other mail programs create (Outlook's Sync Issues, Notes and Outbox on Microsoft's servers, an empty Mailspring folder) left out.
 - **Folders and rules** (above).
 - **Google dropped:** Gmail isn't a listed provider and Sign in with Google isn't offered; use Gmail's own app or web version.
 

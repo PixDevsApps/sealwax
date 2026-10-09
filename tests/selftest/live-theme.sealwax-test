@@ -25,15 +25,18 @@ assert-color reader-pane background window
 assert-color sidebar background sidebar
 screenshot $DIR/../../.local/live/theme-2-catppuccin-latte-simple.png
 
-# A styled newsletter keeps its paper card in the light theme…
+# A styled newsletter keeps its paper card in the light theme, its column on the theme's
+# background…
 reader-show newsletter
 assert-reader body html-paper
 assert-reader follows-theme true
+assert-reader margins true
 screenshot $DIR/../../.local/live/theme-3-catppuccin-latte-newsletter.png
 
 # …and in the dark one, while the chrome turns dark again.
 theme matte-black
 assert-reader follows-theme true
+assert-reader margins true
 assert-color reader-pane background window
 assert-color sidebar background sidebar
 screenshot $DIR/../../.local/live/theme-4-matte-black-newsletter.png

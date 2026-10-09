@@ -10,7 +10,7 @@
 //! | `reader-show-images` | "Show images" for the shown message; waits for the reload |
 //! | `reader-click SELECTOR` | A DOM `click()` in Sealwax's isolated world of the shown body |
 //! | `reader-clear` | Shows nothing |
-//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `released` (the view went back while hidden), `remote-allowed`, `remote-requests` (remote loads that started since `reader-show`), `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `text-contains`, `opened` (the last link handed to the opener; `none`) |
+//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `released` (the view went back while hidden), `remote-allowed`, `remote-requests` (remote loads that started since `reader-show`), `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `margins` (a styled body's column sits on the theme's background, the card without its edge), `text-contains`, `opened` (the last link handed to the opener; `none`) |
 
 use super::{Harness, StepResult, blocking, equal};
 use crate::reader::{Reader, ReaderState, Shown, ShownBody, ViewEvent, samples};
@@ -362,8 +362,11 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
                     let color = webkit6::prelude::WebViewExt::background_color(&view);
                     (color.red(), color.green(), color.blue()) == (1.0, 1.0, 1.0)
                 });
-            let mut follows =
-                paper_canvas || css_rgb_near(&background, theme.webview_background(style));
+            let paper_margins =
+                style == BodyStyle::Paper && css_rgb_near(&background, theme.palette.background);
+            let mut follows = paper_canvas
+                || paper_margins
+                || css_rgb_near(&background, theme.webview_background(style));
             if style == BodyStyle::Themed {
                 follows &= css_rgb_near(&text, theme.palette.foreground);
             }
@@ -374,6 +377,40 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 theme.mode().as_str()
             );
             equal("follows the theme", follows, boolean(value)?)
+        }
+        "margins" => {
+            use gtk4::prelude::*;
+            let view = opened.reader.web_view().ok_or("no HTML body is shown")?;
+            let frame = std::iter::successors(view.parent(), |widget| widget.parent())
+                .find(|widget| widget.widget_name() == "reader-frame")
+                .ok_or("the body has no frame")?;
+            let theme = harness
+                .state
+                .theme()
+                .ok_or("the theme hasn't started")?
+                .theme();
+            let background = opened
+                .reader
+                .eval("return getComputedStyle(document.documentElement).backgroundColor;")
+                .await?
+                .to_str()
+                .to_string();
+            let edgeless = frame.has_css_class("sw-paper-fitted");
+            let painted = css_rgb_near(&background, theme.palette.background);
+            println!(
+                "  # margins: frame {}, root background {background}",
+                if edgeless {
+                    "edgeless"
+                } else {
+                    "with its edge"
+                }
+            );
+            if edgeless != painted {
+                return Err(format!(
+                    "the frame (edgeless {edgeless}) and the page ({background}) disagree"
+                ));
+            }
+            equal("margins fitted", edgeless, boolean(value)?)
         }
         "text-contains" => {
             let text = match state.body {

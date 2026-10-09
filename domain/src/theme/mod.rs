@@ -27,7 +27,7 @@ pub use typography::{
     ChromeFont, DEFAULT_BASE_SIZE, FontFamilies, Fonts, MAX_BASE_SIZE, READING_LINE_HEIGHT,
     READING_SIZE, ReadingFont, TypeScale, css_family,
 };
-pub use webview::{BodyStyle, MEASURE_CSS, PAPER, PAPER_TEXT, WebViewFonts};
+pub use webview::{BodyStyle, MARGINS_COLOR, MEASURE_CSS, PAPER, PAPER_TEXT, WebViewFonts};
 
 use std::str::FromStr;
 

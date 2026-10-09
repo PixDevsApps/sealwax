@@ -288,6 +288,12 @@ Roles map to palette positions, never hue names: matte-black's `green` is amber 
 - Themed bodies always give links the accent; colours set only for links (Outlook's replies) don't make a body paper.
 - Quoted history collapses behind a "…" toggle, in HTML and plain text, for a message with an earlier message in the shown conversation.
 
+*Changed at the user's request (2026-10-09, [ADR-011 amendment](DECISIONS.md#adr-011-amendment--a-narrow-design-sits-on-the-theme-2026-10-09)):*
+- A styled message whose design is a column narrower than the reader, such as a newsletter's 600 px table on a grey wrapper, sits on the theme's background: the space beside the column takes the theme's background, the message's own wrappers (their backgrounds and borders) are cut to the column's width, and the paper card shows no border. The column is the extent of the boxes narrower than their container that show text or media; centred text beside them (a masthead, a footer) must fit within it.
+- A design that fills the reader keeps the paper card as before: text that isn't centred, an image or a background image across a box as wide as its container (full-width layouts, replies, a dark promotion on a full-width band). So does a column that would leave less than 48 px beside it.
+- The column is found again when the reader's width or the body's height changes; the layout itself never changes, only the root's background and the body's clip. Print and export keep the message as designed.
+- On the real-world corpus (in matte-black and catppuccin-latte alike): 65 of the 69 templates and all 55 of S2's synthetic newsletters sit on the theme; email-boilerplate-full and -lite, sendwithus-airmail-invoice and -oxygen-upsell, and an Outlook web reply keep the full-width card.
+
 ## Avatars
 
 Initials from the display name (or the address), on a tint chosen by hashing the address. Never fetched from Gravatar, BIMI or favicons (privacy).

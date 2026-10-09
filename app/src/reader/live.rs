@@ -18,6 +18,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib, graphene};
 use sealwax_domain::model::MessageId;
+use sealwax_domain::theme::BodyStyle;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -452,6 +453,7 @@ impl Inner {
                 });
                 self.engine.set_parts(view.page_id(), html.parts.clone());
                 view.set_collapse_quotes(html.collapse_quotes);
+                view.set_fit_margins(html.style == BodyStyle::Paper);
                 view.load(
                     &html.html,
                     &stylesheet(&theme, html.style),

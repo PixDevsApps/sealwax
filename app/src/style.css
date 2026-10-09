@@ -775,6 +775,13 @@ separator.sw-toolbar-separator {
   color: var(--sw-paper-fg-color);
 }
 
+/* A styled message narrower than the view: its column sits on the theme's background, which
+   the reader's margins script paints beside it, so the card shows no edge of its own. */
+.sw-paper.sw-paper-fitted {
+  border-color: transparent;
+  background: transparent;
+}
+
 .sw-themed-body {
   background: var(--window-bg-color);
 }

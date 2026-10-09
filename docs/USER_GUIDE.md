@@ -141,7 +141,7 @@ On Hyprland the window has no title bar; on other desktops the window controls s
 
 **Conversations.** Selecting a message shows its whole conversation in the reader, oldest first. The selected message, unread ones and the latest are expanded as cards; the others are one-line rows that a click, Enter or Space expands. A conversation of over 100 messages folds its middle ("N earlier messages"). **Expand All Messages** and **Collapse All Messages** are in the reader's More menu and the palette. `n` and `p` move to the next and previous message in the conversation. A message the reader shows is marked read. A card's details button shows From, Reply-To, To, Cc, the full date and the mailing list.
 
-**HTML mail.** No script in a message ever runs. Plain text and simple HTML take your theme's colours and fonts. A styled message, such as a newsletter or a receipt, keeps its own design on a light "paper" card, and a message with its own dark design shows it under a dark theme.
+**HTML mail.** No script in a message ever runs. Plain text and simple HTML take your theme's colours and fonts. A styled message, such as a newsletter or a receipt, keeps its own design on a light "paper" card, and a message with its own dark design shows it under a dark theme. When the design is a column narrower than the reader, the space beside it takes your theme's background instead.
 
 **Remote images.** Images and other content from the internet are hidden until you allow them, so a sender can't tell when or where you opened a message. Each message's banner says "Images are hidden so the sender can't tell you opened this.":
 
