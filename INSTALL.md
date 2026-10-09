@@ -144,7 +144,7 @@ pacman removes only the files the package installed. Your settings, your mail st
 | Building with Arch's `rust` or `rustup` package (without `--nodeps`) | Not verified | |
 | Installing on a clean system with only the listed dependencies | Not verified | The clean-container install test is ML-095, after M8's gate |
 | Updating over an earlier package | Not verified | |
-| The client ID built in by `tools/package-source.py` (2026-10-09) | **Partly** | The script wrote the ID from `config.toml` into the generated PKGBUILD, and that PKGBUILD's `build()`, run with cargo in a scratch build folder (not makepkg), made a binary that carries it; a makepkg build and Sign in with Microsoft from an installed package without `config.toml`'s ID aren't verified yet |
+| The client ID built in by `tools/package-source.py` (2026-10-09) | **Partly** | The owner's makepkg build of `f6727d8` (from `config.toml`'s ID) made a package whose binary carries it, installed with `pacman -U`; Sign in with Microsoft from an installed package without `config.toml`'s ID isn't verified yet |
 | `sudo pacman -R sealwax` | Not verified | |
 | `cargo build` and `cargo build --release` | **Yes** | Every CI run builds the workspace (`tools/ci.sh`); the release build is what makepkg runs |
 
