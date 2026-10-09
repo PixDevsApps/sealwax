@@ -62,6 +62,8 @@ fn account(
                 name: role.label().to_owned(),
                 role: Some(role),
                 count,
+                children: Vec::new(),
+                folded: false,
             })
             .collect(),
         more: more
@@ -71,6 +73,8 @@ fn account(
                 name: folder.to_owned(),
                 role: None,
                 count,
+                children: Vec::new(),
+                folded: false,
             })
             .collect(),
     }

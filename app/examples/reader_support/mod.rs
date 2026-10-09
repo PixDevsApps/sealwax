@@ -93,6 +93,8 @@ pub fn window(app: &adw::Application, reader: &Reader, size: (i32, i32)) -> Wind
                 name: "Inbox".into(),
                 role: Some(FolderRole::Inbox),
                 count: 0,
+                children: Vec::new(),
+                folded: false,
             }],
             more: Vec::new(),
         }],

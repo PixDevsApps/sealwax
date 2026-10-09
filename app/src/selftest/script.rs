@@ -113,6 +113,7 @@ fn arity(command: &str) -> Option<(usize, usize)> {
         .chain(super::composer::COMMANDS)
         .chain(super::conversation::COMMANDS)
         .chain(super::files::COMMANDS)
+        .chain(super::folders::COMMANDS)
         .chain(super::mail::COMMANDS)
         .chain(super::perf::COMMANDS)
         .chain(super::reader::COMMANDS)

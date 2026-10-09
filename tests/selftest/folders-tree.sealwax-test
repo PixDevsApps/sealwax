@@ -1,0 +1,126 @@
+# The sidebar's folder tree (M9, ADR-020): a folder under a folder the sidebar shows shows under
+# it by its last level, a level a step indented: the Inbox's under the Inbox among the role
+# folders, the others under "More folders" in name order. A folder with subfolders folds them
+# away with its arrow, Left and Right; screen readers hear each row's level and the parents'
+# expanded state; the folds are written to layout.toml and come back with a new window; picking
+# a folder under a folded one opens it. The folder row's menu offers New Subfolder, Rename and
+# Delete Folder where they apply, the account heading's New Folder. Every name is fictional.
+# Run: tools/headless.sh 81 target/debug/sealwax --self-test tests/selftest/folders-tree.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+triage-mark-read-on-open false
+triage-account Work work
+folder-add Work INBOX/Kvitteringer
+folder-add Work INBOX/Kvitteringer/2026
+folder-add Work Kunder
+folder-add Work Kunder/Fjord
+folder-add Work Kunder/Acme
+folder-add Work "Arkiv 2019" noinferiors
+folder-add Work Prosjekter/Høst
+mail-add Work:Kunder/Acme 10m "Tilbud på nettside" "from=Ingrid Solberg"
+mail-add Work:INBOX/Kvitteringer 20m "Kvittering 1042" "from=Marius Dahl"
+folder inbox Work
+
+# The tree: the Inbox's subfolders under it, the other folders under More folders.
+assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash"
+action nav.more::account-1
+assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash,Arkiv 2019,Kunder,>Acme,>Fjord,Prosjekter/Høst"
+assert-folder-level Work:inbox 1
+assert-folder-level Work:INBOX/Kvitteringer 2
+assert-folder-level Work:INBOX/Kvitteringer/2026 3
+assert-folder-level Work:Kunder/Acme 2
+assert-folder-expanded Work:Kunder true
+assert-folder-expanded Work:INBOX/Kvitteringer true
+assert-folder-expanded Work:Kunder/Acme undefined
+assert-folder-expanded Work:Prosjekter/Høst undefined
+assert-accessible window
+screenshot $DIR/../../.local/selftest/folders-tree.png
+
+# The arrow folds a folder's subfolders away and opens them; the folder shown stays shown.
+folder-arrow Work:Kunder
+assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash,Arkiv 2019,Kunder,Prosjekter/Høst"
+assert-folder-expanded Work:Kunder false
+assert-label list-title Inbox
+wait-until assert-file-contains $TMP/state/sealwax/layout.toml "[folded]\nwork = [\"Kunder\"]\n"
+folder-arrow Work:Kunder
+assert-folder-expanded Work:Kunder true
+wait-until assert-file-lacks $TMP/state/sealwax/layout.toml "[folded]"
+
+# From the keyboard: Left folds, Right opens, on a folder with subfolders only.
+focus-folder Work:INBOX/Kvitteringer
+key Left
+assert-sidebar-tree Work "Inbox,>Kvitteringer,Drafts,Sent,Archive,Junk,Trash,Arkiv 2019,Kunder,>Acme,>Fjord,Prosjekter/Høst"
+assert-folder-expanded Work:INBOX/Kvitteringer false
+assert-focus-stop folder:folder-7
+key Right
+assert-folder-expanded Work:INBOX/Kvitteringer true
+focus-folder Work:Kunder/Acme
+key Left
+assert-folder-expanded Work:Kunder true
+key Down
+assert-focus-stop folder:folder-10
+focus-folder Work:Kunder
+key Left
+assert-folder-expanded Work:Kunder false
+
+# Picking a folder under a folded one opens it.
+folder Work:Kunder/Acme
+assert-folder-expanded Work:Kunder true
+assert-label list-title Acme
+assert-list-count 1
+folder-arrow Work:Kunder
+assert-folder-expanded Work:Kunder false
+
+# A new window (background mode) folds as the last one did.
+close-window
+wait-until assert-window false
+bus-activate
+wait-until assert-window true
+resize 1440 900
+action nav.more::account-1
+wait-until assert-folder-expanded Work:Kunder false
+assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash,Arkiv 2019,Kunder,Prosjekter/Høst"
+folder-arrow Work:Kunder
+
+# The folder row's menu: New Subfolder, Rename and Delete where they apply, with why not.
+sidebar-menu Work:Kunder
+assert-sidebar-menu disabled folder-menu-mark-read
+assert-sidebar-menu enabled folder-menu-new
+assert-sidebar-menu enabled folder-menu-rename
+assert-sidebar-menu enabled folder-menu-delete
+assert-accessible window
+key Escape
+sidebar-menu Work:inbox
+assert-sidebar-menu enabled folder-menu-new
+assert-sidebar-menu disabled folder-menu-rename
+assert-sidebar-menu disabled folder-menu-delete
+assert-tooltip folder-menu-rename "Special folders keep their names and places"
+key Escape
+sidebar-menu "Work:Arkiv 2019"
+assert-sidebar-menu disabled folder-menu-new
+assert-tooltip folder-menu-new "This folder can't have subfolders"
+assert-sidebar-menu enabled folder-menu-rename
+key Escape
+sidebar-menu all-inboxes
+assert-sidebar-menu disabled folder-menu-mark-read
+assert-shown folder-menu-new false
+key Escape
+
+# The account heading's menu: Edit Account and New Folder.
+account-menu account-1
+assert-shown account-menu-edit true
+assert-shown account-menu-new-folder true
+key Escape
+
+# The palette's commands act on the folder shown.
+folder inbox Work
+assert-action-enabled win.new-folder true
+assert-action-enabled win.rename-folder false
+assert-action-enabled win.delete-folder false
+folder Work:Kunder
+assert-action-enabled win.rename-folder true
+assert-action-enabled win.delete-folder true
+folder all-inboxes
+assert-action-enabled win.new-folder false

@@ -5,13 +5,17 @@
 //! when the server refuses a change for good. M5 adds downloads the reader asks for: one part of
 //! a large message, or a message whole as the server has it. M6 adds sending: the app queues a
 //! draft in the store's outbox and wakes the account, which sends it at most once, saves the
-//! Sent copy and keeps the Drafts folder's copy of every draft current.
+//! Sent copy and keeps the Drafts folder's copy of every draft current. M9 adds folder
+//! management (ADR-020): a folder created, renamed or deleted on the server, or at once among
+//! a POP3 account's local folders.
 
+use crate::imap::ServerText;
 use sealwax_domain::account::{
     AccountColor, AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure,
     OAuthProvider,
 };
 use sealwax_domain::config::Storage;
+use sealwax_domain::folders::NameProblem;
 use sealwax_domain::model::{AccountId, DraftId, FolderId, MessageId};
 use std::fmt;
 use zeroize::Zeroizing;
@@ -148,8 +152,49 @@ pub enum Command {
         request: RequestId,
         folder: FolderId,
     },
+    /// Create, rename or delete one of `account`'s folders (ADR-020). An IMAP account's change
+    /// runs on its command connection, online only; a POP3 account's local folders change at
+    /// once. The store follows before the answer, one `FolderChanged`.
+    ChangeFolder {
+        request: RequestId,
+        account: AccountId,
+        change: FolderChange,
+    },
     /// Stop every connection and the runtime.
     Shutdown,
+}
+
+/// A change to an account's folders. Names are the user's: `Debug` leaves them out.
+#[derive(Clone, PartialEq, Eq)]
+pub enum FolderChange {
+    /// A folder whose last level is `name`, under `parent`, or at the top of the account (under
+    /// the server's personal prefix, where its folders share one).
+    Create {
+        parent: Option<FolderId>,
+        name: String,
+    },
+    /// `folder`'s last level becomes `name`; the folders under it follow.
+    Rename { folder: FolderId, name: String },
+    /// `folder` and every folder under it, with their messages, on the server for good.
+    Delete { folder: FolderId },
+}
+
+impl fmt::Debug for FolderChange {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            FolderChange::Create { parent, .. } => f
+                .debug_struct("Create")
+                .field("parent", parent)
+                .finish_non_exhaustive(),
+            FolderChange::Rename { folder, .. } => f
+                .debug_struct("Rename")
+                .field("folder", folder)
+                .finish_non_exhaustive(),
+            FolderChange::Delete { folder } => {
+                f.debug_struct("Delete").field("folder", folder).finish()
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -277,6 +322,12 @@ pub enum Event {
     RulesFailed {
         account: AccountId,
         error: RulesError,
+    },
+    /// The answer to `ChangeFolder`, once the store holds the change.
+    FolderChanged {
+        request: RequestId,
+        account: AccountId,
+        result: Result<(), FolderError>,
     },
 }
 
@@ -440,6 +491,34 @@ impl fmt::Debug for SendError {
             SendError::Interrupted => f.write_str("Interrupted"),
         }
     }
+}
+
+/// Why a folder change didn't happen, or didn't all happen.
+#[derive(Debug, thiserror::Error)]
+pub enum FolderError {
+    /// The account isn't connected; nothing was sent.
+    #[error("the account is offline")]
+    Offline,
+    /// The name can't be used there; nothing was sent.
+    #[error("the name can't be used here")]
+    Name(NameProblem),
+    /// A role folder (or a folder holding one) can't be renamed or deleted, and a folder that
+    /// takes no subfolders gets none; nothing was sent.
+    #[error("this folder can't change that way")]
+    NotAllowed,
+    /// The folder isn't in the store any more.
+    #[error("the folder is gone")]
+    Missing,
+    /// The server refused, in its own words (shown, never logged). For a delete of several
+    /// folders, the ones before the refusal are gone.
+    #[error("the server refused")]
+    Refused(ServerText),
+    /// The connection broke before the server answered; the account pass reads the folders
+    /// again.
+    #[error("the connection was lost")]
+    Lost,
+    #[error("the local store failed")]
+    Store,
 }
 
 /// Why saving or removing an account failed.

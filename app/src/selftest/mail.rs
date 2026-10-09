@@ -368,7 +368,8 @@ async fn add_account(harness: &Harness, name: &str) -> StepResult {
     settled(harness).await
 }
 
-/// `[ACCOUNT:]ROLE`: a folder by its role, in the first account or the named one.
+/// `[ACCOUNT:]ROLE` or `[ACCOUNT:]NAME`: a folder by its role (`inbox`, `sent`, …), else by its
+/// whole name (`Kunder/Acme`), in the first account or the named one.
 pub(super) fn find_folder(harness: &Harness, spec: &str) -> Result<Folder, String> {
     let mailbox = harness.state.mailbox();
     let (account, role) = match spec.split_once(':') {
@@ -381,11 +382,20 @@ pub(super) fn find_folder(harness: &Harness, spec: &str) -> Result<Folder, Strin
         None => accounts.first(),
     }
     .ok_or_else(|| format!("no account for {spec}"))?;
-    let role = FolderRole::parse(&role.to_ascii_lowercase());
+    let lower = role.to_ascii_lowercase();
+    let by_role = FolderRole::ALL
+        .into_iter()
+        .find(|known| known.as_str() == lower);
     mailbox
         .folders()
         .into_iter()
-        .find(|folder| folder.account == account.id && folder.role == role)
+        .find(|folder| {
+            folder.account == account.id
+                && match by_role {
+                    Some(by_role) => folder.role == by_role,
+                    None => folder.name == role,
+                }
+        })
         .ok_or_else(|| format!("no folder {spec}"))
 }
 

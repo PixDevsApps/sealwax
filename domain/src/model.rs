@@ -104,11 +104,16 @@ impl FolderRole {
 pub struct Folder {
     pub id: FolderId,
     pub account: AccountId,
-    /// The display name, decoded from modified UTF-7.
+    /// The display name, decoded from modified UTF-7: the whole path, its levels apart by
+    /// `delimiter` (`crate::folders`).
     pub name: String,
+    /// The server's hierarchy delimiter (`/`, `.`); `None` where the server names none.
+    pub delimiter: Option<char>,
     pub role: FolderRole,
     /// `\Noselect` folders hold no messages and take none: the hierarchy's containers.
     pub selectable: bool,
+    /// False for `\Noinferiors` folders, which can't have subfolders.
+    pub inferiors: bool,
     pub total: u32,
     pub unread: u32,
 }

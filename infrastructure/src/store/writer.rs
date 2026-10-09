@@ -26,6 +26,7 @@ use std::time::Instant;
 mod accounts;
 mod bodies;
 pub(crate) mod compose;
+pub(crate) mod folders;
 mod index;
 pub(crate) mod ops;
 pub(crate) mod overlay;
@@ -109,6 +110,7 @@ pub(crate) enum WriteJob {
     Ops(ops::OpsJob),
     Compose(compose::ComposeJob),
     Pop3(pop3::Pop3Job),
+    Folders(folders::FolderJob),
     UpgradeBody {
         upgrade: Box<BodyUpgrade>,
         reply: Sender<Upgraded>,
@@ -367,6 +369,7 @@ impl Writer {
             WriteJob::Ops(job) => self.ops_job(job),
             WriteJob::Compose(job) => self.compose_job(job),
             WriteJob::Pop3(job) => self.pop3_job(job),
+            WriteJob::Folders(job) => self.folder_job(job),
             WriteJob::UpgradeBody { upgrade, reply } => {
                 let _ = reply.try_send(self.upgrade_body(&upgrade));
             }

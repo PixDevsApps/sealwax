@@ -13,6 +13,11 @@ use std::io;
 pub struct ServerText(pub(crate) String);
 
 impl ServerText {
+    /// A server's words, as a stand-in engine gives them (the app's self-test).
+    pub fn new(text: String) -> Self {
+        ServerText(text)
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }

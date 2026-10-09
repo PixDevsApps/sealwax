@@ -26,7 +26,7 @@
 //! with the account shown offline meanwhile ([`supervise`]); one that was stopped stays stopped.
 
 use super::{Shared, bodies, log_in_with_password, log_in_with_token};
-use crate::api::{Event, SyncStatus};
+use crate::api::{Event, FolderChange, FolderError, RequestId, SyncStatus};
 use crate::imap::{
     self, Arrived, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop,
     SyncError, SyncOptions, SyncReport,
@@ -118,8 +118,15 @@ pub fn backoff_delay(config: &SyncConfig, failures: u32, unit: f64) -> Duration 
     ceiling.mul_f64(0.5 + 0.5 * unit.clamp(0.0, 1.0))
 }
 
+/// `ChangeFolder` for an actor's account.
+#[derive(Debug)]
+pub(super) struct FolderJob {
+    pub request: RequestId,
+    pub change: FolderChange,
+}
+
 /// What the engine tells an actor between passes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub(super) enum Control {
     /// The folder the user opened, when it is this account's; `None` when it is another's.
     Opened(Option<FolderId>),
@@ -133,6 +140,8 @@ pub(super) enum Control {
     Drafts,
     /// `CheckMail` (Refresh): look for new mail now.
     CheckMail,
+    /// `ChangeFolder`: on the command connection while it is up, else answered offline.
+    Folder(FolderJob),
 }
 
 /// Reconnects asked for so far, and whether to stop.
@@ -610,6 +619,7 @@ async fn run(
         next_drafts: None,
         arrivals,
         moved,
+        folder_jobs: VecDeque::new(),
     };
     poller.run().await;
 }
@@ -653,6 +663,8 @@ struct Poller {
     arrivals: async_channel::Sender<Arrived>,
     /// What the op runner moved without learning the new UIDs.
     moved: Moved,
+    /// Folder changes waiting for the command connection, oldest first.
+    folder_jobs: VecDeque<FolderJob>,
 }
 
 /// The IDLE connection goes with the actor, also when a panic ends it ([`supervise`] starts a
@@ -738,6 +750,7 @@ impl Poller {
         match interrupt {
             Interrupt::Reconnect => {
                 self.conn = None;
+                self.refuse_folder_jobs(false);
                 self.failures = 0;
                 self.halted = false;
                 self.retry_at = Instant::now();
@@ -745,6 +758,7 @@ impl Poller {
                 false
             }
             Interrupt::Stop(stop) => {
+                self.refuse_folder_jobs(false);
                 if let (Some(conn), Stop::Logout(wait)) = (self.conn.take(), stop) {
                     conn.logout_within(wait).await;
                 }
@@ -770,6 +784,7 @@ impl Poller {
             "the account couldn't connect"
         );
         self.status.set(status);
+        self.refuse_folder_jobs(false);
         if halts(status) {
             self.halted = true;
             return;
@@ -780,9 +795,11 @@ impl Poller {
     }
 
     /// The connection broke: it is made again at once the first time, after the backoff when
-    /// that fails too. The status says offline only once connecting fails.
+    /// that fails too. The status says offline only once connecting fails. Folder changes
+    /// waiting for it are answered: they run online only.
     fn lost(&mut self) {
         self.conn = None;
+        self.refuse_folder_jobs(true);
         self.failures += 1;
         let unit = self.jitter.unit();
         self.retry_at = Instant::now() + backoff_delay(self.config(), self.failures, unit);
@@ -822,6 +839,7 @@ impl Poller {
                 || self.outbox.now
                 || self.drafts_now
                 || !self.older.is_empty()
+                || !self.folder_jobs.is_empty()
             {
                 due = now;
             }
@@ -883,7 +901,72 @@ impl Poller {
                     self.retry_at = Instant::now();
                 }
             }
+            Control::Folder(job) => {
+                if self.conn.is_some() {
+                    self.folder_jobs.push_back(job);
+                } else {
+                    self.answer_folder(job.request, Err(FolderError::Offline));
+                }
+            }
         }
+    }
+
+    fn answer_folder(&self, request: RequestId, result: Result<(), FolderError>) {
+        tracing::info!(
+            account = self.account.0,
+            done = result.is_ok(),
+            "a folder change"
+        );
+        self.shared.send(Event::FolderChanged {
+            request,
+            account: self.account,
+            result,
+        });
+    }
+
+    /// Answers the folder changes still waiting, the connection gone: lost when it broke,
+    /// else offline.
+    fn refuse_folder_jobs(&mut self, broke: bool) {
+        let jobs: Vec<FolderJob> = self.folder_jobs.drain(..).collect();
+        for job in jobs {
+            let error = if broke {
+                FolderError::Lost
+            } else {
+                FolderError::Offline
+            };
+            self.answer_folder(job.request, Err(error));
+        }
+    }
+
+    /// One folder change on the command connection (`imap::manage`).
+    async fn change_folder(&mut self, job: FolderJob, seen: u64) -> Result<(), Interrupt> {
+        let Some(conn) = self.conn.as_mut() else {
+            self.answer_folder(job.request, Err(FolderError::Offline));
+            return Ok(());
+        };
+        let changed = race(
+            &self.signals,
+            seen,
+            imap::manage::change(conn, &self.shared.store, self.account, &job.change),
+        )
+        .await;
+        self.used = Instant::now();
+        match changed {
+            Err(interrupt) => {
+                self.answer_folder(job.request, Err(FolderError::Lost));
+                return Err(interrupt);
+            }
+            Ok(Ok(orphaned)) => {
+                discard(&self.shared, orphaned).await;
+                self.answer_folder(job.request, Ok(()));
+            }
+            Ok(Err(FolderError::Lost)) => {
+                self.answer_folder(job.request, Err(FolderError::Lost));
+                self.lost();
+            }
+            Ok(Err(error)) => self.answer_folder(job.request, Err(error)),
+        }
+        Ok(())
     }
 
     /// Whatever is due, on a connection checked with NOOP when it sat unused.
@@ -901,6 +984,12 @@ impl Poller {
                     "a quiet connection didn't answer NOOP"
                 );
                 self.lost();
+                return Ok(());
+            }
+        }
+        while let Some(job) = self.folder_jobs.pop_front() {
+            self.change_folder(job, seen).await?;
+            if self.conn.is_none() {
                 return Ok(());
             }
         }

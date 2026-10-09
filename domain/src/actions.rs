@@ -206,6 +206,9 @@ pub enum ActionId {
     MarkRead,
     MarkUnread,
     MarkFolderRead,
+    NewFolder,
+    RenameFolder,
+    DeleteFolder,
     Select,
     Undo,
     Print,
@@ -261,7 +264,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 71] = [
+    pub const ALL: [Self; 74] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -281,6 +284,9 @@ impl ActionId {
         Self::MarkRead,
         Self::MarkUnread,
         Self::MarkFolderRead,
+        Self::NewFolder,
+        Self::RenameFolder,
+        Self::DeleteFolder,
         Self::Select,
         Self::Undo,
         Self::Print,
@@ -414,6 +420,24 @@ impl ActionId {
             Self::MarkFolderRead => command(
                 "mark-folder-read",
                 "Mark Folder as Read",
+                Messages,
+                Scope::Window,
+                &[],
+            ),
+            // Folder management (ADR-020, M9): on the folder right-clicked in the sidebar, else on
+            // the folder shown; New Folder from an account's heading goes at the account's top.
+            // No default keys until the user picks them (ADR-017).
+            Self::NewFolder => command("new-folder", "New Folder…", Messages, Scope::Window, &[]),
+            Self::RenameFolder => command(
+                "rename-folder",
+                "Rename Folder…",
+                Messages,
+                Scope::Window,
+                &[],
+            ),
+            Self::DeleteFolder => command(
+                "delete-folder",
+                "Delete Folder…",
                 Messages,
                 Scope::Window,
                 &[],
@@ -1002,6 +1026,15 @@ mod tests {
         assert!(keys(ActionId::AddAccount).is_empty());
         assert!(keys(ActionId::EditAccount).is_empty());
         assert!(keys(ActionId::MarkFolderRead).is_empty());
+        for id in [
+            ActionId::NewFolder,
+            ActionId::RenameFolder,
+            ActionId::DeleteFolder,
+        ] {
+            assert!(keys(id).is_empty(), "{id:?}");
+            assert_eq!(id.scope(), Scope::Window, "{id:?}");
+            assert!(id.spec().palette && id.spec().menu.is_none(), "{id:?}");
+        }
         assert_eq!(keys(ActionId::Print), ["<Control>p"]);
         assert_eq!(keys(ActionId::ShowOriginal), ["<Control>u"]);
         assert_eq!(keys(ActionId::SaveMessage), ["<Control>s"]);

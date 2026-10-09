@@ -136,6 +136,28 @@ assert-accessible window
 key Escape
 assert-sidebar-menu closed
 
+# The folder tree (M9): subfolders indented under their folder with their levels, a parent's
+# expanded state, folded and open; the folder menu's New Subfolder, Rename and Delete Folder,
+# and the account heading's New Folder.
+folder-add Fixtures INBOX/Kvitteringer
+folder-add Fixtures INBOX/Kvitteringer/2026
+assert-folder-level Fixtures:INBOX/Kvitteringer/2026 3
+assert-folder-expanded Fixtures:INBOX/Kvitteringer true
+assert-accessible window
+folder-arrow Fixtures:INBOX/Kvitteringer
+assert-folder-expanded Fixtures:INBOX/Kvitteringer false
+assert-accessible window
+folder-arrow Fixtures:INBOX/Kvitteringer
+sidebar-menu Fixtures:INBOX/Kvitteringer
+assert-shown folder-menu-rename true
+assert-accessible window
+key Escape
+account-menu account-1
+assert-shown account-menu-new-folder true
+assert-accessible window
+key Escape
+assert-sidebar-menu closed
+
 # The select mode: checkboxes on the rows, the batch page in the reader.
 focus list
 key x

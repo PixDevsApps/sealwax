@@ -12,8 +12,9 @@ mod first_sync;
 mod folders;
 #[cfg(any(test, feature = "fuzz"))]
 pub(crate) mod fuzz;
-mod hidden;
+pub mod hidden;
 mod idle;
+pub mod manage;
 pub mod mutf7;
 mod raw;
 pub mod roles;

@@ -336,7 +336,8 @@ impl Reader {
         let version = version(&tx)?;
         let value = tx
             .prepare_cached(&format!(
-                "SELECT id, account_id, name, role, selectable, total_count + below_floor, {} \
+                "SELECT id, account_id, name, role, selectable, total_count + below_floor, {}, \
+                   delimiter, attributes \
                  FROM folders ORDER BY account_id, id",
                 super::overlay::UNREAD_SQL
             ))?
@@ -345,8 +346,15 @@ impl Reader {
                     id: FolderId(row.get(0)?),
                     account: AccountId(row.get(1)?),
                     name: row.get(2)?,
+                    delimiter: row
+                        .get::<_, Option<String>>(7)?
+                        .and_then(|delimiter| delimiter.chars().next()),
                     role: FolderRole::parse(&row.get::<_, String>(3)?),
                     selectable: row.get(4)?,
+                    inferiors: !row
+                        .get::<_, String>(8)?
+                        .split(' ')
+                        .any(|attribute| attribute.eq_ignore_ascii_case("\\Noinferiors")),
                     total: row.get(5)?,
                     unread: row.get(6)?,
                 })

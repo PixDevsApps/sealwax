@@ -694,8 +694,10 @@ mod tests {
             id: FolderId(id),
             account: AccountId(1),
             name: name.into(),
+            delimiter: Some('.'),
             role,
             selectable: true,
+            inferiors: true,
             total: 0,
             unread: 0,
         };

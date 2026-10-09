@@ -16,6 +16,9 @@
 //! For the Sent copy and drafts (M6): APPEND with a synchronizing or non-synchronizing literal,
 //! answered with APPENDUID where UIDPLUS is on; a connection cut part of the way into a literal;
 //! `UID SEARCH HEADER Message-ID` that never matches (Stalwart, S1); FETCH by sequence number.
+//! For folder management (M9): CREATE, RENAME (with the folders under it), DELETE (refused for
+//! a folder with folders under it, as Dovecot does), SUBSCRIBE and UNSUBSCRIBE with the set of
+//! subscriptions, LIST patterns with `*` and `%`, and a hierarchy delimiter of choice.
 //! Synthetic data only.
 
 #![allow(dead_code)]
@@ -136,6 +139,10 @@ pub struct World {
     literal_cut: Option<usize>,
     /// `UID SEARCH HEADER …` finds nothing, as Stalwart's search of Message-IDs (S1).
     pub header_search_misses: bool,
+    /// The hierarchy delimiter LIST reports (`/` by default).
+    pub delimiter: char,
+    /// The mailboxes SUBSCRIBE named and UNSUBSCRIBE didn't.
+    pub subscribed: BTreeSet<String>,
 }
 
 struct Cut {
@@ -199,7 +206,20 @@ impl World {
             faults: Vec::new(),
             literal_cut: None,
             header_search_misses: false,
+            delimiter: '/',
+            subscribed: BTreeSet::new(),
         }
+    }
+
+    /// Whether `name` is under `parent` in the hierarchy.
+    fn under(&self, name: &str, parent: &str) -> bool {
+        name.strip_prefix(parent)
+            .is_some_and(|rest| rest.starts_with(self.delimiter))
+    }
+
+    /// The mailbox names, sorted.
+    pub fn names(&self) -> Vec<String> {
+        self.mailboxes.keys().cloned().collect()
     }
 
     /// The next APPEND's connection is cut after `bytes` of its literal arrived.
@@ -811,6 +831,127 @@ fn selectable(mailbox: &Mailbox) -> bool {
         .any(|a| a.eq_ignore_ascii_case("\\Noselect"))
 }
 
+/// A command's arguments: quoted strings and atoms, up to the first parenthesis.
+fn arguments(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut chars = text.trim_start().chars().peekable();
+    while let Some(&first) = chars.peek() {
+        match first {
+            ' ' => {
+                chars.next();
+            }
+            '(' => break,
+            '"' => {
+                chars.next();
+                let mut word = String::new();
+                while let Some(ch) = chars.next() {
+                    match ch {
+                        '\\' => word.extend(chars.next()),
+                        '"' => break,
+                        other => word.push(other),
+                    }
+                }
+                out.push(word);
+            }
+            _ => {
+                let mut word = String::new();
+                while let Some(&ch) = chars.peek() {
+                    if ch == ' ' || ch == '(' {
+                        break;
+                    }
+                    word.push(ch);
+                    chars.next();
+                }
+                out.push(word);
+            }
+        }
+    }
+    out
+}
+
+/// LIST's pattern: `*` matches anything, `%` anything but the delimiter.
+fn matches_pattern(pattern: &str, name: &str, delimiter: char) -> bool {
+    fn go(pattern: &[char], name: &[char], delimiter: char) -> bool {
+        match pattern.split_first() {
+            None => name.is_empty(),
+            Some(('*', rest)) => (0..=name.len()).any(|skip| go(rest, &name[skip..], delimiter)),
+            Some(('%', rest)) => (0..=name.len())
+                .take_while(|skip| *skip == 0 || name[skip - 1] != delimiter)
+                .any(|skip| go(rest, &name[skip..], delimiter)),
+            Some((ch, rest)) => name
+                .split_first()
+                .is_some_and(|(first, tail)| first == ch && go(rest, tail, delimiter)),
+        }
+    }
+    let pattern: Vec<char> = pattern.chars().collect();
+    let name: Vec<char> = name.chars().collect();
+    go(&pattern, &name, delimiter)
+}
+
+/// CREATE, DELETE, RENAME, SUBSCRIBE and UNSUBSCRIBE; the refusal's text after the tag.
+fn manage(world: &mut World, verb: &str, names: &[String]) -> Result<(), String> {
+    let exists = |world: &World, name: &str| {
+        world.mailboxes.keys().any(|known| {
+            known == name
+                || (known.eq_ignore_ascii_case("INBOX") && known.eq_ignore_ascii_case(name))
+        })
+    };
+    let name = names.first().ok_or("BAD missing mailbox")?.clone();
+    match verb {
+        "CREATE" => {
+            if exists(world, &name) {
+                return Err("NO [ALREADYEXISTS] Mailbox already exists".into());
+            }
+            world.create(&name, &[]);
+        }
+        "DELETE" => {
+            if name.eq_ignore_ascii_case("INBOX") {
+                return Err("NO [CANNOT] INBOX can't be deleted".into());
+            }
+            if !exists(world, &name) {
+                return Err("NO [NONEXISTENT] Mailbox doesn't exist".into());
+            }
+            if world
+                .mailboxes
+                .keys()
+                .any(|other| world.under(other, &name))
+            {
+                return Err("NO Mailbox has children, delete them first".into());
+            }
+            world.delete(&name);
+        }
+        "RENAME" => {
+            let to = names.get(1).ok_or("BAD missing new name")?.clone();
+            if !exists(world, &name) {
+                return Err("NO [NONEXISTENT] Mailbox doesn't exist".into());
+            }
+            if exists(world, &to) {
+                return Err("NO [ALREADYEXISTS] Target mailbox already exists".into());
+            }
+            let moving: Vec<String> = world
+                .mailboxes
+                .keys()
+                .filter(|known| **known == name || world.under(known, &name))
+                .cloned()
+                .collect();
+            for old in moving {
+                let mailbox = world.mailboxes.remove(&old).expect("listed");
+                world
+                    .mailboxes
+                    .insert(format!("{to}{}", &old[name.len()..]), mailbox);
+            }
+            world.changed();
+        }
+        "SUBSCRIBE" => {
+            world.subscribed.insert(name);
+        }
+        _ => {
+            world.subscribed.remove(&name);
+        }
+    }
+    Ok(())
+}
+
 enum Reply {
     Text(String),
     /// Send the text, then drop the connection without a reply.
@@ -848,12 +989,25 @@ fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) ->
             let status = upper
                 .find("STATUS (")
                 .map(|at| group(&command[at + 7..]).0.to_owned());
+            let pattern = arguments(&command[4..])
+                .get(1)
+                .cloned()
+                .unwrap_or_else(|| "*".to_owned());
             for (name, mailbox) in &world.mailboxes {
+                if !matches_pattern(&pattern, name, world.delimiter) {
+                    continue;
+                }
                 let mut attributes = mailbox.attributes.clone();
-                attributes.push("\\HasNoChildren".into());
+                let children = world.mailboxes.keys().any(|other| world.under(other, name));
+                attributes.push(if children {
+                    "\\HasChildren".into()
+                } else {
+                    "\\HasNoChildren".into()
+                });
                 out.push_str(&format!(
-                    "* LIST ({}) \"/\" {}\r\n",
+                    "* LIST ({}) {} {}\r\n",
                     attributes.join(" "),
+                    quoted(&world.delimiter.to_string()),
                     quoted(name)
                 ));
                 if let Some(items) = &status
@@ -967,6 +1121,13 @@ fn answer(world: &mut World, session: &mut Session, tag: &str, command: &str) ->
         "LOGOUT" => {
             out.push_str("* BYE bye\r\n");
             ok(&mut out, "done");
+        }
+        "CREATE" | "DELETE" | "RENAME" | "SUBSCRIBE" | "UNSUBSCRIBE" => {
+            let names = arguments(&command[verb.len()..]);
+            match manage(world, &verb, &names) {
+                Ok(()) => ok(&mut out, "done"),
+                Err(refusal) => out.push_str(&format!("{tag} {refusal}\r\n")),
+            }
         }
         _ => out.push_str(&format!("{tag} BAD unknown command\r\n")),
     }
