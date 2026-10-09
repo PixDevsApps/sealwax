@@ -1,6 +1,6 @@
 # Testing & Acceptance
 
-Synced: 2026-10-08
+Synced: 2026-10-09
 
 Evidence rules ([AGENTS.md](../AGENTS.md#evidence)): record only what was actually run, with date, command, machine and caveats. "Not verified" is an acceptable result; a guessed number is not.
 
@@ -69,6 +69,22 @@ Measured with release builds unless noted; each entry names its spike or milesto
 The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. Results go here as dated entries, newest first, with links to `docs/spikes/` reports and screenshots in `tools/progress/`.
 
 ## Results
+
+### M9 folders (A1): create, rename and delete, the folder tree — 2026-10-09
+
+Report: [m9/folders.md](m9/folders.md). Branch `m9-folders`; machine as M5's; rustc 1.98.1.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Engine against the fake IMAP server, `cargo test -p sealwax-engine --test folders` | 7 passed, five runs in a row: CREATE + SUBSCRIBE on three flavours, RENAME with a subfolder (subscriptions moved, messages and sync state kept, new mail after), DELETE deepest first with a folder the store never saw, a top folder under `INBOX.`, refusals (the engine's send nothing; the server's in its words), a lost reply, offline and unknown accounts, a POP3 account's local folders | Pass |
+| Folder testbed suite, `cargo test --release -p sealwax-engine --test folders_testbed -- --ignored --test-threads=1` (user `spike`, its folders deleted at the end), 08:35 on `8dd5312` | 1 passed (0.28 s). Dovecot: create at the top 5.8 ms, under it 6.3 ms, rename with two subfolders 7.1 ms, delete of four 21.4 ms; Dovecot IMAP4rev1: 15.3, 6.7, 6.5, 18.8 ms; Stalwart: 1.8, 1.3, 1.6, 2.8 ms; a sibling's name refused before sending (under 0.1 ms) and a name only the server knew refused with `ALREADYEXISTS` on all three; a top folder went to the top on all three (delimiter `/`). An earlier run at 07:42 (before the last lint fixes) passed the same | Pass |
+| `testbed` (M2's login, folder list and first sync) on `8dd5312`, 08:36 | 5 passed (33.9 s) | Pass |
+| `sync_testbed` (the passes, whose folder removal `replace_folders` shares with the new delete) on `8dd5312`, 08:37–08:41 | 9 passed (183.4 s): the randomized two-client runs on four server variants with 0 divergences, the mid-FETCH cuts on three servers, the control that must diverge, the resync timings | Pass |
+| Self-tests by hand, display 81 | `folders-tree` 101/101; `folders-dialogs` 152/152 three runs in a row; `a11y-window` 167/167; `a11y-dialogs` 150/150 | Pass |
+| Branch CI, `SEALWAX_CI_DISPLAY=82 bash tools/ci.sh --ui` on `8a5e8e9` | 1,392 passed, 0 failed, 97 ignored; 72 scripts, 7,038 steps; the hostile suite clean (60 cases, 275 s) | Pass |
+| FINAL_CI_ROW
+
+- **Not verified:** Outlook.com, Microsoft 365 and a server with an `INBOX.` personal namespace (the fake server only); NAMESPACE (not sent: imap-proto 0.17 can't parse its reply); the dialogs on a POP3 account (the engine's path only); what Orca says; a live look. `tools/ci.sh --testbed` wasn't run (it asks Docker which containers run, and Docker commands weren't this work's to run); the suites above were run directly.
 
 ### M9 phase A: the user guide, the security review and fuzzing, the accessibility pass — 2026-10-07
 
