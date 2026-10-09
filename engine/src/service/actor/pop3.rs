@@ -407,6 +407,35 @@ impl<C: Connect> Passes<C> {
                 complete: true,
             }),
             Control::Outbox => self.wake.notify_one(),
+            // Local folders change at once, beside the passes.
+            Control::Folder(job) => {
+                let (shared, account) = (self.shared.clone(), self.account);
+                tokio::spawn(async move {
+                    let result = match crate::folders::apply_local(
+                        &shared.store,
+                        account,
+                        &job.change,
+                    )
+                    .await
+                    {
+                        Ok(orphaned) => {
+                            discard(&shared, orphaned).await;
+                            Ok(())
+                        }
+                        Err(error) => Err(error),
+                    };
+                    tracing::info!(
+                        account = account.0,
+                        done = result.is_ok(),
+                        "a folder change"
+                    );
+                    shared.send(Event::FolderChanged {
+                        request: job.request,
+                        account,
+                        result,
+                    });
+                });
+            }
         }
     }
 

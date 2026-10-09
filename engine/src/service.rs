@@ -11,7 +11,9 @@
 //! lane stops that actor before it removes the account or replaces its token.
 
 use crate::accounts::{Accounts, secret_label};
-use crate::api::{AccountError, Command, Event, Password, RequestId, SendError};
+use crate::api::{
+    AccountError, Command, Event, FolderChange, FolderError, Password, RequestId, SendError,
+};
 use crate::autoconfig::{self, DetectOptions};
 use crate::imap::{self, Credentials, ImapError, Stop};
 use crate::net::Trust;
@@ -504,6 +506,14 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 tokio::spawn(submission_limit(shared.clone(), request, account));
                 continue;
             }
+            Command::ChangeFolder {
+                request,
+                account,
+                change,
+            } => {
+                change_folder(&shared, request, account, change);
+                continue;
+            }
             Command::Reconnect => {
                 tracing::info!("reconnecting every account");
                 for actor in shared.actors().values() {
@@ -541,6 +551,27 @@ fn wake(shared: &Shared, account: AccountId, control: actor::Control) {
         .find(|actor| actor.account() == Some(account))
     {
         let _ = actor.control.try_send(control);
+    }
+}
+
+/// `ChangeFolder`: the account's actor changes an IMAP account's folders on its command
+/// connection, a POP3 account's at once; an account without a running actor is offline.
+fn change_folder(shared: &Shared, request: RequestId, account: AccountId, change: FolderChange) {
+    let job = actor::Control::Folder(actor::FolderJob { request, change });
+    let sent = match shared
+        .actors()
+        .values()
+        .find(|actor| actor.account() == Some(account))
+    {
+        Some(actor) => actor.control.try_send(job).is_ok(),
+        None => false,
+    };
+    if !sent {
+        shared.send(Event::FolderChanged {
+            request,
+            account,
+            result: Err(FolderError::Offline),
+        });
     }
 }
 

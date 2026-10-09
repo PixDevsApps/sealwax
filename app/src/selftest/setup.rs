@@ -61,8 +61,8 @@ use sealwax_domain::account::{
 };
 use sealwax_domain::model::{FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
-    AccountError, BodyError, Command, Event, FetchedPart, Original, Password, Refused, RequestId,
-    SyncStatus,
+    AccountError, BodyError, Command, Event, FetchedPart, FolderChange, Original, Password,
+    Refused, RequestId, SyncStatus,
 };
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
@@ -764,6 +764,33 @@ fn fields(
             Some(*request),
             vec![("key", key.to_string())],
         ),
+        Command::ChangeFolder {
+            request,
+            account,
+            change,
+        } => {
+            let mut fields = vec![("account", account.0.to_string())];
+            let kind = match change {
+                FolderChange::Create { parent, name } => {
+                    fields.push((
+                        "parent",
+                        parent.map_or_else(|| "none".to_owned(), |id| id.0.to_string()),
+                    ));
+                    fields.push(("name", name.clone()));
+                    "create-folder"
+                }
+                FolderChange::Rename { folder, name } => {
+                    fields.push(("folder", folder.0.to_string()));
+                    fields.push(("name", name.clone()));
+                    "rename-folder"
+                }
+                FolderChange::Delete { folder } => {
+                    fields.push(("folder", folder.0.to_string()));
+                    "delete-folder"
+                }
+            };
+            (kind, Some(*request), fields)
+        }
         Command::Shutdown => ("shutdown", None, Vec::new()),
     }
 }
