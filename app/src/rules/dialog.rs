@@ -66,6 +66,8 @@ struct Inner {
     saving: Cell<bool>,
     dirty: Cell<bool>,
     editor: RefCell<Option<Editor>>,
+    /// Where the keyboard focus goes after the next fill, the first that can take it.
+    focus_next: RefCell<Vec<String>>,
     weak: RefCell<Weak<Inner>>,
 }
 
@@ -179,6 +181,7 @@ pub fn open(state: &Rc<AppState>, account: Account, start: Start) {
         saving: Cell::new(false),
         dirty: Cell::new(false),
         editor: RefCell::new(None),
+        focus_next: RefCell::new(Vec::new()),
         weak: RefCell::new(Weak::new()),
     });
     inner.weak.replace(Rc::downgrade(&inner));
@@ -278,19 +281,25 @@ impl Inner {
     /// Fills the page from the rules held. The keyboard focus stays on the widget of the same
     /// name, else nearby: a list's field, else New Rule.
     fn fill(&self) {
-        let focused = self
-            .dialog
-            .focus()
-            .filter(|widget| widget.is_ancestor(&self.dialog))
-            .map(|widget| named_around(&widget));
+        let mut wanted = self.focus_next.take();
+        if wanted.is_empty()
+            && let Some(name) = self
+                .dialog
+                .focus()
+                .filter(|widget| widget.is_ancestor(&self.dialog))
+                .map(|widget| named_around(&widget))
+                .filter(|name| !name.is_empty())
+        {
+            wanted.push(name);
+        }
         for (group, row) in self.rows.take() {
             group.remove(&row);
         }
         self.fill_groups();
-        if let Some(name) = focused.filter(|name| !name.is_empty()) {
-            let fallback = if name.starts_with("blocked-") {
+        if let Some(first) = wanted.first() {
+            let fallback = if first.starts_with("blocked-") {
                 "blocked-add"
-            } else if name.starts_with("trusted-") {
+            } else if first.starts_with("trusted-") {
                 "trusted-add"
             } else {
                 "rules-new"
@@ -301,9 +310,10 @@ impl Inner {
                 let Some(inner) = weak.upgrade() else {
                     return;
                 };
-                let target = inner
-                    .find(&name)
-                    .filter(|widget| widget.is_sensitive())
+                let target = wanted
+                    .iter()
+                    .filter_map(|name| inner.find(name))
+                    .find(|widget| widget.is_sensitive())
                     .or_else(|| inner.find(fallback))
                     .filter(|widget| widget.is_visible());
                 if let Some(target) = target {
@@ -644,39 +654,28 @@ impl Inner {
 
     /// Moves the rule at `index` past the next item (`down`) or the one before it.
     fn move_rule(&self, index: usize, down: bool) {
-        let mut target = None;
+        let other = if down {
+            index + 1
+        } else {
+            match index.checked_sub(1) {
+                Some(other) => other,
+                None => return,
+            }
+        };
+        // The focus follows the rule to its new place, on the same button where it can.
+        let (same, opposite) = if down { ("down", "up") } else { ("up", "down") };
+        self.focus_next.replace(vec![
+            format!("rule-{same}-{other}"),
+            format!("rule-{opposite}-{other}"),
+        ]);
         self.change(|set| {
-            let other = if down {
-                index + 1
-            } else {
-                match index.checked_sub(1) {
-                    Some(other) => other,
-                    None => return false,
-                }
-            };
             if other >= set.items.len() {
                 return false;
             }
             set.items.swap(index, other);
-            target = Some(other);
             true
         });
-        // The focus follows the rule to its new place, on the same button where it can.
-        if let Some(other) = target {
-            let names = if down {
-                [format!("rule-down-{other}"), format!("rule-up-{other}")]
-            } else {
-                [format!("rule-up-{other}"), format!("rule-down-{other}")]
-            };
-            for name in names {
-                if let Some(widget) = self.find(&name)
-                    && widget.is_sensitive()
-                {
-                    widget.grab_focus();
-                    break;
-                }
-            }
-        }
+        self.focus_next.take();
     }
 
     fn delete_rule(&self, index: usize) {

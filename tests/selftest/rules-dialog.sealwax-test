@@ -81,6 +81,8 @@ assert-sensitive rule-down-1 false
 click rule-up-1
 rules-wait
 assert-rules-set "Store vedlegg:on,Kunder:on"
+# The focus follows the rule: on its Move Up, unless it can't move further, then Move Down.
+wait-until assert-focus rule-down-0
 wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "stop;\n}\n# rule:[Kunder]"
 click rule-switch-1
 rules-wait
