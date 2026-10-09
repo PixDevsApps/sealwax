@@ -164,7 +164,7 @@ A release build from the source tree has the installed app-id: with the package 
 | Building the package (`tools/package-source.py`, then makepkg with Rust from rustup's installer) | **Yes** | The owner's builds; 0.4.0's on 2026-10-09 with `tools/release.py build` (makepkg's `check()`: 1,067 passed, 0 failed) |
 | Installing a built package with `sudo pacman -U` | **Yes** | The owner's machine, on every package since 2026-10-07; the installed binary compared byte for byte with the build's |
 | Updating over an earlier package | **Yes** | The same installs, each over the one before; the store's format changes by itself on the first start |
-| The install command (the download from the latest release) | **Partly** | Its download, 2026-10-09: the file is the release's package (the same SHA-256; `pacman -Qp` reads `sealwax 0.4.0-1`). Installing it with `pacman -U` isn't run yet |
+| The install command (the download from the latest release) | **Yes** | On the owner's machine, 2026-10-09, as written on this page: the download is the release's package (the same SHA-256), and pacman upgraded `sealwax` from 0.3.0-1 to 0.4.0-1; the installed binary is byte for byte the release's and says `sealwax 0.4.0` |
 | The AUR package `sealwax-bin` and updates through Omarchy's Update | Not published yet | The AUR closed new accounts on 2026-10-09. Omarchy's update runs `yay -Sua`, which updates AUR packages (read in `/usr/share/omarchy/bin/omarchy-update-aur-pkgs`, 2026-10-09) |
 | Building with Arch's `rust` or `rustup` package (without `--nodeps`) | Not verified | |
 | Installing on a clean system with only the listed dependencies | Not verified | The clean-container install test comes before 1.0 |

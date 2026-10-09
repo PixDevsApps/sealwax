@@ -89,7 +89,8 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 | The public repository | `main` and the tags pushed to the new `PixDevsApps/sealwax`; GitHub answers "No commit found" for the old `main` (`cef353c`) and 404 for `docs/PLAN.md`; `sealwax-archive` private | Pass |
 | The release `v0.4.0` (`tools/release.py github`) | Four files; INSTALL.md's download URL (`releases/latest/download/sealwax-x86_64.pkg.tar.zst`) downloaded with curl: the same SHA-256 as the build, read by `pacman -Qp` as `sealwax 0.4.0-1` | Pass |
 
-- **Not verified:** installing from the download (`pacman -U`); the AUR package on the AUR (not published: the AUR closed new accounts); uninstalling.
+- **Installed with INSTALL.md's command** (the owner's word, 22:32): the download, then `sudo pacman -U` with the owner typing the password: pacman's log `upgraded sealwax (0.3.0-1 -> 0.4.0-1)` at 22:32:16; `/usr/bin/sealwax` byte for byte the release package's, `sealwax --version` says 0.4.0.
+- **Not verified:** the AUR package on the AUR (not published: the AUR closed new accounts); uninstalling.
 
 ### M9 a narrow design sits on the theme — 2026-10-09
 
