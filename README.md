@@ -6,7 +6,7 @@ A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 an
 
 ## Status
 
-**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0, is under way: accessibility, the security review and fuzzing and this documentation are done; UI polish is in progress (account names and colours, Edit Account, folding accounts, resizable panes, the composer docked in the window, folders and rules so far), then performance, packaging and the sign-off. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use. [docs/PLAN.md](docs/PLAN.md) has the current state.
+**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0, is under way: accessibility, the security review and fuzzing and this documentation are done; UI polish is in progress (account names and colours, Edit Account, folding accounts, resizable panes, the composer docked in the window, folders and rules so far), then performance, packaging and the sign-off. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use.
 
 ## Features
 
@@ -22,7 +22,7 @@ A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 an
 - **Keyboard first:** one-key shortcuts in the list and reader, a command palette (F1), and your own keys in `keys.toml`. Settings live in plain files: `config.toml`, `keys.toml`, `accounts.toml`.
 - **Private:** passwords and tokens only in your keyring; no telemetry; logs without mail content; outgoing mail without your computer's name or a Bcc header.
 
-Not supported: Gmail and Sign in with Google (use Gmail's own app or web version). Not in 1.0: server-side search, rules uploaded to the server (ManageSieve), PGP and S/MIME, calendars and contacts beyond autocomplete ([scope](docs/PLAN.md#scope-control)).
+Not supported: Gmail and Sign in with Google (use Gmail's own app or web version). Not in 1.0: server-side search, rules uploaded to the server (ManageSieve), PGP and S/MIME, calendars and contacts beyond autocomplete ([release notes](docs/RELEASE_NOTES.md#known-limitations)).
 
 ## Requirements
 
@@ -41,7 +41,6 @@ Build the Arch package from this repository with its PKGBUILD: [INSTALL.md](INST
 - [Integrations](docs/INTEGRATIONS.md): Omarchy, Hyprland key bindings and menu entries, providers
 - [Microsoft sign-in setup](docs/OAUTH-SETUP.md): registering a client ID
 - [Building](docs/BUILD.md) and [testing](docs/TESTING.md)
-- [Product requirements](docs/PRD.md), [plan and current state](docs/PLAN.md), [decisions](docs/DECISIONS.md), [design](docs/DESIGN.md)
-- Working on it with an agent: [AGENTS.md](AGENTS.md)
+- [Decisions](docs/DECISIONS.md) and [design](docs/DESIGN.md)
 
 License: MIT.

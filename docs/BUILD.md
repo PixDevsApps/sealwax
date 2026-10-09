@@ -119,7 +119,7 @@ git clone --depth 1 https://github.com/rustsec/advisory-db target/advisory-db
 python3 tools/advisories.py -v target/advisory-db Cargo.lock
 ```
 
-The fuzz targets live in `fuzz/`, a workspace of its own (excluded from the main one), so `cargo build` and CI never compile them. They link libFuzzer through the `libfuzzer-sys` crate on the stable toolchain, instrumented with SanitizerCoverage flags (`-C passes=sancov-module`); no nightly, no `cargo-fuzz` and no AddressSanitizer. Debug assertions and overflow checks are on (`fuzz/Cargo.toml`). Each target calls an entry point in the crates (`sealwax_domain::fuzz`, `sealwax_engine::fuzz`, built for tests and with the `fuzz` feature) that also checks what the parser promises, so a property that fails is a crash. Working corpora, crashes and logs go to `target/fuzz-corpus/`, `target/fuzz-artifacts/` and `target/fuzz-logs/`; the checked-in seeds and every crash found are in `fuzz/corpus/<target>/`, which `cargo test -p sealwax-domain -p sealwax-engine` runs through the same entry points. The advisory check reads the public RustSec database (cloned into `target/`, never committed) instead of installing `cargo audit`. Results: [m9/security.md](m9/security.md).
+The fuzz targets live in `fuzz/`, a workspace of its own (excluded from the main one), so `cargo build` and CI never compile them. They link libFuzzer through the `libfuzzer-sys` crate on the stable toolchain, instrumented with SanitizerCoverage flags (`-C passes=sancov-module`); no nightly, no `cargo-fuzz` and no AddressSanitizer. Debug assertions and overflow checks are on (`fuzz/Cargo.toml`). Each target calls an entry point in the crates (`sealwax_domain::fuzz`, `sealwax_engine::fuzz`, built for tests and with the `fuzz` feature) that also checks what the parser promises, so a property that fails is a crash. Working corpora, crashes and logs go to `target/fuzz-corpus/`, `target/fuzz-artifacts/` and `target/fuzz-logs/`; the checked-in seeds and every crash found are in `fuzz/corpus/<target>/`, which `cargo test -p sealwax-domain -p sealwax-engine` runs through the same entry points. The advisory check reads the public RustSec database (cloned into `target/`, never committed) instead of installing `cargo audit`.
 
 ## Headless GTK runs
 
@@ -127,7 +127,7 @@ The fuzz targets live in `fuzz/`, a workspace of its own (excluded from the main
 
 ## Mail testbed
 
-`tools/testbed/` (ML-005) is the Docker Compose project `mail-testbed`. Every port is bound to 127.0.0.1 and all data is synthetic ([S1 report](spikes/S1-imap.md#testbed-ml-005)). Docker use is authorized for the testbed only (PLAN.md authorization log).
+`tools/testbed/` (ML-005) is the Docker Compose project `mail-testbed`. Every port is bound to 127.0.0.1 and all data is synthetic. Docker use is authorized for the testbed only (PLAN.md authorization log).
 
 | Service | Image | Ports |
 | --- | --- | --- |

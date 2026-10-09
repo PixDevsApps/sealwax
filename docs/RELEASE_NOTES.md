@@ -1,6 +1,6 @@
 # Sealwax 1.0.0 release notes (draft)
 
-> **Draft, 2026-10-09.** Sealwax 1.0.0 isn't released: the version stays 0.3.0 until the owner's sign-off (ML-096), after M8's gate and the rest of M9 ([PLAN.md](PLAN.md#m9--polish-accessibility-security-and-10-810-days)). The parts marked *(at the sign-off)* are filled in then, from what was actually run. Nothing here is a measurement made for this page.
+> **Draft, 2026-10-09.** Sealwax 1.0.0 isn't released: the version stays 0.3.0 until the owner's sign-off (ML-096), after M8's gate and the rest of M9. The parts marked *(at the sign-off)* are filled in then, from what was actually run. Nothing here is a measurement made for this page.
 
 Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and treating every message as hostile. 1.0.0 is its first stable release.
 
@@ -55,9 +55,9 @@ Build the Arch package from the repository with its PKGBUILD ([INSTALL.md](../IN
 - **A hostile IMAP server can keep an account failing** by sending a reply that crashes the IMAP parser Sealwax uses (reported upstream as djc/imap-proto#210); Sealwax restarts the account's sync after a pause and shows it offline meanwhile.
 - **WebKit's sandbox** needs bubblewrap and unprivileged user namespaces.
 - **English only**; no translations in 1.0.
-- Not in 1.0: server-side search, schedule send, snooze, templates, calendars, and contacts beyond address suggestions ([scope](PLAN.md#scope-control)).
+- Not in 1.0: server-side search, schedule send, snooze, templates, calendars, and contacts beyond address suggestions.
 
-The full list, with what was checked and how, is in [SECURITY.md](SECURITY.md#known-limitations) and [PLAN.md](PLAN.md#follow-ups).
+The full list, with what was checked and how, is in [SECURITY.md](SECURITY.md#known-limitations).
 
 ## How 1.0.0 was checked *(at the sign-off)*
 

@@ -1867,7 +1867,13 @@ mod tests {
 
     #[test]
     fn the_report_lists_the_registry_keymap() {
-        let doc = include_str!("../../docs/m1/actions.md");
+        // The milestone reports are working docs kept out of the repository (2026-10-09): the
+        // table is checked where the report is; USER_GUIDE.md's is checked everywhere.
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../docs/m1/actions.md");
+        let Ok(doc) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let doc = doc.as_str();
         let start = doc.find(TABLE_START).expect("the table's start marker") + TABLE_START.len();
         let end = doc[start..]
             .find(TABLE_END)

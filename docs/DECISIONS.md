@@ -798,6 +798,14 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 
 **Consequence:** OPERATING.md carries the sync rule. The hub and board are renamed when ADR-010 is accepted.
 
+### ADR-012 amendment — the working docs stay local (2026-10-09)
+
+**Status:** Accepted — user decision, 2026-10-09: "I do not want the plan in my repository …, these should be kept local, as they are just for me", then "PLAN.md and the other working docs" and "Remove from history too".
+
+**Decision:** The plan, the product requirements, the operating guide, the research notes, the agents' guide, the milestone reports (`docs/m1/`–`docs/m9/`) and the spike reports (`docs/spikes/`) stay on the owner's disk as the project memory, ignored by git and never pushed; every commit of the history was rewritten without them and force-pushed with the tags. The repository keeps the docs for users and contributors: README, INSTALL, the user guide, building, testing, design, these decisions, security, integrations, OAuth setup and the release notes, which no longer link to the local ones in their user-facing parts (TESTING, DESIGN and these decisions still name local reports as references). A test that read a milestone report reads it only when it is there.
+
+**Consequences:** the working docs have no version history; a backup of them and a bundle of the old history are kept in `.local/backup/`. Commit hashes written before the rewrite name the old history; `.local/backup/commit-map-2026-10-09.txt` maps them to the new one.
+
 ## ADR-013 — Lean 1.0 scope (2026-10-04)
 
 **Status:** Accepted — plan approval, 2026-10-04.

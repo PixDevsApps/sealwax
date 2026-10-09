@@ -5,3 +5,11 @@
 *.pending-snap
 __pycache__/
 /.claude/
+# Working docs: the owner's, kept local (ADR-012 amendment, 2026-10-09)
+/AGENTS.md
+/docs/PLAN.md
+/docs/PRD.md
+/docs/OPERATING.md
+/docs/RESEARCH.md
+/docs/m[1-9]/
+/docs/spikes/
