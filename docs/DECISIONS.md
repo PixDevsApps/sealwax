@@ -29,6 +29,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate), M5's keys accepted (M5 gate), M6's keys accepted (M6 gate) |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2; the HTML parser capped in M6 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
+| 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); being built |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -838,6 +839,10 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 
 **Status:** Accepted — user decision, 2026-10-07 ([ADR-008 amendment](#adr-008-amendment--google-dropped-2026-10-07)). Sign in with Google moves from 1.x to Never; Gmail labels leave 1.x; 1.0's app-password guidance no longer names Gmail, which is no longer a listed provider.
 
+### ADR-013 amendment — folders and rules into 1.0 (2026-10-09)
+
+**Status:** Accepted — user decision, 2026-10-09: "Now I need the possibility for users to make subfolders for the inboxes, and to make rules for emails to be routed to the different folders (use industry standards for rules, spam/not spam rules as well)", then "In Sealwax (Recommended)" and "Create, rename, delete (Recommended)". Folder create, rename and delete and local rules move from 1.x into 1.0, with Sieve as the rules' language, run by Sealwax ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026-10-09)); uploading scripts to servers (ManageSieve) stays on Later.
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
@@ -1129,3 +1134,18 @@ Built in M1 ([report](m1/theme.md)):
 - avatars and circular buttons are round while corners are rounded, and square at 0.
 
 `hyprctl` is skipped without `HYPRLAND_INSTANCE_SIGNATURE` and reread with every theme change.
+
+## ADR-020 — Folders and rules: Sieve run by Sealwax (2026-10-09)
+
+**Status:** Accepted — user decision, 2026-10-09 ("In Sealwax (Recommended)", "Create, rename, delete (Recommended)"); the design is [m9/folders-rules.md](m9/folders-rules.md), built in parts A1, A2, B1 and B2.
+
+**Decision:**
+- **Folders:** New Folder (or Subfolder), Rename Folder and Delete Folder, online only, on the account's command connection: IMAP CREATE, RENAME and DELETE with SUBSCRIBE and UNSUBSCRIBE; local folders for POP3 accounts. The store follows in the same session (a rename keeps the messages). Delete always asks, with the number of messages. The sidebar shows subfolders as a foldable tree.
+- **Rules are Sieve** (RFC 5228) with `fileinto`, `copy`, `imap4flags`, `environment` and `imapsieve`'s `imap.mailbox`; one script per account in `$XDG_CONFIG_HOME/sealwax/rules/<account key>.sieve`, written by the Rules dialog in Roundcube's `# rule:[…]` form and editable by hand. **Sealwax runs it** on new mail in the Inbox and in Junk and on request for a folder; its actions are ops in the op queue (ADR-015). Spam rules are an "always junk" list (to Junk with `$Junk`) and a "never junk" list that brings mail from Junk back to the Inbox with `$NotJunk`.
+- No new keys (ADR-017); the commands are in the palette and the right-click menus of folder rows, account headings and message rows.
+
+**Reason:** the user asked for industry standards; Sieve is the standard language for mail rules, and Roundcube's comment form is the most common editor's. Running it in Sealwax works on every account, Outlook.com and POP3 included, where ManageSieve would cover only servers that have it and could replace a script another program made.
+
+**Alternatives:** ManageSieve upload (RFC 5804), alone or beside the local run (rules running while the computer is off; not on Outlook.com) — Later, a new user decision; a Sealwax-only rule format (Thunderbird's way) — not a standard.
+
+**Consequences:** rules run only while Sealwax runs (background mode is on by default) and see headers, not bodies; a header beyond the stored ones costs one header fetch for the new messages. The pure language lives in `domain::sieve`, the file in `infrastructure`, the run in `engine`.
