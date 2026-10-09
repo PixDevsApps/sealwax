@@ -116,6 +116,7 @@ Mail rules are Sieve (RFC 5228) run by Sealwax on the mail it syncs ([ADR-020](D
 - **Limits:** a script is at most 1 MiB (`MAX_SCRIPT_BYTES`) and nests blocks, and tests inside tests, at most 32 levels deep (`MAX_NESTING`), both parse errors with their line and column. There are no loops or variables: a run executes each command at most once and evaluates each test at most once per message, and `:matches` takes at most value × pattern steps (no backtracking blow-up).
 - **Privacy:** an error message names commands, tags and extensions, never a string from the script; the `Debug` of every type that holds script text (scripts, rule sets, rules, outcomes, errors) prints counts and kinds only, so rule text, addresses and folder names never reach a log.
 - **Reading back:** the Rules dialog's model recognises a rule only when writing it again gives the same commands; anything else is kept as hand-written text, so saving from the dialog never changes what the rest of a script does (checked by the fuzz target on every input).
+- **Running (B1, [report](m9/rules-engine.md)):** a rule's actions are the user's own kinds of change, through the op queue: moves, copies and flags of the account's own folders, Trash for `discard`, never an expunge or anything sent. A header a rule needs is fetched with `BODY.PEEK[HEADER]` (nothing marked read) on the account's own connection. The engine logs counts, folder ids and an error's kind, never a header, an address, a subject, a folder name or the script.
 
 ## Review and fuzzing (M9)
 
