@@ -1,6 +1,6 @@
 # Integrations
 
-Synced: 2026-10-06
+Synced: 2026-10-09
 
 How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this machine were read on 2026-10-04 (Omarchy 4.0.4, Hyprland 0.56.2); anything marked *to verify* is checked in the named spike before code depends on it.
 

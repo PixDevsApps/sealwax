@@ -1,6 +1,6 @@
 # OAuth setup: Microsoft sign-in
 
-Synced: 2026-10-07
+Synced: 2026-10-09
 
 "Sign in with Microsoft" needs an OAuth client registered by the app's publisher ([ADR-008](DECISIONS.md#adr-008--oauth2-and-secrets-2026-10-04)). Only you can create the registration: it belongs to your Microsoft account. This page walks through it.
 
