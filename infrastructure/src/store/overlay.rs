@@ -23,6 +23,9 @@ pub(crate) const MOVE: i64 = 1;
 pub(crate) const EXPUNGE: i64 = 2;
 /// A folder marked read: the server's unread messages below its floor (`uid` holds the floor).
 pub(crate) const READ_BELOW: i64 = 3;
+/// A copy into `target` (a rule's `fileinto :copy`, ADR-020): the message stays where it is and
+/// shows the copy once the target's sync fetches it.
+pub(crate) const COPY: i64 = 4;
 
 /// `kind` in the `op_batches` table.
 pub(crate) const BATCH_TRIAGE: i64 = 0;
@@ -31,6 +34,8 @@ pub(crate) const BATCH_UNDO: i64 = 2;
 /// What a send queues (M6): the source message's `\Answered` or `$Forwarded`, and stale
 /// Drafts-folder copies to expunge.
 pub(crate) const BATCH_COMPOSE: i64 = 3;
+/// What an account's rules did to a message that arrived (ADR-020).
+pub(crate) const BATCH_RULES: i64 = 4;
 
 /// Whether a row with these flags is listed and counted.
 pub(crate) fn shown(flags: u32) -> bool {
@@ -48,9 +53,20 @@ pub(crate) fn counted(flags: u32) -> (i64, i64) {
 /// One pending change of one message.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Change {
-    Flags { add: u32, remove: u32 },
-    Move { to: FolderId, add: u32, remove: u32 },
+    Flags {
+        add: u32,
+        remove: u32,
+    },
+    Move {
+        to: FolderId,
+        add: u32,
+        remove: u32,
+    },
     Expunge,
+    /// Changes nothing the user sees of the message; it runs on its own, before what follows.
+    Copy {
+        to: FolderId,
+    },
 }
 
 impl Change {
@@ -64,6 +80,9 @@ impl Change {
                 remove,
             }),
             EXPUNGE => Some(Change::Expunge),
+            COPY => Some(Change::Copy {
+                to: FolderId(target?),
+            }),
             _ => None,
         }
     }
@@ -78,6 +97,8 @@ pub(crate) struct Folded {
     pub(crate) add: u32,
     pub(crate) remove: u32,
     pub(crate) expunge: bool,
+    /// Copies in the run; they change nothing of the message.
+    pub(crate) copies: u32,
 }
 
 /// The server action a run of changes comes to, as the op runner performs it.
@@ -94,6 +115,10 @@ pub(crate) enum Action {
         remove: u32,
     },
     Expunge,
+    /// `UID COPY` to `to`; nothing else in the same action.
+    Copy {
+        to: FolderId,
+    },
 }
 
 pub(crate) fn fold(from: FolderId, changes: impl IntoIterator<Item = Change>) -> Folded {
@@ -103,6 +128,7 @@ pub(crate) fn fold(from: FolderId, changes: impl IntoIterator<Item = Change>) ->
         add: 0,
         remove: 0,
         expunge: false,
+        copies: 0,
     };
     for change in changes {
         let (add, remove) = match change {
@@ -114,6 +140,10 @@ pub(crate) fn fold(from: FolderId, changes: impl IntoIterator<Item = Change>) ->
             Change::Expunge => {
                 folded.expunge = true;
                 break;
+            }
+            Change::Copy { .. } => {
+                folded.copies += 1;
+                continue;
             }
         };
         folded.add = (folded.add | add) & !remove;
@@ -171,13 +201,13 @@ impl Folded {
 
 /// The change that puts back what `change` did to a message whose flags were `prior` and which
 /// was in `prior_folder`: the flags it set that weren't set before are removed, those it removed
-/// that were set are added, and a move goes back. `None` for an expunge.
+/// that were set are added, and a move goes back. `None` for an expunge and a copy.
 pub(crate) fn inverse(change: Change, prior: u32, prior_folder: FolderId) -> Option<Change> {
     let (add, remove) = match change {
         Change::Flags { add, remove } | Change::Move { add, remove, .. } => {
             (remove & prior, add & !prior)
         }
-        Change::Expunge => return None,
+        Change::Expunge | Change::Copy { .. } => return None,
     };
     Some(match change {
         Change::Move { .. } => Change::Move {

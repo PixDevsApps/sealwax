@@ -9,7 +9,9 @@
 
 use super::{Interrupt, Poller, backoff_delay, discard, race};
 use crate::api::{Event, Refused, SyncStatus};
-use crate::imap::write::{self, Done, Mark, Move, Moving, OpFolder, WriteError, WriteFailure};
+use crate::imap::write::{
+    self, Copy, Done, Mark, Move, Moving, OpFolder, WriteError, WriteFailure,
+};
 use sealwax_domain::model::FolderId;
 use sealwax_infrastructure::store::{
     Failure, OpAction, OpGroup, OpId, OpsDone, OpsRefusal, RefusedChange,
@@ -41,6 +43,7 @@ pub(super) fn refused(change: RefusedChange) -> Refused {
         RefusedChange::Move => Refused::Move,
         RefusedChange::Expunge => Refused::Expunge,
         RefusedChange::FolderRead => Refused::FolderRead,
+        RefusedChange::Copy => Refused::Copy,
     }
 }
 
@@ -50,6 +53,7 @@ fn kind(action: &OpAction) -> &'static str {
         OpAction::Move { .. } => "move",
         OpAction::Expunge => "expunge",
         OpAction::ReadBelow { .. } => "folder read",
+        OpAction::Copy { .. } => "copy",
     }
 }
 
@@ -160,7 +164,7 @@ impl Poller {
             return Ok(Ran::Resync(group.folder));
         };
         let mut folders = vec![group.folder];
-        if let OpAction::Move { to, .. } = &group.action {
+        if let OpAction::Move { to, .. } | OpAction::Copy { to, .. } = &group.action {
             folders.push(*to);
         }
         folders.sort_unstable();
@@ -169,8 +173,10 @@ impl Poller {
         for folder in folders {
             held.push(race(&self.signals, seen, self.locks.lock(folder)).await?);
         }
+        // A copy's arrival in its target isn't new mail either; it settles when the target's
+        // pass stores it.
         let target = match &group.action {
-            OpAction::Move { to, .. } => Some(*to),
+            OpAction::Move { to, .. } | OpAction::Copy { to, .. } => Some(*to),
             _ => None,
         };
         if let Some(to) = target {
@@ -240,6 +246,11 @@ impl Poller {
                 to_name,
                 to_uidvalidity,
                 ..
+            }
+            | OpAction::Copy {
+                to_name,
+                to_uidvalidity,
+                ..
             } => match group.target_uidnext {
                 Some(uidnext) => Some(Mark {
                     uidvalidity: *to_uidvalidity,
@@ -303,6 +314,24 @@ impl Poller {
             }
             OpAction::Expunge => {
                 race(&self.signals, seen, write::expunge(conn, folder, &uids)).await?
+            }
+            OpAction::Copy { to_name, .. } => {
+                let messages: Vec<Moving<'_>> = group
+                    .messages
+                    .iter()
+                    .map(|message| Moving {
+                        uid: message.uid,
+                        message_id: message.message_id.as_deref(),
+                    })
+                    .collect();
+                let request = Copy {
+                    from: folder,
+                    to: to_name,
+                    messages: &messages,
+                    mark,
+                    retry: group.retry || group.attempts > 0,
+                };
+                race(&self.signals, seen, write::copy_messages(conn, request)).await?
             }
             OpAction::ReadBelow { floor } if *floor > 1 => {
                 race(

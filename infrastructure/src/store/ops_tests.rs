@@ -98,7 +98,7 @@ pub(super) fn server() -> Fx {
 }
 
 /// A local account (no key): fixtures and self-tests.
-fn local() -> Fx {
+pub(super) fn local() -> Fx {
     let dir = scratch();
     let store = Store::open(&dir.path().join("store.sqlite"), StoreOptions::default()).unwrap();
     let account = store
@@ -199,7 +199,7 @@ pub(super) fn server_flags(store: &Store, folder: FolderId) -> BTreeMap<u32, Fla
 }
 
 /// What the reader shows of a message.
-fn shown(store: &Store, id: MessageId) -> Option<Flags> {
+pub(super) fn shown(store: &Store, id: MessageId) -> Option<Flags> {
     store
         .message(id)
         .recv_blocking()
@@ -229,7 +229,7 @@ fn queue(store: &Store, action: Triage, messages: &[MessageId], not_before: i64)
         .unwrap()
 }
 
-fn due(store: &Store, account: AccountId, now: i64) -> DueOps {
+pub(super) fn due(store: &Store, account: AccountId, now: i64) -> DueOps {
     store.due_ops(account, now).recv_blocking().unwrap()
 }
 
@@ -265,7 +265,7 @@ fn run_all(fx: &Fx, now: i64, next_uid: &mut u32) -> Vec<OpGroup> {
     groups
 }
 
-fn clean(store: &Store) {
+pub(super) fn clean(store: &Store) {
     assert_eq!(store.check().recv_blocking().unwrap(), Vec::<String>::new());
 }
 
@@ -348,7 +348,7 @@ fn all_views(fx: &Fx) -> Vec<ViewSpec> {
     specs
 }
 
-fn ten(fx: &Fx) -> Vec<MessageId> {
+pub(super) fn ten(fx: &Fx) -> Vec<MessageId> {
     arrive(
         &fx.store,
         fx.inbox,
@@ -1394,7 +1394,7 @@ fn local_accounts_apply_at_once_and_undo_at_once() {
     fx.store.close().unwrap();
 }
 
-fn ingest_local(fx: &Fx) -> Vec<MessageId> {
+pub(super) fn ingest_local(fx: &Fx) -> Vec<MessageId> {
     fx.store
         .ingest(
             (1..=10)

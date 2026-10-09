@@ -49,6 +49,8 @@ mod conversation_tests;
 mod ops_prop_tests;
 #[cfg(test)]
 mod ops_tests;
+#[cfg(test)]
+mod rules_tests;
 
 #[cfg(test)]
 mod compose_prop_tests;

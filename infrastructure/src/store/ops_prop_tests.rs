@@ -384,6 +384,16 @@ impl Harness {
                 done.flagged_only = !self.world.uidplus;
             }
             OpAction::ReadBelow { .. } => {}
+            OpAction::Copy { to, .. } => {
+                let target = self.world.index(*to);
+                for message in &group.messages {
+                    if let Some(&(flags, number)) =
+                        self.world.folders[index].messages.get(&message.uid)
+                    {
+                        self.world.folders[target].add(flags, number);
+                    }
+                }
+            }
         }
         Some(done)
     }

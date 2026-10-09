@@ -293,6 +293,8 @@ pub(crate) fn refused_change(folded: &Folded, folder_read: bool) -> RefusedChang
         RefusedChange::Expunge
     } else if folded.at != folded.from {
         RefusedChange::Move
+    } else if folded.copies > 0 && folded.add == 0 && folded.remove == 0 {
+        RefusedChange::Copy
     } else if folder_read {
         RefusedChange::FolderRead
     } else {
@@ -363,6 +365,7 @@ pub(crate) fn change_code(change: RefusedChange) -> i64 {
         RefusedChange::Move => 1,
         RefusedChange::Expunge => 2,
         RefusedChange::FolderRead => 3,
+        RefusedChange::Copy => 4,
     }
 }
 
@@ -371,6 +374,7 @@ pub(crate) fn change_from_code(code: i64) -> RefusedChange {
         1 => RefusedChange::Move,
         2 => RefusedChange::Expunge,
         3 => RefusedChange::FolderRead,
+        4 => RefusedChange::Copy,
         _ => RefusedChange::Flags,
     }
 }

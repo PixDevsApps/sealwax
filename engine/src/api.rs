@@ -300,6 +300,8 @@ pub enum Refused {
     Expunge,
     /// Marking a whole folder read.
     FolderRead,
+    /// A rule's copy into another folder.
+    Copy,
 }
 
 /// Where an account's sync stands (ML-048).

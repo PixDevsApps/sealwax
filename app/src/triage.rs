@@ -484,6 +484,7 @@ pub fn refused_text(change: Refused, count: u32, account: Option<&str>) -> Strin
         Refused::FolderRead => {
             format!("the server didn't mark {n} as read; {they} back as {were}")
         }
+        Refused::Copy => format!("the server didn't copy {n} where a rule asked"),
     };
     match account {
         Some(name) => format!("{name}: {text}"),

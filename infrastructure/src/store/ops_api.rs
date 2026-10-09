@@ -28,6 +28,31 @@ pub struct QueueTriage {
     pub not_before: i64,
 }
 
+/// What an account's rules do to one message that arrived (ADR-020), in order.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuleChanges {
+    pub message: MessageId,
+    pub changes: Vec<RuleChange>,
+}
+
+/// One change a rule makes. A message's copies come before its move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuleChange {
+    Flags {
+        add: Flags,
+        remove: Flags,
+    },
+    Move {
+        to: FolderId,
+        add: Flags,
+        remove: Flags,
+    },
+    /// A copy into another folder of the same account; the message stays.
+    Copy {
+        to: FolderId,
+    },
+}
+
 /// Why an action left messages alone.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum NotApplied {
@@ -100,6 +125,14 @@ pub enum OpAction {
     },
     /// `\Deleted`, then `UID EXPUNGE` where the server has UIDPLUS.
     Expunge,
+    /// `UID COPY` to `to` (a rule's `fileinto :copy`); a retry first looks for the copies by
+    /// Message-ID above the target's recorded UIDNEXT, as a move's does.
+    Copy {
+        to: FolderId,
+        /// The target's wire name.
+        to_name: String,
+        to_uidvalidity: Option<u32>,
+    },
     /// A folder marked read: `UID STORE 1:floor-1 +FLAGS (\Seen)`, the messages below the floor
     /// that the store doesn't hold.
     ReadBelow { floor: u32 },
@@ -187,6 +220,7 @@ pub enum RefusedChange {
     Move,
     Expunge,
     FolderRead,
+    Copy,
 }
 
 /// Changes of one kind refused for an account: what `Event::OpsRefused` says.
@@ -212,6 +246,16 @@ impl Store {
     /// accounts (no key) have no server: their ops apply at once.
     pub fn queue_triage(&self, request: QueueTriage) -> Reply<Queued> {
         self.write(|reply| WriteJob::Ops(OpsJob::Queue { request, reply }))
+    }
+
+    /// Queues what an account's rules decided for messages that arrived, as one batch due at
+    /// once, with its overlay: moves and flags as triage queues them, copies as their own ops
+    /// before them. Local accounts' moves and flags apply at once; their copies are left to the
+    /// caller (counted as `NoTarget`), as there is no server to copy on. A message whose pending
+    /// ops already take it away, or a move to its own folder or to a folder of another account,
+    /// is left alone.
+    pub fn queue_rules(&self, messages: Vec<RuleChanges>) -> Reply<Queued> {
+        self.write(|reply| WriteJob::Ops(OpsJob::Rules { messages, reply }))
     }
 
     /// Marks every message of `folder` read, the server's unread below a windowed folder's floor

@@ -16,6 +16,8 @@
 //!   Stalwart never matches `SEARCH HEADER Message-ID`). COPYUID's pairs are checked against
 //!   the target's Message-IDs before they are reported: Stalwart 0.16 lists both of its sets in
 //!   ascending order whatever order it copied in.
+//! - [`copy_messages`] (ADR-020): `UID COPY` for a rule's `fileinto :copy`; a retry looks for
+//!   the copies by Message-ID from the [`Mark`] up first, as a move's does.
 //! - [`expunge`]: `\Deleted`, then `UID EXPUNGE` with UIDPLUS; otherwise left flagged.
 //! - [`mark_folder_read`]: `UID SEARCH UNSEEN UNDELETED`, then `\Seen` on exactly those.
 //! - [`append`], [`replace_draft`] and [`find`] (M6): the Sent copy and drafts, appended at most
@@ -122,6 +124,19 @@ pub struct Move<'a> {
     pub remove: Flags,
     /// The target before the first attempt ([`mark_target`]). A COPY-based retry without it
     /// looks through the whole target.
+    pub mark: Option<Mark>,
+    /// An earlier attempt may have done part of it.
+    pub retry: bool,
+}
+
+/// A copy as the op queue keeps it: the messages stay in `from`.
+#[derive(Clone, Copy, Debug)]
+pub struct Copy<'a> {
+    pub from: OpFolder<'a>,
+    /// The target's wire name.
+    pub to: &'a str,
+    pub messages: &'a [Moving<'a>],
+    /// The target before the first attempt; a retry without it looks through the whole target.
     pub mark: Option<Mark>,
     /// An earlier attempt may have done part of it.
     pub retry: bool,
@@ -789,6 +804,49 @@ pub async fn move_messages(conn: &mut Connection, request: Move<'_>) -> Result<D
     done.gone = unique(done.gone.iter().copied());
     done.left_deleted = unique(done.left_deleted.iter().copied());
     logged("move", requested.len(), &done, started);
+    Ok(done)
+}
+
+/// Copies messages to another folder of the account with UID COPY. A retry first looks for them
+/// by Message-ID among the target's UIDs from the mark up and copies only what isn't there, so a
+/// replay makes no second copy. UIDs no longer in the source count as done ([`Done::gone`]). The
+/// copies' target UIDs aren't reported: the target's pass stores them as new rows.
+pub async fn copy_messages(conn: &mut Connection, request: Copy<'_>) -> Result<Done, WriteError> {
+    let started = Instant::now();
+    let mut done = Done::default();
+    let requested = unique(request.messages.iter().map(|message| message.uid));
+    if requested.is_empty() {
+        return Ok(done);
+    }
+    let look = if request.retry {
+        Some(window(conn, request.to, request.mark).await?)
+    } else {
+        None
+    };
+    open(conn, request.from).await?;
+    let mut remaining = requested.clone();
+    if let Some(look) = &look {
+        let present = present(conn, &requested).await?;
+        done.gone = requested
+            .iter()
+            .filter(|uid| !present.contains(uid))
+            .copied()
+            .collect();
+        let mut claimed = HashSet::new();
+        let found: HashSet<u32> = assign(request.messages, &present, &look.entries, &mut claimed)
+            .into_iter()
+            .map(|(source, _)| source)
+            .collect();
+        remaining = present
+            .iter()
+            .copied()
+            .filter(|uid| !found.contains(uid))
+            .collect();
+    }
+    let mut copied = Vec::new();
+    transfer(conn, false, &remaining, request.to, &mut done, &mut copied).await?;
+    done.gone = unique(done.gone.iter().copied());
+    logged("copy", requested.len(), &done, started);
     Ok(done)
 }
 

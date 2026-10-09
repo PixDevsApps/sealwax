@@ -12,11 +12,12 @@ use crate::store::StoreError;
 use crate::store::api::StoreVersion;
 use crate::store::ops_api::{
     BatchId, DueOps, Failure, Lost, NotApplied, OpAction, OpGroup, OpId, OpMessage, OpsDone,
-    OpsFailed, OpsRefusal, QueueTriage, Queued, Recorded, RefusedChange, Undone,
+    OpsFailed, OpsRefusal, QueueTriage, Queued, Recorded, RefusedChange, RuleChange, RuleChanges,
+    Undone,
 };
 use crate::store::overlay::{
-    self, Action, BATCH_FOLDER_READ, BATCH_TRIAGE, BATCH_UNDO, Change, EXPUNGE, FLAGS, HIDDEN,
-    MOVE, READ_BELOW,
+    self, Action, BATCH_FOLDER_READ, BATCH_RULES, BATCH_TRIAGE, BATCH_UNDO, COPY, Change, EXPUNGE,
+    FLAGS, HIDDEN, MOVE, READ_BELOW,
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::model::{AccountId, Flags, FolderId, FolderRole, MessageId};
@@ -36,6 +37,10 @@ pub(crate) enum OpsJob {
     FolderRead {
         folder: FolderId,
         not_before: i64,
+        reply: Sender<Queued>,
+    },
+    Rules {
+        messages: Vec<RuleChanges>,
         reply: Sender<Queued>,
     },
     Undo {
@@ -94,6 +99,9 @@ impl Writer {
                 reply,
             } => {
                 let _ = reply.try_send(self.folder_read(folder, not_before));
+            }
+            OpsJob::Rules { messages, reply } => {
+                let _ = reply.try_send(self.rules(&messages));
             }
             OpsJob::Undo { batch, reply } => {
                 let _ = reply.try_send(self.undo(batch));
@@ -306,6 +314,111 @@ impl Writer {
         })
     }
 
+    fn rules(&mut self, messages: &[RuleChanges]) -> Result<Queued, StoreError> {
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut not_applied: BTreeMap<NotApplied, u32> = BTreeMap::new();
+        let mut batch = None;
+        let mut touched = Touched::default();
+        let mut applied = 0u32;
+        let mut seen = BTreeSet::new();
+        for planned in messages {
+            if !seen.insert(planned.message) {
+                continue;
+            }
+            let Some(found) = row(&tx, planned.message)? else {
+                *not_applied.entry(NotApplied::Gone).or_default() += 1;
+                continue;
+            };
+            let folded = overlay::fold(
+                found.folder,
+                chain(&tx, found.id)?.iter().map(|op| op.change),
+            );
+            if folded.leaves() {
+                *not_applied.entry(NotApplied::Gone).or_default() += 1;
+                continue;
+            }
+            let local = is_local(&tx, found.account)?;
+            let mut changes = Vec::new();
+            for change in &planned.changes {
+                let change = match *change {
+                    RuleChange::Flags { add, remove } => Change::Flags {
+                        add: add.bits(),
+                        remove: remove.bits(),
+                    },
+                    RuleChange::Move { to, add, remove } => Change::Move {
+                        to,
+                        add: add.bits(),
+                        remove: remove.bits(),
+                    },
+                    RuleChange::Copy { to } => Change::Copy { to },
+                };
+                let target = match change {
+                    Change::Move { to, .. } | Change::Copy { to } => Some(to),
+                    _ => None,
+                };
+                if let Some(to) = target
+                    && (to == found.folder || !takes_messages(&tx, found.account, to)?)
+                {
+                    *not_applied.entry(NotApplied::NoTarget).or_default() += 1;
+                    continue;
+                }
+                if local && matches!(change, Change::Copy { .. }) {
+                    *not_applied.entry(NotApplied::NoTarget).or_default() += 1;
+                    continue;
+                }
+                changes.push(change);
+            }
+            let prior = found.flags & !HIDDEN;
+            changes.retain(|change| match change {
+                Change::Flags { add, remove } => (prior | add) & !remove != prior,
+                _ => true,
+            });
+            if changes.is_empty() {
+                continue;
+            }
+            applied += 1;
+            let batch = match batch {
+                Some(batch) => batch,
+                None => *batch.insert(new_batch(&tx, BATCH_RULES)?),
+            };
+            let mut at = found.folder;
+            for change in changes {
+                let op = NewOp {
+                    change,
+                    prior_folder: at,
+                    prior_flags: prior,
+                    not_before: 0,
+                };
+                if let Change::Move { to, .. } = change {
+                    at = to;
+                }
+                touched.add(&tx, batch, found.clone(), op, local)?;
+            }
+        }
+        let accounts = touched.accounts.iter().copied().collect();
+        let version = match batch {
+            Some(_) => {
+                let plans = touched.plans(&tx)?;
+                prune(&tx)?;
+                defer_blob_deletions(&tx, &plans)?;
+                self.state.commit_rows(tx, &plans, BTreeSet::new())?.version
+            }
+            None => {
+                tx.commit()?;
+                StoreVersion(self.state.version)
+            }
+        };
+        Ok(Queued {
+            version,
+            batch: batch.map(BatchId),
+            applied,
+            not_applied: not_applied.into_iter().collect(),
+            accounts,
+        })
+    }
+
     fn undo(&mut self, batch: BatchId) -> Result<Undone, StoreError> {
         let tx = self
             .conn
@@ -348,6 +461,10 @@ impl Writer {
                     touched.server.insert(found.id, found);
                 }
                 restored += 1;
+                continue;
+            }
+            if op.kind == COPY {
+                // A copy made stays; the message it was made of is where it was.
                 continue;
             }
             let (found, inverse) = match undo_target(&tx, &op)? {
@@ -412,12 +529,25 @@ impl Writer {
             if run.is_empty() || run.iter().any(|(op, _)| op.not_before > now) {
                 continue;
             }
+            // A copy runs on its own: the changes before it first, then it, then the rest.
+            let run = match run
+                .iter()
+                .position(|(op, _)| matches!(op.change, Change::Copy { .. }))
+            {
+                Some(0) => run[..1].to_vec(),
+                Some(at) => run[..at].to_vec(),
+                None => run,
+            };
             let Some(found) = row(&tx, message)? else {
                 continue;
             };
             let folded = overlay::fold(found.folder, run.iter().map(|(op, _)| op.change));
             let ops: Vec<OpId> = run.iter().map(|(op, _)| op.id).collect();
-            let Some(action) = folded.action() else {
+            let action = match run[0].0.change {
+                Change::Copy { to } => Some(Action::Copy { to }),
+                _ => folded.action(),
+            };
+            let Some(action) = action else {
                 trivial.push((found, ops));
                 continue;
             };
@@ -446,6 +576,11 @@ impl Writer {
                     remove: Flags::from_bits(remove),
                 },
                 Action::Expunge => OpAction::Expunge,
+                Action::Copy { to } => OpAction::Copy {
+                    to,
+                    to_name: String::new(),
+                    to_uidvalidity: None,
+                },
             };
             group.messages.push(OpMessage {
                 message,
@@ -475,6 +610,11 @@ impl Writer {
                 to_name,
                 to_uidvalidity,
                 ..
+            }
+            | OpAction::Copy {
+                to,
+                to_name,
+                to_uidvalidity,
             } = &mut group.action
             {
                 (*to_name, *to_uidvalidity) = folder_wire(&tx, *to)?;
@@ -741,6 +881,7 @@ impl Touched {
             Change::Flags { add, remove } => (FLAGS, None, add, remove),
             Change::Move { to, add, remove } => (MOVE, Some(to.0), add, remove),
             Change::Expunge => (EXPUNGE, None, 0, 0),
+            Change::Copy { to } => (COPY, Some(to.0), 0, 0),
         };
         let id = OpId(
             tx.prepare_cached(
@@ -829,6 +970,14 @@ impl Touched {
                 Change::Expunge => {
                     done.execute(params![op.0, None::<u32>])?;
                     After::Deleted
+                }
+                // Never queued for a local account (`rules` leaves them to the caller).
+                Change::Copy { .. } => {
+                    done.execute(params![op.0, None::<u32>])?;
+                    After::Stay {
+                        flags,
+                        server: flags,
+                    }
                 }
             };
             plans.push(RowPlan { row: found, after });
@@ -1163,6 +1312,14 @@ fn target_uidvalidity(tx: &Connection, folder: FolderId) -> rusqlite::Result<Opt
         .query_row([folder.0], |row| row.get(0))
         .optional()
         .map(Option::flatten)
+}
+
+/// Whether `folder` is one of `account`'s folders that take messages.
+fn takes_messages(tx: &Connection, account: AccountId, folder: FolderId) -> rusqlite::Result<bool> {
+    tx.prepare_cached(
+        "SELECT EXISTS(SELECT 1 FROM folders WHERE id = ?1 AND account_id = ?2 AND selectable)",
+    )?
+    .query_row(params![folder.0, account.0], |row| row.get(0))
 }
 
 fn folder_exists(tx: &Connection, folder: FolderId) -> rusqlite::Result<bool> {

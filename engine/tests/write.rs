@@ -2,14 +2,15 @@
 //! read-write SELECT next to the sync's EXAMINE, flags and keywords by PERMANENTFLAGS, UID MOVE
 //! with COPYUID untagged, tagged or absent, the COPY path with and without UIDPLUS, deleting for
 //! good, a folder marked read, refusals by response code, a changed UIDVALIDITY, and S1's lost
-//! replies of MOVE, COPY, the `\Deleted` STORE and UID EXPUNGE, retried. Synthetic data only.
+//! replies of MOVE, COPY, the `\Deleted` STORE and UID EXPUNGE, retried; a rule's copy, made
+//! once also when its reply is lost (ADR-020). Synthetic data only.
 
 mod fake;
 
 use fake::{CopyUid, Fake, Flavor, NOW, World};
 use sealwax_domain::model::{AccountId, Flags};
 use sealwax_engine::imap::write::{
-    self, Done, Mark, Move, Moving, OpFolder, WriteError, WriteFailure,
+    self, Copy, Done, Mark, Move, Moving, OpFolder, WriteError, WriteFailure,
 };
 use sealwax_engine::imap::{ConnectOptions, Connection, FolderLocks, SyncOptions, sync_account};
 use sealwax_infrastructure::store::{NewAccount, Store, StoreOptions};
@@ -1025,5 +1026,80 @@ fn a_copy_retry_without_a_mark_looks_through_the_whole_target() {
                 .commands
                 .contains(&"UID FETCH 1:* (UID BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])".to_owned())
         );
+    });
+}
+
+#[test]
+fn a_copy_leaves_the_messages_and_its_retry_makes_no_second_copy() {
+    runtime().block_on(async {
+        let fake = fake(Flavor::Qresync, true, true).await;
+        for _ in 0..3 {
+            fake.world().append("INBOX", 1, &[]);
+        }
+        let messages = listed(&fake, "INBOX");
+        let all = moving(&messages);
+        let mut conn = fake.connect().await;
+        let mark = write::mark_target(&mut conn, "Arkiv").await.unwrap();
+        let copy = |retry| Copy {
+            from: folder(&fake, "INBOX"),
+            to: "Arkiv",
+            messages: &all,
+            mark: Some(mark),
+            retry,
+        };
+        fake.world().lose_reply("UID COPY");
+        write::copy_messages(&mut conn, copy(false))
+            .await
+            .unwrap_err();
+        assert_eq!(
+            fake.world().ids("Arkiv").len(),
+            3,
+            "the copy ran, its reply lost"
+        );
+        let mut conn = fake.connect().await;
+        let from = sent(&fake);
+        let done = write::copy_messages(&mut conn, copy(true)).await.unwrap();
+        assert_eq!(
+            sorted(fake.world().ids("Arkiv")),
+            sorted(messages.iter().map(|m| m.1.clone()).collect()),
+            "each once"
+        );
+        assert_eq!(fake.world().uids("INBOX"), [1, 2, 3], "the messages stay");
+        assert!(
+            !commands(&fake, from)
+                .iter()
+                .any(|c| c.starts_with("UID COPY")),
+            "nothing copied again"
+        );
+        assert!(done.moved.is_empty() && done.gone.is_empty());
+
+        // A plain copy, and one of a UID already gone.
+        fake.world().append("INBOX", 1, &[]);
+        let fourth = listed(&fake, "INBOX").pop().unwrap();
+        let gone = [
+            Moving {
+                uid: fourth.0,
+                message_id: Some(&fourth.1),
+            },
+            Moving {
+                uid: 99,
+                message_id: None,
+            },
+        ];
+        let done = write::copy_messages(
+            &mut conn,
+            Copy {
+                from: folder(&fake, "INBOX"),
+                to: "Arkiv",
+                messages: &gone,
+                mark: None,
+                retry: false,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(fake.world().ids("Arkiv").len(), 4);
+        assert_eq!(fake.world().uids("INBOX").len(), 4);
+        assert_eq!(done.gone, [99]);
     });
 }
