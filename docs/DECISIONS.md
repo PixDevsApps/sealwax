@@ -29,7 +29,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 017 | Keymap: scoped one-key shortcuts under Omarchy rules | Built in M1; new keys wait for the user; M1's proposed keys accepted (M1 gate), the list's own M4 keys accepted (M4 gate), M5's keys accepted (M5 gate), M6's keys accepted (M6 gate) |
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2; the HTML parser capped in M6 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
-| 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); being built |
+| 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); the Sieve subset built (A2); folders, the engine and the app being built |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1149,3 +1149,7 @@ Built in M1 ([report](m1/theme.md)):
 **Alternatives:** ManageSieve upload (RFC 5804), alone or beside the local run (rules running while the computer is off; not on Outlook.com) — Later, a new user decision; a Sealwax-only rule format (Thunderbird's way) — not a standard.
 
 **Consequences:** rules run only while Sealwax runs (background mode is on by default) and see headers, not bodies; a header beyond the stored ones costs one header fetch for the new messages. The pure language lives in `domain::sieve`, the file in `infrastructure`, the run in `engine`.
+
+### ADR-020 amendment — the Sieve subset as built (2026-10-09)
+
+`domain::sieve` (A2, [report](m9/sieve.md)): a hand-written parser for RFC 5228's whole grammar; a checker for the subset — `require` (`fileinto`, `copy`, `imap4flags`, `environment`, `imapsieve`, and the two comparators' names), `if`/`elsif`/`else`, `stop`, `keep`, `fileinto` (`:copy`), `discard`, `addflag`/`setflag`/`removeflag`; tests `address` (on address headers only), `header`, `exists`, `size`, `allof`, `anyof`, `not`, `true`, `false`, `hasflag`, `environment` (`imap.mailbox` only; other items are false); `:is`, `:contains`, `:matches`; `i;ascii-casemap` and `i;octet` — refusing everything else by name; and an evaluator. Decided while building: flags start as the message's own (RFC 6785) and each delivery reports its own change to add and remove; `fileinto` of the arrival folder is a keep; `:flags` on `keep`/`fileinto` is refused (use `addflag` first); `\Deleted` can't be set and flags must be IMAP keywords; scripts are at most 1 MiB and nest at most 32 levels. The rules model writes Roundcube's form with the actions in a fixed order (flags before `fileinto`), "From is/begins/ends/matches" as `address` and "contains" as `header`, the junk actions removing the opposite keyword as triage does; the never-junk section is always written first and ends with `stop`, always junk next, each under a `# Sealwax: …` marker. Reading back takes a rule only when writing it again gives the same commands; the rest stays as hand-written text in place. Folder names are the store's decoded full names, as `fileinto` takes them. Merged as `4d6239d`; CI on `main` 1,422 passed, 0 failed.
