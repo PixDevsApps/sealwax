@@ -6,7 +6,7 @@ The repository docs are the canonical project memory ([ADR-012](#adr-012--reposi
 
 ---
 
-Use this page for decisions with meaningful long-term cost. Keep each entry short, dated and explicit about alternatives. Change an accepted decision with a dated `###` amendment under it; do not rewrite history. Status moves Proposed → Accepted when the user decides or a spike provides the evidence; say which. Library facts below were checked against crates.io and the crate sources on 2026-10-04 ([RESEARCH.md](RESEARCH.md#library-verification-2026-10-04)).
+Use this page for decisions with meaningful long-term cost. Keep each entry short, dated and explicit about alternatives. Change an accepted decision with a dated `###` amendment under it; do not rewrite history. Status moves Proposed → Accepted when the user decides or a spike provides the evidence; say which. Library facts below were checked against crates.io and the crate sources on 2026-10-04.
 
 | ADR | Title | Status (2026-10-06) |
 | --- | --- | --- |
@@ -58,7 +58,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 
 ### ADR-002 amendment — S2 and S7 results (2026-10-04)
 
-**Status:** Accepted on spike evidence. WebKitGTK renders correctly on nvidia-open 610 without workarounds — no blank frames in 63 bodies, open p95 17.4 ms, scrolling p95 6.95 ms at 144 Hz ([S2 report](spikes/S2-webkit.md)) — and the editable view meets the composer's typing bar ([S7 report](spikes/S7-composer.md)).
+**Status:** Accepted on spike evidence. WebKitGTK renders correctly on nvidia-open 610 without workarounds — no blank frames in 63 bodies, open p95 17.4 ms, scrolling p95 6.95 ms at 144 Hz — and the editable view meets the composer's typing bar.
 
 **Further consequences:**
 - WebKit pages are memory-heavy: about 45 MiB of GPU memory per accelerated page plus a surface as tall as the whole body; the app plus WebKit's network process already take 274 MiB RSS before any message is shown. Reader and composer views therefore render with `hardware-acceleration-policy = NEVER` (no GPU memory, a 4× faster cold start, scrolling still at 144 Hz).
@@ -80,11 +80,11 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 
 ### ADR-003 amendment — the store pattern measured in S3 (2026-10-04)
 
-S3 ran the GTK thread with no SQL at 100k messages ([report](spikes/S3-store.md)). The pattern to keep: two read-only readers that serve the newest request first; one writer that commits and emits list diffs; one maintenance thread (checkpoints, see ADR-005); every reply carries the store's `store_version`, and the UI applies a page only when its version matches the last change it applied, because pages and change events travel on different channels.
+S3 ran the GTK thread with no SQL at 100k messages. The pattern to keep: two read-only readers that serve the newest request first; one writer that commits and emits list diffs; one maintenance thread (checkpoints, see ADR-005); every reply carries the store's `store_version`, and the UI applies a page only when its version matches the last change it applied, because pages and change events travel on different channels.
 
 ### ADR-003 amendment — desktop integration measured in S6 (2026-10-04)
 
-S6 ran the layering on the live desktop ([report](spikes/S6-desktop.md)): SQL only on the reader thread (started in `startup`; the first page was ready 2 ms later), tokio only on the engine thread, and GDBus callbacks that run off the GTK thread only forward plain values over async-channel. Additions:
+S6 ran the layering on the live desktop: SQL only on the reader thread (started in `startup`; the first page was ready 2 ms later), tokio only on the engine thread, and GDBus callbacks that run off the GTK thread only forward plain values over async-channel. Additions:
 
 - **Single instance:** `HANDLES_COMMAND_LINE | HANDLES_OPEN`. The `command-line`, `open` and `activate` handlers create the window or take a hold synchronously; when a handler returns with neither, GApplication shuts down and a window created later fails.
 - **Background mode** is an application hold while it is on. Closing the window destroys it; a notification click or a launcher activation builds a new one. Quit stops the engine (LOGOUT) before `quit()` (51–91 ms).
@@ -93,7 +93,7 @@ S6 ran the layering on the live desktop ([report](spikes/S6-desktop.md)): SQL on
 
 ### ADR-003 amendment — the application shell built in M1 (2026-10-04)
 
-Built as the S6 amendment says ([report](m1/shell.md)): an `adw::Application` subclass whose `command-line`, `open` and `activate` handlers build the window synchronously; background mode is a hold; signals, the exit timer and Quit share one quit path (`AppState::quit`). Additions:
+Built as the S6 amendment says: an `adw::Application` subclass whose `command-line`, `open` and `activate` handlers build the window synchronously; background mode is a hold; signals, the exit timer and Quit share one quit path (`AppState::quit`). Additions:
 
 - **A command line goes through the bus** when no instance runs: it asks the session bus to start the installed service and hands its `mailto:` links over (Stet's pattern, without `--wait`), so the running Sealwax never belongs to the terminal or browser that started it. Cost not measured (S6 suggests about 50 ms more); development builds have no service file and start directly.
 - **Startup order:** early hooks run before GTK initialises (where the store's reader thread starts); after GTK's own startup the theme is read synchronously within its 500 ms budget (about 9 ms here), the settings files are read off the GTK thread, and the first window waits up to 150 ms for them, so its first frame already has the user's corners, fonts and keys.
@@ -109,7 +109,7 @@ Built as the S6 amendment says ([report](m1/shell.md)): an `adw::Application` su
 
 ### ADR-003 amendment — the message list on the store (M1, 2026-10-04)
 
-Built as [m1/list.md](m1/list.md) records.
+Built as m1/list.md records.
 - **Opening.** One thread opens the blob store and the store at `startup`, reads accounts and folders, and opens the first window's view (100 rows and today's section counts), then hands everything to the GTK thread. The first window waits for the first rows for at most 300 ms, alongside the settings' 150 ms. Headless with a 10k store this took 2.65–2.98 ms.
 - **The model.** The list model applies change events strictly in version order. Pages apply only at the model's version; newer pages wait, and older ones are dropped and requested again. A version gap or `Reload` reopens the view.
 - **Growth.** After every reset the list shows 40 rows, then grows by 40 a frame (S6's trim).
@@ -123,7 +123,7 @@ Built as [m1/list.md](m1/list.md) records.
 
 ### ADR-003 amendment — the engine service and autodetect (M2, 2026-10-05)
 
-Built in M2 (`engine::service`, `engine::autoconfig`; reports [m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md), [m2/accounts.md](m2/accounts.md)).
+Built in M2 (`engine::service`, `engine::autoconfig`; reports m2/imap.md).
 
 - **The service:** one thread (`sealwax-service`) runs the engine's two-worker runtime and the command loop. The app starts it once the first frame is painted, so neither the engine nor the keyring delays it, attaches its `EngineLink` to the engine's channels, and stops it before the store closes. Stopping takes under 1 ms when nothing is in flight.
 - **One store:** the app holds the store in an `Arc` and lends it to the engine, which writes what it syncs; the app closes it at shutdown, after the engine has stopped.
@@ -137,11 +137,11 @@ Built in M2 (`engine::service`, `engine::autoconfig`; reports [m2/imap.md](m2/im
 
 ### ADR-003 amendment — resume and network as built (ML-048, M3, 2026-10-05)
 
-Built in M3 ([report](m3/status.md)). The app watches logind's `PrepareForSleep` (a read-only subscription on the system bus, connected asynchronously) and GIO's network monitor, both only for the engine it starts, and sends `Command::Reconnect` after a resume and when the network comes back. GIO picked `GNetworkMonitorNM` here, which connects to the system bus synchronously, so the monitor is first created on a thread of its own; GIO keeps it as the process's default and emits its signals on the main context. The engine acts on `Reconnect` from M3's phase B.
+Built in M3. The app watches logind's `PrepareForSleep` (a read-only subscription on the system bus, connected asynchronously) and GIO's network monitor, both only for the engine it starts, and sends `Command::Reconnect` after a resume and when the network comes back. GIO picked `GNetworkMonitorNM` here, which connects to the system bus synchronously, so the monitor is first created on a thread of its own; GIO keeps it as the process's default and emits its signals on the main context. The engine acts on `Reconnect` from M3's phase B.
 
 ### ADR-003 amendment — the engine's actors (M3 phase B, 2026-10-05)
 
-Built in M3 ([report](m3/actor.md)).
+Built in M3.
 - **Tasks:** the runtime keeps its 2 workers. Each account is one task (the command connection's loop) with its IDLE task and, while downloading, a body task.
 - **Commands and stop:** commands reach an account's actor over a channel; `Reconnect` and stop arrive through a `watch`, so every network wait is abandoned at once.
 - **Events:** statuses are sent only when they change, and `SyncProgress` at most 10 a second per account, always with the last batch's numbers. The store's change events stay exact, as before; a pass that changes nothing publishes nothing. This is how ML-040's "coalesced to ≤ 10/s" was read, a proposal for the user.
@@ -150,7 +150,7 @@ Built in M3 ([report](m3/actor.md)).
 
 ### ADR-003 amendment — background mode as built (M7, 2026-10-07)
 
-Built in M7 ([report](m7/background.md)); accepted at the M7 gate (the user's delegation, 2026-10-07).
+Built in M7; accepted at the M7 gate (the user's delegation, 2026-10-07).
 - **The hold** follows `[background] enabled` (on by default, [ADR-013](#adr-013-amendment--background-mode-on-by-default-notifications-show-sender-and-subject-m7-start-2026-10-06)) and changes as soon as `config.toml` does; with it off and no window left, Sealwax quits through the one quit path. `--background` holds until a main window has shown, even with background mode off, so an autostart entry still means "sync from login".
 - **The engine without a window:** when Sealwax starts with no main window (`--background`, or a composer opened alone), the engine starts once the store and the settings are read, with the desktop watch (resume and network), and only once: a window shown later never starts a second engine. Start → engine running with its accounts p50 47.4 ms (release, headless).
 - **A closed window is freed** with its list and reader: the window's handlers look the window and the list up through `AppState`, and no closure the window owns keeps a clone of `Window`, `MessageList` or `Reader` (`background-memory` and `assert-freed` check it). Before the fix every close and reopen kept about 7.5 MiB (debug: 155.7 → 381.2 MiB over 30 cycles); after it memory stays flat. A window built again creates its reader after its own first frame; activation from background mode → first frame p50 63.8 ms, p95 67.1 ms (release, headless).
@@ -173,7 +173,7 @@ Mail adds roles: avatar tints (Stet's `distinct`), the unread accent and chips. 
 
 ### ADR-004 amendment — the theme follower as built in M1 (2026-10-04)
 
-Built as decided ([report](m1/theme.md)), with these details:
+Built as decided, with these details:
 
 - The palette is read through `omarchy-theme-color`; the built-in cascade matches its output for all 22 stock themes. `shell.toml` is the theme's generated file with the user's merged over it, as omarchy-shell reads it; it supplies the text size, the control states and the spacing.
 - **Lead decisions (2026-10-04):**
@@ -202,7 +202,7 @@ An account may have a colour the user picks, the one colour in the chrome that d
 
 ### ADR-005 amendment — S3 results (2026-10-04)
 
-**Status:** SQLite with FTS5 is accepted on S3's evidence ([report](spikes/S3-store.md)); the blob store is built and measured in M1. At 100k synthetic messages (release, system SQLite 3.53.4): ingest 19,116 headers/s, FTS 10,324 messages/s, folder open ≤ 4.5 ms cold, the first 50 search results ≤ 34 ms cold, a one-message insert with its list diff p99 3.4 ms.
+**Status:** SQLite with FTS5 is accepted on S3's evidence; the blob store is built and measured in M1. At 100k synthetic messages (release, system SQLite 3.53.4): ingest 19,116 headers/s, FTS 10,324 messages/s, folder open ≤ 4.5 ms cold, the first 50 search results ≤ 34 ms cold, a one-message insert with its list diff p99 3.4 ms.
 
 - Link the system SQLite (≥ 3.43) and refuse to start without FTS5; `bundled` isn't needed (3.53.4 has FTS5, `contentless_delete` and trigram).
 - Schema v1 is S3's (accounts, mailboxes with counts, messages, threads with maintained counts, a per-mailbox conversation table, a Message-ID alias table, contentless FTS5, `store_version` and `meta`), adopted once S1 has checked its columns against real servers.
@@ -214,7 +214,7 @@ An account may have a colour the user picks, the one colour in the chrome that d
 
 ### ADR-005 amendment — schema checked against the testbed in S1 (2026-10-04)
 
-S1 synced S3's schema from Dovecot and Stalwart ([report](spikes/S1-imap.md)); schema v1 adds:
+S1 synced S3's schema from Dovecot and Stalwart; schema v1 adds:
 
 - mailboxes: the raw wire name (modified UTF-7), the hierarchy delimiter, the LIST attributes and resumable sync state (where an interrupted first sync continues);
 - messages: a keywords column (a fixed flags bitmask loses custom keywords) and the stored References and In-Reply-To;
@@ -224,7 +224,7 @@ Real providers are still to check when test accounts exist.
 
 ### ADR-005 amendment — schema v1 and the blob store built (M1, 2026-10-04)
 
-Built as [m1/store.md](m1/store.md) records.
+Built as m1/store.md records.
 
 **Schema v1:**
 - S3's schema with S1's additions: folder wire name, delimiter, attributes, sync state; message keywords, In-Reply-To, References.
@@ -238,21 +238,21 @@ Built as [m1/store.md](m1/store.md) records.
 
 ### ADR-005 amendment — folder sync state and server counts (M2, 2026-10-05)
 
-Built in M2 ([m2/imap.md](m2/imap.md)); no migration, since schema v1 already holds the attributes, `selectable` and the sync state.
+Built in M2; no migration, since schema v1 already holds the attributes, `selectable` and the sync state.
 - A folder list is upserted in one commit.
 - A new folder without messages shows the server's STATUS counts; the first sync's start replaces them with the store's own, and the recount check skips exactly the new, empty folders.
 - The first sync records `Start`, `Floor` (after each batch's ingest has replied) and `Finish` as separate small commits. A UIDVALIDITY change resets the folder through `Store::remove`.
 
 ### ADR-005 amendment — schema v2: the account key (M2, 2026-10-05)
 
-Built in M2 ([m2/accounts.md](m2/accounts.md)).
+Built in M2.
 - Migration v2 adds `accounts.key` (unique; NULL for local accounts that no settings file lists: fixtures, self-tests, M1 stores) and `accounts.detached`.
 - `remove_account` deletes an account and everything it owns in one transaction, deleting its full-text rows in rowid order (at 100k: 17.2 s in date order, 0.23 s sorted), and reports the raw messages no other account refers to.
 - At 100,000 messages the transaction takes 3.8–4.0 s from a cold cache, while readers keep their p99 under 1 ms (under 5.4 ms with a warm cache). The writer is busy for the whole removal; batching it is possible if that hurts sync in M3.
 
 ### ADR-005 amendment — schema v3 to v5, All Inboxes pages and downloaded bodies (M3, 2026-10-05)
 
-Built in M3's phase A by three agents, renumbered at the lead's merge ([sync](m3/sync.md), [bodies](m3/bodies.md), [threading](m3/threading.md)).
+Built in M3's phase A by three agents, renumbered at the lead's merge.
 - **v3** adds `messages.thread_index`: the 22-byte conversation block of an Outlook `Thread-Index` (ADR-016). Rows from before it have none.
 - **v4** adds `folders.below_floor`, the server's messages under a folder's floor when last counted. It is a hint for the count check and the STATUS skip, recounted by the UID diff, never a reason to store or drop a row. A floor of 1 means nothing older is left; v4 sets it for every folder M2 synced completely.
 - **v5** adds `bodies(blob_key, size, used)` with an index on `(used, blob_key)`, a trigger that drops a body with the last message that refers to it, and `message_parts.section` (the IMAP section of an attachment fetched on demand).
@@ -263,7 +263,7 @@ Built in M3's phase A by three agents, renumbered at the lead's merge ([sync](m3
 
 ### ADR-005 amendment — schema v6: the server's counts for windowed folders (M3 gate, 2026-10-06)
 
-Built at the user's choice ("Show server counts"; [report](m3/counts.md)).
+Built at the user's choice ("Show server counts").
 - **Migration v6** adds `folders.below_unread`, the server's unread messages under a windowed folder's floor.
 - **The counts the app sees** (the folder list and every change event's folder counts) are the store's own plus `below_floor` and `below_unread`. List views keep counting the rows the store holds.
 - **Where they come from:** the account pass sets both from each windowed folder's STATUS, in one transaction against the store's own rows (`count_below`): MESSAGES less the stored messages, and UNSEEN less the stored unread, at most the messages below. A STATUS older than the store is ignored (another UIDVALIDITY, or a lower UIDNEXT or HIGHESTMODSEQ). A change event goes out only when the counts change.
@@ -272,7 +272,7 @@ Built at the user's choice ("Show server counts"; [report](m3/counts.md)).
 
 ### ADR-005 amendment — schema v7: the op queue and hidden rows (M4, 2026-10-06)
 
-Built in M4's phase A ([report](m4/ops-store.md)).
+Built in M4's phase A.
 - **The overlay lives in the rows:** `messages.flags` is what the user sees, the server's flags with pending ops applied, plus bit 256 while a pending move or expunge takes the message out of its folder. `messages.server_flags` holds the server's flags where they differ (NULL otherwise) and is what the sync engine reads and writes.
 - **Hidden rows:** a row with bit 256 or `\Deleted` (whoever set it) is in no view, count or search. The five list indexes are partial on that and hold `flags`, so their walks stay covering.
 - **New tables:** `op_batches`, `ops` (one change to one message, or to the server's unread below a folder's floor) and `op_refusals`.
@@ -281,11 +281,11 @@ Built in M4's phase A ([report](m4/ops-store.md)).
 
 ### ADR-005 amendment — schema v8: the senders whose images load (M5, 2026-10-06)
 
-Built as [m5/files.md](m5/files.md) records. Migration v8 adds `remote_senders(address PRIMARY KEY, added) WITHOUT ROWID`: lower-case addresses whose remote images load without asking (ML-058), with when each was added. The list is the user's, not an account's: it stays when an account is removed. Its writes bump no store version and send no change event. The conversation view (ML-057) added no migration: `Store::conversation` walks v1's `messages_thread (thread_id, date)` index (≤ 1.66 ms cold for 150 messages at 100,000).
+Built as m5/files.md records. Migration v8 adds `remote_senders(address PRIMARY KEY, added) WITHOUT ROWID`: lower-case addresses whose remote images load without asking (ML-058), with when each was added. The list is the user's, not an account's: it stays when an account is removed. Its writes bump no store version and send no change event. The conversation view (ML-057) added no migration: `Store::conversation` walks v1's `messages_thread (thread_id, date)` index (≤ 1.66 ms cold for 150 messages at 100,000).
 
 ### ADR-005 amendment — schema v9: drafts, the outbox and contacts (M6, 2026-10-06)
 
-Built in M6's phase A ([report](m6/drafts-store.md)). Migration v9 adds:
+Built in M6's phase A. Migration v9 adds:
 - `drafts` (the composer's draft, its revision, whether its window is open, its Drafts-folder copy and the upload under way) and `draft_parts`;
 - `draft_blobs` (every blob a draft ever named), which the disk cap's eviction and every orphan sweep leave alone, as they do the outbox's built messages;
 - `outbox` (one send per draft: queued, sending, uncertain, sent; the built bytes, the envelope and the Sent copy's mark) and `draft_deletions` (server copies the store holds no row for);
@@ -295,7 +295,7 @@ Draft saves bump no version and send no event (p99 1.24 ms for a 200 KB body at 
 
 ### ADR-005 amendment — schema v10: search (M7, 2026-10-07)
 
-Built in M7 ([report](m7/search.md)); its proposals accepted at the M7 gate (the user's delegation, 2026-10-07).
+Built in M7; its proposals accepted at the M7 gate (the user's delegation, 2026-10-07).
 - **The query language** is pure code in `domain::search`: `parse`, and `parse_typed` for text as typed, where the last word is the start of a word until a space follows it (never inside quotes or for an excluded word). `from:`, `to:`, `subject:`, `has:attachment`, `is:unread|read|starred`, `before:`/`after:` (local days; six forms), quoted values, `-word`, `-"phrase"`, `-has:`, `-is:` and negated dates; prefixes need two letters or digits.
 - **Plans:** FTS first when a term has at most 200 matches, date first otherwise; a query without words walks a date index; partial indexes within one folder. **Date first is kept** over S3's date-keyed rowid: measured faster warm, but 54 % larger and reachable only through a fresh index, which would lose the preview words of messages whose body isn't stored. "Every folder" leaves out Trash, Junk and detached accounts.
 - **Folding, corrected:** `unicode61 remove_diacritics 2` folds å, but neither ø nor æ (S3's amendment said it folded ø). The index and every query store æ as "ae" and ø as "o", and queries also ask for the old spelling while old entries remain; `aa` and `oe` spellings stay unfolded. Attachment names are indexed in the body column; the 256 KiB body cap stays.
@@ -306,7 +306,7 @@ Built in M7 ([report](m7/search.md)); its proposals accepted at the M7 gate (the
 
 ### ADR-005 amendment — schema v11: POP3 accounts (M8 phase A, 2026-10-07)
 
-Built in M8's phase A ([report](m8/pop3-accounts.md)); its proposals wait for the M8 gate. `pop3_accounts` marks an account as POP3 and records its first complete pass; `pop3_uidls` keeps each downloaded UIDL with the row it became (`ON DELETE SET NULL`), when it was downloaded, whether whole or header only, and when Sealwax deleted it on the server; a message and its UIDL are stored in one transaction, so a crash neither loses nor repeats one. `blob_deletions` hands the POP3 actor the raw messages that ops done at once left behind. A POP3 account's local folders (Inbox, Sent, Drafts, Junk, Trash, Archive) are complete from the start (`sync_floor` 1); its mail is never in `bodies`, so the disk cap never evicts it; `replace_folders` refuses an IMAP folder list for it, so a protocol changed in `accounts.toml` can't wipe local mail. The migration only creates tables.
+Built in M8's phase A; its proposals wait for the M8 gate. `pop3_accounts` marks an account as POP3 and records its first complete pass; `pop3_uidls` keeps each downloaded UIDL with the row it became (`ON DELETE SET NULL`), when it was downloaded, whether whole or header only, and when Sealwax deleted it on the server; a message and its UIDL are stored in one transaction, so a crash neither loses nor repeats one. `blob_deletions` hands the POP3 actor the raw messages that ops done at once left behind. A POP3 account's local folders (Inbox, Sent, Drafts, Junk, Trash, Archive) are complete from the start (`sync_floor` 1); its mail is never in `bodies`, so the disk cap never evicts it; `replace_folders` refuses an IMAP folder list for it, so a protocol changed in `accounts.toml` can't wipe local mail. The migration only creates tables.
 
 ### ADR-005 amendment — the HTML read for the search text (M9, 2026-10-07)
 
@@ -314,7 +314,7 @@ Built on the user's "HTML size cap". The search text and snippet of an HTML-only
 
 ### ADR-005 amendment — schema v12: building marks (M9, 2026-10-07)
 
-`outbox.building` and `drafts.upload_building` record that a send's message or a draft's Drafts-folder copy is being built, until the build returns ([ADR-015 amendment](#adr-015-amendment--a-build-that-stops-sealwax-isnt-run-again-m9-2026-10-07)); v11 stores migrate with both clear, and a newer store is refused as before ([report](m9/depth.md#2-the-outboxs-crash-loop-guard)).
+`outbox.building` and `drafts.upload_building` record that a send's message or a draft's Drafts-folder copy is being built, until the build returns ([ADR-015 amendment](#adr-015-amendment--a-build-that-stops-sealwax-isnt-run-again-m9-2026-10-07)); v11 stores migrate with both clear, and a newer store is refused as before.
 
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
@@ -333,7 +333,7 @@ Built on the user's "HTML size cap". The search text and snippet of an HTML-only
 
 ### ADR-006 amendment — S1 results: GO (2026-10-04)
 
-**Status:** Accepted on S1's evidence ([report](spikes/S1-imap.md)): on the testbed (Dovecot 2.4.5 full, Dovecot IMAP4rev1-only, Stalwart 0.16.24), 10k headers sync in 0.31–0.46 s (1.77–1.94 s at 50 ms RTT); a no-change re-sync takes p50 7.2 ms (CONDSTORE) and 29.9 ms (UID diff); IDLE delivers in p50 493 ms (Dovecot's own delay) and 1.0 ms (Stalwart); 30 of 30 randomized runs end with zero divergence; connections cut mid-FETCH, mid-IDLE, mid-APPEND and mid-MOVE lose and duplicate nothing — all **with the changes below**.
+**Status:** Accepted on S1's evidence: on the testbed (Dovecot 2.4.5 full, Dovecot IMAP4rev1-only, Stalwart 0.16.24), 10k headers sync in 0.31–0.46 s (1.77–1.94 s at 50 ms RTT); a no-change re-sync takes p50 7.2 ms (CONDSTORE) and 29.9 ms (UID diff); IDLE delivers in p50 493 ms (Dovecot's own delay) and 1.0 ms (Stalwart); 30 of 30 randomized runs end with zero divergence; connections cut mid-FETCH, mid-IDLE, mid-APPEND and mid-MOVE lose and duplicate nothing — all **with the changes below**.
 
 - **Library:** async-imap 0.12.0, pinned, with a **mandatory** raw-command layer that every command goes through. Its typed `fetch`, `store`, `search`, `list`, `expunge`, `noop`, `capabilities` and `id` calls don't check for NO or BAD: on all three servers a refused UID FETCH came back as `Ok(0)` and a refused UID SEARCH as `Ok(empty)`, which an op queue would record as done. The raw layer checks every completion, sees every untagged response and keeps APPENDUID/COPYUID. Other confirmed defects: the unsolicited-response buffer delivered 100 of 150 notices; an unparseable response (ESEARCH) kills the connection, with raw protocol bytes in the error text; trace logging prints the LOGIN password (ADR-018 amendment). io-imap 0.7.1 was as fast and more complete but isn't ready (six breaking releases in four months, an alpha codec, a blocking client); revisit at 1.x.
 - **New UIDs** come from APPENDUID/COPYUID, falling back to the Message-IDs of UIDs at or above the target's UIDNEXT recorded before the write. `UID SEARCH HEADER Message-ID` is dropped: Stalwart never matches it, and recovering a lost APPEND reply with it duplicated the message.
@@ -345,7 +345,7 @@ Not yet verified: real providers (Gmail labels, XOAUTH2), the LOGIN fallback (ev
 
 ### ADR-006 amendment — the IMAP connection layer as built (M2, 2026-10-05)
 
-Built in M2 ([m2/imap.md](m2/imap.md)) on S1's raw-command layer.
+Built in M2 on S1's raw-command layer.
 - **Connect:** TLS from the first byte, or STARTTLS sent whatever the plaintext capabilities say; a NO, BAD, failed handshake or PREAUTH greeting ends the attempt, and capabilities are read again over TLS. AUTHENTICATE PLAIN; LOGIN only without PLAIN and without LOGINDISABLED; XOAUTH2 with a token from the caller. `ID ("name" "Sealwax" "version" …)` where offered; ENABLE QRESYNC where offered. TCP keepalive and a timeout on every read; 30 s for connect and login together.
 - **Errors carry no server text:** refused logins are classified into `LoginFailure` (RFC 5530 codes, then provider texts, most of them unverified until test accounts exist) and the text is dropped.
 - **Folder list:** `RETURN (SPECIAL-USE STATUS (MESSAGES UNSEEN))` where LIST-STATUS is offered, else LIST plus pipelined STATUS; roles by SPECIAL-USE, then the nb/nn/en name table.
@@ -353,7 +353,7 @@ Built in M2 ([m2/imap.md](m2/imap.md)) on S1's raw-command layer.
 
 ### ADR-006 amendment — the sync core and body downloads as built (M3 phase A, 2026-10-05)
 
-Built in M3 ([sync](m3/sync.md), [bodies](m3/bodies.md)) on S1's model and M2's connection, first sync and store.
+Built in M3 on S1's model and M2's connection, first sync and store.
 - **Folder pass:** EXAMINE (CONDSTORE, or QRESYNC enabled), with a view kept current from every EXISTS, EXPUNGE and VANISHED; a UIDVALIDITY change resets the folder; an unfinished first sync continues. Then:
   - the one-round-trip fast path;
   - new UIDs (`UID FETCH n:*`, or SEARCH and batches of 200);
@@ -373,7 +373,7 @@ Built in M3 ([sync](m3/sync.md), [bodies](m3/bodies.md)) on S1's model and M2's 
 
 ### ADR-006 amendment — the per-account actor as built (M3 phase B, 2026-10-05)
 
-Built in M3 ([report](m3/actor.md)).
+Built in M3.
 - **At most three connections per account:**
   - the command connection: account passes, the opened folder, older mail, and INBOX where the server lacks IDLE;
   - the IDLE connection on INBOX;
@@ -410,7 +410,7 @@ Built in M3 ([report](m3/actor.md)).
 
 ### ADR-006 amendment — the op queue's writes as built (M4 phase A, 2026-10-06)
 
-Built in M4 ([report](m4/imap-writes.md)) on S1's raw layer, without the store.
+Built in M4 on S1's raw layer, without the store.
 - **Every write SELECTs its folder read-write** and checks its UIDVALIDITY first (a different one is reported for re-targeting); `[READ-ONLY]` is refused. The passes keep EXAMINEing. CLOSE and a plain EXPUNGE are never sent.
 - **Flags:** `UID STORE +FLAGS.SILENT` and `-FLAGS.SILENT` in UID sets of at most 1,000 UIDs and 4,000 bytes, pipelined; keywords only where PERMANENTFLAGS keeps them (all three testbed servers list `\*`).
 - **Moves:** UID MOVE where offered; else UID COPY, `\Deleted` and UID EXPUNGE with UIDPLUS; without UIDPLUS the source copies stay `\Deleted` (and hidden). COPYUID is read from the tagged or an untagged OK and **checked against the target's Message-IDs** before it is reported: Stalwart 0.16.24 writes both sets in ascending order whatever order it copied in, which would put the wrong body on a moved row. The check costs two round trips per move. A quirk switch (`ConnectOptions::moves`) takes the COPY path on servers with MOVE.
@@ -420,25 +420,25 @@ Built in M4 ([report](m4/imap-writes.md)) on S1's raw layer, without the store.
 
 ### ADR-006 amendment — new mail refreshes the flags of rows already held (M4 phase B, 2026-10-06)
 
-Found by M4's randomized triage suite ([report](m4/runner.md#the-flag-refresh-fix)): the folder pass's new-mail fetch also updates the flags and keywords of fetched UIDs the store already holds. These are rows the op runner re-homed into a target above its stored UIDNEXT, which the flag scan doesn't reach; before the fix, a flag another client set just before the move never reached the store.
+Found by M4's randomized triage suite: the folder pass's new-mail fetch also updates the flags and keywords of fetched UIDs the store already holds. These are rows the op runner re-homed into a target above its stored UIDNEXT, which the flag scan doesn't reach; before the fix, a flag another client set just before the move never reached the store.
 
 ### ADR-006 amendment — parts and originals on demand (M5, 2026-10-06)
 
-Built as [m5/files.md](m5/files.md) records. `Command::FetchPart` fetches `BODY.PEEK[<section>.MIME]` and `BODY.PEEK[<section>]` by the section the store recorded, and `Command::FetchOriginal` fetches `BODY.PEEK[]`, on the account's body connection after EXAMINE and the UIDVALIDITY check, ahead of body batches, one at a time, retried once after a cut. Nothing is stored and nothing is marked `\Seen`; a vanished UID or a new UIDVALIDITY is `Gone`. The reader uses them for a large message stored as its text parts: its attachments, its inline images (served as the type the stored message declares) and Show Original and Save as .eml. On the testbed a 12 MB original took 25–63 ms and its 4.4 MB attachment 28–43 ms, byte for byte.
+Built as m5/files.md records. `Command::FetchPart` fetches `BODY.PEEK[<section>.MIME]` and `BODY.PEEK[<section>]` by the section the store recorded, and `Command::FetchOriginal` fetches `BODY.PEEK[]`, on the account's body connection after EXAMINE and the UIDVALIDITY check, ahead of body batches, one at a time, retried once after a cut. Nothing is stored and nothing is marked `\Seen`; a vanished UID or a new UIDVALIDITY is `Gone`. The reader uses them for a large message stored as its text parts: its attachments, its inline images (served as the type the stored message declares) and Show Original and Save as .eml. On the testbed a 12 MB original took 25–63 ms and its 4.4 MB attachment 28–43 ms, byte for byte.
 
 ### ADR-006 amendment — new mail reported per committed step (M7, 2026-10-07)
 
-Built in M7 ([report](m7/notifications.md)). `Event::NewMail { account, folder, messages }` is sent from the account's actor as each step of a folder pass commits (not once per pass, which a cut after a commit would lose), for the rows at or above the UIDNEXT the store held, the UID diff's included. Never for a first sync (also after a UIDVALIDITY reset), older mail (`LoadOlder`), or the account's own moves: re-homed rows are never inserted again, and the actor's record of its moves (10 minutes) keeps out a move whose new UID stayed unknown. Mail that arrived while Sealwax was stopped is reported at the next start. Testbed, release: APPEND OK → `NewMail` median 1.7 ms on Stalwart and 497.8 ms on Dovecot (its own IDLE delay); end to end in background mode with no window, APPEND OK → the notification 10–23 ms on Stalwart (5 runs).
+Built in M7. `Event::NewMail { account, folder, messages }` is sent from the account's actor as each step of a folder pass commits (not once per pass, which a cut after a commit would lose), for the rows at or above the UIDNEXT the store held, the UID diff's included. Never for a first sync (also after a UIDVALIDITY reset), older mail (`LoadOlder`), or the account's own moves: re-homed rows are never inserted again, and the actor's record of its moves (10 minutes) keeps out a move whose new UID stayed unknown. Mail that arrived while Sealwax was stopped is reported at the next start. Testbed, release: APPEND OK → `NewMail` median 1.7 ms on Stalwart and 497.8 ms on Dovecot (its own IDLE delay); end to end in background mode with no window, APPEND OK → the notification 10–23 ms on Stalwart (5 runs).
 
 ### ADR-006 amendment — POP3: the client and the account's actor (M8 phase A, 2026-10-07)
 
-Built in M8's phase A ([client](m8/pop3-client.md), [accounts](m8/pop3-accounts.md)); the proposals wait for the M8 gate.
+Built in M8's phase A; the proposals wait for the M8 gate.
 - **The client** is Sealwax's own code over `net`'s sockets and TLS, no crate. Implicit TLS, or STLS right after the greeting with nothing else in plaintext; a refused STLS, a failed handshake or plaintext after STLS's `+OK` refuses the account. CAPA over TLS, before and after the login. SASL PLAIN, else USER/PASS, XOAUTH2 for a token (scripted only). RFC 2449 and 3206 codes classify refusals (the text dropped); `[IN-USE]`, `[LOGIN-DELAY]` and `[SYS/TEMP]` are `Busy`. UIDL is required (a server without it is refused at setup, `LoginFailure::NoUidl`); messages sharing a UIDL are left alone. RETR keeps the bytes and line ends as sent, up to 100 MiB; a larger message's header comes by TOP. Timeouts: 30 s to connect and log in, 60 s a reply, RETR 60 s plus its size at 16 KiB/s. Deletions happen only at a successful QUIT; a QUIT without its answer is unknown (on the testbed it had always deleted).
 - **The actor:** one session per pass, at start, on `Reconnect`, on `Command::CheckMail` (Refresh, M8; IMAP accounts run an account pass for it) and every 5 minutes, never sooner than LOGIN-DELAY; newest first, stored 25 messages or 500 ms at a time; `NewMail` only after the account's first complete pass; the policy's deletions only of what the store recorded whole, by this session's numbers, never of oversized or shared-UIDL messages; a QUIT without its answer settled by the next listing; a busy maildrop changes no status; EXPIRE logged; the outbox runs beside the passes. POP3 accounts are password accounts in 1.0 (Microsoft would need a separate POP scope).
 
 ### ADR-006 amendment — a crashed actor started again (M9, 2026-10-07)
 
-Built on the user's "Restart a crashed sync" (2026-10-07; [report](m9/hardening.md#2-restarting-a-crashed-sync-f15)). An account's actor, IMAP or POP3, runs under a supervisor in its task: one that ends in a panic (imap-proto 0.17.0 panics on a reply code followed at once by a non-ASCII character, F15) is started again after the backoff a second failed connection waits (1 s doubling to 5 minutes, jittered; a run longer than 5 minutes starts the count over), the account showing offline meanwhile; one that ends on a stop (removal, quit, `accounts.toml`) stays ended, also when the stop comes during the wait; `Reconnect` restarts it at once. The IDLE connection goes with its actor. The log names the account's id and the count, never the panic's message. Verified against the fake IMAP server with imap-proto's real panic and with injected panics (IMAP's supervisor, POP3's actor); not on a real server.
+Built on the user's "Restart a crashed sync" (2026-10-07). An account's actor, IMAP or POP3, runs under a supervisor in its task: one that ends in a panic (imap-proto 0.17.0 panics on a reply code followed at once by a non-ASCII character, F15) is started again after the backoff a second failed connection waits (1 s doubling to 5 minutes, jittered; a run longer than 5 minutes starts the count over), the account showing offline meanwhile; one that ends on a stop (removal, quit, `accounts.toml`) stays ended, also when the stop comes during the wait; `Reconnect` restarts it at once. The IDLE connection goes with its actor. The log names the account's id and the count, never the panic's message. Verified against the fake IMAP server with imap-proto's real panic and with injected panics (IMAP's supervisor, POP3's actor); not on a real server.
 
 ### ADR-006 amendment — other mail programs' housekeeping folders left out (2026-10-09)
 
@@ -458,7 +458,7 @@ Built on the user's "hide Microsoft's housekeeping folders and the mailspring fo
 
 ### ADR-007 amendment — S7 results (2026-10-04)
 
-S7 confirms the MIME side ([report](spikes/S7-composer.md)): 12 messages round-trip through mail-parser (structure, both text parts, inline-image links, attachment names, decoded headers); no Bcc header in the transmitted copy; 0 hostname hits in any output. Additions:
+S7 confirms the MIME side: 12 messages round-trip through mail-parser (structure, both text parts, inline-image links, attachment names, decoded headers); no Bcc header in the transmitted copy; 0 hostname hits in any output. Additions:
 
 - The Sent copy is the transmitted bytes plus one `Bcc:` field.
 - A message with only Bcc recipients gets `To: "undisclosed-recipients":;`.
@@ -471,7 +471,7 @@ Interop in Gmail web, Outlook web and Thunderbird is still pending test accounts
 
 ### ADR-007 amendment — the SMTP login check (M2, 2026-10-05)
 
-Built in M2 ([m2/imap.md](m2/imap.md)).
+Built in M2.
 - lettre speaks SMTP over a socket from `engine::net` (keepalive; DNS and connect failures told apart). Implicit TLS uses the same rustls configuration as IMAP and is handed to `connect_with_transport`; STARTTLS uses lettre's `TlsParameters` from the same trust (the platform verifier, or exactly the testbed CA with `CertificateStore::None`).
 - `hello_name` is `ClientId::Ipv4(127.0.0.1)`, sent as `EHLO [127.0.0.1]` (the RFC 5321 address literal).
 - A refused login drops the connection rather than lettre's `abort()`, which waits for QUIT's reply without a timeout; QUIT after success waits 2 s at most. lettre's error displays include server replies, so they are never logged.
@@ -482,7 +482,7 @@ Built in M2 ([m2/imap.md](m2/imap.md)).
 
 ### ADR-007 amendment — the MIME builder and submission as built (M6, 2026-10-06)
 
-Built in M6 ([compose rules](m6/compose-domain.md), [sending](m6/send.md)).
+Built in M6.
 - **The builder** (`domain::compose::mime`, from S7): three copies of a draft: the transmitted copy (never a Bcc header; `To: "undisclosed-recipients":;` when only Bcc), the Sent copy (the transmitted bytes plus one `Bcc:` field), and the Drafts folder's copy (Bcc kept). The envelope lists To, Cc and Bcc once each, in ASCII; international domains go as punycode, non-ASCII local parts are refused (no SMTPUTF8 in 1.0). The Message-ID is the draft's, made from 128 random bits on the From's domain, and the builder refuses one on another domain, so a change of sender to another domain makes a new one. No User-Agent, X-Mailer, Sender or Received field; `Date:` in UTC. Replies carry In-Reply-To and up to 20 References (the root and the 19 most recent); forwards carry neither. `estimate` gives the encoded size for the SIZE check without reading the parts.
 - **Submission** (`engine::smtp::submit`): two steps, MAIL FROM and every RCPT TO, then (after the store's durable start, ADR-015) DATA; Sealwax answers XOAUTH2 itself (lettre can't answer the error challenge) and refreshes a refused token once; EHLO SIZE is checked before MAIL and sent as `SIZE=`. One refused recipient refuses the whole send (RSET, nothing sent). Every reply is definite; a connection lost before the message's bytes go out is retried, one lost while they go out or before the reply to their end is uncertain.
 - **APPEND** (`engine::imap::write::append`) takes the folder's mark first; a retry reads the Message-IDs from the mark up (S1: Stalwart never matches `SEARCH HEADER Message-ID`) and appends only what isn't there; a draft's new revision is appended before the old copy is removed (left `\Deleted` without UIDPLUS).
@@ -490,11 +490,11 @@ Built in M6 ([compose rules](m6/compose-domain.md), [sending](m6/send.md)).
 
 ### ADR-007 amendment — the STARTTLS stream (M9, 2026-10-07)
 
-M9's security review found STARTTLS response injection in submission: lettre 0.11.23 upgrades the stream beneath its own read buffer, so bytes a man in the middle sent right after STARTTLS's `220` were read after the handshake as the server's answers (the scripted test's login check passed while every reply was read one step behind; the password still went over TLS to the real server only). Sealwax now hands lettre a plaintext stream of its own (`engine::smtp::Plain`) that gives at most one line per read until the handshake starts and fails the handshake if anything was read ahead; the login check then fails with `NoTls` and nothing goes over TLS. IMAP and POP3 were already safe (an IMAP injection test added). Checked against scripted servers on the branch ([report](m9/security.md#findings)); the testbed's STARTTLS servers after the merge ([PLAN.md](PLAN.md#m9-phase-a-the-security-review-and-fuzzing-merged--2026-10-07)).
+M9's security review found STARTTLS response injection in submission: lettre 0.11.23 upgrades the stream beneath its own read buffer, so bytes a man in the middle sent right after STARTTLS's `220` were read after the handshake as the server's answers (the scripted test's login check passed while every reply was read one step behind; the password still went over TLS to the real server only). Sealwax now hands lettre a plaintext stream of its own (`engine::smtp::Plain`) that gives at most one line per read until the handshake starts and fails the handshake if anything was read ahead; the login check then fails with `NoTls` and nothing goes over TLS. IMAP and POP3 were already safe (an IMAP injection test added). Checked against scripted servers on the branch; the testbed's STARTTLS servers after the merge.
 
 ### ADR-007 amendment — the text part of deeply nested HTML (M9, 2026-10-07)
 
-The plain part is html2text's text of the HTML, rendered from a tree at most 1,024 levels deep; HTML whose tags nest deeper than 512 levels (WebKit's parser limit), counted in one pass with html5ever's tokenizer (`domain::html_depth`), gets mail-parser's one-pass text instead. html2text dropped an unfinished render tree recursively and overflowed a 2 MiB thread on 14,563 nested lists, which aborted Sealwax while it built a reply (found by M9's hardening, confirmed end to end by the depth branch's control run). The same rule gives the search text and the snippet (ADR-005), and the cleaner (ADR-014) leaves out start tags deeper than 512, keeping their content. Mail within the limit is converted and cleaned exactly as before (20,061 inputs compared; [report](m9/depth.md)).
+The plain part is html2text's text of the HTML, rendered from a tree at most 1,024 levels deep; HTML whose tags nest deeper than 512 levels (WebKit's parser limit), counted in one pass with html5ever's tokenizer (`domain::html_depth`), gets mail-parser's one-pass text instead. html2text dropped an unfinished render tree recursively and overflowed a 2 MiB thread on 14,563 nested lists, which aborted Sealwax while it built a reply (found by M9's hardening, confirmed end to end by the depth branch's control run). The same rule gives the search text and the snippet (ADR-005), and the cleaner (ADR-014) leaves out start tags deeper than 512, keeping their content. Mail within the limit is converted and cleaned exactly as before (20,061 inputs compared).
 
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
@@ -525,7 +525,7 @@ The plain part is html2text's text of the HTML, rendered from a tree at most 1,0
 
 ### ADR-008 amendment — S5 results: GO for Microsoft (2026-10-05)
 
-**Status:** the mechanism is accepted on S5's evidence ([report](spikes/S5-oauth.md)): our own PKCE loopback code on reqwest completes Microsoft's sign-in in the system browser, IMAP and SMTP accept XOAUTH2 on Outlook.com, and the refresh token survives a restart in the Secret Service. Outlook.com and Microsoft 365 stay in 1.0.
+**Status:** the mechanism is accepted on S5's evidence: our own PKCE loopback code on reqwest completes Microsoft's sign-in in the system browser, IMAP and SMTP accept XOAUTH2 on Outlook.com, and the refresh token survives a restart in the Secret Service. Outlook.com and Microsoft 365 stay in 1.0.
 
 - **No API permissions** are configured for the delegated flow: the Outlook scopes are requested, and consented, at sign-in.
 - **The XOAUTH2 username is the identity the token was issued to.** SMTP refused an alias and the mailbox's generated primary address of a Microsoft account first created with an external address, and accepted only its sign-in name; IMAP accepted the alias as well. ML-032 takes the username from the sign-in, not from the address typed into the assistant.
@@ -534,7 +534,7 @@ The plain part is html2text's text of the HTML, rendered from a tree at most 1,0
 
 ### ADR-008 amendment — Microsoft sign-in in the app (ML-032, 2026-10-05)
 
-Built on S5's code ([engine report](m2/oauth-engine.md), [app report](m2/oauth-app.md)); checked live on the S5 account on 2026-10-05 ([TESTING.md](TESTING.md#ml-032-microsoft-sign-in-in-the-app--2026-10-05)).
+Built on S5's code; checked live on the S5 account on 2026-10-05 ([TESTING.md](TESTING.md#ml-032-microsoft-sign-in-in-the-app--2026-10-05)).
 - **Flow:** our own PKCE (S256) authorization-code flow in the system browser, at Microsoft's `common` endpoints. The redirect is `http://localhost:<port>`, with listeners on 127.0.0.1 and ::1 that ignore requests without the right state. `prompt=select_account` and no `login_hint`; 5 minutes for the browser. Scopes: `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access openid profile`.
 - **The XOAUTH2 username is the ID token's `preferred_username`**, for the sign-in's checks, `accounts.toml` and every sync. The ID token comes from the token endpoint over HTTPS with the platform verifier, which stands in for its signature (OpenID Connect Core 3.1.3.7). The engine checks its issuer against its own tenant, its audience, its expiry, and that it names a user. `tid` picks Outlook.com's or Microsoft 365's servers for a new account.
 - **A sign-in checks IMAP and SMTP** with the new token before it answers, and keeps its tokens in memory for 30 minutes for the one add that names it.
@@ -545,14 +545,14 @@ Built on S5's code ([engine report](m2/oauth-engine.md), [app report](m2/oauth-a
 
 ### ADR-008 amendment — secrets keyed by the account key (M2, 2026-10-05)
 
-Built in M2 ([m2/accounts.md](m2/accounts.md)).
+Built in M2.
 - Keyring items are keyed by the account key from `accounts.toml`.
 - Adding an account stores the secret before the entry is written (the commit point); removing one deletes the secrets last. A journal of keys (`$XDG_STATE_HOME/sealwax/accounts-pending`) lets the engine delete the secret of an add that crashed before its commit point, and finish a removal that crashed or failed after its own.
 - The engine opens the keyring on first use, never on the startup path. Self-tests keep secrets in memory; development builds can too, with `SEALWAX_SECRETS=memory` ([SECURITY.md](SECURITY.md#credentials)).
 
 ### ADR-008 amendment — the no-keyring banner and a password typed again (ML-048, M3, 2026-10-05)
 
-Built in M3 ([report](m3/status.md)).
+Built in M3.
 - **No keyring:** when the Secret Service doesn't answer, the engine keeps secrets in memory, as before, and tells the app once (`KeyringUnavailable`). The window's banner says passwords and sign-ins stay in memory until Sealwax quits, until dismissed for the session. The memory backend that self-tests and `SEALWAX_SECRETS=memory` choose is not a fallback and isn't reported.
 - **A password typed again** (`UpdatePassword`) is checked on IMAP and then SMTP with the account's username before the account lane stores it under the account key; a refused one is never stored. The account's sync restarts after it is stored.
 
@@ -582,7 +582,7 @@ Built in M3 ([report](m3/status.md)).
 
 ### ADR-009 amendment — config.toml and keys.toml as built in M1 (2026-10-04)
 
-Built in M1 ([report](m1/actions.md)): `config.toml` holds `[appearance]` (`corner_radius`, `chrome_font`, `reading_font`, the theme's own types) and `[oauth.microsoft]` with `client_id` only. Microsoft's client is public, Sign in with Google is deferred, and no settings file holds a secret. `keys.toml` maps action names to key lists. Both files are:
+Built in M1: `config.toml` holds `[appearance]` (`corner_radius`, `chrome_font`, `reading_font`, the theme's own types) and `[oauth.microsoft]` with `client_id` only. Microsoft's client is public, Sign in with Google is deferred, and no settings file holds a secret. `keys.toml` maps action names to key lists. Both files are:
 - read with the `toml` crate's spanned tables, so every mistake carries its line and column, with a "did you mean";
 - applied whole or not at all;
 - reread 150 ms after a change seen on their folder and its parent;
@@ -590,7 +590,7 @@ Built in M1 ([report](m1/actions.md)): `config.toml` holds `[appearance]` (`corn
 
 ### ADR-009 amendment — accounts.toml as built (M2, 2026-10-05)
 
-Built in M2 ([m2/accounts.md](m2/accounts.md)).
+Built in M2.
 - **Format:** `[[account]]` tables with `key`, `name`, `address`, `username` (the address by default) and `auth` (`"password"` by default, or `"microsoft"`), and `[account.imap]` and `[account.smtp]` with `host`, `port` (by protocol and security when left out) and `security` (`"tls"` by default, or `"starttls"`).
 - **Reading:** as `config.toml`: line and column for every mistake, "did you mean", applied whole or not at all. A field named like a password, secret or token is a mistake anywhere in the file; keys and addresses are unique; values are never quoted in messages, because the app logs them.
 - **The key** is the account's stable name: 12 random lowercase base32 characters, which the engine generates when it adds an account, or a word typed by hand. It names the keyring items and the store row, so a deleted store finds its accounts again.
@@ -600,7 +600,7 @@ Built in M2 ([m2/accounts.md](m2/accounts.md)).
 
 ### ADR-009 amendment — `[storage]` in config.toml (ML-044, M3, 2026-10-05)
 
-Built in M3 ([report](m3/bodies.md)): `cache_size` (a size such as `"2 GiB"` or `"500 MB"`, at least 100 MiB, or `"unlimited"`) and `prefetch_days` (0–365; 0 turns prefetching off). The defaults, 2 GiB and 14 days, are proposals for the user. The section is read like the rest of the file and sent to the engine with `Command::Storage`; a file with a mistake at startup sends the defaults.
+Built in M3: `cache_size` (a size such as `"2 GiB"` or `"500 MB"`, at least 100 MiB, or `"unlimited"`) and `prefetch_days` (0–365; 0 turns prefetching off). The defaults, 2 GiB and 14 days, are proposals for the user. The section is read like the rest of the file and sent to the engine with `Command::Storage`; a file with a mistake at startup sends the defaults.
 
 ### ADR-009 amendment — `[storage]` defaults accepted (M3 gate, 2026-10-06)
 
@@ -608,7 +608,7 @@ The user accepted the proposed defaults ("accept the defaults"): `cache_size = "
 
 ### ADR-009 amendment — signatures and identities in accounts.toml (M6, 2026-10-06)
 
-Built in M6's phase A ([report](m6/compose-domain.md)). `signature = """…"""` on an `[[account]]` table and `[[account.identity]]` tables (an alias: `address`, an optional `name` that defaults to the account's, an optional `signature`) are read with the file's error style (spans, did-you-mean, secrets refused, an address listed twice refused); the setup assistant writes neither. Signatures are plain text, inserted below what the user types and above the quote after a `-- ` line, at most 10,000 characters (a proposal for the gate). The default file documents both in comments.
+Built in M6's phase A. `signature = """…"""` on an `[[account]]` table and `[[account.identity]]` tables (an alias: `address`, an optional `name` that defaults to the account's, an optional `signature`) are read with the file's error style (spans, did-you-mean, secrets refused, an address listed twice refused); the setup assistant writes neither. Signatures are plain text, inserted below what the user types and above the quote after a `-- ` line, at most 10,000 characters (a proposal for the gate). The default file documents both in comments.
 
 ### ADR-009 amendment — `[notifications]` and `[background]` in config.toml (M7 contract, 2026-10-06)
 
@@ -616,7 +616,7 @@ Two sections, read with the file's error style, following the user's decisions a
 
 ### ADR-009 amendment — POP3 accounts in accounts.toml (M8 phase A, 2026-10-07)
 
-Built in M8's phase A ([report](m8/pop3-setup.md)). A POP3 account has `[account.pop3]` in place of `[account.imap]`, exactly one of the two: `host`, `port` (995 for `"tls"`, 110 for `"starttls"` when left out), `security`, `leave_on_server` (default `true`) and `delete_after_days` (1–3650, only with `leave_on_server = true`; left out, mail stays on the server). Read with the file's error style (positions, did-you-mean, both tables or neither, the policy's contradictions); the assistant writes it with `leave_on_server` spelled out and offers no policy choice (the lead's recommendation, for the gate). In code, `AccountSettings::imap` became `incoming`, with `receive` saying which protocol (the M8 contract).
+Built in M8's phase A. A POP3 account has `[account.pop3]` in place of `[account.imap]`, exactly one of the two: `host`, `port` (995 for `"tls"`, 110 for `"starttls"` when left out), `security`, `leave_on_server` (default `true`) and `delete_after_days` (1–3650, only with `leave_on_server = true`; left out, mail stays on the server). Read with the file's error style (positions, did-you-mean, both tables or neither, the policy's contradictions); the assistant writes it with `leave_on_server` spelled out and offers no policy choice (the lead's recommendation, for the gate). In code, `AccountSettings::imap` became `incoming`, with `receive` saying which protocol (the M8 contract).
 
 ### ADR-009 amendment — an account's label and colour (2026-10-08)
 
@@ -699,7 +699,7 @@ The brand colours belong to the icon and wordmark only; the app's chrome keeps f
 
 ### ADR-011 amendment — S7 findings (2026-10-04)
 
-From the composer spike ([report](spikes/S7-composer.md)), which uses the same hardening:
+From the composer spike, which uses the same hardening:
 
 - **The page's CSP does not bind isolated-world scripts' `fetch()`.** With the CSP alone, a helper `fetch()` reached the local test server; only the content filter stopped it. Rule: helper scripts fetch nothing but `blob:` URLs, and every view that runs helper scripts keeps the content filter.
 - With `enable-javascript-markup = false`, no markup script or event handler ran even without the CSP.
@@ -708,7 +708,7 @@ From the composer spike ([report](spikes/S7-composer.md)), which uses the same h
 
 ### ADR-011 amendment — S2 results: approach A accepted (2026-10-04)
 
-**Status:** Approach A is accepted on S2's evidence ([report](spikes/S2-webkit.md)); approach B is rejected (its scrolling runs at WebKit's 60 Hz timer, p95 17.0 ms, missing the bar at 144 Hz; WebKit strips `srcdoc` with script markup off; no memory advantage over A rendered on the CPU). Every S2 bar passes except memory: 47 hostile cases with 0 connections, 0 TLS hellos and 0 script traces; `cid:` 158/158; 0 blank bodies of 63; scrolling p95 6.95 ms; heights 63/63 within ±1 px; open p95 17.4 ms; renders under `tools/headless.sh` in software.
+**Status:** Approach A is accepted on S2's evidence; approach B is rejected (its scrolling runs at WebKit's 60 Hz timer, p95 17.0 ms, missing the bar at 144 Hz; WebKit strips `srcdoc` with script markup off; no memory advantage over A rendered on the CPU). Every S2 bar passes except memory: 47 hostile cases with 0 connections, 0 TLS hellos and 0 script traces; `cid:` 158/158; 0 blank bodies of 63; scrolling p95 6.95 ms; heights 63/63 within ±1 px; open p95 17.4 ms; renders under `tools/headless.sh` in software.
 
 The layers and the sizing change as follows (SECURITY.md carries the security rules):
 
@@ -737,7 +737,7 @@ The layers and the sizing change as follows (SECURITY.md carries the security ru
 
 ### ADR-011 amendment — the reader as built in M1 (2026-10-04)
 
-Built as [m1/reader.md](m1/reader.md) records, with every layer of the S2 amendment. Additions:
+Built as m1/reader.md records, with every layer of the S2 amendment. Additions:
 - **One engine per process:**
   - one web context and ephemeral session (cookies never accepted, TLS errors fail);
   - one compiled content filter;
@@ -756,7 +756,7 @@ Built as [m1/reader.md](m1/reader.md) records, with every layer of the S2 amendm
 
 ### ADR-011 amendment — the reader as built in M5 (2026-10-06)
 
-Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) and [m5/rendering.md](m5/rendering.md) record. Every layer of the S2 amendment stays; the hostile suite runs in `tools/ci.sh --ui` (60 cases) with a DNS canary.
+Built as m5/conversation.md and m5/rendering.md record. Every layer of the S2 amendment stays; the hostile suite runs in `tools/ci.sh --ui` (60 cases) with a DNS canary.
 - **Live views:** at most `MAX_LIVE_VIEWS` (4). Expanded HTML bodies within one column height of the visible part hold one, nearest first; the others give theirs back and keep their measured height; a focused body keeps its view; a spare view measures the nearest unmeasured body. A view that comes back gets the content filter again unless its message or sender is allowed. Changes above the visible part are held still by moving the column's scroll in the frame clock's layout phase.
 - **`cid:`** answers come from the main loop, asynchronously, and only for the load that asked (epochs per view); parts the store doesn't hold come from `FetchPart`.
 - **Links:** the isolated world reports the hovered or focused link; the reader shows its target and, when the link's text names another registrable domain (`domain::links`, the PSL) or its address hides a name before `@`, warns and asks before opening. Plain-text bodies link only http(s), `www.` and mailto.
@@ -766,7 +766,7 @@ Built as [m5/conversation.md](m5/conversation.md), [m5/files.md](m5/files.md) an
 
 ### ADR-011 amendment — the memory measured live (M5 phase B, 2026-10-06)
 
-`reader_memory --live --judge`, five runs on the live session (release; NVIDIA RTX 3070 Ti; the window tiled to 1709×1400): with a typical 10-message conversation open, process-tree PSS **383.5–397.8 MB**, of which NVIDIA's libraries and device mappings are 96.9–97.1 MiB (71.5 in the app, 16.6 in WebKit's web process, 9.0 in its network process); **without them 281.9–296.0 MB**. At most 3 views were live (cap 4). GPU memory by `nvidia-smi`: 47 MiB steady, 55 MiB at peak, all the app's (reader views render without acceleration). Growth after 200 opens: 15.7–26.6 MB (3 of 5 runs over the 20 MB target; the app's share about 10 MiB each run). Whether the driver's mappings count toward the 300 MB bar or the GPU budget (the M1 question, deferred to M5), and the cap and the GPU budget, are the user's decisions at the M5 gate ([PLAN.md](PLAN.md#m5-integrated-the-gate-is-the-users--2026-10-06)).
+`reader_memory --live --judge`, five runs on the live session (release; NVIDIA RTX 3070 Ti; the window tiled to 1709×1400): with a typical 10-message conversation open, process-tree PSS **383.5–397.8 MB**, of which NVIDIA's libraries and device mappings are 96.9–97.1 MiB (71.5 in the app, 16.6 in WebKit's web process, 9.0 in its network process); **without them 281.9–296.0 MB**. At most 3 views were live (cap 4). GPU memory by `nvidia-smi`: 47 MiB steady, 55 MiB at peak, all the app's (reader views render without acceleration). Growth after 200 opens: 15.7–26.6 MB (3 of 5 runs over the 20 MB target; the app's share about 10 MiB each run). Whether the driver's mappings count toward the 300 MB bar or the GPU budget (the M1 question, deferred to M5), and the cap and the GPU budget, are the user's decisions at the M5 gate.
 
 ### ADR-011 amendment — memory decided at the M5 gate (2026-10-06)
 
@@ -826,7 +826,7 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 
 **Decision:** background mode (PRD D6) moves from P1 to P0; opt-in autostart stays P1. D5 is reworded: a click on a new-mail notification opens the message everywhere; Archive and Mark read appear where the notification server shows buttons, and stay one key away in the reader.
 
-**Reason:** S6 showed that on Omarchy a notification click reaches the app only while it runs — GLib's freedesktop path can't start a stopped app, and omarchy-shell's history entries carry no live actions — and that omarchy-shell 0.3.1 shows no action buttons ([report](spikes/S6-desktop.md)).
+**Reason:** S6 showed that on Omarchy a notification click reaches the app only while it runs — GLib's freedesktop path can't start a stopped app, and omarchy-shell's history entries carry no live actions — and that omarchy-shell 0.3.1 shows no action buttons.
 
 ### ADR-013 amendment — background mode on by default; notifications show sender and subject (M7 start, 2026-10-06)
 
@@ -843,8 +843,8 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 **Status:** Accepted — the user's delegation at M7's end ("I trust you and go with your recommendations"), 2026-10-07.
 
 **Decision:**
-- **Notifications** ([report](m7/notifications.md)): unread mail in an Inbox only; quiet while the focused window's list shows that folder or All Inboxes; up to three of their own within 30 s, then one "N new messages" that replaces itself; normal urgency; the sender (else the address) as the title and the subject as the body, capped at 80 and 200 characters, or "New mail" and a count in the count mode; Archive and Mark Read as buttons where the server shows them; withdrawn when the message is read, moved or deleted anywhere, and when the user switches to the count mode or off. The actions behind a notification take a message id, so they are application actions outside the registry. Per-account muting isn't built (a follow-up).
-- **Background mode** ([report](m7/background.md)): the one-time notice shows when the last window (main or a composer opened alone) closes into background mode, once per user.
+- **Notifications**: unread mail in an Inbox only; quiet while the focused window's list shows that folder or All Inboxes; up to three of their own within 30 s, then one "N new messages" that replaces itself; normal urgency; the sender (else the address) as the title and the subject as the body, capped at 80 and 200 characters, or "New mail" and a count in the count mode; Archive and Mark Read as buttons where the server shows them; withdrawn when the message is read, moved or deleted anywhere, and when the user switches to the count mode or off. The actions behind a notification take a message id, so they are application actions outside the registry. Per-account muting isn't built (a follow-up).
+- **Background mode**: the one-time notice shows when the last window (main or a composer opened alone) closes into background mode, once per user.
 - **Opt-in autostart** is built as Start Sealwax at Login (ADR-003's M7 amendment).
 
 **Reason:** the agents' proposals as built; the live check passed on omarchy-shell on 2026-10-07 (a click opened the right message, 14.9 ms with the window open, 73.4 ms from background mode).
@@ -877,7 +877,7 @@ Built on the user's "Keep WebKit's sandbox on". WebKitGTK 2.52.6 runs its web pr
 
 ### ADR-014 amendment — S7 results (2026-10-04)
 
-S7 confirms the mechanism with conditions ([report](spikes/S7-composer.md)). Formatting, toolbar state, undo and paste cleaning pass; the measured edit-to-painted-frame latency (live, 144 Hz, release) passes only without hardware acceleration:
+S7 confirms the mechanism with conditions. Formatting, toolbar state, undo and paste cleaning pass; the measured edit-to-painted-frame latency (live, 144 Hz, release) passes only without hardware acceleration:
 
 | Composer view | p50 | p95 |
 | --- | --- | --- |
@@ -895,7 +895,7 @@ Still open: the user's fcitx5 and Norwegian dead-key check (`bash spikes/s7-comp
 
 ### ADR-014 amendment — the user's fcitx5 check (2026-10-06)
 
-The user ran S7's manual check on the live session with fcitx5 and approved it ("approved", 2026-10-06). With acceleration off, key press → painted frame was p95 10.51 ms for every text key (n=85) and 11.24 ms for æ/ø/å, under the 16 ms bar; dead keys arrived as fcitx5 commits after preedits. One of the five instruction lines was typed exactly; € (Compose), ô and ü weren't exercised ([PLAN.md](PLAN.md#the-fcitx5-and-norwegian-typing-check-done-by-the-user--2026-10-06)). Still open: the 60 Hz re-measure and long-quote scrolling, before M6.
+The user ran S7's manual check on the live session with fcitx5 and approved it ("approved", 2026-10-06). With acceleration off, key press → painted frame was p95 10.51 ms for every text key (n=85) and 11.24 ms for æ/ø/å, under the 16 ms bar; dead keys arrived as fcitx5 commits after preedits. One of the five instruction lines was typed exactly; € (Compose), ô and ü weren't exercised. Still open: the 60 Hz re-measure and long-quote scrolling, before M6.
 
 ### ADR-014 amendment — the composer in its own window (M6 start, 2026-10-06)
 
@@ -905,7 +905,7 @@ Still open from S7: the 60 Hz re-measure (the user's; it changes the monitor's s
 
 ### ADR-014 amendment — the composer as built (M6, 2026-10-06)
 
-Built in M6 ([composer](m6/composer.md), [compose rules](m6/compose-domain.md), [reply](m6/reply.md)).
+Built in M6.
 - **The window:** one application window per draft, shown at once and filled when the draft is ready; S7's hardened editable view in a web context and process of its own, with every layer S7 proved and `hardware-acceleration-policy` NEVER; the toolbar follows the editor's state; every Composer command is a `win.` action of the composer window, its keys installed on the window and before WebKit on the body, so Ctrl+B and Ctrl+I toggle once and Ctrl+Z never reaches the main window's mail Undo. Pasted and dropped images become `cid:` parts in the blob store, served only to the view that holds them.
 - **Drafts** save to the store 1.5 s after the typing stops and at most 4 s after the first unsaved change; drafts left open reopen after the first frame. A `kill -9` while typing lost at most 3.51 s in 12 runs (the agent's) and 3.34 s in 6 (the lead's, load average about 19); every reopened draft held exactly the start of what was typed.
 - **Quoted HTML cleaned in Rust:** HTML that enters a draft without the paste cleaner (a quoted or forwarded original, which the quick reply sends without a WebView, and a draft read back from the Drafts folder) goes through `domain::compose::clean`: an html5ever 0.39 pre-pass with S7's presentational rules, then **ammonia** (pinned `~4.1.5`, sharing html5ever with html2text) as the allowlist with S7's rules (links only http(s) and mailto; images only `https:`, `cid:` and typed base64 `data:`). Remote images in a quote are kept as the original had them and never loaded in the composer (a proposal for the gate).
@@ -940,7 +940,7 @@ Built in M6 ([composer](m6/composer.md), [compose rules](m6/compose-domain.md), 
 
 ### ADR-015 amendment — S1 results (2026-10-04)
 
-From the fault-injection runs ([S1 report](spikes/S1-imap.md)):
+From the fault-injection runs:
 
 - Ops that create messages (APPEND, COPY) record the target's UIDNEXT before the first attempt; a retry first looks for the message among UIDs at or above it.
 - Replaying a MOVE of a UID that no longer exists is harmless. A COPY-based move (servers without MOVE) is **not** idempotent — a blind replay made two copies — so it goes through the same UIDNEXT check.
@@ -949,7 +949,7 @@ From the fault-injection runs ([S1 report](spikes/S1-imap.md)):
 
 ### ADR-015 amendment — the op queue's store side and writes as built (M4 phase A, 2026-10-06)
 
-Built in M4's phase A ([store](m4/ops-store.md), [writes](m4/imap-writes.md)); the runner on the actor is phase B.
+Built in M4's phase A; the runner on the actor is phase B.
 - **Ops:** one per message per action, FIFO per message, each recording the folder, UIDVALIDITY, UID and Message-ID, the flags and folder the user saw (for Undo), `not_before`, attempts and, for moves, the target's UIDVALIDITY and UIDNEXT before the first attempt (the "mark"). Written with the overlay and the counts in one transaction and one change event, at the writer's interactive priority: one message's change event p99 ≤ 3.85 ms at 100,000 messages.
 - **Planning** is `domain::triage` (M4's contract): the store groups an action's messages by folder and plans each group with the account's folders.
 - **Due:** a message's not-started ops whose `not_before` has passed fold into one action (flags merge, flags before a move travel with it, move chains collapse, A→B→A is done without the server); a started run is retried as it was. Groups per folder and action carry UID sets.
@@ -963,7 +963,7 @@ Built in M4's phase A ([store](m4/ops-store.md), [writes](m4/imap-writes.md)); t
 
 ### ADR-015 amendment — the op runner as built (M4 phase B, 2026-10-06)
 
-Built in M4 ([report](m4/runner.md)) on the actor, the store's op queue and the write module.
+Built in M4 on the actor, the store's op queue and the write module.
 - **The runner** lives on the account's command connection and runs before its passes: after every login, on `OpsQueued`, and when the next undo window or retry ends (`DueOps.next`). Never on the IDLE connection.
 - **A group** (one folder, one action, a UID set) holds its folders' pass locks (the source's, a move's target's, in folder order) from before its first command until its outcome is recorded. A move takes the target's mark before its first attempt; every attempt is counted in the store before it starts, so a cut, `Reconnect`, a stop or a crash leaves it to run again as a retry.
 - **Failures:** retried with the actor's backoff up to 5 attempts, then refused (a proposal); refusals for good put the messages back and reach the app as `OpsRefused`, those the sync paths made too; a full mailbox keeps the ops and shows quota full until a move or delete gets through; a changed UIDVALIDITY hands the folder to its pass, and the store re-targets by Message-ID.
@@ -972,7 +972,7 @@ Built in M4 ([report](m4/runner.md)) on the actor, the store's op queue and the 
 
 ### ADR-015 amendment — the app on the op queue (M4 phase B, 2026-10-06)
 
-Built in M4 ([report](m4/triage-app.md)). The app queues every triage action with `Store::queue_triage` (Mark Folder as Read with `mark_folder_read`) and undoes with `Store::undo`, awaiting the replies on the main loop, then sends `Command::OpsQueued` for each account the reply names.
+Built in M4. The app queues every triage action with `Store::queue_triage` (Mark Folder as Read with `mark_folder_read`) and undoes with `Store::undo`, awaiting the replies on the main loop, then sends `Command::OpsQueued` for each account the reply names.
 - **The undo window** is 7 s (a proposal within this ADR's 5–10 s): archive, delete, junk, move and Mark Folder as Read carry it; flag changes run at once. Only the last action is undoable from the toast; `z` and Ctrl+Z undo it after the toast too.
 - **Undo of deleting for good** asks the store, which brings back what hasn't reached the server; a local account (no server) deletes at once and offers no Undo.
 - **The offline banner counts the pending ops** ("3 waiting"), read on the store's reader after each action, Undo or change event and every 3 s while ops wait.
@@ -986,7 +986,7 @@ Built in M4 ([report](m4/triage-app.md)). The app queues every triage action wit
 
 ### ADR-015 amendment — the outbox as built (M6, 2026-10-06)
 
-Built in M6 ([store](m6/drafts-store.md), [sending](m6/send.md), [reply](m6/reply.md)); the at-most-once send this ADR left to M6.
+Built in M6; the at-most-once send this ADR left to M6.
 - **States** (the store): queued until `not_before` (the undo window, 7 s like triage's: a proposal), sending (from just before DATA, committed with a full sync, with the built bytes and envelope), uncertain, sent. Each step is a compare-and-set: only a queued entry starts, so an Undo between the due list and the start wins and nothing is sent. Before DATA, or on a 4xx, it is queued again with the same bytes; a 5xx or a refusal puts it back as an editable draft with the reason.
 - **At most once:** at the engine's start every sending entry becomes uncertain (`Event::SendUncertain`) and is never sent again until the user says send again (the same bytes and Message-ID), it was sent, or back to a draft. A property test over random queues, Undo, outcomes, stops and the user's answers passed 3,000 cases, and a planted fault that lets uncertain sends go again fails it.
 - **The runner** (the account's actor, after the op runner): one SMTP connection per round of due sends; the store's start before DATA; a stop or `Reconnect` while the data goes out records the send uncertain first; offline or a login the user must fix keeps it queued. On Stalwart through the fault proxy, cuts and hard stops at five steps (4 seeds, 40 runs): the 20 that couldn't have delivered went exactly once, the 20 uncertain ones were never resent before the answer, "send again" sent once more (10 of 10), "it was sent" nothing (10 of 10), and an Undo inside the window put no MAIL FROM on the wire.
@@ -999,11 +999,11 @@ Built in M6 ([store](m6/drafts-store.md), [sending](m6/send.md), [reply](m6/repl
 
 ### ADR-015 amendment — POP3 accounts' ops and outbox (M8 phase A, 2026-10-07)
 
-Built in M8's phase A ([report](m8/pop3-accounts.md)). A POP3 account's ops are done at once in the store, with Undo, like a local account's. The outbox's sending is shared by the IMAP and POP3 actors (`outbox::Submission`), at most once as before; a POP3 account's Sent copy is filed into its local Sent folder (`SentCopyDone::Filed`), also when its SMTP server saves one of its own, and its drafts' copies are rows of its local Drafts folder (IMAP's timing: 30 s after the last save, 10 s once closed). Raw messages left by ops done at once are deleted by the POP3 actor after each pass.
+Built in M8's phase A. A POP3 account's ops are done at once in the store, with Undo, like a local account's. The outbox's sending is shared by the IMAP and POP3 actors (`outbox::Submission`), at most once as before; a POP3 account's Sent copy is filed into its local Sent folder (`SentCopyDone::Filed`), also when its SMTP server saves one of its own, and its drafts' copies are rows of its local Drafts folder (IMAP's timing: 30 s after the last save, 10 s once closed). Raw messages left by ops done at once are deleted by the POP3 actor after each pass.
 
 ### ADR-015 amendment — a build that stops Sealwax isn't run again (M9, 2026-10-07)
 
-Before a send's message or a draft's Drafts-folder copy is built, the store records it (schema v12) until the build returns. At the engine's start, a send left so goes back to its draft, failed (`SendFailure::Interrupted`; never sent, the user sends it again), and a copy left so waits for the draft to change: a message whose build ends the process is built at most once per user action, not at every start. At-most-once sending is unchanged. Verified by store tests, the at-most-once property test (3,000 cases, with a planted fault failing it) and an engine start; no real abort mid-build was tested ([report](m9/depth.md#2-the-outboxs-crash-loop-guard)). The toast's text ("Your message wasn't sent: Sealwax stopped while preparing it. It's back in your drafts.") is a proposal for the user.
+Before a send's message or a draft's Drafts-folder copy is built, the store records it (schema v12) until the build returns. At the engine's start, a send left so goes back to its draft, failed (`SendFailure::Interrupted`; never sent, the user sends it again), and a copy left so waits for the draft to change: a message whose build ends the process is built at most once per user action, not at every start. At-most-once sending is unchanged. Verified by store tests, the at-most-once property test (3,000 cases, with a planted fault failing it) and an engine start; no real abort mid-build was tested. The toast's text ("Your message wasn't sent: Sealwax stopped while preparing it. It's back in your drafts.") is a proposal for the user.
 
 ### ADR-015 amendment — rules' ops and the copy (2026-10-09)
 
@@ -1031,11 +1031,11 @@ S1 (2026-10-04) confirmed the inputs on the testbed: Message-ID, In-Reply-To and
 
 ### ADR-016 amendment — threading as built (M1, 2026-10-04)
 
-Built in M1 ([m1/store.md](m1/store.md)): union-find over `thread_aliases` (every Message-ID, In-Reply-To and References entry, per account); merges go into the largest thread and are reported in change events; a thread's size counts each Message-ID once. Not built yet: Outlook's `Thread-Index`, the Gmail thread-ID hint, collapsing threads over 100 messages, and per-folder conversation rows.
+Built in M1: union-find over `thread_aliases` (every Message-ID, In-Reply-To and References entry, per account); merges go into the largest thread and are reported in change events; a thread's size counts each Message-ID once. Not built yet: Outlook's `Thread-Index`, the Gmail thread-ID hint, collapsing threads over 100 messages, and per-folder conversation rows.
 
 ### ADR-016 amendment — Outlook's Thread-Index and the property tests (M3, 2026-10-05)
 
-Built in M3 ([report](m3/threading.md)).
+Built in M3.
 - **Thread-Index honoured:** the 22-byte header block of a valid `Thread-Index` (base64; reserved byte 0x01, a time, a non-zero GUID, whole 5-byte reply blocks) is filed per account as one more alias beside Message-ID, In-Reply-To and References, so Outlook replies without References join their conversation. Malformed values are ignored. Stored in `messages.thread_index` (schema v3). Unverified against real Outlook and Exchange mail.
 - **Gmail's X-GM-THRID isn't used,** by the user's decision of 2026-10-04 (no Gmail-specific work). Gmail mail threads by its headers.
 - **Removals never split a conversation:** its aliases stay until its last message goes, so a moved message rejoins it and a merge outlives the message that caused it.
@@ -1054,7 +1054,7 @@ Built in M3 ([report](m3/threading.md)).
 
 ### ADR-016 amendment — the conversation view as built (M5, 2026-10-06)
 
-Built as [m5/conversation.md](m5/conversation.md) records. `Store::conversation(id)` reads the selected message's conversation in one snapshot, oldest first: rows a pending move or expunge or `\Deleted` hides are left out (never the selected one); copies of one Message-ID show once (the selected copy, else Inbox, Archive, All Mail, Sent, other folders, Drafts, Junk, Trash); the Trash and Junk show only when the selected message is there. The reader expands the selected message, the unread ones and the latest; over 100 messages it keeps the first, the latest 10 and the expanded ones and folds the rest into "N earlier messages", revealed 50 a click. Messages arriving while it is shown join as unread rows. The list's conversation size still counts every message of the conversation (a design question at the gate). Threads over 100 messages are folded by the reader, which this ADR's "collapse their middle" asked for.
+Built as m5/conversation.md records. `Store::conversation(id)` reads the selected message's conversation in one snapshot, oldest first: rows a pending move or expunge or `\Deleted` hides are left out (never the selected one); copies of one Message-ID show once (the selected copy, else Inbox, Archive, All Mail, Sent, other folders, Drafts, Junk, Trash); the Trash and Junk show only when the selected message is there. The reader expands the selected message, the unread ones and the latest; over 100 messages it keeps the first, the latest 10 and the expanded ones and folds the rest into "N earlier messages", revealed 50 a click. Messages arriving while it is shown join as unread rows. The list's conversation size still counts every message of the conversation (a design question at the gate). Threads over 100 messages are folded by the reader, which this ADR's "collapse their middle" asked for.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 
@@ -1066,7 +1066,7 @@ Built as [m5/conversation.md](m5/conversation.md) records. `Store::conversation(
 
 ### ADR-017 amendment — the keymap as built in M1 (2026-10-04)
 
-**Status:** built in M1 (ML-022, [report](m1/actions.md)); the keys DESIGN didn't list are proposed and wait for the user at the M1 gate.
+**Status:** built in M1 (ML-022); the keys DESIGN didn't list are proposed and wait for the user at the M1 gate.
 
 - **One rule places every key:** keys with Ctrl or Alt, and F-keys, of App and Window actions are application accelerators (anywhere); every other key, and every key of List, Reader and Composer actions, is scoped to those widgets, after the focused widget. The message commands' Ctrl alternatives are therefore scoped too, and the composer keeps Ctrl+Z.
 - **Sequences:** two-key sequences (`g` then `i`) wait 1.5 s.
@@ -1099,7 +1099,7 @@ Accepted by the user at the M6 gate ("Keep both", 2026-10-06): Paste as Plain Te
 
 **Status:** Accepted — user decision, 2026-10-07 ("Keep all as built (Recommended)").
 
-M9's accessibility pass ([report](m9/accessibility.md#proposals-for-the-users-gate)) added no key; these behaviours stay as built: Tab in the composer's body moves to Send and Shift+Tab to the toolbar (no tab character); the folder list and the message list are one Tab stop each, with Up and Down inside, and the rows of the palette and Move to… are none (their field keeps the focus and the row is announced); a plain-text body's links are reached with Tab and opened with Enter; the recipient chips' × are Tab stops; Go to Starred turns on the Starred chip (there is no Starred folder); the composer's Tab order is the visual order (From, Attach, Discard, To, Cc · Bcc, Subject, the toolbar, the body, Send). Go to Inbox, Starred, Sent and Drafts and Back to List now run with the keys the registry already had.
+M9's accessibility pass added no key; these behaviours stay as built: Tab in the composer's body moves to Send and Shift+Tab to the toolbar (no tab character); the folder list and the message list are one Tab stop each, with Up and Down inside, and the rows of the palette and Move to… are none (their field keeps the focus and the row is announced); a plain-text body's links are reached with Tab and opened with Enter; the recipient chips' × are Tab stops; Go to Starred turns on the Starred chip (there is no Starred folder); the composer's Tab order is the visual order (From, Attach, Discard, To, Cc · Bcc, Subject, the toolbar, the body, Send). Go to Inbox, Starred, Sent and Drafts and Back to List now run with the keys the registry already had.
 
 ### ADR-017 amendment — Edit Account has no default key (2026-10-08)
 
@@ -1131,18 +1131,18 @@ S1 found that async-imap's trace logging prints the LOGIN password. The engine t
 
 ### ADR-018 amendment — the caps and autodetect's requests as built (M2, 2026-10-05)
 
-Built in M2 ([m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md)).
+Built in M2.
 - **Caps:** `infrastructure::logging` holds `async_imap`, `imap_proto`, `lettre`, `rustls`, `tokio_rustls`, `hickory`, `reqwest` and `zbus` at `warn` with a `Targets` filter beside `RUST_LOG`'s, so no directive lifts them; they weren't capped before M2. The log-grep test (`engine/tests/log_grep.rs`) runs M2's testbed flows at trace level, with a control that proves async-imap's AUTHENTICATE line reaches the log without the caps.
 - **Autodetect's requests:** the full address goes only to `https://autoconfig.<domain>/` as the `emailaddress` parameter; the ISPDB, MX, SRV, CNAME and the MX operator's autoconfig carry the domain only. HTTPS only. Redirects are followed at most three times, to the same host or inside the requested domain, and never when the target would carry the address to a host other than the one first asked (checked after percent-decoding). One hickory resolver serves DNS, HTTPS and the TLS checks, and a host with a non-public address is neither fetched nor probed; environment proxies aren't used, so that check always applies. The User-Agent is generic. The TLS check sends only CAPABILITY, STARTTLS and `EHLO [127.0.0.1]`. Error texts that might quote a URL are dropped, and logs carry only the winning source's name and the time. Measured 2026-10-05: 2,711 requests in five runs, 0 violations.
 
 ### ADR-018 amendment — the HTML parser capped (M6, 2026-10-06)
 
-`html5ever`, `markup5ever`, `html2text` and `mail_builder` are capped at `warn` like the protocol crates: html5ever's debug output carries the text it parses, and the log grep caught a draft's body in it while the MIME builder made the plain part ([report](m6/send.md)). The default `info` filter never showed it; `RUST_LOG=debug` would have, in the reader too.
+`html5ever`, `markup5ever`, `html2text` and `mail_builder` are capped at `warn` like the protocol crates: html5ever's debug output carries the text it parses, and the log grep caught a draft's body in it while the MIME builder made the plain part. The default `info` filter never showed it; `RUST_LOG=debug` would have, in the reader too.
 
 ### ADR-018 amendment — the caps as built, and no Referer in autodetect (M9, 2026-10-07)
 
 - **Caps as built:** `infrastructure::logging::CAPPED` holds 15 crates at `warn`: `async_imap`, `imap_proto`, `lettre`, `rustls`, `tokio_rustls`, `hickory`, `reqwest`, `hyper`, `hyper_util`, `h2`, `zbus`, `html5ever`, `markup5ever`, `html2text` and `mail_builder` (the amendments above named all but `hyper`, `hyper_util` and `h2`).
-- **No Referer:** reqwest sent the previous URL, query and all, as the Referer of every redirect it followed, so a redirect the policy allowed (to another host inside the user's domain, without the address in its URL) still carried the address to that host in a header. Autodetect's client now sends no Referer (`.referer(false)`), found by M9's security review ([report](m9/security.md#findings)). The test reads the client's configuration; no real redirect was observed.
+- **No Referer:** reqwest sent the previous URL, query and all, as the Referer of every redirect it followed, so a redirect the policy allowed (to another host inside the user's domain, without the address in its URL) still carried the address to that host in a header. Autodetect's client now sends no Referer (`.referer(false)`), found by M9's security review. The test reads the client's configuration; no real redirect was observed.
 
 ### ADR-018 amendment — panics reported without their message (M9, 2026-10-07)
 
@@ -1164,7 +1164,7 @@ Built in M2 ([m2/imap.md](m2/imap.md), [m2/autoconfig.md](m2/autoconfig.md)).
 
 ### ADR-019 amendment — small radius and round avatars (2026-10-04)
 
-Built in M1 ([report](m1/theme.md)):
+Built in M1:
 - rows, cards, the compose button and surfaces take `corner_radius`;
 - chips, folder rows, icon buttons and controls take three quarters of it;
 - avatars and circular buttons are round while corners are rounded, and square at 0.
@@ -1173,7 +1173,7 @@ Built in M1 ([report](m1/theme.md)):
 
 ## ADR-020 — Folders and rules: Sieve run by Sealwax (2026-10-09)
 
-**Status:** Accepted — user decision, 2026-10-09 ("In Sealwax (Recommended)", "Create, rename, delete (Recommended)"); the design is [m9/folders-rules.md](m9/folders-rules.md), built in parts A1, A2, B1 and B2.
+**Status:** Accepted — user decision, 2026-10-09 ("In Sealwax (Recommended)", "Create, rename, delete (Recommended)"); the design is built in parts A1, A2, B1 and B2.
 
 **Decision:**
 - **Folders:** New Folder (or Subfolder), Rename Folder and Delete Folder, online only, on the account's command connection: IMAP CREATE, RENAME and DELETE with SUBSCRIBE and UNSUBSCRIBE; local folders for POP3 accounts. The store follows in the same session (a rename keeps the messages). Delete always asks, with the number of messages. The sidebar shows subfolders as a foldable tree.
@@ -1188,19 +1188,19 @@ Built in M1 ([report](m1/theme.md)):
 
 ### ADR-020 amendment — the Sieve subset as built (2026-10-09)
 
-`domain::sieve` (A2, [report](m9/sieve.md)): a hand-written parser for RFC 5228's whole grammar; a checker for the subset — `require` (`fileinto`, `copy`, `imap4flags`, `environment`, `imapsieve`, and the two comparators' names), `if`/`elsif`/`else`, `stop`, `keep`, `fileinto` (`:copy`), `discard`, `addflag`/`setflag`/`removeflag`; tests `address` (on address headers only), `header`, `exists`, `size`, `allof`, `anyof`, `not`, `true`, `false`, `hasflag`, `environment` (`imap.mailbox` only; other items are false); `:is`, `:contains`, `:matches`; `i;ascii-casemap` and `i;octet` — refusing everything else by name; and an evaluator. Decided while building: flags start as the message's own (RFC 6785) and each delivery reports its own change to add and remove; `fileinto` of the arrival folder is a keep; `:flags` on `keep`/`fileinto` is refused (use `addflag` first); `\Deleted` can't be set and flags must be IMAP keywords; scripts are at most 1 MiB and nest at most 32 levels. The rules model writes Roundcube's form with the actions in a fixed order (flags before `fileinto`), "From is/begins/ends/matches" as `address` and "contains" as `header`, the junk actions removing the opposite keyword as triage does; the never-junk section is always written first and ends with `stop`, always junk next, each under a `# Sealwax: …` marker. Reading back takes a rule only when writing it again gives the same commands; the rest stays as hand-written text in place. Folder names are the store's decoded full names, as `fileinto` takes them. Merged as `13daab0`; CI on `main` 1,422 passed, 0 failed.
+`domain::sieve` (A2): a hand-written parser for RFC 5228's whole grammar; a checker for the subset — `require` (`fileinto`, `copy`, `imap4flags`, `environment`, `imapsieve`, and the two comparators' names), `if`/`elsif`/`else`, `stop`, `keep`, `fileinto` (`:copy`), `discard`, `addflag`/`setflag`/`removeflag`; tests `address` (on address headers only), `header`, `exists`, `size`, `allof`, `anyof`, `not`, `true`, `false`, `hasflag`, `environment` (`imap.mailbox` only; other items are false); `:is`, `:contains`, `:matches`; `i;ascii-casemap` and `i;octet` — refusing everything else by name; and an evaluator. Decided while building: flags start as the message's own (RFC 6785) and each delivery reports its own change to add and remove; `fileinto` of the arrival folder is a keep; `:flags` on `keep`/`fileinto` is refused (use `addflag` first); `\Deleted` can't be set and flags must be IMAP keywords; scripts are at most 1 MiB and nest at most 32 levels. The rules model writes Roundcube's form with the actions in a fixed order (flags before `fileinto`), "From is/begins/ends/matches" as `address` and "contains" as `header`, the junk actions removing the opposite keyword as triage does; the never-junk section is always written first and ends with `stop`, always junk next, each under a `# Sealwax: …` marker. Reading back takes a rule only when writing it again gives the same commands; the rest stays as hand-written text in place. Folder names are the store's decoded full names, as `fileinto` takes them. Merged as `13daab0`; CI on `main` 1,422 passed, 0 failed.
 
 ### ADR-020 amendment — folders as built (A1, 2026-10-09)
 
-Built in part A1 ([report](m9/folders.md)). New Folder (New Subfolder on a folder), Rename Folder and Delete Folder are registry commands without keys, in the palette (on the folder shown), the folder row's menu and, for New Folder, the account heading's menu; items that don't apply are insensitive with the reason. The app checks a typed name before anything is sent (`domain::folders::check_name`: not empty, no delimiter, no `*` or `%`, no control character, not a sibling's in any case, not a name Sealwax hides) and the engine checks it again. `Command::ChangeFolder` runs on an IMAP account's command connection, online only (waiting changes are answered offline when the connection goes), as CREATE + SUBSCRIBE, RENAME + SUBSCRIBE of the new names + UNSUBSCRIBE of the old, DELETE deepest first (the server's own subfolders included) + UNSUBSCRIBE; the server's refusals reach a toast in its words through `ServerText`, never the log. The store follows before `Event::FolderChanged`: the list read again after CREATE and DELETE, the folders renamed in place after RENAME (`Store::rename_folders`, keeping messages and sync state). A POP3 account's local folders change at once. Role folders and folders holding one can't be renamed or deleted; `\Noinferiors` folders get no subfolders. NAMESPACE (RFC 2342) isn't sent: imap-proto 0.17 can't parse its reply, which would break the connection; new top folders go under INBOX where every other folder is under it, else at the top. The sidebar shows subfolders under their folder, a level a step, foldable (Left and Right, the folds in `layout.toml`'s `[folded]`), with levels and expanded states for screen readers; More folders in name order. Verified against the fake IMAP server and on the testbed (Dovecot, its IMAP4rev1-only variant and Stalwart); not against Outlook.com or a server with an `INBOX.` namespace. Merged into `main` with the rules (B1) already there; a rule's `fileinto` of a renamed folder keeps the message until the rules follow the new name (B2).
+Built in part A1. New Folder (New Subfolder on a folder), Rename Folder and Delete Folder are registry commands without keys, in the palette (on the folder shown), the folder row's menu and, for New Folder, the account heading's menu; items that don't apply are insensitive with the reason. The app checks a typed name before anything is sent (`domain::folders::check_name`: not empty, no delimiter, no `*` or `%`, no control character, not a sibling's in any case, not a name Sealwax hides) and the engine checks it again. `Command::ChangeFolder` runs on an IMAP account's command connection, online only (waiting changes are answered offline when the connection goes), as CREATE + SUBSCRIBE, RENAME + SUBSCRIBE of the new names + UNSUBSCRIBE of the old, DELETE deepest first (the server's own subfolders included) + UNSUBSCRIBE; the server's refusals reach a toast in its words through `ServerText`, never the log. The store follows before `Event::FolderChanged`: the list read again after CREATE and DELETE, the folders renamed in place after RENAME (`Store::rename_folders`, keeping messages and sync state). A POP3 account's local folders change at once. Role folders and folders holding one can't be renamed or deleted; `\Noinferiors` folders get no subfolders. NAMESPACE (RFC 2342) isn't sent: imap-proto 0.17 can't parse its reply, which would break the connection; new top folders go under INBOX where every other folder is under it, else at the top. The sidebar shows subfolders under their folder, a level a step, foldable (Left and Right, the folds in `layout.toml`'s `[folded]`), with levels and expanded states for screen readers; More folders in name order. Verified against the fake IMAP server and on the testbed (Dovecot, its IMAP4rev1-only variant and Stalwart); not against Outlook.com or a server with an `INBOX.` namespace. Merged into `main` with the rules (B1) already there; a rule's `fileinto` of a renamed folder keeps the message until the rules follow the new name (B2).
 
 ### ADR-020 amendment — the rules on new mail as built (B1, 2026-10-09)
 
-[Report](m9/rules-engine.md). The engine runs an account's script on the mail its passes report as new in the Inbox or Junk, IMAP and POP3, after Sealwax's own moves are taken out and before `Event::NewMail`; a message a rule moves to Junk or Trash isn't new mail, one it files elsewhere still is; mail rescued from Junk into the Inbox doesn't notify (its arrival in the Inbox is Sealwax's own move). The first pass's backlog is never run. Tests see the stored headers (From, To, Cc, Reply-To, Subject, List-Id, Message-ID, In-Reply-To, References); when the script names another, the messages' full headers come from the stored original or one `UID FETCH … BODY.PEEK[HEADER]` on the body connection (`domain::message::header_fields`: unfolded and RFC 2047-decoded), and a message whose headers can't be had runs on the stored ones. What the script decides becomes one move (the first `fileinto` without `:copy`), copies for the rest, flags, or a move to Trash for `discard`; a `fileinto` of a folder the account lacks is a keep (RFC 5228 section 4.1); keywords outside Sealwax's flags are left out and counted in the log. `Command::ApplyRules` runs the script on a folder's stored messages as if they arrived there (`Event::RulesApplied` with the number changed). The script is compiled once per change of its file, and a file that can't run is reported once per change and runs nothing.
+The engine runs an account's script on the mail its passes report as new in the Inbox or Junk, IMAP and POP3, after Sealwax's own moves are taken out and before `Event::NewMail`; a message a rule moves to Junk or Trash isn't new mail, one it files elsewhere still is; mail rescued from Junk into the Inbox doesn't notify (its arrival in the Inbox is Sealwax's own move). The first pass's backlog is never run. Tests see the stored headers (From, To, Cc, Reply-To, Subject, List-Id, Message-ID, In-Reply-To, References); when the script names another, the messages' full headers come from the stored original or one `UID FETCH … BODY.PEEK[HEADER]` on the body connection (`domain::message::header_fields`: unfolded and RFC 2047-decoded), and a message whose headers can't be had runs on the stored ones. What the script decides becomes one move (the first `fileinto` without `:copy`), copies for the rest, flags, or a move to Trash for `discard`; a `fileinto` of a folder the account lacks is a keep (RFC 5228 section 4.1); keywords outside Sealwax's flags are left out and counted in the log. `Command::ApplyRules` runs the script on a folder's stored messages as if they arrived there (`Event::RulesApplied` with the number changed). The script is compiled once per change of its file, and a file that can't run is reported once per change and runs nothing.
 
 ### ADR-020 amendment — the rules in the app as built (B2, 2026-10-09)
 
-[Report](m9/rules-app.md). Five registry commands without keys, at the registry's end in a new Rules category: Rules… (the main menu, the palette, the account heading's menu), Create Rule from Message…, Always and Never Junk Messages from Sender (on the selection, one sender, one account with a key), Apply Rules to This Folder (the palette on the folder shown, the folder row's menu, the Rules dialog). The message row gets a right-click menu (Menu and Shift+F10 as the list's own keys) whose items run the registry's commands on the row clicked, selected first, or on the selection it is in. The Rules dialog (`adw::Dialog`) lists one account's rules with a summary, a switch, Move Up/Down, Edit and Delete (Undo), the always- and never-junk senders, Apply to Folder…; hand-written Sieve stays in place as "Written by hand" with "Edited by hand" and Open File, and a file that can't be read is shown with where and why and nothing else. The editor's Save waits for `Rule::validate`. The app reads and writes `rules/<key>.sieve` itself, off the GTK thread through one serial queue, atomically, and never over a file changed since it was read; the engine picks the file up by its modification time, so no command is added. Always / Never Junk list the sender and move the messages as Move to Junk / Not Junk do, and one Undo takes back both. `RulesFailed` is a banner entry per account (after the uncertain sends, before offline) with Open File, cleared when the file runs again, which the app also checks whenever the rules folder changes; `RulesApplied` is a toast. A folder renamed in Sealwax takes the rules that file into it along; a deleted one leaves them. Menu and Shift+F10 on a message row are a proposal for the user (ADR-017), as are the other open questions in the report.
+Five registry commands without keys, at the registry's end in a new Rules category: Rules… (the main menu, the palette, the account heading's menu), Create Rule from Message…, Always and Never Junk Messages from Sender (on the selection, one sender, one account with a key), Apply Rules to This Folder (the palette on the folder shown, the folder row's menu, the Rules dialog). The message row gets a right-click menu (Menu and Shift+F10 as the list's own keys) whose items run the registry's commands on the row clicked, selected first, or on the selection it is in. The Rules dialog (`adw::Dialog`) lists one account's rules with a summary, a switch, Move Up/Down, Edit and Delete (Undo), the always- and never-junk senders, Apply to Folder…; hand-written Sieve stays in place as "Written by hand" with "Edited by hand" and Open File, and a file that can't be read is shown with where and why and nothing else. The editor's Save waits for `Rule::validate`. The app reads and writes `rules/<key>.sieve` itself, off the GTK thread through one serial queue, atomically, and never over a file changed since it was read; the engine picks the file up by its modification time, so no command is added. Always / Never Junk list the sender and move the messages as Move to Junk / Not Junk do, and one Undo takes back both. `RulesFailed` is a banner entry per account (after the uncertain sends, before offline) with Open File, cleared when the file runs again, which the app also checks whenever the rules folder changes; `RulesApplied` is a toast. A folder renamed in Sealwax takes the rules that file into it along; a deleted one leaves them. Menu and Shift+F10 on a message row are a proposal for the user (ADR-017), as are the other open questions in the report.
 
 ### ADR-020 amendment — the user's decisions on folders and rules (2026-10-09)
 
