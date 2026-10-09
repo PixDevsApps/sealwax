@@ -22,6 +22,7 @@ mod probe;
 mod processes;
 mod reader;
 mod reply;
+mod rules;
 mod sample;
 mod screenshot;
 mod script;
@@ -430,6 +431,7 @@ impl Harness {
             "test-bus-stop" => self.stop_test_bus().await,
             command if a11y::handles(command) => a11y::step(self, command, args).await,
             command if folders::handles(command) => folders::step(self, command, args).await,
+            command if rules::handles(command) => rules::step(self, command, args).await,
             command if conversation::handles(command) => {
                 conversation::step(self, command, args).await
             }
@@ -758,6 +760,7 @@ impl Harness {
             "assert-web-sandbox" => blocking(processes::web_sandbox).await?,
             assertion if a11y::handles(assertion) => a11y::step(self, assertion, args).await,
             assertion if folders::handles(assertion) => folders::step(self, assertion, args).await,
+            assertion if rules::handles(assertion) => rules::step(self, assertion, args).await,
             assertion if conversation::handles(assertion) => {
                 conversation::step(self, assertion, args).await
             }

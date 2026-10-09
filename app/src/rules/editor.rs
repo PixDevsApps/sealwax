@@ -142,6 +142,10 @@ pub fn new(
         gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(8)
+            .margin_top(12)
+            .margin_bottom(18)
+            .margin_start(18)
+            .margin_end(18)
             .build(),
         &["sw-rule-editor"],
     );
@@ -400,14 +404,19 @@ fn index_of<T: PartialEq>(items: &[T], wanted: &T) -> u32 {
         .unwrap_or_default() as u32
 }
 
-/// A row of a rule list: not a stop of its own, so Tab goes through its controls.
-fn list_row(child: &gtk::Box) -> gtk::ListBoxRow {
+/// A row of a rule list: its choices, and its remove button at the end; not a stop of its
+/// own, so Tab goes through its controls.
+fn list_row(choices: &gtk::Box, remove: &gtk::Button) -> gtk::ListBoxRow {
+    choices.set_hexpand(true);
+    let line = gtk::Box::builder().spacing(6).build();
+    line.append(choices);
+    line.append(remove);
     classed(
         gtk::ListBoxRow::builder()
             .activatable(false)
             .selectable(false)
             .focusable(false)
-            .child(child)
+            .child(&line)
             .build(),
         &["sw-rule-row"],
     )
@@ -448,12 +457,11 @@ impl ConditionRow {
             value.upcast_ref(),
             size.upcast_ref(),
             unit.upcast_ref(),
-            remove.upcast_ref(),
         ] {
             line.append(widget);
         }
         Self {
-            row: list_row(&line),
+            row: list_row(&line, &remove),
             field,
             header,
             operator,
@@ -546,9 +554,8 @@ impl ActionRow {
         let line = gtk::Box::builder().spacing(6).build();
         line.append(&choice);
         line.append(&folder);
-        line.append(&remove);
         Self {
-            row: list_row(&line),
+            row: list_row(&line, &remove),
             choice,
             folder,
             remove,

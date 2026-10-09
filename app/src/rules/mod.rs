@@ -505,7 +505,7 @@ fn list_sender(state: &Rc<AppState>, always: bool) {
             None => return,
         };
         if listed.changed {
-            saved(&state, &picked.account);
+            saved(&picked.account);
             dialog::reload_if_open(&picked.account);
         }
         let lead = text::listed_text(always, &picked.address, listed.changed);
@@ -575,7 +575,7 @@ impl Revert {
             };
             match undone {
                 Some(Ok(_)) => {
-                    saved(&state, &account);
+                    saved(&account);
                     dialog::reload_if_open(&account);
                 }
                 _ => {
@@ -733,7 +733,7 @@ fn set_problem(account: AccountId, problem: Option<String>) {
 }
 
 /// The app wrote the account's rules: they run.
-fn saved(_state: &AppState, account: &Account) {
+fn saved(account: &Account) {
     set_problem(account.id, None);
 }
 
@@ -821,6 +821,13 @@ pub fn set_opener(opener: impl Fn(&Path) + 'static) {
     shared().opener.replace(Some(Rc::new(opener)));
 }
 
+/// The Apply Rules requests waiting for the engine's answer, oldest first, for the self-test.
+pub fn pending_applies() -> Vec<RequestId> {
+    let mut requests: Vec<RequestId> = shared().applying.borrow().keys().copied().collect();
+    requests.sort_unstable();
+    requests
+}
+
 /// The accounts the banner says can't run their rules, for the self-test.
 pub fn problems() -> Vec<(AccountId, String)> {
     shared().problems.borrow().clone()
@@ -906,7 +913,7 @@ pub fn folder_renamed(account: AccountId, old: String, new: String, delimiter: O
         };
         match followed {
             Some(Ok(true)) => {
-                saved(&state, &account);
+                saved(&account);
                 dialog::reload_if_open(&account);
             }
             Some(Ok(false)) => {}

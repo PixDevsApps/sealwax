@@ -95,6 +95,9 @@ pub fn open(state: &Rc<AppState>, account: Account, start: Start) {
     let Some(window) = state.window() else {
         return;
     };
+    if let Some(shown) = current() {
+        shown.inner.dialog.close();
+    }
     let place = account.place(state);
     let notice = named(adw::PreferencesGroup::new(), "rules-notice");
     let rules = adw::PreferencesGroup::builder().title("Rules").build();
@@ -124,7 +127,14 @@ pub fn open(state: &Rc<AppState>, account: Account, start: Start) {
         .build();
     let apply = adw::PreferencesGroup::new();
     let preferences = named(adw::PreferencesPage::new(), "rules-page");
-    for group in [&notice, &rules, &blocked, &trusted, &apply] {
+    for (group, label) in [
+        (&notice, "Rules file"),
+        (&rules, "Rules"),
+        (&blocked, "Always junk"),
+        (&trusted, "Never junk"),
+        (&apply, "Apply rules"),
+    ] {
+        name_lists(group.upcast_ref(), label);
         preferences.add(group);
     }
     let header = adw::HeaderBar::new();
@@ -261,11 +271,45 @@ impl Inner {
             .push((group.clone(), row.clone().upcast()));
     }
 
-    /// Fills the page from the rules held.
+    /// Fills the page from the rules held. The keyboard focus stays on the widget of the same
+    /// name, else nearby: a list's field, else New Rule.
     fn fill(&self) {
+        let focused = self
+            .dialog
+            .focus()
+            .filter(|widget| widget.is_ancestor(&self.dialog))
+            .map(|widget| named_around(&widget));
         for (group, row) in self.rows.take() {
             group.remove(&row);
         }
+        self.fill_groups();
+        if let Some(name) = focused.filter(|name| !name.is_empty()) {
+            let fallback = if name.starts_with("blocked-") {
+                "blocked-add"
+            } else if name.starts_with("trusted-") {
+                "trusted-add"
+            } else {
+                "rules-new"
+            };
+            // Once the new rows are on screen, where they can take the focus.
+            let weak = self.weak.borrow().clone();
+            glib::idle_add_local_once(move || {
+                let Some(inner) = weak.upgrade() else {
+                    return;
+                };
+                let target = inner
+                    .find(&name)
+                    .filter(|widget| widget.is_sensitive())
+                    .or_else(|| inner.find(fallback))
+                    .filter(|widget| widget.is_visible());
+                if let Some(target) = target {
+                    target.grab_focus();
+                }
+            });
+        }
+    }
+
+    fn fill_groups(&self) {
         let set = self.set.borrow().clone();
         let unreadable = self.unreadable.borrow().clone();
         let readable = set.is_some();
@@ -672,6 +716,7 @@ impl Inner {
             });
             inner.nav.pop_to_tag("rules");
         });
+        back_tooltip(&editor.page);
         self.nav.push(&editor.page);
         self.editor.replace(Some(editor));
     }
@@ -737,6 +782,7 @@ impl Inner {
             .tag("apply")
             .child(&view)
             .build();
+        back_tooltip(&page);
         self.nav.push(&page);
     }
 
@@ -776,9 +822,7 @@ impl Inner {
                 match saved {
                     Some(Ok(modified)) => {
                         inner.modified.set(modified);
-                        if let Some(state) = inner.state.upgrade() {
-                            super::saved(&state, &inner.account);
-                        }
+                        super::saved(&inner.account);
                     }
                     Some(Err(SaveError::Changed)) => {
                         inner.saving.set(false);
@@ -803,6 +847,50 @@ impl Inner {
     fn find(&self, name: &str) -> Option<gtk::Widget> {
         find_named(self.dialog.upcast_ref(), name)
     }
+}
+
+/// The name of `widget` or of the nearest named widget around it.
+fn named_around(widget: &gtk::Widget) -> String {
+    let mut current = Some(widget.clone());
+    while let Some(widget) = current {
+        let name = widget.widget_name();
+        if name != widget.type_().name() {
+            return name.to_string();
+        }
+        current = widget.parent();
+    }
+    String::new()
+}
+
+/// Names the lists inside `widget` for screen readers: libadwaita leaves a preferences group's
+/// list without one.
+fn name_lists(widget: &gtk::Widget, label: &str) {
+    if widget.is::<gtk::ListBox>() {
+        widget.update_property(&[gtk::accessible::Property::Label(label)]);
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        name_lists(&current, label);
+        child = current.next_sibling();
+    }
+}
+
+/// The back button of `page`'s header bar says what it does when pointed at, as the window's
+/// icon buttons do; libadwaita gives it only a name.
+fn back_tooltip(page: &adw::NavigationPage) {
+    page.connect_shown(|page| {
+        let mut stack = vec![page.clone().upcast::<gtk::Widget>()];
+        while let Some(widget) = stack.pop() {
+            if widget.is::<gtk::Button>() && widget.has_css_class("back") {
+                widget.set_tooltip_text(Some("Back"));
+            }
+            let mut child = widget.first_child();
+            while let Some(current) = child {
+                child = current.next_sibling();
+                stack.push(current);
+            }
+        }
+    });
 }
 
 fn find_named(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
