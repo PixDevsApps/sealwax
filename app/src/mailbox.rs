@@ -641,8 +641,10 @@ mod tests {
             id: FolderId(id),
             account: AccountId(account),
             name: name.to_owned(),
+            delimiter: Some('/'),
             role,
             selectable: true,
+            inferiors: true,
             total: unread * 3,
             unread,
         }

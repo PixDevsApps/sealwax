@@ -11,6 +11,7 @@ mod compose;
 mod compose_api;
 mod contacts;
 mod conversation;
+mod folders_api;
 pub mod fts;
 mod maintenance;
 mod ops_api;
@@ -56,6 +57,9 @@ mod compose_prop_tests;
 mod compose_tests;
 
 #[cfg(test)]
+mod folders_tests;
+
+#[cfg(test)]
 mod remote_tests;
 
 #[cfg(test)]
@@ -67,6 +71,7 @@ mod pop3_tests;
 pub use api::*;
 pub use compose_api::*;
 pub use conversation::{Conversation, ConversationMessage};
+pub use folders_api::*;
 pub use ops_api::*;
 pub use pop3_api::*;
 pub use schema::VERSION as SCHEMA_VERSION;

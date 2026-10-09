@@ -96,8 +96,10 @@ mod tests {
             id: FolderId(id),
             account: AccountId(account),
             name: "Inbox".to_owned(),
+            delimiter: Some('/'),
             role: FolderRole::Inbox,
             selectable: true,
+            inferiors: true,
             total: 0,
             unread: 0,
         }

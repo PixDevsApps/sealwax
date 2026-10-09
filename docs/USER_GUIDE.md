@@ -287,6 +287,9 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Messages | Mark as Read | Shift+I | list and reader | `mark-read` |
 | Messages | Mark as Unread | Shift+U | list and reader | `mark-unread` |
 | Messages | Mark Folder as Read | — |  | `mark-folder-read` |
+| Messages | New Folder… | — |  | `new-folder` |
+| Messages | Rename Folder… | — |  | `rename-folder` |
+| Messages | Delete Folder… | — |  | `delete-folder` |
 | Messages | Select | x, Space | list | `select` |
 | Messages | Undo | z, Ctrl+Z | list and reader | `undo` |
 | Messages | Print… | Ctrl+P | list and reader | `print` |

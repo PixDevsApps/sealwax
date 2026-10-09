@@ -9,9 +9,9 @@ use super::{
     overlay_new, recompute_thread, removed_positions, resolve_thread, thread_counts, upsert_rows,
     view_changes,
 };
-use crate::store::api::ViewScope;
 use crate::store::api::{
-    ChangeEvent, FolderSpec, StoreVersion, ThreadMerge, Versioned, ViewChange, ViewDiff,
+    ChangeEvent, FolderSpec, StoreVersion, ThreadMerge, Versioned, ViewChange, ViewDiff, ViewId,
+    ViewScope, ViewSpec,
 };
 use crate::store::overlay::{Change, HIDDEN};
 use crate::store::sync_api::{
@@ -365,122 +365,16 @@ impl Writer {
             .into_iter()
             .filter(|folder| !listed.contains(folder))
             .collect();
-        let (refusals, back) = refuse_gone(&tx, &gone)?;
-        refusals.record(&tx)?;
-        let mut removed = Vec::new();
-        let mut threads = BTreeSet::new();
-        let mut blobs = BTreeSet::new();
-        {
-            let mut select = tx.prepare_cached(
-                "SELECT id, thread_id, blob_key FROM messages WHERE folder_id = ?1",
-            )?;
-            for folder in &gone {
-                let rows = select.query_map([folder.0], |row| {
-                    Ok((
-                        MessageId(row.get(0)?),
-                        ThreadId(row.get(1)?),
-                        row.get::<_, Option<Vec<u8>>>(2)?,
-                    ))
-                })?;
-                for row in rows {
-                    let (id, thread, blob) = row?;
-                    removed.push(id);
-                    threads.insert(thread);
-                    blobs.extend(blob.and_then(|key| BlobKey::from_slice(&key)));
-                }
-            }
-        }
-        // In rowid order, as an account's removal does: FTS5's tombstones stay on few pages.
-        removed.sort_unstable();
-        {
-            let mut unindex = tx.prepare_cached("DELETE FROM message_fts WHERE rowid = ?1")?;
-            for id in &removed {
-                unindex.execute([id.0])?;
-            }
-            // The folder's messages and their parts follow by cascade.
-            let mut delete = tx.prepare_cached("DELETE FROM folders WHERE id = ?1")?;
-            for folder in &gone {
-                delete.execute([folder.0])?;
-            }
-        }
-        for thread in &threads {
-            recompute_thread(&tx, *thread)?;
-        }
-        let orphaned_blobs = overlay::orphaned(&tx, blobs)?;
         let shared = Arc::clone(&self.state.shared);
         let open = shared.registry.lock();
-        // Messages whose move into a folder now gone was refused show again where they are.
-        let rows: Vec<RowChange> = back
-            .iter()
-            .filter_map(|plan| match plan.after {
-                overlay::After::Stay { flags, .. } if flags != plan.row.flags => Some(RowChange {
-                    id: plan.row.id,
-                    folder: plan.row.folder,
-                    date: plan.row.date,
-                    before: Some((plan.row.flags, plan.row.has_attachments)),
-                    after: Some((flags, plan.row.has_attachments)),
-                }),
-                _ => None,
-            })
-            .collect();
-        let positions = removed_positions(&tx, &open.open, &rows)?;
-        let mut changed = Vec::new();
-        {
-            let mut update = tx.prepare_cached(
-                "UPDATE messages SET flags = ?2, server_flags = ?3 WHERE id = ?1",
-            )?;
-            for plan in &back {
-                if let overlay::After::Stay { flags, server } = plan.after
-                    && (flags, server) != (plan.row.flags, plan.row.server)
-                {
-                    update.execute(params![
-                        plan.row.id.0,
-                        flags,
-                        overlay::server_column(flags, server)
-                    ])?;
-                    if overlay::count_delta(
-                        &tx,
-                        plan.row.folder,
-                        Some(plan.row.flags),
-                        Some(flags),
-                    )? {
-                        counted.insert(plan.row.folder);
-                    }
-                    if flags != plan.row.flags {
-                        changed.push(plan.row.id);
-                    }
-                }
-            }
-        }
-        let mut views = Vec::new();
-        for (view, spec) in &open.open {
-            let affected = match spec.scope {
-                ViewScope::Folder(folder) => gone.contains(&folder),
-                ViewScope::UnifiedInbox => true,
-            };
-            if affected {
-                let folders = views::folders(&tx, spec.scope)?;
-                views.push(ViewChange {
-                    view: *view,
-                    diff: ViewDiff::Reload {
-                        total: views::count(&tx, &folders, spec.filter)?,
-                    },
-                });
-            }
-        }
-        let reloaded: BTreeSet<_> = views.iter().map(|change| change.view).collect();
-        views.extend(
-            view_changes(&tx, &open.open, &rows, &positions)?
-                .into_iter()
-                .filter(|change| !reloaded.contains(&change.view)),
-        );
+        let dropped = drop_folders(&tx, &open.open, &gone, &mut counted)?;
         let event = ChangeEvent {
-            removed: removed.clone(),
-            changed,
+            removed: dropped.removed.clone(),
+            changed: dropped.changed,
             folders: folder_counts(&tx, &counted)?,
             folders_changed: true,
-            threads: thread_counts(&tx, &threads)?,
-            views,
+            threads: thread_counts(&tx, &dropped.threads)?,
+            views: dropped.views,
             ..ChangeEvent::default()
         };
         let version = self.state.commit(tx, event)?;
@@ -495,8 +389,8 @@ impl Writer {
             version,
             ids,
             removed_folders: count(gone.len()),
-            removed_messages: count(removed.len()),
-            orphaned_blobs,
+            removed_messages: count(dropped.removed.len()),
+            orphaned_blobs: dropped.orphaned_blobs,
         })
     }
 
@@ -561,6 +455,138 @@ impl Writer {
             value: true,
         })
     }
+}
+
+/// What removing folders took with them, for the change event and the reply.
+pub(super) struct Dropped {
+    /// Their messages, in rowid order.
+    pub removed: Vec<MessageId>,
+    pub threads: BTreeSet<ThreadId>,
+    /// Raw messages no remaining row refers to; the caller deletes them from the blob store.
+    pub orphaned_blobs: Vec<BlobKey>,
+    /// Messages elsewhere shown again as the server has them: their move into a removed
+    /// folder was refused.
+    pub changed: Vec<MessageId>,
+    pub views: Vec<ViewChange>,
+}
+
+/// Removes the folders `gone` and their messages in `tx`: their pending ops refused, and the
+/// messages whose move into one of them was refused shown again where they are; their full
+/// text unindexed and their threads counted again. `open` are the views open now; `counted`
+/// gains the folders whose counts changed.
+pub(super) fn drop_folders(
+    tx: &rusqlite::Connection,
+    open: &BTreeMap<ViewId, ViewSpec>,
+    gone: &[FolderId],
+    counted: &mut BTreeSet<FolderId>,
+) -> Result<Dropped, StoreError> {
+    let (refusals, back) = refuse_gone(tx, gone)?;
+    refusals.record(tx)?;
+    let mut removed = Vec::new();
+    let mut threads = BTreeSet::new();
+    let mut blobs = BTreeSet::new();
+    {
+        let mut select =
+            tx.prepare_cached("SELECT id, thread_id, blob_key FROM messages WHERE folder_id = ?1")?;
+        for folder in gone {
+            let rows = select.query_map([folder.0], |row| {
+                Ok((
+                    MessageId(row.get(0)?),
+                    ThreadId(row.get(1)?),
+                    row.get::<_, Option<Vec<u8>>>(2)?,
+                ))
+            })?;
+            for row in rows {
+                let (id, thread, blob) = row?;
+                removed.push(id);
+                threads.insert(thread);
+                blobs.extend(blob.and_then(|key| BlobKey::from_slice(&key)));
+            }
+        }
+    }
+    // In rowid order, as an account's removal does: FTS5's tombstones stay on few pages.
+    removed.sort_unstable();
+    {
+        let mut unindex = tx.prepare_cached("DELETE FROM message_fts WHERE rowid = ?1")?;
+        for id in &removed {
+            unindex.execute([id.0])?;
+        }
+        // The folder's messages and their parts follow by cascade.
+        let mut delete = tx.prepare_cached("DELETE FROM folders WHERE id = ?1")?;
+        for folder in gone {
+            delete.execute([folder.0])?;
+        }
+    }
+    for thread in &threads {
+        recompute_thread(tx, *thread)?;
+    }
+    let orphaned_blobs = overlay::orphaned(tx, blobs)?;
+    // Messages whose move into a folder now gone was refused show again where they are.
+    let rows: Vec<RowChange> = back
+        .iter()
+        .filter_map(|plan| match plan.after {
+            overlay::After::Stay { flags, .. } if flags != plan.row.flags => Some(RowChange {
+                id: plan.row.id,
+                folder: plan.row.folder,
+                date: plan.row.date,
+                before: Some((plan.row.flags, plan.row.has_attachments)),
+                after: Some((flags, plan.row.has_attachments)),
+            }),
+            _ => None,
+        })
+        .collect();
+    let positions = removed_positions(tx, open, &rows)?;
+    let mut changed = Vec::new();
+    {
+        let mut update =
+            tx.prepare_cached("UPDATE messages SET flags = ?2, server_flags = ?3 WHERE id = ?1")?;
+        for plan in &back {
+            if let overlay::After::Stay { flags, server } = plan.after
+                && (flags, server) != (plan.row.flags, plan.row.server)
+            {
+                update.execute(params![
+                    plan.row.id.0,
+                    flags,
+                    overlay::server_column(flags, server)
+                ])?;
+                if overlay::count_delta(tx, plan.row.folder, Some(plan.row.flags), Some(flags))? {
+                    counted.insert(plan.row.folder);
+                }
+                if flags != plan.row.flags {
+                    changed.push(plan.row.id);
+                }
+            }
+        }
+    }
+    let mut views = Vec::new();
+    for (view, spec) in open {
+        let affected = match spec.scope {
+            ViewScope::Folder(folder) => gone.contains(&folder),
+            ViewScope::UnifiedInbox => true,
+        };
+        if affected {
+            let folders = views::folders(tx, spec.scope)?;
+            views.push(ViewChange {
+                view: *view,
+                diff: ViewDiff::Reload {
+                    total: views::count(tx, &folders, spec.filter)?,
+                },
+            });
+        }
+    }
+    let reloaded: BTreeSet<_> = views.iter().map(|change| change.view).collect();
+    views.extend(
+        view_changes(tx, open, &rows, &positions)?
+            .into_iter()
+            .filter(|change| !reloaded.contains(&change.view)),
+    );
+    Ok(Dropped {
+        removed,
+        threads,
+        orphaned_blobs,
+        changed,
+        views,
+    })
 }
 
 /// Refuses the pending ops of folders gone from the server: those of their messages, those

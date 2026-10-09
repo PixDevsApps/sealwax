@@ -9,6 +9,7 @@ pub mod bodies;
 pub mod compose;
 pub mod config;
 pub mod flowed;
+pub mod folders;
 #[cfg(any(test, feature = "fuzz"))]
 #[doc(hidden)]
 pub mod fuzz;
