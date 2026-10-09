@@ -145,6 +145,33 @@ assert-accessible dialog
 key Escape
 assert-dialog none
 
+# The folder dialogs (M9): New Folder, Rename Folder (with a refused name) and Delete Folder.
+folder-add Work Kunder
+folder inbox Work
+action win.new-folder
+wait-until assert-dialog "New Subfolder in “Inbox”"
+assert-accessible dialog
+assert-focus-stop folder-name
+tab-chain window forward 10
+key Escape
+assert-dialog none
+folder Work:Kunder
+action win.rename-folder
+wait-until assert-dialog "Rename “Kunder”"
+setup-type folder-name Inbox
+assert-accessible-state folder-name invalid true
+assert-accessible dialog
+tab-chain window forward 10
+key Escape
+assert-dialog none
+action win.delete-folder
+wait-until assert-dialog "Delete “Kunder” and everything in it?"
+assert-accessible dialog
+tab-chain window forward 10
+key Escape
+assert-dialog none
+folder inbox Work
+
 # Show Original.
 list-select 0
 wait-until assert-reader-page message

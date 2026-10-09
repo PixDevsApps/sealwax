@@ -185,6 +185,29 @@ pub async fn list(conn: &mut Connection) -> Result<Vec<ListedFolder>, ImapError>
     Ok(listed(found.entries, &found.statuses, conn.microsoft()))
 }
 
+/// The wire names of the folders the server lists under `name_raw` (`LIST "" "<name>/*"`),
+/// those Sealwax leaves out included. A name holding LIST's wildcards may list more than its
+/// subfolders; only names within it are kept.
+pub(crate) async fn list_under(
+    conn: &mut Connection,
+    name_raw: &str,
+    delimiter: char,
+) -> Result<Vec<String>, ImapError> {
+    let pattern = quote(&format!("{name_raw}{delimiter}*"))?;
+    let mut found = Found::default();
+    raw::run(&mut conn.session, &format!("LIST \"\" {pattern}"), |r| {
+        found.take(r)
+    })
+    .await?;
+    Ok(found
+        .entries
+        .into_iter()
+        .map(|entry| entry.name_raw)
+        .filter(|name| name != name_raw)
+        .filter(|name| sealwax_domain::folders::within(name, name_raw, Some(delimiter)))
+        .collect())
+}
+
 /// Decodes names, leaves out the folders `hidden` names and assigns roles to the rest;
 /// `microsoft` for an account on Microsoft's servers.
 fn listed(

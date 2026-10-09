@@ -431,8 +431,10 @@ mod tests {
             id: FolderId(id),
             account: AccountId(account),
             name: format!("{role:?}"),
+            delimiter: Some('/'),
             role,
             selectable: true,
+            inferiors: true,
             total: 0,
             unread: 0,
         }

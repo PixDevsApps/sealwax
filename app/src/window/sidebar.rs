@@ -1,15 +1,17 @@
 //! The folder sidebar (DESIGN.md "Components"): the compose button; "All Inboxes"; each account
 //! with its status and its role folders (Inbox, Drafts, Sent, Archive, Junk, Trash) with their
 //! counts, and its other folders under a collapsible "More"; and a footer with the accounts'
-//! state and `config.toml`. Between 900 and 1280 px it becomes a rail of icons with unread
-//! badges and the other accounts (DESIGN.md "Layout", the mock's medium window). The main
-//! menu is in the list's bar.
+//! state and `config.toml`. Folders under a folder the sidebar shows are indented under it, a
+//! level a step, and a folder with subfolders folds them away (M9, ADR-020). Between 900 and
+//! 1280 px it becomes a rail of icons with unread badges and the other accounts (DESIGN.md
+//! "Layout", the mock's medium window). The main menu is in the list's bar.
 //!
 //! It shows a plain-data [`SidebarModel`], which the store fills (ML-023). Picking a folder
 //! activates `nav.folder` with the folder's key; the window answers with
 //! [`Sidebar::set_selected`]. For the self-test, rows are named `folder:<key>` (their counts
-//! `count:<key>`), account headings `heading:<account>` (their dots `status:<account>`, their
-//! names `account-name:<account>`, their words `status-text:<account>`), rail buttons `rail:<key>` (their badges `badge:<key>`) and
+//! `count:<key>`, their fold arrows `folder-arrow:<key>`), account headings `heading:<account>`
+//! (their dots `status:<account>`, their names `account-name:<account>`, their words
+//! `status-text:<account>`), rail buttons `rail:<key>` (their badges `badge:<key>`) and
 //! `rail-account:<account>` (their dots `rail-status:<account>`), and the `config.toml` buttons
 //! `config` and `rail-config`.
 
@@ -130,14 +132,41 @@ impl AccountStatus {
 pub struct SidebarFolder {
     /// Unique among every account's folders: what `nav.folder` carries.
     pub key: String,
-    /// The folder's own name; a role folder shows its role's name instead.
+    /// The folder's own name: its last level under a folder the sidebar shows, else its whole
+    /// name; a role folder shows its role's name instead.
     pub name: String,
     pub role: Option<FolderRole>,
     /// Unread messages; for Drafts, the drafts.
     pub count: u32,
+    /// The folders under it, shown indented under it in this order.
+    pub children: Vec<SidebarFolder>,
+    /// Its subfolders are folded away (the window's remembered layout).
+    pub folded: bool,
 }
 
 impl SidebarFolder {
+    /// It and every folder under it, depth first, each with its level under it (0 for itself).
+    pub fn walk(&self) -> Vec<(&SidebarFolder, usize)> {
+        let mut out = vec![(self, 0)];
+        for child in &self.children {
+            out.extend(
+                child
+                    .walk()
+                    .into_iter()
+                    .map(|(folder, level)| (folder, level + 1)),
+            );
+        }
+        out
+    }
+
+    /// The folder `key`: itself or one under it.
+    fn find(&self, key: &str) -> Option<&SidebarFolder> {
+        if self.key == key {
+            return Some(self);
+        }
+        self.children.iter().find_map(|child| child.find(key))
+    }
+
     /// The name shown: the role's ("Sent" for a server's "Sendt"), else the folder's own.
     pub fn title(&self) -> &str {
         match self.role {
@@ -177,9 +206,10 @@ pub struct SidebarAccount {
     /// Its folders are folded away under its heading (the window's remembered layout).
     pub collapsed: bool,
     pub status: AccountStatus,
-    /// Its role folders; shown in [`FolderRole`] order.
+    /// Its role folders, each with the folders under it; shown in [`FolderRole`] order.
     pub folders: Vec<SidebarFolder>,
-    /// Every other folder, under "More".
+    /// Every other folder under no folder the sidebar shows, with the folders under it, under
+    /// "More".
     pub more: Vec<SidebarFolder>,
 }
 
@@ -202,7 +232,20 @@ impl SidebarAccount {
     }
 
     fn contains(&self, key: &str) -> bool {
-        self.folders.iter().chain(&self.more).any(|f| f.key == key)
+        self.find(key).is_some()
+    }
+
+    /// The folder `key`, at any level.
+    fn find(&self, key: &str) -> Option<&SidebarFolder> {
+        self.folders
+            .iter()
+            .chain(&self.more)
+            .find_map(|folder| folder.find(key))
+    }
+
+    /// Whether the folder `key` is under "More".
+    fn in_more(&self, key: &str) -> bool {
+        self.more.iter().any(|folder| folder.find(key).is_some())
     }
 }
 
@@ -219,14 +262,9 @@ impl SidebarModel {
     }
 
     pub fn find(&self, key: &str) -> Option<(&SidebarAccount, &SidebarFolder)> {
-        self.accounts.iter().find_map(|account| {
-            account
-                .folders
-                .iter()
-                .chain(&account.more)
-                .find(|folder| folder.key == key)
-                .map(|folder| (account, folder))
-        })
+        self.accounts
+            .iter()
+            .find_map(|account| account.find(key).map(|folder| (account, folder)))
     }
 
     /// Whether `key` names something to show: a folder, or All Inboxes once an account exists.
@@ -317,8 +355,10 @@ struct Row {
     kind: RowKind,
     /// The account whose "More" holds this folder.
     more_of: Option<String>,
-    /// The "More" row's arrow.
+    /// The "More" row's, a heading's or a parent folder's arrow.
     arrow: Option<gtk::Image>,
+    /// The folders above this one in the tree, the nearest first.
+    ancestors: Vec<String>,
 }
 
 pub struct Sidebar {
@@ -341,16 +381,29 @@ pub struct Sidebar {
     menu: RefCell<Option<gtk::Popover>>,
     /// Whether Mark Folder as Read applies to a folder key, and what it does.
     mark_read: RefCell<Option<MarkRead>>,
+    /// Whether New Subfolder, Rename Folder and Delete Folder apply to a folder key (why not),
+    /// and what they do.
+    folder_commands: RefCell<Option<FolderCommands>>,
     /// What an account heading's Edit Account does, given the account's key.
     edit_account: RefCell<Option<EditAccount>>,
+    /// What an account heading's New Folder does, given the account's key.
+    new_folder: RefCell<Option<EditAccount>>,
     /// The accounts whose folders are folded away, by key.
     collapsed: RefCell<HashSet<String>>,
     /// Told when an account is folded away (true) or opened again.
     collapse_changed: RefCell<Option<CollapseChanged>>,
+    /// The folders whose subfolders are folded away, by key.
+    folded: RefCell<HashSet<String>>,
+    /// Told when a folder's subfolders are folded away (true) or opened again.
+    fold_changed: RefCell<Option<CollapseChanged>>,
     weak: RefCell<std::rc::Weak<Sidebar>>,
 }
 
 type MarkRead = (Rc<dyn Fn(&str) -> bool>, Rc<dyn Fn(&str)>);
+type FolderCommands = (
+    Rc<dyn Fn(ActionId, &str) -> Result<(), &'static str>>,
+    Rc<dyn Fn(ActionId, &str)>,
+);
 type EditAccount = Rc<dyn Fn(&str)>;
 type CollapseChanged = Rc<dyn Fn(&str, bool)>;
 
@@ -469,9 +522,13 @@ impl Sidebar {
             expanded: RefCell::new(HashSet::new()),
             menu: RefCell::new(None),
             mark_read: RefCell::new(None),
+            folder_commands: RefCell::new(None),
             edit_account: RefCell::new(None),
+            new_folder: RefCell::new(None),
             collapsed: RefCell::new(HashSet::new()),
             collapse_changed: RefCell::new(None),
+            folded: RefCell::new(HashSet::new()),
+            fold_changed: RefCell::new(None),
             weak: RefCell::new(std::rc::Weak::new()),
         });
         sidebar.weak.replace(Rc::downgrade(&sidebar));
@@ -530,8 +587,9 @@ impl Sidebar {
         }
     }
 
-    /// Where the keyboard focus enters the folder list: the folder shown, else the heading of
-    /// its folded account, else the first row.
+    /// Where the keyboard focus enters the folder list: the folder shown, else the nearest
+    /// folder above it that shows (its subfolders folded), else the heading of its folded
+    /// account, else the first row.
     fn entry_row(&self) -> Option<gtk::ListBoxRow> {
         if !self.list.is_mapped() {
             return None;
@@ -545,9 +603,24 @@ impl Sidebar {
             .iter()
             .find(|account| account.contains(&self.selected.borrow()))
             .map(|account| RowKind::Header(account.key.clone()));
+        let above: Vec<RowKind> = rows
+            .iter()
+            .find(|row| row.widget.has_css_class("sw-current"))
+            .map(|row| {
+                row.ancestors
+                    .iter()
+                    .map(|key| RowKind::Folder(key.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
         rows.iter()
             .filter(usable)
             .find(|row| row.widget.has_css_class("sw-current"))
+            .or_else(|| {
+                above
+                    .iter()
+                    .find_map(|kind| rows.iter().filter(usable).find(|row| row.kind == *kind))
+            })
             .or_else(|| {
                 rows.iter()
                     .filter(usable)
@@ -582,6 +655,16 @@ impl Sidebar {
                 .map(|account| account.key.clone())
                 .collect(),
         );
+        self.folded.replace(
+            model
+                .accounts
+                .iter()
+                .flat_map(|account| account.folders.iter().chain(&account.more))
+                .flat_map(SidebarFolder::walk)
+                .filter(|(folder, _)| folder.folded && !folder.children.is_empty())
+                .map(|(folder, _)| folder.key.clone())
+                .collect(),
+        );
         self.model.replace(model);
         self.selected.replace(selected.to_owned());
         self.reveal_selected();
@@ -597,14 +680,102 @@ impl Sidebar {
                 .map(|a| a.key.clone());
             before != model.current_account(key).map(|a| a.key.clone())
         };
+        let changed = *self.selected.borrow() != key;
         self.selected.replace(key.to_owned());
-        if self.reveal_selected() {
+        let unfolded = changed && self.unfold_above(key);
+        if self.reveal_selected() || unfolded {
             self.rebuild_list();
         } else {
             self.sync_selection();
         }
         if account_changed {
             self.rebuild_rail();
+        }
+    }
+
+    /// Opens the folded folders above the folder `key`, so it shows; true when one was folded.
+    fn unfold_above(&self, key: &str) -> bool {
+        let above = ancestors_of(&self.model.borrow(), key);
+        let opened: Vec<String> = {
+            let mut folded = self.folded.borrow_mut();
+            above
+                .into_iter()
+                .filter(|folder| folded.remove(folder))
+                .collect()
+        };
+        let handler = self.fold_changed.borrow().clone();
+        if let Some(handler) = handler {
+            for folder in &opened {
+                handler(folder, false);
+            }
+        }
+        !opened.is_empty()
+    }
+
+    /// The key of the account whose folders hold `key`.
+    pub fn account_of(&self, key: &str) -> Option<String> {
+        self.model
+            .borrow()
+            .accounts
+            .iter()
+            .find(|account| account.contains(key))
+            .map(|account| account.key.clone())
+    }
+
+    /// Whether the folder `key`'s subfolders are folded away.
+    pub fn is_folded(&self, key: &str) -> bool {
+        self.folded.borrow().contains(key)
+    }
+
+    /// Folds the subfolders of the folder `key` away, or opens them again (a click on its
+    /// arrow; Left folds, Right opens). The folder shown stays shown.
+    pub fn toggle_folded(&self, key: &str) {
+        let has_children = self
+            .model
+            .borrow()
+            .find(key)
+            .is_some_and(|(_, folder)| !folder.children.is_empty());
+        if !has_children {
+            return;
+        }
+        let folded = {
+            let mut set = self.folded.borrow_mut();
+            if set.remove(key) {
+                false
+            } else {
+                set.insert(key.to_owned());
+                true
+            }
+        };
+        for row in self.rows.borrow().iter() {
+            if row.kind == RowKind::Folder(key.to_owned()) {
+                set_expanded(row, !folded);
+            }
+        }
+        self.apply_visibility();
+        let handler = self.fold_changed.borrow().clone();
+        if let Some(handler) = handler {
+            handler(key, folded);
+        }
+    }
+
+    /// Runs `handler` with a folder's key when its subfolders are folded away (true) or opened
+    /// again.
+    pub fn connect_folded(&self, handler: impl Fn(&str, bool) + 'static) {
+        self.fold_changed.replace(Some(Rc::new(handler)));
+    }
+
+    /// Shows the rows whose "More" is open and whose folders above them aren't folded.
+    fn apply_visibility(&self) {
+        let expanded = self.expanded.borrow();
+        let folded = self.folded.borrow();
+        for row in self.rows.borrow().iter() {
+            let more_open = row
+                .more_of
+                .as_ref()
+                .is_none_or(|account| expanded.contains(account));
+            let unfolded = row.ancestors.iter().all(|key| !folded.contains(key));
+            row.widget.set_visible(more_open && unfolded);
         }
     }
 
@@ -662,10 +833,27 @@ impl Sidebar {
             .replace(Some((Rc::new(applies), Rc::new(activate))));
     }
 
+    /// Adds New Subfolder…, Rename Folder… and Delete Folder… to every folder row's context
+    /// menu (M9, ADR-020): `applies` says whether the command applies to the folder's key, or
+    /// why not (the item is then insensitive, its tooltip the reason); `activate` runs it.
+    pub fn connect_folder_commands(
+        &self,
+        applies: impl Fn(ActionId, &str) -> Result<(), &'static str> + 'static,
+        activate: impl Fn(ActionId, &str) + 'static,
+    ) {
+        self.folder_commands
+            .replace(Some((Rc::new(applies), Rc::new(activate))));
+    }
+
     /// Gives every account heading a context menu with Edit Account (the user's UI tweak,
     /// 2026-10-08), opened by a right click; `activate` gets the account's key.
     pub fn connect_edit_account(&self, activate: impl Fn(&str) + 'static) {
         self.edit_account.replace(Some(Rc::new(activate)));
+    }
+
+    /// Adds New Folder… to every account heading's menu (M9): `activate` gets the account's key.
+    pub fn connect_new_folder(&self, activate: impl Fn(&str) + 'static) {
+        self.new_folder.replace(Some(Rc::new(activate)));
     }
 
     /// Opens the context menu of the folder row `key`, as a right click does.
@@ -710,65 +898,100 @@ impl Sidebar {
             .filter(|menu| menu.parent().is_some())
     }
 
+    /// A folder row's menu: Mark Folder as Read, then (not on All Inboxes) New Subfolder…,
+    /// Rename Folder… and Delete Folder…, each insensitive with the reason as its tooltip where
+    /// it doesn't apply.
     fn show_menu(&self, row: &gtk::ListBoxRow, key: &str) {
         self.close_menu();
-        let Some((applies, activate)) = self.mark_read.borrow().clone() else {
-            return;
-        };
-        let enabled = applies(key);
-        let button = named(
-            classed(
-                gtk::Button::builder()
-                    .label(ActionId::MarkFolderRead.title())
-                    .sensitive(enabled)
-                    .build(),
-                &["flat", "sw-menu-item"],
-            ),
-            "folder-menu-mark-read",
-        );
-        if !enabled {
-            button.set_tooltip_text(Some("Nothing here is unread"));
+        let mut items: Vec<MenuItem> = Vec::new();
+        if let Some((applies, activate)) = self.mark_read.borrow().clone() {
+            let enabled = applies(key);
+            let key = key.to_owned();
+            items.push(MenuItem {
+                name: "folder-menu-mark-read",
+                label: ActionId::MarkFolderRead.title(),
+                why_not: (!enabled).then_some("Nothing here is unread"),
+                activate: Rc::new(move || activate(&key)),
+            });
         }
-        let key = key.to_owned();
-        self.popup(row, &button, "folder-menu", move || activate(&key));
+        if key != ALL_INBOXES
+            && let Some((applies, activate)) = self.folder_commands.borrow().clone()
+        {
+            for (id, name, label) in [
+                (ActionId::NewFolder, "folder-menu-new", "New Subfolder…"),
+                (
+                    ActionId::RenameFolder,
+                    "folder-menu-rename",
+                    ActionId::RenameFolder.title(),
+                ),
+                (
+                    ActionId::DeleteFolder,
+                    "folder-menu-delete",
+                    ActionId::DeleteFolder.title(),
+                ),
+            ] {
+                let (activate, key) = (activate.clone(), key.to_owned());
+                items.push(MenuItem {
+                    name,
+                    label,
+                    why_not: applies(id, &key).err(),
+                    // After the closed menu has put the focus back, so the dialog keeps it.
+                    activate: Rc::new(move || {
+                        let (activate, key) = (activate.clone(), key.clone());
+                        glib::idle_add_local_once(move || activate(id, &key));
+                    }),
+                });
+            }
+        }
+        if !items.is_empty() {
+            self.popup(row, items, "folder-menu");
+        }
     }
 
-    /// An account heading's menu: Edit Account for that account.
+    /// An account heading's menu: Edit Account and New Folder… for that account.
     fn show_account_menu(&self, row: &gtk::ListBoxRow, key: &str) {
         self.close_menu();
-        let Some(activate) = self.edit_account.borrow().clone() else {
-            return;
-        };
-        let button = named(
-            classed(
-                gtk::Button::builder()
-                    .label(ActionId::EditAccount.title())
-                    .build(),
-                &["flat", "sw-menu-item"],
+        let mut items: Vec<MenuItem> = Vec::new();
+        for (callback, name, label) in [
+            (
+                self.edit_account.borrow().clone(),
+                "account-menu-edit",
+                ActionId::EditAccount.title(),
             ),
-            "account-menu-edit",
-        );
-        let key = key.to_owned();
-        // After the closed menu has put the focus back, so the dialog keeps it.
-        self.popup(row, &button, "account-menu", move || {
-            let (activate, key) = (activate.clone(), key.clone());
-            glib::idle_add_local_once(move || activate(&key));
-        });
+            (
+                self.new_folder.borrow().clone(),
+                "account-menu-new-folder",
+                ActionId::NewFolder.title(),
+            ),
+        ] {
+            let Some(callback) = callback else {
+                continue;
+            };
+            let key = key.to_owned();
+            items.push(MenuItem {
+                name,
+                label,
+                why_not: None,
+                // After the closed menu has put the focus back, so the dialog keeps it.
+                activate: Rc::new(move || {
+                    let (callback, key) = (callback.clone(), key.clone());
+                    glib::idle_add_local_once(move || callback(&key));
+                }),
+            });
+        }
+        if !items.is_empty() {
+            self.popup(row, items, "account-menu");
+        }
     }
 
-    /// Shows `button` in a context menu named `name` under `row`; a click closes the menu and
-    /// runs `activate`.
-    fn popup(
-        &self,
-        row: &gtk::ListBoxRow,
-        button: &gtk::Button,
-        name: &str,
-        activate: impl Fn() + 'static,
-    ) {
+    /// Shows `items` in a context menu named `name` under `row`; a click on one closes the menu
+    /// and runs it.
+    fn popup(&self, row: &gtk::ListBoxRow, items: Vec<MenuItem>, name: &str) {
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
         let popover = named(
             classed(
                 gtk::Popover::builder()
-                    .child(button)
+                    .child(&content)
                     .has_arrow(false)
                     .position(gtk::PositionType::Bottom)
                     .build(),
@@ -776,6 +999,30 @@ impl Sidebar {
             ),
             name,
         );
+        for item in items {
+            let label = gtk::Label::builder().label(item.label).xalign(0.0).build();
+            let button = named(
+                classed(
+                    gtk::Button::builder()
+                        .child(&label)
+                        .sensitive(item.why_not.is_none())
+                        .build(),
+                    &["flat", "sw-menu-item"],
+                ),
+                item.name,
+            );
+            button.set_tooltip_text(item.why_not);
+            let activate = item.activate;
+            button.connect_clicked(glib::clone!(
+                #[weak]
+                popover,
+                move |_| {
+                    popover.popdown();
+                    activate();
+                }
+            ));
+            content.append(&button);
+        }
         popover.set_parent(row);
         // The focus goes back where it was (the list, or the row for Menu and Shift+F10), once
         // the sidebar has been rebuilt for the new counts.
@@ -794,16 +1041,24 @@ impl Sidebar {
                 }
             });
         });
-        button.connect_clicked(glib::clone!(
-            #[weak]
-            popover,
-            move |_| {
-                popover.popdown();
-                activate();
-            }
-        ));
         popover.popup();
         self.menu.replace(Some(popover));
+    }
+
+    /// The open menu's items, in order.
+    pub fn menu_items(&self) -> Vec<gtk::Button> {
+        let mut buttons = Vec::new();
+        let mut child = self
+            .menu()
+            .and_then(|menu| menu.child())
+            .and_then(|content| content.first_child());
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if let Ok(button) = widget.downcast::<gtk::Button>() {
+                buttons.push(button);
+            }
+        }
+        buttons
     }
 
     fn close_menu(&self) {
@@ -817,8 +1072,9 @@ impl Sidebar {
         }
     }
 
-    /// A right click, Menu or Shift+F10 on a folder row opens its context menu.
-    fn add_menu_triggers(&self, row: &gtk::ListBoxRow, key: &str) {
+    /// A right click, Menu or Shift+F10 on a folder row opens its context menu; on a folder
+    /// with subfolders, Left folds them away and Right opens them.
+    fn add_menu_triggers(&self, row: &gtk::ListBoxRow, key: &str, parent: bool) {
         let click = gtk::GestureClick::builder().button(3).build();
         let weak = self.weak.borrow().clone();
         let target = key.to_owned();
@@ -836,22 +1092,48 @@ impl Sidebar {
         let weak = self.weak.borrow().clone();
         let target = key.to_owned();
         keys.connect_key_pressed(move |controller, key, _, state| {
-            let menu_key = key == gtk::gdk::Key::Menu
-                || (key == gtk::gdk::Key::F10
-                    && state.contains(gtk::gdk::ModifierType::SHIFT_MASK));
-            match (
-                menu_key,
+            let (Some(sidebar), Some(row)) = (
                 weak.upgrade(),
                 controller.widget().and_downcast::<gtk::ListBoxRow>(),
-            ) {
-                (true, Some(sidebar), Some(row)) => {
-                    sidebar.show_menu(&row, &target);
-                    glib::Propagation::Stop
-                }
-                _ => glib::Propagation::Proceed,
+            ) else {
+                return glib::Propagation::Proceed;
+            };
+            let menu = key == gtk::gdk::Key::Menu
+                || (key == gtk::gdk::Key::F10
+                    && state.contains(gtk::gdk::ModifierType::SHIFT_MASK));
+            let folded = sidebar.is_folded(&target);
+            let fold = parent
+                && match key {
+                    gtk::gdk::Key::Left | gtk::gdk::Key::KP_Left => !folded,
+                    gtk::gdk::Key::Right | gtk::gdk::Key::KP_Right => folded,
+                    _ => false,
+                };
+            if menu {
+                sidebar.show_menu(&row, &target);
+                glib::Propagation::Stop
+            } else if fold {
+                sidebar.toggle_folded(&target);
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
             }
         });
         row.add_controller(keys);
+    }
+
+    /// A click on a parent folder's arrow folds its subfolders away or opens them; the row
+    /// isn't picked.
+    fn add_fold_trigger(&self, arrow: &gtk::Image, key: &str) {
+        let click = gtk::GestureClick::builder().button(1).build();
+        let weak = self.weak.borrow().clone();
+        let target = key.to_owned();
+        click.connect_pressed(move |gesture, _, _, _| {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            if let Some(sidebar) = weak.upgrade() {
+                sidebar.toggle_folded(&target);
+            }
+        });
+        arrow.add_controller(click);
     }
 
     /// A right click, Menu or Shift+F10 on an account heading opens its menu; Left folds the
@@ -914,13 +1196,11 @@ impl Sidebar {
             }
         };
         for row in self.rows.borrow().iter() {
-            if row.more_of.as_deref() == Some(account) {
-                row.widget.set_visible(expanded);
-            }
             if row.kind == RowKind::More(account.to_owned()) {
                 set_expanded(row, expanded);
             }
         }
+        self.apply_visibility();
     }
 
     /// The key of the folder row marked as the one shown.
@@ -933,6 +1213,26 @@ impl Sidebar {
                 RowKind::Folder(key) => Some(key.clone()),
                 _ => None,
             })
+    }
+
+    /// The folder rows of the account `account` the user can see, in order, by the names they
+    /// show and their levels in the tree.
+    pub fn shown_tree(&self, account: &str) -> Vec<(String, usize)> {
+        let model = self.model.borrow();
+        let mut within = false;
+        let mut shown = Vec::new();
+        for row in self.rows.borrow().iter() {
+            match &row.kind {
+                RowKind::Header(key) => within = key == account,
+                RowKind::Folder(key) if within && row.widget.get_visible() => {
+                    if let Some((_, folder)) = model.find(key) {
+                        shown.push((folder.title().to_owned(), row.ancestors.len()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        shown
     }
 
     /// The keys of the folder rows the user can see in the full sidebar, in order.
@@ -955,7 +1255,7 @@ impl Sidebar {
         let holder = model
             .accounts
             .iter()
-            .find(|account| account.more.iter().any(|folder| folder.key == *selected));
+            .find(|account| account.in_more(&selected));
         match holder {
             Some(account) => self.expanded.borrow_mut().insert(account.key.clone()),
             None => false,
@@ -995,7 +1295,6 @@ impl Sidebar {
         let focused = self.focused_kind();
         self.list.remove_all();
         let model = self.model.borrow();
-        let expanded = self.expanded.borrow();
         let mut rows = Vec::new();
         if !model.accounts.is_empty() {
             rows.push(folder_row(
@@ -1003,55 +1302,57 @@ impl Sidebar {
                 ALL_INBOXES_ICONS,
                 "sw-all-inboxes",
                 false,
+                None,
             ));
         }
         let collapsed = self.collapsed.borrow();
+        let expanded = self.expanded.borrow();
+        let folded = self.folded.borrow();
         for account in &model.accounts {
-            let folded = collapsed.contains(&account.key);
-            rows.push(header_row(account, folded));
-            if folded {
+            let away = collapsed.contains(&account.key);
+            rows.push(header_row(account, away));
+            if away {
                 continue;
             }
             for folder in account.role_folders() {
-                let (icons, class) = folder.role.map_or((FOLDER_ICONS, "sw-role-other"), |role| {
-                    (role.icons(), role.class())
-                });
-                rows.push(folder_row(folder, icons, class, folder.count_stands_out()));
+                tree_rows(&mut rows, folder, None, &[], &folded);
             }
             if account.more.is_empty() {
                 continue;
             }
-            let open = expanded.contains(&account.key);
-            rows.push(more_row(account, open));
+            rows.push(more_row(account, expanded.contains(&account.key)));
             for folder in &account.more {
-                let mut row = folder_row(
-                    folder,
-                    FOLDER_ICONS,
-                    "sw-role-other",
-                    folder.count_stands_out(),
-                );
-                row.widget.set_visible(open);
-                row.more_of = Some(account.key.clone());
-                rows.push(row);
+                tree_rows(&mut rows, folder, Some(&account.key), &[], &folded);
             }
         }
+        drop(folded);
+        drop(expanded);
+        drop(collapsed);
+        drop(model);
         for row in &rows {
             match &row.kind {
-                RowKind::Folder(key) => self.add_menu_triggers(&row.widget, key),
+                RowKind::Folder(key) => {
+                    self.add_menu_triggers(&row.widget, key, row.arrow.is_some());
+                    if let Some(arrow) = &row.arrow {
+                        self.add_fold_trigger(arrow, key);
+                    }
+                }
                 RowKind::Header(key) => self.add_heading_triggers(&row.widget, key),
                 RowKind::More(_) => {}
             }
             self.list.append(&row.widget);
         }
-        drop(collapsed);
-        drop(expanded);
-        drop(model);
+        self.rows.replace(rows);
+        self.apply_visibility();
         if let Some(kind) = focused
-            && let Some(row) = rows.iter().find(|row| row.kind == kind)
+            && let Some(row) = self
+                .rows
+                .borrow()
+                .iter()
+                .find(|row| row.kind == kind && row.widget.is_visible())
         {
             row.widget.grab_focus();
         }
-        self.rows.replace(rows);
         self.sync_selection();
     }
 
@@ -1181,6 +1482,8 @@ fn all_inboxes(model: &SidebarModel) -> SidebarFolder {
         name: "All Inboxes".to_owned(),
         role: None,
         count: model.all_inboxes_unread(),
+        children: Vec::new(),
+        folded: false,
     }
 }
 
@@ -1192,7 +1495,88 @@ fn count_label(count: u32, stands_out: bool) -> gtk::Label {
     label
 }
 
-fn folder_row(folder: &SidebarFolder, icons: &[&str], class: &str, stands_out: bool) -> Row {
+/// How far each level of the folder tree is indented, in px.
+const INDENT: i32 = 16;
+
+/// One item of a folder row's or an account heading's menu.
+struct MenuItem {
+    name: &'static str,
+    label: &'static str,
+    /// Why it doesn't apply, its tooltip; the item is insensitive then.
+    why_not: Option<&'static str>,
+    activate: Rc<dyn Fn()>,
+}
+
+/// Where a folder row sits in the tree.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Place {
+    /// 0 at the top of its section.
+    level: usize,
+    /// It has subfolders, folded away when `folded`.
+    parent: bool,
+    folded: bool,
+}
+
+/// `folder`'s row and the rows of the folders under it, depth first: role folders take their
+/// role's icon, the others the folder icon; `more_of` is the account whose "More" holds them.
+fn tree_rows(
+    rows: &mut Vec<Row>,
+    folder: &SidebarFolder,
+    more_of: Option<&str>,
+    ancestors: &[String],
+    folded: &HashSet<String>,
+) {
+    let (icons, class) = folder.role.map_or((FOLDER_ICONS, "sw-role-other"), |role| {
+        (role.icons(), role.class())
+    });
+    let place = Place {
+        level: ancestors.len(),
+        parent: !folder.children.is_empty(),
+        folded: folded.contains(&folder.key),
+    };
+    let mut row = folder_row(folder, icons, class, folder.count_stands_out(), Some(place));
+    row.more_of = more_of.map(str::to_owned);
+    row.ancestors = ancestors.to_vec();
+    rows.push(row);
+    let mut below = vec![folder.key.clone()];
+    below.extend_from_slice(ancestors);
+    for child in &folder.children {
+        tree_rows(rows, child, more_of, &below, folded);
+    }
+}
+
+/// The keys of the folders above `key` in the tree, the nearest first.
+fn ancestors_of(model: &SidebarModel, key: &str) -> Vec<String> {
+    fn path(folder: &SidebarFolder, key: &str, above: &mut Vec<String>) -> bool {
+        if folder.key == key {
+            return true;
+        }
+        above.push(folder.key.clone());
+        if folder.children.iter().any(|child| path(child, key, above)) {
+            return true;
+        }
+        above.pop();
+        false
+    }
+    for account in &model.accounts {
+        for folder in account.folders.iter().chain(&account.more) {
+            let mut above = Vec::new();
+            if path(folder, key, &mut above) {
+                above.reverse();
+                return above;
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn folder_row(
+    folder: &SidebarFolder,
+    icons: &[&str],
+    class: &str,
+    stands_out: bool,
+    place: Option<Place>,
+) -> Row {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     content.append(&icon(icons));
     content.append(
@@ -1209,6 +1593,16 @@ fn folder_row(folder: &SidebarFolder, icons: &[&str], class: &str, stands_out: b
             &format!("count:{}", folder.key),
         ));
     }
+    let arrow = place.filter(|place| place.parent).map(|_| {
+        let arrow = named(
+            classed(gtk::Image::new(), &["sw-folder-arrow"]),
+            &format!("folder-arrow:{}", folder.key),
+        );
+        content.append(&arrow);
+        arrow
+    });
+    let level = place.map_or(0, |place| place.level);
+    content.set_margin_start(INDENT * i32::try_from(level).unwrap_or(0));
     let widget = named(
         classed(
             gtk::ListBoxRow::builder().child(&content).build(),
@@ -1216,13 +1610,21 @@ fn folder_row(folder: &SidebarFolder, icons: &[&str], class: &str, stands_out: b
         ),
         &format!("folder:{}", folder.key),
     );
-    widget.update_property(&[gtk::accessible::Property::Label(&folder.accessible_label())]);
-    Row {
+    widget.update_property(&[
+        gtk::accessible::Property::Label(&folder.accessible_label()),
+        gtk::accessible::Property::Level(i32::try_from(level + 1).unwrap_or(1)),
+    ]);
+    let row = Row {
         widget,
         kind: RowKind::Folder(folder.key.clone()),
         more_of: None,
-        arrow: None,
+        arrow,
+        ancestors: Vec::new(),
+    };
+    if let Some(place) = place.filter(|place| place.parent) {
+        set_expanded(&row, !place.folded);
     }
+    row
 }
 
 /// The account's state as a dot (DESIGN.md "Components"); the words beside it say the same.
@@ -1309,6 +1711,7 @@ fn header_row(account: &SidebarAccount, collapsed: bool) -> Row {
         kind: RowKind::Header(account.key.clone()),
         more_of: None,
         arrow: Some(arrow),
+        ancestors: Vec::new(),
     };
     set_expanded(&row, !collapsed);
     row
@@ -1341,6 +1744,7 @@ fn more_row(account: &SidebarAccount, open: bool) -> Row {
         kind: RowKind::More(account.key.clone()),
         more_of: None,
         arrow: Some(arrow),
+        ancestors: Vec::new(),
     };
     set_expanded(&row, open);
     row
@@ -1476,6 +1880,8 @@ mod tests {
             name: name.to_owned(),
             role,
             count,
+            children: Vec::new(),
+            folded: false,
         }
     }
 

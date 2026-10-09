@@ -11,6 +11,7 @@ use crate::window::{
 };
 use gtk4::glib;
 use sealwax_domain::account::{AccountColor, AccountKey};
+use sealwax_domain::folders;
 use sealwax_domain::model::{Account, AccountId, Folder, FolderId, FolderRole as StoreRole};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{
@@ -19,7 +20,7 @@ use sealwax_infrastructure::store::{
 };
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, Ref, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::future::Future;
 use std::path::Path;
 use std::rc::{Rc, Weak};
@@ -53,41 +54,105 @@ fn sidebar_role(role: StoreRole) -> Option<FolderRole> {
     }
 }
 
+/// An account's folders as the sidebar's tree: its role folders, and the folders under no
+/// folder it shows, each with the folders under it (by the server's delimiter) in name order.
+/// A role folder always shows at the top of the account, by its role's name; a folder under a
+/// folder the sidebar shows shows its last level. `folded` names the folders whose subfolders
+/// are folded away.
+fn folder_tree(
+    folders: &[&Folder],
+    folded: Option<&BTreeSet<String>>,
+) -> (Vec<SidebarFolder>, Vec<SidebarFolder>) {
+    let index: HashMap<&str, usize> = folders
+        .iter()
+        .enumerate()
+        .map(|(index, folder)| (folder.name.as_str(), index))
+        .collect();
+    let parent: Vec<Option<usize>> = folders
+        .iter()
+        .map(|folder| {
+            if sidebar_role(folder.role).is_some() {
+                return None;
+            }
+            folders::parent(&folder.name, folder.delimiter)
+                .and_then(|name| index.get(name).copied())
+        })
+        .collect();
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); folders.len()];
+    for (child, parent) in parent.iter().enumerate() {
+        if let Some(parent) = parent {
+            children[*parent].push(child);
+        }
+    }
+    fn build(
+        at: usize,
+        folders: &[&Folder],
+        parent: &[Option<usize>],
+        children: &[Vec<usize>],
+        folded: Option<&BTreeSet<String>>,
+    ) -> SidebarFolder {
+        let folder = folders[at];
+        let role = sidebar_role(folder.role);
+        let name = if parent[at].is_some() {
+            folders::leaf(&folder.name, folder.delimiter).to_owned()
+        } else {
+            folder.name.clone()
+        };
+        let mut under: Vec<SidebarFolder> = children[at]
+            .iter()
+            .map(|child| build(*child, folders, parent, children, folded))
+            .collect();
+        under.sort_by_cached_key(|child| child.name.to_lowercase());
+        SidebarFolder {
+            key: folder_key(folder.id),
+            name,
+            role,
+            count: if role == Some(FolderRole::Drafts) {
+                folder.total
+            } else {
+                folder.unread
+            },
+            folded: !under.is_empty() && folded.is_some_and(|names| names.contains(&folder.name)),
+            children: under,
+        }
+    }
+    let mut roles = Vec::new();
+    let mut more = Vec::new();
+    for at in (0..folders.len()).filter(|at| parent[*at].is_none()) {
+        let folder = build(at, folders, &parent, &children, folded);
+        if folder.role.is_some() {
+            roles.push(folder);
+        } else {
+            more.push(folder);
+        }
+    }
+    more.sort_by_cached_key(|folder| folder.name.to_lowercase());
+    (roles, more)
+}
+
 /// Accounts and folders as the sidebar shows them: role folders with their unread counts (drafts
-/// for Drafts), other folders under "More", each account in its colour from `accounts.toml` and
-/// folded away when the remembered layout says so. An account the engine hasn't reported on
-/// shows as synced.
+/// for Drafts), other folders under "More", folders under a folder the sidebar shows as its
+/// subfolders, each account in its colour from `accounts.toml` and folded away when the
+/// remembered layout says so, as are folders' subfolders. An account the engine hasn't reported
+/// on shows as synced.
 pub fn sidebar_model(
     accounts: &[Account],
     folders: &[Folder],
     statuses: &HashMap<AccountId, AccountStatus>,
     colors: &HashMap<AccountKey, AccountColor>,
     collapsed: &HashSet<AccountKey>,
+    folded: &HashMap<AccountKey, BTreeSet<String>>,
 ) -> SidebarModel {
     SidebarModel {
         accounts: accounts
             .iter()
             .map(|account| {
-                let mut role_folders = Vec::new();
-                let mut more = Vec::new();
-                for folder in folders.iter().filter(|folder| folder.account == account.id) {
-                    let role = sidebar_role(folder.role);
-                    let entry = SidebarFolder {
-                        key: folder_key(folder.id),
-                        name: folder.name.clone(),
-                        role,
-                        count: if role == Some(FolderRole::Drafts) {
-                            folder.total
-                        } else {
-                            folder.unread
-                        },
-                    };
-                    if role.is_some() {
-                        role_folders.push(entry);
-                    } else {
-                        more.push(entry);
-                    }
-                }
+                let own: Vec<&Folder> = folders
+                    .iter()
+                    .filter(|folder| folder.account == account.id)
+                    .collect();
+                let (role_folders, more) =
+                    folder_tree(&own, account.key.as_ref().and_then(|key| folded.get(key)));
                 SidebarAccount {
                     key: account_key(account),
                     name: account.name.clone(),
@@ -238,6 +303,7 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         &HashMap::new(),
         &HashMap::new(),
         &HashSet::new(),
+        &HashMap::new(),
     )
     .default_selection()
     .and_then(|key| scope_for_key(&key, &folders.value));
@@ -288,6 +354,8 @@ pub struct Mailbox {
     colors: RefCell<HashMap<AccountKey, AccountColor>>,
     /// The accounts folded away in the sidebar, as the remembered layout says.
     collapsed: RefCell<HashSet<AccountKey>>,
+    /// The folders whose subfolders the sidebar folds away, by account and whole name.
+    folded: RefCell<HashMap<AccountKey, BTreeSet<String>>>,
     accounts: RefCell<Vec<Account>>,
     folders: RefCell<Vec<Folder>>,
     /// The version the folder list was read at; change events up to it are already in it.
@@ -461,6 +529,7 @@ impl Mailbox {
             &self.statuses.borrow(),
             &self.colors.borrow(),
             &self.collapsed.borrow(),
+            &self.folded.borrow(),
         )
     }
 
@@ -492,6 +561,14 @@ impl Mailbox {
     pub fn set_collapsed(self: &Rc<Self>, collapsed: HashSet<AccountKey>) {
         if *self.collapsed.borrow() != collapsed {
             self.collapsed.replace(collapsed);
+            self.queue_sidebar();
+        }
+    }
+
+    /// Folds the subfolders of these folders away in the sidebar, and opens the others'.
+    pub fn set_folded(self: &Rc<Self>, folded: HashMap<AccountKey, BTreeSet<String>>) {
+        if *self.folded.borrow() != folded {
+            self.folded.replace(folded);
             self.queue_sidebar();
         }
     }
@@ -641,8 +718,10 @@ mod tests {
             id: FolderId(id),
             account: AccountId(account),
             name: name.to_owned(),
+            delimiter: Some('/'),
             role,
             selectable: true,
+            inferiors: true,
             total: unread * 3,
             unread,
         }
@@ -681,6 +760,7 @@ mod tests {
             &HashMap::new(),
             &colors,
             &HashSet::from([AccountKey("work".into())]),
+            &HashMap::new(),
         );
         assert_eq!(model.accounts.len(), 2);
         assert_eq!(model.accounts[0].color, None, "a local account has no key");
@@ -699,6 +779,80 @@ mod tests {
         assert_eq!(model.accounts[1].more[0].role, None);
         assert_eq!(model.all_inboxes_unread(), 16);
         assert_eq!(model.default_selection().as_deref(), Some("folder-1"));
+    }
+
+    #[test]
+    fn subfolders_show_under_the_folder_above_them() {
+        let accounts = vec![Account {
+            id: AccountId(1),
+            name: "Work".into(),
+            address: "work@example.test".into(),
+            key: Some(AccountKey("work".into())),
+        }];
+        let folders = vec![
+            folder(1, 1, "INBOX", StoreRole::Inbox, 2),
+            folder(2, 1, "INBOX/Kvitteringer", StoreRole::Other, 1),
+            folder(3, 1, "INBOX/Kvitteringer/2026", StoreRole::Other, 0),
+            folder(4, 1, "Sent", StoreRole::Sent, 0),
+            folder(5, 1, "Sent/Arkiv", StoreRole::Other, 0),
+            folder(6, 1, "kunder", StoreRole::Other, 3),
+            folder(7, 1, "kunder/Fjord", StoreRole::Other, 0),
+            folder(8, 1, "kunder/Acme", StoreRole::Other, 1),
+            folder(9, 1, "Prosjekter/Høst", StoreRole::Other, 0),
+            folder(10, 1, "Arkiv", StoreRole::Other, 0),
+            folder(11, 1, "INBOX/Søppel", StoreRole::Junk, 4),
+        ];
+        let folded = HashMap::from([(
+            AccountKey("work".into()),
+            BTreeSet::from(["kunder".to_owned(), "Arkiv".to_owned()]),
+        )]);
+        let model = sidebar_model(
+            &accounts,
+            &folders,
+            &HashMap::new(),
+            &HashMap::new(),
+            &HashSet::new(),
+            &folded,
+        );
+        let work = &model.accounts[0];
+        let tree = |folders: &[SidebarFolder]| -> Vec<(String, usize, bool)> {
+            folders
+                .iter()
+                .flat_map(SidebarFolder::walk)
+                .map(|(folder, level)| (folder.title().to_owned(), level, folder.folded))
+                .collect()
+        };
+        let roles: Vec<(String, usize, bool)> =
+            tree(&work.role_folders().into_iter().cloned().collect::<Vec<_>>());
+        assert_eq!(
+            roles,
+            [
+                ("Inbox".to_owned(), 0, false),
+                ("Kvitteringer".to_owned(), 1, false),
+                ("2026".to_owned(), 2, false),
+                ("Sent".to_owned(), 0, false),
+                ("Arkiv".to_owned(), 1, false),
+                ("Junk".to_owned(), 0, false),
+            ],
+            "a role folder stays at the top, by its role's name, even under the Inbox"
+        );
+        assert_eq!(
+            tree(&work.more),
+            [
+                ("Arkiv".to_owned(), 0, false),
+                ("kunder".to_owned(), 0, true),
+                ("Acme".to_owned(), 1, false),
+                ("Fjord".to_owned(), 1, false),
+                ("Prosjekter/Høst".to_owned(), 0, false),
+            ],
+            "in name order; a folder whose parent isn't listed by its whole name; a folder \
+             without subfolders isn't folded"
+        );
+        assert_eq!(model.find("folder-8").unwrap().1.name, "Acme");
+        assert_eq!(
+            model.heading("folder-3"),
+            Some(("2026".into(), "Work".into()))
+        );
     }
 
     #[test]

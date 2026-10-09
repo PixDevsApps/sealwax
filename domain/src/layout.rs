@@ -1,11 +1,13 @@
 //! The window's layout between runs (the user's UI tweaks, 2026-10-08): the widths the user
-//! dragged the sidebar and the message list to, and the accounts folded in the sidebar, in
+//! dragged the sidebar and the message list to, the accounts folded in the sidebar, and the
+//! folders whose subfolders it folds away (M9, folders), in
 //! `$XDG_STATE_HOME/sealwax/layout.toml`. Sealwax writes it; it isn't a setting, so it is read
 //! leniently: anything it doesn't know, or a width out of range, is left out and the default
 //! applies.
 
 use crate::account::AccountKey;
 use crate::accounts_file::is_valid_key;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 use toml::Value;
 
@@ -22,6 +24,9 @@ pub struct Layout {
     pub list_width: Option<u32>,
     /// The accounts whose folders the sidebar folds away, by key.
     pub collapsed: Vec<AccountKey>,
+    /// The folders whose subfolders the sidebar folds away: each account's by key, by the
+    /// folder's whole name.
+    pub folded: BTreeMap<AccountKey, BTreeSet<String>>,
 }
 
 impl Layout {
@@ -49,18 +54,39 @@ impl Layout {
                 collapsed.push(AccountKey(key.to_owned()));
             }
         }
+        let mut folded: BTreeMap<AccountKey, BTreeSet<String>> = BTreeMap::new();
+        for (key, names) in table
+            .get("folded")
+            .and_then(Value::as_table)
+            .into_iter()
+            .flatten()
+            .filter(|(key, _)| is_valid_key(key))
+        {
+            let names: BTreeSet<String> = names
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .filter(|name| !name.is_empty())
+                .map(str::to_owned)
+                .collect();
+            if !names.is_empty() {
+                folded.insert(AccountKey(key.clone()), names);
+            }
+        }
         Self {
             sidebar_width: width("sidebar_width", &SIDEBAR_WIDTHS),
             list_width: width("list_width", &LIST_WIDTHS),
             collapsed,
+            folded,
         }
     }
 
     pub fn to_text(&self) -> String {
         let mut text = String::from(
             "# Sealwax keeps the window's layout here: the widths the sidebar and the message\n\
-             # list were dragged to, and the accounts folded in the sidebar. It isn't a setting;\n\
-             # delete the file to go back to the defaults.\n",
+             # list were dragged to, and the accounts and folders folded in the sidebar. It isn't\n\
+             # a setting; delete the file to go back to the defaults.\n",
         );
         if let Some(width) = self.sidebar_width {
             text.push_str(&format!("sidebar_width = {width}\n"));
@@ -74,7 +100,44 @@ impl Layout {
             .map(|key| format!("\"{}\"", key.0))
             .collect();
         text.push_str(&format!("collapsed = [{}]\n", keys.join(", ")));
+        if !self.folded.is_empty() {
+            text.push_str("\n[folded]\n");
+            for (key, names) in &self.folded {
+                let names: Vec<String> = names
+                    .iter()
+                    .map(|name| Value::String(name.clone()).to_string())
+                    .collect();
+                text.push_str(&format!("{} = [{}]\n", key.0, names.join(", ")));
+            }
+        }
         text
+    }
+
+    /// Whether the folder `name` of `key`'s account has its subfolders folded away.
+    pub fn is_folded(&self, key: &AccountKey, name: &str) -> bool {
+        self.folded
+            .get(key)
+            .is_some_and(|names| names.contains(name))
+    }
+
+    /// Folds the subfolders of `key`'s folder `name` away or opens them again; true when that
+    /// changed anything.
+    pub fn set_folded(&mut self, key: &AccountKey, name: &str, folded: bool) -> bool {
+        if folded {
+            return self
+                .folded
+                .entry(key.clone())
+                .or_default()
+                .insert(name.to_owned());
+        }
+        let Some(names) = self.folded.get_mut(key) else {
+            return false;
+        };
+        let changed = names.remove(name);
+        if names.is_empty() {
+            self.folded.remove(key);
+        }
+        changed
     }
 
     /// Folds `key`'s account away or opens it again; true when that changed anything.
@@ -107,6 +170,14 @@ mod tests {
             sidebar_width: Some(240),
             list_width: Some(420),
             collapsed: vec![AccountKey("work".into()), AccountKey("k3j5x8m2q9wa".into())],
+            folded: BTreeMap::from([(
+                AccountKey("work".into()),
+                BTreeSet::from([
+                    "Kunder".to_owned(),
+                    "INBOX/Prosjekter \"Høst\" 📬".to_owned(),
+                    "a\\b".to_owned(),
+                ]),
+            )]),
         };
         assert_eq!(Layout::parse(&layout.to_text()), layout);
         assert_eq!(
@@ -127,7 +198,19 @@ mod tests {
                 sidebar_width: None,
                 list_width: None,
                 collapsed: vec![AccountKey("work".into()), AccountKey("home".into())],
+                folded: BTreeMap::new(),
             }
+        );
+        let folded = Layout::parse(
+            "[folded]\nwork = [\"Kunder\", 3, \"\"]\n\"Not a key\" = [\"Kunder\"]\nhome = []\n\
+             club = \"Kunder\"\n",
+        );
+        assert_eq!(
+            folded.folded,
+            BTreeMap::from([(
+                AccountKey("work".into()),
+                BTreeSet::from(["Kunder".to_owned()])
+            )])
         );
         assert_eq!(Layout::parse("list_width = 280").list_width, Some(280));
         assert_eq!(Layout::parse("list_width = 279").list_width, None);
@@ -143,5 +226,15 @@ mod tests {
         assert!(layout.set_collapsed(&work, false));
         assert!(!layout.set_collapsed(&work, false));
         assert!(layout.collapsed.is_empty());
+        assert!(layout.set_folded(&work, "Kunder", true));
+        assert!(!layout.set_folded(&work, "Kunder", true));
+        assert!(layout.is_folded(&work, "Kunder"));
+        assert!(!layout.is_folded(&work, "Kunder/Acme"));
+        assert!(layout.set_folded(&work, "Kunder", false));
+        assert!(!layout.set_folded(&work, "Kunder", false));
+        assert!(
+            layout.folded.is_empty(),
+            "an account without folds leaves the table"
+        );
     }
 }

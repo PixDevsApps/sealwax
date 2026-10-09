@@ -5,6 +5,7 @@ pub mod accounts;
 pub mod api;
 pub mod autoconfig;
 pub mod bodies;
+pub(crate) mod folders;
 #[cfg(any(test, feature = "fuzz"))]
 #[doc(hidden)]
 pub mod fuzz;

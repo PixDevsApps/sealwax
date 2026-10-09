@@ -1,0 +1,181 @@
+# Folder management's dialogs (M9, ADR-020) on a scripted engine: New Folder from the account
+# heading's menu (at the account's top) and New Subfolder from the palette (under the folder
+# shown), Rename Folder from the folder row's menu, Delete Folder of the folder shown. A typed
+# name is checked before anything is sent and the dialog says why one is refused (a sibling's,
+# the delimiter, a name Sealwax hides); Create and Rename can't be chosen meanwhile, nor while
+# the account is offline. Delete asks first, Cancel the default, with what goes. The engine's
+# answer comes as a toast, a server's refusal in its words; a deleted folder that was shown
+# leaves the list at its account's Inbox. Every name and message is fictional.
+# Run: tools/headless.sh 81 target/debug/sealwax --self-test tests/selftest/folders-dialogs.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+engine-attach
+triage-mark-read-on-open false
+triage-account Work work
+folder-add Work Kunder
+folder-add Work Kunder/Acme
+folder-add Work "Arkiv 2019" noinferiors
+mail-add Work:Kunder/Acme 10m "Tilbud på nettside" "from=Ingrid Solberg"
+mail-add Work:Kunder/Acme 20m "Kontrakt" "from=Marius Dahl"
+mail-add Work:Kunder 30m "Møtereferat" "from=Leah Kim"
+folder inbox Work
+engine-expect folder-opened
+
+# New Folder at the account's top, from its heading's menu: nothing to create until a name is
+# typed, and the name is checked as it is typed.
+account-menu account-1
+sidebar-menu-click account-menu-new-folder
+wait-until assert-dialog "New Folder in Work"
+assert-response new-folder create disabled
+assert-response new-folder create default
+assert-shown folder-name-problem false
+assert-focus-stop folder-name
+assert-accessible-name folder-name "Folder name"
+assert-accessible dialog
+setup-type folder-name kunder
+assert-label folder-name-problem "There is a folder with this name here already."
+assert-accessible-state folder-name invalid true
+assert-response new-folder create disabled
+setup-type folder-name Reiser/2026
+assert-label folder-name-problem "A folder name can't contain “/”: it separates folders on this account."
+setup-type folder-name "Sync Issues"
+assert-label folder-name-problem "Sealwax hides folders with this name: other mail programs keep their own things in them."
+setup-type folder-name "50%"
+assert-label folder-name-problem "A folder name can't contain “*” or “%”."
+setup-type folder-name ""
+assert-label folder-name-problem "Type a name for the folder."
+setup-type folder-name "  Reiser & ferie  "
+assert-shown folder-name-problem false
+assert-accessible-state folder-name invalid false
+assert-response new-folder create enabled
+assert-accessible dialog
+tab-chain window forward 10
+screenshot $DIR/../../.local/selftest/folders-new.png
+setup-respond new-folder create
+engine-expect create-folder account=1 parent=none "name=Reiser & ferie"
+engine-reply folder-changed ok
+assert-toast "Created “Reiser & ferie”"
+wait-until assert-folder-stored "Work:Reiser & ferie" true
+setup-dismiss-toasts
+
+# Cancel sends nothing.
+action win.new-folder
+wait-until assert-dialog "New Subfolder in “Inbox”"
+setup-type folder-name Kvitteringer
+setup-respond new-folder cancel
+engine-expect none but load-older,folder-opened
+
+# New Subfolder from the palette, under the folder shown; Enter creates. The server refuses a
+# name only it knew, in its words.
+folder Work:Kunder
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+action win.new-folder
+wait-until assert-dialog "New Subfolder in “Kunder”"
+setup-type folder-name ACME
+assert-label folder-name-problem "There is a folder with this name here already."
+setup-type folder-name "Fjord AS"
+key Return
+engine-expect create-folder parent=7 "name=Fjord AS"
+engine-reply folder-changed refused "[ALREADYEXISTS] Mailbox already exists"
+assert-toast "Couldn't create “Fjord AS”: the server said “[ALREADYEXISTS] Mailbox already exists”"
+setup-dismiss-toasts
+
+# Rename from the folder row's menu: the name is there to change; the same name renames nothing.
+sidebar-menu Work:Kunder
+sidebar-menu-click folder-menu-rename
+wait-until assert-dialog "Rename “Kunder”"
+assert-field folder-name Kunder
+assert-response rename-folder rename disabled
+assert-shown folder-name-problem false
+assert-accessible dialog
+setup-type folder-name "Arkiv 2019"
+assert-label folder-name-problem "There is a folder with this name here already."
+setup-type folder-name kunder
+assert-response rename-folder rename enabled
+setup-type folder-name Klienter
+setup-respond rename-folder rename
+engine-expect rename-folder folder=7 name=Klienter
+engine-reply folder-changed ok
+assert-toast "Renamed “Kunder” to “Klienter”"
+wait-until assert-folder-stored Work:Klienter/Acme true
+assert-label list-title Klienter
+assert-list-count 1
+setup-dismiss-toasts
+
+# Delete asks first, Cancel the default, saying what goes; Escape cancels.
+folder Work:Klienter/Acme
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+action win.delete-folder
+wait-until assert-dialog "Delete “Acme” and everything in it?"
+assert-text-contains delete-folder "The server deletes “Acme” and the 2 messages in it, for good."
+assert-response delete-folder cancel default
+assert-response delete-folder delete enabled
+assert-accessible dialog
+tab-chain window forward 10
+screenshot $DIR/../../.local/selftest/folders-delete.png
+key Escape
+assert-dialog none
+engine-expect none but load-older,folder-opened
+# Delete: the folder shown goes, and the list shows its account's Inbox.
+action win.delete-folder
+wait-until assert-dialog "Delete “Acme” and everything in it?"
+setup-respond delete-folder delete
+engine-expect delete-folder folder=8
+engine-reply folder-changed ok
+assert-toast "Deleted “Acme”"
+wait-until assert-label list-title Inbox
+engine-expect folder-opened
+assert-folder-stored Work:Klienter/Acme false
+setup-dismiss-toasts
+
+# A folder with a subfolder: both, and the messages in them.
+folder-add Work Klienter/Nord
+sidebar-menu Work:Klienter
+sidebar-menu-click folder-menu-delete
+wait-until assert-dialog "Delete “Klienter” and everything in it?"
+assert-text-contains delete-folder "The server deletes “Klienter”, its subfolder and the message in them, for good."
+setup-respond delete-folder cancel
+engine-expect none but load-older,folder-opened
+
+# Offline: the dialogs say so and send nothing, whatever is chosen.
+engine-reply status work@example.test offline
+wait-until assert-account-status work@example.test offline
+action win.new-folder
+wait-until assert-dialog "New Subfolder in “Inbox”"
+assert-text-contains new-folder "Work is offline. Its folders can change once it is connected again."
+setup-type folder-name Kvitteringer
+assert-response new-folder create disabled
+setup-respond new-folder create
+engine-expect none but load-older,folder-opened
+folder "Work:Reiser & ferie"
+engine-expect folder-opened
+action win.delete-folder
+wait-until assert-dialog "Delete “Reiser & ferie” and everything in it?"
+assert-text-contains delete-folder "Work is offline."
+assert-response delete-folder delete disabled
+setup-respond delete-folder delete
+engine-expect none but load-older,folder-opened
+
+# The engine's own refusals: offline after all, and a lost connection.
+engine-reply status work@example.test synced
+wait-until assert-account-status work@example.test synced
+action win.rename-folder
+wait-until assert-dialog "Rename “Reiser & ferie”"
+setup-type folder-name Reiser
+setup-respond rename-folder rename
+engine-expect rename-folder name=Reiser
+engine-reply folder-changed offline
+assert-toast "Couldn't rename “Reiser & ferie”: the account is offline"
+setup-dismiss-toasts
+action win.delete-folder
+wait-until assert-dialog "Delete “Reiser & ferie” and everything in it?"
+setup-respond delete-folder delete
+engine-expect delete-folder
+engine-reply folder-changed lost
+assert-toast "Couldn't delete “Reiser & ferie”: the connection was lost; Sealwax reads the folders again when it reconnects"

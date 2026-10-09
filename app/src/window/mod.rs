@@ -704,14 +704,22 @@ impl Window {
     }
 
     /// Shows `model` in the sidebar. The folder shown stays when the model still has it, else
-    /// the window picks the first account's Inbox; with no account it shows "No accounts yet".
+    /// the window picks its account's Inbox (a deleted folder's), else the first account's;
+    /// with no account it shows "No accounts yet".
     pub fn set_sidebar(&self, model: SidebarModel) {
         let inner = &self.inner;
         let current = self.selected_folder();
         let selected = if model.contains(&current) {
             current.clone()
         } else {
-            model.default_selection().unwrap_or_default()
+            inner
+                .sidebar
+                .account_of(&current)
+                .and_then(|account| model.accounts.iter().find(|a| a.key == account))
+                .and_then(|account| account.inbox())
+                .map(|inbox| inbox.key.clone())
+                .or_else(|| model.default_selection())
+                .unwrap_or_default()
         };
         inner
             .content

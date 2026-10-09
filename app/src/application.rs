@@ -747,6 +747,7 @@ impl AppState {
             if let (Some(window), Some(list)) = (state.window(), state.list()) {
                 state.fill_sidebar(&window, &list);
             }
+            state.refresh_commands();
             state.update_banner();
         });
         // The sidebar's account states and the banner follow whatever engine the link has: the
@@ -1150,6 +1151,7 @@ impl AppState {
         self.install_list(window, &win_actions, &keymap);
         compose_actions::install(self, window, &win_actions);
         crate::go_to::install(self, &win_actions);
+        crate::folders::install(self, window, &win_actions);
         self.win_actions.replace(Some(win_actions));
     }
 
@@ -1571,7 +1573,7 @@ impl AppState {
         }
         let weak = Rc::downgrade(self);
         let count = targets.len() as u32;
-        move_to::present(window.window(), &choices, count, move |folder| {
+        move_to::present(window.window(), &choices, &folders, count, move |folder| {
             if let Some(state) = weak.upgrade() {
                 state.move_targets(folder, targets.clone());
             }
@@ -1696,6 +1698,7 @@ impl AppState {
         let undo = self.triage().is_some_and(|triage| triage.can_undo()) || outbox::can_undo();
         actions.set_applies(ActionId::Undo, undo);
         compose_actions::refresh(actions, &list, &targets, &folders);
+        crate::folders::refresh(self, actions);
     }
 
     /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place
@@ -1894,6 +1897,8 @@ impl AppState {
     fn apply_layout(&self, layout: Layout) {
         self.mailbox
             .set_collapsed(layout.collapsed.iter().cloned().collect());
+        self.mailbox
+            .set_folded(layout.folded.clone().into_iter().collect());
         if let Some(window) = self.window() {
             window.set_pane_widths(
                 layout
@@ -1911,6 +1916,8 @@ impl AppState {
         change(&mut layout);
         self.mailbox
             .set_collapsed(layout.collapsed.iter().cloned().collect());
+        self.mailbox
+            .set_folded(layout.folded.clone().into_iter().collect());
         self.layout.replace(Some(layout.clone()));
         let path = self.config.dirs.layout_file();
         glib::spawn_future_local(async move {
@@ -1966,6 +1973,29 @@ impl AppState {
                     });
                 }
             });
+        let weak = Rc::downgrade(self);
+        window.sidebar().connect_folded(move |folder, folded| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(ViewScope::Folder(id)) = state.mailbox.scope_for_key(folder) else {
+                return;
+            };
+            let Some(folder) = state.mailbox.folder(id) else {
+                return;
+            };
+            let key = state
+                .mailbox
+                .accounts()
+                .into_iter()
+                .find(|known| known.id == folder.account)
+                .and_then(|known| known.key);
+            if let Some(key) = key {
+                state.change_layout(|layout| {
+                    layout.set_folded(&key, &folder.name, folded);
+                });
+            }
+        });
     }
 
     /// Remove Account and Edit Account are available while there is an account to offer.

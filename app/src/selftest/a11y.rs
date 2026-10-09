@@ -388,6 +388,23 @@ fn label_property(widget: &gtk::Widget) -> Option<String> {
     held.filter(|label| !label.trim().is_empty())
 }
 
+/// The level property (a tree row's depth from 1), as GTK prints it; `None` when it isn't set.
+pub(super) fn level(widget: &gtk::Widget) -> Option<String> {
+    if !gtk::test_accessible_has_property(widget, gtk::AccessibleProperty::Level) {
+        return None;
+    }
+    let accessible: &gtk::Accessible = widget.upcast_ref();
+    // SAFETY: the level property takes one integer; no level is 0, so GTK prints the one held.
+    let held = checked(unsafe {
+        gtk::ffi::gtk_test_accessible_check_property(
+            accessible.to_glib_none().0,
+            gtk::ffi::GTK_ACCESSIBLE_PROPERTY_LEVEL,
+            0 as c_int,
+        )
+    });
+    Some(held.unwrap_or_else(|| "0".to_owned()))
+}
+
 /// What the labelled-by relation holds, as GTK prints it; `None` when it isn't set.
 fn labelled_by(widget: &gtk::Widget) -> Option<String> {
     if !gtk::test_accessible_has_relation(widget, gtk::AccessibleRelation::LabelledBy) {
@@ -407,7 +424,7 @@ fn labelled_by(widget: &gtk::Widget) -> Option<String> {
 }
 
 /// A state's value as GTK prints it: `true`, `false`, `mixed`, `undefined`.
-fn state_value(widget: &gtk::Widget, state: gtk::AccessibleState) -> String {
+pub(super) fn state_value(widget: &gtk::Widget, state: gtk::AccessibleState) -> String {
     if !gtk::test_accessible_has_state(widget, state) {
         return "undefined".to_owned();
     }

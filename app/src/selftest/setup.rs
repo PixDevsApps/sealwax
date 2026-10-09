@@ -7,7 +7,7 @@
 //! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one; links the assistant opens are recorded from then on, never opened |
 //! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
 //! | `engine-expect detect\|verify\|add-account\|edit-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `label` and `color` (`none` for none), `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
-//! | `engine-expect none` | The app sent nothing more |
+//! | `engine-expect none [but KIND,…]` | The app sent nothing more, or only commands of those kinds (`load-older,folder-opened`: what the list sends by itself) |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
 //! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
 //! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|pop3\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
@@ -26,6 +26,7 @@
 //! | `engine-reply older-loaded FETCHED complete\|more` | `OlderLoaded` for the folder of the last `load-older` taken (its field: `folder`; `folder-opened` has the same) (ML-043) |
 //! | `engine-reply part-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `PartFetched` for the last `fetch-part` taken (its fields: `message`, `part`); `ok` carries the part of the message `files.rs` stored (ML-061) |
 //! | `engine-reply original-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `OriginalFetched` for the last `fetch-original` taken (its field: `message`); `ok` carries the message `files.rs` stored, whole (ML-063) |
+//! | `engine-reply folder-changed ok\|offline\|taken\|not-allowed\|missing\|lost\|store`, `engine-reply folder-changed refused TEXT` | `FolderChanged` for the last `create-folder`, `rename-folder` or `delete-folder` taken (their fields: `account`, `parent` (`none`), `folder`, `name`); `ok` first makes the change in the app's store as the engine would (`folders.rs`); `refused` carries TEXT as the server's words (M9) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`), clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -59,11 +60,13 @@ use sealwax_domain::account::{
     Detection, Endpoint, HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol,
     Receive, Security, UnsupportedReason, UsernameForm,
 };
-use sealwax_domain::model::{FolderId, FolderRole, MessageId};
+use sealwax_domain::folders::NameProblem;
+use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{
-    AccountError, BodyError, Command, Event, FetchedPart, Original, Password, Refused, RequestId,
-    SyncStatus,
+    AccountError, BodyError, Command, Event, FetchedPart, FolderChange, FolderError, Original,
+    Password, Refused, RequestId, SyncStatus,
 };
+use sealwax_engine::imap::ServerText;
 use sealwax_engine::net::Trust;
 use sealwax_engine::service::SecretBackend;
 use sealwax_infrastructure::store::{FolderSpec, NewAccount};
@@ -123,6 +126,8 @@ struct Last {
     key: Option<AccountKey>,
     /// An `EditAccount`'s label and colour, for `key`.
     look: Option<(Option<String>, Option<AccountColor>)>,
+    /// A `ChangeFolder`'s account and change.
+    folder: Option<(AccountId, FolderChange)>,
 }
 
 struct Fake {
@@ -769,6 +774,33 @@ fn fields(
             Some(*request),
             vec![("key", key.to_string())],
         ),
+        Command::ChangeFolder {
+            request,
+            account,
+            change,
+        } => {
+            let mut fields = vec![("account", account.0.to_string())];
+            let kind = match change {
+                FolderChange::Create { parent, name } => {
+                    fields.push((
+                        "parent",
+                        parent.map_or_else(|| "none".to_owned(), |id| id.0.to_string()),
+                    ));
+                    fields.push(("name", name.clone()));
+                    "create-folder"
+                }
+                FolderChange::Rename { folder, name } => {
+                    fields.push(("folder", folder.0.to_string()));
+                    fields.push(("name", name.clone()));
+                    "rename-folder"
+                }
+                FolderChange::Delete { folder } => {
+                    fields.push(("folder", folder.0.to_string()));
+                    "delete-folder"
+                }
+            };
+            (kind, Some(*request), fields)
+        }
         Command::Shutdown => ("shutdown", None, Vec::new()),
     }
 }
@@ -794,10 +826,19 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
     let fake = fake()?;
     if args[0] == "none" {
         harness.wait_until_settled().await;
-        return match fake.commands.try_recv() {
-            Ok(command) => Err(format!("the app sent {}", fields(&command, None).0)),
-            Err(_) => Ok(()),
+        // `none but KIND,…`: commands of those kinds the list sends by itself are let through.
+        let allowed: Vec<&str> = match args.get(1).map(String::as_str) {
+            Some("but") => args.get(2).map_or("", String::as_str).split(',').collect(),
+            Some(other) => return Err(format!("use engine-expect none [but KIND,…], not {other}")),
+            None => Vec::new(),
         };
+        while let Ok(command) = fake.commands.try_recv() {
+            let kind = fields(&command, None).0;
+            if !allowed.contains(&kind) {
+                return Err(format!("the app sent {kind}"));
+            }
+        }
+        return Ok(());
     }
     let command = with_timeout(fake.commands.recv(), WAIT_TIMEOUT)
         .await
@@ -835,6 +876,12 @@ async fn expect(harness: &Harness, args: &[String]) -> StepResult {
         },
         look: match &command {
             Command::EditAccount { label, color, .. } => Some((label.clone(), *color)),
+            _ => None,
+        },
+        folder: match &command {
+            Command::ChangeFolder {
+                account, change, ..
+            } => Some((*account, change.clone())),
             _ => None,
         },
     }));
@@ -971,6 +1018,36 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 failure: login_failure(failure)?,
             }),
         },
+        ("folder-changed", outcome) => {
+            let (account, change) = last
+                .folder
+                .clone()
+                .ok_or("the last command was no ChangeFolder")?;
+            let result = match outcome {
+                [ok] if ok == "ok" => {
+                    super::folders::apply(harness, account, &change).await?;
+                    Ok(())
+                }
+                [refused, text] if refused == "refused" => {
+                    Err(FolderError::Refused(ServerText::new(text.clone())))
+                }
+                [other] => Err(match other.as_str() {
+                    "offline" => FolderError::Offline,
+                    "taken" => FolderError::Name(NameProblem::Taken),
+                    "not-allowed" => FolderError::NotAllowed,
+                    "missing" => FolderError::Missing,
+                    "lost" => FolderError::Lost,
+                    "store" => FolderError::Store,
+                    other => return Err(format!("no folder-changed outcome {other}")),
+                }),
+                _ => return Err("folder-changed takes an outcome".to_owned()),
+            };
+            Event::FolderChanged {
+                request,
+                account,
+                result,
+            }
+        }
         ("password-updated", [ok]) if ok == "ok" => Event::PasswordUpdated {
             request,
             result: Ok(()),

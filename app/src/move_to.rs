@@ -1,8 +1,10 @@
 //! Move to… (ML-052): a keyboard-first picker over the folders the selected messages can move
 //! to, their account's folders that take messages except the one they are in, role folders
-//! first by their role's name. Typing filters with Stet's matcher, Up and Down move, Enter moves
-//! the messages, Escape closes; a click picks a folder. It is an `AdwDialog` like the command
-//! palette, so its entry keeps every letter: the list's one-key shortcuts don't reach it.
+//! first by their role's name. A subfolder shows by its last level first, the folders above it
+//! beside it ("Acme", "Kunder / 2026"; M9). Typing filters with Stet's matcher, Up and Down
+//! move, Enter moves the messages, Escape closes; a click picks a folder. It is an `AdwDialog`
+//! like the command palette, so its entry keeps every letter: the list's one-key shortcuts don't
+//! reach it.
 
 use crate::triage::folder_title;
 use gtk4 as gtk;
@@ -10,6 +12,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use sealwax_domain::folders;
 use sealwax_domain::model::{Folder, FolderId, FolderRole};
 use sealwax_domain::palette;
 use std::cell::RefCell;
@@ -20,7 +23,8 @@ use std::rc::Rc;
 struct Choice {
     id: FolderId,
     title: String,
-    /// The server's own name of a role folder, when it differs from the role's ("Sendt").
+    /// The server's own name of a role folder, when it differs from the role's ("Sendt"); the
+    /// folders above a subfolder ("Kunder / 2026").
     detail: String,
 }
 
@@ -34,9 +38,35 @@ impl Choice {
         }
     }
 
-    fn new(folder: &Folder) -> Self {
+    /// `folder`'s choice; `known` are its account's folders, which name the folders above it.
+    fn new(folder: &Folder, known: &[Folder]) -> Self {
+        if matches!(folder.role, FolderRole::Other | FolderRole::All) {
+            let mut above = Vec::new();
+            let mut name = folder.name.as_str();
+            while let Some(parent) = folders::parent(name, folder.delimiter) {
+                above.push(
+                    known
+                        .iter()
+                        .find(|candidate| {
+                            candidate.account == folder.account && candidate.name == parent
+                        })
+                        .filter(|parent| !matches!(parent.role, FolderRole::Other))
+                        .map_or_else(
+                            || folders::leaf(parent, folder.delimiter).to_owned(),
+                            folder_title,
+                        ),
+                );
+                name = parent;
+            }
+            above.reverse();
+            return Self {
+                id: folder.id,
+                title: folders::leaf(&folder.name, folder.delimiter).to_owned(),
+                detail: above.join(" / "),
+            };
+        }
         let title = folder_title(folder);
-        let detail = if folder.role == FolderRole::Other || folder.name == title {
+        let detail = if folder.name == title {
             String::new()
         } else {
             folder.name.clone()
@@ -78,14 +108,16 @@ pub struct MoveTo {
 }
 
 /// Opens the picker over `window` for `count` messages, offering `folders` in their order;
-/// `pick` gets the folder chosen.
+/// `known` are every folder, which name the folders above a subfolder; `pick` gets the folder
+/// chosen.
 pub fn present(
     window: &impl IsA<gtk::Widget>,
     folders: &[Folder],
+    known: &[Folder],
     count: u32,
     pick: impl Fn(FolderId) + 'static,
 ) -> MoveTo {
-    let picker = MoveTo::new(folders, count, Rc::new(pick));
+    let picker = MoveTo::new(folders, known, count, Rc::new(pick));
     picker.dialog.present(Some(window));
     if let Some(entry) = picker.inner.entry.upgrade() {
         entry.grab_focus();
@@ -101,7 +133,7 @@ pub fn current() -> Option<MoveTo> {
 }
 
 impl MoveTo {
-    fn new(folders: &[Folder], count: u32, pick: Pick) -> Self {
+    fn new(folders: &[Folder], known: &[Folder], count: u32, pick: Pick) -> Self {
         let title = match count {
             1 => "Move 1 message to…".to_owned(),
             count => format!("Move {count} messages to…"),
@@ -150,7 +182,10 @@ impl MoveTo {
             entry: entry.downgrade(),
             list: list.downgrade(),
             scrolled: scrolled.downgrade(),
-            choices: folders.iter().map(Choice::new).collect(),
+            choices: folders
+                .iter()
+                .map(|folder| Choice::new(folder, known))
+                .collect(),
             shown: RefCell::new(Vec::new()),
             pick,
         });
@@ -345,4 +380,56 @@ fn row(choice: &Choice) -> gtk::ListBoxRow {
     row.set_focusable(false);
     row.update_property(&[gtk::accessible::Property::Label(&choice.spoken())]);
     row
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sealwax_domain::model::AccountId;
+
+    fn folder(id: i64, name: &str, role: FolderRole) -> Folder {
+        Folder {
+            id: FolderId(id),
+            account: AccountId(1),
+            name: name.to_owned(),
+            delimiter: Some('/'),
+            role,
+            selectable: true,
+            inferiors: true,
+            total: 0,
+            unread: 0,
+        }
+    }
+
+    #[test]
+    fn subfolders_show_by_their_last_level_with_the_folders_above() {
+        let known = vec![
+            folder(1, "INBOX", FolderRole::Inbox),
+            folder(2, "INBOX/Kvitteringer", FolderRole::Other),
+            folder(3, "Kunder", FolderRole::Other),
+            folder(4, "Kunder/2026/Acme", FolderRole::Other),
+            folder(5, "Sendt", FolderRole::Sent),
+        ];
+        let choice = |index: usize| Choice::new(&known[index], &known);
+        let receipts = choice(1);
+        assert_eq!(
+            (receipts.title.as_str(), receipts.detail.as_str()),
+            ("Kvitteringer", "Inbox")
+        );
+        assert_eq!(receipts.spoken(), "Move to Kvitteringer, Inbox");
+        let acme = choice(3);
+        assert_eq!(
+            (acme.title.as_str(), acme.detail.as_str()),
+            ("Acme", "Kunder / 2026"),
+            "an unlisted level by its name"
+        );
+        assert!(acme.search_text().contains("Kunder"));
+        let top = choice(2);
+        assert_eq!((top.title.as_str(), top.detail.as_str()), ("Kunder", ""));
+        let sent = choice(4);
+        assert_eq!(
+            (sent.title.as_str(), sent.detail.as_str()),
+            ("Sent", "Sendt")
+        );
+    }
 }
