@@ -86,6 +86,7 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
         .ok()
         .and_then(|path| path.parent().map(Path::to_path_buf))
         .unwrap_or_default();
+    theme::set_fixtures(&script_dir);
     let root = match TempRoot::create() {
         Ok(root) => root,
         Err(error) => {

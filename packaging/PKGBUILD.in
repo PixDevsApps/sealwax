@@ -20,6 +20,14 @@ source=("sealwax-${pkgver}.tar.gz")
 sha256sums=('@SHA256@')
 export SOURCE_DATE_EPOCH=@SOURCE_DATE_EPOCH@
 
+# The binary's panic locations name the files they're in: the build's folder and Cargo's
+# registry under the builder's home. Both are mapped to fixed names, so the package holds no
+# path of the machine that built it (makepkg: "Package contains reference to $srcdir").
+_remap_paths() {
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/usr/src/sealwax \
+--remap-path-prefix=${CARGO_HOME:-$HOME/.cargo}=/usr/src/cargo"
+}
+
 prepare() {
   cd "$srcdir/sealwax-$pkgver"
   cargo fetch --locked --target "$(rustc -vV | sed -n 's/^host: //p')"
@@ -27,11 +35,13 @@ prepare() {
 
 build() {
   cd "$srcdir/sealwax-$pkgver"
+  _remap_paths
   cargo build --release --locked --offline -p sealwax
 }
 
 check() {
   cd "$srcdir/sealwax-$pkgver"
+  _remap_paths
   # Only the crates without GTK: a clean build has no display for the app's self-tests.
   cargo test --locked --offline -p sealwax-domain -p sealwax-infrastructure -p sealwax-engine
 }

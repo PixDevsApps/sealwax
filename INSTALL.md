@@ -83,7 +83,7 @@ sudo pacman -U sealwax-0.3.0-1-x86_64.pkg.tar.zst    # the version in the name f
 
 The package adds only these files, and nothing in your home folder changes until Sealwax runs. Its key binding and Omarchy menu entries are yours to add ([INTEGRATIONS.md](docs/INTEGRATIONS.md#hyprland)).
 
-**A known warning:** makepkg says "Package contains reference to $srcdir": the build's paths (the folder you built in) stay in the binary, in panic messages. It is harmless and listed in PLAN.md's follow-ups.
+**No paths of your machine:** the PKGBUILD maps the folder you build in and Cargo's folder in your home to fixed names (`/usr/src/sealwax`, `/usr/src/cargo`), so the binary's panic messages carry no path of yours. Packages built before 2026-10-09 made makepkg warn "Package contains reference to $srcdir" for this.
 
 ## Update
 

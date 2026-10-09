@@ -36,6 +36,7 @@ Build the Arch package from this repository with its PKGBUILD: [INSTALL.md](INST
 
 - [User guide](docs/USER_GUIDE.md): setup (Microsoft sign-in, app passwords, POP3), reading, writing, search, notifications, every keyboard shortcut, theming, the settings files, privacy and troubleshooting
 - [Install](INSTALL.md): the package, building from source, uninstalling
+- [Release notes for 1.0.0](docs/RELEASE_NOTES.md) (a draft until the sign-off)
 - [Security](docs/SECURITY.md): the threat model, the rules and the known limitations
 - [Integrations](docs/INTEGRATIONS.md): Omarchy, Hyprland key bindings and menu entries, providers
 - [Microsoft sign-in setup](docs/OAUTH-SETUP.md): registering a client ID

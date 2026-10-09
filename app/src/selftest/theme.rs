@@ -10,6 +10,7 @@ use sealwax_domain::theme::{CornerRadius, ThemeOptions, ThemeSource};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 /// The scratch state directory under the run's root; it starts without `current/`, so the
@@ -18,7 +19,25 @@ pub fn state_dir(root: &Path) -> PathBuf {
     root.join("omarchy")
 }
 
+/// `tests/theme/` beside the folder of the script run (`tests/selftest/`, `tests/kill9/`), set
+/// by the harness, so the shipped binary holds no path of the tree it was built in.
+static FIXTURES: OnceLock<PathBuf> = OnceLock::new();
+
+/// The script run is in `script_dir`.
+pub fn set_fixtures(script_dir: &Path) {
+    let _ = FIXTURES.set(script_dir.join("../theme"));
+}
+
 /// `tests/theme/`: a `colors.toml` per stock theme and the `shell.toml` Omarchy generates.
+#[cfg(not(test))]
+fn fixtures() -> PathBuf {
+    FIXTURES
+        .get()
+        .cloned()
+        .unwrap_or_else(|| PathBuf::from("tests/theme"))
+}
+
+#[cfg(test)]
 fn fixtures() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/theme")
 }

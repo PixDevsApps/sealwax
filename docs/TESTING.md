@@ -73,6 +73,19 @@ The exit criteria in [PLAN.md](PLAN.md#milestone-plan) are the acceptance list. 
 
 ## Results
 
+### M9 the build paths mapped — 2026-10-09
+
+ML-095's P3 follow-up. On `main` at `759b4ad` with the change in the working tree; this machine, rustc 1.98.1.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The installed binary of `aa069a7` (`strings`) | 1,195 paths into `~/.cargo/registry/src`, one into the build folder (`…/src/sealwax-0.3.0/app` + `../tests/theme`, from `CARGO_MANIFEST_DIR`) | The finding |
+| The PKGBUILD's `prepare()` and `build()` run with cargo on a copy of the tracked working tree, `srcdir` a scratch folder, makepkg's `RUSTFLAGS` (`-C force-frame-pointers=yes`), 16:32–16:34 | Release build in 1 min 45 s; the binary: 0 matches of the build folder, 0 of `/home/fredrick`, 772 strings under `/usr/src/cargo/registry` | Pass |
+| `live-theme` headless (display 85), from the repository and from `/tmp` | 27/27 both | Pass |
+| CI, `SEALWAX_CI_DISPLAY=72 bash tools/ci.sh --ui`, until 16:47 | 1,481 passed, 0 failed, 98 ignored; 75 scripts, 7,503 of 7,503 steps; the hostile suite clean (60 cases, 272 s) | Pass |
+
+- **Not verified:** makepkg's own lint (`Package contains reference to $srcdir`) on a package build.
+
 ### M9 a move the store can't place syncs its target — 2026-10-09
 
 [ADR-015 amendment](DECISIONS.md#adr-015-amendment--a-move-the-store-cant-place-syncs-its-target-at-once-2026-10-09). On `main` at `eda25f3` with the change in the working tree; this machine, rustc 1.98.1.
