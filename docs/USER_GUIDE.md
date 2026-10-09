@@ -52,7 +52,7 @@ Outlook.com and Microsoft 365 accept only Microsoft sign-in for mail apps, so fo
 2. Sign in and approve Sealwax. Sealwax never sees your password; it keeps a sign-in token in your keyring. Your address is not put in the sign-in link.
 3. A work or school account may need its organization's admin to approve Sealwax first. The assistant then says "The sign-in was declined".
 
-**The client ID.** Sign in with Microsoft needs a Microsoft client ID: the registration that identifies Sealwax to Microsoft. A build of Sealwax can carry one (built in when it was compiled), or you can give your own in `config.toml`, which wins over a built-in one and applies as soon as you save the file:
+**The client ID.** Sign in with Microsoft needs a Microsoft client ID: the registration that identifies Sealwax to Microsoft. Sealwax's packages carry one, so with an installed package there is nothing to set up. A build from source has one only if it was given one when it was compiled; you can also give your own in `config.toml`, which wins over a built-in one and applies as soon as you save the file:
 
 ```toml
 [oauth.microsoft]

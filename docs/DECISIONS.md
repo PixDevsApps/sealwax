@@ -564,6 +564,12 @@ Built in M3 ([report](m3/status.md)).
 
 **Reason:** the restricted `https://mail.google.com/` scope needs a yearly security assessment (CASA, $500–$4,500 a year by Google's support page) and verification paperwork for a public release, and in testing status sign-ins expire after 7 days for at most 100 listed users; most Gmail users read their mail in Google's own app or web version (the user, 2026-10-07).
 
+### ADR-008 amendment — release packages carry the owner's Microsoft client ID (2026-10-09)
+
+**Status:** Accepted — user decision, 2026-10-09: "build my client ID into the release packages", answering the lead's question whether users must register their own.
+
+**Decision:** Sealwax's packages build in the owner's Microsoft client ID ("Sealwax (dev)", [OAUTH-SETUP.md](OAUTH-SETUP.md#as-registered-on-2026-10-05)), so Sign in with Microsoft works as installed. `tools/package-source.py` takes it from `SEALWAX_MICROSOFT_CLIENT_ID`, else from the builder's `~/.config/sealwax/config.toml` (`[oauth.microsoft] client_id`), checks it is a GUID, and writes it into the generated PKGBUILD under `.local/` only, whose `build()` exports it for `option_env!`; `--no-client-id` leaves it out, and the script says which source it used without printing the ID. The ID is never committed: the repository's `PKGBUILD.in` holds a placeholder. `config.toml`'s `client_id` still wins over the built-in one. Builds from source without one still say "Microsoft sign-in isn't available in this build of Sealwax yet." The ID is a public client's (PKCE, no secret); the protection is Microsoft's sign-in page. Work accounts in other organizations may still need their admin's consent until the publisher is verified (PLAN.md follow-up).
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.

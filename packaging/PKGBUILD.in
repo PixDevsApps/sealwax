@@ -1,6 +1,7 @@
 # Maintainer: Sealwax contributors
 # Generated from packaging/PKGBUILD.in by tools/package-source.py, which fills in the version,
-# the source checksum and SOURCE_DATE_EPOCH (the time of the packaged commit).
+# the source checksum, SOURCE_DATE_EPOCH (the time of the packaged commit) and the Microsoft
+# client ID to build in.
 pkgname=sealwax
 pkgver=@PKGVER@
 pkgrel=1
@@ -19,6 +20,9 @@ options=('!debug' '!lto')
 source=("sealwax-${pkgver}.tar.gz")
 sha256sums=('@SHA256@')
 export SOURCE_DATE_EPOCH=@SOURCE_DATE_EPOCH@
+# Sign in with Microsoft's client ID, built in so users need no registration of their own (a
+# public client's ID, not a secret; config.toml's client_id wins over it). Empty: none built in.
+_microsoft_client_id='@MICROSOFT_CLIENT_ID@'
 
 # The binary's panic locations name the files they're in: the build's folder and Cargo's
 # registry under the builder's home. Both are mapped to fixed names, so the package holds no
@@ -36,6 +40,9 @@ prepare() {
 build() {
   cd "$srcdir/sealwax-$pkgver"
   _remap_paths
+  if [[ -n $_microsoft_client_id ]]; then
+    export SEALWAX_MICROSOFT_CLIENT_ID=$_microsoft_client_id
+  fi
   cargo build --release --locked --offline -p sealwax
 }
 

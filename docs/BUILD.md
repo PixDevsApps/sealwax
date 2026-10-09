@@ -176,7 +176,7 @@ SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_
 
 `tools/ci.sh --testbed` runs every engine testbed suite, M4's `write_testbed` (the IMAP writes and S1's lost replies) and `ops_testbed` (the op runner: crash replay, the undo window, the randomized triage suite) included.
 
-**Sign in with Microsoft** needs the client ID in `config.toml` or at build time ([OAUTH-SETUP.md](OAUTH-SETUP.md#where-the-id-goes)). Two runners check it against a real account, which needs the user's authorization each time (AGENTS.md): `spikes/s5-oauth` (S5) and `cargo run -p sealwax-engine --example oauth_live -- <address> [--resign-in]` (ML-032), which uses scratch folders and a test app-id in the keyring and removes everything at the end. The user signs in in the browser, so tell them before starting a run.
+**Sign in with Microsoft** needs the client ID in `config.toml` or at build time ([OAUTH-SETUP.md](OAUTH-SETUP.md#where-the-id-goes)); packages made with `tools/package-source.py` build it in (2026-10-09). Two runners check it against a real account, which needs the user's authorization each time (AGENTS.md): `spikes/s5-oauth` (S5) and `cargo run -p sealwax-engine --example oauth_live -- <address> [--resign-in]` (ML-032), which uses scratch folders and a test app-id in the keyring and removes everything at the end. The user signs in in the browser, so tell them before starting a run.
 
 ## Packaging
 

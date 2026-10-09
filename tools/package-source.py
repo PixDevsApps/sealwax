@@ -2,13 +2,19 @@
 """Build a deterministic source tarball of the committed tree (HEAD) and a PKGBUILD for it.
 
 Writes .local/package/sealwax-<version>.tar.gz and .local/package/PKGBUILD from
-packaging/PKGBUILD.in, filling in the version, the tarball's SHA-256 and SOURCE_DATE_EPOCH
-(the commit time of HEAD). Uncommitted changes are not packaged; the script says so. Building
-the package (makepkg) and installing it need the user's authorization (AGENTS.md).
+packaging/PKGBUILD.in, filling in the version, the tarball's SHA-256, SOURCE_DATE_EPOCH (the
+commit time of HEAD) and the Microsoft client ID the package builds in: SEALWAX_MICROSOFT_CLIENT_ID
+if set, else the builder's ~/.config/sealwax/config.toml ([oauth.microsoft] client_id), else none
+(--no-client-id leaves it out). The ID is a public client's, not a secret, and never committed:
+only the generated PKGBUILD under .local/ holds it, and this script doesn't print it.
+Uncommitted changes are not packaged; the script says so. Building the package (makepkg) and
+installing it need the user's authorization (AGENTS.md).
 """
 import gzip
 import hashlib
+import os
 import pathlib
+import re
 import subprocess
 import sys
 import tomllib
@@ -18,6 +24,33 @@ root = pathlib.Path(__file__).resolve().parents[1]
 
 def git(*args: str) -> bytes:
     return subprocess.check_output(["git", *args], cwd=root)
+
+
+CLIENT_ID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+
+
+def client_id() -> tuple[str, str]:
+    """The Microsoft client ID to build in and where it came from; ("", why) for none."""
+    if "--no-client-id" in sys.argv[1:]:
+        return "", "left out (--no-client-id)"
+    from_env = os.environ.get("SEALWAX_MICROSOFT_CLIENT_ID", "").strip()
+    if from_env:
+        source, value = "SEALWAX_MICROSOFT_CLIENT_ID", from_env
+    else:
+        home = os.environ.get("XDG_CONFIG_HOME") or os.path.join(os.path.expanduser("~"), ".config")
+        config = pathlib.Path(home) / "sealwax" / "config.toml"
+        try:
+            value = tomllib.loads(config.read_text()).get("oauth", {}).get("microsoft", {}).get(
+                "client_id", ""
+            ).strip()
+        except (OSError, tomllib.TOMLDecodeError):
+            value = ""
+        if not value:
+            return "", "none (Sign in with Microsoft then needs config.toml's client_id)"
+        source = str(config)
+    if not CLIENT_ID.fullmatch(value):
+        raise SystemExit(f"the Microsoft client ID from {source} isn't a client ID (a GUID)")
+    return value.lower(), f"built in, from {source}"
 
 
 def main() -> int:
@@ -38,11 +71,13 @@ def main() -> int:
         compressed.write(tar)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
+    microsoft, microsoft_source = client_id()
     recipe = (root / "packaging" / "PKGBUILD.in").read_text()
     for placeholder, value in [
         ("@PKGVER@", version),
         ("@SHA256@", digest),
         ("@SOURCE_DATE_EPOCH@", str(epoch)),
+        ("@MICROSOFT_CLIENT_ID@", microsoft),
     ]:
         if placeholder not in recipe:
             raise SystemExit(f"{placeholder} is missing from packaging/PKGBUILD.in")
@@ -53,6 +88,7 @@ def main() -> int:
     print(f"commit {commit}")
     print(f"SHA256 {digest}")
     print(f"SOURCE_DATE_EPOCH {epoch}")
+    print(f"Microsoft client ID: {microsoft_source}")
     print(f"Build: cd {out} && makepkg --cleanbuild --force (--nodeps where Rust comes from rustup; -si also installs; an agent needs authorization)")
     return 0
 

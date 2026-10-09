@@ -38,7 +38,7 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 - At runtime: `gtk4` 4.18 or later, `libadwaita` 1.9 or later, `webkitgtk-6.0` 2.52 or later, `sqlite` 3.43 or later, `glib2`, `gcc-libs`, `glibc` (pacman installs them with the package).
 - Optional: a Secret Service such as `gnome-keyring` (without one, passwords and tokens are kept in memory until Sealwax quits, and a banner says so); hunspell dictionaries for spell checking.
 - To build: Rust 1.92 or later, `base-devel`, `pkgconf`, `git` and Python 3.11 or later.
-- Sign in with Microsoft needs a Microsoft client ID, built in or set in `config.toml` ([OAUTH-SETUP.md](OAUTH-SETUP.md)).
+- Sign in with Microsoft works as installed: the package carries Sealwax's Microsoft client ID. A build from source needs one ([OAUTH-SETUP.md](OAUTH-SETUP.md#where-the-id-goes)).
 
 ## Installing and upgrading
 
