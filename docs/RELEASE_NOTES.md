@@ -1,6 +1,6 @@
 # Sealwax 1.0.0 release notes (draft)
 
-> **Draft, 2026-10-09.** Sealwax 1.0.0 isn't released: the version stays 0.3.0 until the owner's sign-off (ML-096), after M8's gate and the rest of M9. The parts marked *(at the sign-off)* are filled in then, from what was actually run. Nothing here is a measurement made for this page.
+> **Draft, 2026-10-09.** Sealwax 1.0.0 isn't released: 0.4.0, the first public release, came out on 2026-10-09 ([CHANGELOG.md](../CHANGELOG.md)), and 1.0.0 follows the owner's sign-off (ML-096), after M8's gate and the rest of M9. The parts marked *(at the sign-off)* are filled in then, from what was actually run. Nothing here is a measurement made for this page.
 
 Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and treating every message as hostile. 1.0.0 is its first stable release.
 
@@ -42,7 +42,7 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 
 ## Installing and upgrading
 
-Build the Arch package from the repository with its PKGBUILD ([INSTALL.md](../INSTALL.md)). Coming from 0.3.0, the first start moves the mail store to its current format (schema v12) automatically; the move is one way, so an older Sealwax can't open the store afterwards.
+Install the release's package with one command, or build the Arch package from the repository ([INSTALL.md](../INSTALL.md)). Coming from 0.3.0, the first start moves the mail store to its current format (schema v12) automatically; the move is one way, so an older Sealwax can't open the store afterwards.
 
 ## Known limitations
 

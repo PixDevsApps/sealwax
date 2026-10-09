@@ -1,74 +1,135 @@
 # Installing Sealwax
 
-Synced: 2026-10-07
+Synced: 2026-10-09
 
-Sealwax is pre-1.0 (version 0.3.0). There is no prebuilt package and no AUR package yet: you build an Arch package from the source with the repository's PKGBUILD, and pacman installs it. [Verified so far](#what-has-been-verified) says which of these steps have been run, and on what.
+Sealwax is an email app for [Omarchy](https://omarchy.org). This page shows how to install it, keep it up to date and remove it again. You don't need to know anything about programming: follow the steps in order.
 
-- [What you need](#what-you-need)
-- [Install the Arch package](#install-the-arch-package)
-- [Update](#update)
-- [From source, for development](#from-source-for-development)
-- [Uninstalling](#uninstalling)
+- [Before you start](#before-you-start)
+- [Install Sealwax](#install-sealwax)
+- [Start Sealwax and add your email](#start-sealwax-and-add-your-email)
+- [Updates](#updates)
+- [Uninstall Sealwax](#uninstall-sealwax)
+- [If something goes wrong](#if-something-goes-wrong)
+- [For developers: build from source](#for-developers-build-from-source)
 - [What has been verified](#what-has-been-verified)
 
-After installing, the [user guide](docs/USER_GUIDE.md) takes over: first start, adding accounts, and everything else.
+## Before you start
 
-## What you need
+You need:
 
-**A system:** Arch Linux on x86_64. Sealwax is made for Omarchy 4; on other desktops it uses its own light and dark palettes (that is tested headless only). The PKGBUILD builds for x86_64 only.
+- **A computer with Omarchy.** Sealwax also works on plain Arch Linux, on a normal 64-bit PC.
+- **An internet connection.**
+- **Your computer's password.** Installing asks for it once.
 
-**At runtime** (pacman installs these with the package):
+**How to use a command from this page.** Some steps show a command in a grey box. To run it:
 
-| Package | Why | Version the build needs |
-| --- | --- | --- |
-| `gtk4` | The interface | 4.18 or later |
-| `libadwaita` | The interface | 1.9 or later |
-| `webkitgtk-6.0` | Showing HTML mail and the composer | 2.52 or later |
-| `sqlite` | The mail store (with FTS5 for search) | 3.43 or later |
-| `glib2`, `gcc-libs`, `glibc` | Base libraries | |
+1. Open a terminal: press **Super + Return**. (Super is the key with the Windows logo.)
+2. Copy the command from this page, and paste it into the terminal with **Super + V**.
+3. Press **Enter**.
+4. If it asks for your password, type your computer's password and press **Enter**. Nothing appears on the screen while you type; that's normal.
+5. If it asks a question such as `Proceed with installation? [Y/n]`, press **Enter** to say yes.
 
-The versions are the build's minimums (the GTK, libadwaita and WebKitGTK bindings' feature levels in `Cargo.toml`, and the store's check for SQLite).
+## Install Sealwax
 
-**Optional:**
+### With one command (easiest)
 
-- **a Secret Service** that keeps passwords and sign-in tokens: `gnome-keyring` (Omarchy installs it). Without one, Sealwax keeps them in memory until it quits and says so in a banner;
-- **hunspell dictionaries** for spell checking in the composer, such as `hunspell-en_us`.
-
-**To build:** `git`, Python 3.11 or later (for `tools/package-source.py`), `base-devel` (makepkg), `pkgconf`, and Rust 1.92 or later with Cargo, from Arch's `rust` package or from rustup. The build downloads Sealwax's Rust dependencies (crates) from crates.io.
-
-**For Sign in with Microsoft** (Outlook.com, Microsoft 365): a Microsoft client ID. `tools/package-source.py` builds one into the package: `SEALWAX_MICROSOFT_CLIENT_ID` if you export it, else your `~/.config/sealwax/config.toml`'s `client_id`; it says which, and `--no-client-id` builds none. Without one you can add it after installing ([user guide](docs/USER_GUIDE.md#outlookcom-hotmail-and-microsoft-365-sign-in-with-microsoft), [OAUTH-SETUP.md](docs/OAUTH-SETUP.md)).
-
-## Install the Arch package
-
-1. **Get the source** (the repository is private for now):
-   ```sh
-   git clone https://github.com/PixDevsApps/sealwax.git
-   cd sealwax
-   ```
-2. **Make the package's source and PKGBUILD:**
-   ```sh
-   python3 tools/package-source.py
-   ```
-   It writes `.local/package/sealwax-<version>.tar.gz`, a tarball of the committed tree (HEAD), and `.local/package/PKGBUILD` from `packaging/PKGBUILD.in`, with the version, the tarball's SHA-256 and `SOURCE_DATE_EPOCH` (the commit's time) filled in. Uncommitted changes aren't packaged; the script warns about them.
-3. **Build and install:**
-   ```sh
-   cd .local/package
-   makepkg --cleanbuild --force --nodeps -si     # Rust from rustup's own installer, in ~/.cargo
-   makepkg --cleanbuild --force -si              # Rust from Arch's rust or rustup package
-   ```
-   makepkg fetches the crates (`cargo fetch --locked`), builds Sealwax (`cargo build --release --locked --offline -p sealwax`), runs the tests of the crates without a user interface (`sealwax-domain`, `sealwax-infrastructure`, `sealwax-engine`; the app's own self-tests need a display, which a package build doesn't have) and makes the package. `-i` then installs it with pacman, which asks for your password through `sudo`; `-s` installs missing dependencies first (with `--nodeps` it has nothing to do).
-4. **Start Sealwax** from the app launcher, or with `sealwax` in a terminal, and add an account ([user guide](docs/USER_GUIDE.md#first-start-and-adding-an-account)).
-
-**Why `--nodeps` with rustup's installer.** The PKGBUILD lists `rust` and `cargo` as build dependencies. Rust installed by rustup's own script (in `~/.cargo`, as on the development machine) isn't a pacman package, so makepkg's check of the build dependencies fails, or `-s` would install Arch's `rust` beside it. Arch's `rust` package, and its `rustup` package (which provides `rust` and `cargo`, per `pacman -Si rustup`), need no `--nodeps`. `--nodeps` skips makepkg's dependency checks only: when `-i` installs the package, pacman still checks the runtime dependencies (makepkg doesn't pass `--nodeps` on to `pacman -U`; read in `/usr/bin/makepkg` on the development machine, 2026-10-07).
-
-**Why the PKGBUILD turns off LTO** (`options=('!debug' '!lto')`). Arch's `/etc/makepkg.conf` turns on link-time optimisation for every package (`lto` in `OPTIONS`, `LTOFLAGS="-flto=auto"`). With it, makepkg compiled the C code inside the `ring` crate (TLS cryptography) to GCC's LTO bytecode, which Rust's linker on x86_64 Linux (rust-lld) can't read, and the build failed at the final link with `undefined symbol: ring_core_0_17_14__OPENSSL_cpuid_setup` and every other function of ring's C code. Sealwax's own release build still uses Rust's thin LTO (`[profile.release]` in `Cargo.toml`). `!debug` because the release build carries no debug information, so a `-debug` package would be empty.
-
-**If the install step was missed** (makepkg built the package but `sudo` timed out, or you left out `-i`), install the package makepkg made:
+This downloads the newest Sealwax from GitHub and installs it. Run this command in a terminal (see [how](#before-you-start)); it's one long line:
 
 ```sh
-cd .local/package
-sudo pacman -U sealwax-0.3.0-1-x86_64.pkg.tar.zst    # the version in the name follows Cargo.toml
+curl -L -o /tmp/sealwax.pkg.tar.zst https://github.com/PixDevsApps/sealwax/releases/latest/download/sealwax-x86_64.pkg.tar.zst && sudo pacman -U /tmp/sealwax.pkg.tar.zst
 ```
+
+When it's done, the terminal shows the prompt again, and you can close it.
+
+### Or download the file yourself
+
+1. Open the [releases page](https://github.com/PixDevsApps/sealwax/releases).
+2. Under the newest release, open **Assets** and click the file whose name starts with `sealwax-` and ends with `-x86_64.pkg.tar.zst`. Your browser saves it in your Downloads folder.
+3. In a terminal, type `sudo pacman -U ~/Downloads/` and the file's name (press **Tab** after typing `~/Downloads/sealwax` to have the rest filled in), then press **Enter**.
+
+### Coming later: from the Omarchy menu
+
+Sealwax is going into the AUR, where Omarchy installs apps from (Omarchy menu → **Install** → **AUR**). Installed from there, it will update along with the rest of Omarchy. The AUR isn't taking new accounts at the moment (October 2026), so this has to wait; this page will say when it's ready.
+
+## Start Sealwax and add your email
+
+1. Press **Super + Alt + Space** to open the app menu, type `Sealwax`, and press **Enter**.
+2. Click **Add an account** and type your email address. Sealwax finds your mail provider's settings by itself.
+3. Type your email password, or click **Sign in with Microsoft** for Outlook.com, Hotmail and Microsoft 365 addresses.
+
+The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and writing mail to rules and keyboard shortcuts. A copy comes with Sealwax, in `/usr/share/doc/sealwax/USER_GUIDE.md`.
+
+## Updates
+
+**To update, run the [install command](#with-one-command-easiest) again.** It always fetches the newest Sealwax and installs it over the one you have. Sealwax doesn't update by itself yet; once it's in the AUR, Omarchy's own updates will do it for you.
+
+**After an update, restart Sealwax:** click its window and press **Ctrl + Q**, then start it again. Closing the window isn't enough, because Sealwax keeps running in the background to check for new mail.
+
+Your mail, accounts and settings stay as they are. When a new version needs to change how your mail is stored on the computer, it does that by itself the first time it starts. [CHANGELOG.md](CHANGELOG.md) says what's new in each version.
+
+Sealwax never checks for updates by itself and never contacts anything but your mail provider: new versions come only when you install them.
+
+## Uninstall Sealwax
+
+### 1. Remove your accounts in Sealwax (recommended)
+
+This deletes the passwords Sealwax saved and the copy of your mail on this computer. **Your mail stays on your mail provider's server**: you can still read it on the web or in another app.
+
+1. In Sealwax, open the main menu: the button with three lines (☰) at the top of the message list.
+2. Choose **Remove Account**, pick the account and confirm. Do this for each account.
+3. In the same menu, if **Start Sealwax at Login** has a check mark, click it to turn it off.
+4. Quit Sealwax: press **Ctrl + Q**.
+
+**Careful with POP3 accounts** whose settings remove mail from the server: for those, the mail on this computer may be your only copy. Move what you want to keep somewhere else first.
+
+### 2. Remove the app
+
+**From the Omarchy menu:** press **Super + Space**, choose **Remove**, then **Package**. Type `sealwax`, select it, and press **Enter**. Type your password when asked.
+
+**Or with a command:**
+
+```sh
+sudo pacman -R sealwax
+```
+
+### 3. Delete Sealwax's leftover files (optional)
+
+Removing the app leaves your Sealwax settings and its copy of your mail on the computer, in case you install it again. To delete them too, run:
+
+```sh
+rm -rf ~/.config/sealwax ~/.local/share/sealwax ~/.local/state/sealwax ~/.cache/sealwax
+```
+
+This deletes only Sealwax's own files on this computer, never the mail on your provider's server. The [user guide](docs/USER_GUIDE.md#removing-sealwax-and-its-data) lists every file and setting Sealwax can leave behind.
+
+## If something goes wrong
+
+- **"error: could not open file" or "no such file":** the download didn't finish. Check your internet connection and run the command again.
+- **Nothing appears when you type your password:** that's normal. Type it and press **Enter**.
+- **Sealwax still looks like the old version after an update:** quit it with **Ctrl + Q** in its window and start it again.
+- **Something else:** open an [issue on GitHub](https://github.com/PixDevsApps/sealwax/issues) and say what you did and what you saw. Leave out your email address and passwords.
+
+## For developers: build from source
+
+**What you need:** Arch Linux on x86_64; `git`, Python 3.11 or later, `base-devel` (makepkg), `pkgconf`, and Rust 1.92 or later with Cargo (Arch's `rust` package, or rustup). At runtime, pacman installs `gtk4` 4.18 or later, `libadwaita` 1.9 or later, `webkitgtk-6.0` 2.52 or later, `sqlite` 3.43 or later, `glib2`, `gcc-libs` and `glibc`. Optional: a Secret Service such as `gnome-keyring` for passwords and tokens (without one, Sealwax keeps them in memory until it quits, and says so); hunspell dictionaries such as `hunspell-en_us` for spell checking.
+
+**Build and install the Arch package:**
+
+```sh
+git clone https://github.com/PixDevsApps/sealwax.git
+cd sealwax
+python3 tools/package-source.py
+cd .local/package
+makepkg --cleanbuild --force -si              # Rust from Arch's rust or rustup package
+makepkg --cleanbuild --force --nodeps -si     # Rust from rustup's own installer, in ~/.cargo
+```
+
+`tools/package-source.py` writes `.local/package/sealwax-<version>.tar.gz`, a tarball of the committed tree (HEAD; uncommitted changes aren't packaged, and it warns about them), and `.local/package/PKGBUILD` from `packaging/PKGBUILD.in`, with the version, the tarball's SHA-256 and `SOURCE_DATE_EPOCH` (the commit's time) filled in. makepkg fetches the crates (`cargo fetch --locked`), builds Sealwax (`cargo build --release --locked --offline -p sealwax`), runs the tests of the crates without a user interface (the app's self-tests need a display) and makes the package; `-i` installs it with pacman, `-s` installs missing dependencies first. The package you build is called `sealwax`, like the release's; the coming AUR package `sealwax-bin` replaces it and the other way round.
+
+- **Sign in with Microsoft** needs a Microsoft client ID. `tools/package-source.py` builds one in: `SEALWAX_MICROSOFT_CLIENT_ID` if you export it, else your `~/.config/sealwax/config.toml`'s `client_id`; it says which, and `--no-client-id` builds none. Without one, add it after installing ([OAUTH-SETUP.md](docs/OAUTH-SETUP.md)). The release packages carry the project's ID.
+- **Why `--nodeps` with rustup's installer:** Rust installed by rustup's own script isn't a pacman package, so makepkg's check of the build dependencies fails. `--nodeps` skips only makepkg's checks; pacman still checks the runtime dependencies when it installs the package.
+- **Why the PKGBUILD turns off LTO** (`options=('!debug' '!lto')`): with Arch's default LTO flags, makepkg compiles the C code inside the `ring` crate to GCC's LTO bytecode, which Rust's linker can't read, and the final link fails. Sealwax's release build still uses Rust's own thin LTO. `!debug` because the release build carries no debug information.
+- **No paths of your machine:** the PKGBUILD maps the build folder and Cargo's folder in your home to fixed names (`/usr/src/sealwax`, `/usr/src/cargo`), so the binary carries no path of yours.
 
 **What the package installs:**
 
@@ -76,76 +137,35 @@ sudo pacman -U sealwax-0.3.0-1-x86_64.pkg.tar.zst    # the version in the name f
 | --- | --- |
 | `/usr/bin/sealwax` | The program |
 | `/usr/share/applications/io.github.pixdevsapps.Sealwax.desktop` | The launcher entry; it also declares Sealwax a `mailto:` handler, which becomes the default only when you choose it in Sealwax |
-| `/usr/share/dbus-1/services/io.github.pixdevsapps.Sealwax.service` | D-Bus activation: launchers start Sealwax through the session bus, and so does `sealwax` typed with no Sealwax running |
-| `/usr/share/icons/hicolor/*/apps/io.github.pixdevsapps.Sealwax.png`, `…/scalable/apps/io.github.pixdevsapps.Sealwax.svg` | The icon (16 to 512 px, and scalable) |
+| `/usr/share/dbus-1/services/io.github.pixdevsapps.Sealwax.service` | D-Bus activation |
+| `/usr/share/icons/hicolor/*/apps/io.github.pixdevsapps.Sealwax.png`, `…/scalable/apps/io.github.pixdevsapps.Sealwax.svg` | The icon |
 | `/usr/share/licenses/sealwax/LICENSE` | The MIT license |
-| `/usr/share/doc/sealwax/README.md`, `INTEGRATIONS.md` | Docs |
+| `/usr/share/doc/sealwax/` | README, INSTALL, the user guide and INTEGRATIONS |
 
-The package adds only these files, and nothing in your home folder changes until Sealwax runs. Its key binding and Omarchy menu entries are yours to add ([INTEGRATIONS.md](docs/INTEGRATIONS.md#hyprland)).
+Nothing in your home folder changes until Sealwax runs. Its key binding and Omarchy menu entries are yours to add ([INTEGRATIONS.md](docs/INTEGRATIONS.md#hyprland)).
 
-**No paths of your machine:** the PKGBUILD maps the folder you build in and Cargo's folder in your home to fixed names (`/usr/src/sealwax`, `/usr/src/cargo`), so the binary's panic messages carry no path of yours. Packages built before 2026-10-09 made makepkg warn "Package contains reference to $srcdir" for this.
+**Update a source build:** `git pull`, then the last three commands again, then quit Sealwax with Ctrl+Q and start it again.
 
-## Update
-
-```sh
-cd sealwax
-git pull
-python3 tools/package-source.py
-cd .local/package && makepkg --cleanbuild --force --nodeps -si    # without --nodeps for Arch's rust or rustup
-```
-
-Then **quit the running Sealwax** with Ctrl+Q in its window (or `pkill -TERM -x sealwax`) and start it again. Closing the window isn't enough: Sealwax keeps running in the background, still the old version, until it quits.
-
-Sealwax updates its store's format by itself when a new version opens it, so there is nothing to migrate by hand. An older version refuses a store that a newer one has updated, and leaves it untouched.
-
-## From source, for development
+**Run from the source tree:** `cargo build` makes a debug build (`target/debug/sealwax`, app-id `io.github.pixdevsapps.Sealwax.Devel`, which runs beside an installed Sealwax with its own keyring items), and `bash tools/ci.sh` runs formatting, Clippy, the tests and the build. Every build uses the same folders as the installed Sealwax (`~/.config/sealwax/`, `~/.local/share/sealwax/`), so a debug build started plainly finds your real accounts; give it scratch folders to keep it away from your mail:
 
 ```sh
-cargo build                 # a debug build: target/debug/sealwax
-cargo build --release       # a release build: target/release/sealwax
-bash tools/ci.sh            # formatting, Clippy, the tests and the build
+scratch=$PWD/.local/dev-home
+XDG_CONFIG_HOME=$scratch/config XDG_DATA_HOME=$scratch/data \
+  XDG_STATE_HOME=$scratch/state XDG_CACHE_HOME=$scratch/cache \
+  RUST_LOG=debug target/debug/sealwax
 ```
 
-[docs/BUILD.md](docs/BUILD.md) has the toolchain, every command, the test suites and the mail testbed; [docs/TESTING.md](docs/TESTING.md) the tests.
-
-What to know before you run a build from the source tree:
-
-- **A debug build** uses the app-id `io.github.pixdevsapps.Sealwax.Devel`: it runs beside an installed Sealwax, has its own keyring items (so it has none of the installed one's passwords) and can't be the default mail app or use D-Bus activation. In debug builds only, `SEALWAX_TEST_CA` and `SEALWAX_SECRETS=memory` change trust and the keyring for testing ([BUILD.md](docs/BUILD.md#accounts-in-development-builds)).
-- **Every build uses the same folders** as the installed Sealwax: `~/.config/sealwax/` with your `accounts.toml`, and your store under `~/.local/share/sealwax/`. A debug build started plainly finds your real accounts, without their passwords, and opens the store the installed Sealwax may have open at the same time in the background, which is not tested. To keep a development build away from your mail, give it scratch folders:
-  ```sh
-  scratch=$PWD/.local/dev-home
-  XDG_CONFIG_HOME=$scratch/config XDG_DATA_HOME=$scratch/data \
-    XDG_STATE_HOME=$scratch/state XDG_CACHE_HOME=$scratch/cache \
-    RUST_LOG=debug target/debug/sealwax
-  ```
-  Agents and the self-tests run the app only through `tools/headless.sh`, which does this and more.
-- **A release build** has the installed app-id. With the package installed, `target/release/sealwax` doesn't run itself: with no Sealwax running, it asks the session bus to start the installed one and hands over; with one running, it hands its command line to that one. Run release builds from the source tree on a machine without the package, or uninstall it first.
-- **Sign in with Microsoft** needs a client ID: put it in `config.toml`, or build it in by exporting `SEALWAX_MICROSOFT_CLIENT_ID` before `cargo build` ([OAUTH-SETUP.md](docs/OAUTH-SETUP.md#where-the-id-goes)). Never commit it.
-
-## Uninstalling
-
-1. In Sealwax, remove your accounts first if you want their local mail and keyring items gone, and turn off Start Sealwax at Login if it is on ([user guide](docs/USER_GUIDE.md#removing-sealwax-and-its-data)).
-2. Quit Sealwax with Ctrl+Q.
-3. Remove the package:
-   ```sh
-   sudo pacman -R sealwax
-   ```
-
-pacman removes only the files the package installed. Your settings, your mail store and the keyring items stay until you delete them: the user guide's [Removing Sealwax and its data](docs/USER_GUIDE.md#removing-sealwax-and-its-data) lists them and how.
+A release build from the source tree has the installed app-id: with the package installed, it hands over to the installed Sealwax instead of running itself. [docs/BUILD.md](docs/BUILD.md) has the toolchain, every command, the test suites, the mail testbed and how a release is made; [docs/TESTING.md](docs/TESTING.md) the tests.
 
 ## What has been verified
 
 | Step | Verified? | How, and when |
 | --- | --- | --- |
-| `python3 tools/package-source.py` | **Yes** | The owner's soak builds on 2026-10-07 built the packages it made for `46d9bd8` and `bb23c4e`; the installed package's build date is `bb23c4e`'s commit time, which only the script's PKGBUILD sets |
-| `makepkg --cleanbuild --force --nodeps -si`, Rust from rustup's installer | **Yes, after a fix** | On `46d9bd8` the build failed to link (makepkg's LTO, above). On `bb23c4e`, which turned LTO off, the owner's build linked, makepkg's `check()` passed (domain 372 and 17 tests, engine 175 plus its suites, infrastructure 195; none failed) and `sealwax-0.3.0-1-x86_64.pkg.tar.zst` was made (09:34–09:37). Its install step stopped because `sudo` timed out waiting for the password |
-| Installing the built package | **Yes** | pacman's database on the development machine lists `sealwax 0.3.0-1`, installed 2026-10-07 09:49:59 CEST, its build date `bb23c4e`'s commit time (the PKGBUILD's `SOURCE_DATE_EPOCH`); which command installed it (`sudo pacman -U` or makepkg again) isn't recorded. Read with `pacman -Qi sealwax` while writing this page |
-| Starting the installed Sealwax through D-Bus activation | **Yes** | A bus-started Sealwax (`dbus-:1.1-io.github.pixdevsapps.Sealwax@0.service`, the release app-id) running since 09:50:17 CEST, and its log in the user journal (`journalctl --user -t sealwax`; lines counted, not read). Read with `systemctl --user` while writing this page |
+| Building the package (`tools/package-source.py`, then makepkg with Rust from rustup's installer) | **Yes** | The owner's builds, the last on 2026-10-09 for 0.4.0; makepkg's `check()` passes |
+| Installing a built package with `sudo pacman -U` | **Yes** | The owner's machine, on every package since 2026-10-07; the installed binary compared byte for byte with the build's |
+| Updating over an earlier package | **Yes** | The same installs, each over the one before; the store's format changes by itself on the first start |
+| The install command (the download from the latest release) | Not verified | |
+| The AUR package `sealwax-bin` and updates through Omarchy's Update | Not published yet | The AUR closed new accounts on 2026-10-09. Omarchy's update runs `yay -Sua`, which updates AUR packages (read in `/usr/share/omarchy/bin/omarchy-update-aur-pkgs`, 2026-10-09) |
 | Building with Arch's `rust` or `rustup` package (without `--nodeps`) | Not verified | |
-| Installing on a clean system with only the listed dependencies | Not verified | The clean-container install test is ML-095, after M8's gate |
-| Updating over an earlier package | Not verified | |
-| The client ID built in by `tools/package-source.py` (2026-10-09) | **Partly** | The owner's makepkg build of `c72cdc3` (from `config.toml`'s ID) made a package whose binary carries it, installed with `pacman -U`; Sign in with Microsoft from an installed package without `config.toml`'s ID isn't verified yet |
-| `sudo pacman -R sealwax` | Not verified | |
-| `cargo build` and `cargo build --release` | **Yes** | Every CI run builds the workspace (`tools/ci.sh`); the release build is what makepkg runs |
-
-Running a development build with scratch XDG folders as above is what `tools/headless.sh` does for every self-test; the command line above, run by hand on the live desktop, is not tried.
+| Installing on a clean system with only the listed dependencies | Not verified | The clean-container install test comes before 1.0 |
+| Uninstalling with `sudo pacman -R` | Not verified | |

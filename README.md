@@ -4,9 +4,21 @@ A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 an
 
 ![Sealwax in the matte-black theme, showing a conversation of fictional mail](tools/progress/public/m6-reply-conversation-matte-black-square-2026-10-06.png)
 
+## Install
+
+Open a terminal (**Super + Return** on Omarchy), paste this line and press **Enter**:
+
+```sh
+curl -L -o /tmp/sealwax.pkg.tar.zst https://github.com/PixDevsApps/sealwax/releases/latest/download/sealwax-x86_64.pkg.tar.zst && sudo pacman -U /tmp/sealwax.pkg.tar.zst
+```
+
+Run the same line again to update. To uninstall: `sudo pacman -R sealwax`. An AUR package, which Omarchy's own updates will keep current, follows when the AUR takes new accounts again.
+
+[INSTALL.md](INSTALL.md) explains every step in plain words: installing, starting, updating and uninstalling, and what to do if something goes wrong. [What's new](CHANGELOG.md) lists each release.
+
 ## Status
 
-**Pre-1.0: version 0.3.0, with milestones M0 to M8 built.** M0–M7 are approved; M8 (POP3 accounts) is built and works end to end on the local test mail servers, and its gate follows the owner's 1–2 weeks of daily use with real accounts. M9, the work toward 1.0, is under way: accessibility, the security review and fuzzing and this documentation are done; UI polish is done as far as the owner has asked (account names and colours, Edit Account, folding accounts, resizable panes, the composer docked in the window, folders and rules), and the [1.0 release notes](docs/RELEASE_NOTES.md) are drafted; the performance pass, the rest of the packaging and the sign-off follow the owner's daily use. Testing so far is on local test servers (Dovecot, Stalwart, Mailpit), plus Microsoft sign-in checked live on one Outlook.com account; real providers come with the owner's daily use.
+**Version 0.4.0, the first public release.** The features below are built and tested, and its author reads their own mail with it every day; 1.0 follows a longer period of daily use with real accounts. Testing so far is on local test mail servers (Dovecot, Stalwart, Mailpit), with Microsoft sign-in checked live on an Outlook.com account and the author's own accounts in daily use; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) are drafted.
 
 ## Features
 
@@ -26,16 +38,13 @@ Not supported: Gmail and Sign in with Google (use Gmail's own app or web version
 
 ## Requirements
 
-Arch Linux on x86_64 with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally hunspell dictionaries for spell checking. Omarchy 4 is the desktop it is made for. Building needs Rust 1.92+.
-
-## Install
-
-Build the Arch package from this repository with its PKGBUILD: [INSTALL.md](INSTALL.md).
+Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally hunspell dictionaries for spell checking. Omarchy 4 is the desktop it is made for. Building needs Rust 1.92+.
 
 ## Documentation
 
 - [User guide](docs/USER_GUIDE.md): setup (Microsoft sign-in, app passwords, POP3), reading, writing, search, notifications, every keyboard shortcut, theming, the settings files, privacy and troubleshooting
-- [Install](INSTALL.md): the package, building from source, uninstalling
+- [Install](INSTALL.md): installing, updating and uninstalling, in plain words; building from source
+- [What's new](CHANGELOG.md): each release
 - [Release notes for 1.0.0](docs/RELEASE_NOTES.md) (a draft until the sign-off)
 - [Security](docs/SECURITY.md): the threat model, the rules and the known limitations
 - [Integrations](docs/INTEGRATIONS.md): Omarchy, Hyprland key bindings and menu entries, providers

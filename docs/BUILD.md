@@ -181,7 +181,8 @@ SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_
 ## Packaging
 
 `packaging/` contains:
-- `PKGBUILD.in`;
+- `PKGBUILD.in`, the package built from source (`sealwax`);
+- `aur/sealwax-bin/PKGBUILD.in`, the AUR package that installs a release's prebuilt files (ADR-021);
 - the desktop file `io.github.pixdevsapps.Sealwax.desktop` (`DBusActivatable=true`, `MimeType=x-scheme-handler/mailto;`, `Exec=sealwax %u`);
 - the D-Bus service file (`sealwax --gapplication-service`);
 - the icon under `packaging/icons/hicolor/`: PNGs from 16 to 512 px of the wax seal in `packaging/icons/source/sealwax-seal.png` (2026-10-08; the envelope tile's SVGs before). `python3 tools/make-icons.py packaging/icons` regenerates them with ImageMagick (`magick`), sharpening the sizes up to 64 px, and the scalable SVG that carries the 512 px PNG.
@@ -189,3 +190,15 @@ SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_
 `python3 tools/package-source.py` writes a deterministic tarball of HEAD and a filled-in PKGBUILD to `.local/package/` (version, SHA-256, `SOURCE_DATE_EPOCH` from the commit). Building it (`cd .local/package && makepkg --cleanbuild --force`) is authorized for M1 as a build without install; installing needs its own authorization. Where Rust comes from rustup (as on the development machine, in `~/.cargo`), pacman can't see `rust` and `cargo`, so add `--nodeps`, as Stet does; pacman checks the runtime dependencies again at install time. The PKGBUILD turns off makepkg's `lto` option: with Arch's default `OPTIONS=(… lto)` makepkg compiles ring's C code to GCC LTO bytecode, which Rust's default linker (rust-lld) can't read, and the link fails with ring's `ring_core_*` symbols undefined (found by the user's soak build, 2026-10-07). Its `build()` and `check()` add `--remap-path-prefix` to `RUSTFLAGS`, mapping the build folder (`$srcdir`) to `/usr/src/sealwax` and Cargo's home (`$CARGO_HOME`, else `~/.cargo`) to `/usr/src/cargo`, so the panic locations in the binary name no path of the machine that built it (2026-10-09; makepkg had warned "Package contains reference to $srcdir"). The app keeps no `CARGO_MANIFEST_DIR` path either: the self-tests find `tests/theme/` beside the script they run. The user's install: `cd .local/package && makepkg --cleanbuild --force --nodeps -si`.
 
 A command line with no Sealwax running asks the session bus to start the installed service and hands its `mailto:` links to it. Development builds (`.Devel`) have no service file and start directly; run `target/debug/sealwax` for logs.
+
+## Making a release
+
+Releases follow [ADR-021](DECISIONS.md#adr-021--a-public-repository-releases-on-github-and-the-aur-2026-10-09): a tag `vX.Y.Z`, a GitHub release with the package, and the AUR package `sealwax-bin`, which Omarchy's Update installs for everyone who has it. A plain push reaches no one's computer.
+
+1. **Version and notes:** set `version` in `Cargo.toml`'s `[workspace.package]` (then `cargo metadata --format-version 1 >/dev/null` and the same with `--manifest-path fuzz/Cargo.toml` update both lock files), add a `## X.Y.Z — date` section to `CHANGELOG.md` in plain words, and update the version in README, INSTALL and the user guide where they name it. Commit, run `bash tools/ci.sh --ui`, then tag: `git tag -a vX.Y.Z -m "Sealwax X.Y.Z"` and `git push origin main vX.Y.Z`.
+2. **Build:** `python3 tools/release.py build` runs `tools/package-source.py` and makepkg on the tagged commit (adding `--nodeps` where Rust isn't a pacman package), then writes to `.local/release/X.Y.Z/`: the package `sealwax-X.Y.Z-1-x86_64.pkg.tar.zst`, the same file as `sealwax-x86_64.pkg.tar.zst` (the name INSTALL.md's download command asks for through `releases/latest`), `sealwax-X.Y.Z-x86_64.tar.gz` (the package's `usr/` files, owned by root, in name order, for `sealwax-bin`) and `SHA256SUMS`.
+3. **GitHub:** `python3 tools/release.py github` creates the release `vX.Y.Z` with those files and `CHANGELOG.md`'s section as its notes (`gh`, the tag already on GitHub).
+4. **AUR:** `python3 tools/release.py aur` clones or pulls `ssh://aur@aur.archlinux.org/sealwax-bin.git` into `.local/aur/sealwax-bin/`, writes its PKGBUILD from the template with the version and the tarball's SHA-256 (checking that its `depends` and `optdepends` match `packaging/PKGBUILD.in`), downloads the release's tarball to verify the sum (`makepkg --verifysource`), writes `.SRCINFO` and pushes. It needs the owner's AUR account with their SSH key; `SEALWAX_AUR_SSH_KEY=<key file>` names the key when ssh doesn't find it. (Not run yet: the AUR closed new accounts on 2026-10-09.)
+
+Steps 3 and 4 publish: an agent runs them only on the owner's word.
+

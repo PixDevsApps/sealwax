@@ -2,7 +2,7 @@
 
 Synced: 2026-10-09
 
-This guide is for people who use Sealwax every day. It describes Sealwax 0.3.0 as built through M8 (POP3 accounts), before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
+This guide is for people who use Sealwax every day. It describes Sealwax 0.4.0, before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
 
 - [Installing](#installing)
 - [First start and adding an account](#first-start-and-adding-an-account)
@@ -22,7 +22,7 @@ This guide is for people who use Sealwax every day. It describes Sealwax 0.3.0 a
 
 ## Installing
 
-[INSTALL.md](../INSTALL.md) has the steps: building and installing the Arch package from the PKGBUILD, building from source for development, the runtime dependencies, and uninstalling.
+[INSTALL.md](../INSTALL.md) explains every step in plain words: installing Sealwax with one command, updating and uninstalling it, and building it from source.
 
 Sealwax is made for Omarchy 4 (Arch Linux, Hyprland), and also runs on other Linux desktops with GTK 4 and a Secret Service such as gnome-keyring.
 
@@ -560,7 +560,7 @@ Sealwax writes a plain-text log of what it does, never with message content, add
   systemctl --user unset-environment RUST_LOG
   ```
   This route is not tried yet. The protocol libraries stay at warnings whatever `RUST_LOG` says, so a debug log carries no protocol traces.
-- **A development build** runs in the terminal and logs there ([INSTALL.md](../INSTALL.md#from-source-for-development), which says how to keep it away from your real mail).
+- **A development build** runs in the terminal and logs there ([INSTALL.md](../INSTALL.md#for-developers-build-from-source), which says how to keep it away from your real mail).
 
 ### Where Sealwax keeps things
 
@@ -602,7 +602,7 @@ To start from scratch: remove every account in Sealwax (Remove Account), quit wi
 
 1. **In Sealwax:** remove each account (Remove Account), which deletes its local mail and its keyring items. Turn **Start Sealwax at Login** off if you turned it on. If Sealwax is the default mail app, make another app the default, for example `xdg-mime default <app>.desktop x-scheme-handler/mailto`.
 2. **Quit** with Ctrl+Q.
-3. **Uninstall the package:** `sudo pacman -R sealwax` ([INSTALL.md](../INSTALL.md#uninstalling)).
+3. **Uninstall the app:** `sudo pacman -R sealwax` ([INSTALL.md](../INSTALL.md#uninstall-sealwax)).
 4. **Delete Sealwax's folders:**
    ```sh
    rm -rf ~/.config/sealwax ~/.local/share/sealwax ~/.local/state/sealwax ~/.cache/sealwax

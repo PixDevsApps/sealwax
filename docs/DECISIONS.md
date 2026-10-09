@@ -30,6 +30,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2; the HTML parser capped in M6 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 | 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); built: folders (A1), the Sieve subset (A2), the rules on new mail (B1) and in the app (B2); the user's review next |
+| 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1219,3 +1220,26 @@ Five registry commands without keys, at the registry's end in a new Rules catego
 **Reason:** the user expects a new rule to sort what is already there; one rule alone does what its toast says, where the whole script could also move mail by rules the user never asked to run on old mail. The undo window: the engine's test undid a run whose moves had already reached the fake server, which sent no COPYUID, and the store couldn't say where the messages had gone (`Lost::Unknown`); waiting as the user's own moves do makes Undo always local.
 
 **Not chosen:** a checkbox ("Also apply to the Inbox"), as Outlook and Gmail have it, since the user asked for it to happen at once; running the whole script; folders other than the Inbox.
+
+## ADR-021 — A public repository, releases on GitHub and the AUR (2026-10-09)
+
+**Status:** Accepted — user decisions, 2026-10-09 ("0.4.0 (Recommended)", "Fresh public repo (Recommended)", "AUR + GitHub Releases (Recommended)", "No in-app check (Recommended)"), on the user's "I am satisfied with where we are now, so I want the repo to be public, so bump the version one level. it needs instructions to install and uninstall, and it must be explained in a way that non tech persons can understand. Is there also a way to auto update the users installed version when I push an update? or a check for new update in the installed version".
+
+**Decision:**
+- **Version 0.4.0**, the state of 2026-10-09; 1.0.0 still follows M8's soak and the owner's sign-off (ML-096).
+- **A fresh public repository.** GitHub kept serving the commits from before the 2026-10-09 rewrite by their hashes, the working docs with them (ADR-012 amendment). So the private repository is renamed `PixDevsApps/sealwax-archive` and stays private, and a new public `PixDevsApps/sealwax` gets only the rewritten history: `main` and the tags.
+- **Releases** are tags `vX.Y.Z` with a GitHub release carrying the Arch package that `tools/package-source.py` and makepkg make (the owner's Microsoft client ID built in, ADR-008 amendment), a tarball of the same files for the AUR, and their SHA-256 sums. `CHANGELOG.md` holds each release's notes in plain words; `tools/release.py` makes a release from a tagged commit.
+- **The AUR package `sealwax-bin`** (`packaging/aur/`) installs the release's prebuilt files; it provides and conflicts with `sealwax`, the package built from source. Omarchy's Update runs `yay -Sua`, so people who installed it from the AUR get each release with their system update; nothing reaches them from a plain push. A downloaded package installs with `pacman -U` on the file, which pacman accepts unsigned (`LocalFileSigLevel = Optional`); `pacman -U` on a URL wants a signature (`RemoteFileSigLevel` defaults to `SigLevel = Required`), so the guide never offers it.
+- **No update check in Sealwax:** it still contacts nothing but the user's mail servers, the sign-in service and the autodetect lookups (the user guide's promise).
+- **INSTALL.md is written for people who aren't technical:** Omarchy's menu first, one command second, every step said in plain words; the build from source follows for developers.
+
+**Reason:** the AUR is how Omarchy installs software from outside Arch's repositories, from its own menu (Install → AUR), and how its Update keeps it current, so Sealwax updates without code of its own and without a network request from Sealwax. A prebuilt package installs in seconds without Rust.
+
+**Alternatives:** making the private repository public as it is (one switch; the old working docs readable by hash until GitHub's support purges them); a source package on the AUR (a 4-minute Rust build on every machine, with Rust installed for it); releases on GitHub alone (no automatic updates); a pacman repository of Sealwax's own (signing keys and a `pacman.conf` edit for every user); an update check in Sealwax, opt-in or on by default (a request to GitHub from every user, against the privacy promise).
+
+**Consequences:** each release is the owner's act: a tag, a makepkg build, the GitHub release and the AUR update (`tools/release.py` does them in turn; publishing needs the owner's word). The AUR package needs the owner's AUR account and SSH key. The client ID is in every release's binary, as it is for any app with sign-in.
+
+### ADR-021 amendment — the AUR waits; the download command first (2026-10-09)
+
+The same day, the AUR answered the owner's registration with "New account registration is temporarily closed" (HTTP 503, a pause against automated sign-ups, no queue). Until the owner has an account, `sealwax-bin` isn't published: INSTALL.md and the README lead with one command that downloads the latest release's package (`releases/latest/download/sealwax-x86_64.pkg.tar.zst`, the stable name `tools/release.py` uploads) to `/tmp` and installs it with `pacman -U`, which also updates; uninstalling is `pacman -R sealwax`. Nothing updates by itself until the AUR package exists; then `tools/release.py aur` publishes it, INSTALL.md puts the Omarchy menu first again, and someone who installed the download moves over by installing `sealwax-bin`, which replaces `sealwax`.
+
