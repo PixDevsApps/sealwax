@@ -82,7 +82,7 @@ Report: [m9/folders.md](m9/folders.md). Branch `m9-folders`; machine as M5's; ru
 | `sync_testbed` (the passes, whose folder removal `replace_folders` shares with the new delete) on `8dd5312`, 08:37–08:41 | 9 passed (183.4 s): the randomized two-client runs on four server variants with 0 divergences, the mid-FETCH cuts on three servers, the control that must diverge, the resync timings | Pass |
 | Self-tests by hand, display 81 | `folders-tree` 101/101; `folders-dialogs` 152/152 three runs in a row; `a11y-window` 167/167; `a11y-dialogs` 150/150 | Pass |
 | Branch CI, `SEALWAX_CI_DISPLAY=82 bash tools/ci.sh --ui` on `8a5e8e9` | 1,392 passed, 0 failed, 97 ignored; 72 scripts, 7,038 steps; the hostile suite clean (60 cases, 275 s) | Pass |
-| FINAL_CI_ROW
+| Branch CI again on `e047bcb` (the code of `8dd5312`), 08:41–08:54 | 1,392 passed, 0 failed, 97 ignored; 72 scripts, 7,038 steps; the hostile suite clean (60 cases, 274 s) | Pass |
 
 - **Not verified:** Outlook.com, Microsoft 365 and a server with an `INBOX.` personal namespace (the fake server only); NAMESPACE (not sent: imap-proto 0.17 can't parse its reply); the dialogs on a POP3 account (the engine's path only); what Orca says; a live look. `tools/ci.sh --testbed` wasn't run (it asks Docker which containers run, and Docker commands weren't this work's to run); the suites above were run directly.
 
