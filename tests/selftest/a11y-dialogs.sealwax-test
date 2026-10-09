@@ -172,6 +172,27 @@ key Escape
 assert-dialog none
 folder inbox Work
 
+# The Rules dialog and its editor (M9, ADR-020): named lists, rows and controls; Tab stays in
+# the dialog; Escape leaves the editor for the rules, then closes, and the focus goes back.
+list-select 0
+focus list
+action win.edit-rules
+wait-until assert-dialog "Rules for Work"
+assert-accessible dialog
+tab-chain window forward 20
+setup-click rules-new
+wait-until assert-rules-dialog edit
+assert-accessible dialog
+assert-accessible-name rule-condition-field-0 Field
+assert-accessible-name rule-action-remove-0 "Remove Action"
+assert-accessible-state rule-save disabled true
+tab-chain window forward 30
+key Escape
+wait-until assert-rules-dialog rules
+key Escape
+assert-dialog none
+assert-focus list
+
 # Show Original.
 list-select 0
 wait-until assert-reader-page message

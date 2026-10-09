@@ -82,7 +82,7 @@ pub fn new(
         Match::All => 0,
         Match::Any => 1,
     });
-    matching.update_property(&[gtk::accessible::Property::Label("All or any")]);
+    crate::accessibility::name_button(&matching, "All or any");
     let list = |name: &str, label: &str| {
         let list = named(
             classed(
@@ -381,10 +381,12 @@ struct ConditionRow {
     remove: gtk::Button,
 }
 
+/// A choice named for screen readers by what it chooses ("Field"), not by its value: GTK names
+/// a drop-down by the item it shows.
 fn dropdown(items: &[&str], label: &str) -> gtk::DropDown {
     let dropdown = gtk::DropDown::from_strings(items);
     dropdown.set_valign(gtk::Align::Center);
-    dropdown.update_property(&[gtk::accessible::Property::Label(label)]);
+    crate::accessibility::name_button(&dropdown, label);
     dropdown
 }
 

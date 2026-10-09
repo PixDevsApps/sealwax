@@ -263,6 +263,15 @@ pub fn install_window(state: &Rc<AppState>, window: &Window, actions: &crate::ac
             apply(&state, folder);
         }
     });
+    // Apply Rules follows the search, which leaves the folder shown as it is.
+    if let Some(list) = state.list() {
+        let weak = Rc::downgrade(state);
+        list.connect_search_changed(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_commands();
+            }
+        });
+    }
     let weak = Rc::downgrade(state);
     window.sidebar().connect_edit_rules(move |key| {
         if let Some(state) = weak.upgrade()
@@ -403,17 +412,31 @@ fn picked(state: &AppState) -> Result<Picked, &'static str> {
 
 /// Whether `id`, one of [`COMMANDS`], applies now, or why not.
 pub fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
+    applies_with(state, id, &picked(state))
+}
+
+fn applies_with(
+    state: &AppState,
+    id: ActionId,
+    picked: &Result<Picked, &'static str>,
+) -> Result<(), &'static str> {
+    let account = || {
+        picked
+            .as_ref()
+            .map(|picked| &picked.account)
+            .map_err(|why| *why)
+    };
     match id {
         ActionId::EditRules => shown_account(state)
             .map(drop)
             .ok_or("No account has rules"),
         ActionId::ApplyRules => shown_folder(state).map(drop),
-        ActionId::NewRuleFromMessage => picked(state).map(drop),
-        ActionId::JunkSender => match picked(state)?.account.role(FolderRole::Junk) {
+        ActionId::NewRuleFromMessage => account().map(drop),
+        ActionId::JunkSender => match account()?.role(FolderRole::Junk) {
             Some(_) => Ok(()),
             None => Err("The account has no Junk folder"),
         },
-        ActionId::TrustSender => match picked(state)?.account.role(FolderRole::Inbox) {
+        ActionId::TrustSender => match account()?.role(FolderRole::Inbox) {
             Some(_) => Ok(()),
             None => Err("The account has no Inbox"),
         },
@@ -423,8 +446,9 @@ pub fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
 
 /// Whether each command applies to what the window shows and has selected.
 pub fn refresh(state: &AppState, actions: &crate::actions::ActionSet) {
+    let picked = picked(state);
     for id in COMMANDS {
-        actions.set_applies(id, applies(state, id).is_ok());
+        actions.set_applies(id, applies_with(state, id, &picked).is_ok());
     }
 }
 
