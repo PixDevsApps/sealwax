@@ -130,6 +130,7 @@ type Handler = Rc<dyn Fn()>;
 type SearchHandler = Rc<dyn Fn(Option<&SearchHeading>)>;
 type CountHandler = Rc<dyn Fn(u32)>;
 type QuickHandler = Rc<dyn Fn(ActionId, Target)>;
+type MenuHandler = Rc<dyn Fn(gdk::Rectangle)>;
 
 #[derive(Default)]
 struct Handlers {
@@ -140,6 +141,7 @@ struct Handlers {
     search: RefCell<Vec<SearchHandler>>,
     older: RefCell<Vec<FolderHandler>>,
     quick: RefCell<Vec<QuickHandler>>,
+    menu: RefCell<Vec<MenuHandler>>,
 }
 
 type FolderHandler = Rc<dyn Fn(FolderId)>;
@@ -1848,6 +1850,26 @@ impl MessageList {
             });
         });
         view.add_controller(click);
+        // A right click opens the row's menu, on the row clicked.
+        let menu = gtk::GestureClick::builder().button(3).build();
+        menu.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = self.downgrade();
+        menu.connect_pressed(move |gesture, _, x, y| {
+            Self::with(&weak, |list| {
+                let position = list
+                    .inner
+                    .view
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .and_then(|widget| widget.ancestor(MessageRow::static_type()))
+                    .and_downcast::<MessageRow>()
+                    .and_then(|row| row.position());
+                if let Some(position) = position {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    list.open_context_menu(position, Some((x, y)));
+                }
+            });
+        });
+        view.add_controller(menu);
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = self.downgrade();
@@ -1864,6 +1886,16 @@ impl MessageList {
         let shift = state.contains(gdk::ModifierType::SHIFT_MASK);
         if state.contains(gdk::ModifierType::ALT_MASK) {
             return glib::Propagation::Proceed;
+        }
+        // Menu and Shift+F10 open the menu of the row under the keyboard's cursor, as on the
+        // sidebar's rows.
+        if (key == gdk::Key::Menu || (key == gdk::Key::F10 && shift))
+            && !state.contains(gdk::ModifierType::CONTROL_MASK)
+        {
+            return match self.cursor_position() {
+                Some(position) if self.open_context_menu(position, None) => glib::Propagation::Stop,
+                _ => glib::Propagation::Proceed,
+            };
         }
         if state.contains(gdk::ModifierType::CONTROL_MASK) {
             return if key.to_lower() == gdk::Key::a {
@@ -1949,6 +1981,52 @@ impl MessageList {
             .quick
             .borrow_mut()
             .push(Rc::new(handler));
+    }
+
+    /// Runs `handler` when a row's menu is asked for (a right click, Menu or Shift+F10), once
+    /// the row is selected: with where the menu points, in the message list's coordinates.
+    pub fn connect_context_menu(&self, handler: impl Fn(gdk::Rectangle) + 'static) {
+        self.inner.handlers.menu.borrow_mut().push(Rc::new(handler));
+    }
+
+    /// Opens the menu of the row at `position`, at the point `at` (a right click) or under the
+    /// row: a row not selected is selected alone first, as a click selects it; one in the
+    /// selection keeps it, and the menu acts on every selected message. False when the row
+    /// isn't on screen or nothing listens.
+    pub fn open_context_menu(&self, position: u32, at: Option<(f64, f64)>) -> bool {
+        let inner = &self.inner;
+        if inner.handlers.menu.borrow().is_empty() || position >= inner.model.total() {
+            return false;
+        }
+        if !inner.selection.is_selected(position) {
+            inner.view.grab_focus();
+            inner.plain_click.set(true);
+            self.select_position(position);
+            self.settle();
+        }
+        let view = inner.view.upcast_ref::<gtk::Widget>();
+        let rect = match at {
+            Some((x, y)) => gdk::Rectangle::new(x as i32, y as i32, 1, 1),
+            None => {
+                let Some(bounds) = self
+                    .row_widget(position)
+                    .and_then(|row| row.compute_bounds(view))
+                else {
+                    return false;
+                };
+                gdk::Rectangle::new(
+                    bounds.x() as i32 + 24,
+                    bounds.y() as i32,
+                    1,
+                    bounds.height() as i32,
+                )
+            }
+        };
+        let handlers = inner.handlers.menu.borrow().clone();
+        for handler in handlers {
+            handler(rect);
+        }
+        true
     }
 
     /// Shows the quick actions' keys in their tooltips (`keys.toml`).

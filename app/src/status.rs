@@ -187,6 +187,7 @@ mod tests {
                     Attention::SignIn { browser: false, .. } => "password",
                     Attention::QuotaFull { .. } => "quota",
                     Attention::UncertainSend { .. } => "uncertain",
+                    Attention::RulesFailed { .. } => "rules",
                     Attention::Offline { network: true, .. } => "offline",
                     Attention::Offline { .. } => "unreachable",
                 };

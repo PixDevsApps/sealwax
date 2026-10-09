@@ -158,6 +158,20 @@ assert-accessible window
 key Escape
 assert-sidebar-menu closed
 
+# The message row's menu (M9, ADR-020): from Menu on the row under the cursor, named items and
+# the reason a rules item doesn't apply to a fixture's account (no rules file); Escape gives the
+# list the focus back.
+list-select 0
+focus list
+key Menu
+assert-row-menu open
+assert-accessible window
+assert-accessible-name message-menu-archive Archive
+assert-tooltip message-menu-junk-sender "Only accounts set up in Sealwax have rules"
+key Escape
+assert-row-menu closed
+assert-focus list
+
 # The select mode: checkboxes on the rows, the batch page in the reader.
 focus list
 key x

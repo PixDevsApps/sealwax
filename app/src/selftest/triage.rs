@@ -465,7 +465,10 @@ fn focus_target(harness: &Harness, name: &str) -> Result<gtk::Widget, String> {
     }
 }
 
-fn row_widget(harness: &Harness, position: &str) -> Result<crate::list::row::MessageRow, String> {
+pub(super) fn row_widget(
+    harness: &Harness,
+    position: &str,
+) -> Result<crate::list::row::MessageRow, String> {
     let position = number(position)? as u32;
     super::mail::list(harness)?
         .row_widget(position)
@@ -541,7 +544,7 @@ pub(super) async fn click_at(
     Ok(())
 }
 
-async fn click_widget(
+pub(super) async fn click_widget(
     harness: &Harness,
     widget: &gtk::Widget,
     state: u32,

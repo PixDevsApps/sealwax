@@ -468,6 +468,8 @@ pub(super) struct Fiction {
     pub(super) reply_to: Option<u32>,
     /// An HTML body (a paragraph of the text) instead of plain text.
     pub(super) html: bool,
+    /// A List-Id header's identifier, without its angle brackets.
+    pub(super) list_id: Option<String>,
 }
 
 pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> {
@@ -485,6 +487,9 @@ pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> 
         fiction.subject,
         mail_date(date)
     );
+    if let Some(list) = &fiction.list_id {
+        text.push_str(&format!("List-Id: Nyheter <{list}>\r\n"));
+    }
     if let Some(parent) = fiction.reply_to {
         text.push_str(&format!(
             "In-Reply-To: <selftest-{parent}@example.test>\r\n\
@@ -552,7 +557,7 @@ async fn ingest_fiction(
         .ok_or_else(|| "the store already held that message".to_owned())
 }
 
-/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [html] [from=NAME] [text=WORDS]`.
+/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [html] [from=NAME] [text=WORDS] [list=ID]`.
 async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
     let list = list(harness)?;
     let folder = find_folder(harness, &args[0])?;
@@ -564,6 +569,7 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
         attachment: false,
         reply_to: None,
         html: false,
+        list_id: None,
     };
     let mut flags = Flags::NONE;
     for option in &args[3..] {
@@ -575,6 +581,7 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
             other => match other.split_once('=') {
                 Some(("from", name)) => fiction.from = name.to_owned(),
                 Some(("text", text)) => fiction.text = text.to_owned(),
+                Some(("list", list)) => fiction.list_id = Some(list.to_owned()),
                 _ => return Err(format!("unknown option {other}")),
             },
         }
@@ -696,6 +703,7 @@ fn churn_message(rng: &mut Rng, answered: &mut Vec<u32>, folder: FolderId, now: 
         attachment: rng.below(5) == 0,
         reply_to,
         html: false,
+        list_id: None,
     };
     RawMessage {
         folder,
@@ -1147,6 +1155,7 @@ mod tests {
             attachment: true,
             reply_to: Some(3),
             html: false,
+            list_id: None,
         };
         let raw = raw_message(&fiction, 1_791_072_000, 7);
         let parsed = sealwax_domain::message::parse(&raw);

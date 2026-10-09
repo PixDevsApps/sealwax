@@ -1,0 +1,170 @@
+# The Rules dialog (M9, ADR-020) for an account with a key, on a scripted engine: no rules yet;
+# New Rule in the editor, whose Save waits for a value and a folder; the rule saved to the file
+# in Roundcube's form; a second rule; reorder, switch off, edit and delete with Undo; the
+# senders' lists with their field; a file edited by hand shows "Edited by hand" with Open File
+# and keeps its text; a file that can't be read says where; a save over a file changed meanwhile
+# is refused. Every name and address is fictional.
+# Run: tools/headless.sh 85 target/debug/sealwax --self-test tests/selftest/rules-dialog.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+rules-opener
+triage-mark-read-on-open false
+triage-account Work work
+folder-add Work Kunder
+folder-add Work Kunder/Acme
+mail-add Work:inbox 10m "Tilbud" "from=Kari Nordmann"
+folder inbox Work
+engine-expect folder-opened
+
+# No file: no rules; the palette's Rules… opens the dialog for the account shown.
+action win.edit-rules
+wait-until assert-rules-dialog rules
+assert-rules-set none
+assert-rules-senders blocked none
+assert-shown rules-notice false
+assert-accessible dialog
+
+# New Rule: Save waits for a value, then for a folder.
+setup-click rules-new
+wait-until assert-rules-dialog edit
+assert-rules-problem "Type a value for each condition"
+assert-sensitive rule-save false
+assert-tooltip rule-save "Type a value for each condition"
+assert-label rule-problem "Type a value for each condition"
+setup-type rule-name Kunder
+setup-type rule-condition-value-0 kari@example.test
+assert-rules-problem "Choose a folder for each move and copy"
+setup-choose rule-action-folder-0 Kunder
+assert-rules-problem none
+assert-sensitive rule-save true
+assert-accessible dialog
+click rule-save
+wait-until assert-rules-dialog rules
+rules-wait
+assert-rules-set Kunder:on
+assert-rule-row 0 Kunder "From contains kari@example.test → Move to Kunder"
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "# rule:[Kunder]"
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "if allof (header :contains \"from\" \"kari@example.test\")"
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "fileinto \"Kunder\";"
+
+# A second rule with a header, a size and two actions.
+setup-click rules-new
+wait-until assert-rules-dialog edit
+setup-type rule-name "Store vedlegg"
+setup-choose rule-action-0 Star
+setup-choose rule-condition-field-0 "A header…"
+assert-rules-problem "Type the header's name"
+setup-type rule-condition-header-0 "X Spam"
+setup-type rule-condition-value-0 YES
+assert-rules-problem "A header's name can't hold spaces, colons or accents"
+setup-type rule-condition-header-0 X-Priority
+setup-type rule-condition-value-0 1
+setup-click rule-add-condition
+setup-choose rule-condition-field-1 Size
+setup-type rule-condition-size-1 5
+setup-choose rule-match any
+setup-click rule-add-action
+setup-choose rule-action-1 "Stop processing more rules"
+assert-rules-problem none
+click rule-save
+wait-until assert-rules-dialog rules
+rules-wait
+assert-rules-set "Kunder:on,Store vedlegg:on"
+assert-rule-row 1 "Store vedlegg" "x-priority contains 1 or Size over 5 MB → Star, Stop"
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if anyof (header :contains \"x-priority\" \"1\", size :over 5M)"
+
+# Move Up, the switch, Edit.
+assert-sensitive rule-up-0 false
+assert-sensitive rule-down-1 false
+click rule-up-1
+rules-wait
+assert-rules-set "Store vedlegg:on,Kunder:on"
+# The focus follows the rule: on its Move Up, unless it can't move further, then Move Down.
+wait-until assert-focus rule-down-0
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "stop;\n}\n# rule:[Kunder]"
+click rule-switch-1
+rules-wait
+assert-rules-set "Store vedlegg:on,Kunder:off"
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if false # allof (header :contains \"from\" \"kari@example.test\")"
+click rule-edit-1
+wait-until assert-rules-dialog edit
+assert-field rule-name Kunder
+assert-field rule-condition-value-0 kari@example.test
+setup-choose rule-condition-operator-0 is
+click rule-save
+wait-until assert-rules-dialog rules
+rules-wait
+assert-rule-row 1 Kunder "From is kari@example.test → Move to Kunder"
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if false # allof (address :is \"from\" \"kari@example.test\")"
+
+# Delete, then Undo in the dialog's toast.
+click rule-delete-0
+rules-wait
+assert-rules-set Kunder:off
+assert-toast "Deleted “Store vedlegg”"
+wait-until assert-file-lacks $TMP/config/sealwax/rules/work.sieve "Store vedlegg"
+toast-undo
+rules-wait
+assert-rules-set "Store vedlegg:on,Kunder:off"
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "# rule:[Store vedlegg]"
+
+# The senders' lists: an address and a domain added with the field, one taken away.
+setup-type blocked-add offers@example.test
+key Return
+rules-wait
+assert-rules-senders blocked offers@example.test
+setup-type trusted-add "@partner.example.test"
+key Return
+rules-wait
+assert-rules-senders trusted partner.example.test
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "address :domain :is \"from\" \"partner.example.test\""
+click blocked-remove-0
+rules-wait
+assert-rules-senders blocked none
+wait-until assert-file-lacks $TMP/config/sealwax/rules/work.sieve "offers@example.test"
+key Escape
+wait-until assert-rules-dialog closed
+
+# A file edited by hand: the rules it holds, "Written by hand" in its place, the notice with
+# Open File; a change keeps the hand-written text as written.
+write-file $TMP/config/sealwax/rules/work.sieve "require [\"fileinto\"];\n# rule:[Nyhetsbrev]\nif header :contains \"list-id\" \"news.example.test\"\n{\n\tfileinto \"Kunder\";\n}\n# Mine egne\nif header :contains \"subject\" \"faktura\" { fileinto \"Kunder\"; } elsif true { keep; }\n"
+action win.edit-rules
+wait-until assert-rules-dialog rules
+assert-rules-set "Nyhetsbrev:on,#hand"
+assert-shown rules-notice true
+assert-accessible dialog
+click rules-open-file
+assert-rules-opened work.sieve
+click rule-switch-0
+rules-wait
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if false # header :contains \"list-id\" \"news.example.test\""
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "# Mine egne\nif header :contains \"subject\" \"faktura\" { fileinto \"Kunder\"; } elsif true { keep; }"
+
+# The file changed in a text editor while the dialog is open: the next change isn't written
+# over it; the dialog shows the file as it is now.
+write-file $TMP/config/sealwax/rules/work.sieve "require [\"fileinto\"];\n# rule:[Fra redigering]\nif header :contains \"subject\" \"rapport\"\n{\n\tfileinto \"Kunder\";\n}\n"
+click rule-switch-0
+rules-wait
+wait-until assert-rules-set "Fra redigering:on"
+assert-toast "The rules file changed outside Sealwax; it shows as it is now"
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "# rule:[Fra redigering]"
+# Escape takes the dialog's toast away first (libadwaita's), then closes the dialog.
+key Escape
+assert-toasts 0
+assert-rules-dialog rules
+key Escape
+wait-until assert-rules-dialog closed
+
+# A file that can't be read: why, where, and Open File; nothing to change.
+write-file $TMP/config/sealwax/rules/work.sieve "require [\"fileinto\"];\nif header :contains \"subject\" \"x\" { vacation \"borte\"; }\n"
+action win.edit-rules
+wait-until assert-rules-dialog rules
+assert-shown rules-notice true
+assert-shown rules-new false
+assert-accessible dialog
+click rules-open-file
+assert-rules-opened work.sieve
+key Escape
+wait-until assert-rules-dialog closed

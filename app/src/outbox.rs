@@ -215,6 +215,7 @@ pub fn queued(state: &AppState, draft: DraftId, account: AccountId) {
     if let Some(triage) = state.triage() {
         triage.forget_last();
     }
+    crate::rules::forget_last();
     outbox.last.set(Some(draft));
     let window = state
         .triage()

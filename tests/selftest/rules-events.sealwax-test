@@ -1,0 +1,136 @@
+# What the rules show outside their dialog (M9, ADR-020), on a scripted engine: the banner when
+# an account's rules can't run (from the engine, or as soon as a broken file is saved), Open
+# File, and the banner gone once the file runs again or Sealwax writes it; Apply Rules to This
+# Folder from the palette, the folder row's menu and the Rules dialog, with its toasts; Rules…
+# in the account heading's menu; the rules following a folder renamed in Sealwax, and staying
+# as they are when one is deleted. Every name and address is fictional.
+# Run: tools/headless.sh 85 target/debug/sealwax --self-test tests/selftest/rules-events.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+rules-opener
+triage-mark-read-on-open false
+triage-account Work work
+folder-add Work Kunder
+folder-add Work Kunder/Acme
+folder-add Work Arkiv
+mail-add Work:inbox 10m "Tilbud" "from=Kari Nordmann"
+folder inbox Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+
+# The engine says the file can't run: the banner names the account, the line and the column,
+# and Open File opens the file.
+rules-failed work 3 7 "unknown command `x`"
+wait-until assert-setup banner-queue rules:work
+assert-label banner-title "Rules in Work can't run"
+assert-label banner-body "Line 3, column 7: unknown command `x`. No rule runs until the rules file is fixed."
+assert-label banner-primary "Open File"
+assert-accessible window
+click banner-primary
+assert-rules-opened work.sieve
+
+# The file saved fixed: the banner goes. Saved broken again: it comes back at once.
+write-file $TMP/config/sealwax/rules/work.sieve "require [\"fileinto\"];\nif header :contains \"subject\" \"faktura\" { fileinto \"Kunder\"; }\n"
+wait-until assert-setup banner-queue none
+write-file $TMP/config/sealwax/rules/work.sieve "require [\"fileinto\"];\nif header :contains \"subject\" \"faktura\" { fileinto \"Kunder\" }\n"
+wait-until assert-setup banner-queue rules:work
+assert-text-contains banner-body "Line 2, column"
+
+# A file that can't be read, then Sealwax writes the rules (Always Junk): the banner goes.
+write-file $TMP/config/sealwax/rules/work.sieve "require [\"fileinto\"];\n"
+wait-until assert-setup banner-queue none
+rules-failed work file
+wait-until assert-setup banner-queue rules:work
+assert-label banner-body "The rules file can't be read: it must be UTF-8 text of at most 1 MiB. No rule runs until the rules file is fixed."
+list-select 0
+action win.trust-sender
+wait-until assert-toast "Mail from karinordmann@example.test stays out of Junk from now on"
+wait-until assert-setup banner-queue none
+setup-dismiss-toasts
+
+# Apply Rules to This Folder from the palette: on the folder shown, with a toast while it runs
+# and one with what it changed; not in All Inboxes or while searching.
+assert-action-enabled win.apply-rules true
+action win.apply-rules
+engine-expect apply-rules folder=1
+assert-toast "Applying the rules to Inbox…"
+rules-applied 4
+wait-until assert-toast "Rules changed 4 messages in Inbox"
+action win.apply-rules
+engine-expect apply-rules folder=1
+rules-applied 0
+wait-until assert-toast "No rule matched in Inbox"
+setup-dismiss-toasts
+folder all-inboxes
+assert-action-enabled win.apply-rules false
+folder inbox Work
+engine-expect folder-opened
+search Tilbud
+assert-action-enabled win.apply-rules false
+search-escape
+assert-action-enabled win.apply-rules true
+
+# From the folder row's menu, on the folder right-clicked.
+action nav.more::account-1
+assert-more account-1 true
+sidebar-menu Work:Kunder
+assert-sidebar-menu enabled folder-menu-apply-rules
+sidebar-menu-click folder-menu-apply-rules
+engine-expect apply-rules folder=7
+assert-toast "Applying the rules to Kunder…"
+rules-applied store
+wait-until assert-toast "The rules didn't run. The mail store couldn't be read"
+setup-dismiss-toasts
+sidebar-menu all-inboxes
+assert-sidebar-menu enabled folder-menu-mark-read
+key Escape
+
+# Rules… in the account heading's menu; Apply to Folder… in the dialog.
+account-menu account-1
+assert-sidebar-menu enabled account-menu-rules
+sidebar-menu-click account-menu-rules
+wait-until assert-rules-dialog rules
+assert-dialog "Rules for Work"
+click rules-apply
+wait-until assert-rules-dialog apply
+assert-accessible dialog
+click rules-apply-folder-0
+wait-until assert-rules-dialog closed
+engine-expect apply-rules folder=1
+rules-applied 1
+wait-until assert-toast "Rules changed 1 message in Inbox"
+setup-dismiss-toasts
+
+# A folder renamed in Sealwax: the rules that file into it and the folders under it follow.
+write-file $TMP/config/sealwax/rules/work.sieve "require [\"fileinto\",\"copy\"];\n# rule:[Acme]\nif header :contains \"from\" \"acme.example.test\"\n{\n\tfileinto :copy \"Kunder\";\n\tfileinto \"Kunder/Acme\";\n}\n# rule:[Arkiv]\nif header :contains \"subject\" \"kvittering\"\n{\n\tfileinto \"Arkiv\";\n}\n"
+sidebar-menu Work:Kunder
+sidebar-menu-click folder-menu-rename
+wait-until assert-dialog "Rename “Kunder”"
+setup-type folder-name Klienter
+setup-respond rename-folder rename
+engine-expect rename-folder folder=7 name=Klienter
+engine-reply folder-changed ok
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "fileinto \"Klienter/Acme\";"
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "fileinto :copy \"Klienter\";"
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "fileinto \"Arkiv\";"
+assert-file-lacks $TMP/config/sealwax/rules/work.sieve "Kunder"
+setup-dismiss-toasts
+
+# A folder deleted: the rules stay as they are (a rule filing into a missing folder keeps the
+# message where it is).
+sidebar-menu Work:Arkiv
+sidebar-menu-click folder-menu-delete
+wait-until assert-dialog "Delete “Arkiv” and everything in it?"
+setup-respond delete-folder delete
+engine-expect delete-folder folder=9
+engine-reply folder-changed ok
+wait-until assert-folder-stored Work:Arkiv false
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "fileinto \"Arkiv\";"
+action win.edit-rules
+wait-until assert-rules-dialog rules
+assert-rule-row 1 Arkiv "Subject contains kvittering → Move to Arkiv (missing)"
+key Escape
+wait-until assert-rules-dialog closed

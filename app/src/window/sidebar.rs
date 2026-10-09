@@ -388,6 +388,10 @@ pub struct Sidebar {
     edit_account: RefCell<Option<EditAccount>>,
     /// What an account heading's New Folder does, given the account's key.
     new_folder: RefCell<Option<EditAccount>>,
+    /// What an account heading's Rules… does, given the account's key.
+    edit_rules: RefCell<Option<EditAccount>>,
+    /// Whether Apply Rules to This Folder applies to a folder key (why not), and what it does.
+    apply_rules: RefCell<Option<ApplyRules>>,
     /// The accounts whose folders are folded away, by key.
     collapsed: RefCell<HashSet<String>>,
     /// Told when an account is folded away (true) or opened again.
@@ -405,6 +409,10 @@ type FolderCommands = (
     Rc<dyn Fn(ActionId, &str)>,
 );
 type EditAccount = Rc<dyn Fn(&str)>;
+type ApplyRules = (
+    Rc<dyn Fn(&str) -> Result<(), &'static str>>,
+    Rc<dyn Fn(&str)>,
+);
 type CollapseChanged = Rc<dyn Fn(&str, bool)>;
 
 impl Sidebar {
@@ -525,6 +533,8 @@ impl Sidebar {
             folder_commands: RefCell::new(None),
             edit_account: RefCell::new(None),
             new_folder: RefCell::new(None),
+            edit_rules: RefCell::new(None),
+            apply_rules: RefCell::new(None),
             collapsed: RefCell::new(HashSet::new()),
             collapse_changed: RefCell::new(None),
             folded: RefCell::new(HashSet::new()),
@@ -856,6 +866,23 @@ impl Sidebar {
         self.new_folder.replace(Some(Rc::new(activate)));
     }
 
+    /// Adds Rules… to every account heading's menu (M9, ADR-020): `activate` gets the account's
+    /// key.
+    pub fn connect_edit_rules(&self, activate: impl Fn(&str) + 'static) {
+        self.edit_rules.replace(Some(Rc::new(activate)));
+    }
+
+    /// Adds Apply Rules to This Folder to every folder row's menu (M9, ADR-020): `applies` says
+    /// whether it applies to the folder's key, or why not; `activate` runs it.
+    pub fn connect_apply_rules(
+        &self,
+        applies: impl Fn(&str) -> Result<(), &'static str> + 'static,
+        activate: impl Fn(&str) + 'static,
+    ) {
+        self.apply_rules
+            .replace(Some((Rc::new(applies), Rc::new(activate))));
+    }
+
     /// Opens the context menu of the folder row `key`, as a right click does.
     pub fn open_menu(&self, key: &str) -> bool {
         let row = self
@@ -943,12 +970,23 @@ impl Sidebar {
                 });
             }
         }
+        if key != ALL_INBOXES
+            && let Some((applies, activate)) = self.apply_rules.borrow().clone()
+        {
+            let key = key.to_owned();
+            items.push(MenuItem {
+                name: "folder-menu-apply-rules",
+                label: ActionId::ApplyRules.title(),
+                why_not: applies(&key).err(),
+                activate: Rc::new(move || activate(&key)),
+            });
+        }
         if !items.is_empty() {
             self.popup(row, items, "folder-menu");
         }
     }
 
-    /// An account heading's menu: Edit Account and New Folder… for that account.
+    /// An account heading's menu: Edit Account, Rules… and New Folder… for that account.
     fn show_account_menu(&self, row: &gtk::ListBoxRow, key: &str) {
         self.close_menu();
         let mut items: Vec<MenuItem> = Vec::new();
@@ -957,6 +995,11 @@ impl Sidebar {
                 self.edit_account.borrow().clone(),
                 "account-menu-edit",
                 ActionId::EditAccount.title(),
+            ),
+            (
+                self.edit_rules.borrow().clone(),
+                "account-menu-rules",
+                ActionId::EditRules.title(),
             ),
             (
                 self.new_folder.borrow().clone(),

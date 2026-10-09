@@ -193,6 +193,28 @@ Right-click a folder in the sidebar (or press Menu or Shift+F10 on it) for **New
 
 Move to… shows a subfolder by its own name with the folders above it beside it ("Acme" · "Kunder / 2026").
 
+## Rules
+
+Rules sort new mail for you: move it to a folder, copy it, mark it read, star it, send it to Junk or bring it back from Junk. Each account has its own rules. Sealwax runs them itself, on the mail that arrives in the account's Inbox and Junk while Sealwax runs (background mode keeps it running with the window closed), so they work with every account, Outlook.com and POP3 accounts included. Rules see a message's headers (From, To, Subject, List-Id and the rest), not its text.
+
+**The message menu.** Right-click a message (or press Menu or Shift+F10 on it) for **Reply**, **Reply All** and **Forward**; **Archive**, **Delete**, **Move to…** and **Move to Junk** (**Not Junk** in Junk); **Mark as Read** or **Unread** and **Star** or **Unstar**; and the rules' commands: **Create Rule from Message…**, **Always Junk Messages from** *the sender* and **Never Junk Messages from** *the sender*. A message you right-click that isn't selected is selected first; one in a selection acts with all the selected messages.
+
+**Always junk and never junk.** *Always Junk Messages from* puts the sender's address on the account's always-junk list and moves the messages to Junk at once; mail from that address goes to Junk from now on. *Never Junk Messages from* puts it on the never-junk list and brings the messages back from Junk to the Inbox; mail from that address that lands in Junk (your provider's spam filter put it there) comes back to the Inbox. The toast says what happened, and **Undo** (or `z`) takes back both the move and the list. An address on one list leaves the other.
+
+**The Rules dialog.** **Rules…** in the main menu or the palette shows the rules of the account the list shows; right-click an account's heading for that account's. Every change is saved at once.
+
+- **New Rule** opens the editor: a name, "If all / any of the following", conditions and actions. A condition reads From, To, Cc, To or Cc, Subject, List-Id, Reply-To, any header by its name ("A header…") or the size, and compares it: contains, doesn't contain, is, isn't, begins with, ends with, or matches (`*` for any text, `?` for one character). "From is" compares the address alone (`kari@example.test`); "From contains" reads the name too. With no condition the rule acts on every message. Actions: Move to folder, Copy to folder, Mark as read, Star, Move to Junk, Not junk, Delete (to the Trash: rules never delete for good), and Stop processing more rules. **Save** stays unavailable until the rule is complete, and says what is missing.
+- **Create Rule from Message…** fills a new rule in from the message: "From is" its sender, or "List-Id contains" its list for mail from a mailing list, and a move to a folder for you to choose.
+- Each rule shows its name and what it does in one line, an on/off switch, **Move Up** and **Move Down** (rules run in order; Stop ends the run), **Edit** and **Delete** (with Undo).
+- **Always junk** and **Never junk** list the senders, each with a remove button, and a field to add an address, or a domain for every address at it (`example.test`).
+- **Apply to Folder…** runs the rules now on every message a folder holds; so does **Apply Rules to This Folder** in a folder's right-click menu or the palette (on the folder the list shows). A toast says how many messages the rules changed. Rules don't run on the mail an account had when it was set up unless you apply them.
+
+**The file.** An account's rules are a Sieve script (RFC 5228, the standard language for mail filters, which Dovecot, Fastmail, Roundcube and others use), `~/.config/sealwax/rules/<key>.sieve` (the account's `key` in `accounts.toml`), written in Roundcube's form (`# rule:[Name]` above each rule). You can edit it in a text editor; Sealwax reads it again at the next new mail, and the dialog shows what it recognises. Parts it doesn't recognise as rules show as "Written by hand" and run as written; the dialog then says "Edited by hand" and has **Open File**. Sealwax runs `require`, `if`/`elsif`/`else`, `stop`, `keep`, `fileinto` (with `:copy`), `discard`, `addflag`/`setflag`/`removeflag`, and the tests `address`, `header`, `exists`, `size`, `allof`, `anyof`, `not`, `true`, `false`, `hasflag` and `environment` (`imap.mailbox`); a script that uses anything else, or doesn't parse, runs nothing. Then a banner says "Rules in *account* can't run" with the line, the column and what is wrong, and **Open File**; it goes when the file is fixed. If the file changes in a text editor while the Rules dialog is open, the dialog shows the file again instead of writing over it.
+
+**Folders.** Renaming a folder in Sealwax takes the rules that file into it along; deleting one leaves them, and a rule filing into a missing folder leaves the message where it is (the dialog marks the folder "missing").
+
+The rules' commands have no keys; `keys.toml` can give them one (`edit-rules`, `new-rule-from-message`, `junk-sender`, `trust-sender`, `apply-rules`).
+
 ## Writing mail
 
 **The composer.** **New message** (or `c`, Ctrl+N) opens a composer at the bottom right of the main window, over the mail, as in Gmail. It has:
@@ -352,6 +374,11 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | General | Start Sealwax at Login | — |  | `start-at-login` |
 | General | Make Sealwax the Default Mail App… | — |  | `default-mail-app` |
 | General | Quit | Ctrl+Q | anywhere | `quit` |
+| Rules | Rules… | — |  | `edit-rules` |
+| Rules | Create Rule from Message… | — |  | `new-rule-from-message` |
+| Rules | Always Junk Messages from Sender | — |  | `junk-sender` |
+| Rules | Never Junk Messages from Sender | — |  | `trust-sender` |
+| Rules | Apply Rules to This Folder | — |  | `apply-rules` |
 <!-- end of the keymap table -->
 
 "—" means the command has no key: the palette, a menu or a button reaches it, and `keys.toml` can give it one.
@@ -362,7 +389,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 
 **Moving with Tab.** Tab and Shift+Tab go through the window from left to right: the sidebar (the new-message button, the folder list, `config.toml`), the list's bar, the message list, the reader's toolbar and the conversation, then round again. The folder list and the message list are one stop each: Up and Down move inside them. In a message, Tab goes from link to link (in a plain-text message too: the link is selected, its address shows at the bottom of the reader, and Enter opens it), then on to the "…" that shows quoted text. An open composer comes after the reader in that order: From, Attach, Discard, Minimize, Expand, Close, To, and on to Send. In the composer, Tab in the message moves on to **Send** and Shift+Tab back to the toolbar, instead of typing a tab. A dialog keeps Tab inside it, and Escape closes it.
 
-**The list's own keys,** which `keys.toml` can't change: Up and Down move the selection; Shift with Up, Down, `j` or `k` extends it; Escape leaves the select mode. On a folder in the sidebar, Menu or Shift+F10 opens its menu, and on a folder with subfolders Left folds them away and Right opens them.
+**The list's own keys,** which `keys.toml` can't change: Up and Down move the selection; Shift with Up, Down, `j` or `k` extends it; Escape leaves the select mode; Menu or Shift+F10 opens the menu of the message under the cursor. On a folder in the sidebar, Menu or Shift+F10 opens its menu, and on a folder with subfolders Left folds them away and Right opens them.
 
 **Customizing keys.** **Customize Shortcuts (keys.toml)** (main menu, palette) opens `~/.config/sealwax/keys.toml` in your text editor, creating it with every command and its default keys commented out. A line names a command and lists its keys, which replace the defaults; `[]` leaves it without a key:
 
@@ -539,6 +566,7 @@ Sealwax writes a plain-text log of what it does, never with message content, add
 | What | Where |
 | --- | --- |
 | Settings (`config.toml`, `keys.toml`, `accounts.toml`) | `~/.config/sealwax/` |
+| Each account's rules (`rules/<key>.sieve`) | `~/.config/sealwax/rules/` |
 | Your mail: the store (`store.sqlite`) and message files (`blobs/`) | `~/.local/share/sealwax/` |
 | Small state (the window's layout in `layout.toml`, the background notice, unfinished account changes) | `~/.local/state/sealwax/` |
 | Cache (the reader's content filters, which Sealwax makes again) | `~/.cache/sealwax/` |

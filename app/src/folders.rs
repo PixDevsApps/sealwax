@@ -453,6 +453,7 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
             return;
         };
         let context = &shown_context;
+        let mut renamed = None;
         let (change, done, failed) = match ask {
             Ask::New(parent) => (
                 FolderChange::Create {
@@ -464,6 +465,13 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
             ),
             Ask::Rename(folder) => {
                 let old = context.folder(folder).map(shown_name).unwrap_or_default();
+                // The rules that file into it follow it once the rename is done (ADR-020).
+                if let Some(folder) = context.folder(folder) {
+                    let delimiter = folder.delimiter;
+                    let new =
+                        folders::child(folders::parent(&folder.name, delimiter), delimiter, &name);
+                    renamed = Some((context.account, folder.name.clone(), new, delimiter));
+                }
                 (
                     FolderChange::Rename {
                         folder,
@@ -474,7 +482,20 @@ fn ask_name(window: &Window, engine: &EngineLink, context: Context, ask: Ask) {
                 )
             }
         };
-        send(&engine, &toasts, context.account, change, done, failed);
+        let after: Option<Rc<dyn Fn()>> = renamed.map(|(account, old, new, delimiter)| {
+            Rc::new(move || {
+                crate::rules::folder_renamed(account, old.clone(), new.clone(), delimiter);
+            }) as Rc<dyn Fn()>
+        });
+        send(
+            &engine,
+            &toasts,
+            context.account,
+            change,
+            done,
+            failed,
+            after,
+        );
     });
     dialog.present(Some(window.window()));
 }
@@ -518,6 +539,7 @@ fn confirm_delete(window: &Window, engine: &EngineLink, context: Context, folder
             FolderChange::Delete { folder },
             format!("Deleted “{name}”"),
             format!("Couldn't delete “{name}”"),
+            None,
         );
     });
     dialog.present(Some(window.window()));
@@ -583,7 +605,7 @@ fn toast(toasts: &adw::ToastOverlay, text: &str) {
     toasts.add_toast(adw::Toast::builder().title(text).use_markup(false).build());
 }
 
-/// Sends `change` and toasts the answer: `done`, or `failed` with why.
+/// Sends `change` and toasts the answer: `done`, then `after` runs, or `failed` with why.
 fn send(
     engine: &EngineLink,
     toasts: &adw::ToastOverlay,
@@ -591,6 +613,7 @@ fn send(
     change: FolderChange,
     done: String,
     failed: String,
+    after: Option<Rc<dyn Fn()>>,
 ) {
     let request = engine.next_request();
     let command = Command::ChangeFolder {
@@ -623,6 +646,11 @@ fn send(
             Err(error) => format!("{failed}: {}", why(error)),
         };
         toast(&toasts, &text);
+        if result.is_ok()
+            && let Some(after) = &after
+        {
+            after();
+        }
         release.take();
     });
     held.replace(Some(subscription));

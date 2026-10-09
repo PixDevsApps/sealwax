@@ -1,0 +1,166 @@
+# The message row's right-click menu and the rules it reaches (M9, ADR-020), on a scripted
+# engine: the menu from a right click and from Menu and Shift+F10, on the row clicked (selected
+# first) or on the selection it is in; Always Junk and Never Junk with Undo (the message moved and
+# the sender listed, both taken back); a list change alone with Undo from z; Create Rule from
+# Message from a sender and from a list. Every name and address is fictional.
+# Run: tools/headless.sh 85 target/debug/sealwax --self-test tests/selftest/rules-menu.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+rules-opener
+triage-mark-read-on-open false
+triage-undo-window 3000
+triage-account Work work
+folder-add Work Kunder
+mail-add Work:inbox 10m "Tilbud" "from=Kari Nordmann"
+mail-add Work:inbox 20m "Kontrakt" "from=Kari Nordmann"
+mail-add Work:inbox 30m "Nyhetsbrev oktober" "from=Nyheter AS" "list=news.example.test"
+mail-add Work:inbox 40m "Møtereferat" "from=Marius Dahl"
+mail-add Work:junk 50m "Vinn en premie" "from=Leah Kim"
+folder inbox Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+assert-list-count 4
+
+# A right click on a row nothing selects: the row is selected first, the menu acts on it.
+assert-list-selection none
+row-menu 0
+assert-row-menu open
+assert-list-selection 0
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from karinordmann@example.test,Never Junk Messages from karinordmann@example.test"
+assert-accessible window
+key Escape
+assert-row-menu closed
+assert-focus list
+
+# Menu and Shift+F10 open it on the row under the list's cursor; another row right-clicked is
+# selected alone.
+key Down
+assert-list-selection 1
+key Menu
+assert-row-menu open
+assert-list-selection 1
+key Escape
+assert-focus list
+key <Shift>F10
+assert-row-menu open
+key Escape
+row-menu 3
+assert-list-selection 3
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from mariusdahl@example.test,Never Junk Messages from mariusdahl@example.test"
+key Escape
+
+# The selection it is in: two messages from one sender, then from two senders.
+click-row 0
+click-row 1 shift
+assert-list-selection 0,1
+row-menu 1
+assert-list-selection 0,1
+assert-row-menu-items "!Reply,!Reply All,!Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from karinordmann@example.test,Never Junk Messages from karinordmann@example.test"
+key Escape
+click-row 3 ctrl
+assert-list-selection 0,1,3
+row-menu 0
+assert-row-menu-items "!Reply,!Reply All,!Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+assert-tooltip message-menu-junk-sender "The messages are from more than one sender"
+key Escape
+key Escape
+click-row 0
+
+# Always Junk: the sender listed, the message moved to Junk at once, one Undo for both.
+row-menu 0
+row-menu-click message-menu-junk-sender
+wait-until assert-toast "Moved 1 message to Junk. Mail from karinordmann@example.test goes to Junk from now on"
+engine-expect ops-queued
+assert-list-count 3
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if address :is \"from\" \"karinordmann@example.test\""
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "# Sealwax: always junk"
+assert-undoable true
+toast-undo
+wait-until assert-list-count 4
+wait-until assert-file-lacks $TMP/config/sealwax/rules/work.sieve "karinordmann@example.test"
+setup-dismiss-toasts
+
+# Never Junk from Junk: the message back in the Inbox as not junk, the sender trusted; Undo.
+folder junk Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+assert-list-count 1
+row-menu 0
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Not Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from leahkim@example.test,Never Junk Messages from leahkim@example.test"
+row-menu-click message-menu-trust-sender
+wait-until assert-toast "Moved 1 message to the Inbox as not junk. Mail from leahkim@example.test stays out of Junk from now on"
+engine-expect ops-queued
+assert-list-count 0
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if address :is \"from\" \"leahkim@example.test\""
+assert-file-contains $TMP/config/sealwax/rules/work.sieve "# Sealwax: never junk"
+toast-undo
+wait-until assert-list-count 1
+wait-until assert-file-lacks $TMP/config/sealwax/rules/work.sieve "leahkim@example.test"
+setup-dismiss-toasts
+
+# Never Junk on a message outside Junk lists the sender alone, with Undo; z takes it back.
+folder inbox Work
+engine-expect folder-opened
+list-select 3
+focus list
+row-menu 3
+row-menu-click message-menu-trust-sender
+wait-until assert-toast "Mail from mariusdahl@example.test stays out of Junk from now on"
+assert-list-count 4
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "mariusdahl@example.test"
+assert-action-enabled win.undo true
+focus list
+key z
+wait-until assert-file-lacks $TMP/config/sealwax/rules/work.sieve "mariusdahl@example.test"
+assert-toast Undone
+assert-action-enabled win.undo false
+setup-dismiss-toasts
+
+# The palette names the sender too.
+list-select 3
+action win.junk-sender
+wait-until assert-toast "Moved 1 message to Junk. Mail from mariusdahl@example.test goes to Junk from now on"
+engine-expect ops-queued
+toast-undo
+wait-until assert-list-count 4
+wait-until assert-file-lacks $TMP/config/sealwax/rules/work.sieve "mariusdahl@example.test"
+setup-dismiss-toasts
+
+# Create Rule from Message: From is the sender, the folder the user's to choose.
+list-select 0
+row-menu 0
+row-menu-click message-menu-new-rule-from-message
+wait-until assert-rules-dialog edit
+assert-field rule-name "Kari Nordmann"
+assert-field rule-condition-field-0 From
+assert-field rule-condition-operator-0 is
+assert-field rule-condition-value-0 karinordmann@example.test
+assert-field rule-action-0 "Move to folder"
+assert-field rule-action-folder-0 "Choose a folder"
+assert-rules-problem "Choose a folder for each move and copy"
+setup-choose rule-action-folder-0 Kunder
+click rule-save
+wait-until assert-rules-dialog rules
+rules-wait
+assert-rules-set "Kari Nordmann:on"
+wait-until assert-file-contains $TMP/config/sealwax/rules/work.sieve "if allof (address :is \"from\" \"karinordmann@example.test\")"
+key Escape
+wait-until assert-rules-dialog closed
+
+# A message from a list offers its List-Id instead.
+list-select 2
+action win.new-rule-from-message
+wait-until assert-rules-dialog edit
+assert-field rule-name news.example.test
+assert-field rule-condition-field-0 List-Id
+assert-field rule-condition-operator-0 contains
+assert-field rule-condition-value-0 news.example.test
+key Escape
+wait-until assert-rules-dialog rules
+assert-rules-set "Kari Nordmann:on"
+key Escape
+wait-until assert-rules-dialog closed

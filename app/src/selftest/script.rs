@@ -118,6 +118,7 @@ fn arity(command: &str) -> Option<(usize, usize)> {
         .chain(super::perf::COMMANDS)
         .chain(super::reader::COMMANDS)
         .chain(super::reply::COMMANDS)
+        .chain(super::rules::COMMANDS)
         .chain(super::outbox::COMMANDS)
         .chain(super::notify::COMMANDS)
         .chain(super::search::COMMANDS)
