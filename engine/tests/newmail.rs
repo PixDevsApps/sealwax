@@ -848,16 +848,24 @@ async fn rules_run_on_new_mail_before_it_is_announced() {
         world.append_extra("INBOX", "X-Spam-Flag: YES\r\n");
         world.append("INBOX", 0, &[]);
     }
+    // Without MOVE a move is UID COPY, then \Deleted and UID EXPUNGE: wait for all of it.
+    let kept: Vec<u32> = (1..=20).chain([23]).collect();
+    let inbox_uids =
+        || -> Vec<u32> { server(&fake, "INBOX").iter().map(|(uid, _)| *uid).collect() };
+    let flags = |name: &str| -> Vec<Vec<String>> {
+        server(&fake, name)
+            .into_iter()
+            .map(|(_, flags)| flags)
+            .collect()
+    };
     let moved = within(WAIT, || async {
-        fake.world().mailboxes["Kunder"].messages.len() == 1
-            && fake.world().mailboxes["Junk"].messages.len() == 1
+        flags("Kunder") == [["\\Flagged"]] && flags("Junk") == [["$Junk"]] && inbox_uids() == kept
     })
     .await;
     assert!(moved.is_some(), "the rules' moves reach the server");
     assert_eq!(server(&fake, "Kunder")[0].1, ["\\Flagged"]);
     assert_eq!(server(&fake, "Junk")[0].1, ["$Junk"]);
-    let inbox_uids: Vec<u32> = server(&fake, "INBOX").iter().map(|(uid, _)| *uid).collect();
-    assert_eq!(inbox_uids, (1..=20).chain([23]).collect::<Vec<_>>());
+    assert_eq!(inbox_uids(), kept);
     let announced = run.announced_count(inbox, 2).await;
     run.drain(Duration::from_millis(500)).await;
     assert_eq!(
