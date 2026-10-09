@@ -25,8 +25,9 @@ impl RuleSet {
     /// Reads an account's script. The never-junk section is recognised only first, the
     /// always-junk rule only after it (or first), each with its marker as the comment right
     /// above it; a rule is an `if` with no `elsif` or `else`, named by a `# rule:[Name]` right
-    /// above it, holding no comment but a disabled rule's test. Anything else is an [`Item::HandWritten`]. An error when the script
-    /// doesn't parse or uses Sieve outside the subset.
+    /// above it, holding no comment but a disabled rule's test. Anything else is an
+    /// [`Item::HandWritten`]. An error when the script doesn't parse or uses Sieve outside the
+    /// subset.
     pub fn read(text: &str, folders: &Folders) -> Result<RuleSet, Error> {
         let tree = parse(text)?;
         let script = check(&tree)?;

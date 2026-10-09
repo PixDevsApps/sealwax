@@ -407,6 +407,9 @@ fn environment_names_the_folder_it_arrived_in() {
     assert_eq!(filed(&in_junk), ["INBOX"]);
     assert!(!in_junk.discard, "an item Sealwax doesn't know is false");
     assert!(run(script, &Message::new()).keep);
+    let without_imapsieve = "require \"environment\";\nif environment \"imap.mailbox\" \"junk\" { \
+                             discard; }";
+    assert!(run(without_imapsieve, &Message::new().mailbox("Junk")).trashed());
 }
 
 #[test]

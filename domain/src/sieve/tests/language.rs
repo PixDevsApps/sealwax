@@ -112,6 +112,16 @@ fn identifiers_and_tags_ignore_case() {
 }
 
 #[test]
+fn tagged_arguments_may_come_anywhere() {
+    let outcome = run(
+        "require \"fileinto\";\nif header \"subject\" :comparator \"i;octet\" \"x\" :contains { \
+         fileinto \"hit\"; }",
+        &Message::new().header("Subject", "an x"),
+    );
+    assert_eq!(filed(&outcome), ["hit"]);
+}
+
+#[test]
 fn string_lists_tests_and_blocks() {
     let text = r#"
 require ["fileinto", "copy"];
