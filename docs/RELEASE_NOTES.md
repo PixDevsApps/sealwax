@@ -2,7 +2,7 @@
 
 > **Draft, 2026-10-09.** Sealwax 1.0.0 isn't released: 0.4.0, the first public release, came out on 2026-10-09 ([CHANGELOG.md](../CHANGELOG.md)), and 1.0.0 follows the owner's sign-off (ML-096), after M8's gate and the rest of M9. The parts marked *(at the sign-off)* are filled in then, from what was actually run. Nothing here is a measurement made for this page.
 
-Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and treating every message as hostile. 1.0.0 is its first stable release.
+Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and careful with every message: no script in one ever runs, and nothing from the internet loads until you allow it. 1.0.0 is its first stable release.
 
 ## What's in 1.0
 

@@ -1,6 +1,6 @@
 # Sealwax user guide
 
-Synced: 2026-10-09
+Synced: 2026-10-10
 
 This guide is for people who use Sealwax every day. It describes Sealwax 0.4.0, before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
 
@@ -508,7 +508,7 @@ A line that looks like a password, secret or token is a mistake anywhere in the 
 
 ## Privacy and security
 
-Sealwax talks only to the servers your mail needs, and treats every message as hostile. This is everything it sends, and where:
+Sealwax talks only to the servers your mail needs, and keeps each message sealed. This is everything it sends, and where:
 
 | Who | What Sealwax sends there | When |
 | --- | --- | --- |
@@ -522,7 +522,7 @@ Sealwax talks only to the servers your mail needs, and treats every message as h
 
 Nothing else: **no telemetry**, no update checks, no read receipts, no avatar lookups.
 
-- **Messages are hostile.** No script in a message ever runs; nothing from the internet loads until you allow it; links open only in your browser, with a warning when a link's text doesn't match its address; attachments that can run programs are never opened.
+- **Messages stay sealed.** No script in a message ever runs; nothing from the internet loads until you allow it; links open only in your browser, with a warning when a link's text doesn't match its address; attachments that can run programs are never opened.
 - **Passwords and sign-in tokens** are kept only in your keyring (the Secret Service: gnome-keyring on Omarchy), never in a file, the store or a log. Without a keyring, Sealwax keeps them in memory until it quits and says so in a banner ("No keyring found").
 - **On this computer,** your mail is stored under `~/.local/share/sealwax/` in files only you can read. Sealwax doesn't encrypt them itself; full-disk encryption, if you use it, protects them when the computer is off.
 - **Outgoing mail** carries no name of your computer and no Bcc header. Every connection to a mail server uses TLS; Sealwax refuses a server that offers none.
