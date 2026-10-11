@@ -1514,7 +1514,8 @@ fn tls(host: &str, port: u16) -> Endpoint {
 
 /// Scripted detection results. Provider names are real ones' or the mock's fictional ones;
 /// every host is under `example.test`, except `gmail`'s servers: Gmail's, as Mozilla's ISPDB
-/// lists them (for docs/GMAIL.md's screenshots; the fake engine connects nowhere).
+/// lists them, without its out-of-date "enable IMAP" link, as the engine leaves it out (for
+/// docs/GMAIL.md's screenshots; the fake engine connects nowhere).
 fn detection(name: &str) -> Result<Detection, String> {
     let found = |provider: &str, source| DetectedSettings {
         imap: tls("imap.example.test", 993),
@@ -1560,7 +1561,6 @@ fn detection(name: &str) -> Result<Detection, String> {
         "gmail" => Detection::Found(DetectedSettings {
             imap: tls("imap.gmail.com", 993),
             smtp: tls("smtp.gmail.com", 465),
-            enable_imap: link("Turn on IMAP", "https://example.test/settings/imap"),
             ..found("GMail", DetectSource::Ispdb)
         }),
         "confirm" => Detection::Found(DetectedSettings {

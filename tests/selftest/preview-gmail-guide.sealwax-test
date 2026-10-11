@@ -1,5 +1,6 @@
-# Screenshots for docs/GMAIL.md: adding a Gmail account with an app password, as 0.4.0 shows it
-# (the servers found through Mozilla's ISPDB, with its "Turn on IMAP" note), in catppuccin with
+# Screenshots for docs/GMAIL.md: adding a Gmail account with an app password (the servers found
+# through Mozilla's ISPDB; after 0.4.0 without its "Turn on IMAP" note, which docs/images/gmail/
+# shows until the next release's pictures are taken), in catppuccin with
 # corners rounded 8. A scripted engine answers and connects nowhere; the address, the name, the
 # password and the mail are fictional. Not part of tools/ci.sh; it writes into .local/guide/
 # for review before the pictures are copied to docs/images/gmail/. Run from the repository root:

@@ -256,7 +256,11 @@ fn settings(imap: &Choice, smtp: &Choice, domain: &str) -> DetectedSettings {
         provider: imap.hints.provider.clone(),
         confirm: needs_confirmation(imap, domain) || needs_confirmation(smtp, domain),
         app_password: imap.hints.app_password.clone(),
-        enable_imap: imap.hints.enable_imap.clone(),
+        enable_imap: imap
+            .hints
+            .enable_imap
+            .clone()
+            .filter(|_| !presets::imap_always_on(&imap.server.host)),
         source: imap.source.detect_source(),
     }
 }
@@ -383,6 +387,45 @@ mod tests {
         );
         assert_eq!(settings.auth, AuthMethod::OAuth(OAuthProvider::Microsoft));
         assert_eq!(settings.second_username, None);
+    }
+
+    #[test]
+    fn gmail_gets_no_turn_on_imap_link() {
+        let link = HelpLink {
+            label: "Turn on IMAP".into(),
+            url: "https://example.test/imap".into(),
+        };
+        let found_with_link = |imap: &str, smtp: &str, domain: &str| {
+            let imap = Choice {
+                hints: Hints {
+                    enable_imap: Some(link.clone()),
+                    ..Hints::default()
+                },
+                ..choice(Source::Ispdb, Protocol::Imap, imap, UsernameForm::Address)
+            };
+            let smtp = choice(Source::Ispdb, Protocol::Smtp, smtp, UsernameForm::Address);
+            found(imap, smtp, domain).enable_imap
+        };
+        assert_eq!(
+            found_with_link("imap.gmail.com", "smtp.gmail.com", "gmail.com"),
+            None
+        );
+        assert_eq!(
+            found_with_link(
+                "IMAP.GoogleMail.com.",
+                "smtp.googlemail.com",
+                "googlemail.com"
+            ),
+            None
+        );
+        assert_eq!(
+            found_with_link("imap.example.test", "smtp.example.test", "example.test"),
+            Some(link.clone())
+        );
+        assert_eq!(
+            found_with_link("imap.notgmail.com", "smtp.notgmail.com", "notgmail.com"),
+            Some(link)
+        );
     }
 
     #[test]

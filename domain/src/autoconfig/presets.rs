@@ -149,6 +149,12 @@ pub fn microsoft_host(host: &str) -> bool {
     super::dns::within(host, "outlook.com") || super::dns::within(host, "office365.com")
 }
 
+/// Gmail's IMAP is always on (Google's help, read on 2026-10-05; INTEGRATIONS.md), so an "enable
+/// IMAP" link for its hosts, such as the ISPDB's for gmail.com, is out of date.
+pub fn imap_always_on(host: &str) -> bool {
+    super::dns::within(host, "gmail.com") || super::dns::within(host, "googlemail.com")
+}
+
 const MICROSOFT: Option<OAuthProvider> = Some(OAuthProvider::Microsoft);
 
 // The providers' own help pages, opened and checked on 2026-10-05. An app-password link is set

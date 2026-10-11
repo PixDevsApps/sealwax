@@ -65,7 +65,7 @@ When Microsoft ends the session later, a banner says that the account "needs you
 
 ### Gmail: with an app password
 
-There is no Sign in with Google, and Gmail isn't on the assistant's own provider list, but Gmail works with an app password, made in your Google account with 2-Step Verification on. The assistant finds Gmail's servers through Mozilla's database; paste the app password into **Password**, spaces and all. Its note "Turn on IMAP in GMail's settings first" can be skipped: Gmail's IMAP is always on. [GMAIL.md](GMAIL.md) shows every step with pictures. Google Workspace accounts work the same way where the organization's admin allows app passwords and IMAP (not tested).
+There is no Sign in with Google, and Gmail isn't on the assistant's own provider list, but Gmail works with an app password, made in your Google account with 2-Step Verification on. The assistant finds Gmail's servers through Mozilla's database; paste the app password into **Password**, spaces and all. Gmail's IMAP is always on, so the assistant leaves out the database's out-of-date "Turn on IMAP" note for Gmail (Sealwax 0.4.0 still showed it; it can be skipped). [GMAIL.md](GMAIL.md) shows every step with pictures. Google Workspace accounts work the same way where the organization's admin allows app passwords and IMAP (not tested).
 
 ### iCloud, Fastmail, Yahoo and other app-password providers
 

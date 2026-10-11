@@ -65,7 +65,7 @@ Don't write the app password down or send it to anyone: it opens your mail. Seal
 4. Sealwax looks up Gmail's settings by itself. After a moment it shows **GMail**, with `imap.gmail.com` and `smtp.gmail.com`. You don't need to change anything there.
 5. Click the **Password** field and paste the app password from step 2 (**Ctrl + V**). Not your Google password: the 16 letters. The spaces between the groups of letters can stay.
 
-   Under the field Sealwax says "Turn on IMAP in GMail's settings first." **You can skip that:** Gmail always has IMAP turned on, so there is nothing to change in Gmail.
+   Sealwax 0.4.0 also says "Turn on IMAP in GMail's settings first" under the field. **You can skip that:** Gmail always has IMAP turned on, so there is nothing to change in Gmail. Newer versions of Sealwax don't show it.
 
 6. Click **Sign in**.
 

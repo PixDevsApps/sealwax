@@ -73,6 +73,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Gmail without the "Turn on IMAP" note — 2026-10-11
+
+[ADR-008 amendment](DECISIONS.md#adr-008-amendment--gmail-with-an-app-password-documented-2026-10-11), its later paragraph. This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo test -p sealwax-domain` (the new `gmail_gets_no_turn_on_imap_link`: no link for `imap.gmail.com` and `imap.googlemail.com`, the link kept for `imap.example.test` and `imap.notgmail.com`) | 484 passed, 0 failed; the user guide's keys test 3 passed | Pass |
+| `cargo test -p sealwax-engine autoconfig` | 28 passed, 1 ignored | Pass |
+| `cargo fmt --check`, `cargo clippy --workspace --all-targets -- -D warnings` | Clean | Pass |
+| `setup-detect`, `setup` self-tests; `preview-gmail-guide` with the `gmail` fixture now without the link | 205 of 205, 140 of 140, 39 of 39 steps; the password step shows no note (the picture kept in `.local/guide/`, not in the guide until the next release) | Pass |
+| A live lookup of a Gmail address | Not run (no network lookup with a real provider's address in this change) | Not verified |
+
 ### The Gmail guide's pictures — 2026-10-11
 
 [ADR-008 amendment](DECISIONS.md#adr-008-amendment--gmail-with-an-app-password-documented-2026-10-11). This machine; a fake engine, no network.

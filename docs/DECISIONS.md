@@ -579,6 +579,8 @@ Built in M3.
 
 **Reason:** the app password route works without the restricted scope's yearly assessment, and people ask for Gmail ([issue #1](https://github.com/PixDevsApps/sealwax/issues/1)).
 
+**2026-10-11, later:** at the user's word ("yes, make the change"), the assistant leaves out an "enable IMAP" link for Gmail's hosts (`imap.gmail.com`, and any host under `gmail.com` or `googlemail.com`), from whichever source it comes, since Gmail's IMAP is always on. A Google Workspace account whose admin turned IMAP off still gets the sign-in failure's "IMAP is turned off for this account". The guide keeps its advice to skip the note for 0.4.0, and its picture shows it until the next release.
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
