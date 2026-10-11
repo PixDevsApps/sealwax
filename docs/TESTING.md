@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.4 — 2026-10-12
+
+`v0.4.4` is `babf75d`; this machine, rustc 1.98.1. The release: [v0.4.4](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.4), made unattended at the owner's word.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `babf75d`, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,490 passed, 0 failed, 98 ignored; 78 scripts, 7,622 of 7,622 steps; the hostile suite clean (60 cases, 274 s) | Pass |
+| `python3 tools/release.py build` on `v0.4.4` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,072 passed, 0 failed, 90 ignored; only "Skipping dependency checks"; `pacman -Qp` reads `sealwax 0.4.4-1`; the binary says `sealwax 0.4.4`, carries the client ID (compared, never printed) and no path of the home folder; `SHA256SUMS` checks | Pass |
+| The release `v0.4.4` (`tools/release.py github`) | Four files, not a draft or prerelease, GitHub's latest; the notes' links absolute; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build, `sealwax 0.4.4-1` | Pass |
+| Installing 0.4.4 on this machine | Not done (not asked) | Not verified |
+
 ### Sending from any account (issue #7) — 2026-10-12
 
 [ADR-014 amendment](DECISIONS.md#adr-014-amendment--sending-from-any-account-2026-10-12). This machine; the store backend, no real account, nothing sent.
