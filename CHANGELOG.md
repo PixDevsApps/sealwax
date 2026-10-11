@@ -2,9 +2,11 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 0.4.2 — 2026-10-11
 
-- **Clearer when Sealwax can't tell whether a message was sent:** if the server's answer doesn't arrive or can't be read (as can happen with Microsoft 365, issue #2), Sealwax now says so, instead of saying that it stopped while sending. As before, it never sends such a message again without asking you. The warning now also names the message: its subject, account and time.
+Fixes from the first bug report ([issue #2](https://github.com/PixDevsApps/sealwax/issues/2)), about sending with Microsoft 365.
+
+- **Clearer when Sealwax can't tell whether a message was sent:** if the server's answer doesn't arrive or can't be read (as can happen with Microsoft 365), Sealwax now says so, instead of saying that it stopped while sending. As before, it never sends such a message again without asking you. The warning now also names the message: its subject, account and time.
 - **Microsoft accounts: a check on the sending address.** If the Microsoft account you sign in with isn't the address you typed, Sealwax asks which one to send from, instead of saving an account whose mail Microsoft would refuse.
 
 ## 0.4.1 — 2026-10-11
