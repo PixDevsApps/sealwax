@@ -170,9 +170,20 @@ pub fn waiting_sends() -> u32 {
         .count() as u32
 }
 
-/// The sends that may have gone out, oldest first, with their accounts and, when the engine
-/// said it this session, why.
-pub fn uncertain() -> Vec<(DraftId, AccountId, Option<UncertainReason>)> {
+/// A send that may have gone out (issue #2): its draft and account, why when the engine said
+/// it this session, and what names it for the user.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Unconfirmed {
+    pub draft: DraftId,
+    pub account: AccountId,
+    pub reason: Option<UncertainReason>,
+    pub subject: String,
+    /// When its send started (Unix ms).
+    pub started: Option<i64>,
+}
+
+/// The sends that may have gone out, oldest first.
+pub fn uncertain() -> Vec<Unconfirmed> {
     let outbox = shared();
     let reasons = outbox.reasons.borrow();
     outbox
@@ -180,12 +191,12 @@ pub fn uncertain() -> Vec<(DraftId, AccountId, Option<UncertainReason>)> {
         .borrow()
         .iter()
         .filter(|entry| entry.state == SendState::Uncertain)
-        .map(|entry| {
-            (
-                entry.draft,
-                entry.account,
-                reasons.get(&entry.draft).copied(),
-            )
+        .map(|entry| Unconfirmed {
+            draft: entry.draft,
+            account: entry.account,
+            reason: reasons.get(&entry.draft).copied(),
+            subject: entry.subject.clone(),
+            started: entry.started,
         })
         .collect()
 }
@@ -445,7 +456,14 @@ fn failed(state: &Rc<AppState>, account: AccountId, draft: DraftId, error: &Send
 /// The banner's Choose… for the first send that may have gone out: send it again, file it as
 /// sent, or take it back to a draft.
 pub fn decide(state: &Rc<AppState>) {
-    let Some((draft, account, reason)) = uncertain().first().copied() else {
+    let Some(Unconfirmed {
+        draft,
+        account,
+        reason,
+        subject,
+        started,
+    }) = uncertain().into_iter().next()
+    else {
         return;
     };
     let Some(window) = state.window() else {
@@ -460,7 +478,10 @@ pub fn decide(state: &Rc<AppState>) {
         .unwrap_or_default();
     let dialog = adw::AlertDialog::builder()
         .heading("Was the message sent?")
-        .body(decide_text(&name, reason))
+        .body(decide_text(
+            &described(&subject, &name, started, &now()),
+            reason,
+        ))
         .close_response("later")
         .default_response("later")
         .build();
@@ -487,36 +508,91 @@ pub fn decide(state: &Rc<AppState>) {
     dialog.present(Some(window.window()));
 }
 
-/// What happened to a send that may have gone out from `account` (empty: unnamed), by why
-/// its outcome is unknown; `None` when the engine said it in an earlier session (issue #2).
-pub fn uncertain_cause(account: &str, reason: Option<UncertainReason>) -> String {
-    let from = if account.is_empty() {
-        String::new()
+/// What names a send that may have gone out: its subject, the account (`account` empty:
+/// unnamed) and when it started, as "“Quarterly report” from Work (today at 14:32)".
+pub fn described(
+    subject: &str,
+    account: &str,
+    started: Option<i64>,
+    now: &glib::DateTime,
+) -> String {
+    let subject = crate::notify::clean(subject, SUBJECT_CHARS);
+    let mut text = if subject.is_empty() {
+        "a message with no subject".to_owned()
     } else {
-        format!(" from {account}")
+        format!("\u{201c}{subject}\u{201d}")
     };
+    if !account.is_empty() {
+        text.push_str(&format!(" from {account}"));
+    }
+    if let Some(when) = started.and_then(|ms| when_text(ms / 1000, now)) {
+        text.push_str(&format!(" ({when})"));
+    }
+    text
+}
+
+/// The subject's length in the banner and the question; longer ones end in "…".
+const SUBJECT_CHARS: usize = 60;
+
+/// "today at 14:32", "yesterday at 09:05", "on 4 Oct at 14:32", "on 04.10.2025 at 14:32".
+fn when_text(secs: i64, now: &glib::DateTime) -> Option<String> {
+    let time = glib::DateTime::from_unix_local(secs).ok()?;
+    let clock = time.format("%H:%M").ok()?;
+    let yesterday = now.add_days(-1).ok()?;
+    Some(if time.ymd() == now.ymd() {
+        format!("today at {clock}")
+    } else if time.ymd() == yesterday.ymd() {
+        format!("yesterday at {clock}")
+    } else {
+        let day = time
+            .format(if time.year() == now.year() {
+                "%e %b"
+            } else {
+                "%d.%m.%Y"
+            })
+            .ok()?;
+        format!("on {} at {clock}", day.trim())
+    })
+}
+
+/// The local time now, for [`described`].
+pub fn now() -> glib::DateTime {
+    glib::DateTime::now_local().unwrap_or_else(|_| glib::DateTime::now_utc().expect("a clock"))
+}
+
+/// What happened to `what` ([`described`]), a send that may have gone out, by why its outcome
+/// is unknown; `None` when the engine said it in an earlier session (issue #2).
+pub fn uncertain_cause(what: &str, reason: Option<UncertainReason>) -> String {
     match reason {
-        Some(UncertainReason::Stopped) => format!(
-            "Sealwax stopped while it was sending a message{from}, so the server may have it."
-        ),
-        Some(UncertainReason::NoReply) => format!(
-            "The server didn't answer when Sealwax sent a message{from}, so it may have it."
-        ),
+        Some(UncertainReason::Stopped) => {
+            format!("Sealwax stopped while it was sending {what}, so the server may have it.")
+        }
+        Some(UncertainReason::NoReply) => {
+            format!("The server didn't answer when Sealwax sent {what}, so it may have it.")
+        }
         Some(UncertainReason::UnreadableReply) => format!(
-            "Sealwax couldn't read the server's answer to a message{from}, so it can't tell \
-             whether the server took it."
+            "Sealwax couldn't read the server's answer to {what}, so it can't tell whether the \
+             server took it."
         ),
-        None => format!("Sealwax couldn't confirm that a message{from} was sent."),
+        None => format!("Sealwax couldn't confirm that {what} was sent."),
     }
 }
 
+/// The banner's text for `what`, a send that may have gone out.
+pub fn uncertain_banner(what: &str, reason: Option<UncertainReason>) -> String {
+    format!(
+        "{} Look in your Sent folder, or ask a recipient, before you send it again.",
+        uncertain_cause(what, reason)
+    )
+}
+
 /// The dialog's text: what happened, how to tell, and what each answer does.
-pub fn decide_text(account: &str, reason: Option<UncertainReason>) -> String {
+pub fn decide_text(what: &str, reason: Option<UncertainReason>) -> String {
     format!(
         "{} Look in your Sent folder, or ask a recipient.\n\nSend Again sends the same message, \
          which its recipients may then get twice. It Was Sent files it as sent. Back to Drafts \
          opens it, to change or send it later.",
-        uncertain_cause(account, reason)
+        uncertain_cause(what, reason)
     )
 }
 
@@ -633,35 +709,65 @@ mod tests {
     }
 
     #[test]
-    fn the_uncertain_question_names_the_account_and_each_answer() {
-        let text = decide_text("Work", Some(UncertainReason::Stopped));
-        assert!(text.starts_with("Sealwax stopped while it was sending a message from Work,"));
+    fn the_uncertain_question_names_the_message_and_each_answer() {
+        let what = "\u{201c}Plans\u{201d} from Work";
+        let text = decide_text(what, Some(UncertainReason::Stopped));
+        assert!(
+            text.starts_with(
+                "Sealwax stopped while it was sending \u{201c}Plans\u{201d} from Work,"
+            )
+        );
         for (_, label) in ANSWERS {
             assert!(text.contains(label), "{label}");
         }
-        assert!(
-            decide_text("", Some(UncertainReason::Stopped))
-                .starts_with("Sealwax stopped while it was sending a message,")
-        );
     }
 
     #[test]
     fn the_uncertain_cause_says_why_only_when_it_is_known() {
+        let what = "\u{201c}Plans\u{201d} from Work";
         assert_eq!(
-            uncertain_cause("Work", Some(UncertainReason::NoReply)),
-            "The server didn't answer when Sealwax sent a message from Work, so it may have it."
+            uncertain_cause(what, Some(UncertainReason::NoReply)),
+            "The server didn't answer when Sealwax sent \u{201c}Plans\u{201d} from Work, so it may have it."
         );
         assert_eq!(
-            uncertain_cause("Work", Some(UncertainReason::UnreadableReply)),
-            "Sealwax couldn't read the server's answer to a message from Work, so it can't tell \
-             whether the server took it."
+            uncertain_cause(what, Some(UncertainReason::UnreadableReply)),
+            "Sealwax couldn't read the server's answer to \u{201c}Plans\u{201d} from Work, so it can't \
+             tell whether the server took it."
         );
         assert_eq!(
-            uncertain_cause("", None),
-            "Sealwax couldn't confirm that a message was sent."
+            uncertain_cause(what, None),
+            "Sealwax couldn't confirm that \u{201c}Plans\u{201d} from Work was sent."
         );
         for reason in [None, Some(UncertainReason::UnreadableReply)] {
-            assert!(!uncertain_cause("Work", reason).contains("stopped"));
+            assert!(!uncertain_cause(what, reason).contains("stopped"));
         }
+    }
+
+    #[test]
+    fn a_send_is_named_by_its_subject_account_and_time() {
+        let now = glib::DateTime::from_local(2026, 10, 11, 15, 0, 0.0).unwrap();
+        let at = |year, month, day, hour| {
+            let time = glib::DateTime::from_local(year, month, day, hour, 0, 0.0).unwrap();
+            Some(time.to_unix() * 1000)
+        };
+        assert_eq!(
+            described("Quarterly report", "Work", at(2026, 10, 11, 14), &now),
+            "\u{201c}Quarterly report\u{201d} from Work (today at 14:00)"
+        );
+        assert_eq!(
+            described("  ", "Work", at(2026, 10, 10, 19), &now),
+            "a message with no subject from Work (yesterday at 19:00)"
+        );
+        assert_eq!(described("Hi", "", None, &now), "\u{201c}Hi\u{201d}");
+        let this_year = described("Hi", "Work", at(2026, 9, 11, 15), &now);
+        assert!(
+            this_year.contains("(on ") && this_year.ends_with(" at 15:00)"),
+            "{this_year}"
+        );
+        assert!(
+            described("Hi", "Work", at(2025, 9, 6, 15), &now).ends_with("(on 06.09.2025 at 15:00)")
+        );
+        let long = described(&"word ".repeat(40), "Work", None, &now);
+        assert!(long.chars().count() < 90, "{long}");
     }
 }

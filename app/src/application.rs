@@ -430,15 +430,17 @@ impl AppState {
                 })
             })
             .collect();
+        let now = outbox::now();
         let uncertain: Vec<_> = outbox::uncertain()
             .into_iter()
-            .map(|(_, account, reason)| {
+            .map(|send| {
                 let name = known
                     .iter()
-                    .find(|known| known.id == account)
-                    .map(|known| known.name.clone())
+                    .find(|known| known.id == send.account)
+                    .map(|known| known.name.as_str())
                     .unwrap_or_default();
-                (name, reason)
+                let what = outbox::described(&send.subject, name, send.started, &now);
+                (what, send.reason)
             })
             .collect();
         let mut queue = status::queue(

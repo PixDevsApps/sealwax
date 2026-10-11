@@ -140,7 +140,9 @@ engine-attach
 setup-click setup-close
 
 # Signed in: the username is the sign-in's own (here not the typed address), saved with the
-# sign-in's token and an empty password; then the account is added as with a password.
+# sign-in's token and an empty password; then the account is added as with a password. Signed
+# in as another address than the one typed, the assistant first asks which to send from
+# (issue #2).
 action win.add-account
 setup-type setup-address kari@example.test
 setup-type setup-name "Kari Nordmann"
@@ -152,6 +154,24 @@ engine-expect sign-in address=kari@example.test
 engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=two
 assert-opened last https://login.example.test/authorize?client_id=fictional&state=two
 engine-reply signed-in ok kari.nordmann@example.test
+assert-setup step identity
+assert-label setup-title "Check the sending address"
+assert-text-contains setup-identity-text "You signed in to Microsoft as kari.nordmann@example.test, but your mail would be sent from kari@example.test."
+assert-setup focus setup-send-from
+assert-shown setup-primary false
+assert-shown setup-back true
+engine-expect none
+screenshot $DIR/../../.local/selftest/setup-microsoft-identity.png
+# Back lets the sign-in go: the engine drops its token, and the step's button is back.
+setup-key escape
+engine-expect cancel-sign-in
+assert-setup step microsoft
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+engine-reply signed-in ok kari.nordmann@example.test
+assert-setup step identity
+# Keep the address typed: sent from it, signed in as the other.
+setup-click setup-keep-address
 engine-expect add-account address=kari@example.test "name=Kari Nordmann" key= username=kari.nordmann@example.test auth=microsoft imap=imap.example.test:993:tls smtp=smtp.example.test:465:tls sign-in=last password=
 assert-setup step adding
 assert-label setup-title "Outlook.com account"
@@ -171,9 +191,27 @@ assert-setup focus setup-microsoft-button
 setup-click setup-microsoft-button
 engine-expect sign-in address=kari@example.test
 engine-reply signed-in ok kari.nordmann@example.test
-engine-expect add-account username=kari.nordmann@example.test auth=microsoft sign-in=last password=
+assert-setup step identity
+# Send from the address signed in with: it becomes the account's address.
+setup-click setup-send-from
+engine-expect add-account address=kari.nordmann@example.test username=kari.nordmann@example.test auth=microsoft sign-in=last password=
 engine-reply added ok
 assert-setup open false
 wait-until assert-shown welcome false
 assert-label sidebar-summary "1 account · synced"
+engine-expect none
+
+# Signed in as the address typed (case aside): no question, the account is added at once.
+action win.add-account
+setup-type setup-address ola@example.test
+setup-type setup-name "Ola Nordmann"
+setup-key enter
+engine-expect detect
+engine-reply detected microsoft
+setup-click setup-microsoft-button
+engine-expect sign-in address=ola@example.test
+engine-reply signed-in ok Ola@Example.test
+engine-expect add-account address=ola@example.test username=Ola@Example.test auth=microsoft sign-in=last
+engine-reply added ok
+assert-setup open false
 engine-expect none

@@ -26,11 +26,12 @@ pub enum Attention {
     SignIn { name: String, browser: bool },
     /// The server says the account's mailbox is full.
     QuotaFull { name: String },
-    /// A message from the account may have been sent (Sealwax stopped while sending it, or the
-    /// server's reply didn't come or couldn't be read; `reason` `None` when the engine said why
-    /// in an earlier session), and it is never sent again without the user's word (M6, ADR-015).
+    /// A message may have been sent (Sealwax stopped while sending it, or the server's reply
+    /// didn't come or couldn't be read; `reason` `None` when the engine said why in an earlier
+    /// session), and it is never sent again without the user's word (M6, ADR-015). `what`
+    /// names it: its subject, account and time ([`crate::outbox::described`]).
     UncertainSend {
-        name: String,
+        what: String,
         reason: Option<UncertainReason>,
     },
     /// The account's rules file can't run, so no rule runs until it is fixed (M9, ADR-020):
@@ -142,10 +143,7 @@ impl Attention {
                                        bounce, and changes can't be saved. Delete mail you \
                                        don't need, or ask your provider for more space."
                 .to_owned(),
-            Self::UncertainSend { name, reason } => format!(
-                "{} Look in your Sent folder, or ask a recipient, before you send it again.",
-                crate::outbox::uncertain_cause(name, *reason)
-            ),
+            Self::UncertainSend { what, reason } => crate::outbox::uncertain_banner(what, *reason),
             Self::RulesFailed { problem, .. } => crate::rules::text::failed_body(problem),
             Self::Offline {
                 network: true,

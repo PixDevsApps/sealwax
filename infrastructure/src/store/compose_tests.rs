@@ -630,6 +630,15 @@ fn a_send_left_sending_is_uncertain_after_a_restart_and_waits_for_the_user() {
             .all(|change| change.state == Some(SendState::Uncertain))
     );
     assert!(store.recover_sends().recv_blocking().unwrap().is_empty());
+    // The window names each by its subject and when it went (issue #2).
+    let outbox = store.outbox(None).recv_blocking().unwrap();
+    assert_eq!(outbox.len(), 3);
+    for entry in &outbox {
+        let saved = store.draft(entry.draft).recv_blocking().unwrap().unwrap();
+        assert_eq!(entry.subject, saved.draft.subject);
+        assert_eq!(entry.started, Some(NOW));
+        assert!(!format!("{entry:?}").contains(&entry.subject));
+    }
     assert!(due(&store, cx.account, NOW + 3_600_000).is_empty());
     assert_eq!(
         store.undo_send(ids[0]).recv_blocking().unwrap(),

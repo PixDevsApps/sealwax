@@ -174,6 +174,11 @@ pub(super) struct Widgets {
     pub(super) found_note: gtk::Label,
     pub(super) microsoft: gtk::Box,
     pub(super) microsoft_button: gtk::Button,
+    /// The Microsoft account signed in with isn't the address typed: which to send from.
+    identity: gtk::Box,
+    identity_text: gtk::Label,
+    pub(super) send_from: gtk::Button,
+    pub(super) keep_address: gtk::Button,
     microsoft_unavailable: gtk::Box,
     waiting: gtk::Box,
     pub(super) open_again: gtk::Button,
@@ -530,6 +535,35 @@ impl Widgets {
         microsoft_box.append(&microsoft_unavailable);
         microsoft_box.append(&microsoft_footnote);
 
+        let identity_text = named(label("", &[]), "setup-identity-text");
+        let choice = |name: &str, classes: &[&str]| {
+            let text = gtk::Label::builder()
+                .ellipsize(gtk::pango::EllipsizeMode::Middle)
+                .build();
+            let button = named(
+                classed(
+                    gtk::Button::builder()
+                        .child(&text)
+                        .halign(gtk::Align::Start)
+                        .build(),
+                    classes,
+                ),
+                name,
+            );
+            button.set_hexpand(false);
+            button
+        };
+        let send_from = choice("setup-send-from", &["sw-primary", "sw-setup-primary"]);
+        let keep_address = choice("setup-keep-address", &["sw-setup-secondary"]);
+        let identity = named(
+            column(&["sw-setup-card", "sw-setup-microsoft"]),
+            "setup-identity",
+        );
+        identity.append(&label(text::IDENTITY_TITLE, &["sw-setup-provider"]));
+        identity.append(&identity_text);
+        identity.append(&send_from);
+        identity.append(&keep_address);
+
         let username = entry("setup-username", "", &[]);
         let username_field = field("Username", &username, "setup-username-field");
 
@@ -599,6 +633,7 @@ impl Widgets {
             sources.upcast_ref(),
             found.upcast_ref(),
             microsoft_box.upcast_ref(),
+            identity.upcast_ref(),
             username_field.upcast_ref(),
             manual.upcast_ref(),
             password_field.upcast_ref(),
@@ -707,6 +742,10 @@ impl Widgets {
             found_note,
             microsoft: microsoft_box,
             microsoft_button,
+            identity,
+            identity_text,
+            send_from,
+            keep_address,
             microsoft_unavailable,
             waiting,
             open_again,
@@ -837,6 +876,21 @@ impl Widgets {
             .set_visible(shown == Step::Password && state.asks_username());
 
         w.microsoft.set_visible(shown == Step::Microsoft);
+        w.identity.set_visible(shown == Step::Identity);
+        if let (Some(signed_in), Some(typed)) = (state.signed_in_as(), state.typed_address()) {
+            w.identity_text
+                .set_label(&text::identity_body(signed_in, typed));
+            for (button, text) in [
+                (&w.send_from, text::send_from(signed_in)),
+                (&w.keep_address, text::keep_address(typed)),
+            ] {
+                if let Some(child) = button.child().and_downcast::<gtk::Label>() {
+                    child.set_label(&text);
+                }
+                button.set_tooltip_text(Some(&text));
+                button.update_property(&[gtk::accessible::Property::Label(&text)]);
+            }
+        }
         w.microsoft_button
             .set_tooltip_text((!microsoft).then_some("Not available in this build yet"));
         w.microsoft_unavailable.set_visible(!microsoft);
@@ -934,7 +988,7 @@ impl Widgets {
             Step::Microsoft | Step::PasswordAgain => !again,
             step => matches!(
                 step,
-                Step::Blocked | Step::Manual | Step::Failed | Step::Checking
+                Step::Blocked | Step::Manual | Step::Failed | Step::Checking | Step::Identity
             ),
         });
         // While it checks or signs in, the fields and the sign-in button wait; the status row
@@ -968,8 +1022,10 @@ impl Widgets {
         w.microsoft_button.set_sensitive(microsoft && !frozen);
         // An account signed in again keeps its address.
         w.address_field.set_sensitive(!frozen && !again);
-        w.primary
-            .set_visible(!matches!(shown, Step::Microsoft | Step::Blocked));
+        w.primary.set_visible(!matches!(
+            shown,
+            Step::Microsoft | Step::Blocked | Step::Identity
+        ));
         w.primary.set_label(match shown {
             Step::Address | Step::Detecting => "Next",
             Step::Password | Step::PasswordAgain => "Sign in",
@@ -1022,6 +1078,7 @@ fn heading_for(state: &State, step: Step) -> (String, &'static str) {
              syncs until you do.",
         ),
         Step::Blocked => ("Can't add this address".to_owned(), ""),
+        Step::Identity => ("Check the sending address".to_owned(), ""),
         Step::Manual => (
             "Set up manually".to_owned(),
             if state.notice.is_some() {

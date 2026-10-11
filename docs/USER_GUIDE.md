@@ -51,6 +51,7 @@ Outlook.com and Microsoft 365 accept only Microsoft sign-in for mail apps, so fo
 1. Sealwax opens Microsoft's sign-in page in your default browser and shows "Waiting for the browser…" with **Cancel**. If you closed the tab too soon, **Open the sign-in page again** opens it again.
 2. Sign in and approve Sealwax. Sealwax never sees your password; it keeps a sign-in token in your keyring. Your address is not put in the sign-in link.
 3. A work or school account may need its organization's admin to approve Sealwax first. The assistant then says "The sign-in was declined".
+4. If the Microsoft account you signed in with isn't the address you typed, the assistant asks first ("Not the address you typed"): **Send from** the address you signed in with, or **Keep** the address you typed. Microsoft refuses mail from an address your account isn't allowed to send from, so keep the typed one only if it's an alias or a shared mailbox you may send from. **Back** signs in again.
 
 **The client ID.** Sign in with Microsoft needs a Microsoft client ID: the registration that identifies Sealwax to Microsoft. Sealwax's packages carry one, so with an installed package there is nothing to set up. A build from source has one only if it was given one when it was compiled; you can also give your own in `config.toml`, which wins over a built-in one and applies as soon as you save the file:
 
@@ -243,7 +244,7 @@ Pasted text keeps simple formatting and loses the rest; **Paste as Plain Text** 
 
 **Sending.** Send closes the composer and the main window shows "Message queued" with **Undo** for 7 seconds (`z` and Ctrl+Z work too); Undo puts the draft back in a composer. Then "Message sent". Without a network, the message waits in the outbox and goes when the network is back. A copy goes into the Sent folder, unless the server files one itself (Outlook.com and Microsoft 365 do).
 
-- **Sent at most once.** If Sealwax stopped, the connection broke, or the server's answer couldn't be read while a message was going out, Sealwax can't know whether the server got it, and the banner says which of these happened. Instead of sending it again by itself, it shows a banner, "A message may have been sent", with **Choose…**: Send Again, It Was Sent, Back to Drafts or Later. Look in your Sent folder, or ask a recipient, before you send it again.
+- **Sent at most once.** If Sealwax stopped, the connection broke, or the server's answer couldn't be read while a message was going out, Sealwax can't know whether the server got it, and the banner says which of these happened, naming the message by its subject, account and time ("“Quarterly report” from Work (today at 14:32)"). Instead of sending it again by itself, it shows a banner, "A message may have been sent", with **Choose…**: Send Again, It Was Sent, Back to Drafts or Later. Look in your Sent folder, or ask a recipient, before you send it again.
 - **A send that failed for good** (the server refused a recipient, for example) shows a toast that says why; the message is back in your drafts, and **Open** opens it. If Sealwax stopped while it was preparing a message to send, the message comes back the same way the next time Sealwax starts, and isn't sent until you send it again.
 
 Outgoing mail carries no name of your computer and no Bcc header, and Sealwax adds no "sent with" field.

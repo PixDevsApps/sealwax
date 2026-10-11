@@ -124,8 +124,10 @@ impl Reader {
         Ok(self
             .conn
             .prepare_cached(
-                "SELECT draft, account_id, state, not_before, attempts FROM outbox \
-                 WHERE ?1 IS NULL OR account_id = ?1 ORDER BY queued, draft",
+                "SELECT o.draft, o.account_id, o.state, o.not_before, o.attempts, d.subject, \
+                        o.started \
+                 FROM outbox o JOIN drafts d ON d.id = o.draft \
+                 WHERE ?1 IS NULL OR o.account_id = ?1 ORDER BY o.queued, o.draft",
             )?
             .query_map([account.map(|account| account.0)], |row| {
                 Ok(OutboxEntry {
@@ -134,6 +136,8 @@ impl Reader {
                     state: state_from(row.get(2)?),
                     not_before: row.get(3)?,
                     attempts: row.get(4)?,
+                    subject: row.get(5)?,
+                    started: row.get(6)?,
                 })
             })?
             .collect::<rusqlite::Result<_>>()?)

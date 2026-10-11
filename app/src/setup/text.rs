@@ -248,6 +248,25 @@ pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
     }
 }
 
+/// The Microsoft account signed in with isn't the address typed (issue #2): which to send from.
+pub const IDENTITY_TITLE: &str = "Not the address you typed";
+
+pub fn identity_body(signed_in: &str, typed: &str) -> String {
+    format!(
+        "You signed in to Microsoft as {signed_in}, but your mail would be sent from {typed}. \
+         Microsoft refuses mail from an address your account isn't allowed to send from. Keep \
+         {typed} only if it's an alias or a shared mailbox you may send from."
+    )
+}
+
+pub fn send_from(address: &str) -> String {
+    format!("Send from {address}")
+}
+
+pub fn keep_address(address: &str) -> String {
+    format!("Keep {address}")
+}
+
 /// The note in the Microsoft step while no client ID is in use (ADR-008).
 pub const MICROSOFT_UNAVAILABLE: &str =
     "Microsoft sign-in isn't available in this build of Sealwax yet.";

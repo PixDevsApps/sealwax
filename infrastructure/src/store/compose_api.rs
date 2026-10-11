@@ -151,7 +151,7 @@ pub enum SendUndone {
 }
 
 /// One entry of the outbox, for the window.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct OutboxEntry {
     pub draft: DraftId,
     pub account: AccountId,
@@ -159,6 +159,23 @@ pub struct OutboxEntry {
     /// When it goes, or is tried again.
     pub not_before: i64,
     pub attempts: u32,
+    /// The draft's subject, for the window to name it (issue #2); `Debug` leaves it out.
+    pub subject: String,
+    /// When its send started (Unix ms), once it has.
+    pub started: Option<i64>,
+}
+
+impl std::fmt::Debug for OutboxEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OutboxEntry")
+            .field("draft", &self.draft)
+            .field("account", &self.account)
+            .field("state", &self.state)
+            .field("not_before", &self.not_before)
+            .field("attempts", &self.attempts)
+            .field("started", &self.started)
+            .finish_non_exhaustive()
+    }
 }
 
 /// What one commit changed in the outbox, in [`ChangeEvent::outbox`](super::ChangeEvent::outbox).

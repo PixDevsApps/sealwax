@@ -34,8 +34,8 @@ pub struct Waiting {
 
 /// Everything waiting, most important first. `keyring_missing`: the engine fell back to memory
 /// and the banner wasn't dismissed; `network`: the desktop reports a network; `pending`: the
-/// changes and sends waiting for a server, which the offline entry counts; `uncertain`: the
-/// account name of each send that may have gone out, oldest first, with why when known.
+/// changes and sends waiting for a server, which the offline entry counts; `uncertain`: what
+/// names each send that may have gone out, oldest first, with why when known.
 pub fn queue(
     accounts: &[Account<'_>],
     keyring_missing: bool,
@@ -57,9 +57,9 @@ pub fn queue(
     ];
     for kind in kinds {
         if kind == AccountStatus::QuotaFull {
-            waiting.extend(uncertain.iter().map(|(name, reason)| Waiting {
+            waiting.extend(uncertain.iter().map(|(what, reason)| Waiting {
                 attention: Attention::UncertainSend {
-                    name: name.clone(),
+                    what: what.clone(),
                     reason: *reason,
                 },
                 account: None,

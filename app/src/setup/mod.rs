@@ -77,6 +77,9 @@ pub enum Step {
     Microsoft,
     /// Waiting for `SignedIn` while the browser signs in.
     SigningIn,
+    /// Signed in to Microsoft as another address than the one typed (issue #2): send from
+    /// the one signed in with, or keep the one typed.
+    Identity,
     /// A password account the server refused (ML-048): its password, typed again.
     PasswordAgain,
     /// Nothing to sign in to: a provider without IMAP, Bridge only, or a domain without mail.
@@ -99,6 +102,7 @@ impl Step {
             Self::Password => "password",
             Self::Microsoft => "microsoft",
             Self::SigningIn => "signing-in",
+            Self::Identity => "identity",
             Self::PasswordAgain => "password-again",
             Self::Blocked => "blocked",
             Self::Manual => "manual",
@@ -115,6 +119,7 @@ impl Step {
             Self::Address
                 | Self::Password
                 | Self::Microsoft
+                | Self::Identity
                 | Self::Blocked
                 | Self::Manual
                 | Self::PasswordAgain
@@ -183,9 +188,24 @@ struct State {
     again: Option<Again>,
     /// What the presets know of that account's provider: its name and app-password page.
     known: Option<Hints>,
+    /// A finished Microsoft sign-in, and the address it belongs to, while the identity step
+    /// asks which address to send from.
+    signed_in_as: Option<(RequestId, String)>,
 }
 
 impl State {
+    /// The address the Microsoft sign-in belongs to, while the identity step asks.
+    pub(super) fn signed_in_as(&self) -> Option<&str> {
+        self.signed_in_as
+            .as_ref()
+            .map(|(_, address)| address.as_str())
+    }
+
+    /// The address detection ran for, as typed.
+    pub(super) fn typed_address(&self) -> Option<&str> {
+        self.address.as_ref().map(|address| address.text.as_str())
+    }
+
     /// The screen on view: while a check runs, the one it started from.
     fn shown(&self) -> Step {
         match self.step {
@@ -272,7 +292,7 @@ impl Inner {
                     state.sign_in_url = None;
                     Some(request)
                 }
-                _ => None,
+                _ => state.signed_in_as.take().map(|(request, _)| request),
             }
         };
         if let Some(request) = request {
@@ -540,6 +560,14 @@ impl Assistant {
         w.cancel.connect_clicked(move |_| cancel_sign_in());
         let open_again = self.handler(Assistant::open_again);
         w.open_again.connect_clicked(move |_| open_again());
+        for (button, send_from_sign_in) in [(&w.send_from, true), (&w.keep_address, false)] {
+            let weak = self.weak();
+            button.connect_clicked(move |_| {
+                if let Some(inner) = weak.upgrade() {
+                    Assistant { inner }.answer_identity(send_from_sign_in);
+                }
+            });
+        }
         let escape = self.handler(Assistant::back);
         self.inner.dialog.connect_close_attempt(move |_| escape());
         let cancel = self.handler(Assistant::close);
@@ -631,7 +659,7 @@ impl Assistant {
     /// Enter and the primary button: the step's next move, when its fields allow it.
     fn advance(&self) {
         let step = self.step();
-        if step.is_busy() || matches!(step, Step::Microsoft | Step::Blocked) {
+        if step.is_busy() || matches!(step, Step::Microsoft | Step::Blocked | Step::Identity) {
             return;
         }
         if step == Step::Address
@@ -1133,11 +1161,57 @@ impl Assistant {
             self.inner.dialog.force_close();
             return;
         }
+        let typed = self.inner.state.borrow().typed_address().map(str::to_owned);
+        if let Some(typed) = typed
+            && !same_address(&typed, &username)
+        {
+            tracing::info!(
+                request,
+                "setup: signed in as another address; asking which to send from"
+            );
+            {
+                let mut state = self.inner.state.borrow_mut();
+                state.signed_in_as = Some((request, username));
+                state.history.push(Step::Microsoft);
+                state.step = Step::Identity;
+            }
+            self.render();
+            self.focus_first();
+            return;
+        }
+        self.add_signed_in(request, username, None);
+    }
+
+    /// The identity step's answer: send from the address signed in with, or keep the one
+    /// typed.
+    fn answer_identity(&self, send_from_sign_in: bool) {
+        let Some((request, username)) = self.inner.state.borrow_mut().signed_in_as.take() else {
+            return;
+        };
+        tracing::info!(
+            request,
+            send_from_sign_in,
+            "setup: the sending address chosen"
+        );
+        let send_from = send_from_sign_in
+            .then(|| form::parse_address(&username))
+            .flatten();
+        self.add_signed_in(request, username, send_from);
+    }
+
+    /// `AddAccount` for the sign-in `request`, whose token belongs to `username`, sending from
+    /// the address typed or from `send_from`.
+    fn add_signed_in(
+        &self,
+        request: RequestId,
+        username: String,
+        send_from: Option<form::Address>,
+    ) {
         let settings = {
             let state = self.inner.state.borrow();
             state
                 .found()
-                .zip(state.address.as_ref())
+                .zip(send_from.as_ref().or(state.address.as_ref()))
                 .map(|(found, address)| {
                     let mut settings = form::settings(
                         address,
@@ -1260,6 +1334,10 @@ impl Assistant {
         if self.step() == Step::SigningIn {
             self.cancel_sign_in();
             return;
+        }
+        if self.step() == Step::Identity {
+            // The sign-in isn't used: let the engine drop its token.
+            self.inner.abandon_sign_in();
         }
         let close = {
             let mut state = self.inner.state.borrow_mut();
@@ -1438,6 +1516,7 @@ impl Assistant {
             }
             Step::Microsoft if !w.back.is_visible() => Some(w.close.clone().upcast()),
             Step::Microsoft | Step::Blocked => Some(w.back.clone().upcast()),
+            Step::Identity => Some(w.send_from.clone().upcast()),
             Step::SigningIn => Some(w.cancel.clone().upcast()),
             Step::Detecting | Step::Checking | Step::Adding => None,
         };
@@ -1523,4 +1602,9 @@ impl ManualTexts {
             username: &self.username,
         }
     }
+}
+
+/// The same mailbox: addresses compare without case or surrounding space.
+fn same_address(a: &str, b: &str) -> bool {
+    a.trim().eq_ignore_ascii_case(b.trim())
 }

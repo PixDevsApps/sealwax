@@ -581,6 +581,12 @@ Built in M3.
 
 **2026-10-11, later:** at the user's word ("yes, make the change"), the assistant leaves out an "enable IMAP" link for Gmail's hosts (`imap.gmail.com`, and any host under `gmail.com` or `googlemail.com`), from whichever source it comes, since Gmail's IMAP is always on. A Google Workspace account whose admin turned IMAP off still gets the sign-in failure's "IMAP is turned off for this account". The guide keeps its advice to skip the note for 0.4.0, and its picture shows it until the next release.
 
+### ADR-008 amendment — the sending address after Microsoft sign-in (2026-10-11)
+
+**Status:** Accepted — the user's word, 2026-10-11 ("build both"), on [issue #2](https://github.com/PixDevsApps/sealwax/issues/2)'s fourth suggestion: an account whose From address wasn't the Microsoft account it signed in with had every message refused.
+
+**Decision:** When the account a Microsoft sign-in belongs to isn't the address typed (compared without case), the setup assistant asks before it saves: send from the address signed in with, which then becomes the account's address, or keep the one typed (an alias or a shared mailbox can be right). It warns and never blocks. The engine takes a finished sign-in for an add of either address (`Kept::fits`); Back lets the sign-in go (`CancelSignIn`). Signing in again for an account isn't asked.
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
@@ -1037,6 +1043,8 @@ Built for rules ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026
 **Decision:** An uncertain send carries why (`api::UncertainReason`): **Stopped** (Sealwax stopped mid-send, found at the next start, or the account's sync was stopped mid-send), **NoReply** (the connection closed, broke or timed out before a reply to the message's end) or **UnreadableReply** (a reply came that can't be read: a line or a whole reply longer than lettre takes, or not SMTP). An unreadable reply stays uncertain, not refused: it may be a 250. The engine tells them apart by lettre's own words for its errors (lettre reports a closed connection as a response error too), never the server's text, and logs the stage and why ("a reply line longer than lettre's 1000 bytes", "no reply in time") without it. The reason travels in `Event::SendUncertain`; the app keeps it for the session and words the banner and "Was the message sent?" by it, and a send left uncertain from an earlier session says only "Sealwax couldn't confirm that a message from … was sent." The store is unchanged (no schema change). At-most-once sending is unchanged: an uncertain send is never sent again without the user.
 
 **Not done:** a longer line limit needs lettre (the cap isn't configurable); an upstream issue waits for the user's word.
+
+**Later the same day** (the user: "build both", the issue's fifth suggestion): the banner and the question name the message: its subject (capped at 60 characters), account and when its send started ("“Quarterly report” from Work (today at 14:32)"), read with the outbox (`OutboxEntry::subject` and `started`, whose `Debug` leaves the subject out; no schema change). Marking drafts kept only on this computer, the suggestion's second half, isn't built.
 
 ## ADR-016 — Conversation threading (2026-10-04)
 

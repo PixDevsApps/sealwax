@@ -172,6 +172,16 @@ struct Kept {
     until: Instant,
 }
 
+impl Kept {
+    /// An add of `address` may use it: the address it was made for, or the one it belongs to
+    /// (the user chose to send from the address they signed in with; issue #2).
+    fn fits(&self, address: &str) -> bool {
+        [&self.address, &self.username]
+            .iter()
+            .any(|own| own.trim().eq_ignore_ascii_case(address.trim()))
+    }
+}
+
 struct MicrosoftClient {
     id: Option<String>,
     client: Option<Arc<oauth::Client>>,
@@ -313,9 +323,7 @@ impl Shared {
         let mut sign_ins = self.sign_ins();
         match sign_ins.remove(&request)? {
             SignIn::Done(kept) if kept.until <= Instant::now() => None,
-            SignIn::Done(kept) if kept.address.trim().eq_ignore_ascii_case(address.trim()) => {
-                Some(kept)
-            }
+            SignIn::Done(kept) if kept.fits(address) => Some(kept),
             other => {
                 sign_ins.insert(request, other);
                 None
@@ -1354,6 +1362,21 @@ mod tests {
             username: "signin@example.test".into(),
             tenant: tenant.into(),
         }
+    }
+
+    #[test]
+    fn a_finished_sign_in_fits_the_address_typed_or_the_one_signed_in_with() {
+        let kept = Kept {
+            provider: OAuthProvider::Microsoft,
+            address: "ann@example.test".into(),
+            username: "anna.berg@example.test".into(),
+            refresh: Zeroizing::new(String::new()),
+            access: AccessToken::new(Zeroizing::new(String::new()), Duration::from_secs(60)),
+            until: Instant::now(),
+        };
+        assert!(kept.fits("ann@example.test"));
+        assert!(kept.fits(" Anna.Berg@Example.test "));
+        assert!(!kept.fits("someone@example.test"));
     }
 
     #[test]

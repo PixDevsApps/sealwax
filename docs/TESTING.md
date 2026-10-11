@@ -73,6 +73,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The sending address after Microsoft sign-in, and the warning naming the message (issue #2) — 2026-10-11
+
+[ADR-008 amendment](DECISIONS.md#adr-008-amendment--the-sending-address-after-microsoft-sign-in-2026-10-11) and [ADR-015 amendment](DECISIONS.md#adr-015-amendment--why-a-sends-outcome-is-unknown-2026-10-11). This machine; scripted engines, no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `setup-microsoft` self-test | 178 of 178 steps: signed in as another address, the step "Check the sending address" with the focus on Send from; Escape sends `CancelSignIn` and returns to the button; Keep adds the typed address, Send from the signed-in one; signed in as the typed address (case aside), no question | Pass |
+| `reply-outbox` self-test | 101 of 101 steps: the banner and the question name "“Notes fourth” from Work (today at …)" | Pass |
+| Unit tests | the engine's `Kept::fits` (typed or signed-in address, case aside, not a third); the store's outbox entries carry the subject and start time and leave the subject out of `Debug`; the app's `described` (today, yesterday, this year, another year, no subject, no account, a long subject) | Pass |
+| The banner and the question with a subject, 1,440 and 900 px wide (a scratch script, screenshots looked at) | Three lines at 900 px; the dialog's text wraps | Pass |
+| CI, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,487 passed, 0 failed, 98 ignored; 75 scripts, 7,541 of 7,541 steps (`a11y-setup` 132 of 132); the hostile suite clean (60 cases, 273 s) | Pass |
+| A real Microsoft sign-in as another address | Not run | Not verified |
+
 ### Why a send's outcome is unknown (issue #2) — 2026-10-11
 
 [ADR-015 amendment](DECISIONS.md#adr-015-amendment--why-a-sends-outcome-is-unknown-2026-10-11). This machine; the fake SMTP server, no real account.

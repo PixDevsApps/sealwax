@@ -78,7 +78,7 @@ outbox-engine start fourth
 outbox-engine uncertain fourth
 wait-until assert-setup banner-queue uncertain
 assert-label banner-title "A message may have been sent"
-assert-text-contains banner-body "Sealwax stopped while it was sending a message from Work"
+assert-text-contains banner-body "Sealwax stopped while it was sending “Notes fourth” from Work (today at "
 assert-label banner-primary "Choose…"
 assert-color banner-strip background warning-soft
 click banner-primary
@@ -94,10 +94,10 @@ wait-until assert-setup banner-queue none
 outbox-engine start fourth
 outbox-engine uncertain fourth unreadable
 wait-until assert-setup banner-queue uncertain
-assert-text-contains banner-body "Sealwax couldn't read the server's answer to a message from Work"
+assert-text-contains banner-body "Sealwax couldn't read the server's answer to “Notes fourth” from Work"
 click banner-primary
 wait-until assert-shown uncertain-send true
-assert-text-contains uncertain-send "couldn't read the server's answer"
+assert-text-contains uncertain-send "couldn't read the server's answer to “Notes fourth”"
 setup-respond uncertain-send was-sent
 wait-until assert-outbox fourth sent
 outbox-expect outbox-queued
@@ -109,7 +109,7 @@ outbox-queue fifth
 outbox-engine start fifth
 outbox-engine uncertain fifth no-reply
 wait-until assert-setup banner-queue uncertain
-assert-text-contains banner-body "The server didn't answer when Sealwax sent a message from Work"
+assert-text-contains banner-body "The server didn't answer when Sealwax sent “Notes fifth” from Work"
 click banner-primary
 wait-until assert-shown uncertain-send true
 setup-respond uncertain-send later
