@@ -79,10 +79,11 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 | Check | Result | Verdict |
 | --- | --- | --- |
-| `tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/preview-gmail-guide.sealwax-test` (the new `gmail` detection fixture and `setup-peek`) | 40 of 40 steps; the assistant's lookup rows, Gmail's card and the "Turn on IMAP" note as on the owner's own 0.4.0 screenshot of the same step | Pass |
+| `tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/preview-gmail-guide.sealwax-test` (the new `gmail` detection fixture) | 39 of 39 steps; the assistant's lookup rows, Gmail's card and the "Turn on IMAP" note as on the owner's own 0.4.0 screenshot of the same step | Pass |
 | `setup-detect` and `setup` self-tests after the fixture | 205 of 205 and 140 of 140 steps | Pass |
 | `cargo fmt --check`, Clippy (`-p sealwax --all-targets -D warnings`) | Clean | Pass |
 | The owner's Gmail account added with an app password, spaces taken out (the owner, 2026-10-11) | "That gmail sign in on Sealwax worked perfect" | Pass, sign-in only |
+| A second Gmail account of the owner's, the app password pasted with its spaces (the owner, 2026-10-11) | "users can paste the password with spaces, no need to remove the spaces" | Pass, sign-in only |
 
 ### 0.4.0, the first public release — 2026-10-09
 

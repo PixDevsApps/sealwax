@@ -63,16 +63,15 @@ Don't write the app password down or send it to anyone: it opens your mail. Seal
    ![The first step of adding an account, with a Gmail address and a name typed in](images/gmail/sealwax-2-address.png)
 
 4. Sealwax looks up Gmail's settings by itself. After a moment it shows **GMail**, with `imap.gmail.com` and `smtp.gmail.com`. You don't need to change anything there.
-5. Click the **Password** field and paste the app password from step 2 (**Ctrl + V**). Not your Google password: the 16 letters.
-6. **Take out the spaces.** Click the eye at the end of the field to see what you pasted, and delete the three spaces between the groups of letters, so the 16 letters stand together: `abcdefghijklmnop`, not `abcd efgh ijkl mnop`.
+5. Click the **Password** field and paste the app password from step 2 (**Ctrl + V**). Not your Google password: the 16 letters. The spaces between the groups of letters can stay.
 
    Under the field Sealwax says "Turn on IMAP in GMail's settings first." **You can skip that:** Gmail always has IMAP turned on, so there is nothing to change in Gmail.
 
-7. Click **Sign in**.
+6. Click **Sign in**.
 
-   ![Gmail's settings found, the app password pasted in without spaces and shown with the eye, and the Sign in button](images/gmail/sealwax-3-password.png)
+   ![Gmail's settings found, the app password pasted in, and the Sign in button](images/gmail/sealwax-3-password.png)
 
-8. Sealwax checks the app password with Gmail, then adds the account. "Added" and your address appear at the bottom of the window, your Gmail account shows in the sidebar, and your mail starts to arrive.
+7. Sealwax checks the app password with Gmail, then adds the account. "Added" and your address appear at the bottom of the window, your Gmail account shows in the sidebar, and your mail starts to arrive.
 
    ![Sealwax with the Gmail account added: its folders in the sidebar and the first mail in the list](images/gmail/sealwax-4-added.png)
 
@@ -81,7 +80,7 @@ You can now click **Done** in Google's window from step 2.
 ## If something goes wrong
 
 - **Google's app passwords page says the setting isn't available for your account:** 2-Step Verification is off (see [step 1](#step-1-check-that-2-step-verification-is-on)), or the account uses Google's Advanced Protection, or it's a work or school account whose administrator doesn't allow app passwords. In that last case, ask your administrator.
-- **Sealwax says "Wrong username or password" or "The server asked for an app password":** the password field has your Google password, a space is left in it, or a letter is missing. Click the eye to check the 16 letters. If you no longer have Google's window from step 2, make a new app password ([step 2](#step-2-make-an-app-password-for-sealwax)) and paste it again.
+- **Sealwax says "Wrong username or password" or "The server asked for an app password":** the password field has your Google password, or a letter is missing. The eye at the end of the field shows what you pasted. If you no longer have Google's window from step 2, make a new app password ([step 2](#step-2-make-an-app-password-for-sealwax)) and paste it again.
 - **Later, Sealwax says the account "needs you to sign in again":** Google no longer accepts the app password, for instance because you deleted it (changing your Google password can also cancel it). Make a new app password, click **Type the password again** in Sealwax, and paste it.
 - **Something else:** open an [issue on GitHub](https://github.com/PixDevsApps/sealwax/issues) and say what you did and what you saw. Leave out your email address and passwords.
 

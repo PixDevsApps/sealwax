@@ -22,7 +22,7 @@ setup-type setup-name "Your Name"
 setup-type setup-label Gmail
 screenshot $DIR/../../.local/guide/sealwax/2-address.png
 
-# Gmail's servers found, the app password typed, without its spaces, and shown with the eye.
+# Gmail's servers found, the app password pasted as Google shows it, spaces and all.
 setup-key enter
 engine-expect detect address=your.name@gmail.com
 engine-reply progress preset
@@ -32,8 +32,7 @@ engine-reply progress mx
 engine-reply progress srv
 engine-reply progress probe
 engine-reply detected gmail
-setup-type setup-password abcdefghijklmnop
-setup-peek setup-password
+setup-type setup-password "abcd efgh ijkl mnop"
 assert-setup step password
 screenshot $DIR/../../.local/guide/sealwax/3-password.png
 

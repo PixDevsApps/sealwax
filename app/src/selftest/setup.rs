@@ -29,7 +29,6 @@
 //! | `engine-reply folder-changed ok\|offline\|taken\|not-allowed\|missing\|lost\|store`, `engine-reply folder-changed refused TEXT` | `FolderChanged` for the last `create-folder`, `rename-folder` or `delete-folder` taken (their fields: `account`, `parent` (`none`), `folder`, `name`); `ok` first makes the change in the app's store as the engine would (`folders.rs`); `refused` carries TEXT as the server's words (M9) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`), clicks a visible, sensitive button |
-//! | `setup-peek NAME` | Clicks the eye at the end of a password field, through Broadway, and checks that the password shows |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
 //! | `setup-respond NAME RESPONSE` | Answers the alert dialog named NAME (Remove Account's `remove-account`) as its button would |
 //! | `setup-dismiss-toasts` | Closes the toasts shown and queued, as their × would (for previews) |
@@ -86,7 +85,6 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("setup-type", 2, 2),
     ("setup-choose", 2, 2),
     ("setup-click", 1, 1),
-    ("setup-peek", 1, 1),
     ("setup-key", 1, 1),
     ("setup-respond", 2, 2),
     ("setup-dismiss-toasts", 0, 0),
@@ -301,27 +299,6 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             }
             button.emit_clicked();
             Ok(())
-        }
-        "setup-peek" => {
-            let entry = harness
-                .widget(&args[0])?
-                .downcast::<gtk::PasswordEntry>()
-                .map_err(|_| format!("{} is not a password field", args[0]))?;
-            let mut child = entry.first_child();
-            let (mut text, mut eye) = (None, None);
-            while let Some(widget) = child {
-                if widget.is::<gtk::Text>() {
-                    text = widget.clone().downcast::<gtk::Text>().ok();
-                } else if widget.is::<gtk::Image>() {
-                    eye = Some(widget.clone());
-                }
-                child = widget.next_sibling();
-            }
-            let text = text.ok_or("the password field has no text")?;
-            let eye = eye.ok_or("the password field shows no eye")?;
-            super::triage::click_widget(harness, &eye, 0, 1).await?;
-            harness.wait_until_settled().await;
-            equal("shown", text.property::<bool>("visibility"), true)
         }
         "desktop-network" => {
             let available = match args[0].as_str() {
