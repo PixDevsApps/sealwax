@@ -461,7 +461,8 @@ impl Inner {
                 .filter(|id| ids.contains(id))
                 .unwrap_or(page.selected);
             let at = ids.iter().position(|id| *id == current)?;
-            let next = if forward {
+            // Next goes down the screen: to an older message when the newest is on top.
+            let next = if forward != page.newest_first {
                 ids.get(at + 1).copied()
             } else {
                 at.checked_sub(1).map(|at| ids[at])
@@ -531,7 +532,7 @@ impl Inner {
             let mut after: gtk::Widget = fold.row.clone().upcast();
             let empty = fold.messages.is_empty();
             for item in &items {
-                page.list.insert_child_after(&item.slot, Some(&after));
+                page.place(&item.slot, Some(&after));
                 after = item.slot.clone().upcast();
             }
             let rest = page.entries.split_off(index + 1);

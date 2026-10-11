@@ -17,7 +17,7 @@
 //! | `conversation-reply NAME` | A reply to conversation NAME's latest message arrives, unread |
 //! | `conversation-delete MESSAGE` | MESSAGE goes to the Trash (a local account applies it at once) |
 //! | `conversation-remember MESSAGE` | Notes where MESSAGE starts in the column, for `assert-conversation kept` |
-//! | `assert-conversation FIELD VALUE…` | `messages`, `expanded` (a count, or names joined by commas), `collapsed`, `cards` (expanded cards built), `folds`, `folded`, `html-bodies`, `measured` (HTML bodies with a height), `live-bodies`, `live-at-most`, `top-of` MESSAGE (its card or row starts in the column's view), `at-top` (the column isn't scrolled), `blank`, `read` MESSAGE `true\|false`, `selected` MESSAGE, `kept` (the remembered message starts where it did, within 2 px), `labelled` (rows and headers say what they are), `criticals` N |
+//! | `assert-conversation FIELD VALUE…` | `messages`, `expanded` (a count, or names joined by commas), `collapsed`, `cards` (expanded cards built), `folds`, `folded`, `html-bodies`, `measured` (HTML bodies with a height), `live-bodies`, `live-at-most`, `top-of` MESSAGE (its card or row starts in the column's view), `at-top` (the column isn't scrolled), `blank`, `read` MESSAGE `true\|false`, `selected` MESSAGE, `kept` (the remembered message starts where it did, within 2 px), `labelled` (rows and headers say what they are), `criticals` N, `order` MESSAGE,… (they start in that order down the column), `quick-above`/`quick-below` MESSAGE (the quick reply starts above or below it) |
 
 use super::{Harness, StepResult, blocking, equal, mail, number, script, triage};
 use crate::reader::{BodyReport, MAX_LIVE_VIEWS, Reader, samples};
@@ -587,6 +587,34 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
                     names(&state.live_bodies)
                 ))
             }
+        }
+        "order" => {
+            let mut tops = Vec::new();
+            for name in value(1)?.split(',') {
+                let top = reader
+                    .message_top(id(name)?)
+                    .ok_or_else(|| format!("{name} isn't in the conversation"))?;
+                tops.push((name, top.round()));
+            }
+            if tops.windows(2).all(|pair| pair[0].1 < pair[1].1) {
+                Ok(())
+            } else {
+                Err(format!("down the column: {tops:?}"))
+            }
+        }
+        "quick-above" | "quick-below" => {
+            let name = value(1)?;
+            let message = reader
+                .message_top(id(name)?)
+                .ok_or_else(|| format!("{name} isn't in the conversation"))?;
+            let column = column(&reader)?;
+            let quick = harness.widget("quick-reply")?;
+            let quick = quick
+                .compute_point(&column, &gtk::graphene::Point::zero())
+                .ok_or("the quick reply isn't in the column")?
+                .y();
+            let above = f64::from(quick) < message;
+            equal("quick reply above", above, field == "quick-above")
         }
         "top-of" => {
             let name = value(1)?;

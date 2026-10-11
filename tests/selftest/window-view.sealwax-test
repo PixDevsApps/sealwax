@@ -1,0 +1,29 @@
+# The view a new window opens on (issue #5): the one the last window showed, which layout.toml
+# keeps by the account's key and the folder's name. Background mode keeps Sealwax running when
+# the window closes; a new window opens on that view. Every name and address is fictional.
+# Run: tools/headless.sh 62 target/debug/sealwax --self-test tests/selftest/window-view.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-account Work work
+triage-account Home home
+
+# All Inboxes, remembered; closed and opened again, the new window shows it.
+folder all-inboxes
+assert-folder-at all-inboxes
+wait-until assert-layout-view "\"all-inboxes\""
+close-window
+wait-until assert-window false
+action app.show-main-window
+wait-until assert-window true
+wait-until assert-folder-at all-inboxes
+
+# A folder of the second account: the same.
+folder Home:sent
+wait-until assert-layout-view "{ account = \"home\", folder = \"Sent\" }"
+close-window
+wait-until assert-window false
+action app.show-main-window
+wait-until assert-window true
+wait-until assert-folder-at Home:sent
+assert-labelled

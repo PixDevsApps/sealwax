@@ -1,0 +1,42 @@
+# The order of a conversation's messages (issue #3): oldest first by default; config.toml's
+# [reader] conversation_order = "newest-first" puts the latest on top and the quick reply over
+# it, Next and Previous Message in Conversation still go down and up the screen, and a change
+# applies to the shown conversation at once. Every message is fictional.
+# Run: tools/headless.sh 63 target/debug/sealwax --self-test tests/selftest/reader-conversation-order.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Personal
+conversation-add trip
+conversation-show trip-6
+
+# Oldest first: the latest at the bottom, the quick reply under it.
+assert-conversation order trip-1,trip-2,trip-3,trip-4,trip-5,trip-6
+wait-until assert-conversation quick-below trip-6
+
+# Newest first, applied to the shown conversation: the latest on top, the quick reply over it;
+# shown again, only the selected, the unread and the latest expand (trip-5 is read by now).
+write-file $TMP/config/sealwax/config.toml "[reader]\nconversation_order = \"newest-first\"\n"
+wait-until assert-conversation order trip-6,trip-5,trip-4,trip-3,trip-2,trip-1
+assert-conversation selected trip-6
+assert-conversation expanded trip-6
+wait-until assert-conversation quick-above trip-6
+assert-conversation labelled
+assert-labelled
+
+# Next goes down the screen, to older messages; Previous back up.
+action win.next-in-conversation
+action win.next-in-conversation
+wait-until assert-conversation expanded trip-4,trip-5,trip-6
+wait-until assert-conversation top-of trip-4
+action win.previous-in-conversation
+wait-until assert-conversation top-of trip-5
+
+# A reply arrives: newest first, it goes on top.
+conversation-reply trip
+wait-until assert-conversation messages 7
+wait-until assert-conversation order trip-reply-1,trip-6,trip-5,trip-4,trip-3,trip-2,trip-1
+
+# Back to oldest first.
+write-file $TMP/config/sealwax/config.toml "[reader]\nconversation_order = \"oldest-first\"\n"
+wait-until assert-conversation order trip-1,trip-2,trip-3,trip-4,trip-5,trip-6,trip-reply-1

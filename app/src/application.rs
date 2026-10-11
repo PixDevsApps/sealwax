@@ -1025,6 +1025,9 @@ impl AppState {
             if let Some(theme) = self.theme() {
                 theme.set_options(prefs.config().appearance);
             }
+            if let Some(reader) = self.reader() {
+                reader.set_conversation_order(prefs.config().reader.conversation_order);
+            }
             // A client ID added or removed makes Microsoft sign-in available or not.
             setup::refresh();
             self.send_microsoft_client();
@@ -1916,6 +1919,7 @@ impl AppState {
             .set_more_open(layout.more_open.iter().cloned().collect());
         self.mailbox
             .set_folded(layout.folded.clone().into_iter().collect());
+        self.mailbox.set_view(layout.view.clone());
         if let Some(window) = self.window() {
             window.set_pane_widths(
                 layout
@@ -1937,6 +1941,7 @@ impl AppState {
             .set_more_open(layout.more_open.iter().cloned().collect());
         self.mailbox
             .set_folded(layout.folded.clone().into_iter().collect());
+        self.mailbox.set_view(layout.view.clone());
         self.layout.replace(Some(layout.clone()));
         let path = self.config.dirs.layout_file();
         glib::spawn_future_local(async move {
@@ -1949,8 +1954,28 @@ impl AppState {
         });
     }
 
-    /// The window's dragged widths and folded accounts go into the remembered layout.
+    /// The window's dragged widths, folded accounts and the view it shows go into the
+    /// remembered layout.
     fn remember_layout(self: &Rc<Self>, window: &Window) {
+        let weak = Rc::downgrade(self);
+        window.connect_folder_selected(move |_, key| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            // Before layout.toml is read, writing it would drop what it holds.
+            let Some(remembered) = state
+                .layout
+                .borrow()
+                .as_ref()
+                .map(|layout| layout.view.clone())
+            else {
+                return;
+            };
+            let view = state.mailbox.view_of_key(key);
+            if view != remembered {
+                state.change_layout(|layout| layout.view = view);
+            }
+        });
         if let Some(layout) = self.layout.borrow().as_ref() {
             window.set_pane_widths(
                 layout
@@ -2285,6 +2310,9 @@ impl AppState {
         };
         let source: Rc<dyn MessageSource> = self.mailbox.clone();
         let reader = Reader::new(source, theme, keymap, &self.config.dirs.cache);
+        if let Some(prefs) = self.preferences() {
+            reader.set_conversation_order(prefs.config().reader.conversation_order);
+        }
         reader.connect_engine(&self.engine);
         window.set_reader_toolbar(&reader.toolbar());
         // The batch page stands in for the reader: the Reader scope's keys work there too.

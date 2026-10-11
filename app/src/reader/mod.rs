@@ -64,6 +64,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use sealwax_domain::actions::{ActionId, Scope};
+use sealwax_domain::config::ConversationOrder;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{MessageId, MessageSummary};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
@@ -268,6 +269,8 @@ struct Inner {
     mine: RefCell<Vec<String>>,
     /// The quick replies' texts, and where compose requests and Send go (M6).
     quick: reply::Quick,
+    /// `config.toml`'s `conversation_order` is `newest-first` (issue #3).
+    newest_first: Cell<bool>,
 }
 
 impl Reader {
@@ -324,6 +327,7 @@ impl Reader {
             keymap: RefCell::new(keymap.clone()),
             mine: RefCell::new(Vec::new()),
             quick: reply::Quick::default(),
+            newest_first: Cell::new(false),
         });
         remote::load(&inner);
         let weak = Rc::downgrade(&inner);
@@ -351,6 +355,25 @@ impl Reader {
     /// The Reader scope's keys on the reader and its toolbar.
     pub fn keys(&self) -> &ScopedShortcuts {
         &self.inner.keys
+    }
+
+    /// The order of a conversation's messages (`config.toml`'s `conversation_order`); the shown
+    /// conversation is shown again in it.
+    pub fn set_conversation_order(&self, order: ConversationOrder) {
+        let newest_first = order == ConversationOrder::NewestFirst;
+        if self.inner.newest_first.replace(newest_first) == newest_first {
+            return;
+        }
+        let shown = self
+            .inner
+            .shown
+            .borrow()
+            .as_ref()
+            .filter(|page| !page.missing)
+            .map(|page| page.selected);
+        if let Some(id) = shown {
+            self.show(id);
+        }
     }
 
     /// `keys.toml` changed: the Reader scope's keys and the toolbar's tooltips follow.

@@ -43,6 +43,10 @@ mod tests {
             collapsed: vec![AccountKey("work".into())],
             more_open: vec![AccountKey("work".into())],
             folded: Default::default(),
+            view: Some(sealwax_domain::layout::View::Folder {
+                account: AccountKey("work".into()),
+                name: "INBOX".into(),
+            }),
         };
         write(&path, &layout).unwrap();
         assert_eq!(read(&path), layout);

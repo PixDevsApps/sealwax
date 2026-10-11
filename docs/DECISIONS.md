@@ -651,6 +651,10 @@ The user's UI tweaks (2026-10-08) let the sidebar's and the message list's borde
 
 The user's word (2026-10-09): "Folders with subfolders should start at the state the user left the app when the app is closed." `layout.toml` keeps, beside the folded accounts and the folded folders (`[folded]`, by account key and the folder's whole name, written as each fold changes), the accounts whose **More folders** are open (`more_open`, by key; opening it to show the folder picked counts). A folder renamed in Sealwax takes its fold and its subfolders' along (`Layout::rename_folded`). An account without a key (fixtures, self-tests) keeps its More open or closed only while Sealwax runs.
 
+### ADR-009 amendment — the view a new window opens on (2026-10-11)
+
+The user's word (2026-10-11, "build #5 and #3", on [issue #5](https://github.com/PixDevsApps/sealwax/issues/5)): a new window opens on the view the last one showed. `layout.toml` keeps it as `view = "all-inboxes"` or `view = { account = "<key>", folder = "<whole name>" }`, written whenever the window shows another folder (once the file has been read, so nothing in it is lost) and moved along when the folder is renamed in Sealwax. Reopening the window while Sealwax runs in the background, and starting it again, open that view; the open thread reads it with the store and loads its first page instead of the first account's Inbox, so the start stays as fast. A view that's gone (a deleted folder, an account no settings file lists) opens the first account's Inbox, as before. Search isn't a view and isn't kept.
+
 ### ADR-009 amendment — the accounts' rules files (2026-10-09)
 
 Each account's rules are a Sieve script in `$XDG_CONFIG_HOME/sealwax/rules/<account key>.sieve` ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026-10-09)), a settings file the user may edit by hand (`infrastructure::rules`): a missing file is no rules; it is read as at most 1 MiB of UTF-8 and compiled again whenever its modification time changes; it is written atomically, 0600 in a 0700 folder, through a symbolic link as `accounts.toml` is; it goes with its account. A file that can't run (unreadable, or a script that doesn't check) runs nothing and is reported once per change (`Event::RulesFailed`).
@@ -886,6 +890,10 @@ Built on the user's "Is it possible to have the background color (theme dependen
 
 **Status:** Accepted — user decision, 2026-10-09: "Now I need the possibility for users to make subfolders for the inboxes, and to make rules for emails to be routed to the different folders (use industry standards for rules, spam/not spam rules as well)", then "In Sealwax (Recommended)" and "Create, rename, delete (Recommended)". Folder create, rename and delete and local rules move from 1.x into 1.0, with Sieve as the rules' language, run by Sealwax ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026-10-09)); uploading scripts to servers (ManageSieve) stays on Later.
 
+### ADR-013 amendment — two requests from issues into 1.0 (2026-10-11)
+
+**Status:** Accepted — the user's word, 2026-10-11 ("build #5 and #3"), on issues [#5](https://github.com/PixDevsApps/sealwax/issues/5) and [#3](https://github.com/PixDevsApps/sealwax/issues/3). Into 1.0: **the view a new window opens on** is the one selected when the last window closed (#5), and **a setting for the order of messages in a conversation**, oldest first by default or newest first (#3). Not moved: one row per conversation in the list (#4; ADR-016's M5 amendment stands) and HTML signatures from files (#6; plain-text signatures as decided at the M6 gate).
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
@@ -1086,6 +1094,10 @@ Built in M3.
 ### ADR-016 amendment — the conversation view as built (M5, 2026-10-06)
 
 `Store::conversation(id)` reads the selected message's conversation in one snapshot, oldest first: rows a pending move or expunge or `\Deleted` hides are left out (never the selected one); copies of one Message-ID show once (the selected copy, else Inbox, Archive, All Mail, Sent, other folders, Drafts, Junk, Trash); the Trash and Junk show only when the selected message is there. The reader expands the selected message, the unread ones and the latest; over 100 messages it keeps the first, the latest 10 and the expanded ones and folds the rest into "N earlier messages", revealed 50 a click. Messages arriving while it is shown join as unread rows. The list's conversation size still counts every message of the conversation (a design question at the gate). Threads over 100 messages are folded by the reader, which this ADR's "collapse their middle" asked for.
+
+### ADR-016 amendment — the order of a conversation's messages (2026-10-11)
+
+The user's word (2026-10-11, "build #5 and #3", on [issue #3](https://github.com/PixDevsApps/sealwax/issues/3)): `config.toml`'s `[reader] conversation_order` is `"oldest-first"` (the default, as before) or `"newest-first"`. Only the screen turns: `Store::conversation` and the page's model stay oldest first (folds, "N earlier messages", which messages expand), and the page puts each row, card and revealed or newly arrived message in the turned place (`Page::place`). Newest first, the quick reply sits under the subject, above the latest message, and still answers the same message; Next and Previous Message in Conversation (`n`, `p`) go down and up the screen, so Next goes to older messages. A change applies at once: the shown conversation is shown again, scrolled to the selected message.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 

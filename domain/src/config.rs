@@ -208,6 +208,20 @@ impl Default for Background {
     }
 }
 
+/// `[reader]`: how the reader shows a conversation (issue #3).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReaderSettings {
+    pub conversation_order: ConversationOrder,
+}
+
+/// The order of a conversation's messages in the reader.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ConversationOrder {
+    #[default]
+    OldestFirst,
+    NewestFirst,
+}
+
 /// The settings in `config.toml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Config {
@@ -216,18 +230,21 @@ pub struct Config {
     pub storage: Storage,
     pub notifications: Notifications,
     pub background: Background,
+    pub reader: ReaderSettings,
 }
 
 const APPEARANCE_SETTINGS: [&str; 3] = ["corner_radius", "chrome_font", "reading_font"];
 const STORAGE_SETTINGS: [&str; 2] = ["cache_size", "prefetch_days"];
 const NOTIFICATION_SETTINGS: [&str; 2] = ["enabled", "show"];
 const BACKGROUND_SETTINGS: [&str; 1] = ["enabled"];
-const SECTIONS: [&str; 5] = [
+const READER_SETTINGS: [&str; 1] = ["conversation_order"];
+const SECTIONS: [&str; 6] = [
     "appearance",
     "oauth",
     "storage",
     "notifications",
     "background",
+    "reader",
 ];
 const PROVIDERS: [&str; 1] = ["microsoft"];
 
@@ -243,6 +260,8 @@ fn section_of(name: &str) -> Option<&'static str> {
         Some("[notifications] or [background]")
     } else if NOTIFICATION_SETTINGS.contains(&name) {
         Some("[notifications]")
+    } else if READER_SETTINGS.contains(&name) {
+        Some("[reader]")
     } else {
         None
     }
@@ -533,6 +552,36 @@ impl Reader<'_> {
             }
         }
     }
+
+    fn reader(&mut self, table: &DeTable<'_>, reader: &mut ReaderSettings) {
+        for (key, value) in entries(table) {
+            let name = key.get_ref().as_ref();
+            match name {
+                "conversation_order" => match value.get_ref().as_str() {
+                    Some("oldest-first") => {
+                        reader.conversation_order = ConversationOrder::OldestFirst;
+                    }
+                    Some("newest-first") => {
+                        reader.conversation_order = ConversationOrder::NewestFirst;
+                    }
+                    _ => self.error(
+                        value.span(),
+                        format!(
+                            "conversation_order is \"oldest-first\" or \"newest-first\", not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
+                _ => self.error(
+                    key.span(),
+                    format!(
+                        "unknown setting {name} in [reader]{}",
+                        did_you_mean(name, READER_SETTINGS)
+                    ),
+                ),
+            }
+        }
+    }
 }
 
 fn whole_number(value: &DeValue<'_>) -> Option<i64> {
@@ -598,6 +647,11 @@ impl Config {
                 "background" => {
                     if let Some(table) = reader.table(value, name) {
                         reader.background(table, &mut config.background);
+                    }
+                }
+                "reader" => {
+                    if let Some(table) = reader.table(value, name) {
+                        reader.reader(table, &mut config.reader);
                     }
                 }
                 _ => match section_of(name) {
@@ -668,7 +722,12 @@ pub fn default_config_file() -> String {
          [background]\n\
          # Closing the window keeps Sealwax running, so mail still syncs and notifications\n\
          # still come; Quit (Ctrl+Q) stops it. false makes closing the window quit.\n\
-         # enabled = true\n"
+         # enabled = true\n\
+         \n\
+         [reader]\n\
+         # The order of a conversation's messages: \"oldest-first\", or \"newest-first\" to show\n\
+         # the latest reply at the top.\n\
+         # conversation_order = \"oldest-first\"\n"
     )
 }
 
@@ -893,6 +952,37 @@ mod tests {
         assert_eq!(
             errors("cache_size = \"1 GiB\"\n"),
             ["line 1, column 1: cache_size belongs in [storage]; put it under that line"]
+        );
+    }
+
+    #[test]
+    fn the_conversation_order() {
+        assert_eq!(
+            Config::default().reader.conversation_order,
+            ConversationOrder::OldestFirst
+        );
+        let config = Config::parse("[reader]\nconversation_order = \"newest-first\"\n").unwrap();
+        assert_eq!(
+            config.reader.conversation_order,
+            ConversationOrder::NewestFirst
+        );
+        assert_eq!(
+            errors("[reader]\nconversation_order = \"newest\"\n"),
+            [
+                "line 2, column 22: conversation_order is \"oldest-first\" or \"newest-first\", \
+                 not \"newest\""
+            ]
+        );
+        assert_eq!(
+            errors("conversation_order = \"newest-first\"\n"),
+            ["line 1, column 1: conversation_order belongs in [reader]; put it under that line"]
+        );
+        assert_eq!(
+            errors("[reader]\nconversation_ordr = \"newest-first\"\n"),
+            [
+                "line 2, column 1: unknown setting conversation_ordr in [reader]; did you mean \
+                 conversation_order?"
+            ]
         );
     }
 

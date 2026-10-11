@@ -565,7 +565,13 @@ impl Inner {
         let quick = QuickReply::new(target, &reply_label(&summary, &mine), &text, &keymap);
         self.wire_quick_reply(key, &quick);
         self.with_page(key, |page| {
-            page.root.append(&quick.root);
+            if page.newest_first {
+                // Under the heading, by the newest message.
+                page.root
+                    .insert_child_after(&quick.root, page.root.first_child().as_ref());
+            } else {
+                page.root.append(&quick.root);
+            }
             page.quick = Some(quick.clone());
         });
         if self.is_shown(key) {

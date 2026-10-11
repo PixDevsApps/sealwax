@@ -73,6 +73,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The view a window opens on, and the conversation order (issues #5 and #3) — 2026-10-11
+
+[ADR-009 amendment](DECISIONS.md#adr-009-amendment--the-view-a-new-window-opens-on-2026-10-11) and [ADR-016 amendment](DECISIONS.md#adr-016-amendment--the-order-of-a-conversations-messages-2026-10-11). This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `window-view` self-test | 20 of 20 steps: All Inboxes and Home's Sent each written to `layout.toml` and shown again by a new window after the window closed (background mode) | Pass |
+| `reader-conversation-order` self-test | 25 of 25 steps: oldest first by default; `newest-first` written to `config.toml` turns the shown conversation (the latest on top, the quick reply above it), Next goes to older messages, a reply arriving goes on top; back to oldest first | Pass |
+| Unit tests | `layout.toml`'s view round trip, broken values and a rename; the remembered view and its fallback to the first Inbox; `[reader] conversation_order` and its mistakes | Pass |
+| A newest-first conversation, looked at (a scratch screenshot) | The heading, the quick reply, the latest card, then the older rows | Pass |
+| CI, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,490 passed, 0 failed, 98 ignored; 77 scripts, 7,586 of 7,586 steps; the hostile suite clean (60 cases, 273 s); `cargo clippy --workspace --all-targets -D warnings` clean (a first run stopped on an example's `SidebarModel`, fixed) | Pass |
+| A restart with a remembered view (the open thread's preload) | Covered by the unit tests of the same lookup, not by a restart | Not verified |
+
 ### 0.4.2 — 2026-10-11
 
 `v0.4.2` is `01fe475`; this machine, rustc 1.98.1. The release: [v0.4.2](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.2).

@@ -12,6 +12,7 @@ use crate::window::{
 use gtk4::glib;
 use sealwax_domain::account::{AccountColor, AccountKey};
 use sealwax_domain::folders;
+use sealwax_domain::layout::View;
 use sealwax_domain::model::{Account, AccountId, Folder, FolderId, FolderRole as StoreRole};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{
@@ -176,6 +177,26 @@ pub fn sidebar_model(
                 }
             })
             .collect(),
+        preferred: None,
+    }
+}
+
+/// The sidebar key of `view` among `accounts` and `folders`: All Inboxes, or the selectable
+/// folder of that name in the account with that key.
+pub fn view_key(view: &View, accounts: &[Account], folders: &[Folder]) -> Option<String> {
+    match view {
+        View::AllInboxes => Some(ALL_INBOXES.to_owned()),
+        View::Folder { account, name } => {
+            let account = accounts
+                .iter()
+                .find(|known| known.key.as_ref() == Some(account))?;
+            folders
+                .iter()
+                .find(|folder| {
+                    folder.account == account.id && folder.selectable && &folder.name == name
+                })
+                .map(|folder| folder_key(folder.id))
+        }
     }
 }
 
@@ -275,14 +296,16 @@ struct Opened {
     events: async_channel::Receiver<Arc<ChangeEvent>>,
     accounts: Versioned<Vec<Account>>,
     folders: Versioned<Vec<Folder>>,
+    /// The view `layout.toml` remembers.
+    view: Option<View>,
     first: Option<FirstView>,
     elapsed: Duration,
 }
 
 /// Opens the blob store and the store, subscribes to change events, reads the accounts and
-/// folders, and opens the view a new window shows first (its first account's Inbox) with
-/// today's sections. Runs on the open thread; it may block.
-fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
+/// folders, and opens the view a new window shows first (the one `layout.toml` remembers, else
+/// its first account's Inbox) with today's sections. Runs on the open thread; it may block.
+fn open_store(store_file: &Path, blobs_dir: &Path, layout_file: &Path) -> Result<Opened, String> {
     let started = Instant::now();
     let blobs = BlobStore::open(blobs_dir).map_err(|error| format!("blob store: {error}"))?;
     let options = StoreOptions {
@@ -299,7 +322,8 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         .folders()
         .recv_blocking()
         .map_err(|error| error.to_string())?;
-    let scope = sidebar_model(
+    let view = sealwax_infrastructure::layout::read(layout_file).view;
+    let mut model = sidebar_model(
         &accounts.value,
         &folders.value,
         &HashMap::new(),
@@ -307,9 +331,13 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         &HashSet::new(),
         &HashSet::new(),
         &HashMap::new(),
-    )
-    .default_selection()
-    .and_then(|key| scope_for_key(&key, &folders.value));
+    );
+    model.preferred = view
+        .as_ref()
+        .and_then(|view| view_key(view, &accounts.value, &folders.value));
+    let scope = model
+        .default_selection()
+        .and_then(|key| scope_for_key(&key, &folders.value));
     let thresholds = glib::DateTime::now_local()
         .ok()
         .and_then(|now| Thresholds::at(&now).ok());
@@ -341,6 +369,7 @@ fn open_store(store_file: &Path, blobs_dir: &Path) -> Result<Opened, String> {
         events,
         accounts,
         folders,
+        view,
         first,
         elapsed: started.elapsed(),
     })
@@ -361,6 +390,8 @@ pub struct Mailbox {
     more_open: RefCell<HashSet<AccountKey>>,
     /// The folders whose subfolders the sidebar folds away, by account and whole name.
     folded: RefCell<HashMap<AccountKey, BTreeSet<String>>>,
+    /// The view the last window showed, which a new one opens on (issue #5).
+    view: RefCell<Option<View>>,
     accounts: RefCell<Vec<Account>>,
     folders: RefCell<Vec<Folder>>,
     /// The version the folder list was read at; change events up to it are already in it.
@@ -393,11 +424,12 @@ impl Mailbox {
         self.phase.replace(Phase::Opening);
         let store_file = dirs.store_file();
         let blobs_dir = dirs.blobs_dir();
+        let layout_file = dirs.layout_file();
         let (sender, receiver) = async_channel::bounded(1);
         let spawned = std::thread::Builder::new()
             .name("sealwax-mailbox-open".into())
             .spawn(move || {
-                let _ = sender.send_blocking(open_store(&store_file, &blobs_dir));
+                let _ = sender.send_blocking(open_store(&store_file, &blobs_dir, &layout_file));
             });
         if let Err(error) = spawned {
             self.fail(format!("cannot start the store thread: {error}"));
@@ -424,6 +456,7 @@ impl Mailbox {
             events,
             accounts,
             folders,
+            view,
             first,
             elapsed,
         } = opened;
@@ -444,6 +477,9 @@ impl Mailbox {
         self.folders_version.set(folders.version);
         self.accounts.replace(accounts.value);
         self.folders.replace(folders.value);
+        if self.view.borrow().is_none() {
+            self.view.replace(view);
+        }
         self.first_view.replace(first);
         self.phase.replace(Phase::Open);
         let weak = Rc::downgrade(self);
@@ -528,15 +564,50 @@ impl Mailbox {
     }
 
     pub fn sidebar_model(&self) -> SidebarModel {
-        sidebar_model(
-            &self.accounts.borrow(),
-            &self.folders.borrow(),
+        let accounts = self.accounts.borrow();
+        let folders = self.folders.borrow();
+        let mut model = sidebar_model(
+            &accounts,
+            &folders,
             &self.statuses.borrow(),
             &self.colors.borrow(),
             &self.collapsed.borrow(),
             &self.more_open.borrow(),
             &self.folded.borrow(),
-        )
+        );
+        model.preferred = self
+            .view
+            .borrow()
+            .as_ref()
+            .and_then(|view| view_key(view, &accounts, &folders));
+        model
+    }
+
+    /// The view the last window showed, which a new one opens on.
+    pub fn set_view(&self, view: Option<View>) {
+        self.view.replace(view);
+    }
+
+    /// The view the sidebar key `key` shows, to remember: `None` for a folder of an account
+    /// no settings file lists, or a key the sidebar doesn't know.
+    pub fn view_of_key(&self, key: &str) -> Option<View> {
+        if key == ALL_INBOXES {
+            return Some(View::AllInboxes);
+        }
+        let id: i64 = key.strip_prefix("folder-")?.parse().ok()?;
+        let folders = self.folders.borrow();
+        let folder = folders.iter().find(|folder| folder.id.0 == id)?;
+        let account = self
+            .accounts
+            .borrow()
+            .iter()
+            .find(|known| known.id == folder.account)?
+            .key
+            .clone()?;
+        Some(View::Folder {
+            account,
+            name: folder.name.clone(),
+        })
     }
 
     /// What the engine last reported for `account`; synced until it reports.
@@ -740,6 +811,65 @@ mod tests {
             total: unread * 3,
             unread,
         }
+    }
+
+    #[test]
+    fn a_new_window_opens_on_the_remembered_view_while_it_exists() {
+        let accounts = vec![
+            Account {
+                id: AccountId(1),
+                name: "Work".into(),
+                address: "work@example.test".into(),
+                key: Some(AccountKey("work".into())),
+            },
+            Account {
+                id: AccountId(2),
+                name: "Home".into(),
+                address: "home@example.test".into(),
+                key: Some(AccountKey("home".into())),
+            },
+        ];
+        let folders = vec![
+            folder(1, 1, "INBOX", StoreRole::Inbox, 0),
+            folder(2, 2, "INBOX", StoreRole::Inbox, 0),
+            folder(3, 2, "Kunder/Acme", StoreRole::Other, 0),
+        ];
+        let opens_on = |view: Option<View>| {
+            let mut model = sidebar_model(
+                &accounts,
+                &folders,
+                &HashMap::new(),
+                &HashMap::new(),
+                &HashSet::new(),
+                &HashSet::new(),
+                &HashMap::new(),
+            );
+            model.preferred = view.and_then(|view| view_key(&view, &accounts, &folders));
+            model.default_selection()
+        };
+        let home = |name: &str| View::Folder {
+            account: AccountKey("home".into()),
+            name: name.into(),
+        };
+        assert_eq!(opens_on(None), Some(folder_key(FolderId(1))));
+        assert_eq!(
+            opens_on(Some(View::AllInboxes)),
+            Some(ALL_INBOXES.to_owned())
+        );
+        assert_eq!(
+            opens_on(Some(home("Kunder/Acme"))),
+            Some(folder_key(FolderId(3)))
+        );
+        // Gone: a deleted folder, or an account no longer listed, opens the first Inbox.
+        assert_eq!(
+            opens_on(Some(home("Kunder/Gone"))),
+            Some(folder_key(FolderId(1)))
+        );
+        let gone = View::Folder {
+            account: AccountKey("gone".into()),
+            name: "INBOX".into(),
+        };
+        assert_eq!(opens_on(Some(gone)), Some(folder_key(FolderId(1))));
     }
 
     #[test]

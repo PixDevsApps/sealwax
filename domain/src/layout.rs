@@ -1,7 +1,8 @@
 //! The window's layout between runs (the user's UI tweaks, 2026-10-08): the widths the user
 //! dragged the sidebar and the message list to, the accounts folded in the sidebar, the
-//! accounts whose "More folders" are open, and the folders whose subfolders it folds away (M9,
-//! folders; the sidebar comes back as the user left it, their word on 2026-10-09), in
+//! accounts whose "More folders" are open, the folders whose subfolders it folds away (M9,
+//! folders; the sidebar comes back as the user left it, their word on 2026-10-09), and the view
+//! the window last showed, which a new window opens on (issue #5, 2026-10-11), in
 //! `$XDG_STATE_HOME/sealwax/layout.toml`. Sealwax writes it; it isn't a setting, so it is read
 //! leniently: anything it doesn't know, or a width out of range, is left out and the default
 //! applies.
@@ -30,7 +31,18 @@ pub struct Layout {
     /// The folders whose subfolders the sidebar folds away: each account's by key, by the
     /// folder's whole name.
     pub folded: BTreeMap<AccountKey, BTreeSet<String>>,
+    /// The view the window last showed; `None`: the first account's Inbox.
+    pub view: Option<View>,
 }
+
+/// A view a new window can open on: All Inboxes, or an account's folder by its whole name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum View {
+    AllInboxes,
+    Folder { account: AccountKey, name: String },
+}
+
+const ALL_INBOXES: &str = "all-inboxes";
 
 impl Layout {
     pub fn parse(text: &str) -> Self {
@@ -80,19 +92,39 @@ impl Layout {
                 folded.insert(AccountKey(key.clone()), names);
             }
         }
+        let view = match table.get("view") {
+            Some(Value::String(view)) if view == ALL_INBOXES => Some(View::AllInboxes),
+            Some(Value::Table(view)) => {
+                match (
+                    view.get("account").and_then(Value::as_str),
+                    view.get("folder").and_then(Value::as_str),
+                ) {
+                    (Some(account), Some(name)) if is_valid_key(account) && !name.is_empty() => {
+                        Some(View::Folder {
+                            account: AccountKey(account.to_owned()),
+                            name: name.to_owned(),
+                        })
+                    }
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
         Self {
             sidebar_width: width("sidebar_width", &SIDEBAR_WIDTHS),
             list_width: width("list_width", &LIST_WIDTHS),
             collapsed: keys("collapsed"),
             more_open: keys("more_open"),
             folded,
+            view,
         }
     }
 
     pub fn to_text(&self) -> String {
         let mut text = String::from(
             "# Sealwax keeps the window's layout here: the widths the sidebar and the message\n\
-             # list were dragged to, and the accounts and folders folded or open in the sidebar.\n\
+             # list were dragged to, the accounts and folders folded or open in the sidebar, and\n\
+             # the view the window last showed.\n\
              # It isn't a setting; delete the file to go back to the defaults.\n",
         );
         if let Some(width) = self.sidebar_width {
@@ -114,6 +146,15 @@ impl Layout {
                 .map(|key| format!("\"{}\"", key.0))
                 .collect();
             text.push_str(&format!("more_open = [{}]\n", keys.join(", ")));
+        }
+        match &self.view {
+            Some(View::AllInboxes) => text.push_str(&format!("view = \"{ALL_INBOXES}\"\n")),
+            Some(View::Folder { account, name }) => text.push_str(&format!(
+                "view = {{ account = \"{}\", folder = {} }}\n",
+                account.0,
+                Value::String(name.clone())
+            )),
+            None => {}
         }
         if !self.folded.is_empty() {
             text.push_str("\n[folded]\n");
@@ -168,8 +209,8 @@ impl Layout {
         true
     }
 
-    /// `key`'s folder `old` is now `new`: its fold and its subfolders' follow it. True when that
-    /// changed anything.
+    /// `key`'s folder `old` is now `new`: its fold, its subfolders' and the remembered view follow
+    /// it. True when that changed anything.
     pub fn rename_folded(
         &mut self,
         key: &AccountKey,
@@ -177,8 +218,16 @@ impl Layout {
         new: &str,
         delimiter: Option<char>,
     ) -> bool {
+        let mut changed = false;
+        if let Some(View::Folder { account, name }) = &mut self.view
+            && account == key
+            && let Some(to) = crate::folders::renamed(name, old, new, delimiter)
+        {
+            *name = to;
+            changed = true;
+        }
         let Some(names) = self.folded.get_mut(key) else {
-            return false;
+            return changed;
         };
         let moved: Vec<(String, String)> = names
             .iter()
@@ -190,7 +239,7 @@ impl Layout {
             names.remove(from);
             names.insert(to.clone());
         }
-        !moved.is_empty()
+        changed || !moved.is_empty()
     }
 
     /// Folds `key`'s account away or opens it again; true when that changed anything.
@@ -232,6 +281,7 @@ mod tests {
                     "a\\b".to_owned(),
                 ]),
             )]),
+            view: Some(View::AllInboxes),
         };
         assert_eq!(Layout::parse(&layout.to_text()), layout);
         assert_eq!(
@@ -254,6 +304,7 @@ mod tests {
                 collapsed: vec![AccountKey("work".into()), AccountKey("home".into())],
                 more_open: Vec::new(),
                 folded: BTreeMap::new(),
+                view: None,
             }
         );
         assert_eq!(
@@ -306,6 +357,50 @@ mod tests {
         assert!(layout.to_text().contains("more_open = [\"work\"]\n"));
         assert!(layout.set_more_open(&work, false));
         assert!(!layout.to_text().contains("more_open"));
+    }
+
+    #[test]
+    fn the_view_round_trips_and_follows_a_rename() {
+        let work = AccountKey("work".into());
+        for view in [
+            View::AllInboxes,
+            View::Folder {
+                account: work.clone(),
+                name: "Kunder/\"Acme\" & co".into(),
+            },
+        ] {
+            let layout = Layout {
+                view: Some(view),
+                folded: BTreeMap::from([(work.clone(), BTreeSet::from(["Kunder".into()]))]),
+                ..Layout::default()
+            };
+            assert_eq!(Layout::parse(&layout.to_text()), layout);
+        }
+        for broken in [
+            "view = \"inbox\"",
+            "view = 3",
+            "view = { account = \"not a key!\", folder = \"INBOX\" }",
+            "view = { account = \"work\", folder = \"\" }",
+            "view = { account = \"work\" }",
+        ] {
+            assert_eq!(Layout::parse(broken).view, None, "{broken}");
+        }
+        let mut layout = Layout {
+            view: Some(View::Folder {
+                account: work.clone(),
+                name: "Kunder/Acme".into(),
+            }),
+            ..Layout::default()
+        };
+        assert!(layout.rename_folded(&work, "Kunder", "Clients", Some('/')));
+        assert_eq!(
+            layout.view,
+            Some(View::Folder {
+                account: work.clone(),
+                name: "Clients/Acme".into(),
+            })
+        );
+        assert!(!layout.rename_folded(&AccountKey("home".into()), "Clients", "X", Some('/')));
     }
 
     #[test]

@@ -82,6 +82,7 @@ pub fn store(root: &Path) -> Scratch {
 pub fn window(app: &adw::Application, reader: &Reader, size: (i32, i32)) -> Window {
     let window = Window::new(app, true);
     window.set_sidebar(SidebarModel {
+        preferred: None,
         accounts: vec![SidebarAccount {
             key: "personal".into(),
             name: "Personal".into(),

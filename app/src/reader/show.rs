@@ -140,8 +140,13 @@ impl Inner {
             entries.push(Entry::Message(Box::new(item)));
             index += 1;
         }
+        let newest_first = self.newest_first.get();
         for entry in &entries {
-            list.append(&entry_widget(entry));
+            if newest_first {
+                list.prepend(&entry_widget(entry));
+            } else {
+                list.append(&entry_widget(entry));
+            }
         }
         Page {
             key,
@@ -154,6 +159,7 @@ impl Inner {
             missing: false,
             current: None,
             quick: None,
+            newest_first,
         }
     }
 
@@ -414,6 +420,7 @@ impl Inner {
             missing: true,
             current: None,
             quick: None,
+            newest_first: false,
         }));
         let elapsed = started.elapsed();
         self.present(generation, false, started, elapsed, elapsed);
@@ -607,7 +614,7 @@ impl Inner {
                     .position(|entry| entry_order(entry) > order(&message))
                     .unwrap_or(page.entries.len());
                 let before = at.checked_sub(1).map(|at| entry_widget(&page.entries[at]));
-                page.list.insert_child_after(&item.slot, before.as_ref());
+                page.place(&item.slot, before.as_ref());
                 page.entries.insert(at, Entry::Message(Box::new(item)));
             });
         }

@@ -1,5 +1,7 @@
 //! The conversation the reader shows (ML-057; ADR-016's M5 amendment; DESIGN.md "Reader"): one
-//! subject heading, then every message oldest first. The selected message, every unread one and
+//! subject heading, then every message oldest first, or newest first as `config.toml`'s
+//! `conversation_order` says (issue #3: the page's model stays oldest first; only the order on
+//! screen turns, [`Page::place`]). The selected message, every unread one and
 //! the latest are expanded cards; the others are one-line rows (avatar, sender, snippet, time)
 //! that expand when clicked. In a conversation over [`COLLAPSE_OVER`] messages the middle folds
 //! into "N earlier messages" rows that reveal [`GAP_STEP`] messages a click, keeping the first
@@ -215,11 +217,24 @@ pub struct Page {
     /// The message Next and Previous Message in Conversation last moved to; the selected one
     /// before they are used.
     pub current: Option<MessageId>,
-    /// The quick reply under the conversation (M6, ML-068), once its messages are read.
+    /// The quick reply under the conversation (M6, ML-068), once its messages are read; over
+    /// it, newest first.
     pub quick: Option<Rc<super::reply::QuickReply>>,
+    /// The newest message is on top: `entries` stay oldest first, the screen shows them turned.
+    pub newest_first: bool,
 }
 
 impl Page {
+    /// Puts `widget` after `after` in the conversation's order (`None`: before every other),
+    /// which newest first shows above it.
+    pub fn place(&self, widget: &impl IsA<gtk::Widget>, after: Option<&gtk::Widget>) {
+        match (self.newest_first, after) {
+            (false, after) => self.list.insert_child_after(widget, after),
+            (true, Some(after)) => widget.insert_before(&self.list, Some(after)),
+            (true, None) => self.list.append(widget),
+        }
+    }
+
     pub fn items(&self) -> impl Iterator<Item = &Item> {
         self.entries.iter().filter_map(|entry| match entry {
             Entry::Message(item) => Some(&**item),

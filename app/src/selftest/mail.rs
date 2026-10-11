@@ -48,6 +48,9 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("list-remember", 0, 0),
     // Assertions.
     ("assert-list-count", 1, 1),
+    // The view a window shows and the one layout.toml remembers (issue #5).
+    ("assert-folder-at", 1, 1),
+    ("assert-layout-view", 1, 1),
     ("assert-list-row", 3, 3),
     ("assert-list-all", 2, 2),
     ("assert-list-sections", 1, 1),
@@ -252,7 +255,9 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
             if (command.starts_with("assert-list-") && !super::triage::handles(command))
                 || command == "assert-sidebar-count"
                 || command == "assert-selection-reported"
-                || command == "assert-action-enabled" =>
+                || command == "assert-action-enabled"
+                || command == "assert-folder-at"
+                || command == "assert-layout-view" =>
         {
             check(harness, command, args).await
         }
@@ -869,6 +874,23 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
     let model = list.model();
     match assertion {
         "assert-list-count" => equal("rows", model.total(), number(arg(0))? as u32),
+        "assert-folder-at" => {
+            let wanted = folder_key_for(harness, arg(0))?;
+            equal(
+                "folder",
+                harness.window()?.selected_folder().as_str(),
+                wanted.as_str(),
+            )
+        }
+        "assert-layout-view" => {
+            let path = harness.state.config().dirs.layout_file();
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            let view = text
+                .lines()
+                .find(|line| line.starts_with("view = "))
+                .map(|line| line.trim_start_matches("view = "));
+            equal("remembered view", view.unwrap_or("none"), arg(0))
+        }
         "assert-list-row" => {
             let position = number(arg(0))? as u32;
             let row = model

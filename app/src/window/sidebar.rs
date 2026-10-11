@@ -256,6 +256,9 @@ impl SidebarAccount {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SidebarModel {
     pub accounts: Vec<SidebarAccount>,
+    /// The view a new window opens on when the sidebar still has it: the one the last window
+    /// showed (issue #5).
+    pub preferred: Option<String>,
 }
 
 impl SidebarModel {
@@ -275,8 +278,11 @@ impl SidebarModel {
         (key == ALL_INBOXES && !self.accounts.is_empty()) || self.find(key).is_some()
     }
 
-    /// What a new window shows: the first account's Inbox.
+    /// What a new window shows: the view the last one showed, else the first account's Inbox.
     pub fn default_selection(&self) -> Option<String> {
+        if let Some(preferred) = self.preferred.as_ref().filter(|key| self.contains(key)) {
+            return Some(preferred.clone());
+        }
         let first = self.accounts.first()?;
         Some(
             first
@@ -1968,6 +1974,7 @@ mod tests {
 
     fn model() -> SidebarModel {
         SidebarModel {
+            preferred: None,
             accounts: vec![
                 SidebarAccount {
                     key: "a".to_owned(),

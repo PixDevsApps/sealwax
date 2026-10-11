@@ -14,6 +14,7 @@ use sealwax_domain::theme::{avatar_class, initials};
 
 pub fn model() -> SidebarModel {
     SidebarModel {
+        preferred: None,
         accounts: vec![
             account(
                 "personal",
