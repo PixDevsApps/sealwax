@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 0.4.3 — 2026-10-11
+
+Two requests from users.
 
 - **Sealwax opens where you left it:** a new window shows the view you last had, All Inboxes or a folder, also after a restart ([issue #5](https://github.com/PixDevsApps/sealwax/issues/5)).
 - **Newest message first, if you like:** set `conversation_order = "newest-first"` under `[reader]` in `config.toml` to see a conversation's latest message at the top, with the reply box above it ([issue #3](https://github.com/PixDevsApps/sealwax/issues/3)).
