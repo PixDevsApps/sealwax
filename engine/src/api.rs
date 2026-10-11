@@ -304,9 +304,13 @@ pub enum Event {
         draft: DraftId,
         error: SendError,
     },
-    /// Sealwax stopped while `draft` was being sent, after its data may have reached the
-    /// server: it may have been sent. It is never sent again without the user (ADR-015).
-    SendUncertain { account: AccountId, draft: DraftId },
+    /// `draft`'s data may have reached the server, and `reason` says why Sealwax can't tell:
+    /// it may have been sent. It is never sent again without the user (ADR-015).
+    SendUncertain {
+        account: AccountId,
+        draft: DraftId,
+        reason: UncertainReason,
+    },
     /// Mail that arrived in `folder` after its first sync, above the UIDNEXT the store held,
     /// sent once the rows are committed (ML-083). Never for a first sync, older mail loaded
     /// below the floor, or a message Sealwax's own op moved there. Any folder and any flags:
@@ -480,6 +484,18 @@ pub enum SendError {
     /// built again until the user sends it again.
     #[error("Sealwax stopped while it built the message")]
     Interrupted,
+}
+
+/// Why a send's outcome is unknown (issue #2).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UncertainReason {
+    /// Sealwax stopped while the message was going out; found at the next start.
+    Stopped,
+    /// No reply to the message's end: the connection closed, broke or timed out.
+    NoReply,
+    /// The server replied, but its reply couldn't be read (such as a line longer than lettre
+    /// takes), so whether it took the message is unknown.
+    UnreadableReply,
 }
 
 /// Recipient addresses are the user's data: `Debug` prints only how many.

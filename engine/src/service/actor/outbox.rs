@@ -31,7 +31,7 @@ use super::{
     Interrupt, Jitter, Poller, Shared, Signal, Status, SyncConfig, backoff_delay, discard, race,
 };
 use crate::accounts::secret_label;
-use crate::api::{Event, SendError, SyncStatus};
+use crate::api::{Event, SendError, SyncStatus, UncertainReason};
 use crate::imap::Credentials;
 use crate::imap::write::{self, Append, Mark, OpFolder, WriteError, WriteFailure};
 use crate::secrets::{SecretKind, SecretStore};
@@ -205,7 +205,7 @@ fn refusal(error: &SubmitError) -> SendFailure {
         | SubmitError::NeedsSmtpUtf8 { sender: false, .. } => SendFailure::RecipientsRefused,
         SubmitError::TooLarge { .. } => SendFailure::TooLarge,
         SubmitError::Auth(_) => SendFailure::NeedsSignIn,
-        SubmitError::Connect(_) | SubmitError::Transient | SubmitError::Uncertain => {
+        SubmitError::Connect(_) | SubmitError::Transient | SubmitError::Uncertain(_) => {
             SendFailure::Other
         }
         _ => SendFailure::Refused,
@@ -626,7 +626,7 @@ impl Submission {
         }
         match race(&self.signals, seen, prepared.send()).await {
             Err(interrupt) => {
-                self.uncertain(send).await;
+                self.uncertain(send, UncertainReason::Stopped).await;
                 Err(interrupt)
             }
             Ok(Ok(())) => {
@@ -674,12 +674,17 @@ impl Submission {
     }
 
     /// The data may have reached the server: never sent again without the user.
-    async fn uncertain(&mut self, send: &DueSend) {
-        tracing::info!(account = self.account.0, "a send's outcome is unknown");
+    async fn uncertain(&mut self, send: &DueSend, reason: UncertainReason) {
+        tracing::info!(
+            account = self.account.0,
+            ?reason,
+            "a send's outcome is unknown"
+        );
         match self.shared.store.send_uncertain(send.draft).recv().await {
             Ok(recorded) if recorded.applied => self.shared.send(Event::SendUncertain {
                 account: self.account,
                 draft: send.draft,
+                reason,
             }),
             Ok(_) => {}
             Err(error) => {
@@ -717,7 +722,7 @@ impl Submission {
     /// A submission that didn't go through, by its class.
     async fn not_sent(&mut self, send: &DueSend, prepared: &Prepared, error: &SubmitError) {
         match error.failure() {
-            SubmitFailure::Uncertain => self.uncertain(send).await,
+            SubmitFailure::Uncertain(reason) => self.uncertain(send, reason).await,
             SubmitFailure::Refuse => {
                 let reason = refusal(error);
                 self.refused(send, reason, error.send_error(&prepared.envelope_to))

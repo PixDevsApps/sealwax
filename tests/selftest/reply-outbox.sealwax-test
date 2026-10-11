@@ -89,23 +89,27 @@ outbox-expect outbox-queued
 wait-until assert-toast "Sending it again"
 wait-until assert-setup banner-queue none
 
-# Again uncertain: It Was Sent files it as sent (its Sent copy follows).
+# Again uncertain, the server's reply unreadable (issue #2): the banner and the question say
+# so, not that Sealwax stopped. It Was Sent files it as sent (its Sent copy follows).
 outbox-engine start fourth
-outbox-engine uncertain fourth
+outbox-engine uncertain fourth unreadable
 wait-until assert-setup banner-queue uncertain
+assert-text-contains banner-body "Sealwax couldn't read the server's answer to a message from Work"
 click banner-primary
 wait-until assert-shown uncertain-send true
+assert-text-contains uncertain-send "couldn't read the server's answer"
 setup-respond uncertain-send was-sent
 wait-until assert-outbox fourth sent
 outbox-expect outbox-queued
 wait-until assert-toast "Filed as sent"
 wait-until assert-setup banner-queue none
 
-# Back to Drafts opens it; Later changes nothing.
+# No reply to the message's end. Back to Drafts opens it; Later changes nothing.
 outbox-queue fifth
 outbox-engine start fifth
-outbox-engine uncertain fifth
+outbox-engine uncertain fifth no-reply
 wait-until assert-setup banner-queue uncertain
+assert-text-contains banner-body "The server didn't answer when Sealwax sent a message from Work"
 click banner-primary
 wait-until assert-shown uncertain-send true
 setup-respond uncertain-send later

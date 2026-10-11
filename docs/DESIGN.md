@@ -1,6 +1,6 @@
 # Design & Interaction System
 
-Synced: 2026-10-09
+Synced: 2026-10-11
 
 The repository docs are the canonical project memory ([ADR-012](DECISIONS.md#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Anything the user changes after approval is recorded here as a dated entry above the affected section.
 
@@ -223,7 +223,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - **Sending:** Send closes the composer and the main window shows "Message queued" with **Undo** for the undo window (7 s, triage's); the send becomes the last action, so `z` and Ctrl+Z undo it too. Undo puts the draft back in a composer (a docked card since 2026-10-08), or the text back in the quick reply it came from; once the send has started: "Too late to undo: the message is being sent". Then "Message sent".
 - **A send that failed for good** shows a toast for 10 s that says why ("Your message wasn't sent: the server refused 1 recipient. It's back in your drafts.") with **Open**; never the recipients or the subject.
 - *M9 (depth limit; the text a proposal for the user's gate):* a send whose message was being built when Sealwax stopped comes back the same way at the next start, "Your message wasn't sent: Sealwax stopped while preparing it. It's back in your drafts.", instead of being built again; it is never sent without the user sending it again.
-- **A send that may have gone** (Sealwax stopped, or the connection broke, while its data went out) puts up the window's banner, "A message may have been sent", after the sign-ins and before the full mailboxes, with **Choose…**: "Was the message sent?" with Send Again (shown as the risky choice), It Was Sent, Back to Drafts and Later (the default).
+- **A send that may have gone** (Sealwax stopped, the connection broke, or the server's reply couldn't be read, while its data went out) puts up the window's banner, "A message may have been sent", its text saying which ("Sealwax couldn't read the server's answer to a message from Work, so it can't tell whether the server took it."; for one from an earlier session, "Sealwax couldn't confirm that a message from Work was sent."; issue #2), after the sign-ins and before the full mailboxes, with **Choose…**: "Was the message sent?" with Send Again (shown as the risky choice), It Was Sent, Back to Drafts and Later (the default).
 - **The offline banner's count** ("3 waiting") includes sends waiting for a server.
 
 *As built in M7; accepted at the M7 gate (the user's delegation, 2026-10-07):*

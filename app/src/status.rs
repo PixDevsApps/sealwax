@@ -14,6 +14,7 @@ use crate::window::{AccountStatus, Attention, Window};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint, Receive};
+use sealwax_engine::api::UncertainReason;
 
 /// An account as the banner needs it: the store's name and the engine's state for it, and its
 /// `accounts.toml` entry.
@@ -34,13 +35,13 @@ pub struct Waiting {
 /// Everything waiting, most important first. `keyring_missing`: the engine fell back to memory
 /// and the banner wasn't dismissed; `network`: the desktop reports a network; `pending`: the
 /// changes and sends waiting for a server, which the offline entry counts; `uncertain`: the
-/// account name of each send that may have gone out, oldest first.
+/// account name of each send that may have gone out, oldest first, with why when known.
 pub fn queue(
     accounts: &[Account<'_>],
     keyring_missing: bool,
     network: bool,
     pending: u32,
-    uncertain: &[String],
+    uncertain: &[(String, Option<UncertainReason>)],
 ) -> Vec<Waiting> {
     let mut waiting = Vec::new();
     if keyring_missing {
@@ -56,8 +57,11 @@ pub fn queue(
     ];
     for kind in kinds {
         if kind == AccountStatus::QuotaFull {
-            waiting.extend(uncertain.iter().map(|name| Waiting {
-                attention: Attention::UncertainSend { name: name.clone() },
+            waiting.extend(uncertain.iter().map(|(name, reason)| Waiting {
+                attention: Attention::UncertainSend {
+                    name: name.clone(),
+                    reason: *reason,
+                },
                 account: None,
             }));
         }
@@ -237,7 +241,7 @@ mod tests {
             ]
         );
         // Sends that may have gone out: after the sign-ins, before the full mailboxes.
-        let uncertain = ["anne".to_owned(), "ola".to_owned()];
+        let uncertain = [("anne".to_owned(), None), ("ola".to_owned(), None)];
         assert_eq!(
             shown(&queue(&accounts, false, false, 2, &uncertain)),
             [

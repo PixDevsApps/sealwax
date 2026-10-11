@@ -24,7 +24,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::model::{AccountId, BlobKey, DraftId, MessageId};
-use sealwax_engine::api::{Command, Event, SendError};
+use sealwax_engine::api::{Command, Event, SendError, UncertainReason};
 use sealwax_infrastructure::store::{OutboxEntry, Resolution, SendRecorded, SendState, SendUndone};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -57,6 +57,9 @@ struct Outbox {
     expiry: RefCell<Option<glib::SourceId>>,
     /// Sends that came from the quick reply: the message they answer and the text, for Undo.
     from_quick: RefCell<HashMap<DraftId, (MessageId, String)>>,
+    /// Why each send that may have gone out is uncertain, as the engine said this session;
+    /// one from an earlier session has none.
+    reasons: RefCell<HashMap<DraftId, UncertainReason>>,
     /// The outbox as last read.
     entries: RefCell<Vec<OutboxEntry>>,
     reading: Cell<bool>,
@@ -96,8 +99,9 @@ pub fn install(state: &Rc<AppState>) {
                 draft,
                 error,
             } => failed(&state, *account, *draft, error),
-            Event::SendUncertain { draft, .. } => {
-                tracing::info!(draft = draft.0, "a send may have gone out");
+            Event::SendUncertain { draft, reason, .. } => {
+                tracing::info!(draft = draft.0, ?reason, "a send may have gone out");
+                shared().reasons.borrow_mut().insert(*draft, *reason);
                 settle(&state, *draft);
                 read(&state);
             }
@@ -166,14 +170,23 @@ pub fn waiting_sends() -> u32 {
         .count() as u32
 }
 
-/// The sends that may have gone out, oldest first, with their accounts.
-pub fn uncertain() -> Vec<(DraftId, AccountId)> {
-    shared()
+/// The sends that may have gone out, oldest first, with their accounts and, when the engine
+/// said it this session, why.
+pub fn uncertain() -> Vec<(DraftId, AccountId, Option<UncertainReason>)> {
+    let outbox = shared();
+    let reasons = outbox.reasons.borrow();
+    outbox
         .entries
         .borrow()
         .iter()
         .filter(|entry| entry.state == SendState::Uncertain)
-        .map(|entry| (entry.draft, entry.account))
+        .map(|entry| {
+            (
+                entry.draft,
+                entry.account,
+                reasons.get(&entry.draft).copied(),
+            )
+        })
         .collect()
 }
 
@@ -432,7 +445,7 @@ fn failed(state: &Rc<AppState>, account: AccountId, draft: DraftId, error: &Send
 /// The banner's Choose… for the first send that may have gone out: send it again, file it as
 /// sent, or take it back to a draft.
 pub fn decide(state: &Rc<AppState>) {
-    let Some((draft, account)) = uncertain().first().copied() else {
+    let Some((draft, account, reason)) = uncertain().first().copied() else {
         return;
     };
     let Some(window) = state.window() else {
@@ -447,7 +460,7 @@ pub fn decide(state: &Rc<AppState>) {
         .unwrap_or_default();
     let dialog = adw::AlertDialog::builder()
         .heading("Was the message sent?")
-        .body(decide_text(&name))
+        .body(decide_text(&name, reason))
         .close_response("later")
         .default_response("later")
         .build();
@@ -474,18 +487,36 @@ pub fn decide(state: &Rc<AppState>) {
     dialog.present(Some(window.window()));
 }
 
-/// The dialog's text: what happened, how to tell, and what each answer does.
-pub fn decide_text(account: &str) -> String {
+/// What happened to a send that may have gone out from `account` (empty: unnamed), by why
+/// its outcome is unknown; `None` when the engine said it in an earlier session (issue #2).
+pub fn uncertain_cause(account: &str, reason: Option<UncertainReason>) -> String {
     let from = if account.is_empty() {
         String::new()
     } else {
         format!(" from {account}")
     };
+    match reason {
+        Some(UncertainReason::Stopped) => format!(
+            "Sealwax stopped while it was sending a message{from}, so the server may have it."
+        ),
+        Some(UncertainReason::NoReply) => format!(
+            "The server didn't answer when Sealwax sent a message{from}, so it may have it."
+        ),
+        Some(UncertainReason::UnreadableReply) => format!(
+            "Sealwax couldn't read the server's answer to a message{from}, so it can't tell \
+             whether the server took it."
+        ),
+        None => format!("Sealwax couldn't confirm that a message{from} was sent."),
+    }
+}
+
+/// The dialog's text: what happened, how to tell, and what each answer does.
+pub fn decide_text(account: &str, reason: Option<UncertainReason>) -> String {
     format!(
-        "Sealwax stopped while it was sending a message{from}, so the server may have it. Look \
-         in your Sent folder, or ask a recipient.\n\nSend Again sends the same message, which \
-         its recipients may then get twice. It Was Sent files it as sent. Back to Drafts opens \
-         it, to change or send it later."
+        "{} Look in your Sent folder, or ask a recipient.\n\nSend Again sends the same message, \
+         which its recipients may then get twice. It Was Sent files it as sent. Back to Drafts \
+         opens it, to change or send it later.",
+        uncertain_cause(account, reason)
     )
 }
 
@@ -603,11 +634,34 @@ mod tests {
 
     #[test]
     fn the_uncertain_question_names_the_account_and_each_answer() {
-        let text = decide_text("Work");
+        let text = decide_text("Work", Some(UncertainReason::Stopped));
         assert!(text.starts_with("Sealwax stopped while it was sending a message from Work,"));
         for (_, label) in ANSWERS {
             assert!(text.contains(label), "{label}");
         }
-        assert!(decide_text("").starts_with("Sealwax stopped while it was sending a message,"));
+        assert!(
+            decide_text("", Some(UncertainReason::Stopped))
+                .starts_with("Sealwax stopped while it was sending a message,")
+        );
+    }
+
+    #[test]
+    fn the_uncertain_cause_says_why_only_when_it_is_known() {
+        assert_eq!(
+            uncertain_cause("Work", Some(UncertainReason::NoReply)),
+            "The server didn't answer when Sealwax sent a message from Work, so it may have it."
+        );
+        assert_eq!(
+            uncertain_cause("Work", Some(UncertainReason::UnreadableReply)),
+            "Sealwax couldn't read the server's answer to a message from Work, so it can't tell \
+             whether the server took it."
+        );
+        assert_eq!(
+            uncertain_cause("", None),
+            "Sealwax couldn't confirm that a message was sent."
+        );
+        for reason in [None, Some(UncertainReason::UnreadableReply)] {
+            assert!(!uncertain_cause("Work", reason).contains("stopped"));
+        }
     }
 }

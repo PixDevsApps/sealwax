@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Clearer when Sealwax can't tell whether a message was sent:** if the server's answer doesn't arrive or can't be read (as can happen with Microsoft 365, issue #2), Sealwax now says so, instead of saying that it stopped while sending. As before, it never sends such a message again without asking you.
+
 ## 0.4.1 — 2026-10-11
 
 A small update for Gmail users.

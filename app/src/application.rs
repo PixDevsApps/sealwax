@@ -430,14 +430,15 @@ impl AppState {
                 })
             })
             .collect();
-        let uncertain: Vec<String> = outbox::uncertain()
+        let uncertain: Vec<_> = outbox::uncertain()
             .into_iter()
-            .map(|(_, account)| {
-                known
+            .map(|(_, account, reason)| {
+                let name = known
                     .iter()
                     .find(|known| known.id == account)
                     .map(|known| known.name.clone())
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                (name, reason)
             })
             .collect();
         let mut queue = status::queue(

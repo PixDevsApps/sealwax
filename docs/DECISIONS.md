@@ -1030,6 +1030,14 @@ Built for rules ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026
 
 **Decision:** `Store::ops_done` answers `Recorded::unplaced`, the folders moved messages went to where the store can't place them (no new UID, or a target never synced), and the op runner runs those folders' passes at the end of its round, as it does for a UIDVALIDITY change; a copy's target too, since a copy shows only after its target's pass. The moved messages then show in the target, counted, within the round (0.56 s in the engine's test against a fake server without COPYUID), and aren't new mail there (the account's record of its own moves). A target never synced gets its first sync then, within its window, as opening it would. Moves the store places by COPYUID cost no pass.
 
+### ADR-015 amendment — why a send's outcome is unknown (2026-10-11)
+
+**Status:** Accepted — the user's word, 2026-10-11 ("build 2 and 3"), on [issue #2](https://github.com/PixDevsApps/sealwax/issues/2): a Microsoft 365 reply to the message's end longer than lettre takes (a line over 1,000 bytes, lettre 0.11.23's fixed cap) made a send uncertain, and the banner said "Sealwax stopped while it was sending", though it hadn't.
+
+**Decision:** An uncertain send carries why (`api::UncertainReason`): **Stopped** (Sealwax stopped mid-send, found at the next start, or the account's sync was stopped mid-send), **NoReply** (the connection closed, broke or timed out before a reply to the message's end) or **UnreadableReply** (a reply came that can't be read: a line or a whole reply longer than lettre takes, or not SMTP). An unreadable reply stays uncertain, not refused: it may be a 250. The engine tells them apart by lettre's own words for its errors (lettre reports a closed connection as a response error too), never the server's text, and logs the stage and why ("a reply line longer than lettre's 1000 bytes", "no reply in time") without it. The reason travels in `Event::SendUncertain`; the app keeps it for the session and words the banner and "Was the message sent?" by it, and a send left uncertain from an earlier session says only "Sealwax couldn't confirm that a message from … was sent." The store is unchanged (no schema change). At-most-once sending is unchanged: an uncertain send is never sent again without the user.
+
+**Not done:** a longer line limit needs lettre (the cap isn't configurable); an upstream issue waits for the user's word.
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.

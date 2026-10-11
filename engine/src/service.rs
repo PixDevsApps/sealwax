@@ -13,6 +13,7 @@
 use crate::accounts::{Accounts, secret_label};
 use crate::api::{
     AccountError, Command, Event, FolderChange, FolderError, Password, RequestId, SendError,
+    UncertainReason,
 };
 use crate::autoconfig::{self, DetectOptions};
 use crate::imap::{self, Credentials, ImapError, Stop};
@@ -378,7 +379,11 @@ async fn recover_sends(shared: &Shared) {
                         draft,
                         error: SendError::Interrupted,
                     },
-                    None => Event::SendUncertain { account, draft },
+                    None => Event::SendUncertain {
+                        account,
+                        draft,
+                        reason: UncertainReason::Stopped,
+                    },
                 });
             }
         }

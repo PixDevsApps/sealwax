@@ -73,6 +73,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Why a send's outcome is unknown (issue #2) — 2026-10-11
+
+[ADR-015 amendment](DECISIONS.md#adr-015-amendment--why-a-sends-outcome-is-unknown-2026-10-11). This machine; the fake SMTP server, no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo test -p sealwax-engine --lib smtp::submit` | 15 passed: replies to the end of data with a 1,200-byte line (554 and 250) and a non-SMTP reply are `UnreadableReply`, a closed connection and silence `NoReply`; the log says "a reply line longer than lettre's 1000 bytes" and holds none of the server's text | Pass |
+| `cargo test -p sealwax --lib outbox`, `status` | 3 and 3 passed: the banner's and the question's wording for each reason, and for none | Pass |
+| `reply-outbox` self-test (`outbox-engine uncertain NAME unreadable`, `no-reply`) | 101 of 101 steps; the banner and the question say "couldn't read the server's answer" and "didn't answer" | Pass |
+| CI, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,485 passed, 0 failed, 98 ignored; 75 scripts, 7,510 of 7,510 steps; the hostile suite clean (60 cases, 274 s) | Pass |
+| A real Microsoft 365 reply over 1,000 bytes | Not run (the reporter's diagnosis; no account here) | Not verified |
+
 ### 0.4.1 — 2026-10-11
 
 `v0.4.1` is `ea65347`; this machine, rustc 1.98.1. The release: [v0.4.1](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.1).

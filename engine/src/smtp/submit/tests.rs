@@ -406,6 +406,11 @@ async fn deferred_recipients_and_refusals_before_data_are_transient_or_refused()
 
 #[tokio::test]
 async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
+    // A reply line longer than lettre takes (1,000 bytes), as Microsoft 365's can be (issue #2):
+    // the server answered, but neither a refusal nor an acceptance can be read.
+    let long = |code: &str| -> &'static str {
+        Box::leak(format!("{code} {}", "x".repeat(1_200)).into_boxed_str())
+    };
     for (script, expected) in [
         (
             Script {
@@ -435,14 +440,35 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
                 end: None,
                 ..Script::default()
             },
-            SubmitError::Uncertain,
+            SubmitError::Uncertain(UncertainReason::NoReply),
         ),
         (
             Script {
                 hang: true,
                 ..Script::default()
             },
-            SubmitError::Uncertain,
+            SubmitError::Uncertain(UncertainReason::NoReply),
+        ),
+        (
+            Script {
+                end: Some(long("554 5.2.252 SendAsDenied;")),
+                ..Script::default()
+            },
+            SubmitError::Uncertain(UncertainReason::UnreadableReply),
+        ),
+        (
+            Script {
+                end: Some(long("250 2.0.0 OK")),
+                ..Script::default()
+            },
+            SubmitError::Uncertain(UncertainReason::UnreadableReply),
+        ),
+        (
+            Script {
+                end: Some("not an SMTP reply"),
+                ..Script::default()
+            },
+            SubmitError::Uncertain(UncertainReason::UnreadableReply),
         ),
     ] {
         let server = Server::start(vec![script]).await;
@@ -452,8 +478,8 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
             .unwrap_err();
         assert_eq!(error, expected);
         assert_eq!(server.seen().messages.len(), 1, "the data went out");
-        if expected == SubmitError::Uncertain {
-            assert_eq!(error.failure(), SubmitFailure::Uncertain);
+        if let SubmitError::Uncertain(reason) = expected {
+            assert_eq!(error.failure(), SubmitFailure::Uncertain(reason));
             assert!(
                 submitter.conn.is_none(),
                 "an uncertain connection is dropped"
@@ -461,6 +487,55 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
         }
         submitter.quit().await;
     }
+}
+
+#[derive(Clone, Default)]
+struct Capture(Arc<Mutex<Vec<u8>>>);
+
+impl std::io::Write for Capture {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn an_unreadable_reply_is_logged_by_why_without_the_servers_text() {
+    let capture = Capture::default();
+    let sink = capture.clone();
+    let _logs = tracing::subscriber::set_default(sealwax_infrastructure::logging::subscriber(
+        tracing_subscriber::EnvFilter::new("trace"),
+        move || sink.clone(),
+        false,
+    ));
+    let reply = format!("554 5.2.252 SendAsDenied; {}", "secret-words ".repeat(100));
+    let server = Server::start(vec![Script {
+        end: Some(Box::leak(reply.into_boxed_str())),
+        ..Script::default()
+    }])
+    .await;
+    let mut submitter = server.connect().await.unwrap();
+    let error = send(&mut submitter, &to(&["b@x.test"]), MESSAGE)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error,
+        SubmitError::Uncertain(UncertainReason::UnreadableReply)
+    );
+    let text = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
+    assert!(
+        text.contains("a reply line longer than lettre's 1000 bytes")
+            && text.contains("smtp reply to the message unknown"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("SendAsDenied") && !text.contains("secret-words"),
+        "{text}"
+    );
 }
 
 #[tokio::test]

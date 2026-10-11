@@ -10,15 +10,15 @@
 //!    address instead of some recipients getting the message and others not.
 //! 3. The caller marks the send as started, durably.
 //! 4. [`Prepared::send`]: `DATA`, the bytes (dot-stuffed) and the end of data. Only a missing
-//!    answer to the end of data leaves the outcome unknown ([`SubmitError::Uncertain`]); every
-//!    reply the server sends is definite, and a connection lost before the content went out
-//!    delivered nothing.
+//!    or unreadable answer to the end of data leaves the outcome unknown
+//!    ([`SubmitError::Uncertain`]); every reply the server sends that can be read is definite,
+//!    and a connection lost before the content went out delivered nothing.
 //!
 //! Errors and logs carry reply codes, counts and recipient indices, never an address, the
 //! server's text or the message.
 
 use super::{Extensions, Line, authenticate, extensions, open, quit};
-use crate::api::SendError;
+use crate::api::{SendError, UncertainReason};
 use crate::imap::Credentials;
 use crate::net::Trust;
 use crate::oauth::Fetched;
@@ -113,10 +113,10 @@ pub enum SubmitError {
     /// or a timeout before the message's end was sent.
     #[error("the message wasn't sent; try again later")]
     Transient,
-    /// The end of the message was sent and no reply came: it may have been delivered. Never
-    /// sent again without the user (ADR-015).
+    /// The end of the message was sent and no reply that can be read came: it may have been
+    /// delivered. Never sent again without the user (ADR-015).
     #[error("the message may have been sent")]
-    Uncertain,
+    Uncertain(UncertainReason),
 }
 
 /// What the outbox does after a failed submission.
@@ -130,7 +130,7 @@ pub enum SubmitFailure {
     /// It can't be sent as it is: back to the user as a draft whose send failed.
     Refuse,
     /// It may have been delivered: never sent again without the user.
-    Uncertain,
+    Uncertain(UncertainReason),
 }
 
 impl SubmitError {
@@ -148,7 +148,7 @@ impl SubmitError {
                 | LoginFailure::NoTls,
             ) => SubmitFailure::Account,
             SubmitError::Auth(_) | SubmitError::Transient => SubmitFailure::Retry,
-            SubmitError::Uncertain => SubmitFailure::Uncertain,
+            SubmitError::Uncertain(reason) => SubmitFailure::Uncertain(*reason),
             SubmitError::Malformed
             | SubmitError::InvalidAddress { .. }
             | SubmitError::NeedsSmtpUtf8 { .. }
@@ -190,7 +190,7 @@ impl SubmitError {
             | SubmitError::NeedsEightBit
             | SubmitError::Malformed
             | SubmitError::Refused { .. } => SendError::Refused,
-            SubmitError::Connect(_) | SubmitError::Auth(_) | SubmitError::Uncertain => {
+            SubmitError::Connect(_) | SubmitError::Auth(_) | SubmitError::Uncertain(_) => {
                 SendError::Other
             }
         }
@@ -204,6 +204,31 @@ enum Answer {
     Code(u16),
     /// No reply: the connection failed, timed out or answered something unreadable.
     Lost,
+}
+
+/// Why lettre gave no reply code for the message's end, and a category for the log. lettre
+/// reports a closed connection as a response error too, so its own words tell them apart; the
+/// server's text is never logged.
+fn unanswered(error: &lettre::transport::smtp::Error) -> (UncertainReason, &'static str) {
+    use std::error::Error as _;
+    if !error.is_response() {
+        return (UncertainReason::NoReply, "connection lost");
+    }
+    match error.source().map(ToString::to_string).as_deref() {
+        Some("incomplete response") => (UncertainReason::NoReply, "connection closed"),
+        Some("SMTP response line too long") => (
+            UncertainReason::UnreadableReply,
+            "a reply line longer than lettre's 1000 bytes",
+        ),
+        Some("SMTP response too large") => (
+            UncertainReason::UnreadableReply,
+            "a reply longer than lettre's 100000 bytes",
+        ),
+        _ => (
+            UncertainReason::UnreadableReply,
+            "a reply that couldn't be parsed",
+        ),
+    }
 }
 
 /// Sends `command` and waits `timeout` for its reply.
@@ -544,9 +569,9 @@ impl fmt::Debug for Prepared<'_, '_> {
 
 impl Prepared<'_, '_> {
     /// `DATA`, the message and its end. `Ok` when the server took it for delivery. A reply
-    /// refusing `DATA` or the message is definite (nothing delivered); only a missing reply to
-    /// the message's end, or a connection lost while the message was going out, is
-    /// [`SubmitError::Uncertain`].
+    /// refusing `DATA` or the message is definite (nothing delivered); only a missing or
+    /// unreadable reply to the message's end, or a connection lost while the message was going
+    /// out, is [`SubmitError::Uncertain`].
     pub async fn send(self) -> Result<(), SubmitError> {
         let started = Instant::now();
         let bytes = self.message.len();
@@ -583,7 +608,10 @@ impl Prepared<'_, '_> {
         // lettre ends the data with CRLF . CRLF; the message's own final CRLF is that first
         // CRLF, so the server stores exactly these bytes.
         let body = message.strip_suffix(b"\r\n").unwrap_or(message);
-        let conn = submitter.conn.as_mut().ok_or(SubmitError::Uncertain)?;
+        let conn = submitter
+            .conn
+            .as_mut()
+            .ok_or(SubmitError::Uncertain(UncertainReason::NoReply))?;
         let reply = tokio::time::timeout(timeouts.data, conn.message(body)).await;
         submitter.open = false;
         match reply {
@@ -594,12 +622,24 @@ impl Prepared<'_, '_> {
                 Some(code) => Err(SubmitError::Refused { code }),
                 None => {
                     submitter.conn = None;
-                    Err(SubmitError::Uncertain)
+                    let (reason, why) = unanswered(&error);
+                    tracing::info!(
+                        stage = "end of data",
+                        why,
+                        "smtp reply to the message unknown"
+                    );
+                    Err(SubmitError::Uncertain(reason))
                 }
             },
             Err(_) => {
                 submitter.conn = None;
-                Err(SubmitError::Uncertain)
+                tracing::info!(
+                    stage = "end of data",
+                    why = "no reply in time",
+                    seconds = timeouts.data.as_secs(),
+                    "smtp reply to the message unknown"
+                );
+                Err(SubmitError::Uncertain(UncertainReason::NoReply))
             }
         }
     }

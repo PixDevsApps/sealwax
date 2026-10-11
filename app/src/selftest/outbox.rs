@@ -10,7 +10,7 @@
 //! | `outbox-draft NAME ACCOUNT` | Saves a draft from ACCOUNT (`triage-account`'s, which has a server) in the store, closed |
 //! | `outbox-queue NAME` | Queues it for the undo window (`queue_send`) and calls `outbox::queued`, as the backend's send does |
 //! | `outbox-quick NAME ACCOUNT MESSAGE TEXT` | A reply to MESSAGE from ACCOUNT, sent from the quick reply with TEXT: saved, marked as the quick reply's, queued |
-//! | `outbox-engine start\|sent\|uncertain NAME` | The engine's step on it: `send_started`; `send_done` and `Event::Sent`; `send_uncertain` and `Event::SendUncertain` |
+//! | `outbox-engine start\|sent\|uncertain NAME [stopped\|no-reply\|unreadable]` | The engine's step on it: `send_started`; `send_done` and `Event::Sent`; `send_uncertain` and `Event::SendUncertain` with why (`stopped` when none is named) |
 //! | `outbox-engine failed NAME ERROR` | `send_failed` (permanent) and `Event::SendFailed`: `recipients-refused` (two), `too-large`, `refused`, `needs-sign-in`, `other` |
 //! | `outbox-expect KIND [KEY=VALUE]` | The app sent KIND to the engine (`outbox-queued`, `ops-queued`, `drafts-changed`) within a second; other commands are passed over |
 //! | `toast-click LABEL` | Clicks the toast button labelled LABEL (`Undo`, `Open`) |
@@ -33,7 +33,7 @@ use gtk4::prelude::*;
 use sealwax_domain::compose::text::to_html;
 use sealwax_domain::compose::{Draft, DraftSource, ReplyKind};
 use sealwax_domain::model::{Address, DraftId};
-use sealwax_engine::api::{Event, SendError};
+use sealwax_engine::api::{Event, SendError, UncertainReason};
 use sealwax_infrastructure::store::{
     DraftSaved, Prepared, SaveDraft, SendFailed, SendFailure, SendQueued, SendState,
 };
@@ -292,8 +292,22 @@ async fn engine(harness: &Harness, args: &[String]) -> StepResult {
             setup::emit(harness, Event::Sent { account, draft: id }).await
         }
         "uncertain" => {
+            let reason = match args.get(2).map(String::as_str) {
+                None | Some("stopped") => UncertainReason::Stopped,
+                Some("no-reply") => UncertainReason::NoReply,
+                Some("unreadable") => UncertainReason::UnreadableReply,
+                Some(other) => return Err(format!("no reason {other}")),
+            };
             applied(store.send_uncertain(id).recv().await)?;
-            setup::emit(harness, Event::SendUncertain { account, draft: id }).await
+            setup::emit(
+                harness,
+                Event::SendUncertain {
+                    account,
+                    draft: id,
+                    reason,
+                },
+            )
+            .await
         }
         "failed" => {
             let name = args.get(2).ok_or("failed takes an error")?;

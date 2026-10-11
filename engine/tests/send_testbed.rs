@@ -394,7 +394,7 @@ fn faults_on_stalwart() {
                             .await
                             .unwrap_or_else(|error| panic!("{scenario}: the retry: {error}"));
                     }
-                    SubmitFailure::Uncertain => {}
+                    SubmitFailure::Uncertain(_) => {}
                     other => panic!("{scenario}: {other:?}"),
                 }
                 let at_end = delivered("bob", &id, Duration::from_secs(3)).await.len() as u64;
