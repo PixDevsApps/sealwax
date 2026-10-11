@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-Synced: 2026-10-11
+Synced: 2026-10-12
 
 The repository docs are the canonical project memory ([ADR-012](#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Dated entries describe the state at that date; newer entries and amendments take precedence. ADRs written before the naming decision call the app "Mail", its working name; it is **Sealwax** ([ADR-010](#adr-010-accepted--sealwax-2026-10-04)).
 
@@ -953,6 +953,12 @@ Built in M6.
 - **Closing the main window** (into background mode) first saves every card's draft and closes the cards, the drafts kept; Quit saves them too (`composer::save_all`, `composer::keep_drafts_on_close`).
 
 **Consequences:** a composer can no longer be tiled beside the main window or moved to another workspace; Hyprland's close no longer applies to it. The self-test commands take the card (`assert-composer state|bounds|backdrop`, `composer-pointer`); `reply-mailto-alone` became `reply-mailto-start`; new `composer-dock`.
+
+### ADR-014 amendment — sending from any account (2026-10-12)
+
+**Status:** Accepted — the user's word, 2026-10-12 ("build #7"), on [issue #7](https://github.com/PixDevsApps/sealwax/issues/7): a new message from All Inboxes could only be sent from the first account.
+
+**Decision:** The composer's senders (`composer::backend::Sender`, now with its `account`) are every account that sends, in the sidebar's order, each its own address then its identities; an account no settings file lists (no server) is offered only for its own drafts. The draft starts from the same account as before (the list's account; in All Inboxes the selected message's, else the first). Picking another account's sender sets the draft's account: the store's save already moves a draft between accounts (the old account's copies to delete, the upload state reset), the Message-ID moves to the new domain as for any sender on another domain, and the old account hears `DraftsChanged` so its copy goes at once. Replies may switch too. Not built: a configurable default account for new messages (the issue's optional point).
 
 ## ADR-015 — Op queue: optimistic overlay, Undo, at-most-once send (2026-10-04)
 

@@ -413,6 +413,11 @@ impl Composer {
             .cloned()
     }
 
+    /// Who the From chip offers, in its order.
+    pub fn senders(&self) -> Vec<Sender> {
+        self.inner.senders.borrow().clone()
+    }
+
     pub fn select_sender(&self, index: usize) {
         if let Some(popover) = self.inner.widgets.from.popover() {
             popover.popdown();
@@ -1287,9 +1292,13 @@ impl Inner {
         self.account.set(draft.account);
         self.request_title.replace(title);
         *self.domain.borrow_mut() = id_domain(&draft.from.email);
+        let own = |sender: &Sender| sender.account == draft.account;
         let index = senders
             .iter()
-            .position(|sender| sender.address.email.eq_ignore_ascii_case(&draft.from.email))
+            .position(|sender| {
+                own(sender) && sender.address.email.eq_ignore_ascii_case(&draft.from.email)
+            })
+            .or_else(|| senders.iter().position(own))
             .unwrap_or(0);
         while let Some(row) = self.widgets.from_list.row_at_index(0) {
             self.widgets.from_list.remove(&row);
@@ -1354,10 +1363,25 @@ impl Inner {
         }
         self.sender.set(index);
         self.show_sender();
-        if let Some(base) = self.base.borrow_mut().as_mut()
-            && !super::store_backend::same_domain(&base.message_id, &sender.address.email)
-        {
-            base.message_id = super::store_backend::message_id(&sender.address.email);
+        if let Some(base) = self.base.borrow_mut().as_mut() {
+            if !super::store_backend::same_domain(&base.message_id, &sender.address.email) {
+                base.message_id = super::store_backend::message_id(&sender.address.email);
+            }
+            // Another account's sender: the draft goes with it (issue #7).
+            base.account = sender.account;
+        }
+        if self.account.replace(sender.account) != sender.account {
+            let weak = Rc::downgrade(self);
+            let limit = self.backend.submission_limit(sender.account);
+            glib::spawn_future_local(async move {
+                let limit = limit.await;
+                if let Some(inner) = weak.upgrade()
+                    && inner.account.get() == sender.account
+                {
+                    inner.limit.set(limit);
+                    inner.update_size();
+                }
+            });
         }
         let signature = sender
             .signature

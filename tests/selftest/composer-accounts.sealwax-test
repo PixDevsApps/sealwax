@@ -1,0 +1,52 @@
+# Sending from any account (issue #7): a new message offers every account's senders, the first
+# account's own address chosen from All Inboxes; picking another account's moves the draft to
+# that account in the store, and it stays there when reopened. Every name and address is
+# fictional.
+# Run: tools/headless.sh 65 target/debug/sealwax --self-test tests/selftest/composer-accounts.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-account Work work
+triage-account Home home
+composer-backend store
+folder all-inboxes
+
+# From All Inboxes: every account's senders, the first account's chosen.
+composer-open new
+composer-wait
+assert-composer senders work@example.test,home@example.test
+assert-composer from work@example.test
+wait-until assert-composer db current account Work
+
+# Another account's sender: the draft goes to that account.
+composer-focus body
+composer-type "Plans"
+wait-until assert-composer db current html Plans
+composer-from 1
+assert-composer from home@example.test
+wait-until assert-composer db current account Home
+wait-until assert-composer db current from home@example.test
+assert-composer db current html Plans
+assert-composer labelled
+
+# Reopened, it is still Home's, with every account's senders.
+composer-close
+composer-open draft last
+composer-wait
+assert-composer from home@example.test
+assert-composer senders work@example.test,home@example.test
+assert-composer db current account Home
+
+# Back to the first account's sender: the draft goes back.
+composer-from 0
+wait-until assert-composer db current account Work
+composer-close
+
+# Compose from a folder of the second account: its own sender chosen, the others offered.
+folder Home:inbox
+action win.compose
+composer-wait
+assert-composer from home@example.test
+assert-composer senders work@example.test,home@example.test
+wait-until assert-composer db current account Home
+composer-close

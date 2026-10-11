@@ -54,12 +54,13 @@
 //! | `assert-composer theme` | The body's background is the theme's |
 //! | `assert-composer eval SCRIPT VALUE` | SCRIPT, run in the helper's world, gives VALUE |
 //! | `assert-composer stored ID FIELD TEXT` | The stand-in's draft ID holds TEXT in FIELD |
-//! | `assert-composer db current\|last\|N FIELD TEXT` | The store's draft holds TEXT in FIELD: `to`, `cc`, `bcc`, `subject`, `from`, `html`, `in-reply-to`, `references`, `message-id`, `parts`, `inline`, `attached`, `open`, `sending` |
+//! | `assert-composer db current\|last\|N FIELD TEXT` | The store's draft holds TEXT in FIELD: `to`, `cc`, `bcc`, `subject`, `from`, `html`, `in-reply-to`, `references`, `message-id`, `parts`, `inline`, `attached`, `open`, `sending`, `account` (its name) |
 //! | `assert-composer db-gone current\|last\|N` | The store has no such draft |
 //! | `assert-composer outbox N`, `open-drafts N` | The store's outbox entries; drafts marked open |
 //! | `composer-type-log PATH EVERY COUNT` | Types a letter through the helper every EVERY ms, COUNT times, logging `index unix-ms` after a `pid` line (the kill -9 harness) |
 //! | `composer-write-text PATH` | Writes the draft's id and the body's text to PATH (the kill -9 harness) |
 //! | `assert-composer title\|subject\|from\|style TEXT` | The header's title, the subject, the sender's address, the style menu |
+//! | `assert-composer senders A,B` | The From chip's choices, by address, in order |
 //! | `assert-composer chips FIELD A,B\|none` | The valid recipients of `to`, `cc` or `bcc` |
 //! | `assert-composer invalid FIELD N` | Error chips in FIELD |
 //! | `assert-composer entry FIELD TEXT` | What FIELD's entry holds |
@@ -1075,6 +1076,17 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
             arg(1),
         ),
         "style" => equal("style", composer.style_label().as_str(), arg(1)),
+        "senders" => equal(
+            "senders",
+            composer
+                .senders()
+                .iter()
+                .map(|sender| sender.address.email.clone())
+                .collect::<Vec<_>>()
+                .join(",")
+                .as_str(),
+            arg(1),
+        ),
         "chips" => {
             let field = composer.field(arg(1)).ok_or("no such field")?;
             let emails: Vec<String> = field
@@ -1577,6 +1589,14 @@ async fn check_store(harness: &Harness, what: &str, args: &[String]) -> StepResu
                     .join(","),
                 "open" => stored.open.to_string(),
                 "sending" => stored.send.is_some().to_string(),
+                "account" => harness
+                    .state
+                    .mailbox()
+                    .accounts()
+                    .iter()
+                    .find(|account| account.id == draft.account)
+                    .map(|account| account.name.clone())
+                    .unwrap_or_default(),
                 other => return Err(format!("no field {other}")),
             };
             if value.contains(arg(2)) {

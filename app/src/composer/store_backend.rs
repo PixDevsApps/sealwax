@@ -78,10 +78,11 @@ pub fn senders(account: &Account, settings: &[AccountSettings]) -> Vec<Identity>
     }
 }
 
-fn chips(senders: &[Identity]) -> Vec<Sender> {
+fn chips(account: AccountId, senders: &[Identity]) -> Vec<Sender> {
     senders
         .iter()
         .map(|identity| Sender {
+            account,
             label: identity.name.clone(),
             address: identity::from_address(identity),
             signature: identity.signature.clone(),
@@ -117,6 +118,22 @@ impl StoreBackend {
 
     fn engine(&self) -> Option<EngineLink> {
         self.state.upgrade().map(|state| state.engine())
+    }
+
+    /// Records that draft `id` is `account`'s now; the account it left, if it moved (issue #7),
+    /// is told to delete its copy at once.
+    fn moved_to(&self, id: DraftId, account: AccountId) -> Option<AccountId> {
+        self.accounts
+            .borrow_mut()
+            .insert(id, account)
+            .filter(|left| *left != account)
+    }
+}
+
+/// The account a draft left gets `DraftsChanged`, so its Drafts-folder copy goes now.
+fn tell_left(engine: Option<EngineLink>, left: Option<AccountId>) {
+    if let (Some(engine), Some(account)) = (engine, left) {
+        let _ = engine.send(Command::DraftsChanged { account });
     }
 }
 
@@ -157,6 +174,20 @@ impl Context {
 
     fn senders(&self, account: &Account) -> Vec<Identity> {
         senders(account, &self.settings)
+    }
+
+    /// Who a draft of `account` can be sent as: every account that sends, in the sidebar's
+    /// order, each its own address then its identities (issue #7). An account no settings file
+    /// lists has no server, so it sends nothing, unless it is the draft's own.
+    fn all_senders(&self, account: &Account) -> Result<Vec<Sender>, String> {
+        Ok(self
+            .state()?
+            .mailbox()
+            .accounts()
+            .iter()
+            .filter(|known| known.key.is_some() || known.id == account.id)
+            .flat_map(|known| chips(known.id, &self.senders(known)))
+            .collect())
     }
 
     /// The account a stored message belongs to.
@@ -375,7 +406,7 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
         }
         None => context.create(draft.clone()).await?,
     };
-    let senders = chips(&context.senders(&account));
+    let senders = context.all_senders(&account)?;
     Ok(Prepared {
         id,
         draft,
@@ -498,7 +529,8 @@ impl Backend for StoreBackend {
     }
 
     fn save(&self, id: DraftId, draft: Draft) -> Local<Result<(), String>> {
-        self.accounts.borrow_mut().insert(id, draft.account);
+        let left = self.moved_to(id, draft.account);
+        let engine = self.engine();
         let store = self
             .state
             .upgrade()
@@ -516,7 +548,10 @@ impl Backend for StoreBackend {
                 .await
                 .map_err(|_| "the store failed".to_owned())?;
             match saved {
-                DraftSaved::Saved { .. } => Ok(()),
+                DraftSaved::Saved { .. } => {
+                    tell_left(engine, left);
+                    Ok(())
+                }
                 DraftSaved::NotEditable { .. } => Err("the draft is being sent".to_owned()),
                 DraftSaved::Gone => Err("the draft is gone".to_owned()),
             }
@@ -580,6 +615,8 @@ impl Backend for StoreBackend {
     fn send(&self, id: DraftId, draft: Draft) -> Local<Result<(), Refusal>> {
         let state = self.state.clone();
         let limit = self.submission_limit(draft.account);
+        let left = self.moved_to(id, draft.account);
+        let engine = self.engine();
         Box::pin(async move {
             let refuse = |text: &str| Refusal(text.to_owned());
             let size = mime::estimate(&draft);
@@ -612,6 +649,7 @@ impl Backend for StoreBackend {
                     "This draft can't be sent: it is being sent, or gone.",
                 ));
             }
+            tell_left(engine, left);
             let queued = store
                 .queue_send(id, now_ms() + UNDO_SEND_MS)
                 .recv()

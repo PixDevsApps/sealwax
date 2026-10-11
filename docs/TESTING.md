@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Sending from any account (issue #7) — 2026-10-12
+
+[ADR-014 amendment](DECISIONS.md#adr-014-amendment--sending-from-any-account-2026-10-12). This machine; the store backend, no real account, nothing sent.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `composer-accounts` self-test | 36 of 36 steps: from All Inboxes the From chip offers both accounts' addresses with the first chosen; picking the second account's moves the draft there in the store (account, From, the body kept); reopened it is still there; back to the first moves it back; Compose from the second account's Inbox starts from its address | Pass |
+| The composer's other self-tests | `composer-store` 103/103, `composer-drafts` 116/116, `reply-quick` 95/95, `reply-commands` 137/137, `a11y-composer` 102/102 | Pass |
+| CI, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,490 passed, 0 failed, 98 ignored; 78 scripts, 7,622 of 7,622 steps; the hostile suite clean (60 cases, 273 s); `cargo clippy --workspace --all-targets -D warnings` clean | Pass |
+| The old account's Drafts-folder copy deleted on a real server after a move | Not run (the store's deletion is the existing tested path; no testbed run here) | Not verified |
+
 ### 0.4.3 — 2026-10-11
 
 `v0.4.3` is `5d64449`; this machine, rustc 1.98.1. The release: [v0.4.3](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.3) (published just after midnight, 2026-10-12 local time).

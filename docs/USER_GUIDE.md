@@ -1,6 +1,6 @@
 # Sealwax user guide
 
-Synced: 2026-10-11
+Synced: 2026-10-12
 
 This guide is for people who use Sealwax every day. It describes Sealwax 0.4.3, before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
 
@@ -221,7 +221,7 @@ The rules' commands have no keys; `keys.toml` can give them one (`edit-rules`, `
 
 **The composer.** **New message** (or `c`, Ctrl+N) opens a composer at the bottom right of the main window, over the mail, as in Gmail. It has:
 
-- the **From** chip: the account's address and its other identities;
+- the **From** chip: every account's address and its other identities. A new message starts from the account the list shows (in All Inboxes, the selected message's, else the first account's); picking another account's address sends it through that account, which then keeps the draft and its Sent copy;
 - **To**, with **Cc · Bcc** to add those fields; recipients become chips, and suggestions come from the addresses in your mail, people you have written to first;
 - **Subject**;
 - a formatting toolbar: paragraph style (Paragraph, Heading 1–3, Preformatted), bold, italic, underline, strikethrough, bulleted and numbered lists, link, quote, indent, outdent, clear formatting and undo;

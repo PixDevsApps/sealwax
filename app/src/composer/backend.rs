@@ -23,9 +23,12 @@ use std::time::Instant;
 /// A future that resolves on the GTK thread.
 pub type Local<T> = Pin<Box<dyn Future<Output = T>>>;
 
-/// An address a draft can be sent from: the account's own or one of its identities (PRD A6).
+/// An address a draft can be sent from: an account's own or one of its identities (PRD A6),
+/// of any account that sends (issue #7).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Sender {
+    /// The account it is sent through: picking it moves the draft there.
+    pub account: AccountId,
     /// What the From chip calls it: the sender name the address goes out with.
     pub label: String,
     /// The sender name and address the message goes out with.
@@ -40,7 +43,8 @@ pub struct Sender {
 pub struct Prepared {
     pub id: DraftId,
     pub draft: Draft,
-    /// Who it can be sent as, the account's own address first.
+    /// Who it can be sent as: every account that sends, each its own address then its
+    /// identities.
     pub senders: Vec<Sender>,
     /// The header's title: "New message", "Reply", "Forward" or "Draft".
     pub title: String,
@@ -157,6 +161,7 @@ impl StandIn {
     /// An identity every account can send from (self-tests; `accounts.toml`'s come too).
     pub fn add_identity(&self, label: &str, name: &str, email: &str) {
         self.identities.borrow_mut().push(Sender {
+            account: AccountId::default(),
             label: label.to_owned(),
             address: Address::new(name, email),
             signature: None,
@@ -263,6 +268,7 @@ impl Backend for StandIn {
                 .or_else(|| accounts.first())
                 .ok_or_else(|| "There's no account to send from. Add one first.".to_owned())?;
             let mut senders = vec![Sender {
+                account: account.id,
                 label: account.name.clone(),
                 address: Address::new(account.name.clone(), account.address.clone()),
                 signature: None,
@@ -271,12 +277,16 @@ impl Backend for StandIn {
                 && let Some(settings) = settings.iter().find(|settings| &settings.key == key)
             {
                 senders.extend(settings.identities.iter().map(|identity| Sender {
+                    account: account.id,
                     label: identity.name.clone(),
                     address: Address::new(identity.name.clone(), identity.address.clone()),
                     signature: identity.signature.clone(),
                 }));
             }
-            senders.extend(identities);
+            senders.extend(identities.into_iter().map(|sender| Sender {
+                account: account.id,
+                ..sender
+            }));
             let stand_in = stand_in.ok_or_else(|| "the composer has no backend".to_owned())?;
             let request = request.borrow_mut().take().ok_or("prepared twice")?;
             let (id, mut draft, title) = stand_in.fill(request, account.id, &senders[0].address);
