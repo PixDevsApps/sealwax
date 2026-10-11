@@ -30,7 +30,7 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 - **The accessibility pass:** the audit in CI, Go to and Back to List.
 - **Interface:** account names and colours and Edit Account; folding accounts; resizable panes and a wider reader; the composer docked in the main window; the wax-seal icon; styled mail narrower than the reader sitting on your theme's background instead of a wide white page; housekeeping folders other mail programs create (Outlook's Sync Issues, Notes and Outbox on Microsoft's servers, an empty Mailspring folder) left out.
 - **Folders and rules** (above).
-- **Google dropped:** Gmail isn't a listed provider and Sign in with Google isn't offered; use Gmail's own app or web version.
+- **Google dropped:** Gmail isn't a listed provider and Sign in with Google isn't offered. Gmail works with an app password: [GMAIL.md](GMAIL.md) shows how, step by step.
 
 ## Requirements
 
@@ -46,7 +46,7 @@ Install the release's package with one command, or build the Arch package from t
 
 ## Known limitations
 
-- **Gmail and Google Workspace** aren't supported.
+- **Gmail and Google Workspace** have no Sign in with Google: they work with an app password ([GMAIL.md](GMAIL.md)). Gmail isn't yet among the providers tested over longer daily use.
 - **Microsoft work or school accounts** may need their organization's admin to approve Sealwax before it can sign in, as Sealwax's Microsoft registration isn't publisher-verified. *(At the sign-off: whether this changes.)*
 - **Rules run in Sealwax**, not on the server: only while Sealwax runs (background mode is on by default), and on headers, not message bodies. Rules aren't uploaded to servers (ManageSieve).
 - **Servers with self-signed certificates** (Proton Bridge, some self-hosted servers) can't be added yet.

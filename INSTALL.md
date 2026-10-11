@@ -1,6 +1,6 @@
 # Installing Sealwax
 
-Synced: 2026-10-09
+Synced: 2026-10-11
 
 Sealwax is an email app for [Omarchy](https://omarchy.org). This page shows how to install it, keep it up to date and remove it again. You don't need to know anything about programming: follow the steps in order.
 
@@ -55,7 +55,7 @@ Sealwax is going into the AUR, where Omarchy installs apps from (Omarchy menu â†
 
 1. Press **Super + Alt + Space** to open the app menu, type `Sealwax`, and press **Enter**.
 2. Click **Add an account** and type your email address. Sealwax finds your mail provider's settings by itself.
-3. Type your email password, or click **Sign in with Microsoft** for Outlook.com, Hotmail and Microsoft 365 addresses.
+3. Type your email password, or click **Sign in with Microsoft** for Outlook.com, Hotmail and Microsoft 365 addresses. For Gmail, you need an app password from Google first: [GMAIL.md](docs/GMAIL.md) shows how, with pictures.
 
 The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and writing mail to rules and keyboard shortcuts. A copy comes with Sealwax, in `/usr/share/doc/sealwax/USER_GUIDE.md`.
 

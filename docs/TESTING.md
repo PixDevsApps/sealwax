@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The Gmail guide's pictures — 2026-10-11
+
+[ADR-008 amendment](DECISIONS.md#adr-008-amendment--gmail-with-an-app-password-documented-2026-10-11). This machine; a fake engine, no network.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/preview-gmail-guide.sealwax-test` (the new `gmail` detection fixture and `setup-peek`) | 40 of 40 steps; the assistant's lookup rows, Gmail's card and the "Turn on IMAP" note as on the owner's own 0.4.0 screenshot of the same step | Pass |
+| `setup-detect` and `setup` self-tests after the fixture | 205 of 205 and 140 of 140 steps | Pass |
+| `cargo fmt --check`, Clippy (`-p sealwax --all-targets -D warnings`) | Clean | Pass |
+| The owner's Gmail account added with an app password, spaces taken out (the owner, 2026-10-11) | "That gmail sign in on Sealwax worked perfect" | Pass, sign-in only |
+
 ### 0.4.0, the first public release — 2026-10-09
 
 [ADR-021](DECISIONS.md#adr-021--a-public-repository-releases-on-github-and-the-aur-2026-10-09). `v0.4.0` is `b4fc4fe`; this machine, rustc 1.98.1, WebKitGTK 2.52.6.

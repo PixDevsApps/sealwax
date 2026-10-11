@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-Synced: 2026-10-09
+Synced: 2026-10-11
 
 The repository docs are the canonical project memory ([ADR-012](#adr-012--repository-docs-canonical-notion-as-a-mirror-2026-10-04)). Dated entries describe the state at that date; newer entries and amendments take precedence. ADRs written before the naming decision call the app "Mail", its working name; it is **Sealwax** ([ADR-010](#adr-010-accepted--sealwax-2026-10-04)).
 
@@ -570,6 +570,14 @@ Built in M3.
 **Status:** Accepted — user decision, 2026-10-09: "build my client ID into the release packages", answering the lead's question whether users must register their own.
 
 **Decision:** Sealwax's packages build in the owner's Microsoft client ID ("Sealwax (dev)", [OAUTH-SETUP.md](OAUTH-SETUP.md#as-registered-on-2026-10-05)), so Sign in with Microsoft works as installed. `tools/package-source.py` takes it from `SEALWAX_MICROSOFT_CLIENT_ID`, else from the builder's `~/.config/sealwax/config.toml` (`[oauth.microsoft] client_id`), checks it is a GUID, and writes it into the generated PKGBUILD under `.local/` only, whose `build()` exports it for `option_env!`; `--no-client-id` leaves it out, and the script says which source it used without printing the ID. The ID is never committed: the repository's `PKGBUILD.in` holds a placeholder. `config.toml`'s `client_id` still wins over the built-in one. Builds from source without one still say "Microsoft sign-in isn't available in this build of Sealwax yet." The ID is a public client's (PKCE, no secret); the protection is Microsoft's sign-in page. Work accounts in other organizations may still need their admin's consent until the publisher is verified (an open follow-up).
+
+### ADR-008 amendment — Gmail with an app password documented (2026-10-11)
+
+**Status:** Accepted — user decision, 2026-10-11: "make a proper guide, with screenshots of the process, so non-technical user can do it as well", after the owner added their own Gmail account with an app password ("That gmail sign in on Sealwax worked perfect") and answered [issue #1](https://github.com/PixDevsApps/sealwax/issues/1), "Gmail support". Supersedes the amendment of 2026-10-07's "the docs stop presenting Gmail as supported" and ADR-013's amendment's "1.0's app-password guidance no longer names Gmail".
+
+**Decision:** [GMAIL.md](GMAIL.md) shows, with pictures, how to turn on 2-Step Verification, make an app password and add a Gmail account; README, INSTALL, the user guide and the release notes point to it instead of saying Gmail isn't supported. The Sealwax pictures come from a self-test (`tests/selftest/preview-gmail-guide.sealwax-test`, its fictional `gmail` detection as the ISPDB gives it), the Google pictures from the owner's browser, cropped to leave out their picture, phone numbers and recovery address, the date on the 2-Step Verification badge removed and the app password replaced by a blurred made-up one. The guide tells readers to take the spaces out of the app password, as the owner did. Sign in with Google stays Never, and Gmail stays off the built-in provider list: the assistant finds it through the ISPDB, whose out-of-date "Turn on IMAP" note the guide says to skip.
+
+**Reason:** the app password route works without the restricted scope's yearly assessment, and people ask for Gmail ([issue #1](https://github.com/PixDevsApps/sealwax/issues/1)).
 
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 

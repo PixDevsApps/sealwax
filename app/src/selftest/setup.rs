@@ -9,7 +9,7 @@
 //! | `engine-expect detect\|verify\|add-account\|edit-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `label` and `color` (`none` for none), `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
 //! | `engine-expect none [but KIND,…]` | The app sent nothing more, or only commands of those kinds (`load-older,folder-opened`: what the list sends by itself) |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
-//! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
+//! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `gmail`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
 //! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|pop3\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
 //! | `engine-reply sign-in-open URL` | `SignInOpen` for the last command |
 //! | `engine-reply signed-in ok USERNAME`, `engine-reply signed-in [imap\|smtp] FAILURE` | `SignedIn` (IMAP when no protocol is named) |
@@ -29,6 +29,7 @@
 //! | `engine-reply folder-changed ok\|offline\|taken\|not-allowed\|missing\|lost\|store`, `engine-reply folder-changed refused TEXT` | `FolderChanged` for the last `create-folder`, `rename-folder` or `delete-folder` taken (their fields: `account`, `parent` (`none`), `folder`, `name`); `ok` first makes the change in the app's store as the engine would (`folders.rs`); `refused` carries TEXT as the server's words (M9) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`), clicks a visible, sensitive button |
+//! | `setup-peek NAME` | Clicks the eye at the end of a password field, through Broadway, and checks that the password shows |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
 //! | `setup-respond NAME RESPONSE` | Answers the alert dialog named NAME (Remove Account's `remove-account`) as its button would |
 //! | `setup-dismiss-toasts` | Closes the toasts shown and queued, as their × would (for previews) |
@@ -85,6 +86,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("setup-type", 2, 2),
     ("setup-choose", 2, 2),
     ("setup-click", 1, 1),
+    ("setup-peek", 1, 1),
     ("setup-key", 1, 1),
     ("setup-respond", 2, 2),
     ("setup-dismiss-toasts", 0, 0),
@@ -299,6 +301,27 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             }
             button.emit_clicked();
             Ok(())
+        }
+        "setup-peek" => {
+            let entry = harness
+                .widget(&args[0])?
+                .downcast::<gtk::PasswordEntry>()
+                .map_err(|_| format!("{} is not a password field", args[0]))?;
+            let mut child = entry.first_child();
+            let (mut text, mut eye) = (None, None);
+            while let Some(widget) = child {
+                if widget.is::<gtk::Text>() {
+                    text = widget.clone().downcast::<gtk::Text>().ok();
+                } else if widget.is::<gtk::Image>() {
+                    eye = Some(widget.clone());
+                }
+                child = widget.next_sibling();
+            }
+            let text = text.ok_or("the password field has no text")?;
+            let eye = eye.ok_or("the password field shows no eye")?;
+            super::triage::click_widget(harness, &eye, 0, 1).await?;
+            harness.wait_until_settled().await;
+            equal("shown", text.property::<bool>("visibility"), true)
         }
         "desktop-network" => {
             let available = match args[0].as_str() {
@@ -1513,7 +1536,8 @@ fn tls(host: &str, port: u16) -> Endpoint {
 }
 
 /// Scripted detection results. Provider names are real ones' or the mock's fictional ones;
-/// every host is under `example.test`.
+/// every host is under `example.test`, except `gmail`'s servers: Gmail's, as Mozilla's ISPDB
+/// lists them (for docs/GMAIL.md's screenshots; the fake engine connects nowhere).
 fn detection(name: &str) -> Result<Detection, String> {
     let found = |provider: &str, source| DetectedSettings {
         imap: tls("imap.example.test", 993),
@@ -1555,6 +1579,12 @@ fn detection(name: &str) -> Result<Detection, String> {
                 "https://example.test/settings/imap",
             ),
             ..found("Fjordpost", DetectSource::Ispdb)
+        }),
+        "gmail" => Detection::Found(DetectedSettings {
+            imap: tls("imap.gmail.com", 993),
+            smtp: tls("smtp.gmail.com", 465),
+            enable_imap: link("Turn on IMAP", "https://example.test/settings/imap"),
+            ..found("GMail", DetectSource::Ispdb)
         }),
         "confirm" => Detection::Found(DetectedSettings {
             imap: tls("imap.fjordhost.example.test", 993),

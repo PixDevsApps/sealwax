@@ -1,6 +1,6 @@
 # Sealwax user guide
 
-Synced: 2026-10-10
+Synced: 2026-10-11
 
 This guide is for people who use Sealwax every day. It describes Sealwax 0.4.0, before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
 
@@ -63,9 +63,9 @@ Without a client ID the assistant says "Microsoft sign-in isn't available in thi
 
 When Microsoft ends the session later, a banner says that the account "needs you to sign in again", with **Sign in**. A Microsoft account is always an IMAP account in Sealwax; POP3 with Sign in with Microsoft isn't supported.
 
-### Gmail and Google Workspace: not supported
+### Gmail: with an app password
 
-Sealwax doesn't support Gmail: there is no Sign in with Google, and Gmail isn't on the assistant's provider list. Use Gmail's own app or its web version. The assistant may still find Gmail's servers through Mozilla's database, or you can type them in, and a Gmail app password may then work, but that isn't tested or supported.
+There is no Sign in with Google, and Gmail isn't on the assistant's own provider list, but Gmail works with an app password, made in your Google account with 2-Step Verification on. The assistant finds Gmail's servers through Mozilla's database; paste the app password into **Password** and take out the spaces Google shows between its groups of four letters (the eye at the end of the field shows what you pasted). Its note "Turn on IMAP in GMail's settings first" can be skipped: Gmail's IMAP is always on. [GMAIL.md](GMAIL.md) shows every step with pictures. Google Workspace accounts work the same way where the organization's admin allows app passwords and IMAP (not tested).
 
 ### iCloud, Fastmail, Yahoo and other app-password providers
 

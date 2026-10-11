@@ -1,6 +1,6 @@
 # Integrations
 
-Synced: 2026-10-09
+Synced: 2026-10-11
 
 How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this machine were read on 2026-10-04 (Omarchy 4.0.4, Hyprland 0.56.2); anything marked *to verify* is checked in the named spike before code depends on it.
 
@@ -142,7 +142,7 @@ Settings and policies checked on the providers' help pages on 2026-10-04 (S4). A
 
 | Provider | Settings | Sign-in | Notes |
 | --- | --- | --- | --- |
-| Gmail / Google Workspace | Not a listed provider since 2026-10-07 (user decision, [ADR-008](DECISIONS.md#adr-008-amendment--google-dropped-2026-10-07)): no preset and no Sign in with Google; found through the ISPDB or typed in, it may connect with an app password, unsupported | — | — |
+| Gmail / Google Workspace | Not a listed provider since 2026-10-07 (user decision, [ADR-008](DECISIONS.md#adr-008-amendment--google-dropped-2026-10-07)): no preset and no Sign in with Google; found through the ISPDB or typed in, it connects with an app password. Since 2026-10-11 [GMAIL.md](GMAIL.md) shows how (user decision, [ADR-008 amendment](DECISIONS.md#adr-008-amendment--gmail-with-an-app-password-documented-2026-10-11)), after the owner added their own Gmail account this way that day | App password (imap.gmail.com:993 TLS, smtp.gmail.com:465 TLS, user = address, as the ISPDB lists them) | The ISPDB's "turn on IMAP" note shows, though Gmail's IMAP is always on |
 | Outlook.com | outlook.office365.com:993; smtp-mail.outlook.com:587 STARTTLS (no 465); user = address | OAuth only (basic auth ended 2024-09-16; IMAP offers only XOAUTH2, LOGINDISABLED) | "Let devices and apps use IMAP" toggle; MX `*.olc.protection.outlook.com`; whether the server saves mail sent over SMTP is unverified (2026-10-05, [Provider quirks](#provider-quirks)) |
 | Microsoft 365 | outlook.office365.com:993; smtp.office365.com:587 STARTTLS (465 unsupported) | OAuth (IMAP/POP basic auth off since 2022-10) | MX `*.mail.protection.outlook.com` or `*.mx.microsoft`; the ISPDB route wrongly gives the consumer SMTP host |
 | iCloud | imap.mail.me.com:993 (user = local part, full address as fallback); smtp.mail.me.com:587 STARTTLS (user = address) | App-specific password (two-factor login required) | — |
