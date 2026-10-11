@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.1 — 2026-10-11
+
+`v0.4.1` is `ea65347`; this machine, rustc 1.98.1. The release: [v0.4.1](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.1).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `ea65347`, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,483 passed, 0 failed, 98 ignored; 75 scripts, 7,507 of 7,507 steps; the hostile suite clean (60 cases, 274 s) | Pass |
+| `python3 tools/release.py build` on `v0.4.1` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,068 passed, 0 failed, 90 ignored; only "Skipping dependency checks"; `pacman -Qp` reads `sealwax 0.4.1-1`; the binary says `sealwax 0.4.1`, carries the client ID (compared, never printed) and no path of the home folder; `SHA256SUMS` checks | Pass |
+| The release `v0.4.1` (`tools/release.py github`) | Four files, not a draft or prerelease, GitHub's latest; INSTALL.md's download URL (`releases/latest/download/sealwax-x86_64.pkg.tar.zst`) downloaded with curl: the same SHA-256 as the build, `sealwax 0.4.1-1`. The notes' relative link to GMAIL.md didn't resolve on the release page; the notes were edited to an absolute link | Pass |
+| Installing 0.4.1 on this machine | Not done (not asked) | Not verified |
+
 ### Gmail without the "Turn on IMAP" note — 2026-10-11
 
 [ADR-008 amendment](DECISIONS.md#adr-008-amendment--gmail-with-an-app-password-documented-2026-10-11), its later paragraph. This machine.
