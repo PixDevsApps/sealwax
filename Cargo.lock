@@ -749,7 +749,7 @@ checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 
 [[package]]
 name = "email-spike-s1"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "email-spike-s2"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-channel 2.5.0",
  "gio",
@@ -780,7 +780,7 @@ dependencies = [
 
 [[package]]
 name = "email-spike-s3"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "async-channel 2.5.0",
@@ -793,7 +793,7 @@ dependencies = [
 
 [[package]]
 name = "email-spike-s4"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "hickory-resolver",
  "psl",
@@ -807,7 +807,7 @@ dependencies = [
 
 [[package]]
 name = "email-spike-s4b"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "hickory-resolver",
  "psl",
@@ -821,7 +821,7 @@ dependencies = [
 
 [[package]]
 name = "email-spike-s5"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "base64 0.22.1",
  "getrandom 0.3.4",
@@ -842,7 +842,7 @@ dependencies = [
 
 [[package]]
 name = "email-spike-s6"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "ash",
@@ -864,7 +864,7 @@ dependencies = [
 
 [[package]]
 name = "email-spike-s7"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-channel 2.5.0",
  "gio",
@@ -3245,7 +3245,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sealwax"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-channel 2.5.0",
  "clap",
@@ -3263,7 +3263,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-autodetect-measure"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "sealwax-domain",
  "sealwax-engine",
@@ -3272,14 +3272,14 @@ dependencies = [
 
 [[package]]
 name = "sealwax-dns-canary"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "sealwax-domain"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "ammonia",
  "html2text",
@@ -3297,7 +3297,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-engine"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-channel 2.5.0",
  "async-imap",
@@ -3333,7 +3333,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-fixtures"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "anyhow",
  "encoding_rs",
@@ -3346,7 +3346,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-infrastructure"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "async-channel 2.5.0",
  "getrandom 0.4.3",
