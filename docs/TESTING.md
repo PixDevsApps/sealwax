@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.2 — 2026-10-11
+
+`v0.4.2` is `01fe475`; this machine, rustc 1.98.1. The release: [v0.4.2](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.2).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `01fe475`, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,487 passed, 0 failed, 98 ignored; 75 scripts, 7,541 of 7,541 steps; the hostile suite clean (60 cases, 273 s) | Pass |
+| `python3 tools/release.py build` on `v0.4.2` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,070 passed, 0 failed, 90 ignored; only "Skipping dependency checks"; `pacman -Qp` reads `sealwax 0.4.2-1`; the binary says `sealwax 0.4.2`, carries the client ID (compared, never printed) and no path of the home folder; `SHA256SUMS` checks | Pass |
+| The release `v0.4.2` (`tools/release.py github`) | Four files, not a draft or prerelease, GitHub's latest; the notes' links absolute; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build, `sealwax 0.4.2-1` | Pass |
+| Installing 0.4.2 on this machine | Not done (not asked) | Not verified |
+
 ### The sending address after Microsoft sign-in, and the warning naming the message (issue #2) — 2026-10-11
 
 [ADR-008 amendment](DECISIONS.md#adr-008-amendment--the-sending-address-after-microsoft-sign-in-2026-10-11) and [ADR-015 amendment](DECISIONS.md#adr-015-amendment--why-a-sends-outcome-is-unknown-2026-10-11). This machine; scripted engines, no real account.

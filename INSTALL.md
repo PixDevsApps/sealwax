@@ -161,10 +161,10 @@ A release build from the source tree has the installed app-id: with the package 
 
 | Step | Verified? | How, and when |
 | --- | --- | --- |
-| Building the package (`tools/package-source.py`, then makepkg with Rust from rustup's installer) | **Yes** | The owner's builds; 0.4.0's on 2026-10-09 and 0.4.1's on 2026-10-11 with `tools/release.py build` (makepkg's `check()`: 1,067 and 1,068 passed, 0 failed) |
+| Building the package (`tools/package-source.py`, then makepkg with Rust from rustup's installer) | **Yes** | The owner's builds; 0.4.0's on 2026-10-09, 0.4.1's and 0.4.2's on 2026-10-11 with `tools/release.py build` (makepkg's `check()`: 1,067, 1,068 and 1,070 passed, 0 failed) |
 | Installing a built package with `sudo pacman -U` | **Yes** | The owner's machine, on every package since 2026-10-07; the installed binary compared byte for byte with the build's |
 | Updating over an earlier package | **Yes** | The same installs, each over the one before; the store's format changes by itself on the first start |
-| The install command (the download from the latest release) | **Yes** | On the owner's machine, 2026-10-09, as written on this page: the download is the release's package (the same SHA-256), and pacman upgraded `sealwax` from 0.3.0-1 to 0.4.0-1; the installed binary is byte for byte the release's and says `sealwax 0.4.0`. For 0.4.1 (2026-10-11) the download was checked, not installed: the same SHA-256 as the build, read by pacman as `sealwax 0.4.1-1` |
+| The install command (the download from the latest release) | **Yes** | On the owner's machine, 2026-10-09, as written on this page: the download is the release's package (the same SHA-256), and pacman upgraded `sealwax` from 0.3.0-1 to 0.4.0-1; the installed binary is byte for byte the release's and says `sealwax 0.4.0`. For 0.4.1 and 0.4.2 (2026-10-11) the download was checked, not installed: the same SHA-256 as the build, read by pacman as `sealwax 0.4.1-1` and `sealwax 0.4.2-1` |
 | The AUR package `sealwax-bin` and updates through Omarchy's Update | Not published yet | The AUR closed new accounts on 2026-10-09. Omarchy's update runs `yay -Sua`, which updates AUR packages (read in `/usr/share/omarchy/bin/omarchy-update-aur-pkgs`, 2026-10-09) |
 | Building with Arch's `rust` or `rustup` package (without `--nodeps`) | Not verified | |
 | Installing on a clean system with only the listed dependencies | Not verified | The clean-container install test comes before 1.0 |
