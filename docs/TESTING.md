@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.5 — 2026-10-12
+
+`v0.4.5` is `f4e6cfa`; this machine, rustc 1.98.1. The release: [v0.4.5](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.5), made at the owner's word ("push and release 0.4.5").
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `f4e6cfa`, `SEALWAX_CI_DISPLAY=72 bash tools/ci.sh --ui` | 1,490 passed, 0 failed, 98 ignored; 79 scripts, 7,640 of 7,640 steps; the hostile suite clean (60 cases, 273 s) | Pass |
+| `python3 tools/release.py build` on `v0.4.5` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,072 passed, 0 failed, 90 ignored; "Skipping dependency checks", and one `libfakeroot internal error: payload not recognized!` line while tidying, after which the package was made; `pacman -Qp` reads `sealwax 0.4.5-1`; the binary says `sealwax 0.4.5`, carries the client ID (compared, never printed) and no path of the home folder; `SHA256SUMS` checks | Pass |
+| The release `v0.4.5` (`tools/release.py github`) | Four files, not a draft or prerelease, GitHub's latest; the notes' link absolute and resolving; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build, `sealwax 0.4.5-1` | Pass |
+| Installing 0.4.5 on this machine | Not done (not asked) | Not verified |
+
 ### A message that left the list leaves the reader — 2026-10-12
 
 [ADR-011 amendment](DECISIONS.md#adr-011-amendment--a-message-that-left-the-list-leaves-the-reader-within-150-ms-2026-10-12). From a user's report on X (Fastmail, a laptop): a deleted message stayed "a second or two" in the reader. This machine (Ryzen 9 5900X), headless under `tools/headless.sh` (Broadway: GTK and WebKit both draw in software, so paint times are the backend's, not a live session's). `measure-leave KEY COUNT [MS]` (new, `app/src/selftest/triage.rs`) times each delete from the command's handler to the first painted frame without the message in the reader; `conversation-add singles` (new) files 24 one-message conversations: a styled newsletter with 5 inline images, simple HTML and plain text in turn. The CPU-starved runs pin the app and its WebKit processes to one core shared with 2 or 5 busy loops (a scratch script), standing in for a slower machine.
