@@ -18,7 +18,7 @@ Run the same line again to update. To uninstall: `sudo pacman -R sealwax`. An AU
 
 ## Status
 
-**Version 0.4.5.** The features below are built and tested, and its author reads their own mail with it every day; 1.0 follows a longer period of daily use with real accounts. Testing so far is on local test mail servers (Dovecot, Stalwart, Mailpit), with Microsoft sign-in checked live on an Outlook.com account and the author's own accounts in daily use; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) are drafted.
+**Version 0.4.6.** The features below are built and tested, and its author reads their own mail with it every day; 1.0 follows a longer period of daily use with real accounts. Testing so far is on local test mail servers (Dovecot, Stalwart, Mailpit), with Microsoft sign-in checked live on an Outlook.com account and the author's own accounts in daily use; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) are drafted.
 
 ## Features
 
@@ -51,5 +51,9 @@ Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.
 - [Microsoft sign-in setup](docs/OAUTH-SETUP.md): registering a client ID
 - [Building](docs/BUILD.md) and [testing](docs/TESTING.md)
 - [Decisions](docs/DECISIONS.md) and [design](docs/DESIGN.md)
+
+## Thanks
+
+Thanks to everyone who reports bugs and suggests improvements in the [issues](https://github.com/PixDevsApps/sealwax/issues), and especially to [@ocewers](https://github.com/ocewers) for detailed reports and ideas (issues #2 to #8).
 
 License: MIT.

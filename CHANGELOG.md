@@ -2,6 +2,15 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 0.4.6 — 2026-10-12
+
+Two requests from a user ([issue #8](https://github.com/PixDevsApps/sealwax/issues/8)).
+
+- **See who else got a message:** a message sent to you and others now says so in its header, for example "to me, Tomas Berg and 2 others", instead of just "to me".
+- **Reply All by default, if you like:** set `reply = "all"` under `[reader]` in `config.toml` to have Reply (`r`), the first reply button and the quick reply answer everyone the message went to. A new **Reply to Sender** command answers the sender alone.
+
+Thanks to [@ocewers](https://github.com/ocewers) for both ideas.
+
 ## 0.4.5 — 2026-10-12
 
 - **A deleted message leaves at once:** when you delete, archive or move the message you're reading, it now leaves the reading pane right away, also on slower computers. Before, it could stay there for a second or two while the next message was prepared; now the next message shows at once and its content fills in as it loads.
