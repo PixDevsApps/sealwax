@@ -2,7 +2,7 @@
 
 Synced: 2026-10-12
 
-This guide is for people who use Sealwax every day. It describes Sealwax 0.4.4, before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
+This guide is for people who use Sealwax every day. It describes Sealwax 0.4.5, before 1.0. Where a command is in the keymap or the menus but does nothing yet, this guide says "not built yet". Every address and name in the examples is fictional.
 
 - [Installing](#installing)
 - [First start and adding an account](#first-start-and-adding-an-account)

@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 0.4.5 — 2026-10-12
+
+- **A deleted message leaves at once:** when you delete, archive or move the message you're reading, it now leaves the reading pane right away, also on slower computers. Before, it could stay there for a second or two while the next message was prepared; now the next message shows at once and its content fills in as it loads.
+
 ## 0.4.4 — 2026-10-12
 
 - **Send from any account:** the From menu of a new message now lists every account's addresses, not only one account's; pick another to send through that account ([issue #7](https://github.com/PixDevsApps/sealwax/issues/7)).
