@@ -73,6 +73,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### `triage-frames`' stall found: the backend's frames, not the action — 2026-10-12
+
+The P2 follow-up of 2026-10-07 (the junk step's ~40 ms stall). CI on the 0.4.6 release commit stopped on it three times in a row. This machine, debug build, `tools/headless.sh 72` with CI's environment; timing prints added for the investigation only and removed after.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `triage-frames` as CI runs it, 5 runs | Failed 2 of 5, the junk step: one press in 10 took 39.9–40.2 ms from the handler to the list's change (p50 0.8–1.3 ms) | Reproduced |
+| Where the time goes (timing prints, 9 runs; frame prints in the last 3) | The store's write and its change event take about a millisecond; the GTK main loop stops for up to 85 ms at a time, and the gaps looked at were frames (from the frame clock's before-paint to its after-paint). In the 3 runs, 34 frames took over 30 ms, 15 of them within 200 ms after the reader put a message on screen; the presses came 20–200 ms after the reader's last present. A change that arrives while such a frame paints waits for it | Found: Broadway draws in software, and a frame that redraws the reader costs 40–60 ms |
+| Waiting before each press for the reader to show the selected message and paint twice (`measure-triage`, kept) | The junk step clean (worst 12.8 ms over 10 runs), but the delete step stalled 34.9 and 38.0 ms in 2 of 10: later frames redraw the reader too (views attached, bodies loading) | Not enough alone |
+| The same with the reader off screen (one pane: `resize 800 900`, the list pane) | 0 of 10 runs failed, 41 of 41 steps each; the worst change over every step and run 4.65 ms | Pass |
+| Live (GTK on the GPU) | Not run here (no live-window authorization); earlier live measurements: the list's frames p99 7.94 ms (S3), the reader's scrolling frames p95 14.6 ms (M5) | Not verified for this step |
+
 ### The others in the header and Reply All by default (issue #8) — 2026-10-12
 
 [ADR-013 amendment](DECISIONS.md#adr-013-amendment--the-others-in-the-header-and-reply-all-by-default-into-10-2026-10-12). This machine; the fake engine and the store backend, nothing sent.

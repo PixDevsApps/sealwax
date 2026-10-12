@@ -2,14 +2,19 @@
 # store's op queue: each key is pressed through Broadway and timed from the command's handler to
 # the list's change (rows removed, or the row's flags) and to the first frame painted after it.
 # Each step fails when the change's p95 is over a 60 Hz frame (16.7 ms). Broadway paints without
-# vsync, so its frame counts are printed, not judged. First a 400-message fixture store, a local
-# account whose ops apply in the queueing transaction; then an account with a key, whose ops
-# only write their overlay and wait for a server (no engine runs them here).
+# vsync, so its frame counts are printed, not judged. The list is timed with the reader off screen
+# (one pane): Broadway draws in software, and a frame that redraws the reader takes 40–60 ms, so a
+# key pressed as one starts waited behind it, now and then over the frame (2026-10-12; live, GTK
+# draws on the GPU and its frames measured under 16.7 ms at p95). First a 400-message fixture
+# store, a local account whose ops apply in the queueing transaction; then an account with a key,
+# whose ops only write their overlay and wait for a server (no engine runs them here).
 # Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-frames.sealwax-test
 
 desktop tiling
 fixtures --count 400 --seed 13 --folders spread
-resize 1440 900
+resize 800 900
+assert-layout narrow
+action nav.pane::list
 triage-mark-read-on-open false
 list-wait
 focus list

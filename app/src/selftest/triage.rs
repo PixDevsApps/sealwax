@@ -853,6 +853,7 @@ async fn measure(harness: &Harness, key: &str, count: usize) -> StepResult {
             key_to_handler: ms(pressed, handled),
         });
         super::mail::settled(harness).await?;
+        reader_caught_up(harness, &list).await?;
     }
     clock.end_updating();
     if let Some(failure) = failure {
@@ -1010,6 +1011,24 @@ async fn measure_leave(
         )),
         _ => Ok(()),
     }
+}
+
+/// Waits until the reader shows the list's one selected message and has painted it, so a sample doesn't
+/// time the frame that draws the previous action's next message: under Broadway, which draws in
+/// software, that frame takes 40–60 ms and blocks the main loop, and a key pressed just before
+/// it waits behind it (the junk step's ~40 ms "stall", 2026-10-12).
+async fn reader_caught_up(harness: &Harness, list: &crate::list::MessageList) -> StepResult {
+    let Some(reader) = harness.state.reader() else {
+        return Ok(());
+    };
+    let started = Instant::now();
+    while let Some(selected) = list.selected()
+        && reader.message() != Some(selected)
+        && started.elapsed() < WAIT_TIMEOUT
+    {
+        glib::timeout_future(Duration::from_millis(2)).await;
+    }
+    harness.wait_frames(2).await
 }
 
 /// One frame at 60 Hz, in milliseconds.
