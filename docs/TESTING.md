@@ -73,6 +73,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.6 — 2026-10-12
+
+`v0.4.6` is `2531d52`; this machine, rustc 1.98.1. The release: [v0.4.6](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.6), at the owner's word ("post the reply and release 0.4.6"), held until the stall below was found.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the first 0.4.6 commit (`b06c89c`, then `1881810` with the thanks), three runs | Each stopped at `triage-frames`' junk step (one stall of 40.8–41.6 ms in 10 presses); 1,493 passed, 0 failed; the script alone passed 6 of 6 | Held; the stall investigated (below) |
+| CI on `2531d52` (the same release commit, after the test's fix `01028ef`), `SEALWAX_CI_DISPLAY=72 bash tools/ci.sh --ui` | 1,493 passed, 0 failed, 98 ignored; 80 scripts, 7,721 of 7,721 steps (`triage-frames` 41/41); the hostile suite clean (60 cases, 273 s) | Pass |
+| `python3 tools/release.py build` on `v0.4.6` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,073 passed, 0 failed, 90 ignored; only "Skipping dependency checks"; `pacman -Qp` reads `sealwax 0.4.6-1`; the binary says `sealwax 0.4.6`, carries the client ID (compared, never printed) and no path of the home folder; the packaged README has the Thanks; `SHA256SUMS` checks | Pass |
+| The release `v0.4.6` (`tools/release.py github`) | Four files, not a draft or prerelease, GitHub's latest; the notes' three links resolve; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build, `sealwax 0.4.6-1` | Pass |
+| Installing 0.4.6 on this machine | Not done (not asked) | Not verified |
+
 ### `triage-frames`' stall found: the backend's frames, not the action — 2026-10-12
 
 The P2 follow-up of 2026-10-07 (the junk step's ~40 ms stall). CI on the 0.4.6 release commit stopped on it three times in a row. This machine, debug build, `tools/headless.sh 72` with CI's environment; timing prints added for the investigation only and removed after.
