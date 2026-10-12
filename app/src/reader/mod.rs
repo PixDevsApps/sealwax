@@ -74,12 +74,17 @@ use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::rc::Rc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use toolbar::Toolbar;
 use widgets::Stage;
 
 /// How long a new conversation may take to lay out before it is shown anyway.
 const READY_TIMEOUT: Duration = Duration::from_secs(3);
+/// How long a conversation whose selected message left the list (archived, deleted, moved, gone
+/// in a sync) stays on screen while the next one is laid out: PRD's bar for opening cached
+/// HTML. Then the next one shows as far as it is laid out, its bodies filling in; one not read
+/// yet hides the left one until it is.
+pub const LEFT_SHOWN: Duration = Duration::from_millis(150);
 /// A reader hidden this long gives its views back (ADR-011: views of hidden bodies are released
 /// and re-rendered on return).
 const RELEASE_HIDDEN_AFTER: Duration = Duration::from_secs(3);
@@ -271,6 +276,10 @@ struct Inner {
     quick: reply::Quick,
     /// `config.toml`'s `conversation_order` is `newest-first` (issue #3).
     newest_first: Cell<bool>,
+    /// The shown page whose selected message left the list, and when it must be off screen.
+    left: Cell<Option<(u64, Instant)>>,
+    /// The shown page is hidden: its message left the list and the next page isn't read yet.
+    hidden: Cell<bool>,
 }
 
 impl Reader {
@@ -328,6 +337,8 @@ impl Reader {
             mine: RefCell::new(Vec::new()),
             quick: reply::Quick::default(),
             newest_first: Cell::new(false),
+            left: Cell::new(None),
+            hidden: Cell::new(false),
         });
         remote::load(&inner);
         let weak = Rc::downgrade(&inner);
@@ -369,7 +380,7 @@ impl Reader {
             .shown
             .borrow()
             .as_ref()
-            .filter(|page| !page.missing)
+            .filter(|page| !page.missing && !self.inner.hidden.get())
             .map(|page| page.selected);
         if let Some(id) = shown {
             self.show(id);
@@ -392,6 +403,38 @@ impl Reader {
         let generation = self.inner.next_generation();
         let inner = self.inner.clone();
         glib::spawn_future_local(async move { inner.load(id, generation).await });
+    }
+
+    /// [`Reader::show`] in place of a shown message that left the list (archived, deleted,
+    /// moved, gone in a sync): the left conversation stays on screen at most [`LEFT_SHOWN`],
+    /// then the new one shows as far as it is laid out, or the left one is hidden until the new
+    /// one is read.
+    pub fn show_after_leave(&self, id: MessageId) {
+        let left = self
+            .inner
+            .shown
+            .borrow()
+            .as_ref()
+            .filter(|page| page.selected != id)
+            .map(|page| page.key);
+        if let Some(key) = left
+            && self
+                .inner
+                .left
+                .get()
+                .is_none_or(|(earlier, _)| earlier != key)
+        {
+            self.inner
+                .left
+                .set(Some((key, Instant::now() + LEFT_SHOWN)));
+            let weak = Rc::downgrade(&self.inner);
+            glib::timeout_add_local_once(LEFT_SHOWN, move || {
+                if let Some(inner) = weak.upgrade() {
+                    inner.left_due(key);
+                }
+            });
+        }
+        self.show(id);
     }
 
     /// Downloads the bodies the store doesn't hold through `fetch` (ML-044): the reader asks
@@ -451,6 +494,8 @@ impl Reader {
         self.inner.target.set(None);
         self.inner.next_generation();
         self.inner.discard_pending();
+        self.inner.left.set(None);
+        self.inner.hidden.set(false);
         self.inner.stage.show(None::<&gtk::Widget>, None);
         if let Some(page) = self.inner.shown.take() {
             self.inner.release_page(page);
@@ -462,6 +507,9 @@ impl Reader {
     /// The selected message: the one the reader was asked to show, once its conversation is on
     /// screen. Print, Show Original and Save as .eml act on it.
     pub fn message(&self) -> Option<MessageId> {
+        if self.inner.hidden.get() {
+            return None;
+        }
         self.inner.shown.borrow().as_ref().map(|page| page.selected)
     }
 
@@ -584,7 +632,7 @@ impl Reader {
 
     pub fn state(&self) -> ReaderState {
         let shown = self.inner.shown.borrow();
-        let page = shown.as_ref();
+        let page = shown.as_ref().filter(|_| !self.inner.hidden.get());
         let card = page.and_then(Page::selected_card);
         let html = card.and_then(|card| card.html.as_ref());
         let mut state = ReaderState {

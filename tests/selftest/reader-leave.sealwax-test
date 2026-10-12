@@ -1,0 +1,30 @@
+# A message that leaves the list leaves the reader at once (issue: a deleted message stayed in
+# the reader for a second or two on a slower machine). The reader lays the next conversation out
+# unseen and keeps the shown one meanwhile, but one whose message left stays at most 150 ms
+# (reader::LEFT_SHOWN); then the next shows as far as it is laid out. Here the next message's
+# layout can't finish: a large message's inline image waits for the fake engine's FetchPart,
+# which isn't answered until later, so before this change the deleted message stayed the full
+# 3 s (READY_TIMEOUT). Every message is fictional. Run:
+#   tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/reader-leave.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-mark-read-on-open false
+mail-account Files
+files-add-text cid
+sleep 1100
+files-add simple
+assert-list-count 2
+
+# The simple message is shown; deleting it selects the large one, whose image never comes in
+# time: the deleted message is off the reader well within the 3 s a layout may take.
+list-select 0
+wait-until assert-files message simple
+focus list
+measure-leave numbersign 1 1000
+assert-files message cid
+engine-expect fetch-part
+assert-files cid-loaded 0
+engine-reply part-fetched ok
+wait-until assert-files cid-loaded 1

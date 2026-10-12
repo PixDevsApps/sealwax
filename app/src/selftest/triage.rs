@@ -23,6 +23,7 @@
 //! | `sidebar-menu-click [NAME]` | Clicks the open menu's item named NAME (`folder-menu-rename`, `account-menu-new-folder`, …), else its first: a folder's Mark Folder as Read, an account's Edit Account |
 //! | `action-log` | Records the window's and the application's commands as they run, from now on |
 //! | `measure-triage KEY COUNT` | Presses KEY COUNT times on the selected message and times each from the command's handler to the list's change and to the frame that shows it |
+//! | `measure-leave KEY COUNT [MS]` | Presses KEY COUNT times on the message the reader shows and times each from the command's handler to the first frame without it in the reader and to the frame with the next one; with MS, fails when it stayed longer |
 //! | `assert-focus WHERE` | The keyboard focus is in WHERE (as `focus`) |
 //! | `assert-list-selection none\|POS,…` | The selected rows |
 //! | `assert-select-mode BOOL` | Whether the list is in the select mode |
@@ -71,6 +72,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("sidebar-menu-click", 0, 1),
     ("action-log", 0, 0),
     ("measure-triage", 2, 2),
+    ("measure-leave", 2, 3),
     ("assert-focus", 1, 1),
     ("assert-list-selection", 1, 1),
     ("assert-select-mode", 1, 1),
@@ -284,6 +286,10 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "action-log" => start_log(harness),
         "measure-triage" => measure(harness, arg(0), number(arg(1))?).await,
+        "measure-leave" => {
+            let bound = args.get(2).map(|ms| number(ms)).transpose()?;
+            measure_leave(harness, arg(0), number(arg(1))?, bound).await
+        }
         _ => check(harness, command, args).await,
     }
 }
@@ -890,6 +896,119 @@ async fn measure(harness: &Harness, key: &str, count: usize) -> StepResult {
         Err(format!(
             "handler → list changed p95 {p95:.2} ms, over a {FRAME_MS:.1} ms frame"
         ))
+    }
+}
+
+/// `measure-leave KEY COUNT [MS]`: presses KEY (an action that takes the selected message out of
+/// the list) COUNT times on the message the reader shows, and times each from the command's
+/// handler to the first painted frame without that message in the reader, and to the frame that
+/// shows the next one. Prints the times and the next message's phases; with `bound` (MS), fails
+/// when the message stayed longer in any round.
+async fn measure_leave(
+    harness: &Harness,
+    key: &str,
+    count: usize,
+    bound: Option<usize>,
+) -> StepResult {
+    let list = super::mail::list(harness)?;
+    let reader = harness.state.reader().ok_or("the reader isn't installed")?;
+    let window = harness.window()?;
+    let clock = window
+        .window()
+        .frame_clock()
+        .ok_or("the window has no frame clock")?;
+    let shown: Rc<RefCell<Option<(crate::reader::Shown, Instant)>>> = Rc::default();
+    let record = shown.clone();
+    reader.connect_shown(move |report| {
+        record.replace(Some((report.clone(), Instant::now())));
+    });
+    clock.begin_updating();
+    let ms = |from: Instant, to: Instant| to.duration_since(from).as_secs_f64() * 1000.0;
+    let mut gone_ms = Vec::new();
+    let mut next_ms = Vec::new();
+    let mut failure = None;
+    for round in 0..count {
+        let Some(left) = reader.message().filter(|id| list.selected() == Some(*id)) else {
+            failure = Some(format!(
+                "round {round}: the reader doesn't show the selected message"
+            ));
+            break;
+        };
+        shown.replace(None);
+        let gone: Rc<Cell<Option<Instant>>> = Rc::default();
+        let next: Rc<Cell<Option<Instant>>> = Rc::default();
+        let (mark_gone, mark_next, watched) = (gone.clone(), next.clone(), reader.clone());
+        let paint = clock.connect_after_paint(move |_| {
+            let now = watched.message();
+            if mark_gone.get().is_none() && now != Some(left) {
+                mark_gone.set(Some(Instant::now()));
+            }
+            if mark_next.get().is_none() && now.is_some_and(|id| id != left) {
+                mark_next.set(Some(Instant::now()));
+            }
+        });
+        let result = press(key);
+        let started = Instant::now();
+        while result.is_ok() && next.get().is_none() && started.elapsed() < WAIT_TIMEOUT {
+            glib::timeout_future(Duration::from_millis(1)).await;
+        }
+        clock.disconnect(paint);
+        result?;
+        let (Some(gone), Some(next), Some((handled, _))) =
+            (gone.get(), next.get(), harness.state.triage_started())
+        else {
+            failure = Some(format!(
+                "round {round}: the reader never showed the next message"
+            ));
+            break;
+        };
+        gone_ms.push(ms(handled, gone));
+        next_ms.push(ms(handled, next));
+        if let Some((report, at)) = shown.borrow().as_ref() {
+            let asked = at.checked_sub(report.ready).unwrap_or(*at);
+            println!(
+                "  # round {round}: gone {:.1} ms, next {:.1} ms; the reader asked at {:.1}, \
+                 read {:.1}, prepared {:.1}, ready {:.1} ms after, painted {:.1} ms after; {:?}",
+                ms(handled, gone),
+                ms(handled, next),
+                ms(handled, asked),
+                report.fetched.as_secs_f64() * 1000.0,
+                report.prepared.as_secs_f64() * 1000.0,
+                report.ready.as_secs_f64() * 1000.0,
+                ms(*at, next),
+                report.body
+            );
+        }
+        super::mail::settled(harness).await?;
+        glib::timeout_future(Duration::from_millis(300)).await;
+    }
+    clock.end_updating();
+    if let Some(failure) = failure {
+        return Err(failure);
+    }
+    let summary = |values: &[f64]| {
+        format!(
+            "p50 {:.1}, p95 {:.1}, max {:.1}",
+            nearest_rank(values, 0.5),
+            nearest_rank(values, 0.95),
+            nearest_rank(values, 1.0)
+        )
+    };
+    println!(
+        "  # {key} ×{}: handler → the message gone from the reader (ms): {}",
+        gone_ms.len(),
+        summary(&gone_ms)
+    );
+    println!(
+        "  # handler → the next message shown (ms): {}",
+        summary(&next_ms)
+    );
+    let longest = nearest_rank(&gone_ms, 1.0);
+    match bound {
+        Some(bound) if longest > bound as f64 => Err(format!(
+            "a message that left stayed {longest:.1} ms in the reader, over {bound} ms"
+        )),
+        _ => Ok(()),
     }
 }
 

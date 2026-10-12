@@ -269,7 +269,8 @@ impl Inner {
 
     /// Waits until the bodies the page's first screen needs have their heights at the column's
     /// width and their images in: every expanded HTML body up to the selected message, and
-    /// those below it that start within a screen of its top. At most [`READY_TIMEOUT`].
+    /// those below it that start within a screen of its top. At most [`READY_TIMEOUT`], and no
+    /// longer than a conversation whose message left the list may stay ([`super::LEFT_SHOWN`]).
     async fn lay_out(self: &Rc<Self>, key: u64) {
         let deadline = Instant::now() + READY_TIMEOUT;
         while let Some(waiting) = self.first_screen_waiting(key) {
@@ -279,7 +280,15 @@ impl Inner {
             if !self.stage.is_mapped() {
                 return;
             }
-            let left = deadline.saturating_duration_since(Instant::now());
+            let due = self.left_due_at();
+            let now = Instant::now();
+            if due.is_some_and(|due| due <= now) {
+                tracing::debug!(
+                    "reader: shown before it was laid out, in place of a message that left the list"
+                );
+                return;
+            }
+            let left = deadline.saturating_duration_since(now);
             if left.is_zero() {
                 tracing::warn!(
                     "reader: the conversation took over {} s to lay out; shown as it is",
@@ -288,8 +297,9 @@ impl Inner {
                 return;
             }
             self.schedule_now();
+            let wait = due.map_or(left, |due| left.min(due.saturating_duration_since(now)));
             let _ = glib::future_with_timeout(
-                left.min(Duration::from_millis(50)),
+                wait.min(Duration::from_millis(50)),
                 self.progress.1.recv(),
             )
             .await;
@@ -343,11 +353,15 @@ impl Inner {
         if let Some(old) = self.shown.replace(Some(page)) {
             self.release_page(old);
         }
+        self.left.set(None);
+        self.hidden.set(false);
         self.scroll_to_selected();
         tracing::debug!(
             message = selected.0,
             body = ?shown.body,
             messages = shown.messages,
+            read_ms = shown.fetched.as_secs_f64() * 1000.0,
+            prepared_ms = shown.prepared.as_secs_f64() * 1000.0,
             ms = shown.ready.as_secs_f64() * 1000.0,
             "reader: shown"
         );
@@ -369,6 +383,40 @@ impl Inner {
             );
         }
         self.schedule();
+    }
+
+    /// When the shown conversation, whose message left the list, must be off screen.
+    fn left_due_at(&self) -> Option<Instant> {
+        self.left
+            .get()
+            .filter(|(key, _)| self.is_shown(*key))
+            .map(|(_, due)| due)
+    }
+
+    /// The time a conversation whose message left the list may stay is up: a next one being
+    /// laid out shows as it is; one not read yet hides the left one until it is.
+    pub(super) fn left_due(self: &Rc<Self>, key: u64) {
+        if self.left.get().is_none_or(|(left, _)| left != key) || !self.is_shown(key) {
+            return;
+        }
+        let staged = self.pending.borrow().as_ref().is_some_and(|page| {
+            self.stage
+                .staged()
+                .is_some_and(|staged| staged == *page.root.upcast_ref::<gtk::Widget>())
+        });
+        if staged {
+            let _ = self.progress.0.try_send(());
+            return;
+        }
+        if let Some(page) = self.shown.borrow().as_ref() {
+            // Kept in place, unseen: a focus in it moves on to the next page as usual.
+            page.root.set_opacity(0.0);
+            page.root.set_can_target(false);
+            page.root
+                .update_state(&[gtk::accessible::State::Hidden(true)]);
+        }
+        self.hidden.set(true);
+        tracing::debug!("reader: a message that left the list hidden; the next isn't read yet");
     }
 
     /// The bodies of page `key` that came on screen and weren't reported yet.

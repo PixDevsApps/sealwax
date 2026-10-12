@@ -73,6 +73,22 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### A message that left the list leaves the reader — 2026-10-12
+
+[ADR-011 amendment](DECISIONS.md#adr-011-amendment--a-message-that-left-the-list-leaves-the-reader-within-150-ms-2026-10-12). From a user's report on X (Fastmail, a laptop): a deleted message stayed "a second or two" in the reader. This machine (Ryzen 9 5900X), headless under `tools/headless.sh` (Broadway: GTK and WebKit both draw in software, so paint times are the backend's, not a live session's). `measure-leave KEY COUNT [MS]` (new, `app/src/selftest/triage.rs`) times each delete from the command's handler to the first painted frame without the message in the reader; `conversation-add singles` (new) files 24 one-message conversations: a styled newsletter with 5 inline images, simple HTML and plain text in turn. The CPU-starved runs pin the app and its WebKit processes to one core shared with 2 or 5 busy loops (a scratch script), standing in for a slower machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Before the change, release, 15 deletes | Gone p50 22.4, p95 80.6 ms; a newsletter laid out 23–30 ms after the reader was asked | Instant here, as the owner sees it |
+| Before, release, a third of a core | Gone p50 82.6, p95 275.6 ms; the newsletter rounds 252–270 ms | Grows on a slower machine |
+| After, release, a third of a core, timed in parts | The reader asked 22–31 ms after the handler; a newsletter laid out 92–127 ms later and the frame with it painted 149–157 ms after that; every next message laid out within 150 ms, so the change didn't act | Recorded |
+| A sixth of a core, before → after, release, two runs each | The newsletter rounds 496–527 ms → 226–262 ms in 8 of 10: the next one shows 150 ms after the reader is asked, before its body is laid out, and that frame paints in 32–45 ms instead of ~290; the other 2 took 443 and 505 ms, laid out just inside the limit (144.7 and 150.0 ms) with the frame painting the whole newsletter; the other messages unchanged. The first round of a run (551 and 574 ms in the second pair, before and after) spends ~450 ms laying out a simple message, most likely making the reader's second WebView (not confirmed) | Pass |
+| The real-world corpus, `reader_corpus --no-snapshots`, release | 276/276 heights, 0 blank, PASS; laid out p50 11.4 / p95 35.1 ms (143.7 ms for the first template rendered); painted p50 46.7 / p95 113.6 ms, the three tallest newsletters 337–462 ms | Recorded |
+| `reader-leave` self-test (new, debug): the next message's layout can't finish (its inline image waits for an unanswered `FetchPart`) | Before the change the deleted message stayed 3,021.8 ms (the 3 s limit) and the step failed; after, 164.7 ms, 18 of 18 steps | Pass |
+| The left message hidden while the next one isn't read yet | Not exercised by a test (reading the next one never took 150 ms here) | Not verified |
+| CI, `SEALWAX_CI_DISPLAY=72 bash tools/ci.sh --ui` | 1,490 passed, 0 failed, 98 ignored; 79 scripts, 7,640 of 7,640 steps (`reader-leave` 18/18, `triage-frames` 39/39); the hostile suite clean (60 cases, 274 s); Clippy with `-D warnings` clean | Pass |
+| On the reporter's machine | Not measured. The reader's debug log (`RUST_LOG=sealwax_app::reader=debug`) now gives each conversation's read, prepared and shown times | Not verified |
+
 ### 0.4.4 — 2026-10-12
 
 `v0.4.4` is `babf75d`; this machine, rustc 1.98.1. The release: [v0.4.4](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.4), made unattended at the owner's word.

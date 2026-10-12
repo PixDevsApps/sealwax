@@ -7,7 +7,7 @@
 //! | Command | What it does |
 //! | --- | --- |
 //! | `conversation-account NAME ADDRESS` | An account at ADDRESS with the six role folders (`alex.berg@example.test` makes the samples "to me") |
-//! | `conversation-add NAME [ACCOUNT]` | Files sample conversation NAME (`trip`, `letters`, `long`, `typical`, `links`) in the account's Inbox, the user's own messages in its Sent |
+//! | `conversation-add NAME [ACCOUNT]` | Files sample conversation NAME (`trip`, `letters`, `long`, `typical`, `links`) in the account's Inbox, the user's own messages in its Sent; `singles` files 24 messages that are each a conversation of their own (`single-1`, newest, to `single-24`) |
 //! | `conversation-show MESSAGE` | Selects MESSAGE's row (`trip-6`, …) and waits until the reader shows its conversation |
 //! | `conversation-click-row N` | A real click on the N-th collapsed row (from 0), scrolled into view first; waits for its card |
 //! | `conversation-click-header MESSAGE` | A real click on MESSAGE's card header; waits for its row |
@@ -49,6 +49,9 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
 ];
 
 const WAIT: Duration = Duration::from_secs(10);
+
+/// Messages `conversation-add singles` files: each a conversation of its own.
+const SINGLES: usize = 24;
 
 thread_local! {
     /// Every sample message filed, by name.
@@ -187,9 +190,9 @@ async fn account(harness: &Harness, name: &str, address: &str) -> StepResult {
 }
 
 async fn add(harness: &Harness, name: &str, account: Option<&str>) -> StepResult {
-    if !samples::CONVERSATIONS.contains(&name) {
+    if !samples::CONVERSATIONS.contains(&name) && name != "singles" {
         return Err(format!(
-            "no conversation {name}; there are {:?}",
+            "no conversation {name}; there are {:?} and singles",
             samples::CONVERSATIONS
         ));
     }
@@ -200,7 +203,11 @@ async fn add(harness: &Harness, name: &str, account: Option<&str>) -> StepResult
     let mailbox = harness.state.mailbox();
     let store = mailbox.shared_store().ok_or("the store is not open")?;
     let blobs = mailbox.blobs().ok_or("the blob store is not open")?;
-    let messages = samples::conversation(name, glib::real_time() / 1_000_000);
+    let now = glib::real_time() / 1_000_000;
+    let messages = match name {
+        "singles" => samples::singles(SINGLES, now),
+        _ => samples::conversation(name, now),
+    };
     let count = messages.len();
     let filed = blocking(move || {
         samples::fill_conversation(&store, &blobs, inbox, sent, messages)

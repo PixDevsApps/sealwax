@@ -116,7 +116,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Quick reply under the conversation, expanding into the full composer.
 - *As built in M1 (ML-027):*
   - **Toolbar:** archive, delete, junk, move | mark unread, star (insensitive until M4), then "n of N" with previous and next; tooltips name each command's keys.
-  - **Showing a message:** it appears once its body is laid out at its height, replacing the previous one at the top of the column.
+  - **Showing a message:** it appears once its body is laid out at its height, replacing the previous one at the top of the column. *2026-10-12:* in place of a message that left the list (archived, deleted, moved), the left one stays at most 150 ms; then the next shows as far as it is laid out, its body filling in ([ADR-011 amendment](DECISIONS.md#adr-011-amendment--a-message-that-left-the-list-leaves-the-reader-within-150-ms-2026-10-12)).
   - **Details:** the toggle shows From, Reply-To, To, Cc, the full date and the list.
   - **Not built yet:** "Always for this sender" is shown insensitive until M5; attachment cards show type, name and size only.
   - **Keys:** they work while a message has the focus. WebKitGTK passes back the keys a message doesn't use, and a text field inside a message keeps its letters.
