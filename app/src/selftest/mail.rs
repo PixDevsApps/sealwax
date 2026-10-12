@@ -475,6 +475,11 @@ pub(super) struct Fiction {
     pub(super) html: bool,
     /// A List-Id header's identifier, without its angle brackets.
     pub(super) list_id: Option<String>,
+    /// The To header as written (`Alex Berg <alex.berg@example.test>, …`); the self-test's own
+    /// address when `None`.
+    pub(super) to: Option<String>,
+    /// A Cc header as written.
+    pub(super) cc: Option<String>,
 }
 
 pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> {
@@ -485,13 +490,20 @@ pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> 
         .collect::<String>()
         .to_ascii_lowercase();
     let mut text = format!(
-        "From: {} <{local}@example.test>\r\nTo: Selftest <selftest@example.test>\r\n\
+        "From: {} <{local}@example.test>\r\nTo: {}\r\n\
          Subject: {}\r\nDate: {}\r\nMessage-ID: <selftest-{serial}@example.test>\r\n\
          MIME-Version: 1.0\r\n",
         fiction.from,
+        fiction
+            .to
+            .as_deref()
+            .unwrap_or("Selftest <selftest@example.test>"),
         fiction.subject,
         mail_date(date)
     );
+    if let Some(cc) = &fiction.cc {
+        text.push_str(&format!("Cc: {cc}\r\n"));
+    }
     if let Some(list) = &fiction.list_id {
         text.push_str(&format!("List-Id: Nyheter <{list}>\r\n"));
     }
@@ -562,7 +574,7 @@ async fn ingest_fiction(
         .ok_or_else(|| "the store already held that message".to_owned())
 }
 
-/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [html] [from=NAME] [text=WORDS] [list=ID]`.
+/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [html] [from=NAME] [text=WORDS] [list=ID] [to=HEADER] [cc=HEADER]`.
 async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
     let list = list(harness)?;
     let folder = find_folder(harness, &args[0])?;
@@ -575,6 +587,8 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
         reply_to: None,
         html: false,
         list_id: None,
+        to: None,
+        cc: None,
     };
     let mut flags = Flags::NONE;
     for option in &args[3..] {
@@ -587,6 +601,8 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
                 Some(("from", name)) => fiction.from = name.to_owned(),
                 Some(("text", text)) => fiction.text = text.to_owned(),
                 Some(("list", list)) => fiction.list_id = Some(list.to_owned()),
+                Some(("to", to)) => fiction.to = Some(to.to_owned()),
+                Some(("cc", cc)) => fiction.cc = Some(cc.to_owned()),
                 _ => return Err(format!("unknown option {other}")),
             },
         }
@@ -709,6 +725,8 @@ fn churn_message(rng: &mut Rng, answered: &mut Vec<u32>, folder: FolderId, now: 
         reply_to,
         html: false,
         list_id: None,
+        to: None,
+        cc: None,
     };
     RawMessage {
         folder,
@@ -1178,6 +1196,8 @@ mod tests {
             reply_to: Some(3),
             html: false,
             list_id: None,
+            to: None,
+            cc: None,
         };
         let raw = raw_message(&fiction, 1_791_072_000, 7);
         let parsed = sealwax_domain::message::parse(&raw);

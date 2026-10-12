@@ -2,7 +2,8 @@
 //! Shift+F10 on the row under the list's cursor, opens it under the row. It acts on that row,
 //! selected first when it wasn't, or on every selected message when the row is among them.
 //!
-//! Reply, Reply All, Forward; Archive, Delete, Move to…, Move to Junk (Not Junk in a Junk
+//! Reply, Reply All, Forward (with `[reader] reply = "all"`: Reply as Reply All, Reply to Sender,
+//! Forward; issue #8); Archive, Delete, Move to…, Move to Junk (Not Junk in a Junk
 //! folder); Mark as Read (Unread when all are read), Star (Unstar when all are starred); Create
 //! Rule from Message…, Always Junk Messages from {address}, Never Junk Messages from {address}.
 //! Each item runs its registry command, so it does what the command's key does, and is
@@ -17,6 +18,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use sealwax_domain::actions::ActionId;
+use sealwax_domain::compose::ReplyKind;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -91,12 +93,24 @@ fn sections(state: &AppState, targets: &[Target]) -> Vec<Vec<Entry>> {
         title,
         why_not: crate::rules::applies(state, id).err(),
     };
-    vec![
+    let replies = if crate::compose_actions::reply_kind(state) == ReplyKind::ReplyAll {
+        vec![
+            Entry {
+                title: ActionId::ReplyAll.title().to_owned(),
+                ..plain(ActionId::Reply)
+            },
+            plain(ActionId::ReplySender),
+            plain(ActionId::Forward),
+        ]
+    } else {
         vec![
             plain(ActionId::Reply),
             plain(ActionId::ReplyAll),
             plain(ActionId::Forward),
-        ],
+        ]
+    };
+    vec![
+        replies,
         vec![
             triaged(ActionId::Archive),
             triaged(ActionId::Delete),

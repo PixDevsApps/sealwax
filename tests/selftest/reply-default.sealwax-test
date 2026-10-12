@@ -1,0 +1,99 @@
+# Whom the header names and whom Reply answers (issue #8). A message to the user and others says
+# so in its header ("to me, Tomas Berg, Sana Malik"). By default Reply (r, Ctrl+R, the card's
+# first button, the quick reply) answers the sender and Reply All (a) everyone; config.toml's
+# [reader] reply = "all" makes Reply answer everyone, the card's buttons Reply all and Reply to
+# sender, the quick reply name everyone it answers, and Reply to Sender (the palette, the
+# message menu) the sender alone. A change applies at once. Every name and message is fictional.
+# Run: tools/headless.sh 45 target/debug/sealwax --self-test tests/selftest/reply-default.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+conversation-account Personal alex.berg@example.test
+mail-add Personal:inbox 10m "Middag fredag" read from=Leah "to=Alex Berg <alex.berg@example.test>, Tomas Berg <tomas@example.test>" "cc=Sana Malik <sana@example.test>"
+mail-add Personal:inbox 5m "Bare til deg" read from=Ingrid "to=Alex Berg <alex.berg@example.test>"
+folder inbox Personal
+focus list
+
+# The header names the others besides "me"; a message to the user alone says "to me".
+list-select 1
+wait-until assert-quick-reply shown true
+assert-text-contains reader-recipients "to me, Tomas Berg, Sana Malik"
+
+# By default Reply answers the sender: the key, the card's first button and the quick reply.
+assert-quick-reply label "Reply to Leah"
+focus list
+key r
+assert-compose-last reply selected reply
+composer-close
+key a
+assert-compose-last reply selected reply-all
+composer-close
+reply-click-card selected reply
+assert-compose-last reply selected reply
+composer-close
+reply-click-card selected reply-all
+assert-compose-last reply selected reply-all
+composer-close
+action win.reply-sender
+assert-compose-last reply selected reply
+composer-close
+row-menu 1
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+key Escape
+wait-until assert-row-menu closed
+
+# reply = "all": Reply answers everyone, applied to the shown message at once.
+write-file $TMP/config/sealwax/config.toml "[reader]\nreply = \"all\"\n"
+wait-until assert-quick-reply label "Reply to Leah and 2 others"
+assert-text-contains reader-recipients "to me, Tomas Berg, Sana Malik"
+focus list
+key r
+assert-compose-last reply selected reply-all
+composer-close
+key <Control>r
+assert-compose-last reply selected reply-all
+composer-close
+key a
+assert-compose-last reply selected reply-all
+composer-close
+reply-click-card selected reply
+assert-compose-last reply selected reply-all
+composer-close
+reply-click-card selected reply-sender
+assert-compose-last reply selected reply
+composer-close
+action win.reply-sender
+assert-compose-last reply selected reply
+composer-close
+row-menu 1
+assert-row-menu-items "Reply All,Reply to Sender,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+key Escape
+wait-until assert-row-menu closed
+assert-labelled
+
+# The quick reply answers everyone too, also opened in the composer with what it holds.
+action win.quick-reply
+type "Jeg tar med dessert"
+action win.reply-in-composer
+assert-compose-last quick-reply selected "Jeg tar med dessert" reply-all
+composer-close
+
+# A message to the user alone: everyone is the sender.
+focus list
+list-select 0
+wait-until assert-quick-reply label "Reply to Ingrid"
+assert-text-contains reader-recipients "to me"
+key r
+assert-compose-last reply selected reply-all
+composer-close
+
+# Back to the default.
+list-select 1
+wait-until assert-quick-reply label "Reply to Leah and 2 others"
+write-file $TMP/config/sealwax/config.toml ""
+wait-until assert-quick-reply label "Reply to Leah"
+focus list
+key r
+assert-compose-last reply selected reply
+composer-close

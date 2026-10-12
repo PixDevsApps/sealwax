@@ -10,7 +10,7 @@
 //! | `reply-install-entry` | Writes a desktop entry for this run's app-id into the sandbox and waits until GIO lists it |
 //! | `reply-click-card MESSAGE reply\|reply-all\|forward\|edit-draft` | A real click on that button of MESSAGE's card |
 //! | `assert-compose-requests N` | `composer::open` was asked N times in this run |
-//! | `assert-compose-last KIND [ARG] [ARG]` | The latest request: `new ACCOUNT\|none`, `reply MESSAGE reply\|reply-all\|forward`, `quick-reply MESSAGE TEXT`, `server-draft MESSAGE`, `mailto TO` |
+//! | `assert-compose-last KIND [ARG] [ARG] [ARG]` | The latest request: `new ACCOUNT\|none`, `reply MESSAGE reply\|reply-all\|forward`, `quick-reply MESSAGE TEXT [reply\|reply-all]`, `server-draft MESSAGE`, `mailto TO` |
 //! | `assert-quick-reply FIELD VALUE` | The quick reply on screen: `shown BOOL`, `target MESSAGE`, `label TEXT`, `text TEXT`, `focused BOOL`, `send BOOL` (its Send sensitive) |
 //! | `assert-quick-sends N` | The quick reply's Send took N replies |
 //! | `assert-quick-send-last MESSAGE TEXT` | The latest one Send took |
@@ -40,7 +40,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("reply-install-entry", 0, 0),
     ("reply-click-card", 2, 2),
     ("assert-compose-requests", 1, 1),
-    ("assert-compose-last", 1, 3),
+    ("assert-compose-last", 1, 4),
     ("assert-quick-reply", 2, 2),
     ("assert-quick-sends", 1, 1),
     ("assert-quick-send-last", 2, 2),
@@ -112,9 +112,14 @@ fn describe(harness: &Harness, request: &ComposeRequest) -> String {
         ComposeRequest::Reply { message, kind } => {
             format!("reply {} {}", name_of(harness, *message), kind_name(*kind))
         }
-        ComposeRequest::QuickReply { message, text } => format!(
-            "quick-reply {} ({} characters)",
+        ComposeRequest::QuickReply {
+            message,
+            text,
+            kind,
+        } => format!(
+            "quick-reply {} {} ({} characters)",
             name_of(harness, *message),
+            kind_name(*kind),
             text.chars().count()
         ),
         ComposeRequest::Mailto(_) => "mailto".to_owned(),
@@ -228,9 +233,20 @@ fn compose_last(harness: &Harness, args: &[String]) -> StepResult {
             equal("message", *message, self::message(harness, wanted(1)?)?)?;
             equal("kind", kind_name(*kind), wanted(2)?)
         }
-        ("quick-reply", ComposeRequest::QuickReply { message, text }) => {
+        (
+            "quick-reply",
+            ComposeRequest::QuickReply {
+                message,
+                text,
+                kind,
+            },
+        ) => {
             equal("message", *message, self::message(harness, wanted(1)?)?)?;
-            equal("text", text.as_str(), wanted(2)?)
+            equal("text", text.as_str(), wanted(2)?)?;
+            match args.get(3) {
+                Some(wanted) => equal("kind", kind_name(*kind), wanted.as_str()),
+                None => Ok(()),
+            }
         }
         ("server-draft", ComposeRequest::ServerDraft(message)) => {
             equal("message", *message, self::message(harness, wanted(1)?)?)

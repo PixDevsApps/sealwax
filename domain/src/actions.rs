@@ -217,6 +217,7 @@ pub enum ActionId {
     Compose,
     Reply,
     ReplyAll,
+    ReplySender,
     Forward,
     Send,
     EditDraft,
@@ -264,7 +265,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 74] = [
+    pub const ALL: [Self; 75] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -295,6 +296,7 @@ impl ActionId {
         Self::Compose,
         Self::Reply,
         Self::ReplyAll,
+        Self::ReplySender,
         Self::Forward,
         Self::Send,
         Self::EditDraft,
@@ -472,6 +474,7 @@ impl ActionId {
                 Compose,
                 &["a", "<Control><Shift>r"],
             ),
+            Self::ReplySender => on_selection("reply-sender", "Reply to Sender", Compose, &[]),
             Self::Forward => on_selection("forward", "Forward", Compose, &["f", "<Control>l"]),
             Self::Send => command(
                 "send",
@@ -969,6 +972,7 @@ mod tests {
                 ActionId::SaveMessage,
                 ActionId::Reply,
                 ActionId::ReplyAll,
+                ActionId::ReplySender,
                 ActionId::Forward,
                 ActionId::EditDraft,
                 ActionId::NewRuleFromMessage,

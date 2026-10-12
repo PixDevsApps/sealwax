@@ -322,7 +322,10 @@ fn is_signature_part(mime_type: &str) -> bool {
     )
 }
 
-fn recipients(
+/// Whom a reply of `kind` to a message with `headers` goes to (To, Cc), `senders` being the
+/// user's own addresses: the Reply-To or the sender (the recipients of the user's own message);
+/// Reply All adds the To and Cc, each once and none of the user's.
+pub fn recipients(
     headers: &Headers,
     kind: ReplyKind,
     senders: &[Identity],

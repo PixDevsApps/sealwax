@@ -225,10 +225,12 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 ("quick-reply", Some(text), None) => ComposeRequest::QuickReply {
                     message: MessageId(1),
                     text: text.to_owned(),
+                    kind: ReplyKind::Reply,
                 },
                 ("quick-reply-to", Some(name), Some(text)) => ComposeRequest::QuickReply {
                     message: message_named(name)?,
                     text: text.to_owned(),
+                    kind: ReplyKind::Reply,
                 },
                 ("mailto", Some(uri), None) => ComposeRequest::Mailto(
                     sealwax_domain::mailto::parse(uri).map_err(|error| error.to_string())?,

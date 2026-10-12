@@ -208,10 +208,12 @@ impl Default for Background {
     }
 }
 
-/// `[reader]`: how the reader shows a conversation (issue #3).
+/// `[reader]`: how the reader shows a conversation (issue #3) and whom Reply answers (issue
+/// #8).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ReaderSettings {
     pub conversation_order: ConversationOrder,
+    pub reply: DefaultReply,
 }
 
 /// The order of a conversation's messages in the reader.
@@ -220,6 +222,16 @@ pub enum ConversationOrder {
     #[default]
     OldestFirst,
     NewestFirst,
+}
+
+/// Whom Reply (`r`, Ctrl+R, a card's first reply button, the quick reply) answers.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum DefaultReply {
+    /// The sender (or Reply-To) alone; Reply All answers everyone.
+    #[default]
+    Sender,
+    /// Everyone the message went to, as Reply All does; Reply to Sender answers the sender.
+    All,
 }
 
 /// The settings in `config.toml`.
@@ -237,7 +249,7 @@ const APPEARANCE_SETTINGS: [&str; 3] = ["corner_radius", "chrome_font", "reading
 const STORAGE_SETTINGS: [&str; 2] = ["cache_size", "prefetch_days"];
 const NOTIFICATION_SETTINGS: [&str; 2] = ["enabled", "show"];
 const BACKGROUND_SETTINGS: [&str; 1] = ["enabled"];
-const READER_SETTINGS: [&str; 1] = ["conversation_order"];
+const READER_SETTINGS: [&str; 2] = ["conversation_order", "reply"];
 const SECTIONS: [&str; 6] = [
     "appearance",
     "oauth",
@@ -572,6 +584,17 @@ impl Reader<'_> {
                         ),
                     ),
                 },
+                "reply" => match value.get_ref().as_str() {
+                    Some("sender") => reader.reply = DefaultReply::Sender,
+                    Some("all") => reader.reply = DefaultReply::All,
+                    _ => self.error(
+                        value.span(),
+                        format!(
+                            "reply is \"sender\" or \"all\", not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
                 _ => self.error(
                     key.span(),
                     format!(
@@ -727,7 +750,10 @@ pub fn default_config_file() -> String {
          [reader]\n\
          # The order of a conversation's messages: \"oldest-first\", or \"newest-first\" to show\n\
          # the latest reply at the top.\n\
-         # conversation_order = \"oldest-first\"\n"
+         # conversation_order = \"oldest-first\"\n\
+         # Whom Reply (r, Ctrl+R) answers: \"sender\", or \"all\" to answer everyone the\n\
+         # message went to, as Reply All does; Reply to Sender then answers the sender alone.\n\
+         # reply = \"sender\"\n"
     )
 }
 
@@ -983,6 +1009,27 @@ mod tests {
                 "line 2, column 1: unknown setting conversation_ordr in [reader]; did you mean \
                  conversation_order?"
             ]
+        );
+    }
+
+    #[test]
+    fn whom_reply_answers() {
+        assert_eq!(Config::default().reader.reply, DefaultReply::Sender);
+        let config = Config::parse("[reader]\nreply = \"all\"\n").unwrap();
+        assert_eq!(config.reader.reply, DefaultReply::All);
+        assert_eq!(
+            config.reader.conversation_order,
+            ConversationOrder::OldestFirst
+        );
+        let config = Config::parse("[reader]\nreply = \"sender\"\n").unwrap();
+        assert_eq!(config.reader.reply, DefaultReply::Sender);
+        assert_eq!(
+            errors("[reader]\nreply = \"everyone\"\n"),
+            ["line 2, column 9: reply is \"sender\" or \"all\", not \"everyone\""]
+        );
+        assert_eq!(
+            errors("reply = \"all\"\n"),
+            ["line 1, column 1: reply belongs in [reader]; put it under that line"]
         );
     }
 

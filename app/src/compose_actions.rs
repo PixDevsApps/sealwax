@@ -6,9 +6,11 @@
 //!
 //! - **Compose** writes from the account the list shows; in All Inboxes from the selected
 //!   message's account, else the first account (`ComposeRequest::New { account: None }`).
-//! - **Reply, Reply All and Forward** act on one message: in the list the selected one; once the
-//!   reader shows its conversation, the message the user is on there
-//!   ([`Reader::current_message`]). They don't apply to several messages, nor to a draft.
+//! - **Reply, Reply All, Reply to Sender and Forward** act on one message: in the list the
+//!   selected one; once the reader shows its conversation, the message the user is on there
+//!   ([`Reader::current_message`]). They don't apply to several messages, nor to a draft. Reply
+//!   answers the sender, or everyone with `[reader] reply = "all"` ([`reply_kind`], issue #8);
+//!   Reply to Sender always the sender. The quick reply answers as Reply does.
 //! - **Edit Draft** opens the selected message of a Drafts folder.
 
 use crate::actions::ActionSet;
@@ -25,6 +27,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::compose::{Draft, ReplyKind};
+use sealwax_domain::config::DefaultReply;
 use sealwax_domain::model::{AccountId, DraftId, Folder, FolderId, FolderRole, MessageId};
 use sealwax_infrastructure::store::ViewScope;
 use std::cell::RefCell;
@@ -33,10 +36,11 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The commands this module handles.
-pub const COMMANDS: [ActionId; 5] = [
+pub const COMMANDS: [ActionId; 6] = [
     ActionId::Compose,
     ActionId::Reply,
     ActionId::ReplyAll,
+    ActionId::ReplySender,
     ActionId::Forward,
     ActionId::EditDraft,
 ];
@@ -91,8 +95,9 @@ pub fn connect_reader(reader: &Reader, window: &Window) {
     reader.set_quick_finder(move |message| keeper.find(message));
 }
 
-/// Reply, Reply All and Forward apply to one selected message that isn't a draft; Edit Draft
-/// to one in a Drafts folder. `targets` are the selected messages whose rows are loaded.
+/// Reply, Reply All, Reply to Sender and Forward apply to one selected message that isn't a
+/// draft; Edit Draft to one in a Drafts folder. `targets` are the selected messages whose rows
+/// are loaded.
 pub fn refresh(actions: &ActionSet, list: &MessageList, targets: &[Target], folders: &[Folder]) {
     let one = matches!(list.reported(), Selected::One(_));
     let draft = one
@@ -100,7 +105,12 @@ pub fn refresh(actions: &ActionSet, list: &MessageList, targets: &[Target], fold
             .first()
             .and_then(|target| folders.iter().find(|folder| folder.id == target.folder))
             .is_some_and(|folder| folder.role == FolderRole::Drafts);
-    for id in [ActionId::Reply, ActionId::ReplyAll, ActionId::Forward] {
+    for id in [
+        ActionId::Reply,
+        ActionId::ReplyAll,
+        ActionId::ReplySender,
+        ActionId::Forward,
+    ] {
         actions.set_applies(id, one && !draft);
     }
     actions.set_applies(ActionId::EditDraft, draft);
@@ -149,12 +159,22 @@ fn request_for(state: &AppState, id: ActionId) -> Option<ComposeRequest> {
                 _ => None,
             };
         }
+        ActionId::Reply => reply_kind(state),
         ActionId::ReplyAll => ReplyKind::ReplyAll,
         ActionId::Forward => ReplyKind::Forward,
         _ => ReplyKind::Reply,
     };
     let message = message_for(&list, state.reader().as_ref())?;
     Some(ComposeRequest::Reply { message, kind })
+}
+
+/// Whom Reply and the quick reply answer: the sender, or everyone with `[reader] reply = "all"`
+/// (issue #8).
+pub fn reply_kind(state: &AppState) -> ReplyKind {
+    match state.preferences().map(|prefs| prefs.config().reader.reply) {
+        Some(DefaultReply::All) => ReplyKind::ReplyAll,
+        _ => ReplyKind::Reply,
+    }
 }
 
 /// The message Reply, Reply All and Forward act on: the selected one, or, once the reader shows
@@ -219,6 +239,7 @@ async fn send_quick(app: &SealwaxApplication, message: MessageId, text: String) 
     let request = ComposeRequest::QuickReply {
         message,
         text: text.clone(),
+        kind: reply_kind(&app.state()),
     };
     let prepared = match backend.prepare(request).await {
         Ok(prepared) => prepared,
@@ -377,6 +398,7 @@ async fn keep(
             let request = ComposeRequest::QuickReply {
                 message,
                 text: String::new(),
+                kind: reply_kind(&app.state()),
             };
             let prepared = backend.prepare(request).await.map_err(|_| {
                 tracing::warn!(id = message.0, "the quick reply's draft couldn't be made");

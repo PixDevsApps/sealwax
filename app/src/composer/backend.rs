@@ -214,9 +214,17 @@ impl StandIn {
                 stand_in_reply(&mut draft, message, kind, "");
                 self.next_id()
             }
-            ComposeRequest::QuickReply { message, text } => {
-                title = "Reply".to_owned();
-                stand_in_reply(&mut draft, message, ReplyKind::Reply, &text);
+            ComposeRequest::QuickReply {
+                message,
+                text,
+                kind,
+            } => {
+                title = match kind {
+                    ReplyKind::ReplyAll => "Reply all",
+                    _ => "Reply",
+                }
+                .to_owned();
+                stand_in_reply(&mut draft, message, kind, &text);
                 self.next_id()
             }
             ComposeRequest::Draft(id) => {

@@ -21,10 +21,12 @@ use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
+use sealwax_domain::account::Identity;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::compose::ReplyKind;
+use sealwax_domain::compose::reply as compose_reply;
 use sealwax_domain::keymap::Keymap;
-use sealwax_domain::model::{FolderRole, MessageId, MessageSummary};
+use sealwax_domain::model::{Address, FolderRole, Headers, MessageId, MessageSummary};
 use sealwax_infrastructure::store::ConversationMessage;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -34,32 +36,71 @@ use std::rc::Rc;
 /// The text area's placeholder (the mock's).
 pub const PLACEHOLDER: &str = "Write a reply…";
 
-/// The cards' buttons: the command each stands for, its icons and its accessible label (the
-/// mock's "Reply", "Reply all", "Forward").
-const REPLIES: [(ActionId, &[&str], &str); 3] = [
-    (ActionId::Reply, &["mail-reply-sender-symbolic"], "Reply"),
-    (
-        ActionId::ReplyAll,
-        &["mail-reply-all-symbolic", "mail-reply-sender-symbolic"],
-        "Reply all",
-    ),
-    (ActionId::Forward, &["mail-forward-symbolic"], "Forward"),
-];
+/// A card button: the command it stands for, its icons and its accessible label.
+type Spec = (ActionId, &'static [&'static str], &'static str);
+
+const REPLY_ICONS: &[&str] = &["mail-reply-sender-symbolic"];
+const REPLY_ALL_ICONS: &[&str] = &["mail-reply-all-symbolic", "mail-reply-sender-symbolic"];
+
+/// The cards' buttons (the mock's "Reply", "Reply all", "Forward"). When Reply answers everyone
+/// (`all`, issue #8) the first is Reply as "Reply all", the second Reply to Sender.
+fn replies(all: bool) -> [Spec; 3] {
+    let forward = (ActionId::Forward, &["mail-forward-symbolic"][..], "Forward");
+    if all {
+        [
+            (ActionId::Reply, REPLY_ALL_ICONS, "Reply all"),
+            (ActionId::ReplySender, REPLY_ICONS, "Reply to sender"),
+            forward,
+        ]
+    } else {
+        [
+            (ActionId::Reply, REPLY_ICONS, "Reply"),
+            (ActionId::ReplyAll, REPLY_ALL_ICONS, "Reply all"),
+            forward,
+        ]
+    }
+}
 
 /// A draft's card offers Edit draft instead: replying to one's own unsent draft makes no sense.
-const EDIT: (ActionId, &[&str], &str) = (
+const EDIT: Spec = (
     ActionId::EditDraft,
     &["document-edit-symbolic", "mail-message-new-symbolic"],
     "Edit draft",
 );
 
 /// A card button's accessible label.
-fn button_label(action: ActionId) -> &'static str {
-    REPLIES
+fn button_label(action: ActionId, all: bool) -> &'static str {
+    replies(all)
         .iter()
         .chain([&EDIT])
         .find(|(id, _, _)| *id == action)
         .map_or(action.title(), |(_, _, label)| label)
+}
+
+/// Whom Reply All answers of a message with `headers`, To then Cc, `mine` being the user's
+/// addresses: the compose rules' own choice (`compose::reply::recipients`).
+pub fn everyone(headers: &Headers, mine: &[String]) -> Vec<Address> {
+    let senders: Vec<Identity> = mine
+        .iter()
+        .map(|address| Identity {
+            name: String::new(),
+            address: address.clone(),
+            signature: None,
+        })
+        .collect();
+    let (to, cc) = compose_reply::recipients(headers, ReplyKind::ReplyAll, &senders);
+    to.into_iter().chain(cc).collect()
+}
+
+/// The quick reply's label when it answers `everyone`: "Reply to Tomas Berg and 2 others";
+/// `None` for no one.
+pub fn reply_all_label(everyone: &[Address]) -> Option<String> {
+    let name = everyone.first()?.display_name();
+    Some(match everyone.len() - 1 {
+        0 => format!("Reply to {name}"),
+        1 => format!("Reply to {name} and 1 other"),
+        rest => format!("Reply to {name} and {rest} others"),
+    })
 }
 
 /// The message a quick reply answers, of `messages` oldest first: the latest that isn't the
@@ -306,10 +347,14 @@ impl QuickReply {
 
     fn retarget(&self, target: MessageId, label: &str, text: &str) {
         self.target.set(target);
+        self.set_label(label);
+        self.set_text(text);
+    }
+
+    fn set_label(&self, label: &str) {
         self.label.set_label(label);
         self.view
             .update_property(&[gtk::accessible::Property::Label(label)]);
-        self.set_text(text);
     }
 
     fn update_keys(&self, keymap: &Keymap) {
@@ -464,8 +509,12 @@ impl Inner {
         let Some(row) = header.parent().and_downcast::<gtk::Box>() else {
             return Vec::new();
         };
-        let specs: Vec<(ActionId, &[&str], &str)> =
-            if draft { vec![EDIT] } else { REPLIES.to_vec() };
+        let all = self.reply_all.get();
+        let specs: Vec<Spec> = if draft {
+            vec![EDIT]
+        } else {
+            replies(all).to_vec()
+        };
         let keymap = self.keymap.borrow().clone();
         specs
             .into_iter()
@@ -480,6 +529,10 @@ impl Inner {
                 button.update_property(&[gtk::accessible::Property::Label(label)]);
                 let request = move || match action {
                     ActionId::ReplyAll => ComposeRequest::Reply {
+                        message: id,
+                        kind: ReplyKind::ReplyAll,
+                    },
+                    ActionId::Reply if all => ComposeRequest::Reply {
                         message: id,
                         kind: ReplyKind::ReplyAll,
                     },
@@ -513,7 +566,7 @@ impl Inner {
             if let Some(page) = pages.borrow().as_ref() {
                 for item in page.items() {
                     for (action, button) in item.card.iter().flat_map(|card| &card.replies) {
-                        let label = button_label(*action);
+                        let label = button_label(*action, self.reply_all.get());
                         button.set_tooltip_text(Some(&tooltip(keymap, *action, label, None)));
                     }
                 }
@@ -562,7 +615,11 @@ impl Inner {
             .cloned()
             .unwrap_or_default();
         let keymap = self.keymap.borrow().clone();
-        let quick = QuickReply::new(target, &reply_label(&summary, &mine), &text, &keymap);
+        let (label, known) = self.quick_label(key, target, &summary, &mine);
+        let quick = QuickReply::new(target, &label, &text, &keymap);
+        if !known {
+            self.label_quick_reply_later(&quick);
+        }
         self.wire_quick_reply(key, &quick);
         self.with_page(key, |page| {
             if page.newest_first {
@@ -766,11 +823,72 @@ impl Inner {
                 .get(&target)
                 .cloned()
                 .unwrap_or_default();
-            quick.retarget(target, &reply_label(&summary, &mine), &text);
+            let (label, known) = self.quick_label(key, target, &summary, &mine);
+            quick.retarget(target, &label, &text);
+            if !known {
+                self.label_quick_reply_later(&quick);
+            }
         }
         if self.is_shown(key) {
             self.quick_changed();
         }
+    }
+
+    /// The quick reply's label for `target` on page `key`: whom it answers, by Reply's setting.
+    /// `false` when Reply answers everyone and the target's card, which knows them, isn't
+    /// loaded: the label names the sender until [`Inner::label_quick_reply_later`] knows more.
+    fn quick_label(
+        &self,
+        key: u64,
+        target: MessageId,
+        summary: &MessageSummary,
+        mine: &[String],
+    ) -> (String, bool) {
+        let sender = reply_label(summary, mine);
+        if !self.reply_all.get() {
+            return (sender, true);
+        }
+        let everyone = self
+            .with_page(key, |page| {
+                page.item(target)
+                    .and_then(|item| item.card.as_ref())
+                    .map(|card| card.everyone.clone())
+            })
+            .flatten();
+        match everyone {
+            Some(everyone) => (reply_all_label(&everyone).unwrap_or(sender), true),
+            None => (sender, false),
+        }
+    }
+
+    /// Reads whom the quick reply's target's Reply All answers and names them in its label.
+    fn label_quick_reply_later(self: &Rc<Self>, quick: &Rc<QuickReply>) {
+        let target = quick.target();
+        let Some(reads) = self.store.read(target) else {
+            return;
+        };
+        let weak = Rc::downgrade(quick);
+        let inner = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let detail = reads
+                .detail
+                .recv()
+                .await
+                .ok()
+                .and_then(|versioned| versioned.value);
+            let (Some(detail), Some(quick), Some(inner)) =
+                (detail, weak.upgrade(), inner.upgrade())
+            else {
+                return;
+            };
+            if quick.target() != target || !inner.reply_all.get() {
+                return;
+            }
+            let mine = inner.mine.borrow().clone();
+            if let Some(label) = reply_all_label(&everyone(&detail.headers, &mine)) {
+                quick.set_label(&label);
+            }
+        });
     }
 
     fn focus_quick_reply(&self) {
@@ -796,13 +914,19 @@ impl Inner {
             return;
         }
         let (message, text) = (quick.target(), quick.text());
-        let request = if text.trim().is_empty() {
-            ComposeRequest::Reply {
-                message,
-                kind: ReplyKind::Reply,
-            }
+        let kind = if self.reply_all.get() {
+            ReplyKind::ReplyAll
         } else {
-            ComposeRequest::QuickReply { message, text }
+            ReplyKind::Reply
+        };
+        let request = if text.trim().is_empty() {
+            ComposeRequest::Reply { message, kind }
+        } else {
+            ComposeRequest::QuickReply {
+                message,
+                text,
+                kind,
+            }
         };
         quick.set_text("");
         self.compose(request);
@@ -922,6 +1046,68 @@ mod tests {
             role,
             copies: Vec::new(),
         }
+    }
+
+    #[test]
+    fn reply_all_names_everyone_but_the_user() {
+        let mine = vec!["Alex@example.test".to_owned()];
+        let headers = Headers {
+            from: vec![Address::new("Tomas Berg", "tomas@example.test")],
+            to: vec![
+                Address::new("Alex", "alex@example.test"),
+                Address::new("Leah Kim", "leah@example.test"),
+            ],
+            cc: vec![
+                Address::new("", "sana@example.test"),
+                Address::new("Leah", "LEAH@example.test"),
+            ],
+            ..Headers::default()
+        };
+        let everyone = everyone(&headers, &mine);
+        let emails: Vec<&str> = everyone.iter().map(|a| a.email.as_str()).collect();
+        assert_eq!(
+            emails,
+            [
+                "tomas@example.test",
+                "leah@example.test",
+                "sana@example.test"
+            ]
+        );
+        assert_eq!(
+            reply_all_label(&everyone).as_deref(),
+            Some("Reply to Tomas Berg and 2 others")
+        );
+        assert_eq!(
+            reply_all_label(&everyone[..2]).as_deref(),
+            Some("Reply to Tomas Berg and 1 other")
+        );
+        let alone = Headers {
+            from: vec![Address::new("Tomas Berg", "tomas@example.test")],
+            to: vec![Address::new("", "alex@example.test")],
+            ..Headers::default()
+        };
+        assert_eq!(
+            reply_all_label(&super::everyone(&alone, &mine)).as_deref(),
+            Some("Reply to Tomas Berg")
+        );
+        assert_eq!(reply_all_label(&[]), None);
+    }
+
+    #[test]
+    fn the_cards_first_button_is_whom_reply_answers() {
+        let ids = |all| replies(all).map(|(id, _, _)| id);
+        assert_eq!(
+            ids(false),
+            [ActionId::Reply, ActionId::ReplyAll, ActionId::Forward]
+        );
+        assert_eq!(
+            ids(true),
+            [ActionId::Reply, ActionId::ReplySender, ActionId::Forward]
+        );
+        assert_eq!(button_label(ActionId::Reply, false), "Reply");
+        assert_eq!(button_label(ActionId::Reply, true), "Reply all");
+        assert_eq!(button_label(ActionId::ReplySender, true), "Reply to sender");
+        assert_eq!(button_label(ActionId::EditDraft, true), "Edit draft");
     }
 
     #[test]

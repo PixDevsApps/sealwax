@@ -17,7 +17,8 @@ assert-reader body plain
 assert-label reader-subject "Cabin weekend — final plan"
 assert-label reader-sender "Ingrid Solberg"
 assert-label reader-address "<ingrid@example.test>"
-assert-label reader-recipients "to me"
+# The others besides the user are named (issue #8).
+assert-label reader-recipients "to me, Tomas Berg"
 assert-reader banner false
 assert-reader attachments 0
 assert-reader text-contains Hemsedal
@@ -31,7 +32,7 @@ assert-reader height-exact true
 # tools/ci.sh runs the self-tests with WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS set).
 assert-web-sandbox
 assert-reader banner false
-assert-label reader-recipients "to me"
+assert-label reader-recipients "to me, Leah Kim"
 assert-reader text-contains "Two small comments"
 screenshot $DIR/../../.local/selftest/reader-simple.png
 

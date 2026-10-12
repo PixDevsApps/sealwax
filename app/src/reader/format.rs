@@ -91,26 +91,37 @@ fn ago(seconds: i64) -> String {
     }
 }
 
-/// `to me` when one of the user's addresses received the message, else the recipients:
-/// `to Leah Kim, Marius Dahl and 2 others`.
+/// Whom the message went to, each address once, To before Cc (Bcc isn't known): the user first
+/// as "me" when one of their addresses is among them, then the others, three names at most:
+/// `to me`, `to me, Leah Kim and 2 others`, `to Leah Kim, Marius Dahl`.
 pub fn recipients_line(to: &[Address], cc: &[Address], mine: &[String]) -> String {
-    let recipients: Vec<&Address> = to.iter().chain(cc).collect();
+    let mut recipients: Vec<&Address> = Vec::new();
+    for address in to.iter().chain(cc) {
+        let email = address.email.trim();
+        let known = !email.is_empty()
+            && recipients
+                .iter()
+                .any(|seen| seen.email.trim().eq_ignore_ascii_case(email));
+        if !known {
+            recipients.push(address);
+        }
+    }
     if recipients.is_empty() {
         return "to undisclosed recipients".to_owned();
     }
-    if recipients
+    let me = recipients
         .iter()
-        .any(|address| is_mine(&address.email, mine))
-    {
-        return "to me".to_owned();
-    }
-    const SHOWN: usize = 3;
-    let names: Vec<&str> = recipients
+        .any(|address| is_mine(&address.email, mine));
+    let others: Vec<&str> = recipients
         .iter()
-        .take(SHOWN)
+        .filter(|address| !is_mine(&address.email, mine))
         .map(|address| address.display_name())
         .collect();
-    let rest = recipients.len().saturating_sub(SHOWN);
+    const SHOWN: usize = 3;
+    let mut names: Vec<&str> = if me { vec!["me"] } else { Vec::new() };
+    let room = SHOWN - names.len();
+    names.extend(others.iter().take(room));
+    let rest = others.len().saturating_sub(room);
     match rest {
         0 => format!("to {}", names.join(", ")),
         1 => format!("to {} and 1 other", names.join(", ")),
@@ -246,8 +257,9 @@ mod tests {
             Address::new("Leah Kim", "leah@example.test"),
             Address::new("", "alex.berg@example.test"),
         ];
-        assert_eq!(recipients_line(&to, &[], &mine), "to me");
-        assert_eq!(recipients_line(&[], &to, &mine), "to me");
+        assert_eq!(recipients_line(&to[1..], &[], &mine), "to me");
+        assert_eq!(recipients_line(&to, &[], &mine), "to me, Leah Kim");
+        assert_eq!(recipients_line(&[], &to, &mine), "to me, Leah Kim");
         let others = [
             Address::new("Leah Kim", "leah@example.test"),
             Address::new("", "marius@example.test"),
@@ -266,6 +278,19 @@ mod tests {
         assert_eq!(
             recipients_line(&others, &[], &mine),
             "to Leah Kim, marius@example.test, Ingrid and 2 others"
+        );
+        assert_eq!(
+            recipients_line(&to[1..], &others[..1], &mine),
+            "to me, Leah Kim"
+        );
+        assert_eq!(
+            recipients_line(&to[1..], &others[..3], &mine),
+            "to me, Leah Kim, marius@example.test and 1 other"
+        );
+        assert_eq!(
+            recipients_line(&to, &others, &mine),
+            "to me, Leah Kim, marius@example.test and 3 others",
+            "Leah once, though she is in To and Cc"
         );
         assert_eq!(
             recipients_line(&[], &[], &mine),

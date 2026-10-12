@@ -64,7 +64,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use sealwax_domain::actions::{ActionId, Scope};
-use sealwax_domain::config::ConversationOrder;
+use sealwax_domain::config::{ConversationOrder, DefaultReply};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{MessageId, MessageSummary};
 use sealwax_domain::theme::{BodyStyle, Rgb, Theme};
@@ -276,6 +276,8 @@ struct Inner {
     quick: reply::Quick,
     /// `config.toml`'s `conversation_order` is `newest-first` (issue #3).
     newest_first: Cell<bool>,
+    /// `config.toml`'s `[reader] reply` is `all`: Reply answers everyone (issue #8).
+    reply_all: Cell<bool>,
     /// The shown page whose selected message left the list, and when it must be off screen.
     left: Cell<Option<(u64, Instant)>>,
     /// The shown page is hidden: its message left the list and the next page isn't read yet.
@@ -337,6 +339,7 @@ impl Reader {
             mine: RefCell::new(Vec::new()),
             quick: reply::Quick::default(),
             newest_first: Cell::new(false),
+            reply_all: Cell::new(false),
             left: Cell::new(None),
             hidden: Cell::new(false),
         });
@@ -372,9 +375,22 @@ impl Reader {
     /// conversation is shown again in it.
     pub fn set_conversation_order(&self, order: ConversationOrder) {
         let newest_first = order == ConversationOrder::NewestFirst;
-        if self.inner.newest_first.replace(newest_first) == newest_first {
-            return;
+        if self.inner.newest_first.replace(newest_first) != newest_first {
+            self.show_again();
         }
+    }
+
+    /// Whom Reply answers (`config.toml`'s `[reader] reply`, issue #8): the cards' first reply
+    /// button and the quick reply follow it; the shown conversation is shown again.
+    pub fn set_default_reply(&self, reply: DefaultReply) {
+        let all = reply == DefaultReply::All;
+        if self.inner.reply_all.replace(all) != all {
+            self.show_again();
+        }
+    }
+
+    /// The shown conversation, shown again from the store.
+    fn show_again(&self) {
         let shown = self
             .inner
             .shown

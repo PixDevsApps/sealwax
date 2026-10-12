@@ -41,8 +41,13 @@ pub enum ComposeRequest {
     /// A reply, reply all or forward of a stored message.
     Reply { message: MessageId, kind: ReplyKind },
     /// A reply to `message` that starts with what the quick reply under its conversation holds
-    /// (ML-068): plain text, typed by the user.
-    QuickReply { message: MessageId, text: String },
+    /// (ML-068): plain text, typed by the user. `kind` is Reply, or Reply All when Reply answers
+    /// everyone (`[reader] reply = "all"`, issue #8).
+    QuickReply {
+        message: MessageId,
+        text: String,
+        kind: ReplyKind,
+    },
     /// A `mailto:` link (PRD C8): its safe fields only (`domain::mailto`).
     Mailto(Mailto),
     /// A draft the store keeps: reopened after a restart, after Undo send, or after a send
@@ -58,7 +63,9 @@ impl fmt::Debug for ComposeRequest {
         match self {
             ComposeRequest::New { account } => write!(f, "New({account:?})"),
             ComposeRequest::Reply { message, kind } => write!(f, "Reply({message}, {kind:?})"),
-            ComposeRequest::QuickReply { message, .. } => write!(f, "QuickReply({message})"),
+            ComposeRequest::QuickReply { message, kind, .. } => {
+                write!(f, "QuickReply({message}, {kind:?})")
+            }
             ComposeRequest::Mailto(_) => f.write_str("Mailto"),
             ComposeRequest::Draft(draft) => write!(f, "Draft({draft})"),
             ComposeRequest::ServerDraft(message) => write!(f, "ServerDraft({message})"),

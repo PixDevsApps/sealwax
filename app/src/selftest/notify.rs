@@ -317,6 +317,8 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
         reply_to: None,
         html: false,
         list_id: None,
+        to: None,
+        cc: None,
     };
     let mut flags = Flags::NONE;
     let mut ago = 0;

@@ -898,6 +898,10 @@ From a user's report on X (Fastmail, a laptop running Omarchy): after a delete i
 
 **Status:** Accepted — the user's word, 2026-10-11 ("build #5 and #3"), on issues [#5](https://github.com/PixDevsApps/sealwax/issues/5) and [#3](https://github.com/PixDevsApps/sealwax/issues/3). Into 1.0: **the view a new window opens on** is the one selected when the last window closed (#5), and **a setting for the order of messages in a conversation**, oldest first by default or newest first (#3). Not moved: one row per conversation in the list (#4; ADR-016's M5 amendment stands) and HTML signatures from files (#6; plain-text signatures as decided at the M6 gate).
 
+### ADR-013 amendment — the others in the header and Reply All by default into 1.0 (2026-10-12)
+
+**Status:** Accepted — the user's word, 2026-10-12 ("build both and draft the reply"), on issue [#8](https://github.com/PixDevsApps/sealwax/issues/8). Into 1.0: **a message's header names the others it went to** besides the user ("to me, Tomas Berg and 2 others"; it said only "to me"), and **a setting for whom Reply answers**, `[reader] reply = "sender"` (the default, as before) or `"all"`. With `"all"`, Reply (`r`, Ctrl+R), a card's first button and the quick reply answer everyone the message went to, by the compose rules' Reply All (`compose::reply::recipients`: Reply-To or the sender, the To and the Cc, each once, none of the user's), so a message to the user alone is answered as before; Reply All keeps `a`. A new command, **Reply to Sender** (`reply-sender`), answers the sender alone; it has no key (ADR-017: keys are the user's), and the card shows it in Reply All's place, the message menu in place of Reply All, while Reply is titled "Reply All" in the menu and the palette. The quick reply's label names whom it answers ("Reply to Leah and 2 others"), from the card's headers or, when the message isn't expanded, read from the store.
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.

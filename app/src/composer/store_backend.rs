@@ -366,11 +366,15 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
             let draft = answer(&context, &account, message, kind, "").await?;
             (account, draft, title(kind).to_owned(), None)
         }
-        ComposeRequest::QuickReply { message, text } => {
+        ComposeRequest::QuickReply {
+            message,
+            text,
+            kind,
+        } => {
             let account = context.account_of(message).await?;
             let typed = compose::text::to_html(&text);
-            let draft = answer(&context, &account, message, ReplyKind::Reply, &typed).await?;
-            (account, draft, "Reply".to_owned(), None)
+            let draft = answer(&context, &account, message, kind, &typed).await?;
+            (account, draft, title(kind).to_owned(), None)
         }
         ComposeRequest::Draft(id) => {
             let stored = stored_draft(&context, id).await?;

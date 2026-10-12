@@ -41,6 +41,7 @@ use libadwaita::prelude::*;
 use libadwaita::subclass::prelude::*;
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::actions::{ActionId, Scope};
+use sealwax_domain::compose::ReplyKind;
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::layout::Layout;
 use sealwax_domain::mailto::{self, Mailto};
@@ -1027,6 +1028,7 @@ impl AppState {
             }
             if let Some(reader) = self.reader() {
                 reader.set_conversation_order(prefs.config().reader.conversation_order);
+                reader.set_default_reply(prefs.config().reader.reply);
             }
             // A client ID added or removed makes Microsoft sign-in available or not.
             setup::refresh();
@@ -1658,12 +1660,14 @@ impl AppState {
         };
         let targets = loaded_targets(&list);
         let folders = self.mailbox.folders();
+        let reply_all = compose_actions::reply_kind(self) == ReplyKind::ReplyAll;
         triage::COMMANDS
             .into_iter()
             .map(|id| (id, triage::availability(id, &targets, &folders).title))
             .filter(|(id, title)| *title != id.title())
             .map(|(id, title)| (id, title.to_owned()))
             .chain(crate::rules::titles(self))
+            .chain(reply_all.then(|| (ActionId::Reply, ActionId::ReplyAll.title().to_owned())))
             .collect()
     }
 
@@ -2312,6 +2316,7 @@ impl AppState {
         let reader = Reader::new(source, theme, keymap, &self.config.dirs.cache);
         if let Some(prefs) = self.preferences() {
             reader.set_conversation_order(prefs.config().reader.conversation_order);
+            reader.set_default_reply(prefs.config().reader.reply);
         }
         reader.connect_engine(&self.engine);
         window.set_reader_toolbar(&reader.toolbar());

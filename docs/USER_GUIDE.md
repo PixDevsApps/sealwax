@@ -198,7 +198,7 @@ Move to… shows a subfolder by its own name with the folders above it beside it
 
 Rules sort new mail for you: move it to a folder, copy it, mark it read, star it, send it to Junk or bring it back from Junk. Each account has its own rules. Sealwax runs them itself, on the mail that arrives in the account's Inbox and Junk while Sealwax runs (background mode keeps it running with the window closed), so they work with every account, Outlook.com and POP3 accounts included. Rules see a message's headers (From, To, Subject, List-Id and the rest), not its text.
 
-**The message menu.** Right-click a message (or press Menu or Shift+F10 on it) for **Reply**, **Reply All** and **Forward**; **Archive**, **Delete**, **Move to…** and **Move to Junk** (**Not Junk** in Junk); **Mark as Read** or **Unread** and **Star** or **Unstar**; and the rules' commands: **Create Rule from Message…**, **Always Junk Messages from** *the sender* and **Never Junk Messages from** *the sender*. A message you right-click that isn't selected is selected first; one in a selection acts with all the selected messages.
+**The message menu.** Right-click a message (or press Menu or Shift+F10 on it) for **Reply**, **Reply All** and **Forward** (**Reply All**, **Reply to Sender** and **Forward** with `reply = "all"`); **Archive**, **Delete**, **Move to…** and **Move to Junk** (**Not Junk** in Junk); **Mark as Read** or **Unread** and **Star** or **Unstar**; and the rules' commands: **Create Rule from Message…**, **Always Junk Messages from** *the sender* and **Never Junk Messages from** *the sender*. A message you right-click that isn't selected is selected first; one in a selection acts with all the selected messages.
 
 **Always junk and never junk.** *Always Junk Messages from* puts the sender's address on the account's always-junk list and moves the messages to Junk at once; mail from that address goes to Junk from now on. *Never Junk Messages from* puts it on the never-junk list and brings the messages back from Junk to the Inbox; mail from that address that lands in Junk (your provider's spam filter put it there) comes back to the Inbox. The toast says what happened, and **Undo** (or `z`) takes back both the move and the list. An address on one list leaves the other.
 
@@ -232,7 +232,9 @@ The buttons at the right of its header **minimize** it to a bar at the bottom of
 
 Pasted text keeps simple formatting and loses the rest; **Paste as Plain Text** (Ctrl+Shift+V) pastes it without any. Spell checking works when a hunspell dictionary for your language is installed (`hunspell-en_us`, for example); the languages come from your locale.
 
-**Reply, Reply All, Forward.** `r` (Ctrl+R), `a` (Ctrl+Shift+R) and `f` (Ctrl+L), or the three buttons on each expanded message's card. They answer the message you are on in the reader. A reply goes out from the address the message was sent to, when that is one of your identities.
+**Reply, Reply All, Forward.** `r` (Ctrl+R), `a` (Ctrl+Shift+R) and `f` (Ctrl+L), or the three buttons on each expanded message's card. They answer the message you are on in the reader. Reply answers the sender; Reply All everyone the message went to, except you. A reply goes out from the address the message was sent to, when that is one of your identities. A message's header shows whom it went to besides you: "to me, Tomas Berg and 2 others".
+
+**Reply All by default.** Set `reply = "all"` under `[reader]` in `config.toml` to have Reply (`r`, Ctrl+R, the first button on a card and the quick reply) answer everyone, as Reply All does; a message sent to you alone is answered as before. The card's second button is then **Reply to Sender**, which answers the sender alone; it is in the palette and the message menu too, without a key (`keys.toml` can give it one: `reply-sender`).
 
 **Quick reply.** Under a conversation there is a plain-text box, "Reply to" and a name. Ctrl+Enter sends; **Open Reply in Composer** (Ctrl+Shift+E) moves what you typed into a full composer. What you type is saved as a draft, so it is there again after a restart.
 
@@ -337,6 +339,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Compose | Compose | c, Ctrl+N | c: list and reader; Ctrl+N: anywhere | `compose` |
 | Compose | Reply | r, Ctrl+R | list and reader | `reply` |
 | Compose | Reply All | a, Ctrl+Shift+R | list and reader | `reply-all` |
+| Compose | Reply to Sender | — |  | `reply-sender` |
 | Compose | Forward | f, Ctrl+L | list and reader | `forward` |
 | Compose | Send | Ctrl+Enter | composer | `send` |
 | Compose | Edit Draft | — |  | `edit-draft` |
@@ -438,6 +441,7 @@ Sealwax has no settings window: its settings are three plain files in `~/.config
 | | `show` | `"sender-and-subject"` | `"sender-and-subject"` or `"count"` |
 | `[background]` | `enabled` | `true` | `true`: closing the window keeps Sealwax running; `false`: closing the window quits |
 | `[reader]` | `conversation_order` | `"oldest-first"` | `"oldest-first"`, or `"newest-first"` for the latest message on top |
+| | `reply` | `"sender"` | `"sender"`, or `"all"`: Reply answers everyone the message went to, as Reply All does |
 
 For example:
 

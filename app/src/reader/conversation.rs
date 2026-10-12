@@ -152,6 +152,9 @@ pub struct Card {
     pub remote_images: bool,
     /// The header's Reply, Reply all and Forward buttons, or Edit draft (M6).
     pub replies: Vec<(sealwax_domain::actions::ActionId, gtk::Button)>,
+    /// Whom Reply All answers, To then Cc: the quick reply names them when Reply answers
+    /// everyone (issue #8).
+    pub everyone: Vec<sealwax_domain::model::Address>,
 }
 
 impl Card {
