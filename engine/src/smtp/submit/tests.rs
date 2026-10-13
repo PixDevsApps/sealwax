@@ -406,10 +406,11 @@ async fn deferred_recipients_and_refusals_before_data_are_transient_or_refused()
 
 #[tokio::test]
 async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
-    // A reply line longer than lettre takes (1,000 bytes), as Microsoft 365's can be (issue #2):
-    // the server answered, but neither a refusal nor an acceptance can be read.
-    let long = |code: &str| -> &'static str {
-        Box::leak(format!("{code} {}", "x".repeat(1_200)).into_boxed_str())
+    // Microsoft 365's reply lines can be longer than lettre's 1,000 bytes (issue #2): the patched
+    // lettre reads lines up to 16 KiB, so they are definite. A line longer than that is answered,
+    // but neither a refusal nor an acceptance can be read.
+    let long = |code: &str, length: usize| -> &'static str {
+        Box::leak(format!("{code} {}", "x".repeat(length)).into_boxed_str())
     };
     for (script, expected) in [
         (
@@ -451,14 +452,28 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
         ),
         (
             Script {
-                end: Some(long("554 5.2.252 SendAsDenied;")),
+                end: Some(long("554 5.2.252 SendAsDenied;", 1_200)),
+                ..Script::default()
+            },
+            SubmitError::Refused { code: 554 },
+        ),
+        (
+            Script {
+                end: Some(long("451 4.4.0 try again;", 16_000)),
+                ..Script::default()
+            },
+            SubmitError::Transient,
+        ),
+        (
+            Script {
+                end: Some(long("554 5.2.252 SendAsDenied;", 17_000)),
                 ..Script::default()
             },
             SubmitError::Uncertain(UncertainReason::UnreadableReply),
         ),
         (
             Script {
-                end: Some(long("250 2.0.0 OK")),
+                end: Some(long("250 2.0.0 OK", 17_000)),
                 ..Script::default()
             },
             SubmitError::Uncertain(UncertainReason::UnreadableReply),
@@ -489,6 +504,22 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
     }
 }
 
+#[tokio::test]
+async fn a_long_acceptance_is_a_sent_message() {
+    let reply = format!("250 2.0.0 OK {}", "x".repeat(4_000));
+    let server = Server::start(vec![Script {
+        end: Some(Box::leak(reply.into_boxed_str())),
+        ..Script::default()
+    }])
+    .await;
+    let mut submitter = server.connect().await.unwrap();
+    send(&mut submitter, &to(&["b@x.test"]), MESSAGE)
+        .await
+        .unwrap();
+    submitter.quit().await;
+    assert_eq!(server.seen().messages.len(), 1);
+}
+
 #[derive(Clone, Default)]
 struct Capture(Arc<Mutex<Vec<u8>>>);
 
@@ -512,7 +543,10 @@ async fn an_unreadable_reply_is_logged_by_why_without_the_servers_text() {
         move || sink.clone(),
         false,
     ));
-    let reply = format!("554 5.2.252 SendAsDenied; {}", "secret-words ".repeat(100));
+    let reply = format!(
+        "554 5.2.252 SendAsDenied; {}",
+        "secret-words ".repeat(1_400)
+    );
     let server = Server::start(vec![Script {
         end: Some(Box::leak(reply.into_boxed_str())),
         ..Script::default()
@@ -528,7 +562,7 @@ async fn an_unreadable_reply_is_logged_by_why_without_the_servers_text() {
     );
     let text = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
     assert!(
-        text.contains("a reply line longer than lettre's 1000 bytes")
+        text.contains("a reply line longer than 16384 bytes")
             && text.contains("smtp reply to the message unknown"),
         "{text}"
     );

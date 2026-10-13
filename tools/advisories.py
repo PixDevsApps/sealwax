@@ -123,8 +123,8 @@ def main():
     lock = tomllib.loads(Path(args[1] if len(args) > 1 else "Cargo.lock").read_text())
     locked = {}
     for package in lock["package"]:
-        if "source" in package:
-            locked.setdefault(package["name"], set()).add(package["version"])
+        # Path packages too: vendor/ holds patched crates.io crates at their own versions.
+        locked.setdefault(package["name"], set()).add(package["version"])
 
     found = []
     checked = 0

@@ -14,6 +14,10 @@ sealwax-engine = { path = "../engine", features = ["fuzz"] }
 
 [workspace]
 
+# The same patched lettre as the main workspace (vendor/README.md).
+[patch.crates-io]
+lettre = { path = "../vendor/lettre" }
+
 [profile.release]
 debug = "line-tables-only"
 debug-assertions = true

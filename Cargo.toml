@@ -1,6 +1,6 @@
 [workspace]
 members = ["app", "domain", "infrastructure", "engine", "spikes/*", "devtools/*"]
-exclude = ["fuzz"]
+exclude = ["fuzz", "vendor/lettre"]
 default-members = ["app"]
 resolver = "3"
 
@@ -52,6 +52,10 @@ hickory-resolver = { version = "0.26.3", default-features = false, features = ["
 quick-xml = "0.42.0"
 psl = "2.1"
 idna = "1.1"
+
+# lettre 0.11.23 with a longer reply-line limit (vendor/README.md).
+[patch.crates-io]
+lettre = { path = "vendor/lettre" }
 
 [profile.release]
 lto = "thin"

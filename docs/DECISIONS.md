@@ -1068,6 +1068,14 @@ Built for rules ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026
 
 **Later the same day** (the user: "build both", the issue's fifth suggestion): the banner and the question name the message: its subject (capped at 60 characters), account and when its send started ("“Quarterly report” from Work (today at 14:32)"), read with the outbox (`OutboxEntry::subject` and `started`, whose `Debug` leaves the subject out; no schema change). Marking drafts kept only on this computer, the suggestion's second half, isn't built.
 
+### ADR-015 amendment — lettre patched for longer reply lines (2026-10-13)
+
+**Status:** Accepted — the user's word, 2026-10-13 ("If it's easy to do a small patched copy of lettre that changes only the limit, let's do it"), after [lettre/lettre#1168](https://github.com/lettre/lettre/issues/1168) (filed 2026-10-11) had no answer.
+
+**Decision:** Sealwax builds with lettre 0.11.23 vendored in `vendor/lettre/` through `[patch.crates-io]` (the workspace and `fuzz/`), the published crate unchanged but for one constant: a reply line may be 16,384 bytes instead of 1,000 (the limit issue #2's reporter tried). The 100,000-byte cap on a whole reply stays, so a reply's memory is bounded as before. A Microsoft 365 reply to the message's end with a line of 1,000–16,384 bytes is now read, so the send is sent, refused or deferred as its code says instead of uncertain; a longer line is still `UnreadableReply`, logged as "a reply line longer than 16384 bytes". `tools/advisories.py` now matches path packages too, so the vendored lettre is still checked against RustSec. [vendor/README.md](../vendor/README.md) says how to check the copy against crates.io and how to drop it.
+
+**Consequence:** lettre is no longer updated by `cargo update`; a lettre release is taken by copying it into `vendor/` with the same change, or by dropping the patch once lettre fixes #1168.
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.

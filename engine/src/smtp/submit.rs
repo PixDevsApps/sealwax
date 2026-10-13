@@ -218,11 +218,11 @@ fn unanswered(error: &lettre::transport::smtp::Error) -> (UncertainReason, &'sta
         Some("incomplete response") => (UncertainReason::NoReply, "connection closed"),
         Some("SMTP response line too long") => (
             UncertainReason::UnreadableReply,
-            "a reply line longer than lettre's 1000 bytes",
+            "a reply line longer than 16384 bytes",
         ),
         Some("SMTP response too large") => (
             UncertainReason::UnreadableReply,
-            "a reply longer than lettre's 100000 bytes",
+            "a reply longer than 100000 bytes",
         ),
         _ => (
             UncertainReason::UnreadableReply,

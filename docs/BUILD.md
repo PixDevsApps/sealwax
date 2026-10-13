@@ -43,6 +43,7 @@ cargo run -p sealwax -- --version
 | `sealwax-dns-canary` | `devtools/dns-canary/` | A preloadable `getaddrinfo` that records and refuses every name looked up, for the hostile suite (M5) |
 | `email-spike-s1` … `email-spike-s7` | `spikes/<id>-<topic>/` | M0 measurement code, one crate per spike (workspace glob `spikes/*`) |
 | `sealwax-fuzz` | `fuzz/` | libFuzzer targets (M9, ML-093); a workspace of its own, excluded from this one, built by `tools/fuzz.sh` |
+| `lettre` (patched) | `vendor/lettre/` | lettre 0.11.23 with a 16 KiB reply-line limit, used through `[patch.crates-io]` here and in `fuzz/`; excluded from the workspace ([vendor/README.md](../vendor/README.md), ADR-015 amendment of 2026-10-13) |
 
 Release profile: thin LTO, one codegen unit. The M0 spike crates keep their `email-spike-*` names (ADR-010).
 

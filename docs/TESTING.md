@@ -73,6 +73,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### lettre patched for longer reply lines (issue #2) — 2026-10-13
+
+[ADR-015 amendment](DECISIONS.md#adr-015-amendment--lettre-patched-for-longer-reply-lines-2026-10-13). This machine; the fake SMTP server, no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `vendor/lettre/` against the published crate ([vendor/README.md](../vendor/README.md)'s commands) | The `.crate`'s SHA-256 is the old lock entry's checksum (`f2c646bd…`); `diff -r` shows only `MAX_RESPONSE_LINE_BYTES` (1000 → 16_384) and its comment | Pass |
+| `cargo test -p sealwax-engine --lib smtp::submit` | 16 passed: a 1,200-byte 554 is `Refused`, a 16,000-byte 451 is `Transient`, a 4,000-byte 250 is sent; 17,000-byte 554 and 250 lines stay `UnreadableReply`, logged as "a reply line longer than 16384 bytes" without the server's text | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged) | 1,494 passed, 0 failed, 98 ignored; formatting and Clippy clean; lettre's four dead-code warnings shown (a local crate's warnings aren't capped) | Pass |
+| `cargo check --manifest-path fuzz/Cargo.toml --locked` | Builds with the patched lettre | Pass |
+| The advisory check on the vendored lettre | Not run (no RustSec clone here); `tools/advisories.py` now reads path packages | Not verified |
+| A real Microsoft 365 reply over 1,000 bytes | Not run (no account here) | Not verified |
+
 ### 0.4.6 — 2026-10-12
 
 `v0.4.6` is `2531d52`; this machine, rustc 1.98.1. The release: [v0.4.6](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.6), at the owner's word ("post the reply and release 0.4.6"), held until the stall below was found.
