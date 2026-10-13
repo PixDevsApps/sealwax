@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.7 — 2026-10-13
+
+`v0.4.7` is `6212d9b`; this machine, rustc 1.98.1. The release: [v0.4.7](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.7), at the owner's word ("push and release 0.4.7").
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `6212d9b`, `SEALWAX_CI_DISPLAY=73 bash tools/ci.sh --ui` | 1,494 passed, 0 failed, 98 ignored; 80 scripts, 7,721 of 7,721 steps; the hostile suite clean (60 cases, 273 s) | Pass |
+| `python3 tools/release.py build` on `v0.4.7` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,074 passed, 0 failed, 90 ignored; warnings: "Skipping dependency checks" and the patched lettre's four dead-code warnings; `pacman -Qp` reads `sealwax 0.4.7-1`; the binary says `sealwax 0.4.7`, builds lettre from `vendor/lettre/` and has no path of the home folder; `SHA256SUMS` checks | Pass |
+| The release `v0.4.7` (`tools/release.py github`) | Four files, not a draft or prerelease, GitHub's latest; the notes' link resolves; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build | Pass |
+| Installing 0.4.7 on this machine | Not done (not asked) | Not verified |
+
 ### lettre patched for longer reply lines (issue #2) — 2026-10-13
 
 [ADR-015 amendment](DECISIONS.md#adr-015-amendment--lettre-patched-for-longer-reply-lines-2026-10-13). This machine; the fake SMTP server, no real account.
