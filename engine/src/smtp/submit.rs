@@ -231,6 +231,21 @@ fn unanswered(error: &lettre::transport::smtp::Error) -> (UncertainReason, &'sta
     }
 }
 
+/// A refusing reply to the message's end, by its code.
+fn refusal(code: u16, limit: Option<u64>) -> SubmitError {
+    match code {
+        552 => SubmitError::TooLarge { limit },
+        ..500 => SubmitError::Transient,
+        _ => SubmitError::Refused { code },
+    }
+}
+
+/// How long a refusal's text is, for the log: its length, never the text.
+fn refusal_bytes(error: &lettre::transport::smtp::Error) -> usize {
+    use std::error::Error as _;
+    error.source().map_or(0, |text| text.to_string().len())
+}
+
 /// Sends `command` and waits `timeout` for its reply.
 async fn ask(
     conn: &mut AsyncSmtpConnection,
@@ -598,11 +613,7 @@ impl Prepared<'_, '_> {
             Ok(_) | Err(Answer::Lost) => return Err(submitter.lost()),
             Err(Answer::Code(code)) => {
                 let _ = submitter.reset().await;
-                return Err(match code {
-                    552 => SubmitError::TooLarge { limit },
-                    ..500 => SubmitError::Transient,
-                    _ => SubmitError::Refused { code },
-                });
+                return Err(refusal(code, limit));
             }
         }
         // lettre ends the data with CRLF . CRLF; the message's own final CRLF is that first
@@ -617,9 +628,14 @@ impl Prepared<'_, '_> {
         match reply {
             Ok(Ok(_)) => Ok(()),
             Ok(Err(error)) => match error.status().map(u16::from) {
-                Some(552) => Err(SubmitError::TooLarge { limit }),
-                Some(code) if code < 500 => Err(SubmitError::Transient),
-                Some(code) => Err(SubmitError::Refused { code }),
+                Some(code) => {
+                    tracing::debug!(
+                        code,
+                        reply_bytes = refusal_bytes(&error),
+                        "smtp refusal of the message read"
+                    );
+                    Err(refusal(code, limit))
+                }
                 None => {
                     submitter.conn = None;
                     let (reason, why) = unanswered(&error);

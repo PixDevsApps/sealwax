@@ -85,7 +85,8 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 | `cargo check --manifest-path fuzz/Cargo.toml --locked` | Builds with the patched lettre | Pass |
 | The advisory check on the vendored lettre | Not run (no RustSec clone here); `tools/advisories.py` now reads path packages | Not verified |
 | Live, `cargo run -p sealwax-engine --example oauth_live -- <address>` on `2312b6a`, the owner's Outlook.com account (the user's authorization of 2026-10-13) | Browser sign-in in 15.3 s (consumer account; IMAP and SMTP scopes); IMAP and SMTP took the token through the patched lettre; added, 6 folders synced (7 INBOX headers); after a restart a refresh from the keyring with a rotated token; removed, 0 keyring items left, scratch folders deleted; "live check passed". The runner's "folders listed" count said 0 both times though 6 folders synced (not looked into). Nothing sent | Pass |
-| A real Microsoft 365 reply over 1,000 bytes | Not run (no account here) | Not verified |
+| Live, `send_live` on `2312b6a` plus the runner, the owner's Microsoft 365 business account (the user's authorization of 2026-10-13) | Browser sign-in in 4.7 s (work account; SMTP scope granted); SMTP login through the patched lettre; 1. from the account to itself, 1,020 bytes: accepted in 0.5 s; 2. from `sendas-check@example.com`, which the mailbox doesn't own, 1,007 bytes: `Refused { code: 554 }` in 0.5 s, the refusal's text 4,356 bytes (the engine's debug length, lines joined) where 0.4.6 would have shown an uncertain send. The longest single line wasn't measured | Pass |
+| A real Microsoft 365 reply over 1,000 bytes | The SendAsDenied refusal above, 4,356 bytes, read as a 554 | Pass |
 
 ### 0.4.6 — 2026-10-12
 
