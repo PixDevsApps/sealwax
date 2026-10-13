@@ -638,6 +638,7 @@ async fn a_pop3_accounts_local_folders_change_at_once() {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     run.send(Command::Accounts {
         accounts: vec![AccountSettings {

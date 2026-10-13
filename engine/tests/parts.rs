@@ -354,6 +354,7 @@ fn parts_and_originals_are_fetched_on_demand_and_answered_once() {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     let commands = engine.commands();
     commands

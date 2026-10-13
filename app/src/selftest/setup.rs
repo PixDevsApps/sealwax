@@ -6,11 +6,12 @@
 //! | --- | --- |
 //! | `engine-attach`, `engine-detach` | Connects the fake engine, or leaves the app without one; links the assistant opens are recorded from then on, never opened |
 //! | `engine-start CA` | Starts the real engine instead, trusting only the CA file (the mail testbed's) and keeping secrets in memory |
-//! | `engine-expect detect\|verify\|add-account\|edit-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `label` and `color` (`none` for none), `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
+//! | `engine-expect detect\|verify\|read-certificate\|add-account\|edit-account\|sign-in\|cancel-sign-in\|update-password\|reconnect [KEY=VALUE…]` | Waits for the app's next command and checks its fields: `address`, `name`, `label` and `color` (`none` for none), `key`, `imap` (or `incoming`, the same: IMAP's or POP3's server) and `smtp` (`host:port:tls\|starttls`, then `:pinned:` and the pinned certificate's first four bytes in hex when it has one; `read-certificate`'s is `server`, with `protocol` `imap`, `pop3` or `smtp`), `receive` (`imap`, `pop3:leave`, `pop3:leave:N`, `pop3:delete`; M8), `username`, `auth` (`password`, `microsoft`), `second` (`none`), `account` (a key, `none`), `provider`, `sign-in` (`last`: the last `SignIn`'s request; `none`), `password` (compared, never printed) |
 //! | `engine-expect none [but KIND,…]` | The app sent nothing more, or only commands of those kinds (`load-older,folder-opened`: what the list sends by itself) |
 //! | `engine-reply progress SOURCE` | `DetectProgress` for the last command: `preset`, `autoconfig`, `ispdb`, `mx`, `srv`, `probe` |
-//! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `gmail`, `confirm`, `other-username`, `microsoft`, `bridge`, `no-imap`, `no-mail`, `not-found` |
+//! | `engine-reply detected FIXTURE` | `Detected`: `fjordpost`, `fastmail`, `icloud`, `imap-off`, `gmail`, `confirm`, `other-username`, `microsoft`, `bridge` (Proton Mail Bridge on 127.0.0.1), `no-imap`, `no-mail`, `not-found` |
 //! | `engine-reply verified ok [USERNAME]`, `engine-reply verified imap\|pop3\|smtp FAILURE` | `Verified`: `wrong-password`, `app-password`, `imap-disabled`, `oauth`, `sign-in-declined`, `no-tls`, `certificate`, `unreachable`, `timeout`, `other` |
+//! | `engine-reply certificate-read ok BYTE`, `engine-reply certificate-read FAILURE` | `CertificateRead`: a fingerprint of 32 times BYTE (two hex digits), or a failure as `verified`'s (issue #9) |
 //! | `engine-reply sign-in-open URL` | `SignInOpen` for the last command |
 //! | `engine-reply signed-in ok USERNAME`, `engine-reply signed-in [imap\|smtp] FAILURE` | `SignedIn` (IMAP when no protocol is named) |
 //! | `engine-reply added ok\|keyring\|settings-file\|store\|exists\|missing` | `AccountAdded`; `ok` first adds the account (its key is the address's local part) and its role folders to the app's store, as the engine would; `added ok file` also appends it to the scratch `accounts.toml` through the engine's writer and waits for the app to read it (M8) |
@@ -56,9 +57,9 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
-    AccountColor, AccountKey, AccountSettings, AuthMethod, DetectSource, DetectedSettings,
-    Detection, Endpoint, HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol,
-    Receive, Security, UnsupportedReason, UsernameForm,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, DetectSource,
+    DetectedSettings, Detection, Endpoint, HelpLink, LoginError, LoginFailure, OAuthProvider,
+    Pop3Policy, Protocol, Receive, Security, UnsupportedReason, UsernameForm,
 };
 use sealwax_domain::folders::NameProblem;
 use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
@@ -547,7 +548,11 @@ fn endpoint_text(endpoint: &Endpoint) -> String {
         Security::Tls => "tls",
         Security::StartTls => "starttls",
     };
-    format!("{}:{}:{security}", endpoint.host, endpoint.port)
+    let pinned = endpoint
+        .certificate
+        .map(|pin| format!(":pinned:{}", pin.hex("")[..8].to_lowercase()))
+        .unwrap_or_default();
+    format!("{}:{}:{security}{pinned}", endpoint.host, endpoint.port)
 }
 
 /// How the account receives, as `engine-expect` names it (M8): `imap`, `pop3:leave` (mail kept
@@ -637,6 +642,18 @@ fn fields(
             fields.push(("sign-in", sign_in(*signed_in)));
             ("add-account", Some(*request), fields)
         }
+        Command::ReadCertificate {
+            request,
+            endpoint,
+            protocol,
+        } => (
+            "read-certificate",
+            Some(*request),
+            vec![
+                ("server", endpoint_text(endpoint)),
+                ("protocol", protocol_text(*protocol).to_owned()),
+            ],
+        ),
         Command::RemoveAccount { request, key } => (
             "remove-account",
             Some(*request),
@@ -980,6 +997,16 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
                 failure: login_failure(failure)?,
             }),
         },
+        ("certificate-read", [ok, byte]) if ok == "ok" => Event::CertificateRead {
+            request,
+            result: Ok(CertificatePin(
+                [u8::from_str_radix(byte, 16).map_err(|_| format!("{byte} is no hex byte"))?; 32],
+            )),
+        },
+        ("certificate-read", [failure]) => Event::CertificateRead {
+            request,
+            result: Err(login_failure(failure)?),
+        },
         ("added", [outcome]) => Event::AccountAdded {
             request,
             result: match outcome.as_str() {
@@ -1287,6 +1314,14 @@ fn older_event(args: &[String]) -> Result<Option<Event>, String> {
     }))
 }
 
+fn protocol_text(protocol: Protocol) -> &'static str {
+    match protocol {
+        Protocol::Imap => "imap",
+        Protocol::Smtp => "smtp",
+        Protocol::Pop3 => "pop3",
+    }
+}
+
 fn protocol_named(name: &str) -> Result<Protocol, String> {
     match name {
         "imap" => Ok(Protocol::Imap),
@@ -1509,6 +1544,7 @@ fn tls(host: &str, port: u16) -> Endpoint {
         host: host.to_owned(),
         port,
         security: Security::Tls,
+        certificate: None,
     }
 }
 
@@ -1530,65 +1566,79 @@ fn detection(name: &str) -> Result<Detection, String> {
         source,
     };
     Ok(match name {
-        "fjordpost" => Detection::Found(DetectedSettings {
+        "fjordpost" => Detection::Found(Box::new(DetectedSettings {
             imap: tls("mail.example.test", 993),
             smtp: tls("mail.example.test", 465),
             ..found("Fjordpost", DetectSource::Autoconfig)
-        }),
-        "fastmail" => Detection::Found(DetectedSettings {
+        })),
+        "fastmail" => Detection::Found(Box::new(DetectedSettings {
             second_username: None,
             app_password: link(
                 "Create an app password",
                 "https://example.test/settings/app-passwords",
             ),
             ..found("Fastmail", DetectSource::Preset)
-        }),
-        "icloud" => Detection::Found(DetectedSettings {
+        })),
+        "icloud" => Detection::Found(Box::new(DetectedSettings {
             second_username: None,
             app_password: link(
                 "Open the Apple account page",
                 "https://example.test/apppasswords",
             ),
             ..found("iCloud", DetectSource::Preset)
-        }),
-        "imap-off" => Detection::Found(DetectedSettings {
+        })),
+        "imap-off" => Detection::Found(Box::new(DetectedSettings {
             enable_imap: link(
                 "Open the IMAP settings",
                 "https://example.test/settings/imap",
             ),
             ..found("Fjordpost", DetectSource::Ispdb)
-        }),
-        "gmail" => Detection::Found(DetectedSettings {
+        })),
+        "gmail" => Detection::Found(Box::new(DetectedSettings {
             imap: tls("imap.gmail.com", 993),
             smtp: tls("smtp.gmail.com", 465),
             ..found("GMail", DetectSource::Ispdb)
-        }),
-        "confirm" => Detection::Found(DetectedSettings {
+        })),
+        "confirm" => Detection::Found(Box::new(DetectedSettings {
             imap: tls("imap.fjordhost.example.test", 993),
             smtp: Endpoint {
                 host: "smtp.fjordhost.example.test".to_owned(),
                 port: 587,
                 security: Security::StartTls,
+                certificate: None,
             },
             username: UsernameForm::LocalPart,
             second_username: Some(UsernameForm::Address),
             confirm: true,
             ..found("Fjordhost", DetectSource::Mx)
-        }),
-        "other-username" => Detection::Found(DetectedSettings {
+        })),
+        "other-username" => Detection::Found(Box::new(DetectedSettings {
             username: UsernameForm::Other,
             second_username: None,
             ..found("Fjordpost", DetectSource::Srv)
-        }),
-        "microsoft" => Detection::Found(DetectedSettings {
+        })),
+        "microsoft" => Detection::Found(Box::new(DetectedSettings {
             auth: AuthMethod::OAuth(OAuthProvider::Microsoft),
             second_username: None,
             ..found("Outlook.com", DetectSource::Preset)
-        }),
-        "bridge" => Detection::Unsupported {
-            provider: "Proton Mail".to_owned(),
-            reason: UnsupportedReason::BridgeOnly,
-        },
+        })),
+        "bridge" => Detection::Found(Box::new(DetectedSettings {
+            imap: Endpoint {
+                host: "127.0.0.1".to_owned(),
+                port: 1143,
+                security: Security::StartTls,
+                certificate: None,
+            },
+            smtp: Endpoint {
+                host: "127.0.0.1".to_owned(),
+                port: 1025,
+                security: Security::StartTls,
+                certificate: None,
+            },
+            second_username: None,
+            app_password: link("Get Proton Mail Bridge", "https://example.test/bridge"),
+            ..found("Proton Mail", DetectSource::Preset)
+        })),
         "no-imap" => Detection::Unsupported {
             provider: "Tuta".to_owned(),
             reason: UnsupportedReason::NoImap,

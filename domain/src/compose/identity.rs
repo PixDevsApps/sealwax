@@ -107,6 +107,7 @@ mod tests {
             host: "mail.example.test".into(),
             port: 993,
             security: Security::Tls,
+            certificate: None,
         };
         AccountSettings {
             key: AccountKey("work".into()),

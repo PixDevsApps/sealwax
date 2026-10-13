@@ -29,24 +29,62 @@ pub(crate) fn test_ca() -> TestCa {
         CertificateParams::new(vec!["localhost".to_owned(), "127.0.0.1".to_owned()]).unwrap();
     params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
     let cert = params.signed_by(&key, &ca).unwrap();
-    let server =
-        ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-            .with_safe_default_protocol_versions()
-            .unwrap()
-            .with_no_client_auth()
-            .with_single_cert(
-                vec![cert.der().clone()],
-                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())),
-            )
-            .unwrap();
+    let server = server_config(cert.der().to_vec(), &key);
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ca.pem");
     std::fs::write(&path, ca.pem()).unwrap();
     TestCa {
         _dir: dir,
         trust: Trust::Roots(path),
-        server: Arc::new(server),
+        server,
     }
+}
+
+/// A self-signed certificate that is its own CA, as Proton Mail Bridge makes (issue #9): rustls
+/// refuses it as a server's certificate even as a trusted root (`CaUsedAsEndEntity`).
+pub(crate) struct SelfSigned {
+    _dir: tempfile::TempDir,
+    /// The certificate as the only trusted root.
+    pub trust: Trust,
+    pub server: Arc<ServerConfig>,
+    pub der: Vec<u8>,
+}
+
+pub(crate) fn self_signed() -> SelfSigned {
+    let key = KeyPair::generate().unwrap();
+    let mut params = CertificateParams::new(vec!["127.0.0.1".to_owned()]).unwrap();
+    params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+    params.key_usages = vec![
+        KeyUsagePurpose::DigitalSignature,
+        KeyUsagePurpose::KeyEncipherment,
+        KeyUsagePurpose::KeyCertSign,
+    ];
+    params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+    let cert = params.self_signed(&key).unwrap();
+    let server = server_config(cert.der().to_vec(), &key);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("cert.pem");
+    std::fs::write(&path, cert.pem()).unwrap();
+    SelfSigned {
+        _dir: dir,
+        trust: Trust::Roots(path),
+        server,
+        der: cert.der().to_vec(),
+    }
+}
+
+fn server_config(der: Vec<u8>, key: &KeyPair) -> Arc<ServerConfig> {
+    Arc::new(
+        ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+            .with_safe_default_protocol_versions()
+            .unwrap()
+            .with_no_client_auth()
+            .with_single_cert(
+                vec![der.into()],
+                PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())),
+            )
+            .unwrap(),
+    )
 }
 
 pub(crate) trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
@@ -64,6 +102,14 @@ impl Peer {
         let (socket, _) = listener.accept().await.unwrap();
         Peer {
             stream: BufReader::new(Box::new(socket)),
+            received: String::new(),
+        }
+    }
+
+    /// A peer on a connection already made, such as one the test upgraded to TLS itself.
+    pub fn from_stream(stream: Box<dyn Io>) -> Peer {
+        Peer {
+            stream: BufReader::new(stream),
             received: String::new(),
         }
     }

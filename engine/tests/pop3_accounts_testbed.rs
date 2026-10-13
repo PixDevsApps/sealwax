@@ -241,6 +241,7 @@ impl Running {
                 host: "127.0.0.1".into(),
                 port: server.port,
                 security: Security::Tls,
+                certificate: None,
             },
             receive: Receive::Pop3(policy),
             smtp: submission(Security::Tls),

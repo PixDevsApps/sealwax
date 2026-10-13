@@ -73,6 +73,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Proton Mail Bridge: a pinned certificate on this computer (issue #9) — 2026-10-13
+
+[ADR-007 amendment](DECISIONS.md#adr-007-amendment--a-pinned-certificate-for-a-server-on-this-computer-2026-10-13). This machine; scripted servers with an rcgen certificate made like Bridge's (self-signed, CA:TRUE, for 127.0.0.1) and the fake engine; no real Bridge, nothing sent.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Domain unit tests | Loopback hosts (`localhost`, 127.0.0.0/8, `::1`, `[::1]`; not `localhost.example.test`, `0.0.0.0`, `::`); a pin honoured only there; fingerprints read with or without colons, `sha256:` or openssl's `sha256 Fingerprint=`, and refused when short, long or not hex; `accounts.toml`'s `certificate` read, written and read back, refused off a loopback host and when malformed; Proton's preset is Bridge (127.0.0.1:1143 and 1025, STARTTLS) by domain and by MX | Pass |
+| Engine unit tests | Bridge's certificate refused even as the only trusted root (`Certificate`, the reporter's failure); the pinned certificate connects and another is refused before any data; a pin off this computer ignored; the certificate read over TLS and after IMAP's, POP3's and SMTP's STARTTLS, with no LOGIN, AUTH, USER or PASS sent and the handshake stopped; a plaintext server gives `NoTls`; an IMAP login over STARTTLS refused without a pin and with the wrong one (no credentials sent) and logged in with the right one; SMTP STARTTLS with the right pin logs in, with the wrong one stops before AUTH; Proton behind an MX found as Bridge | Pass |
+| `setup-bridge` self-test (new, 91 steps) | A Proton address: Bridge's settings, "Bridge password", its hint and link; the check fails on the certificate, `read-certificate` for IMAP, the trust step with the fingerprint and the focus on Trust and Sign In; Trust checks again pinned; SMTP's same certificate trusted without asking; the account saved with both pins. Don't Trust, Escape and an unreadable certificate show the failure; a server elsewhere gets no trust step. Screenshots of the password and trust steps looked at | Pass |
+| CI, `SEALWAX_CI_DISPLAY=47 bash tools/ci.sh --ui` | 1,509 passed, 0 failed, 98 ignored; 81 scripts, 7,805 of 7,805 steps; the hostile suite clean (60 cases, 274 s). The first run stopped at Clippy (`large_enum_variant`: `Endpoint` grew), fixed by boxing `Detection::Found`'s settings | Pass |
+| A real Proton Mail Bridge | None here | Not verified |
+| SMTP STARTTLS with a pin against a real server | lettre's `dangerous_accept_invalid_certs` path and `peer_certificate`, scripted only | Not verified |
+
 ### 0.4.7 — 2026-10-13
 
 `v0.4.7` is `6212d9b`; this machine, rustc 1.98.1. The release: [v0.4.7](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.7), at the owner's word ("push and release 0.4.7").

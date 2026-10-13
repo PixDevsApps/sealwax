@@ -22,6 +22,12 @@
 //! step for an account that must sign in again. Neither the page's address nor the username
 //! is logged.
 //!
+//! A server on this computer whose certificate the system doesn't trust (Proton Mail Bridge,
+//! issue #9) gets a trust step after the check fails on it: the engine reads the certificate,
+//! the assistant shows its fingerprint, and trusting it checks again with that certificate
+//! pinned. The same certificate on another port of the same host (Bridge's SMTP) is trusted
+//! without asking again.
+//!
 //! A password account the server refused (ML-048) gets the password step on its own: the
 //! banner opens the assistant with the account's address read only, the engine checks the
 //! password on IMAP and SMTP before it keeps it, and a refusal says why as the login check's
@@ -45,8 +51,9 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::{
-    AccountColor, AccountKey, AccountSettings, AuthMethod, DetectedSettings, Detection, Endpoint,
-    HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol, Receive, Security,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, DetectedSettings,
+    Detection, Endpoint, HelpLink, LoginError, LoginFailure, OAuthProvider, Pop3Policy, Protocol,
+    Receive, Security, is_loopback,
 };
 use sealwax_domain::autoconfig::{Finding, Hints, address_domain, presets};
 use sealwax_domain::model::AccountId;
@@ -82,12 +89,15 @@ pub enum Step {
     Identity,
     /// A password account the server refused (ML-048): its password, typed again.
     PasswordAgain,
-    /// Nothing to sign in to: a provider without IMAP, Bridge only, or a domain without mail.
+    /// Nothing to sign in to: a provider without IMAP, or a domain without mail.
     Blocked,
     /// Host, port, security and username for IMAP and SMTP, and the password.
     Manual,
-    /// Waiting for `Verified`.
+    /// Waiting for `Verified`, or for `CertificateRead` after a server on this computer showed
+    /// a certificate the system doesn't trust.
     Checking,
+    /// That certificate's fingerprint: trust it and check again, or don't (issue #9).
+    Certificate,
     /// The login failed: why, the password and the settings.
     Failed,
     /// Waiting for `AccountAdded`.
@@ -107,6 +117,7 @@ impl Step {
             Self::Blocked => "blocked",
             Self::Manual => "manual",
             Self::Checking => "checking",
+            Self::Certificate => "certificate",
             Self::Failed => "failed",
             Self::Adding => "adding",
         }
@@ -123,6 +134,7 @@ impl Step {
                 | Self::Blocked
                 | Self::Manual
                 | Self::PasswordAgain
+                | Self::Certificate
         )
     }
 
@@ -139,6 +151,8 @@ impl Step {
 enum Pending {
     Detect(RequestId),
     Verify(RequestId),
+    /// `ReadCertificate` after a check failed on a server on this computer.
+    Read(RequestId),
     SignIn(RequestId),
     Add(RequestId),
     Update(RequestId),
@@ -156,6 +170,19 @@ pub struct Again {
     pub incoming: Endpoint,
     pub receive: Receive,
     pub smtp: Endpoint,
+}
+
+/// A server on this computer that showed a certificate the system doesn't trust, while the trust
+/// step asks.
+#[derive(Debug, Clone)]
+struct Untrusted {
+    protocol: Protocol,
+    endpoint: Endpoint,
+    pin: CertificatePin,
+    /// The check's failure, shown when the certificate isn't trusted.
+    error: LoginError,
+    /// The screen the check started from.
+    from: Step,
 }
 
 /// Whether Microsoft sign-in can start: a client ID is in use
@@ -178,6 +205,15 @@ struct State {
     notice: Option<Notice>,
     /// The settings sent to `Verify`, then to `AddAccount`.
     attempt: Option<AccountSettings>,
+    /// The other username `Verify` was given, for a check made again.
+    second: Option<String>,
+    /// Certificates the user trusted in this assistant: host, port and fingerprint. `Verify`
+    /// pins them on the servers with that host and port.
+    trusted: Vec<(String, u16, CertificatePin)>,
+    /// The check's failure while its certificate is read.
+    reading: Option<LoginError>,
+    /// The certificate the trust step shows.
+    untrusted: Option<Untrusted>,
     /// The password of the check, for `AddAccount`; wiped when dropped.
     password: Option<Password>,
     /// Enter was pressed on an address that isn't one: say why from now on.
@@ -228,6 +264,32 @@ impl State {
         match self.found() {
             Some(settings) => settings.provider.as_deref(),
             None => self.known.as_ref()?.provider.as_deref(),
+        }
+    }
+
+    /// The account is reached through its provider's Bridge on this computer (Proton Mail): its
+    /// password is the Bridge's.
+    fn bridge(&self) -> bool {
+        match &self.again {
+            Some(again) => is_loopback(&again.incoming.host),
+            None => self
+                .found()
+                .is_some_and(|settings| is_loopback(&settings.imap.host)),
+        }
+    }
+
+    /// The certificate the user trusted for `endpoint`'s host and port, if it is on this
+    /// computer.
+    fn pin(&self, endpoint: &mut Endpoint) {
+        if !is_loopback(&endpoint.host) {
+            return;
+        }
+        if let Some((_, _, pin)) = self
+            .trusted
+            .iter()
+            .find(|(host, port, _)| *host == endpoint.host && *port == endpoint.port)
+        {
+            endpoint.certificate = Some(*pin);
         }
     }
 
@@ -568,6 +630,14 @@ impl Assistant {
                 }
             });
         }
+        for (button, trust) in [(&w.trust, true), (&w.dont_trust, false)] {
+            let weak = self.weak();
+            button.connect_clicked(move |_| {
+                if let Some(inner) = weak.upgrade() {
+                    Assistant { inner }.answer_certificate(trust);
+                }
+            });
+        }
         let escape = self.handler(Assistant::back);
         self.inner.dialog.connect_close_attempt(move |_| escape());
         let cancel = self.handler(Assistant::close);
@@ -659,7 +729,12 @@ impl Assistant {
     /// Enter and the primary button: the step's next move, when its fields allow it.
     fn advance(&self) {
         let step = self.step();
-        if step.is_busy() || matches!(step, Step::Microsoft | Step::Blocked | Step::Identity) {
+        if step.is_busy()
+            || matches!(
+                step,
+                Step::Microsoft | Step::Blocked | Step::Identity | Step::Certificate
+            )
+        {
             return;
         }
         if step == Step::Address
@@ -936,13 +1011,19 @@ impl Assistant {
     }
 
     /// `Verify`: one login with the username, and one more with `second` if that is refused.
-    fn verify(&self, settings: AccountSettings, second: Option<String>) {
+    /// A server on this computer gets the certificate the user trusted for it.
+    fn verify(&self, mut settings: AccountSettings, second: Option<String>) {
+        {
+            let state = self.inner.state.borrow();
+            state.pin(&mut settings.incoming);
+            state.pin(&mut settings.smtp);
+        }
         let password = Password::new(self.inner.widgets.password.text().to_string());
         let request = self.inner.engine.next_request();
         let sent = self.engine_send(Command::Verify {
             request,
             settings: settings.clone(),
-            second_username: second,
+            second_username: second.clone(),
             password: password.clone(),
         });
         {
@@ -956,6 +1037,7 @@ impl Assistant {
                 state.from = Some(state.step);
                 state.step = Step::Checking;
                 state.attempt = Some(settings);
+                state.second = second;
                 state.password = Some(password);
             } else {
                 state.notice = Some(text::not_connected());
@@ -998,49 +1080,194 @@ impl Assistant {
             }
             Err(error) => {
                 tracing::info!(failure = ?error.failure, "setup: the login failed");
-                let from = {
-                    let mut state = self.inner.state.borrow_mut();
-                    state.pending = None;
-                    state.password = None;
-                    let notice = state.attempt.as_ref().map(|attempt| {
-                        let found = state.found();
-                        text::login_failure(
-                            &error,
-                            &text::Context {
-                                provider: found.and_then(|settings| settings.provider.as_deref()),
-                                incoming: &attempt.incoming,
-                                smtp: &attempt.smtp,
-                                app_password: found
-                                    .and_then(|settings| settings.app_password.as_ref()),
-                                enable_imap: found
-                                    .and_then(|settings| settings.enable_imap.as_ref()),
-                            },
-                        )
-                    });
-                    state.notice = notice;
-                    let from = state.from.take().unwrap_or(Step::Manual);
-                    if from != Step::Failed {
-                        state.history.push(from);
-                    }
-                    state.step = Step::Failed;
-                    from
-                };
-                let attempt = self.inner.state.borrow().attempt.clone();
-                if from == Step::Password
-                    && let Some(attempt) = attempt
-                {
-                    let w = &self.inner.widgets;
-                    w.set_receive_protocol(attempt.receive.protocol());
-                    w.incoming.fill(&attempt.incoming);
-                    w.smtp.fill(&attempt.smtp);
-                    w.manual_username.set_text(&attempt.username);
+                if !self.read_certificate(&error) {
+                    self.failed(error);
                 }
-                self.render();
-                self.focus_failure(error);
                 return;
             }
         }
         self.render();
+    }
+
+    /// The check failed: why, on the screen it started from (the manual settings, filled in,
+    /// for found settings).
+    fn failed(&self, error: LoginError) {
+        let from = {
+            let mut state = self.inner.state.borrow_mut();
+            state.pending = None;
+            state.password = None;
+            let notice = state.attempt.as_ref().map(|attempt| {
+                let found = state.found();
+                text::login_failure(
+                    &error,
+                    &text::Context {
+                        provider: found.and_then(|settings| settings.provider.as_deref()),
+                        incoming: &attempt.incoming,
+                        smtp: &attempt.smtp,
+                        app_password: found.and_then(|settings| settings.app_password.as_ref()),
+                        enable_imap: found.and_then(|settings| settings.enable_imap.as_ref()),
+                    },
+                )
+            });
+            state.notice = notice;
+            let from = state.from.take().unwrap_or(Step::Manual);
+            if from != Step::Failed {
+                state.history.push(from);
+            }
+            state.step = Step::Failed;
+            from
+        };
+        let attempt = self.inner.state.borrow().attempt.clone();
+        if from == Step::Password
+            && let Some(attempt) = attempt
+        {
+            let w = &self.inner.widgets;
+            w.set_receive_protocol(attempt.receive.protocol());
+            w.incoming.fill(&attempt.incoming);
+            w.smtp.fill(&attempt.smtp);
+            w.manual_username.set_text(&attempt.username);
+        }
+        self.render();
+        self.focus_failure(error);
+    }
+
+    /// A certificate the system doesn't trust on a server on this computer: `ReadCertificate`,
+    /// for the trust step. `false` when that isn't the failure, or the engine is gone.
+    fn read_certificate(&self, error: &LoginError) -> bool {
+        let endpoint = {
+            let state = self.inner.state.borrow();
+            let Some(attempt) = state.attempt.as_ref() else {
+                return false;
+            };
+            let endpoint = match error.protocol {
+                Protocol::Imap | Protocol::Pop3 => &attempt.incoming,
+                Protocol::Smtp => &attempt.smtp,
+            };
+            if error.failure != LoginFailure::Certificate || !is_loopback(&endpoint.host) {
+                return false;
+            }
+            endpoint.clone()
+        };
+        let request = self.inner.engine.next_request();
+        if !self.engine_send(Command::ReadCertificate {
+            request,
+            endpoint,
+            protocol: error.protocol,
+        }) {
+            return false;
+        }
+        tracing::info!(
+            request,
+            "setup: reading the certificate of a server on this computer"
+        );
+        let mut state = self.inner.state.borrow_mut();
+        state.pending = Some(Pending::Read(request));
+        state.reading = Some(error.clone());
+        true
+    }
+
+    /// The certificate read: the trust step, or straight to a check again when the user
+    /// trusted it on another port of the same host.
+    fn certificate_read(&self, result: Result<CertificatePin, LoginFailure>) {
+        let (error, endpoint) = {
+            let mut state = self.inner.state.borrow_mut();
+            state.pending = None;
+            let Some(error) = state.reading.take() else {
+                return;
+            };
+            let endpoint = state.attempt.as_ref().map(|attempt| match error.protocol {
+                Protocol::Imap | Protocol::Pop3 => attempt.incoming.clone(),
+                Protocol::Smtp => attempt.smtp.clone(),
+            });
+            (error, endpoint)
+        };
+        let (Ok(pin), Some(endpoint)) = (result, endpoint) else {
+            self.failed(error);
+            return;
+        };
+        if endpoint.certificate == Some(pin) {
+            self.failed(error);
+            return;
+        }
+        let known = self
+            .inner
+            .state
+            .borrow()
+            .trusted
+            .iter()
+            .any(|(host, _, trusted)| *host == endpoint.host && *trusted == pin);
+        if known {
+            tracing::info!("setup: the same certificate as trusted; checking again");
+            self.trust(&endpoint, pin);
+            self.check_again();
+            return;
+        }
+        {
+            let mut state = self.inner.state.borrow_mut();
+            let from = state.from.take().unwrap_or(Step::Manual);
+            if from != Step::Failed {
+                state.history.push(from);
+            }
+            state.untrusted = Some(Untrusted {
+                protocol: error.protocol,
+                endpoint,
+                pin,
+                error,
+                from,
+            });
+            state.notice = None;
+            state.step = Step::Certificate;
+        }
+        self.render();
+        self.focus_first();
+    }
+
+    fn trust(&self, endpoint: &Endpoint, pin: CertificatePin) {
+        let mut state = self.inner.state.borrow_mut();
+        state
+            .trusted
+            .retain(|(host, port, _)| !(*host == endpoint.host && *port == endpoint.port));
+        state
+            .trusted
+            .push((endpoint.host.clone(), endpoint.port, pin));
+    }
+
+    /// The check again, with the settings and usernames of the last one.
+    fn check_again(&self) {
+        let again = {
+            let state = self.inner.state.borrow();
+            state
+                .attempt
+                .clone()
+                .map(|attempt| (attempt, state.second.clone()))
+        };
+        match again {
+            Some((attempt, second)) => self.verify(attempt, second),
+            None => self.render(),
+        }
+    }
+
+    /// The trust step's answer. Trusting checks again with the certificate pinned; not trusting
+    /// shows the check's failure.
+    fn answer_certificate(&self, trust: bool) {
+        let Some(untrusted) = self.inner.state.borrow_mut().untrusted.take() else {
+            return;
+        };
+        tracing::info!(trust, "setup: the certificate answered");
+        {
+            let mut state = self.inner.state.borrow_mut();
+            if untrusted.from != Step::Failed {
+                state.history.pop();
+            }
+            state.step = untrusted.from;
+            state.from = Some(untrusted.from);
+        }
+        if trust {
+            self.trust(&untrusted.endpoint, untrusted.pin);
+            self.check_again();
+        } else {
+            self.failed(untrusted.error);
+        }
     }
 
     /// "Sign in with Microsoft": `SignIn` for the address (or the account signed in again);
@@ -1306,6 +1533,12 @@ impl Assistant {
                 drop(state);
                 self.verified(result.clone());
             }
+            Event::CertificateRead { request, result }
+                if state.is_pending(Pending::Read(*request)) =>
+            {
+                drop(state);
+                self.certificate_read(*result);
+            }
             Event::AccountAdded { request, result } if state.is_pending(Pending::Add(*request)) => {
                 drop(state);
                 self.added(result.clone());
@@ -1338,6 +1571,10 @@ impl Assistant {
         if self.step() == Step::Identity {
             // The sign-in isn't used: let the engine drop its token.
             self.inner.abandon_sign_in();
+        }
+        if self.step() == Step::Certificate {
+            self.answer_certificate(false);
+            return;
         }
         let close = {
             let mut state = self.inner.state.borrow_mut();
@@ -1517,6 +1754,7 @@ impl Assistant {
             Step::Microsoft if !w.back.is_visible() => Some(w.close.clone().upcast()),
             Step::Microsoft | Step::Blocked => Some(w.back.clone().upcast()),
             Step::Identity => Some(w.send_from.clone().upcast()),
+            Step::Certificate => Some(w.trust.clone().upcast()),
             Step::SigningIn => Some(w.cancel.clone().upcast()),
             Step::Detecting | Step::Checking | Step::Adding => None,
         };

@@ -322,7 +322,7 @@ async fn connect_inner(
     let tcp = net::tcp(&endpoint.host, endpoint.port, CONNECT_TIMEOUT).await?;
     let (mut client, greeting_caps) = match endpoint.security {
         Security::Tls => {
-            let stream = net::tls(tcp, tls, &endpoint.host, CONNECT_TIMEOUT).await?;
+            let stream = net::tls(tcp, tls, endpoint, CONNECT_TIMEOUT).await?;
             let mut client = Client::new(stream);
             match greeting(&mut client).await? {
                 Greeting::Ok(caps) => (client, caps),
@@ -346,7 +346,7 @@ async fn connect_inner(
             }
             // into_inner drops whatever was buffered after the OK, so plaintext injected there
             // is never read as if it came over TLS. Capabilities are asked again over TLS.
-            let stream = net::tls(plain.into_inner(), tls, &endpoint.host, CONNECT_TIMEOUT).await?;
+            let stream = net::tls(plain.into_inner(), tls, endpoint, CONNECT_TIMEOUT).await?;
             (Client::new(stream), None)
         }
     };

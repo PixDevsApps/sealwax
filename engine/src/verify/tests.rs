@@ -111,6 +111,7 @@ fn settings(imap: u16, smtp: u16) -> AccountSettings {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     AccountSettings {
         key: AccountKey("test".into()),

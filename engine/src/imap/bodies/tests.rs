@@ -169,6 +169,7 @@ async fn client(port: u16, trust: &crate::net::Trust) -> Connection {
             host: "127.0.0.1".into(),
             port,
             security: Security::Tls,
+            certificate: None,
         },
         Credentials::Password {
             username: "user",

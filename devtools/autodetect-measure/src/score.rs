@@ -215,8 +215,9 @@ mod tests {
             host: host.into(),
             port,
             security,
+            certificate: None,
         };
-        Detection::Found(DetectedSettings {
+        Detection::Found(Box::new(DetectedSettings {
             imap: endpoint(imap_host, 993, Security::Tls),
             smtp: endpoint("smtp.example.test", smtp.0, smtp.1),
             username,
@@ -231,7 +232,7 @@ mod tests {
             app_password: None,
             enable_imap: None,
             source: DetectSource::Ispdb,
-        })
+        }))
     }
 
     fn never(_: &AliasPair) -> bool {

@@ -290,6 +290,38 @@ async fn smtp_starttls<S: AsyncBufRead + AsyncWrite + Unpin>(io: &mut S) -> Step
     }
 }
 
+async fn pop3_stls<S: AsyncBufRead + AsyncWrite + Unpin>(io: &mut S) -> Step<()> {
+    let greeting = line(io, Stage::Greeting).await?;
+    if strip_prefix_ci(&greeting, "+OK").is_none() {
+        return Err(ProbeError::new(Stage::Greeting, sanitize(&greeting)));
+    }
+    send(io, "STLS\r\n", Stage::StartTls).await?;
+    let reply = line(io, Stage::StartTls).await?;
+    if strip_prefix_ci(&reply, "+OK").is_none() {
+        return Err(ProbeError::new(Stage::StartTls, sanitize(&reply)));
+    }
+    Ok(())
+}
+
+/// The plaintext half of a STARTTLS connection (IMAP's STARTTLS, POP3's STLS or SMTP's
+/// STARTTLS after `EHLO [127.0.0.1]`), giving back the connection to start TLS on. Nothing
+/// else is written: no login. Data sent ahead of the handshake ends it.
+pub(crate) async fn starttls(protocol: Protocol, tcp: TcpStream) -> Step<TcpStream> {
+    let mut io = BufReader::new(tcp);
+    match protocol {
+        Protocol::Imap => {
+            imap_greeting(&mut io).await?;
+            imap_starttls(&mut io).await?;
+        }
+        Protocol::Pop3 => pop3_stls(&mut io).await?,
+        Protocol::Smtp => {
+            smtp_greeting(&mut io).await?;
+            smtp_starttls(&mut io).await?;
+        }
+    }
+    unwrap_plain(io)
+}
+
 fn strip_prefix_ci<'a>(line: &'a str, prefix: &str) -> Option<&'a str> {
     let head = line.get(..prefix.len())?;
     head.eq_ignore_ascii_case(prefix)

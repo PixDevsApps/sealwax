@@ -103,20 +103,13 @@ assert-setup focus setup-address
 # Providers and domains that can't be added say why, with Back only.
 setup-key enter
 engine-expect detect
-engine-reply detected bridge
+engine-reply detected no-imap
 assert-setup step blocked
 assert-label setup-title "Can't add this address"
-assert-label setup-alert-title "Proton Mail works only through its Bridge"
-assert-text-contains setup-alert-body "only through Proton Mail Bridge, which this version of Sealwax can't use yet."
+assert-label setup-alert-title "Tuta doesn't work with mail apps"
 assert-shown setup-primary false
 assert-shown setup-manual-link false
 assert-setup focus setup-back
-screenshot $DIR/../../.local/selftest/setup-bridge.png
-setup-key escape
-setup-key enter
-engine-expect detect
-engine-reply detected no-imap
-assert-label setup-alert-title "Tuta doesn't work with mail apps"
 assert-text-contains setup-alert-body "Use Tuta's own app for this address."
 setup-key escape
 setup-key enter

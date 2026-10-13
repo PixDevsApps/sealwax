@@ -351,6 +351,7 @@ async fn harness(
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     let settings = AccountSettings {
         key,

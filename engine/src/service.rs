@@ -17,7 +17,7 @@ use crate::api::{
 };
 use crate::autoconfig::{self, DetectOptions};
 use crate::imap::{self, Credentials, ImapError, Stop};
-use crate::net::Trust;
+use crate::net::{self, Trust};
 use crate::oauth::{self, AccessToken, AccessTokens, Identity};
 use crate::secrets::{MemoryStore, Secret, SecretKind, SecretStore, Secrets};
 use crate::smtp;
@@ -47,6 +47,8 @@ pub use actor::{SyncConfig, backoff_delay};
 
 /// How long stopping waits for tasks still writing files.
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
+/// How long reading a server's certificate may take (`Command::ReadCertificate`).
+const CERTIFICATE_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long a sign-in waits for the browser.
 pub const SIGN_IN_WAIT: Duration = Duration::from_secs(300);
 /// How long a finished sign-in's tokens wait for the `AddAccount` that names it.
@@ -426,6 +428,22 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                     )
                     .await;
                     shared.send(Event::Verified { request, result });
+                });
+                continue;
+            }
+            Command::ReadCertificate {
+                request,
+                endpoint,
+                protocol,
+            } => {
+                let shared = shared.clone();
+                tokio::spawn(async move {
+                    let result =
+                        net::read_certificate(&endpoint, protocol, CERTIFICATE_TIMEOUT).await;
+                    if let Err(failure) = result {
+                        tracing::info!(?failure, "a certificate couldn't be read");
+                    }
+                    shared.send(Event::CertificateRead { request, result });
                 });
                 continue;
             }
@@ -1217,6 +1235,7 @@ fn microsoft_servers(identity: &Identity, address: &str) -> Option<(Endpoint, En
         host: found.host.to_owned(),
         port: found.port,
         security: found.security,
+        certificate: None,
     };
     Some((endpoint(imap.first()?), endpoint(smtp.first()?)))
 }

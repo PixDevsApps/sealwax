@@ -11,8 +11,8 @@
 
 use crate::imap::ServerText;
 use sealwax_domain::account::{
-    AccountColor, AccountKey, AccountSettings, DetectSource, Detection, LoginError, LoginFailure,
-    OAuthProvider,
+    AccountColor, AccountKey, AccountSettings, CertificatePin, DetectSource, Detection, Endpoint,
+    LoginError, LoginFailure, OAuthProvider, Protocol,
 };
 use sealwax_domain::config::Storage;
 use sealwax_domain::folders::NameProblem;
@@ -55,6 +55,14 @@ pub enum Command {
         settings: AccountSettings,
         second_username: Option<String>,
         password: Password,
+    },
+    /// Read the certificate a server on this computer shows (issue #9), for the user to trust
+    /// after a check failed on it: TCP, the plaintext half of STARTTLS if `endpoint` uses it, and
+    /// the handshake up to the certificate. No login; answered with `CertificateRead`.
+    ReadCertificate {
+        request: RequestId,
+        endpoint: Endpoint,
+        protocol: Protocol,
     },
     /// Save a verified account: the password (or the sign-in's refresh token) to the keyring,
     /// the settings to `accounts.toml`, the account to the store; then list its folders and
@@ -217,6 +225,11 @@ pub enum Event {
     Verified {
         request: RequestId,
         result: Result<String, LoginError>,
+    },
+    /// The SHA-256 of the certificate the server showed, or why none was read.
+    CertificateRead {
+        request: RequestId,
+        result: Result<CertificatePin, LoginFailure>,
     },
     /// Open `url` in the browser for the sign-in; it can be opened again while the engine waits.
     SignInOpen { request: RequestId, url: String },

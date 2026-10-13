@@ -500,7 +500,7 @@ async fn connect_inner(
     let tcp = net::tcp(&endpoint.host, endpoint.port, options.connect_timeout).await?;
     let mut wire = match endpoint.security {
         Security::Tls => {
-            let stream = net::tls(tcp, tls, &endpoint.host, options.connect_timeout).await?;
+            let stream = net::tls(tcp, tls, endpoint, options.connect_timeout).await?;
             let mut wire = Wire::new(stream, options.command_timeout);
             greeting(&mut wire).await?;
             wire
@@ -516,7 +516,7 @@ async fn connect_inner(
                 Status::Err(_) | Status::Continue => return Err(Pop3Error::StartTls),
             }
             let tcp = plain.into_clean_inner()?;
-            let stream = net::tls(tcp, tls, &endpoint.host, options.connect_timeout).await?;
+            let stream = net::tls(tcp, tls, endpoint, options.connect_timeout).await?;
             Wire::new(stream, options.command_timeout)
         }
     };

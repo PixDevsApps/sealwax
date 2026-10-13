@@ -251,12 +251,14 @@ pub fn check_manual(fields: &Manual) -> Result<Checked, Problem> {
             host: incoming_host,
             port: incoming_port,
             security: fields.incoming_security.unwrap_or(Security::Tls),
+            certificate: None,
         },
         receive: fields.receive,
         smtp: Endpoint {
             host: smtp_host,
             port: smtp_port,
             security: fields.smtp_security.unwrap_or(Security::Tls),
+            certificate: None,
         },
         username: username.to_owned(),
     })
@@ -292,6 +294,7 @@ mod tests {
             host: host.to_owned(),
             port,
             security: Security::Tls,
+            certificate: None,
         };
         DetectedSettings {
             imap: endpoint("imap.example.test", 993),
@@ -414,6 +417,7 @@ mod tests {
             host: host.to_owned(),
             port,
             security: Security::StartTls,
+            certificate: None,
         };
         let settings = settings(
             &kari,
@@ -546,6 +550,7 @@ mod tests {
                 host: "pop.example.test".to_owned(),
                 port: 995,
                 security: Security::Tls,
+                certificate: None,
             }
         );
     }

@@ -74,7 +74,21 @@ Several providers let mail apps in only with an app password, made in the provid
 
 Some providers need IMAP turned on in their web settings first (GMX, WEB.DE, mail.com, Zoho and Yandex among them); the assistant says "Turn on IMAP in … settings first." with a link.
 
-Proton Mail works only through Proton Bridge, which this version of Sealwax can't use; Tuta has no IMAP. The assistant says so instead of trying.
+Tuta has no IMAP. The assistant says so instead of trying.
+
+### Proton Mail: through Proton Mail Bridge
+
+Proton Mail lets mail apps in only through [Proton Mail Bridge](https://proton.me/mail/bridge), a program that runs on your computer. Install Bridge, sign in to it, and leave it running. Then add your Proton address in Sealwax. The assistant fills in Bridge's settings (127.0.0.1, IMAP on port 1143 and SMTP on port 1025, both with STARTTLS) and asks for the **Bridge password**: the one Bridge shows for the address, not your Proton password. If you changed Bridge's ports or its security, use **Set up manually** with what Bridge shows.
+
+Bridge makes its own certificate, which your system doesn't trust, so the first check stops there. The assistant then shows **Trust this server's certificate?** with the certificate's SHA-256 fingerprint. **Trust and Sign In** checks again and saves the account, and Sealwax accepts that one certificate from Bridge from then on, and no other. **Don't Trust** shows why the check failed. Only a server on this computer (`localhost`, `127.0.0.1` or `::1`) can be trusted this way.
+
+To compare the fingerprint first, ask Bridge for it in a terminal while it runs:
+
+```bash
+openssl s_client -connect 127.0.0.1:1143 -starttls imap </dev/null 2>/dev/null | openssl x509 -noout -fingerprint -sha256
+```
+
+If Bridge's certificate changes later (after reinstalling it, say), Sealwax stops connecting and the banner says so. Put the new fingerprint from that command in the `certificate` lines of the account's `[account.imap]` and `[account.smtp]` in `accounts.toml` ([below](#accountstoml)), then choose **Retry**.
 
 ### Manual settings
 
@@ -85,7 +99,7 @@ Proton Mail works only through Proton Bridge, which this version of Sealwax can'
 - the SMTP server's name, port and security;
 - the username, and the password.
 
-The standard ports are filled in for you: IMAP 993 with TLS or 143 with STARTTLS; POP3 995 or 110; SMTP 465 or 587. **Check settings** logs in to both servers before the account is saved. There is no setting without encryption: Sealwax never connects or sends a password without TLS. A server whose certificate your system doesn't trust (a self-signed certificate) can't be added yet; trusting a single server's certificate comes in a later version.
+The standard ports are filled in for you: IMAP 993 with TLS or 143 with STARTTLS; POP3 995 or 110; SMTP 465 or 587. **Check settings** logs in to both servers before the account is saved. There is no setting without encryption: Sealwax never connects or sends a password without TLS. A server whose certificate your system doesn't trust (a self-signed certificate) can be added only when it runs on this computer, like [Proton Mail Bridge](#proton-mail-through-proton-mail-bridge): the assistant shows its certificate for you to trust. A server elsewhere needs a certificate your system trusts.
 
 ### POP3 accounts
 
@@ -498,6 +512,7 @@ address = "board@example.com"
 | `[account.imap]` | `host` | — (required) | The IMAP server |
 | | `port` | 993 with `"tls"`, 143 with `"starttls"` | |
 | | `security` | `"tls"` | `"tls"` or `"starttls"`; there is no setting without encryption |
+| | `certificate` | none | Only for a server on this computer (`localhost`, `127.0.0.1`, `::1`), such as Proton Mail Bridge: the SHA-256 fingerprint (`"AB:CD:…"`) of the one certificate it is trusted with, which the assistant writes when you trust it. `[account.pop3]` and `[account.smtp]` take it too |
 | `[account.pop3]` | `host` | — (required) | The POP3 server, in place of `[account.imap]`: an account has one of the two |
 | | `port` | 995 with `"tls"`, 110 with `"starttls"` | |
 | | `security` | `"tls"` | `"tls"` or `"starttls"` |
@@ -587,7 +602,7 @@ The folders follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG
 ### Common problems
 
 - **"… not applied: line …, column …"** A settings file has a mistake; the toast names it. Fix the line and save; the previous settings stay meanwhile. A mistake at startup shows only in the log.
-- **"Sealwax stopped connecting to …"** The server's certificate no longer verifies, and Sealwax never signs in to a server it can't verify. A network that inspects secure connections (some workplace and hotel networks) can cause it: try another network, then **Retry**. **Details** shows why and the account's servers. There is no way to trust such a certificate yet.
+- **"Sealwax stopped connecting to …"** The server's certificate no longer verifies, and Sealwax never signs in to a server it can't verify. A network that inspects secure connections (some workplace and hotel networks) can cause it: try another network, then **Retry**. **Details** shows why and the account's servers. Only a server on this computer can be trusted with its own certificate: for Proton Mail Bridge, see [Proton Mail](#proton-mail-through-proton-mail-bridge).
 - **"You're offline" or "Can't reach your mail server(s)"** Sealwax shows the mail it has, keeps your changes and messages ("3 waiting") and sends them when the network is back. It reconnects by itself when the network returns or the computer wakes; Refresh (F5) checks at once.
 - **"… needs you to sign in again"** The password stopped working: **Type the password again** (if you revoked an app password, make a new one first). For a Microsoft account: **Sign in**.
 - **"No keyring found"** No Secret Service answered. Passwords stay in memory until Sealwax quits. Make sure gnome-keyring (or another Secret Service) runs, then quit Sealwax with Ctrl+Q and start it again.

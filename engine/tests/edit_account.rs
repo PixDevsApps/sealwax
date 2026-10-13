@@ -100,6 +100,7 @@ fn an_edited_label_and_color_reach_the_file_and_the_store() {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     let key = AccountKey("edited".into());
     files::add(

@@ -242,6 +242,7 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     let settings = AccountSettings {
         key: AccountKey(String::new()),

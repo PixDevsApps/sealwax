@@ -57,6 +57,7 @@ fn endpoint(port: u16) -> Endpoint {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     }
 }
 

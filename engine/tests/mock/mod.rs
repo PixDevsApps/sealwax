@@ -322,6 +322,7 @@ impl Server {
             host: "127.0.0.1".into(),
             port: self.port,
             security: Security::Tls,
+            certificate: None,
         }
     }
 

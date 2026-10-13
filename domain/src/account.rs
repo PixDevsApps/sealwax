@@ -37,6 +37,87 @@ pub struct Endpoint {
     pub host: String,
     pub port: u16,
     pub security: Security,
+    /// The one certificate this server is trusted with although the system doesn't trust it
+    /// (Proton Mail Bridge, issue #9). Only a server on this computer can have one
+    /// ([`Endpoint::pinned`]).
+    pub certificate: Option<CertificatePin>,
+}
+
+impl Endpoint {
+    /// The pinned certificate, honoured only while the host is a loopback name or address.
+    pub fn pinned(&self) -> Option<CertificatePin> {
+        self.certificate.filter(|_| is_loopback(&self.host))
+    }
+}
+
+/// Whether `host` names this computer: `localhost`, or an address in 127.0.0.0/8 or `::1`.
+/// The engine also checks that the connection it made reached a loopback address.
+pub fn is_loopback(host: &str) -> bool {
+    let host = host.strip_suffix('.').unwrap_or(host);
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|inner| inner.strip_suffix(']'))
+        .unwrap_or(host);
+    bare.parse::<std::net::IpAddr>()
+        .is_ok_and(|address| address.is_loopback())
+}
+
+/// The SHA-256 of a server certificate's DER bytes: what a pinned certificate is compared by.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CertificatePin(pub [u8; 32]);
+
+impl CertificatePin {
+    /// Reads 64 hexadecimal digits, in either case, with or without a colon between bytes and
+    /// a `sha256:` in front (`openssl x509 -fingerprint -sha256` prints them so).
+    pub fn parse(text: &str) -> Option<CertificatePin> {
+        let text = text.trim();
+        let text = text
+            .get(..7)
+            .filter(|prefix| prefix.eq_ignore_ascii_case("sha256:"))
+            .map_or(text, |_| &text[7..]);
+        let text = text
+            .get(..19)
+            .filter(|prefix| prefix.eq_ignore_ascii_case("sha256 fingerprint="))
+            .map_or(text, |_| &text[19..]);
+        let digits: Vec<u8> = text.bytes().filter(|byte| *byte != b':').collect();
+        if digits.len() != 64 || text.starts_with(':') || text.ends_with(':') {
+            return None;
+        }
+        if text.contains(':') && (text.len() != 95 || text.contains("::")) {
+            return None;
+        }
+        let mut bytes = [0; 32];
+        for (byte, pair) in bytes.iter_mut().zip(digits.chunks(2)) {
+            let pair = std::str::from_utf8(pair).ok()?;
+            *byte = u8::from_str_radix(pair, 16).ok()?;
+        }
+        Some(CertificatePin(bytes))
+    }
+
+    /// The bytes as upper-case hexadecimal pairs, `separator` between them.
+    pub fn hex(&self, separator: &str) -> String {
+        self.0
+            .iter()
+            .map(|byte| format!("{byte:02X}"))
+            .collect::<Vec<_>>()
+            .join(separator)
+    }
+}
+
+impl fmt::Display for CertificatePin {
+    /// `AB:CD:…`, as `accounts.toml` and the assistant write it.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.hex(":"))
+    }
+}
+
+impl fmt::Debug for CertificatePin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "CertificatePin({})", self.hex(""))
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -292,15 +373,13 @@ pub struct DetectedSettings {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UnsupportedReason {
-    /// Reachable only through the provider's own bridge (Proton).
-    BridgeOnly,
     /// The provider offers no IMAP (Tuta).
     NoImap,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Detection {
-    Found(DetectedSettings),
+    Found(Box<DetectedSettings>),
     Unsupported {
         provider: String,
         reason: UnsupportedReason,
@@ -349,7 +428,77 @@ pub struct LoginError {
 
 #[cfg(test)]
 mod tests {
-    use super::{AccountColor, UsernameForm};
+    use super::{AccountColor, CertificatePin, Endpoint, Security, UsernameForm};
+
+    #[test]
+    fn loopback_hosts() {
+        for host in [
+            "localhost",
+            "LOCALHOST.",
+            "127.0.0.1",
+            "127.8.9.1",
+            "::1",
+            "[::1]",
+        ] {
+            assert!(super::is_loopback(host), "{host}");
+        }
+        for host in [
+            "localhost.example.test",
+            "128.0.0.1",
+            "0.0.0.0",
+            "::",
+            "::ffff:127.0.0.1x",
+            "imap.example.test",
+            "",
+        ] {
+            assert!(!super::is_loopback(host), "{host}");
+        }
+    }
+
+    #[test]
+    fn a_pin_is_honoured_only_on_this_computer() {
+        let pin = CertificatePin([7; 32]);
+        let mut endpoint = Endpoint {
+            host: "127.0.0.1".into(),
+            port: 1143,
+            security: Security::StartTls,
+            certificate: Some(pin),
+        };
+        assert_eq!(endpoint.pinned(), Some(pin));
+        endpoint.host = "imap.example.test".into();
+        assert_eq!(endpoint.pinned(), None);
+    }
+
+    #[test]
+    fn certificate_pins_read_and_write() {
+        let mut bytes = [0u8; 32];
+        for (index, byte) in bytes.iter_mut().enumerate() {
+            *byte = u8::try_from(index * 7 + 160).unwrap_or(0) ^ 0x5a;
+        }
+        let pin = CertificatePin(bytes);
+        let shown = pin.to_string();
+        assert_eq!(shown.len(), 95);
+        assert_eq!(CertificatePin::parse(&shown), Some(pin));
+        assert_eq!(CertificatePin::parse(&shown.to_lowercase()), Some(pin));
+        assert_eq!(CertificatePin::parse(&pin.hex("")), Some(pin));
+        assert_eq!(CertificatePin::parse(&format!("sha256:{shown}")), Some(pin));
+        assert_eq!(
+            CertificatePin::parse(&format!("sha256 Fingerprint={shown}\n")),
+            Some(pin)
+        );
+        for bad in [
+            "",
+            "AB",
+            &shown[..94],
+            &format!("{shown}:"),
+            &format!(":{}", &shown[1..]),
+            &shown.replacen(':', "", 3),
+            &format!("G{}", &shown[1..]),
+            &format!("{}0", pin.hex("")),
+        ] {
+            assert_eq!(CertificatePin::parse(bad), None, "{bad}");
+        }
+    }
 
     #[test]
     fn username_forms_apply_to_an_address() {

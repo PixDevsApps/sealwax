@@ -10,7 +10,7 @@
 
 mod network;
 mod pipeline;
-mod probe;
+pub(crate) mod probe;
 
 #[cfg(test)]
 mod tests;

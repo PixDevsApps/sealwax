@@ -75,7 +75,7 @@ setup-key escape
 setup-key enter
 engine-expect detect
 engine-reply progress preset
-engine-reply detected bridge
+engine-reply detected no-imap
 assert-setup step blocked
 screenshot $DIR/../../tools/progress/public/m2-setup-blocked-wide-matte-black-square-2026-10-05.png
 
@@ -166,7 +166,7 @@ setup-key escape
 setup-key enter
 engine-expect detect
 engine-reply progress preset
-engine-reply detected bridge
+engine-reply detected no-imap
 assert-setup step blocked
 screenshot $DIR/../../tools/progress/public/m2-setup-blocked-wide-catppuccin-latte-rounded-2026-10-05.png
 

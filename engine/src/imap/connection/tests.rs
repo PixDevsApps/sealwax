@@ -3,10 +3,10 @@
 
 use super::*;
 use crate::net::Trust;
-use crate::net::testing::{Peer, bind, test_ca};
+use crate::net::testing::{Peer, bind, self_signed, test_ca};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use sealwax_domain::account::LoginFailure;
+use sealwax_domain::account::{CertificatePin, LoginFailure};
 
 const PASSWORD: Credentials<'static> = Credentials::Password {
     username: "user",
@@ -18,6 +18,7 @@ fn endpoint(port: u16, security: Security) -> Endpoint {
         host: "127.0.0.1".into(),
         port,
         security,
+        certificate: None,
     }
 }
 
@@ -120,6 +121,68 @@ async fn starttls_asks_capabilities_again_and_falls_back_to_login() {
         ),
         "generic ID values only"
     );
+}
+
+/// Proton Mail Bridge (issue #9): its self-signed certificate is refused until it is pinned,
+/// then the login goes through; another certificate on the same pin is refused before LOGIN.
+#[tokio::test]
+async fn a_pinned_bridge_certificate_logs_in_and_no_other_does() {
+    let bridge = self_signed();
+    let pin = crate::net::fingerprint(&bridge.der);
+    for (certificate, outcome) in [
+        (None, Err(LoginFailure::Certificate)),
+        (
+            Some(CertificatePin([0x44; 32])),
+            Err(LoginFailure::Certificate),
+        ),
+        (Some(pin), Ok(())),
+    ] {
+        let config = bridge.server.clone();
+        let (listener, port) = bind().await;
+        let server = tokio::spawn(async move {
+            let mut peer = Peer::accept(&listener).await;
+            peer.send("* OK [CAPABILITY IMAP4rev1 STARTTLS AUTH=PLAIN] Bridge ready\r\n")
+                .await;
+            let tag = peer.expect("STARTTLS").await;
+            peer.send(&format!("{tag} OK begin TLS\r\n")).await;
+            let plain = peer.into_inner();
+            let Ok(tls) = tokio_rustls::TlsAcceptor::from(config).accept(plain).await else {
+                return String::new();
+            };
+            let mut peer = Peer::from_stream(Box::new(tls));
+            let tag = peer.expect("CAPABILITY").await;
+            peer.send("* CAPABILITY IMAP4rev1\r\n").await;
+            peer.send(&format!("{tag} OK done\r\n")).await;
+            let tag = peer.expect("LOGIN").await;
+            peer.send(&format!("{tag} OK logged in\r\n")).await;
+            let tag = peer.expect("CAPABILITY").await;
+            peer.send("* CAPABILITY IMAP4rev1\r\n").await;
+            peer.send(&format!("{tag} OK done\r\n")).await;
+            let tag = peer.expect("LOGOUT").await;
+            peer.send("* BYE\r\n").await;
+            peer.send(&format!("{tag} OK bye\r\n")).await;
+            peer.drain().await
+        });
+        let endpoint = Endpoint {
+            certificate,
+            ..endpoint(port, Security::StartTls)
+        };
+        let result = connect(
+            &endpoint,
+            PASSWORD,
+            Trust::Platform.client_config().unwrap(),
+        )
+        .await;
+        match (result, outcome) {
+            (Ok(conn), Ok(())) => conn.logout().await,
+            (Err(error), Err(failure)) => assert_eq!(error.failure(), failure),
+            (result, outcome) => panic!("{:?} instead of {outcome:?}", result.map(drop)),
+        }
+        let received = server.await.unwrap();
+        if outcome.is_err() {
+            assert_no_credentials(&received);
+        }
+    }
 }
 
 /// STARTTLS response injection (ML-093): an answer a man in the middle puts right after the

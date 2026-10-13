@@ -1,0 +1,115 @@
+# Proton Mail Bridge (issue #9) on a scripted engine: a Proton address finds Bridge on this
+# computer and asks for the Bridge password; the check fails on Bridge's self-signed
+# certificate, the assistant reads it and shows its fingerprint, and Trust checks again with
+# it pinned on IMAP. SMTP shows the same certificate on the same host and is trusted without
+# asking again; the account is saved with both pins. Then Don't Trust and Escape show the
+# failure, a certificate that can't be read shows it too, and a server elsewhere never gets
+# the trust step. Every address is fictional. Screenshots go to .local/selftest/.
+# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-bridge.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+corners 0
+engine-attach
+
+# A Proton address: Bridge's settings and its password.
+action win.add-account
+setup-type setup-address kari@proton.example.test
+setup-key enter
+engine-expect detect address=kari@proton.example.test
+engine-reply progress preset
+engine-reply detected bridge
+assert-setup step password
+assert-label setup-found-provider "Proton Mail"
+assert-label setup-found-imap "IMAP 127.0.0.1 · 1143 · STARTTLS"
+assert-label setup-found-smtp "SMTP 127.0.0.1 · 1025 · STARTTLS"
+assert-label setup-password-label "Bridge password"
+assert-label setup-password-hint "Start Proton Mail Bridge on this computer, then type the password it shows for this address, not your Proton Mail password."
+assert-shown setup-app-password-link true
+assert-label setup-app-password-link "Get Proton Mail Bridge"
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-bridge-password.png
+
+# The check fails on the certificate: the assistant reads it, then asks.
+setup-type setup-password fictional-bridge-password
+setup-key enter
+engine-expect verify imap=127.0.0.1:1143:starttls smtp=127.0.0.1:1025:starttls username=kari@proton.example.test password=fictional-bridge-password
+engine-reply verified imap certificate
+engine-expect read-certificate server=127.0.0.1:1143:starttls protocol=imap
+assert-setup step checking
+engine-reply certificate-read ok ab
+assert-setup step certificate
+assert-label setup-title "A server on this computer"
+assert-text-contains setup-certificate-text "The incoming mail server (IMAP) at 127.0.0.1, port 1143, runs on this computer"
+assert-text-contains setup-certificate-text "Sealwax will accept this certificate from this server and no other."
+assert-text-contains setup-fingerprint "AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB"
+assert-shown setup-trust true
+assert-shown setup-dont-trust true
+assert-shown setup-primary false
+assert-shown setup-password false
+assert-setup focus setup-trust
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-bridge-certificate.png
+
+# Trust: the check again with IMAP's certificate pinned. SMTP's is the same one on the same
+# host, so the check goes again at once with both pinned.
+setup-click setup-trust
+engine-expect verify imap=127.0.0.1:1143:starttls:pinned:abababab smtp=127.0.0.1:1025:starttls password=fictional-bridge-password
+engine-reply verified smtp certificate
+engine-expect read-certificate server=127.0.0.1:1025:starttls protocol=smtp
+engine-reply certificate-read ok ab
+engine-expect verify imap=127.0.0.1:1143:starttls:pinned:abababab smtp=127.0.0.1:1025:starttls:pinned:abababab password=fictional-bridge-password
+engine-reply verified ok
+engine-expect add-account imap=127.0.0.1:1143:starttls:pinned:abababab smtp=127.0.0.1:1025:starttls:pinned:abababab username=kari@proton.example.test
+engine-reply added ok
+assert-setup open false
+
+# Don't Trust: the check's failure, and nothing more is sent.
+action win.add-account
+setup-type setup-address ola@proton.example.test
+setup-key enter
+engine-expect detect address=ola@proton.example.test
+engine-reply detected bridge
+setup-type setup-password fictional-bridge-password
+setup-key enter
+engine-expect verify imap=127.0.0.1:1143:starttls
+engine-reply verified imap certificate
+engine-expect read-certificate server=127.0.0.1:1143:starttls
+engine-reply certificate-read ok cd
+assert-setup step certificate
+assert-text-contains setup-fingerprint "CD:CD:CD"
+setup-click setup-dont-trust
+assert-setup step failed
+assert-label setup-alert-title "The server's certificate isn't trusted"
+assert-text-contains setup-alert-body "127.0.0.1 is on this computer, and Sealwax signs in to it only with a certificate you trusted."
+engine-expect none
+
+# Check settings asks again; Escape is Don't Trust.
+setup-click setup-primary
+engine-expect verify imap=127.0.0.1:1143:starttls
+engine-reply verified imap certificate
+engine-expect read-certificate server=127.0.0.1:1143:starttls
+engine-reply certificate-read ok cd
+assert-setup step certificate
+setup-key escape
+assert-setup step failed
+assert-label setup-alert-title "The server's certificate isn't trusted"
+
+# A certificate that can't be read: the check's failure.
+setup-click setup-primary
+engine-expect verify imap=127.0.0.1:1143:starttls
+engine-reply verified imap certificate
+engine-expect read-certificate
+engine-reply certificate-read no-tls
+assert-setup step failed
+assert-label setup-alert-title "The server's certificate isn't trusted"
+
+# A server elsewhere never gets the trust step.
+setup-type setup-imap-host imap.example.test
+setup-click setup-primary
+engine-expect verify imap=imap.example.test:1143:starttls
+engine-reply verified imap certificate
+assert-setup step failed
+engine-expect none
+assert-text-contains setup-alert-body "imap.example.test showed a certificate Sealwax can't verify."

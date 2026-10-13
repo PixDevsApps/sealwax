@@ -312,8 +312,8 @@ mod tests {
         let reports = vec![report(
             Source::Preset,
             Finding::Unsupported {
-                provider: "Proton Mail".into(),
-                reason: UnsupportedReason::BridgeOnly,
+                provider: "Tuta".into(),
+                reason: UnsupportedReason::NoImap,
             },
         )];
         let decision = decide(&order(), &reports, Wait::ForHigherRanked);
@@ -376,8 +376,8 @@ mod tests {
         for mx in [
             Finding::NoMail,
             Finding::Unsupported {
-                provider: "Proton Mail".into(),
-                reason: UnsupportedReason::BridgeOnly,
+                provider: "Tuta".into(),
+                reason: UnsupportedReason::NoImap,
             },
         ] {
             let reports = all_nothing_except(vec![

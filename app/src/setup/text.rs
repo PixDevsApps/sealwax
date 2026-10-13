@@ -4,8 +4,8 @@
 
 use super::form::security_name;
 use sealwax_domain::account::{
-    DetectSource, DetectedSettings, Detection, Endpoint, HelpLink, LoginError, LoginFailure,
-    Protocol, UnsupportedReason, UsernameForm,
+    CertificatePin, DetectSource, DetectedSettings, Detection, Endpoint, HelpLink, LoginError,
+    LoginFailure, Protocol, UnsupportedReason, UsernameForm, is_loopback,
 };
 use sealwax_engine::api::AccountError;
 
@@ -126,6 +126,13 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
             format!(
                 "{host} offers neither TLS nor STARTTLS on port {port}, and Sealwax never sends a \
                  password unencrypted. Check the server, port and security below."
+            ),
+        ),
+        LoginFailure::Certificate if is_loopback(host) => Notice::problem(
+            "The server's certificate isn't trusted",
+            format!(
+                "{host} is on this computer, and Sealwax signs in to it only with a certificate \
+                 you trusted. Check settings again to see its certificate."
             ),
         ),
         LoginFailure::Certificate => Notice::problem(
@@ -370,16 +377,6 @@ pub fn detection(detection: &Detection, domain: &str) -> Option<Notice> {
         Detection::Found(_) => return None,
         Detection::Unsupported {
             provider,
-            reason: UnsupportedReason::BridgeOnly,
-        } => Notice::problem(
-            format!("{provider} works only through its Bridge"),
-            format!(
-                "{provider} lets mail apps in only through {provider} Bridge, which this version \
-                 of Sealwax can't use yet."
-            ),
-        ),
-        Detection::Unsupported {
-            provider,
             reason: UnsupportedReason::NoImap,
         } => Notice::problem(
             format!("{provider} doesn't work with mail apps"),
@@ -509,6 +506,46 @@ pub fn app_password_hint(provider: Option<&str>) -> String {
     )
 }
 
+/// The password label and hint for a provider reached through its Bridge on this computer
+/// (Proton Mail, issue #9).
+pub const BRIDGE_PASSWORD: &str = "Bridge password";
+
+pub fn bridge_password_hint(provider: Option<&str>) -> String {
+    let provider = provider.unwrap_or("The provider");
+    format!(
+        "Start {provider} Bridge on this computer, then type the password it shows for this \
+         address, not your {provider} password."
+    )
+}
+
+/// The trust step (issue #9): a server on this computer whose certificate the system doesn't
+/// trust, such as Proton Mail Bridge's.
+pub const CERTIFICATE_TITLE: &str = "Trust this server's certificate?";
+pub const TRUST: &str = "Trust and Sign In";
+pub const DONT_TRUST: &str = "Don't Trust";
+
+pub fn certificate_body(protocol: Protocol, endpoint: &Endpoint) -> String {
+    let server = match protocol {
+        Protocol::Imap => "incoming mail server (IMAP)",
+        Protocol::Pop3 => "incoming mail server (POP3)",
+        Protocol::Smtp => "outgoing mail server (SMTP)",
+    };
+    format!(
+        "The {server} at {host}, port {port}, runs on this computer, and your system doesn't \
+         trust its certificate. Programs such as Proton Mail Bridge make their own. Trust it if \
+         you run one here: Sealwax will accept this certificate from this server and no other.",
+        host = endpoint.host,
+        port = endpoint.port,
+    )
+}
+
+/// The fingerprint in two lines of 16 bytes, as `openssl x509 -fingerprint -sha256` prints it
+/// in one.
+pub fn fingerprint_lines(pin: &CertificatePin) -> String {
+    let text = pin.to_string();
+    format!("{}\n{}", &text[..47], &text[48..])
+}
+
 /// The hint for a provider whose IMAP must be turned on first.
 pub fn enable_imap_hint(provider: Option<&str>) -> String {
     format!(
@@ -527,6 +564,7 @@ mod tests {
             host: host.to_owned(),
             port,
             security: Security::Tls,
+            certificate: None,
         }
     }
 
@@ -810,20 +848,58 @@ mod tests {
     }
 
     #[test]
+    fn a_server_on_this_computer_asks_for_trust() {
+        let bridge = Endpoint {
+            security: sealwax_domain::account::Security::StartTls,
+            ..endpoint("127.0.0.1", 1143)
+        };
+        let body = certificate_body(Protocol::Imap, &bridge);
+        assert!(body.starts_with(
+            "The incoming mail server (IMAP) at 127.0.0.1, port 1143, runs on this computer"
+        ));
+        let pin = CertificatePin([0xab; 32]);
+        let lines = fingerprint_lines(&pin);
+        assert_eq!(lines.lines().count(), 2);
+        assert_eq!(lines.replace('\n', ":"), pin.to_string());
+        let error = LoginError {
+            protocol: Protocol::Imap,
+            failure: LoginFailure::Certificate,
+        };
+        let smtp = endpoint("smtp.example.test", 465);
+        let context = Context {
+            provider: Some("Proton Mail"),
+            incoming: &bridge,
+            smtp: &smtp,
+            app_password: None,
+            enable_imap: None,
+        };
+        assert!(
+            login_failure(&error, &context)
+                .body
+                .starts_with("127.0.0.1 is on this computer")
+        );
+        assert_eq!(
+            bridge_password_hint(Some("Proton Mail")),
+            "Start Proton Mail Bridge on this computer, then type the password it shows for \
+             this address, not your Proton Mail password."
+        );
+    }
+
+    #[test]
     fn dead_ends_say_why() {
         assert_eq!(
             detection(&Detection::NoMail, "example.test").unwrap().title,
             "example.test receives no mail"
         );
-        let bridge = detection(
+        let tuta = detection(
             &Detection::Unsupported {
-                provider: "Proton Mail".to_owned(),
-                reason: UnsupportedReason::BridgeOnly,
+                provider: "Tuta".to_owned(),
+                reason: UnsupportedReason::NoImap,
             },
             "example.test",
         )
         .unwrap();
-        assert!(bridge.body.contains("Proton Mail Bridge"));
+        assert_eq!(tuta.title, "Tuta doesn't work with mail apps");
         let not_found = detection(&Detection::NotFound, "example.test").unwrap();
         assert_eq!(not_found.tone, Tone::Info);
         assert_eq!(not_found.title, "No settings found for example.test");

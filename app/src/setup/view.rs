@@ -179,6 +179,12 @@ pub(super) struct Widgets {
     identity_text: gtk::Label,
     pub(super) send_from: gtk::Button,
     pub(super) keep_address: gtk::Button,
+    /// A server on this computer showed a certificate the system doesn't trust (issue #9).
+    certificate: gtk::Box,
+    certificate_text: gtk::Label,
+    fingerprint: gtk::Label,
+    pub(super) trust: gtk::Button,
+    pub(super) dont_trust: gtk::Button,
     microsoft_unavailable: gtk::Box,
     waiting: gtk::Box,
     pub(super) open_again: gtk::Button,
@@ -564,6 +570,49 @@ impl Widgets {
         identity.append(&send_from);
         identity.append(&keep_address);
 
+        let certificate_text = named(label("", &[]), "setup-certificate-text");
+        let fingerprint = named(label("", &["sw-setup-fingerprint"]), "setup-fingerprint");
+        fingerprint.set_selectable(true);
+        fingerprint.set_wrap(false);
+        let fingerprint_field = field(
+            "SHA-256 fingerprint",
+            &fingerprint,
+            "setup-fingerprint-field",
+        );
+        let button = |text: &str, name: &str, classes: &[&str]| {
+            let button = named(
+                classed(
+                    gtk::Button::builder()
+                        .label(text)
+                        .halign(gtk::Align::Start)
+                        .build(),
+                    classes,
+                ),
+                name,
+            );
+            button.set_hexpand(false);
+            button
+        };
+        let trust = button(
+            text::TRUST,
+            "setup-trust",
+            &["sw-primary", "sw-setup-primary"],
+        );
+        let dont_trust = button(
+            text::DONT_TRUST,
+            "setup-dont-trust",
+            &["sw-setup-secondary"],
+        );
+        let certificate = named(
+            column(&["sw-setup-card", "sw-setup-microsoft"]),
+            "setup-certificate",
+        );
+        certificate.append(&label(text::CERTIFICATE_TITLE, &["sw-setup-provider"]));
+        certificate.append(&certificate_text);
+        certificate.append(&fingerprint_field);
+        certificate.append(&trust);
+        certificate.append(&dont_trust);
+
         let username = entry("setup-username", "", &[]);
         let username_field = field("Username", &username, "setup-username-field");
 
@@ -634,6 +683,7 @@ impl Widgets {
             found.upcast_ref(),
             microsoft_box.upcast_ref(),
             identity.upcast_ref(),
+            certificate.upcast_ref(),
             username_field.upcast_ref(),
             manual.upcast_ref(),
             password_field.upcast_ref(),
@@ -744,6 +794,11 @@ impl Widgets {
             microsoft_button,
             identity,
             identity_text,
+            certificate,
+            certificate_text,
+            fingerprint,
+            trust,
+            dont_trust,
             send_from,
             keep_address,
             microsoft_unavailable,
@@ -891,6 +946,15 @@ impl Widgets {
                 button.update_property(&[gtk::accessible::Property::Label(&text)]);
             }
         }
+        w.certificate.set_visible(shown == Step::Certificate);
+        if let Some(untrusted) = &state.untrusted {
+            w.certificate_text.set_label(&text::certificate_body(
+                untrusted.protocol,
+                &untrusted.endpoint,
+            ));
+            w.fingerprint
+                .set_label(&text::fingerprint_lines(&untrusted.pin));
+        }
         w.microsoft_button
             .set_tooltip_text((!microsoft).then_some("Not available in this build yet"));
         w.microsoft_unavailable.set_visible(!microsoft);
@@ -908,7 +972,10 @@ impl Widgets {
         let enable_imap = state.enable_imap();
         let provider = state.provider();
         let typed_here = matches!(shown, Step::Password | Step::PasswordAgain);
-        w.password_label.set_label(if app_password.is_some() {
+        let bridge = state.bridge();
+        w.password_label.set_label(if bridge {
+            text::BRIDGE_PASSWORD
+        } else if app_password.is_some() {
             "App password"
         } else {
             "Password"
@@ -918,7 +985,13 @@ impl Widgets {
                 w.password_label.label().as_str(),
             )]);
         let hints: Vec<String> = [
-            app_password.map(|_| text::app_password_hint(provider)),
+            app_password.map(|_| {
+                if bridge {
+                    text::bridge_password_hint(provider)
+                } else {
+                    text::app_password_hint(provider)
+                }
+            }),
             enable_imap.map(|_| text::enable_imap_hint(provider)),
         ]
         .into_iter()
@@ -988,7 +1061,12 @@ impl Widgets {
             Step::Microsoft | Step::PasswordAgain => !again,
             step => matches!(
                 step,
-                Step::Blocked | Step::Manual | Step::Failed | Step::Checking | Step::Identity
+                Step::Blocked
+                    | Step::Manual
+                    | Step::Failed
+                    | Step::Checking
+                    | Step::Identity
+                    | Step::Certificate
             ),
         });
         // While it checks or signs in, the fields and the sign-in button wait; the status row
@@ -1024,7 +1102,7 @@ impl Widgets {
         w.address_field.set_sensitive(!frozen && !again);
         w.primary.set_visible(!matches!(
             shown,
-            Step::Microsoft | Step::Blocked | Step::Identity
+            Step::Microsoft | Step::Blocked | Step::Identity | Step::Certificate
         ));
         w.primary.set_label(match shown {
             Step::Address | Step::Detecting => "Next",
@@ -1079,6 +1157,7 @@ fn heading_for(state: &State, step: Step) -> (String, &'static str) {
         ),
         Step::Blocked => ("Can't add this address".to_owned(), ""),
         Step::Identity => ("Check the sending address".to_owned(), ""),
+        Step::Certificate => ("A server on this computer".to_owned(), ""),
         Step::Manual => (
             "Set up manually".to_owned(),
             if state.notice.is_some() {

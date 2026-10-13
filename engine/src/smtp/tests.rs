@@ -1,9 +1,10 @@
 //! The SMTP login check against scripted servers.
 
 use super::*;
-use crate::net::testing::{Peer, bind, test_ca};
+use crate::net::testing::{Peer, bind, self_signed, test_ca};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use sealwax_domain::account::CertificatePin;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const PASSWORD: Credentials<'static> = Credentials::Password {
@@ -16,6 +17,7 @@ fn endpoint(port: u16, security: Security) -> Endpoint {
         host: "127.0.0.1".into(),
         port,
         security,
+        certificate: None,
     }
 }
 
@@ -176,6 +178,51 @@ async fn starttls_is_required_and_then_used() {
         server.await.unwrap(),
         (b"user".to_vec(), b"secret-password".to_vec())
     );
+}
+
+/// A server on this computer with a pinned certificate (issue #9): STARTTLS accepts exactly that
+/// certificate, and a different one ends the check before AUTH.
+#[tokio::test]
+async fn a_pinned_certificate_is_checked_after_starttls_before_auth() {
+    let bridge = self_signed();
+    let pin = crate::net::fingerprint(&bridge.der);
+    for (certificate, works) in [(pin, true), (CertificatePin([0x33; 32]), false)] {
+        let config = bridge.server.clone();
+        let (listener, port) = bind().await;
+        let server = tokio::spawn(async move {
+            let mut peer = Peer::accept(&listener).await;
+            peer.send("220 bridge ESMTP\r\n").await;
+            peer.line().await;
+            peer.send("250-bridge\r\n250-STARTTLS\r\n250 AUTH PLAIN LOGIN\r\n")
+                .await;
+            assert_eq!(peer.line().await.unwrap(), "STARTTLS");
+            peer.send("220 2.0.0 go ahead\r\n").await;
+            let mut peer = peer.tls(config).await;
+            peer.line().await;
+            peer.send("250-bridge\r\n250 AUTH PLAIN\r\n").await;
+            let Some(auth) = peer.line().await.filter(|line| line.starts_with("AUTH")) else {
+                return peer.drain().await;
+            };
+            assert!(auth.starts_with("AUTH PLAIN"), "{auth}");
+            peer.send("235 2.7.0 accepted\r\n").await;
+            peer.line().await;
+            peer.send("221 bye\r\n").await;
+            peer.drain().await
+        });
+        let endpoint = Endpoint {
+            certificate: Some(certificate),
+            ..endpoint(port, Security::StartTls)
+        };
+        let result = check_login(&endpoint, PASSWORD, &Trust::Platform).await;
+        let received = server.await.unwrap();
+        if works {
+            assert_eq!(result, Ok(()));
+            assert!(received.contains("AUTH PLAIN"), "{received}");
+        } else {
+            assert_eq!(result, Err(LoginFailure::Certificate));
+            assert!(!received.contains("AUTH"), "{received}");
+        }
+    }
 }
 
 /// STARTTLS response injection (ML-093): a man in the middle sends a fake answer right after

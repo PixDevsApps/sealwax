@@ -1082,6 +1082,12 @@ dialog.sw-setup sheet {
   border-spacing: calc(2 * var(--sw-space-lg));
 }
 
+/* A certificate's fingerprint (issue #9): its pairs line up in columns, so it reads against the
+   one Bridge or openssl shows. */
+.sw-setup-fingerprint {
+  font-family: monospace;
+}
+
 /* The column scrolls under the sheet's right padding, so the scrollbar sits in that gutter,
    6 px from the edge, instead of over the fields (the user's UI tweak, 2026-10-08). */
 scrolledwindow.sw-setup-scroller {

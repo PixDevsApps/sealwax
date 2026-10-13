@@ -87,6 +87,7 @@ fn servers(address: &str) -> Result<(Endpoint, Endpoint, &'static str), Error> {
         host: found.host.to_owned(),
         port: found.port,
         security: found.security,
+        certificate: None,
     };
     Ok((endpoint(&imap[0]), endpoint(&smtp[0]), preset.name))
 }

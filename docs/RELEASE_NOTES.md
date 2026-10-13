@@ -6,7 +6,7 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 
 ## What's in 1.0
 
-- **Accounts without server settings.** Type your address and Sealwax finds the servers: its provider list, your domain's autoconfig, Mozilla's ISPDB and DNS. **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for iCloud, Fastmail, Yahoo, AOL and others, with a link to the provider's page; manual settings for the rest. Several accounts and All Inboxes, each account with a name and a colour of your choosing, folding away in the sidebar.
+- **Accounts without server settings.** Type your address and Sealwax finds the servers: its provider list, your domain's autoconfig, Mozilla's ISPDB and DNS. **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for iCloud, Fastmail, Yahoo, AOL and others, with a link to the provider's page; Proton Mail through Proton Mail Bridge, whose own certificate you trust once; manual settings for the rest. Several accounts and All Inboxes, each account with a name and a colour of your choosing, folding away in the sidebar.
 - **IMAP** with IDLE push, CONDSTORE and QRESYNC where the server has them, and an offline copy of your mail; **POP3** into local folders, leaving mail on the server by default.
 - **Reading.** Whole conversations; safe HTML (no message script ever runs, and nothing remote loads until you allow it, for one message or for a sender); attachments that open safely, with a warning for programs and disguised files; link warnings; print, Show Original and Save as `.eml`; encrypted and signed mail shown with a notice rather than as garbage.
 - **Triage.** Archive, delete, junk, move, star, read and unread, on one message or many, with Undo, also offline; a right-click menu on messages.
@@ -31,6 +31,7 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 - **Interface:** account names and colours and Edit Account; folding accounts; resizable panes and a wider reader; the composer docked in the main window; the wax-seal icon; styled mail narrower than the reader sitting on your theme's background instead of a wide white page; housekeeping folders other mail programs create (Outlook's Sync Issues, Notes and Outbox on Microsoft's servers, an empty Mailspring folder) left out.
 - **Folders and rules** (above).
 - **Google dropped:** Gmail isn't a listed provider and Sign in with Google isn't offered. Gmail works with an app password: [GMAIL.md](GMAIL.md) shows how, step by step.
+- **Proton Mail through Proton Mail Bridge** (0.4.8, [issue #9](https://github.com/PixDevsApps/sealwax/issues/9)): Bridge's own certificate is trusted once, for that server on this computer only.
 
 ## Requirements
 
@@ -49,7 +50,7 @@ Install the release's package with one command, or build the Arch package from t
 - **Gmail and Google Workspace** have no Sign in with Google: they work with an app password ([GMAIL.md](GMAIL.md)). Gmail isn't yet among the providers tested over longer daily use.
 - **Microsoft work or school accounts** may need their organization's admin to approve Sealwax before it can sign in, as Sealwax's Microsoft registration isn't publisher-verified. *(At the sign-off: whether this changes.)*
 - **Rules run in Sealwax**, not on the server: only while Sealwax runs (background mode is on by default), and on headers, not message bodies. Rules aren't uploaded to servers (ManageSieve).
-- **Servers with self-signed certificates** (Proton Bridge, some self-hosted servers) can't be added yet.
+- **Servers with self-signed certificates elsewhere** (some self-hosted servers) can't be added: only a server on this computer, such as Proton Mail Bridge, can be trusted with its own certificate.
 - **PGP and S/MIME** mail is shown with a notice but not decrypted or verified.
 - **A passwordless keyring:** gnome-keyring's default keyring often has no password, so its file is protected only by disk encryption; the [user guide](USER_GUIDE.md#giving-your-keyring-a-password) shows how to give it one.
 - **A hostile IMAP server can keep an account failing** by sending a reply that crashes the IMAP parser Sealwax uses (reported upstream as djc/imap-proto#210); Sealwax restarts the account's sync after a pause and shows it offline meanwhile.

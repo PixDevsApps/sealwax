@@ -329,6 +329,7 @@ mod tests {
             host: host.to_owned(),
             port,
             security: Security::Tls,
+            certificate: None,
         };
         AccountSettings {
             key: AccountKey(key.to_owned()),

@@ -102,7 +102,9 @@ pub fn queue(
 }
 
 /// The certificate banner's Details: why Sealwax stopped, what to do, and the account's
-/// servers. There is no way to trust the certificate (pinning is 1.x); Retry reconnects.
+/// servers. Only a server on this computer can be trusted with its own certificate, which the
+/// assistant pins when the account is added (issue #9); a new one goes into `accounts.toml` by
+/// hand. Retry reconnects.
 pub fn certificate_details(window: &Window, again: &Again, retry: impl Fn() + 'static) {
     let (heading, body) = details_text(again);
     let dialog = adw::AlertDialog::builder()
@@ -133,24 +135,41 @@ fn details_text(again: &Again) -> (String, String) {
         )
     };
     let heading = format!("Why Sealwax stopped connecting to {}", again.name);
-    let body = format!(
-        "Sealwax checks a server's certificate before it signs in, and {host}'s no longer \
+    let pinned = [&again.incoming, &again.smtp]
+        .into_iter()
+        .find(|endpoint| endpoint.pinned().is_some());
+    let body = match pinned {
+        Some(endpoint) => format!(
+            "Sealwax checks a server's certificate before it signs in, and {host} no longer \
+             shows the certificate you trusted for it. {host} is on this computer: the program \
+             that serves it, such as Proton Mail Bridge, may have made a new one, for instance \
+             after it was reinstalled. Sealwax never signs in to a server it can't verify.\n\n\
+             To trust the new certificate, put its SHA-256 fingerprint in the server's \
+             certificate line in accounts.toml (the user guide shows how), then Retry.\n\n\
+             {imap}\n{smtp}",
+            host = endpoint.host,
+            imap = server(incoming_name(again.receive), &again.incoming),
+            smtp = server("Outgoing mail (SMTP)", &again.smtp),
+        ),
+        None => format!(
+            "Sealwax checks a server's certificate before it signs in, and {host}'s no longer \
          verifies. It may have changed or expired, or a network that inspects secure \
          connections, as some workplace, school and hotel networks do, may stand in between. \
-         Sealwax never signs in to a server it can't verify, and this version can't be told to \
-         trust one.\n\nTry another network, then Retry. If it keeps happening, ask your provider \
+         Sealwax never signs in to a server it can't verify.\n\nTry another network, then Retry. If it keeps happening, ask your provider \
          about its certificate.\n\n{imap}\n{smtp}",
-        host = again.incoming.host,
-        imap = server(
-            match again.receive {
-                Receive::Imap => "Incoming mail (IMAP)",
-                Receive::Pop3(_) => "Incoming mail (POP3)",
-            },
-            &again.incoming
+            host = again.incoming.host,
+            imap = server(incoming_name(again.receive), &again.incoming),
+            smtp = server("Outgoing mail (SMTP)", &again.smtp),
         ),
-        smtp = server("Outgoing mail (SMTP)", &again.smtp),
-    );
+    };
     (heading, body)
+}
+
+fn incoming_name(receive: Receive) -> &'static str {
+    match receive {
+        Receive::Imap => "Incoming mail (IMAP)",
+        Receive::Pop3(_) => "Incoming mail (POP3)",
+    }
 }
 
 #[cfg(test)]
@@ -163,6 +182,7 @@ mod tests {
             host: host.to_owned(),
             port: 993,
             security: Security::Tls,
+            certificate: None,
         };
         AccountSettings {
             key: AccountKey(key.to_owned()),
@@ -324,6 +344,35 @@ mod tests {
     }
 
     #[test]
+    fn a_pinned_server_s_details_say_how_to_trust_a_new_certificate() {
+        let account = settings("proton", AuthMethod::Password);
+        let bridge = Endpoint {
+            host: "127.0.0.1".to_owned(),
+            port: 1143,
+            security: Security::StartTls,
+            certificate: Some(sealwax_domain::account::CertificatePin([1; 32])),
+        };
+        let again = Again {
+            key: account.key.clone(),
+            name: "Proton".to_owned(),
+            address: account.address.clone(),
+            incoming: bridge.clone(),
+            receive: account.receive,
+            smtp: Endpoint {
+                port: 1025,
+                ..bridge
+            },
+        };
+        let (_, body) = details_text(&again);
+        assert!(body.contains("127.0.0.1 no longer shows the certificate you trusted for it"));
+        assert!(body.contains("certificate line in accounts.toml"));
+        assert!(body.ends_with(
+            "Incoming mail (IMAP): 127.0.0.1, port 1143, STARTTLS\n\
+             Outgoing mail (SMTP): 127.0.0.1, port 1025, STARTTLS"
+        ));
+    }
+
+    #[test]
     fn the_details_name_the_servers_and_offer_no_way_to_trust() {
         let account = settings("work", AuthMethod::Password);
         let again = Again {
@@ -352,6 +401,7 @@ mod tests {
                 host: "pop.work.example.test".to_owned(),
                 port: 995,
                 security: Security::Tls,
+                certificate: None,
             },
             receive: Receive::Pop3(sealwax_domain::account::Pop3Policy::default()),
             ..again

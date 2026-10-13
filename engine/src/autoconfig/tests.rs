@@ -400,15 +400,40 @@ async fn a_null_mx_means_no_mail_even_with_an_own_host() {
 
 #[tokio::test(start_paused = true)]
 async fn an_unsupported_provider_behind_the_mx_ends_the_search() {
-    let script = Script::default().mx("mail.protonmail.ch");
+    let script = Script::default().mx("mx.tutanota.de");
     let (detection, _) = detect(&script).await;
     assert_eq!(
         detection,
         Detection::Unsupported {
-            provider: "Proton Mail".into(),
-            reason: UnsupportedReason::BridgeOnly,
+            provider: "Tuta".into(),
+            reason: UnsupportedReason::NoImap,
         }
     );
+}
+
+/// Proton behind a custom domain's MX is its Bridge on this computer (issue #9).
+#[tokio::test(start_paused = true)]
+async fn proton_behind_the_mx_is_its_bridge() {
+    let script = Script::default().mx("mail.protonmail.ch");
+    let (detection, _) = detect(&script).await;
+    let settings = found(&detection);
+    assert_eq!(
+        (
+            settings.imap.host.as_str(),
+            settings.imap.port,
+            settings.imap.security
+        ),
+        ("127.0.0.1", 1143, Security::StartTls)
+    );
+    assert_eq!(
+        (
+            settings.smtp.host.as_str(),
+            settings.smtp.port,
+            settings.smtp.security
+        ),
+        ("127.0.0.1", 1025, Security::StartTls)
+    );
+    assert_eq!(settings.provider.as_deref(), Some("Proton Mail"));
 }
 
 #[tokio::test(start_paused = true)]

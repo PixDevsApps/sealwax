@@ -317,7 +317,19 @@ pub static PRESETS: &[Preset] = &[
         name: "Proton Mail",
         domains: &["proton.me", "protonmail.com", "protonmail.ch", "pm.me"],
         mx_suffixes: &["protonmail.ch"],
-        kind: Kind::Unsupported(UnsupportedReason::BridgeOnly),
+        // Proton Mail Bridge on this computer, as Proton's own autoconfig names it (checked
+        // 2026-10-13); its self-signed certificate is pinned when the user trusts it (issue #9).
+        kind: Kind::Servers {
+            imap: &[starttls("127.0.0.1", 1143)],
+            smtp: &[starttls("127.0.0.1", 1025)],
+            username: UsernameForm::Address,
+            oauth: None,
+            app_password: Some(Link {
+                label: "Get Proton Mail Bridge",
+                url: "https://proton.me/mail/bridge",
+            }),
+            enable_imap: None,
+        },
     },
     Preset {
         id: "tuta",
@@ -543,14 +555,42 @@ mod tests {
     }
 
     #[test]
-    fn unsupported_presets_say_why() {
+    fn proton_is_its_bridge_on_this_computer() {
+        let Finding::Servers { servers, hints } = by_mx("mail.protonmail.ch").unwrap().finding()
+        else {
+            panic!("Proton has servers");
+        };
+        let endpoints: Vec<_> = servers
+            .iter()
+            .map(|server| {
+                (
+                    server.protocol,
+                    server.host.as_str(),
+                    server.port,
+                    server.security,
+                )
+            })
+            .collect();
+        assert_eq!(
+            endpoints,
+            [
+                (Protocol::Imap, "127.0.0.1", 1143, Security::StartTls),
+                (Protocol::Smtp, "127.0.0.1", 1025, Security::StartTls),
+            ]
+        );
+        assert_eq!(hints.provider.as_deref(), Some("Proton Mail"));
+        assert_eq!(
+            hints.app_password.map(|link| link.url).as_deref(),
+            Some("https://proton.me/mail/bridge")
+        );
         assert_eq!(
             by_domain("proton.me").unwrap().finding(),
-            Finding::Unsupported {
-                provider: "Proton Mail".into(),
-                reason: UnsupportedReason::BridgeOnly,
-            }
+            by_domain("pm.me").unwrap().finding()
         );
+    }
+
+    #[test]
+    fn unsupported_presets_say_why() {
         assert!(matches!(
             by_domain("tutanota.com").unwrap().finding(),
             Finding::Unsupported {

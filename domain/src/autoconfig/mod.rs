@@ -49,6 +49,7 @@ impl Server {
             host: self.host.clone(),
             port: self.port,
             security: self.security,
+            certificate: None,
         }
     }
 }
@@ -227,7 +228,7 @@ pub fn detection(outcome: &Outcome, domain: &str) -> Detection {
         Outcome::Settings {
             imap: Some(imap),
             smtp: Some(smtp),
-        } => Detection::Found(settings(imap, smtp, domain)),
+        } => Detection::Found(Box::new(settings(imap, smtp, domain))),
         Outcome::Settings { .. } => Detection::NotFound,
     }
 }
@@ -301,7 +302,7 @@ mod tests {
             smtp: Some(Box::new(smtp)),
         };
         match detection(&outcome, domain) {
-            Detection::Found(settings) => settings,
+            Detection::Found(settings) => *settings,
             other => panic!("expected settings, got {other:?}"),
         }
     }

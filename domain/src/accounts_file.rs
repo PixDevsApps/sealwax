@@ -6,8 +6,8 @@
 //! layout survive the assistant's writes.
 
 use crate::account::{
-    AccountColor, AccountKey, AccountSettings, AuthMethod, Endpoint, Identity, OAuthProvider,
-    Pop3Policy, Protocol, Receive, Security,
+    AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, Endpoint, Identity,
+    OAuthProvider, Pop3Policy, Protocol, Receive, Security, is_loopback,
 };
 use crate::config::{FileError, article, did_you_mean, entries, parse_toml};
 use std::net::Ipv6Addr;
@@ -34,7 +34,7 @@ const ACCOUNT_SETTINGS: [&str; 12] = [
     "smtp",
     "identity",
 ];
-const ENDPOINT_SETTINGS: [&str; 3] = ["host", "port", "security"];
+const ENDPOINT_SETTINGS: [&str; 4] = ["host", "port", "security", "certificate"];
 /// What `[account.pop3]` has besides the server.
 const POP3_SETTINGS: [&str; 2] = ["leave_on_server", "delete_after_days"];
 /// The most days `delete_after_days` takes: ten years.
@@ -633,6 +633,7 @@ impl Reader<'_> {
         let mut host = None;
         let mut port = None;
         let mut security = Security::Tls;
+        let mut certificate = None;
         let mut policy = Pop3Policy::default();
         let mut days_span = None;
         for (field, value) in entries(table) {
@@ -693,6 +694,18 @@ impl Reader<'_> {
                         );
                     }
                 },
+                "certificate" => {
+                    if let Some(text) = self.string("certificate", value) {
+                        match CertificatePin::parse(&text) {
+                            Some(pin) => certificate = Some((pin, span)),
+                            None => self.error(
+                                span,
+                                "certificate is the SHA-256 fingerprint of the server's \
+                                 certificate: 32 pairs of hexadecimal digits, like \"AB:CD:…\"",
+                            ),
+                        }
+                    }
+                }
                 "leave_on_server" if protocol == Protocol::Pop3 => match value.get_ref() {
                     DeValue::Boolean(on) => policy.leave_on_server = *on,
                     other => self.error(
@@ -746,6 +759,16 @@ impl Reader<'_> {
                  from the server as soon as it is downloaded; keep one of the two lines",
             );
         }
+        if let (Some((_, span)), Some(host)) = (&certificate, &host)
+            && !is_loopback(host)
+        {
+            self.error(
+                span.clone(),
+                "certificate trusts a server's own certificate only on this computer \
+                 (localhost, 127.0.0.1 or ::1); a server elsewhere needs a certificate your \
+                 system trusts",
+            );
+        }
         if host.is_none() && !table.contains_key("host") {
             self.error(
                 value.span(),
@@ -762,6 +785,7 @@ impl Reader<'_> {
             host: host?,
             port: port.unwrap_or_else(|| default_port(protocol, security)),
             security,
+            certificate: certificate.map(|(pin, _)| pin),
         };
         Some((endpoint, policy))
     }
@@ -954,6 +978,9 @@ pub fn entry(account: &AccountSettings) -> String {
         table["host"] = value(&endpoint.host);
         table["port"] = value(i64::from(endpoint.port));
         table["security"] = value(security_name(endpoint.security));
+        if let Some(pin) = endpoint.certificate {
+            table["certificate"] = value(pin.to_string());
+        }
         table
     };
     let mut incoming = endpoint(&account.incoming);
@@ -1263,12 +1290,14 @@ mod tests {
                 host: "imap.example.test".to_owned(),
                 port: 993,
                 security: Security::Tls,
+                certificate: None,
             },
             receive: crate::account::Receive::Imap,
             smtp: Endpoint {
                 host: "smtp.example.test".to_owned(),
                 port: 587,
                 security: Security::StartTls,
+                certificate: None,
             },
             username: address.to_owned(),
             auth: AuthMethod::Password,
@@ -1310,6 +1339,53 @@ mod tests {
     }
 
     #[test]
+    fn a_certificate_is_pinned_only_on_this_computer() {
+        let pin = CertificatePin([0xab; 32]);
+        let bridge = format!(
+            "[[account]]\nkey = \"proton\"\nname = \"Ada\"\naddress = \"ada@proton.example.test\"\n\
+             [account.imap]\nhost = \"127.0.0.1\"\nport = 1143\nsecurity = \"starttls\"\n\
+             certificate = \"{pin}\"\n\
+             [account.smtp]\nhost = \"localhost\"\nport = 1025\nsecurity = \"starttls\"\n\
+             certificate = \"sha256:{}\"\n",
+            pin.hex("").to_lowercase()
+        );
+        let account = &parse(&bridge).unwrap()[0];
+        assert_eq!(account.incoming.certificate, Some(pin));
+        assert_eq!(account.smtp.certificate, Some(pin));
+        let written = entry(account);
+        assert!(
+            written.contains(&format!("certificate = \"{pin}\"")),
+            "{written}"
+        );
+        assert_eq!(parse(&written).unwrap()[0], *account);
+
+        let elsewhere = bridge.replace("127.0.0.1", "imap.example.test");
+        assert_eq!(
+            errors(&elsewhere),
+            [
+                "line 9, column 15: certificate trusts a server's own certificate only on this computer (localhost, \
+              127.0.0.1 or ::1); a server elsewhere needs a certificate your system trusts"
+            ]
+        );
+        let broken = bridge.replace(&pin.to_string(), "AB:CD");
+        assert_eq!(
+            errors(&broken),
+            [
+                "line 9, column 15: certificate is the SHA-256 fingerprint of the server's certificate: 32 pairs of \
+              hexadecimal digits, like \"AB:CD:…\""
+            ]
+        );
+        assert!(!entry(&account_without_pins(account)).contains("certificate"));
+    }
+
+    fn account_without_pins(account: &AccountSettings) -> AccountSettings {
+        let mut account = account.clone();
+        account.incoming.certificate = None;
+        account.smtp.certificate = None;
+        account
+    }
+
+    #[test]
     fn reads_every_field() {
         let text = "[[account]]\nkey = \"k3j5x8m2q9wa\"\nname = \" Ada \"\n\
                     address = \"ada@example.test\"\nusername = \"ada\"\nauth = \"microsoft\"\n\
@@ -1325,7 +1401,8 @@ mod tests {
             Endpoint {
                 host: "127.0.0.1".to_owned(),
                 port: 1993,
-                security: Security::StartTls
+                security: Security::StartTls,
+                certificate: None,
             }
         );
         assert_eq!(
@@ -1549,6 +1626,7 @@ mod tests {
                     host: "pop.example.test".to_owned(),
                     port: 995,
                     security: Security::Tls,
+                    certificate: None,
                 },
                 Receive::Pop3(Pop3Policy {
                     leave_on_server: true,
@@ -1573,6 +1651,7 @@ mod tests {
                 host: "pop.example.test".to_owned(),
                 port: 995,
                 security: Security::Tls,
+                certificate: None,
             },
             receive: Receive::Pop3(policy),
             ..account(key, address)

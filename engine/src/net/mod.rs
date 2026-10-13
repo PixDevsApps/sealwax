@@ -1,12 +1,13 @@
 //! TCP and TLS for the engine's connections. Certificates are verified with rustls and the
 //! platform verifier; a testbed CA is trusted through its own constructor that trusts exactly
-//! that CA, never by weakening verification (SECURITY.md, Transport).
+//! that CA, never by weakening verification (SECURITY.md, Transport). A server on this computer
+//! can instead be trusted with one pinned certificate ([`pinned`]; issue #9, Proton Mail Bridge).
 
 use rustls::{ClientConfig, RootCertStore};
 use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::{CertificateDer, ServerName};
 use rustls_platform_verifier::BuilderVerifierExt;
-use sealwax_domain::account::LoginFailure;
+use sealwax_domain::account::{Endpoint, LoginFailure};
 use socket2::{SockRef, TcpKeepalive};
 use std::io;
 use std::path::PathBuf;
@@ -16,8 +17,12 @@ use tokio::net::TcpStream;
 use tokio_rustls::TlsConnector;
 use tokio_rustls::client::TlsStream;
 
+mod pinned;
 #[cfg(test)]
 pub(crate) mod testing;
+
+pub use pinned::{fingerprint, read_certificate};
+pub(crate) use pinned::{loopback_peer, pinned_config};
 
 /// Idle time before the first keepalive probe, and the time between probes.
 const KEEPALIVE_IDLE: Duration = Duration::from_secs(60);
@@ -97,6 +102,9 @@ pub enum ConnectError {
     Tls(#[source] io::Error),
     #[error("the host name is not valid for TLS")]
     ServerName,
+    /// A server with a pinned certificate answered from an address that isn't this computer's.
+    #[error("the pinned server is not on this computer")]
+    NotLoopback,
 }
 
 impl ConnectError {
@@ -106,6 +114,7 @@ impl ConnectError {
             ConnectError::Timeout => LoginFailure::Timeout,
             ConnectError::Tls(error) => tls_failure(error),
             ConnectError::ServerName => LoginFailure::Other,
+            ConnectError::NotLoopback => LoginFailure::Certificate,
         }
     }
 }
@@ -161,14 +170,23 @@ fn keepalive(stream: &TcpStream) -> io::Result<()> {
     SockRef::from(stream).set_tcp_keepalive(&keepalive)
 }
 
-/// The TLS handshake on `tcp`, verifying the certificate against `host`.
+/// The TLS handshake on `tcp`, verifying the certificate against the endpoint's host with
+/// `config`; a server with a pinned certificate ([`Endpoint::pinned`]) must be on this computer
+/// and show exactly that certificate.
 pub(crate) async fn tls(
     tcp: TcpStream,
     config: Arc<ClientConfig>,
-    host: &str,
+    endpoint: &Endpoint,
     timeout: Duration,
 ) -> Result<TlsStream<TcpStream>, ConnectError> {
-    let name = ServerName::try_from(host.to_owned()).map_err(|_| ConnectError::ServerName)?;
+    let config = match endpoint.pinned() {
+        Some(pin) => {
+            loopback_peer(&tcp)?;
+            pinned_config(pin)?
+        }
+        None => config,
+    };
+    let name = ServerName::try_from(endpoint.host.clone()).map_err(|_| ConnectError::ServerName)?;
     tokio::time::timeout(timeout, TlsConnector::from(config).connect(name, tcp))
         .await
         .map_err(|_| ConnectError::Timeout)?

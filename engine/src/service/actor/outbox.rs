@@ -1208,6 +1208,7 @@ mod tests {
             host: host.into(),
             port: 465,
             security: Security::Tls,
+            certificate: None,
         };
         AccountSettings {
             key: AccountKey("k".into()),

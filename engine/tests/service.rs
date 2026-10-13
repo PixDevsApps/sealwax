@@ -192,6 +192,7 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     let settings = AccountSettings {
         key: AccountKey(String::new()),

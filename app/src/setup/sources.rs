@@ -128,8 +128,9 @@ mod tests {
             host: "mail.example.test".to_owned(),
             port: 993,
             security: Security::Tls,
+            certificate: None,
         };
-        Detection::Found(DetectedSettings {
+        Detection::Found(Box::new(DetectedSettings {
             imap: endpoint.clone(),
             smtp: endpoint,
             username: UsernameForm::Address,
@@ -140,7 +141,7 @@ mod tests {
             app_password: None,
             enable_imap: None,
             source,
-        })
+        }))
     }
 
     #[test]

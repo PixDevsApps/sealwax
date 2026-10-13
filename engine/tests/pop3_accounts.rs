@@ -82,6 +82,7 @@ fn a_listed_pop3_account_gets_its_local_folders_and_leaves_nothing_when_removed(
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     let key = AccountKey("pop3-service".into());
     let settings = AccountSettings {

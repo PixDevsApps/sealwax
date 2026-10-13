@@ -67,6 +67,7 @@ fn smtp() -> Result<Endpoint, Error> {
         host: smtp[0].host.to_owned(),
         port: smtp[0].port,
         security: smtp[0].security,
+        certificate: None,
     })
 }
 

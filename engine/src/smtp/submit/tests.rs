@@ -186,6 +186,7 @@ impl Server {
             host: "127.0.0.1".into(),
             port: self.port,
             security: Security::Tls,
+            certificate: None,
         }
     }
 
@@ -723,6 +724,7 @@ async fn refused_logins_are_auth_failures_and_nothing_else_is_sent() {
         host: "127.0.0.1".into(),
         port,
         security: Security::Tls,
+        certificate: None,
     };
     let error = Submitter::connect_with(&closed, PASSWORD, &server.ca.trust, quick())
         .await

@@ -69,7 +69,9 @@ async fn login(
 }
 
 /// Connects, greets with EHLO and secures the connection: TLS from the first byte, or STARTTLS
-/// that must succeed. Nothing but EHLO and STARTTLS is sent before TLS.
+/// that must succeed. Nothing but EHLO and STARTTLS is sent before TLS. A server with a pinned
+/// certificate must be on this computer and show that certificate before anything else is sent
+/// but EHLO.
 pub(crate) async fn open(
     endpoint: &Endpoint,
     trust: &Trust,
@@ -78,10 +80,13 @@ pub(crate) async fn open(
     let tcp = net::tcp(&endpoint.host, endpoint.port, timeout)
         .await
         .map_err(|error| error.failure())?;
+    if endpoint.pinned().is_some() {
+        net::loopback_peer(&tcp).map_err(|error| error.failure())?;
+    }
     let stream: Box<dyn AsyncTokioStream> = match endpoint.security {
         Security::Tls => {
             let config = trust.client_config().map_err(|_| LoginFailure::Other)?;
-            let tls = net::tls(tcp, config, &endpoint.host, timeout)
+            let tls = net::tls(tcp, config, endpoint, timeout)
                 .await
                 .map_err(|error| error.failure())?;
             Box::new(Tls(tls))
@@ -92,10 +97,16 @@ pub(crate) async fn open(
         .await
         .map_err(|error| failure(&error))?;
     if endpoint.security == Security::StartTls {
-        let parameters = tls_parameters(&endpoint.host, trust)?;
+        let parameters = tls_parameters(endpoint, trust)?;
         conn.starttls(parameters, &hello())
             .await
             .map_err(|error| starttls_failure(&error))?;
+        if let Some(pin) = endpoint.pinned() {
+            let shown = conn.peer_certificate().map(|der| net::fingerprint(&der));
+            if shown.ok() != Some(pin) {
+                return Err(LoginFailure::Certificate);
+            }
+        }
     }
     Ok(conn)
 }
@@ -212,8 +223,18 @@ pub(crate) async fn quit(mut conn: AsyncSmtpConnection) {
     let _ = tokio::time::timeout(QUIT_TIMEOUT, conn.quit()).await;
 }
 
-fn tls_parameters(host: &str, trust: &Trust) -> Result<TlsParameters, LoginFailure> {
-    let builder = TlsParameters::builder(host.to_owned());
+/// lettre's STARTTLS settings. For a pinned server, lettre checks the handshake's signature but
+/// not the certificate, which [`open`] compares with the pin before anything but EHLO is sent:
+/// lettre takes no rustls verifier of Sealwax's.
+fn tls_parameters(endpoint: &Endpoint, trust: &Trust) -> Result<TlsParameters, LoginFailure> {
+    let builder = TlsParameters::builder(endpoint.host.clone());
+    if endpoint.pinned().is_some() {
+        return builder
+            .dangerous_accept_invalid_certs(true)
+            .dangerous_accept_invalid_hostnames(true)
+            .build_rustls()
+            .map_err(|_| LoginFailure::Other);
+    }
     let builder = match trust.root_pem().map_err(|_| LoginFailure::Other)? {
         None => builder,
         Some(pem) => builder

@@ -48,6 +48,7 @@ async fn engine(port: u16, user: &str, moves: bool) -> Connection {
             host: "127.0.0.1".into(),
             port,
             security: Security::Tls,
+            certificate: None,
         },
         Credentials::Password {
             username: user,

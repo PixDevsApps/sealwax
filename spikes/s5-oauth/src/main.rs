@@ -31,6 +31,7 @@ fn endpoints(provider: &Provider) -> (Endpoint, Endpoint) {
         host: host.into(),
         port,
         security,
+        certificate: None,
     };
     match provider.name {
         "google" => (
