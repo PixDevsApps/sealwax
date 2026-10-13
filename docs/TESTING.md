@@ -84,6 +84,7 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 | CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged) | 1,494 passed, 0 failed, 98 ignored; formatting and Clippy clean; lettre's four dead-code warnings shown (a local crate's warnings aren't capped) | Pass |
 | `cargo check --manifest-path fuzz/Cargo.toml --locked` | Builds with the patched lettre | Pass |
 | The advisory check on the vendored lettre | Not run (no RustSec clone here); `tools/advisories.py` now reads path packages | Not verified |
+| Live, `cargo run -p sealwax-engine --example oauth_live -- <address>` on `2312b6a`, the owner's Outlook.com account (the user's authorization of 2026-10-13) | Browser sign-in in 15.3 s (consumer account; IMAP and SMTP scopes); IMAP and SMTP took the token through the patched lettre; added, 6 folders synced (7 INBOX headers); after a restart a refresh from the keyring with a rotated token; removed, 0 keyring items left, scratch folders deleted; "live check passed". The runner's "folders listed" count said 0 both times though 6 folders synced (not looked into). Nothing sent | Pass |
 | A real Microsoft 365 reply over 1,000 bytes | Not run (no account here) | Not verified |
 
 ### 0.4.6 — 2026-10-12
