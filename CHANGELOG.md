@@ -2,7 +2,7 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 0.4.8 — 2026-10-13
 
 - **Proton Mail through Proton Mail Bridge:** add your Proton address and Sealwax fills in Bridge's settings and asks for the Bridge password. Bridge makes its own certificate, which your system doesn't trust; the setup assistant shows its fingerprint and asks once whether to trust it, and Sealwax then accepts that one certificate from Bridge and no other. Only a server on your own computer can be trusted this way ([issue #9](https://github.com/PixDevsApps/sealwax/issues/9)).
 
