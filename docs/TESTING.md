@@ -73,6 +73,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.4.8 — 2026-10-13
+
+`v0.4.8` is `b59166c`; this machine, rustc 1.98.1. The release: [v0.4.8](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.8), at the owner's word ("post the reply and release 0.4.8").
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `b59166c`, `SEALWAX_CI_DISPLAY=47 bash tools/ci.sh --ui` | 1,509 passed, 0 failed, 98 ignored; 81 scripts, 7,805 of 7,805 steps; the hostile suite clean (60 cases, 273 s) | Pass |
+| `python3 tools/release.py build` on `v0.4.8` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,087 passed, 0 failed, 90 ignored; warnings: "Skipping dependency checks", the patched lettre's four dead-code warnings, and a new line, "libfakeroot internal error: payload not recognized!", during packaging (earlier builds' logs weren't kept to compare); `pacman -Qp` reads `sealwax 0.4.8-1`, the same file list as 0.4.7's package; the binary says `sealwax 0.4.8`, builds lettre from `vendor/lettre/` and has no path of the home folder; `SHA256SUMS` checks | Pass |
+| The release `v0.4.8` (`tools/release.py github`) | Four files, not a draft, GitHub's latest; the notes' link to issue #9 resolves; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build | Pass |
+| Installing 0.4.8 on this machine | Not done (not asked) | Not verified |
+
 ### Proton Mail Bridge: a pinned certificate on this computer (issue #9) — 2026-10-13
 
 [ADR-007 amendment](DECISIONS.md#adr-007-amendment--a-pinned-certificate-for-a-server-on-this-computer-2026-10-13). This machine; scripted servers with an rcgen certificate made like Bridge's (self-signed, CA:TRUE, for 127.0.0.1) and the fake engine; no real Bridge, nothing sent.
