@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 0.4.7 — 2026-10-13
+
+- **A clear answer when Microsoft 365 refuses a message:** some Microsoft 365 servers answer a sent message with a very long line, for example when the From address isn't one the mailbox may send as. Sealwax couldn't read such an answer, so it warned that it didn't know whether the message was sent. Now it reads answers up to 16 times longer and says plainly that the server refused the message, or that it was sent ([issue #2](https://github.com/PixDevsApps/sealwax/issues/2)).
+
 ## 0.4.6 — 2026-10-12
 
 Two requests from a user ([issue #8](https://github.com/PixDevsApps/sealwax/issues/8)).
