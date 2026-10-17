@@ -388,10 +388,15 @@ mod tests {
     use super::*;
 
     /// reqwest sends the previous URL as the Referer of a redirect it follows, and the first URL
-    /// carries the address (ML-093). Its `Debug` names `referer` only while it is on.
+    /// carries the address (ML-093). Its `Debug` names `referer` only while it is on. A named DNS
+    /// server keeps the resolver off `/etc/resolv.conf`, which a build sandbox may not have.
     #[tokio::test]
     async fn redirects_carry_no_referer() {
-        let network = RealNetwork::new(&DetectOptions::default(), None).expect("a client");
+        let options = DetectOptions {
+            dns_server: Some(IpAddr::from([127, 0, 0, 1])),
+            ..DetectOptions::default()
+        };
+        let network = RealNetwork::new(&options, None).expect("a client");
         assert!(!format!("{:?}", network.http).contains("referer"));
     }
 }
