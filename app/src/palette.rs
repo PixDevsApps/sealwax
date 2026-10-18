@@ -14,10 +14,27 @@ use sealwax_domain::palette;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// What a palette row runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Command {
+    Builtin(ActionId),
+    /// A window action with its target, by detailed name: a plugin's command (ADR-022).
+    Extra(String),
+}
+
+/// A command from outside the registry: a plugin's action (ADR-022). `action` is a detailed
+/// action name such as `win.plugin-action::signet/create-event`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Extra {
+    pub title: String,
+    pub category: &'static str,
+    pub action: String,
+}
+
 /// One command the palette offers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Item {
-    id: ActionId,
+    command: Command,
     title: String,
     category: &'static str,
     keys: String,
@@ -67,16 +84,23 @@ fn items(
     composer: Option<&gio::ActionGroup>,
     keymap: &Keymap,
     titles: &Titles,
+    extras: Vec<Extra>,
 ) -> Vec<Item> {
     ActionId::ALL
         .into_iter()
         .filter(|id| id.spec().palette && is_enabled(window, composer, *id))
         .map(|id| Item {
-            id,
+            command: Command::Builtin(id),
             title: titles(id).unwrap_or_else(|| id.title().to_owned()),
             category: id.category().label(),
             keys: keymap.display(id),
         })
+        .chain(extras.into_iter().map(|extra| Item {
+            command: Command::Extra(extra.action),
+            title: extra.title,
+            category: extra.category,
+            keys: String::new(),
+        }))
         .collect()
 }
 
@@ -100,16 +124,17 @@ pub type Titles = dyn Fn(ActionId) -> Option<String>;
 
 impl Palette {
     pub fn new(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Self {
-        Self::titled(window, keymap, None, &|_| None)
+        Self::titled(window, keymap, None, &|_| None, Vec::new())
     }
 
     /// A palette whose commands take their titles from `titles` where it has one, with the
-    /// composer card's commands from `composer`.
+    /// composer card's commands from `composer` and the plugins' commands `extras` after them.
     pub fn titled(
         window: &impl IsA<gtk::ApplicationWindow>,
         keymap: &Keymap,
         composer: Option<gio::ActionGroup>,
         titles: &Titles,
+        extras: Vec<Extra>,
     ) -> Self {
         let window = window.as_ref();
         let entry = gtk::SearchEntry::builder()
@@ -156,7 +181,7 @@ impl Palette {
             list: list.downgrade(),
             scrolled: scrolled.downgrade(),
             window: window.downgrade(),
-            items: items(window, composer.as_ref(), keymap, titles),
+            items: items(window, composer.as_ref(), keymap, titles, extras),
             composer,
             shown: RefCell::new(Vec::new()),
         });
@@ -188,13 +213,26 @@ impl Palette {
         self.inner.refresh();
     }
 
-    /// The commands shown, best match first.
+    /// The built-in commands shown, best match first.
     pub fn shown(&self) -> Vec<ActionId> {
         self.inner
             .shown
             .borrow()
             .iter()
-            .map(|item| item.id)
+            .filter_map(|item| match item.command {
+                Command::Builtin(id) => Some(id),
+                Command::Extra(_) => None,
+            })
+            .collect()
+    }
+
+    /// The titles of every command shown, best match first, plugins' included.
+    pub fn shown_titles(&self) -> Vec<String> {
+        self.inner
+            .shown
+            .borrow()
+            .iter()
+            .map(|item| item.title.clone())
             .collect()
     }
 
@@ -203,16 +241,22 @@ impl Palette {
         self.inner.entry.upgrade()
     }
 
-    /// The command Enter would run.
+    /// The built-in command Enter would run.
     pub fn selected(&self) -> Option<ActionId> {
-        self.inner.selected()
+        match self.inner.selected()? {
+            Command::Builtin(id) => Some(id),
+            Command::Extra(_) => None,
+        }
     }
 
-    /// Runs the selected command, as Enter does, and returns it.
+    /// Runs the selected command, as Enter does, and returns it when it's built in.
     pub fn activate_selected(&self) -> Option<ActionId> {
-        let id = self.inner.selected()?;
-        self.inner.run(id);
-        Some(id)
+        let command = self.inner.selected()?;
+        self.inner.run(&command);
+        match command {
+            Command::Builtin(id) => Some(id),
+            Command::Extra(_) => None,
+        }
     }
 
     /// Moves the selection as Down (positive) or Up (negative) does.
@@ -223,18 +267,19 @@ impl Palette {
 
 /// Builds a palette for `window` and opens it.
 pub fn present(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Palette {
-    present_titled(window, keymap, None, &|_| None)
+    present_titled(window, keymap, None, &|_| None, Vec::new())
 }
 
 /// Builds a palette for `window` (with the composer card's commands from `composer`) whose
-/// commands take their titles from `titles`, and opens it.
+/// commands take their titles from `titles`, with the plugins' commands `extras`, and opens it.
 pub fn present_titled(
     window: &impl IsA<gtk::ApplicationWindow>,
     keymap: &Keymap,
     composer: Option<gio::ActionGroup>,
     titles: &Titles,
+    extras: Vec<Extra>,
 ) -> Palette {
-    let palette = Palette::titled(window, keymap, composer, titles);
+    let palette = Palette::titled(window, keymap, composer, titles, extras);
     palette.present();
     palette
 }
@@ -251,8 +296,8 @@ fn connect(inner: &Rc<Inner>, entry: &gtk::SearchEntry, list: &gtk::ListBox) {
         #[strong]
         inner,
         move |_| {
-            if let Some(id) = inner.selected() {
-                inner.run(id);
+            if let Some(command) = inner.selected() {
+                inner.run(&command);
             }
         }
     ));
@@ -269,11 +314,15 @@ fn connect(inner: &Rc<Inner>, entry: &gtk::SearchEntry, list: &gtk::ListBox) {
         #[strong]
         inner,
         move |_, row| {
-            let id = usize::try_from(row.index())
-                .ok()
-                .and_then(|index| inner.shown.borrow().get(index).map(|item| item.id));
-            if let Some(id) = id {
-                inner.run(id);
+            let command = usize::try_from(row.index()).ok().and_then(|index| {
+                inner
+                    .shown
+                    .borrow()
+                    .get(index)
+                    .map(|item| item.command.clone())
+            });
+            if let Some(command) = command {
+                inner.run(&command);
             }
         }
     ));
@@ -317,10 +366,13 @@ impl Inner {
         self.shown.replace(shown);
     }
 
-    fn selected(&self) -> Option<ActionId> {
+    fn selected(&self) -> Option<Command> {
         let row = self.list.upgrade()?.selected_row()?;
         let index = usize::try_from(row.index()).ok()?;
-        self.shown.borrow().get(index).map(|item| item.id)
+        self.shown
+            .borrow()
+            .get(index)
+            .map(|item| item.command.clone())
     }
 
     fn move_selection(&self, step: i32) {
@@ -368,12 +420,23 @@ impl Inner {
         }
     }
 
-    /// Closes the palette, then runs `id` on the window, so a command that opens a dialog
-    /// opens it over the window.
-    fn run(&self, id: ActionId) {
+    /// Closes the palette, then runs the command on the window, so a command that opens a
+    /// dialog opens it over the window.
+    fn run(&self, command: &Command) {
         if let Some(dialog) = self.dialog.upgrade() {
             dialog.close();
         }
+        let id = match command {
+            Command::Builtin(id) => *id,
+            Command::Extra(action) => {
+                if let Some(window) = self.window.upgrade()
+                    && let Err(error) = crate::plugins::activate(&window, action)
+                {
+                    tracing::warn!(%error, "the palette could not run a plugin's command");
+                }
+                return;
+            }
+        };
         if id.scope() == Scope::Composer {
             if let Some(composer) = &self.composer {
                 composer.activate_action(id.name(), None);

@@ -229,6 +229,45 @@ fn show(state: &Rc<AppState>, view: &gtk::ListView, at: gdk::Rectangle) {
             content.append(&button);
         }
     }
+    // The plugins' actions (ADR-022), after Sealwax's own, for the selected messages.
+    let extras = crate::plugins::commands(state);
+    if !extras.is_empty() {
+        content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    }
+    for extra in extras {
+        let enabled = !targets.is_empty();
+        let title = gtk::Label::builder()
+            .label(&extra.title)
+            .xalign(0.0)
+            .hexpand(true)
+            .build();
+        let button = named(
+            classed(
+                gtk::Button::builder()
+                    .child(&title)
+                    .sensitive(enabled)
+                    .build(),
+                &["flat", "sw-menu-item"],
+            ),
+            &format!("message-menu-plugin-{}", extra.target),
+        );
+        crate::accessibility::name_button(&button, &extra.title);
+        let window = window.clone();
+        button.connect_clicked(glib::clone!(
+            #[weak]
+            popover,
+            move |_| {
+                popover.popdown();
+                let (window, action) = (window.clone(), extra.action.clone());
+                glib::idle_add_local_once(move || {
+                    if crate::plugins::activate(window.window(), &action).is_err() {
+                        tracing::warn!("a plugin's command is gone");
+                    }
+                });
+            }
+        ));
+        content.append(&button);
+    }
     popover.set_parent(view);
     popover.set_pointing_to(Some(&at));
     let before = view

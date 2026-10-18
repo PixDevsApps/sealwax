@@ -227,73 +227,82 @@ impl Context {
         }
     }
 
-    /// The raw message `message` as the server has it: from the blob store, after the engine
-    /// downloads its body if the store has none, or whole from the server when the store
-    /// keeps only its text parts. `None` with why it couldn't be had.
+    /// The raw message `message` as the server has it ([`original`]).
     async fn original(&self, message: MessageId) -> Result<Vec<u8>, String> {
         let store = self.store()?;
-        let target = store
-            .body_targets(vec![message])
-            .recv()
-            .await
-            .map_err(|_| "The message couldn't be read.".to_owned())?
-            .pop()
-            .ok_or_else(|| "The message is gone.".to_owned())?;
-        let engine = self.state()?.engine();
-        match target.body_state {
-            BodyState::Full => {}
-            BodyState::Text => {
-                let fetched = ask(
-                    &engine,
-                    Command::FetchOriginal { message },
-                    move |event| match event {
-                        Event::OriginalFetched {
-                            message: answered,
-                            result,
-                        } if *answered == message => Some(result.clone()),
-                        _ => None,
-                    },
-                    DOWNLOAD_WAIT,
-                )
-                .await;
-                if let Some(Ok(original)) = fetched {
-                    return Ok(original.0);
-                }
-                // Without the server, the stored text parts still make the quote; the parts
-                // left empty are dropped from the draft.
+        original(&store, &self.state()?.engine(), message).await
+    }
+}
+
+/// The raw message `message` as the server has it: from the blob store, after the engine
+/// downloads its body if the store has none, or whole from the server when the store keeps
+/// only its text parts. An error says why it couldn't be had. The composer quotes from it and
+/// plugins are sent it (ADR-022).
+pub async fn original(
+    store: &Store,
+    engine: &EngineLink,
+    message: MessageId,
+) -> Result<Vec<u8>, String> {
+    let target = store
+        .body_targets(vec![message])
+        .recv()
+        .await
+        .map_err(|_| "The message couldn't be read.".to_owned())?
+        .pop()
+        .ok_or_else(|| "The message is gone.".to_owned())?;
+    match target.body_state {
+        BodyState::Full => {}
+        BodyState::Text => {
+            let fetched = ask(
+                engine,
+                Command::FetchOriginal { message },
+                move |event| match event {
+                    Event::OriginalFetched {
+                        message: answered,
+                        result,
+                    } if *answered == message => Some(result.clone()),
+                    _ => None,
+                },
+                DOWNLOAD_WAIT,
+            )
+            .await;
+            if let Some(Ok(original)) = fetched {
+                return Ok(original.0);
             }
-            BodyState::Headers | BodyState::Partial => {
-                let fetched = ask(
-                    &engine,
-                    Command::FetchBodies {
-                        messages: vec![message],
-                    },
-                    move |event| match event {
-                        Event::BodyFetched {
-                            message: answered,
-                            result,
-                        } if *answered == message => Some(result.is_ok()),
-                        _ => None,
-                    },
-                    DOWNLOAD_WAIT,
-                )
-                .await;
-                if fetched != Some(true) {
-                    return Err(
-                        "The message couldn't be downloaded. Try again when Sealwax is online."
-                            .to_owned(),
-                    );
-                }
+            // Without the server, the stored text parts still make the quote; the parts
+            // left empty are dropped from the draft.
+        }
+        BodyState::Headers | BodyState::Partial => {
+            let fetched = ask(
+                engine,
+                Command::FetchBodies {
+                    messages: vec![message],
+                },
+                move |event| match event {
+                    Event::BodyFetched {
+                        message: answered,
+                        result,
+                    } if *answered == message => Some(result.is_ok()),
+                    _ => None,
+                },
+                DOWNLOAD_WAIT,
+            )
+            .await;
+            if fetched != Some(true) {
+                return Err(
+                    "The message couldn't be downloaded. Try again when Sealwax is online."
+                        .to_owned(),
+                );
             }
         }
-        store
-            .raw_message(message)
-            .recv()
-            .await
-            .ok()
-            .flatten()
-            .ok_or_else(|| "The message couldn't be read.".to_owned())
     }
+    store
+        .raw_message(message)
+        .recv()
+        .await
+        .ok()
+        .flatten()
+        .ok_or_else(|| "The message couldn't be read.".to_owned())
 }
 
 /// Sends `command` and waits at most `limit` for the first event `pick` takes; `None` when

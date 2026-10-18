@@ -796,6 +796,7 @@ impl AppState {
         self.engine_events.replace(Some(subscription));
         outbox::install(self);
         notify::install(self);
+        crate::plugins::install(self);
         search::install(self);
         crate::rules::install(self);
         background::install(app, self);
@@ -1079,6 +1080,7 @@ impl AppState {
         };
         let keymap = prefs.keymap();
         let win_actions = actions::install_window_actions(window.window());
+        crate::plugins::install_window_action(self, window.window());
         let target = window.window().downgrade();
         let weak = Rc::downgrade(self);
         win_actions.connect(ActionId::CommandPalette, move || {
@@ -1086,12 +1088,19 @@ impl AppState {
                 let titles = state.command_titles();
                 // In a composer the palette lists and runs its commands too.
                 let composer = composer::focused(&window).map(|composer| composer.action_group());
-                palette::present_titled(&window, &prefs.keymap(), composer, &move |id| {
-                    titles
-                        .iter()
-                        .find(|(candidate, _)| *candidate == id)
-                        .map(|(_, title)| title.clone())
-                });
+                let extras = crate::plugins::palette_extras(&state);
+                palette::present_titled(
+                    &window,
+                    &prefs.keymap(),
+                    composer,
+                    &move |id| {
+                        titles
+                            .iter()
+                            .find(|(candidate, _)| *candidate == id)
+                            .map(|(_, title)| title.clone())
+                    },
+                    extras,
+                );
             }
         });
         let weak = Rc::downgrade(self);

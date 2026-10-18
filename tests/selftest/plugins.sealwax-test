@@ -1,0 +1,57 @@
+# Plugins (ADR-022): a plugin installed while Sealwax runs is read at once; its action is in
+# the message row's menu after Sealwax's own, and runs the plugin with the selected message as
+# JSON on stdin (the headers, and the text it asks for), its notice a toast; a plugin that fails
+# shows why; a new-mail hook gets the new messages in an Inbox, never those elsewhere. The
+# plugins are shell scripts that write what they got to a file. Every name is fictional.
+# Run: tools/headless.sh 87 target/debug/sealwax --self-test tests/selftest/plugins.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+notify-server
+mail-account Bodies
+bodies-add plain
+assert-list-count 1
+list-select 0
+engine-expect fetch-bodies count=1
+bodies-store plain
+engine-reply body-fetched ok
+wait-until assert-body plain
+
+# No plugins: the menu is Sealwax's own.
+row-menu 0
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+key Escape
+
+# A plugin with an action, installed now: read as soon as its folder changes.
+write-file $TMP/config/sealwax/plugins/echo/run.sh "cat > received.json\nprintf '{\"notice\": \"Echo got %s\"}' \"\$SEALWAX_PLUGIN\"\n"
+write-file $TMP/config/sealwax/plugins/echo/plugin.toml "name = \"Echo\"\ncommand = [\"sh\", \"run.sh\"]\n\n[[action]]\nid = \"send\"\ntitle = \"Send to Echo\"\nreceives = [\"text\"]\n"
+sleep 600
+row-menu 0
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender,Send to Echo"
+row-menu-click message-menu-plugin-echo/send
+wait-until assert-toast "Echo got echo"
+assert-file-contains $TMP/config/sealwax/plugins/echo/received.json "\"version\": 1, \"event\": \"action\", \"plugin\": \"echo\", \"action\": \"send\""
+assert-file-contains $TMP/config/sealwax/plugins/echo/received.json "\"subject\": \"Cabin weekend — final plan\""
+assert-file-contains $TMP/config/sealwax/plugins/echo/received.json "Hemsedal"
+assert-file-contains $TMP/config/sealwax/plugins/echo/received.json "\"raw\": null"
+
+# A plugin that fails: its first line on stderr is the toast.
+write-file $TMP/config/sealwax/plugins/echo/run.sh "echo 'no calendar is set up' >&2\nexit 2\n"
+row-menu 0
+row-menu-click message-menu-plugin-echo/send
+wait-until assert-toast "Echo: failed: no calendar is set up"
+
+# A new-mail hook: the new Inbox message, headers only; mail elsewhere stays with Sealwax.
+write-file $TMP/config/sealwax/plugins/watcher/run.sh "cat >> arrived.json\n"
+write-file $TMP/config/sealwax/plugins/watcher/plugin.toml "command = [\"sh\", \"run.sh\"]\n\n[[hook]]\nevent = \"new-mail\"\n"
+sleep 600
+notify-mail second Bodies:inbox "Ny bestilling" "from=Marius Dahl"
+notify-mail third Bodies:archive "Gammel kvittering" "from=Nyheter AS"
+notify-arrive second
+notify-arrive third
+wait-until assert-file-contains $TMP/config/sealwax/plugins/watcher/arrived.json "\"event\": \"new-mail\""
+assert-file-contains $TMP/config/sealwax/plugins/watcher/arrived.json "\"subject\": \"Ny bestilling\", \"from\": [{\"name\": \"Marius Dahl\""
+assert-file-contains $TMP/config/sealwax/plugins/watcher/arrived.json "\"text\": null, \"raw\": null"
+sleep 500
+assert-file-lacks $TMP/config/sealwax/plugins/watcher/arrived.json "Gammel kvittering"
