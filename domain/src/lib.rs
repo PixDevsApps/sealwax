@@ -22,6 +22,7 @@ pub mod mailto;
 pub mod message;
 pub mod model;
 pub mod palette;
+pub mod plugins;
 pub mod quotes;
 pub mod reading;
 pub mod search;
