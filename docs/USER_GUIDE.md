@@ -231,6 +231,12 @@ Rules sort new mail for you: move it to a folder, copy it, mark it read, star it
 
 The rules' commands have no keys; `keys.toml` can give them one (`edit-rules`, `new-rule-from-message`, `junk-sender`, `trust-sender`, `apply-rules`).
 
+## Plugins
+
+Plugins add commands to Sealwax, such as **Create Event** in a calendar, or run a program when new mail arrives. A plugin is a program with a `plugin.toml`, in a folder of its own in `~/.config/sealwax/plugins/`. Its commands follow Sealwax's own in the message menu (right-click a message) and are in the command palette (F1) while messages are selected. A toast shows what the plugin says, or why it failed. Sealwax reads the folder again as soon as it changes, and a `plugin.toml` with a mistake is left out with a toast saying where.
+
+Plugins run as you and are sent the parts of your mail their `plugin.toml` asks for, so install only plugins you trust. [PLUGINS.md](PLUGINS.md) says how to install, write and turn off a plugin.
+
 ## Writing mail
 
 **The composer.** **New message** (or `c`, Ctrl+N) opens a composer at the bottom right of the main window, over the mail, as in Gmail. It has:
@@ -589,6 +595,7 @@ Sealwax writes a plain-text log of what it does, never with message content, add
 | --- | --- |
 | Settings (`config.toml`, `keys.toml`, `accounts.toml`) | `~/.config/sealwax/` |
 | Each account's rules (`rules/<key>.sieve`) | `~/.config/sealwax/rules/` |
+| Plugins, a folder each with its `plugin.toml` | `~/.config/sealwax/plugins/` |
 | Your mail: the store (`store.sqlite`) and message files (`blobs/`) | `~/.local/share/sealwax/` |
 | Small state (the window's layout in `layout.toml`, the background notice, unfinished account changes) | `~/.local/state/sealwax/` |
 | Cache (the reader's content filters, which Sealwax makes again) | `~/.cache/sealwax/` |

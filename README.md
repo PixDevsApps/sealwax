@@ -31,6 +31,7 @@ Run the same line again to update. To uninstall: `sudo pacman -R sealwax`. An AU
 - **Search** on this computer with `from:`, `to:`, `subject:`, `has:attachment`, `is:unread`, `before:`, `after:` and suggestions as you type.
 - **New-mail notifications** that open the message, and **background mode**: closing the window keeps mail syncing; Start Sealwax at Login.
 - **Omarchy:** the live theme and font, light and dark; corners that follow Hyprland; no title bar on Hyprland; layouts for wide, half-screen and narrow tiled windows, with panes you can drag wider or narrower.
+- **Plugins:** add your own commands to the message menu and the palette, or run a program on new mail, in any language: a plugin is a program Sealwax sends the message to as JSON, never code inside Sealwax ([PLUGINS.md](docs/PLUGINS.md)).
 - **Keyboard first:** one-key shortcuts in the list and reader, a command palette (F1), and your own keys in `keys.toml`. Settings live in plain files: `config.toml`, `keys.toml`, `accounts.toml`.
 - **Private:** passwords and tokens only in your keyring; no telemetry; logs without mail content; outgoing mail without your computer's name or a Bcc header.
 
@@ -47,6 +48,7 @@ Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.
 - [What's new](CHANGELOG.md): each release
 - [Release notes for 1.0.0](docs/RELEASE_NOTES.md) (a draft until the sign-off)
 - [Security](docs/SECURITY.md): the threat model, the rules and the known limitations
+- [Plugins](docs/PLUGINS.md): installing and writing plugins, and the JSON they are sent
 - [Integrations](docs/INTEGRATIONS.md): Omarchy, Hyprland key bindings and menu entries, providers
 - [Microsoft sign-in setup](docs/OAUTH-SETUP.md): registering a client ID
 - [Building](docs/BUILD.md) and [testing](docs/TESTING.md)

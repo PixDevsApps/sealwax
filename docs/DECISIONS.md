@@ -31,6 +31,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 | 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); built: folders (A1), the Sieve subset (A2), the rules on new mail (B1) and in the app (B2); the user's review next |
 | 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax |
+| 022 | Plugins: programs Sealwax runs with JSON | Proposed (2026-10-18), in a pull request: message actions and new-mail hooks |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1319,4 +1320,26 @@ Five registry commands without keys, at the registry's end in a new Rules catego
 ### ADR-021 amendment — the AUR waits; the download command first (2026-10-09)
 
 The same day, the AUR answered the owner's registration with "New account registration is temporarily closed" (HTTP 503, a pause against automated sign-ups, no queue). Until the owner has an account, `sealwax-bin` isn't published: INSTALL.md and the README lead with one command that downloads the latest release's package (`releases/latest/download/sealwax-x86_64.pkg.tar.zst`, the stable name `tools/release.py` uploads) to `/tmp` and installs it with `pacman -U`, which also updates; uninstalling is `pacman -R sealwax`. Nothing updates by itself until the AUR package exists; then `tools/release.py aur` publishes it, INSTALL.md puts the Omarchy menu first again, and someone who installed the download moves over by installing `sealwax-bin`, which replaces `sealwax`.
+
+## ADR-022 — Plugins: programs Sealwax runs with JSON (2026-10-18)
+
+**Status:** Proposed, in a pull request from a user who builds a calendar on Sealwax's accounts and wants **Create Event** on a message. The owner decides.
+
+**Decision:**
+- **A plugin is a program**, in any language, in a folder in `$XDG_CONFIG_HOME/sealwax/plugins/` with a `plugin.toml` (`domain::plugins`): a `command` (program and arguments), `[[action]]`s (an id, a title and what of the message it `receives`) and `[[hook]]`s (`event = "new-mail"` and what it receives). The manifest is read like `config.toml`: every mistake with its line and column, and a manifest with mistakes isn't used. The folder is read at start and again whenever it or a plugin's folder changes.
+- **Actions** follow Sealwax's own commands in the message menu and are in the palette while messages are selected (`palette::Extra`, `win.plugin-action` with the target `plugin/action`). One run gets the selected messages, at most 50, in one account.
+- **The one new-mail hook** runs after the rules, on what `Event::NewMail` reports for an Inbox (the messages the rules kept), once per batch, one plugin at a time.
+- **The protocol** (version 1, `docs/PLUGINS.md`): a JSON document on stdin with the account and the messages. The headers are always sent; the plain text and the raw message only when the manifest asks (`receives = ["text", "raw"]`). The answer is an optional JSON object on stdout (`"notice"`, a toast), and failure is a non-zero exit, whose first line on stderr is the toast. The JSON is written by `domain::plugins::payload` in a fixed order, so the protocol is what that function shows.
+- **Running** (`infrastructure::plugins::run`): in the plugin's folder, in its own process group, with `SEALWAX_PLUGIN` and `SEALWAX_PLUGIN_PROTOCOL` set and `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS` removed. Input and output go through threads, output is capped at 64 KiB, and the deadline (30 s for an action, 10 s for a hook) kills the whole group. It runs off the GTK thread (`gio::spawn_blocking`).
+- **Trust:** installing a plugin is the user's act, as installing any program is. A plugin whose folder or manifest isn't the user's, or that other users can write, is refused (as ssh refuses a shared key). An action may download the message, as showing it does; a hook gets only what is stored, so new mail never makes Sealwax download for a plugin.
+
+**Reason:** the user's words: "a core email client that allows each user to build on for their needs is what will help this take off". A separate program fits the rest of Sealwax's design: no code from outside runs in the process that holds the mail, the store and the tokens (SECURITY.md). A plugin can't crash or slow Sealwax, it can be written in any language, and what it may read is in its manifest for the user to see. JSON over stdin is what every language reads, and it doesn't hold a protocol to a Rust ABI or a WebAssembly runtime.
+
+**Alternatives:**
+- Loading libraries into Sealwax (`dlopen`): the most power, and a crash or a bug in any plugin takes the mail with it, with access to every token.
+- WebAssembly (wasmtime): the strongest sandbox, but a large dependency, harder plugins to write, and a host API to design for every capability.
+- Lua or JavaScript inside Sealwax: a language for users to learn, and code from outside in the process that holds the mail.
+- D-Bus methods for other programs to call: they'd have to run all the time and discover Sealwax, and the menu would still need a manifest.
+
+**Consequences:** the menu and the palette list commands only known at run time. A plugin can't yet change mail (archive, move, label), add to the reader, or run on events other than new mail; each would be a new event or answer in a later protocol version. Plugin output is never logged (ADR-018): logs name the plugin and give lengths and exit codes. Self-test `plugins` runs shell-script plugins through the menu and a hook.
 

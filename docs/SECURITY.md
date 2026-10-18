@@ -119,6 +119,17 @@ Mail rules are Sieve (RFC 5228) run by Sealwax on the mail it syncs ([ADR-020](D
 - **Reading back:** the Rules dialog's model recognises a rule only when writing it again gives the same commands; anything else is kept as hand-written text, so saving from the dialog never changes what the rest of a script does (checked by the fuzz target on every input).
 - **Running (B1):** a rule's actions are the user's own kinds of change, through the op queue: moves, copies and flags of the account's own folders, Trash for `discard`, never an expunge or anything sent. A header a rule needs is fetched with `BODY.PEEK[HEADER]` (nothing marked read) on the account's own connection. The engine logs counts, folder ids and an error's kind, never a header, an address, a subject, a folder name or the script.
 
+## Plugins
+
+Plugins are programs the user installs ([ADR-022](DECISIONS.md#adr-022--plugins-programs-sealwax-runs-with-json-2026-10-18), [PLUGINS.md](PLUGINS.md)). Sealwax treats installing one as it treats the user starting a program: it runs with the user's rights. What Sealwax guarantees:
+
+- **Nothing from a plugin runs inside Sealwax:** a plugin is a separate process. It never sees the store, the blob store, the keyring, tokens or Sealwax's memory, only the JSON it is sent.
+- **A plugin is sent only what its manifest asks for:** the headers always; the plain text and the raw message only with `receives`. A hook is sent only what is already stored, and new mail never makes Sealwax download for a plugin.
+- **Only the user's own plugins run:** a plugin folder or `plugin.toml` that isn't the user's, or that other users can write, is refused with a toast, so another account on the machine can't make Sealwax run its program. The plugins folder is 0700.
+- **A plugin can't hold Sealwax up:** it runs off the GTK thread, in its own process group, with a deadline (30 s for an action, 10 s for a hook) after which the group is killed, and output capped at 64 KiB. Hooks run one at a time.
+- **Its output is text:** a notice is shown as plain text (no markup), at most 200 characters, with control characters dropped. What a plugin writes is never logged; logs name the plugin and give lengths and exit codes.
+- **The environment:** `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS` is never handed on.
+
 ## Review and fuzzing (M9)
 
 ML-093 checked every rule above against the code as built through M8, with where it is enforced and which test holds it, and fixed what was small and safe.
