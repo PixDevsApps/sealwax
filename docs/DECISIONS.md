@@ -30,7 +30,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 018 | Logging and privacy | Accepted (plan approval); amended after S1 (third-party trace logs); the caps and autodetect's requests built in M2; the HTML parser capped in M6 |
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 | 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); built: folders (A1), the Sieve subset (A2), the rules on new mail (B1) and in the app (B2); the user's review next |
-| 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax |
+| 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax. Amended 2026-10-18 (user decision): no AUR package; GitHub Releases only |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1319,4 +1319,14 @@ Five registry commands without keys, at the registry's end in a new Rules catego
 ### ADR-021 amendment — the AUR waits; the download command first (2026-10-09)
 
 The same day, the AUR answered the owner's registration with "New account registration is temporarily closed" (HTTP 503, a pause against automated sign-ups, no queue). Until the owner has an account, `sealwax-bin` isn't published: INSTALL.md and the README lead with one command that downloads the latest release's package (`releases/latest/download/sealwax-x86_64.pkg.tar.zst`, the stable name `tools/release.py` uploads) to `/tmp` and installs it with `pacman -U`, which also updates; uninstalling is `pacman -R sealwax`. Nothing updates by itself until the AUR package exists; then `tools/release.py aur` publishes it, INSTALL.md puts the Omarchy menu first again, and someone who installed the download moves over by installing `sealwax-bin`, which replaces `sealwax`.
+
+### ADR-021 amendment — no AUR package (2026-10-18)
+
+**Status:** Accepted — user decision, 2026-10-18: "please remove the AUR package will follow, as I think AUR is closed for god, or at least Omarchy have stopped using it", then "Yes, please takeit out of the README and the plan too".
+
+**Decision:** Sealwax gets no AUR package. Releases are the tag and the GitHub release with the package (`tools/release.py build` and `github`); people install and update with INSTALL.md's one command. The README and INSTALL.md no longer promise an AUR package or an Omarchy-menu install. `tools/release.py aur` and `packaging/aur/sealwax-bin/` stay in the repository, unused; a new decision brings them back or removes them.
+
+**Reason:** the owner's judgement that the AUR won't be a route for Sealwax (its registration closed to new accounts on 2026-10-09). Not checked here beyond this machine: Omarchy's own scripts on it still update AUR packages (`/usr/share/omarchy/bin/omarchy-update-aur-pkgs` runs `yay -Sua` when the AUR is reachable, read 2026-10-18).
+
+**Consequences:** nothing updates Sealwax by itself: an update is the install command run again (INSTALL.md, "Updates"). ADR-021's "Omarchy's menu first" for INSTALL.md no longer applies.
 

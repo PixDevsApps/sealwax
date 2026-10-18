@@ -1,6 +1,6 @@
 # Installing Sealwax
 
-Synced: 2026-10-11
+Synced: 2026-10-18
 
 Sealwax is an email app for [Omarchy](https://omarchy.org). This page shows how to install it, keep it up to date and remove it again. You don't need to know anything about programming: follow the steps in order.
 
@@ -47,10 +47,6 @@ When it's done, the terminal shows the prompt again, and you can close it.
 2. Under the newest release, open **Assets** and click the file whose name starts with `sealwax-` and ends with `-x86_64.pkg.tar.zst`. Your browser saves it in your Downloads folder.
 3. In a terminal, type `sudo pacman -U ~/Downloads/` and the file's name (press **Tab** after typing `~/Downloads/sealwax` to have the rest filled in), then press **Enter**.
 
-### Coming later: from the Omarchy menu
-
-Sealwax is going into the AUR, where Omarchy installs apps from (Omarchy menu → **Install** → **AUR**). Installed from there, it will update along with the rest of Omarchy. The AUR isn't taking new accounts at the moment (October 2026), so this has to wait; this page will say when it's ready.
-
 ## Start Sealwax and add your email
 
 1. Press **Super + Alt + Space** to open the app menu, type `Sealwax`, and press **Enter**.
@@ -61,7 +57,7 @@ The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and 
 
 ## Updates
 
-**To update, run the [install command](#with-one-command-easiest) again.** It always fetches the newest Sealwax and installs it over the one you have. Sealwax doesn't update by itself yet; once it's in the AUR, Omarchy's own updates will do it for you.
+**To update, run the [install command](#with-one-command-easiest) again.** It always fetches the newest Sealwax and installs it over the one you have. Sealwax doesn't update by itself.
 
 **After an update, restart Sealwax:** click its window and press **Ctrl + Q**, then start it again. Closing the window isn't enough, because Sealwax keeps running in the background to check for new mail.
 
@@ -165,7 +161,6 @@ A release build from the source tree has the installed app-id: with the package 
 | Installing a built package with `sudo pacman -U` | **Yes** | The owner's machine, on every package since 2026-10-07; the installed binary compared byte for byte with the build's |
 | Updating over an earlier package | **Yes** | The same installs, each over the one before; the store's format changes by itself on the first start |
 | The install command (the download from the latest release) | **Yes** | On the owner's machine, 2026-10-09, as written on this page: the download is the release's package (the same SHA-256), and pacman upgraded `sealwax` from 0.3.0-1 to 0.4.0-1; the installed binary is byte for byte the release's and says `sealwax 0.4.0`. For 0.4.1 to 0.4.8 (2026-10-11 to 13) the download was checked, not installed: each the same SHA-256 as its build, read by pacman as that version |
-| The AUR package `sealwax-bin` and updates through Omarchy's Update | Not published yet | The AUR closed new accounts on 2026-10-09. Omarchy's update runs `yay -Sua`, which updates AUR packages (read in `/usr/share/omarchy/bin/omarchy-update-aur-pkgs`, 2026-10-09) |
 | Building with Arch's `rust` or `rustup` package (without `--nodeps`) | Not verified | |
 | Installing on a clean system with only the listed dependencies | Not verified | The clean-container install test comes before 1.0 |
 | Uninstalling with `sudo pacman -R` | Not verified | |

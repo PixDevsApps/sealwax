@@ -12,7 +12,7 @@ Open a terminal (**Super + Return** on Omarchy), paste this line and press **Ent
 curl -L -o /tmp/sealwax.pkg.tar.zst https://github.com/PixDevsApps/sealwax/releases/latest/download/sealwax-x86_64.pkg.tar.zst && sudo pacman -U /tmp/sealwax.pkg.tar.zst
 ```
 
-Run the same line again to update. To uninstall: `sudo pacman -R sealwax`. An AUR package, which Omarchy's own updates will keep current, follows when the AUR takes new accounts again.
+Run the same line again to update. To uninstall: `sudo pacman -R sealwax`.
 
 [INSTALL.md](INSTALL.md) explains every step in plain words: installing, starting, updating and uninstalling, and what to do if something goes wrong. [What's new](CHANGELOG.md) lists each release.
 
