@@ -89,6 +89,11 @@ impl SealwaxDirs {
         self.config.join(crate::rules::RULES_DIR)
     }
 
+    /// The installed plugins, a folder each (ADR-022).
+    pub fn plugins_dir(&self) -> PathBuf {
+        self.config.join(sealwax_domain::plugins::PLUGINS_DIR)
+    }
+
     /// The window's layout between runs (`domain::layout`).
     pub fn layout_file(&self) -> PathBuf {
         self.state.join(sealwax_domain::layout::LAYOUT_FILE)
