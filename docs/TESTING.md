@@ -105,6 +105,17 @@ WebKitGTK went from 2.52.6 to 2.54.1 on 2026-10-18 (GTK from 4.22.4 to 4.24.1), 
 | `cargo test --workspace -- --skip bodies_download_beside_the_actor_and_the_prefetch_follows_new_mail` | 1,508 passed, 0 failed, 98 ignored. The skipped `engine/tests/actor.rs` test fails on `main` too | Pass |
 | `tools/ci.sh --ui`'s self-tests, run on past failures | 51 passed; 30 stopped when `gtk4-broadwayd` (GTK 4.24.1) aborted on a GLib assertion inside itself (core dumps). `a11y-dialogs` (step 75) and `reader-conversation` (step 88) stop at the same step on `fb5c5a2` without the change; `window-view` passed on a second run | Not this change; Broadway on GTK 4.24.1 |
 
+### 0.4.9 — 2026-10-19
+
+`v0.4.9` is `6ae9bcb`; this machine, rustc 1.98.1, WebKitGTK 2.54.1, GTK 4.24.1 (the headless runs through ADR-022's patched daemon). The release: [v0.4.9](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.9), at the owner's word ("Yes please, go ahead", to releasing 0.4.9 and installing it).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `6ae9bcb`, `SEALWAX_CI_DISPLAY=76 bash tools/ci.sh --ui` | 1,511 passed, 0 failed, 98 ignored; 81 scripts, 7,832 of 7,832 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, 273 s); no daemon left running | Pass |
+| `python3 tools/release.py build` on `v0.4.9` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,087 passed, 0 failed; `pacman -Qp` reads `sealwax 0.4.9-1`; the binary says `sealwax 0.4.9` and has no path of the home folder; `SHA256SUMS` checks | Pass |
+| The release `v0.4.9` (`tools/release.py github`) | GitHub's latest; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build (`ad161ae8…`), read by pacman as `sealwax 0.4.9-1` | Pass |
+| Installing 0.4.9 on this machine | Left to the owner: `sudo` asks for a password, which an agent doesn't type | Not verified |
+
 ### 0.4.8 — 2026-10-13
 
 `v0.4.8` is `b59166c`; this machine, rustc 1.98.1. The release: [v0.4.8](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.8), at the owner's word ("post the reply and release 0.4.8").
