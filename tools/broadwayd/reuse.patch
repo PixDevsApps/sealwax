@@ -1,0 +1,146 @@
+Sealwax's patch to GTK's gtk4-broadwayd (GTK 4.24), for the headless UI checks only; see
+tools/broadwayd/build.sh and docs/TESTING.md. GTK is LGPL-2.1-or-later, and so is this patch.
+
+GTK 4.24 draws symbolic icons with GtkSvg, which keeps one render node per size and colours,
+and the icon theme shares the icon between widgets, so one GskRenderNode can appear twice in a
+frame. The Broadway renderer (gsk/broadway/gskbroadwayrenderer.c) keys node reuse on the node's
+pointer, so it then sends REUSE twice for one id, or REUSE for an id that has left the daemon's
+tree, and the daemon aborts on `!reused_node->consumed` (broadway-output.c) or `node != NULL`
+(broadway-server.c). With this patch the daemon copies a reused node that is already in the new
+tree under ids of its own, and stands in an empty container for an id it doesn't have.
+
+--- a/gdk/broadway/broadway-server.c
++++ b/gdk/broadway/broadway-server.c
+@@ -1767,12 +1767,93 @@
+   return (value << shift) | (value >> (32 - shift));
+ }
+ 
++/* Sealwax: GTK 4.24's GtkSvg hands out one cached render node per icon, so the same
++ * GskRenderNode can sit twice in one frame. The client renderer keys reuse on the node
++ * pointer, so it then sends REUSE twice for one id (the diff below asserts
++ * !reused_node->consumed), or a REUSE of an id it carried over from a node that has since
++ * left the tree (decode asserts node != NULL). A node already in the tree is copied under
++ * private ids, which the client never sends; an unknown id becomes an empty container. */
++#define SEALWAX_PRIVATE_ID_BASE 0x80000000u
++
++static guint32 sealwax_next_private_id = SEALWAX_PRIVATE_ID_BASE;
++
++static guint32
++sealwax_private_id (void)
++{
++  guint32 id = sealwax_next_private_id++;
++
++  if (sealwax_next_private_id == 0)
++    sealwax_next_private_id = SEALWAX_PRIVATE_ID_BASE;
++  return id;
++}
++
++static gboolean
++sealwax_any_in_tree (BroadwayNode *node,
++                     GHashTable   *in_tree)
++{
++  if (g_hash_table_contains (in_tree, node))
++    return TRUE;
++  for (guint32 i = 0; i < node->n_children; i++)
++    if (sealwax_any_in_tree (node->children[i], in_tree))
++      return TRUE;
++  return FALSE;
++}
++
++static void
++sealwax_add_to_tree (BroadwayNode *node,
++                     GHashTable   *in_tree)
++{
++  g_hash_table_add (in_tree, node);
++  for (guint32 i = 0; i < node->n_children; i++)
++    sealwax_add_to_tree (node->children[i], in_tree);
++}
++
++static BroadwayNode *
++sealwax_copy_node (BroadwayServer *server,
++                   BroadwayNode   *node)
++{
++  gsize data_size = sizeof (BroadwayNode) + (node->n_data - 1) * sizeof (guint32);
++  BroadwayNode *copy = g_malloc (data_size + node->n_children * sizeof (BroadwayNode *));
++
++  memcpy (copy, node, data_size);
++  g_ref_count_init (&copy->refcount);
++  copy->id = sealwax_private_id ();
++  copy->output_id = copy->id;
++  copy->reused = FALSE;
++  copy->consumed = FALSE;
++  copy->children = (BroadwayNode **)((char *)copy + data_size);
++  if (copy->texture_id)
++    broadway_server_ref_texture (server, copy->texture_id);
++  for (guint32 i = 0; i < node->n_children; i++)
++    copy->children[i] = sealwax_copy_node (server, node->children[i]);
++
++  return copy;
++}
++
++static BroadwayNode *
++sealwax_empty_node (void)
++{
++  BroadwayNode *node = g_malloc0 (sizeof (BroadwayNode));
++
++  g_ref_count_init (&node->refcount);
++  node->type = BROADWAY_NODE_CONTAINER;
++  node->id = sealwax_private_id ();
++  node->output_id = node->id;
++  node->children = NULL;
++  node->n_data = 1;
++  node->data[0] = 0;
++  node->hash = BROADWAY_NODE_CONTAINER << 16;
++
++  return node;
++}
++
+ static BroadwayNode *
+ decode_nodes (BroadwayServer *server,
+               BroadwaySurface *surface,
+               int len,
+               guint32 data[],
+               GHashTable  *client_texture_map,
++              GHashTable  *in_tree,
+               int *pos)
+ {
+   BroadwayNode *node;
+@@ -1794,7 +1875,11 @@
+   switch (type) {
+   case BROADWAY_NODE_REUSE:
+     node = g_hash_table_lookup (surface->node_lookup, GINT_TO_POINTER(id));
+-    g_assert (node != NULL);
++    if (node == NULL)
++      return sealwax_empty_node ();
++    if (sealwax_any_in_tree (node, in_tree))
++      return sealwax_copy_node (server, node);
++    sealwax_add_to_tree (node, in_tree);
+     return broadway_node_ref (node);
+     break;
+   case BROADWAY_NODE_COLOR:
+@@ -1880,7 +1965,7 @@
+     }
+ 
+   for (i = 0; i < n_children; i++)
+-    node->children[i] = decode_nodes (server, surface, len, data, client_texture_map, pos);
++    node->children[i] = decode_nodes (server, surface, len, data, client_texture_map, in_tree, pos);
+ 
+   hash = node->type << 16;
+ 
+@@ -1906,12 +1991,15 @@
+   BroadwaySurface *surface;
+   int pos = 0;
+   BroadwayNode *root;
++  GHashTable *in_tree;
+ 
+   surface = broadway_server_lookup_surface (server, id);
+   if (surface == NULL)
+     return;
+ 
+-  root = decode_nodes (server, surface, len, data, client_texture_map, &pos);
++  in_tree = g_hash_table_new (g_direct_hash, g_direct_equal);
++  root = decode_nodes (server, surface, len, data, client_texture_map, in_tree, &pos);
++  g_hash_table_unref (in_tree);
+ 
+   if (server->output != NULL)
+     broadway_output_surface_set_nodes (server->output, surface->id,

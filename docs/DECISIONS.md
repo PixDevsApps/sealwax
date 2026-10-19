@@ -31,6 +31,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 | 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); built: folders (A1), the Sieve subset (A2), the rules on new mail (B1) and in the app (B2); the user's review next |
 | 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax. Amended 2026-10-18 (user decision): no AUR package; GitHub Releases only |
+| 022 | The headless checks run GTK's Broadway daemon with a patch of Sealwax's | Proposed (2026-10-19): GTK 4.24.1's daemon aborts in about 30 of the 81 CI scripts; the user's decision |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1334,3 +1335,14 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 **Consequences:** nothing updates Sealwax by itself: an update is the install command run again (INSTALL.md, "Updates"). ADR-021's "Omarchy's menu first" for INSTALL.md no longer applies.
 
+## ADR-022 — The headless checks run GTK's Broadway daemon with a patch of Sealwax's (2026-10-19)
+
+**Status:** Proposed — 2026-10-19, from the session asked to keep `tools/ci.sh --ui` working after the system upgrade of 2026-10-18; the user's decision.
+
+**Decision:** from GTK 4.24, `tools/headless.sh` runs `gtk4-broadwayd` built from GTK's own release tarball for the installed version with `tools/broadwayd/reuse.patch` (`tools/broadwayd/build.sh`: the tarball checked against `tools/broadwayd/SHA256SUMS`, the daemon built once per version into `target/`). The patch makes the daemon copy a node that a frame sends twice, and stand in an empty node for an id it no longer has, instead of aborting. Nothing in Sealwax's package or binary changes. The patch goes when a GTK release fixes the cause; a GTK version without a checksum line stops the headless runs until someone checks the patch against it.
+
+**Reason:** GTK 4.24's icons can put one render node twice into a frame (GtkSvg's node cache), and the Broadway renderer, which keys reuse on the node's pointer, then sends a stream the daemon asserts on (TESTING.md, "GTK 4.24's Broadway daemon, patched for the headless checks"). Without the daemon the self-tests can't run, and no GTK release fixes it yet; no upstream report existed on 2026-10-19.
+
+**Alternatives:** waiting for a GTK fix (`ci.sh --ui` unusable meanwhile; Broadway is deprecated, so a fix may be slow); `GSK_RENDERER=cairo` (Broadway's cairo path sends a malformed node and aborts on the second frame); an `LD_PRELOAD` that ignores the assertion (`g_assertion_message_expr` doesn't return); a proxy rewriting the app's node stream (it would have to rebuild nodes and pass textures' file descriptors); a GTK of our own for the app (a whole GTK build); changing how Sealwax draws its icons (any two identical symbolic icons trigger it, GTK's own included).
+
+**Consequences:** the headless runs need a C compiler, `pkg-config`, `patch`, `curl` and Python, and download a 17 MB tarball from download.gnome.org once per GTK version and checkout. A browser on such a display could show a copied node or a blank where the stock daemon would have aborted; the self-tests' client draws nothing, and screenshots come from GTK in the app. Each GTK update needs a look at the patch and a checksum line.

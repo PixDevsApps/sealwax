@@ -1,0 +1,4 @@
+# GTK release tarballs from download.gnome.org that build.sh may use (sha256sum format).
+# Checked 2026-10-19 against download.gnome.org's gtk-4.24.1.sha256sum; its broadway sources match
+# the ones Arch's gtk4 1:4.24.1-1 was built from (debuginfod).
+e98abe720e16129c8c0f50761dee0a2e9ae2478055e31018f6cf977fcf6513e9  gtk-4.24.1.tar.xz
