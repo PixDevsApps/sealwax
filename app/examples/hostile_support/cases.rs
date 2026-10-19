@@ -313,11 +313,14 @@ pub fn cases(origin: &str) -> Vec<Case> {
         ),
         Some("#s2-click"),
     );
+    // Absolute: the reader's pages have no base URL, so a `//host` link never becomes http and
+    // WebKit never prefetches it. WebKit drops a network process's first prefetch while it reads
+    // the proxy settings, so this one, early, lets `dns-names`'s through when nothing blocks it.
     add(
         "dns-prefetch",
         "dns-prefetch, x-dns-prefetch-control on, anchors to other hosts",
         "<meta http-equiv=\"x-dns-prefetch-control\" content=\"on\">\
-         <link rel=\"dns-prefetch\" href=\"//sealwax-dns-prefetch.localhost\">"
+         <link rel=\"dns-prefetch\" href=\"http://sealwax-dns-prefetch.localhost/\">"
             .into(),
         none(),
         "<a href=\"https://sealwax-anchor-prefetch.localhost/\">anchor</a>".into(),
@@ -682,7 +685,7 @@ fn m5_cases(o: &str) -> Vec<Case> {
             html: html(
                 "dns-names",
                 "<meta http-equiv=\"x-dns-prefetch-control\" content=\"on\">\
-                 <link rel=\"dns-prefetch\" href=\"//sealwax-dns-prefetch.test\">\
+                 <link rel=\"dns-prefetch\" href=\"http://sealwax-dns-prefetch.test/\">\
                  <link rel=\"preconnect\" href=\"http://sealwax-dns-preconnect.test\">\
                  <link rel=\"prefetch\" href=\"http://sealwax-dns-prefetch-link.test/p.html\">\
                  <style>.bg{background:url(http://sealwax-dns-css.test/bg.png)}</style>",

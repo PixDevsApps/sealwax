@@ -46,7 +46,7 @@ Evidence rules: record only what was actually run, with date, command, machine a
 
 60 cases in `app/examples/hostile.rs`, run by `tools/ci.sh --ui` (M5, ML-065): S2's 47, 12 for M5's surfaces (link hover and the mismatch warning, plain-text links, collapsed quotes in HTML and plain text, format=flowed, inline PGP, PGP/MIME, S/MIME signed data, a `cid:` answer for a reused view, page-initiated printing, names only DNS sees) and a three-message conversation of hostile bodies. The run preloads `devtools/dns-canary`, a `getaddrinfo` that records every name the app or WebKit's network process looks up and refuses it. Each points its network vectors at a local HTTP canary (127.0.0.1, random port) that counts connections, requests per path, connections that send nothing, and TLS ClientHellos; each also carries a script payload with four traces (title, `data-pwned`, `alert()`, a beacon). Clicks are DOM `click()` calls from Sealwax's isolated world.
 
-Pass with the production reader: 0 connections (not just 0 requests — WebKit pre-connects), 0 TLS hellos, 0 DNS lookups, 0 script traces, each case's own expectation, no allowed navigation, new window or download; the `cid:` test image renders and a foreign `cid:` part never loads. In the same run, a no-defence control must show the vectors are live, and a remote-allowed control (CSP widened with the canary's origin, no filter) must load images only.
+Pass with the production reader: 0 connections (not just 0 requests — WebKit pre-connects), 0 TLS hellos, 0 DNS lookups, 0 script traces, each case's own expectation, no allowed navigation, new window or download; the `cid:` test image renders and a foreign `cid:` part never loads. After Show images, the DNS canary may see only the images' names: `<link rel=dns-prefetch>` (an absolute URL, since the reader's pages have no base URL) must stay unlooked-up, because WebKitGTK 2.54 has no switch for it and only the reader's pings filter stops it. In the same run, a no-defence control must show the vectors are live, and a remote-allowed control (CSP widened with the canary's origin, no filter) must load images only.
 
 ## Performance targets
 
@@ -72,6 +72,20 @@ Measured with release builds unless noted; each entry names its spike or milesto
 Each milestone's exit criteria are the acceptance list. Results go here as dated entries, newest first, with screenshots in `tools/progress/`.
 
 ## Results
+
+### DNS prefetch on WebKitGTK 2.54 — 2026-10-19
+
+WebKitGTK went from 2.52.6 to 2.54.1 on 2026-10-18 (GTK from 4.22.4 to 4.24.1), and 2.54 has no `LinkDNSPrefetch` feature any more ([ADR-011 amendment](DECISIONS.md#adr-011-amendment--a-pings-filter-in-every-view-as-webkitgtk-254-dropped-linkdnsprefetch-2026-10-19)). This machine, rustc 1.98.1, headless display 61, the DNS canary preloaded in every run.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| A bare WebKitGTK 2.54.1 view (Python, `tools/headless.sh`) loading `<link rel=dns-prefetch>` pages at 0.5 s, 7 s and 14 s | Without a filter: the 7 s and 14 s names looked up, the 0.5 s one not (WebKit drops prefetches until it has read the proxy settings). With the pings filter: no name looked up | The vector is live on 2.54; the filter stops it |
+| The hostile suite before the change, the cases' hrefs `//host` | Clean, but blind: with no base URL `//host` is never http, so WebKit never prefetched it, not even in the control | — |
+| The hostile suite with absolute hrefs and the Show images DNS check, the pings filter taken out | Fails: `shown/dns-names` looked up `sealwax-dns-prefetch.test` | The check catches it |
+| The same with the change | Clean: 60 cases, 273 s, `production=0 control=11` DNS lookups; `shown/dns-names` looked up only its images' two names; the control now looks up `sealwax-dns-prefetch.test` | Pass |
+| `cargo fmt --all --check`, Clippy with `-D warnings` | Clean | Pass |
+| `cargo test --workspace -- --skip bodies_download_beside_the_actor_and_the_prefetch_follows_new_mail` | 1,508 passed, 0 failed, 98 ignored. The skipped `engine/tests/actor.rs` test fails on `main` too | Pass |
+| `tools/ci.sh --ui`'s self-tests, run on past failures | 51 passed; 30 stopped when `gtk4-broadwayd` (GTK 4.24.1) aborted on a GLib assertion inside itself (core dumps). `a11y-dialogs` (step 75) and `reader-conversation` (step 88) stop at the same step on `fb5c5a2` without the change; `window-view` passed on a second run | Not this change; Broadway on GTK 4.24.1 |
 
 ### 0.4.8 — 2026-10-13
 

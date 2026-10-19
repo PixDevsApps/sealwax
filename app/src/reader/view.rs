@@ -1,7 +1,8 @@
 //! One hardened WebView for one HTML body (ADR-011, SECURITY.md "Message rendering"): no
 //! message script ever runs (`enable-javascript-markup` off); the CSP is set at construction;
 //! the content filter blocks every remote load until the user allows images; WebKit's
-//! prefetch and preconnect features are off; links and form submissions are intercepted in
+//! prefetch and preconnect features are off, and a second filter blocks pings, DNS prefetch and
+//! preconnects whatever the user allowed; links and form submissions are intercepted in
 //! Sealwax's isolated world and every navigation is blocked as the backstop; new windows,
 //! dialogs, permissions, downloads, the file and colour choosers, fullscreen, printing and
 //! authentication are refused; the context menu keeps only copying. Rendering is on the CPU
@@ -470,6 +471,8 @@ impl State {
 pub struct MessageView {
     view: webkit6::WebView,
     ucm: webkit6::UserContentManager,
+    /// The engine's pings filter, on in every load.
+    pings: webkit6::UserContentFilter,
     state: Rc<State>,
 }
 
@@ -478,6 +481,7 @@ impl MessageView {
         engine: &Engine,
         fonts: &WebViewFonts,
         related: Option<&webkit6::WebView>,
+        pings: webkit6::UserContentFilter,
     ) -> Self {
         let ucm = webkit6::UserContentManager::new();
         for name in [
@@ -506,6 +510,7 @@ impl MessageView {
         let this = Self {
             view,
             ucm,
+            pings,
             state: Rc::default(),
         };
         this.connect();
@@ -538,7 +543,8 @@ impl MessageView {
 
     /// Loads one body. `filter` is the compiled content filter: with it, nothing remote loads;
     /// without it (the user allowed images for this message) the CSP still admits only https
-    /// images. The view keeps its height until the new body reports one.
+    /// images, and the pings filter still blocks pings, DNS prefetch and preconnects. The view
+    /// keeps its height until the new body reports one.
     pub fn load(
         &self,
         html: &str,
@@ -547,10 +553,7 @@ impl MessageView {
         filter: Option<&webkit6::UserContentFilter>,
     ) {
         self.view.stop_loading();
-        self.ucm.remove_all_filters();
-        if let Some(filter) = filter {
-            self.ucm.add_filter(filter);
-        }
+        self.set_filter(filter);
         self.set_style(css, background);
         self.start(html);
     }
@@ -622,13 +625,19 @@ impl MessageView {
         }
         self.view.stop_loading();
         self.ucm.remove_all_style_sheets();
-        self.ucm.remove_all_filters();
-        if let Some(filter) = filter {
-            self.ucm.add_filter(filter);
-        }
+        self.set_filter(filter);
         self.state.height.set(1);
         self.view.set_size_request(-1, 1);
         self.start(BLANK);
+    }
+
+    /// The pings filter, and `filter` when given.
+    fn set_filter(&self, filter: Option<&webkit6::UserContentFilter>) {
+        self.ucm.remove_all_filters();
+        self.ucm.add_filter(&self.pings);
+        if let Some(filter) = filter {
+            self.ucm.add_filter(filter);
+        }
     }
 
     pub(super) fn destroy(self) {
@@ -1015,8 +1024,8 @@ fn hardened_settings(fonts: &WebViewFonts) -> webkit6::Settings {
     settings.set_allow_top_navigation_to_data_urls(false);
     settings.set_allow_modal_dialogs(false);
     settings.set_print_backgrounds(true);
-    // Both do nothing in WebKitGTK 2.52 (S2); the feature switches below do the work. They
-    // stay off in case a future WebKit honours them again.
+    // Both do nothing since WebKitGTK 2.52 (S2); the feature switches below and the pings
+    // filter do the work. They stay off in case a future WebKit honours them again.
     settings.set_enable_dns_prefetching(false);
     settings.set_enable_hyperlink_auditing(false);
     if let Some(features) = webkit6::Settings::all_features() {
@@ -1062,6 +1071,7 @@ pub fn disabled_features(view: &webkit6::WebView) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::reader::RETIRED_FEATURES;
 
     /// Isolated-world scripts aren't bound by the page's CSP, and a view whose images the user
     /// allowed loads without the content filter, so the reader's helpers load nothing at all
@@ -1099,7 +1109,8 @@ mod tests {
         )));
     }
 
-    /// A feature WebKit renamed would silently stay on.
+    /// A feature WebKit renamed would silently stay on. One it dropped is known up to the
+    /// version that dropped it and not after, so its return shows here too.
     #[test]
     fn every_network_feature_is_known_to_this_webkit() {
         let features = webkit6::Settings::all_features().expect("WebKit lists its features");
@@ -1107,8 +1118,22 @@ mod tests {
             .filter_map(|index| features.get(index))
             .filter_map(|feature| feature.identifier().map(String::from))
             .collect();
+        let version = (
+            webkit6::functions::major_version(),
+            webkit6::functions::minor_version(),
+        );
         for name in NETWORK_FEATURES {
-            assert!(known.iter().any(|id| id == name), "{name}");
+            let expected = RETIRED_FEATURES
+                .iter()
+                .find(|(retired, _)| *retired == name)
+                .is_none_or(|(_, dropped)| version < *dropped);
+            assert_eq!(
+                known.iter().any(|id| id == name),
+                expected,
+                "{name} in WebKitGTK {}.{}",
+                version.0,
+                version.1
+            );
         }
     }
 }
