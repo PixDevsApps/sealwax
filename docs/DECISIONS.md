@@ -685,6 +685,10 @@ The user's word (2026-10-11, "build #5 and #3", on [issue #5](https://github.com
 
 Each account's rules are a Sieve script in `$XDG_CONFIG_HOME/sealwax/rules/<account key>.sieve` ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026-10-09)), a settings file the user may edit by hand (`infrastructure::rules`): a missing file is no rules; it is read as at most 1 MiB of UTF-8 and compiled again whenever its modification time changes; it is written atomically, 0600 in a 0700 folder, through a symbolic link as `accounts.toml` is; it goes with its account. A file that can't run (unreadable, or a script that doesn't check) runs nothing and is reported once per change (`Event::RulesFailed`).
 
+### ADR-009 amendment — a folded folder counts its subfolders' unread (2026-10-19)
+
+The owner's decision on the sign-off sheet (2026-10-19): a folder whose subfolders are folded away shows its own unread plus theirs, at every level, as Thunderbird does; opened again, each folder shows its own. Drafts keeps its drafts count. Screen readers hear "<folder>, N unread with its subfolders" when the sum differs from its own count. All Inboxes, a folded account's heading, the rail, the list's heading, More folders and Mark Folder as Read are unchanged. The sum comes from the sidebar's model, no SQL; folding a folder rebuilds the folder list, as folding an account does, keeping the focus.
+
 ## ADR-010 — Name and app-id (2026-10-04)
 
 **Status:** Open. The user decides during M0; it must be accepted before M0 closes, because the data paths, the D-Bus name, the keyring schema and the OAuth consent screen depend on it.
