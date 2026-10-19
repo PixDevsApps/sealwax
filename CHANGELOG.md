@@ -5,6 +5,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 ## Not released yet
 
 - **Ctrl+W closes the composer:** a new command, **Close Composer**, saves the draft and closes the composer as its Close button does, from anywhere in it. `keys.toml` can give it another key (`close-composer`).
+- **A word when Microsoft sign-in seems stuck:** many work and school organizations must approve Sealwax before their people can sign in, and Microsoft then shows "Need admin approval" and never sends the browser back. After a minute of waiting, the setup assistant now says so and points to the user guide, which explains what to ask your IT admin. Personal Outlook.com accounts aren't affected.
 
 ## 0.4.9 — 2026-10-19
 

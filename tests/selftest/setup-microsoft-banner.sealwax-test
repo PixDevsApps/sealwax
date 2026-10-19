@@ -127,6 +127,18 @@ engine-reply sign-in-open https://login.example.test/authorize?client_id=fiction
 assert-opened last https://login.example.test/authorize?client_id=fictional&state=again
 assert-labelled
 screenshot $DIR/../../.local/selftest/setup-again.png
+# Signing in again waits as adding an account does: after a minute without an answer (here
+# 300 ms from now on), the note on admin approval.
+assert-shown setup-still-waiting false
+setup-still-waiting-after 300
+setup-click setup-cancel
+engine-expect cancel-sign-in sign-in=last
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test account=kari
+wait-until assert-shown setup-still-waiting true
+assert-text-contains setup-still-waiting "your organization must approve Sealwax first"
+assert-setup focus setup-cancel
+setup-still-waiting-after 60000
 # Its Sign in again shows the open assistant.
 setup-click banner-primary
 engine-expect none

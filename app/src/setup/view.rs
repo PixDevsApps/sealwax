@@ -187,6 +187,8 @@ pub(super) struct Widgets {
     pub(super) dont_trust: gtk::Button,
     microsoft_unavailable: gtk::Box,
     waiting: gtk::Box,
+    /// After a minute: why Microsoft may never send the browser back.
+    pub(super) still_waiting: gtk::Label,
     pub(super) open_again: gtk::Button,
     pub(super) cancel: gtk::Button,
     pub(super) username_field: gtk::Box,
@@ -499,6 +501,10 @@ impl Widgets {
         waiting_row.append(&spinner);
         waiting_row.append(&waiting_label);
         waiting_row.append(&cancel);
+        let still_waiting = named(
+            label(text::STILL_WAITING, &["sw-setup-hint"]),
+            "setup-still-waiting",
+        );
         let open_again = named(
             classed(
                 gtk::Button::builder()
@@ -514,6 +520,7 @@ impl Widgets {
             "setup-waiting",
         );
         waiting.append(&waiting_row);
+        waiting.append(&still_waiting);
         waiting.append(&open_again);
 
         let microsoft_unavailable = named(
@@ -803,6 +810,7 @@ impl Widgets {
             keep_address,
             microsoft_unavailable,
             waiting,
+            still_waiting,
             open_again,
             cancel,
             username_field,
@@ -959,6 +967,17 @@ impl Widgets {
             .set_tooltip_text((!microsoft).then_some("Not available in this build yet"));
         w.microsoft_unavailable.set_visible(!microsoft);
         w.waiting.set_visible(step == Step::SigningIn);
+        // Cancel keeps the focus while the browser signs in, so it carries the note as its
+        // description too.
+        let still_waiting = step == Step::SigningIn && state.still_waiting;
+        w.still_waiting.set_visible(still_waiting);
+        if still_waiting {
+            w.cancel
+                .update_property(&[gtk::accessible::Property::Description(text::STILL_WAITING)]);
+        } else {
+            w.cancel
+                .reset_property(gtk::AccessibleProperty::Description);
+        }
         w.open_again
             .set_visible(step == Step::SigningIn && state.sign_in_url.is_some());
 

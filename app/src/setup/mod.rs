@@ -17,8 +17,9 @@
 //! focus in its first field that needs typing.
 //!
 //! Microsoft sign-in (ML-032) runs in the browser: the engine sends the page to open, the
-//! assistant opens it (and again on request) and waits with a Cancel, and the username the
-//! sign-in belongs to is the one saved. The window's banner opens the assistant straight at that
+//! assistant opens it (and again on request) and waits with a Cancel, after a minute with a note
+//! on the admin approval a work account's organization may need, and the username the sign-in
+//! belongs to is the one saved. The window's banner opens the assistant straight at that
 //! step for an account that must sign in again. Neither the page's address nor the username
 //! is logged.
 //!
@@ -59,14 +60,28 @@ use sealwax_domain::autoconfig::{Finding, Hints, address_domain, presets};
 use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId};
 use sources::Sources;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 use text::Notice;
 use view::Widgets;
 
 /// The mock's card: a third of its 1440 × 820 artboard, less its margins.
 const CONTENT_WIDTH: i32 = 428;
 const CONTENT_HEIGHT: i32 = 740;
+
+/// How long a Microsoft sign-in waits for the browser before the note on admin approval shows.
+const STILL_WAITING_AFTER: Duration = Duration::from_secs(60);
+
+thread_local! {
+    /// [`STILL_WAITING_AFTER`], or a shorter wait the self-tests set.
+    static STILL_WAITING_WAIT: Cell<Duration> = const { Cell::new(STILL_WAITING_AFTER) };
+}
+
+/// Changes how long a sign-in waits before the note on admin approval shows, for tests.
+pub fn set_still_waiting_after(wait: Duration) {
+    STILL_WAITING_WAIT.with(|current| current.set(wait));
+}
 
 /// Where the assistant is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -220,6 +235,8 @@ struct State {
     address_tried: bool,
     /// The sign-in page the engine asked to open, to open it again; never logged.
     sign_in_url: Option<String>,
+    /// The browser sign-in has waited [`STILL_WAITING_AFTER`]: the note on admin approval shows.
+    still_waiting: bool,
     /// The account this assistant signs in again, when the banner opened it.
     again: Option<Again>,
     /// What the presets know of that account's provider: its name and app-password page.
@@ -328,6 +345,25 @@ impl State {
     fn is_pending(&self, pending: Pending) -> bool {
         self.pending == Some(pending)
     }
+
+    /// The browser signs in for `request`: no note yet.
+    fn start_sign_in(&mut self, request: RequestId) {
+        self.pending = Some(Pending::SignIn(request));
+        self.notice = None;
+        self.sign_in_url = None;
+        self.still_waiting = false;
+        self.step = Step::SigningIn;
+    }
+
+    /// The wait for `request` is up: the note shows if the browser still signs in for it, and
+    /// says whether it does. A sign-in that ended or started again meanwhile keeps none.
+    fn note_still_waiting(&mut self, request: RequestId) -> bool {
+        let waiting = self.step == Step::SigningIn && self.is_pending(Pending::SignIn(request));
+        if waiting {
+            self.still_waiting = true;
+        }
+        waiting
+    }
 }
 
 struct Inner {
@@ -340,12 +376,22 @@ struct Inner {
     /// The rows of the sources list as last drawn.
     drawn_sources: RefCell<Option<Sources>>,
     subscription: RefCell<Option<Subscription>>,
+    /// The wait before the note on admin approval, while the browser signs in.
+    still_waiting_timer: RefCell<Option<glib::SourceId>>,
 }
 
 impl Inner {
+    /// Stops the wait before the note on admin approval, if it runs.
+    fn stop_still_waiting_timer(&self) {
+        if let Some(timer) = self.still_waiting_timer.take() {
+            timer.remove();
+        }
+    }
+
     /// Tells the engine to stop waiting for the browser, if it still does; the late answer is
     /// ignored.
     fn abandon_sign_in(&self) {
+        self.stop_still_waiting_timer();
         let request = {
             let mut state = self.state.borrow_mut();
             match state.pending {
@@ -523,6 +569,7 @@ impl Assistant {
                 state: RefCell::new(State::default()),
                 drawn_sources: RefCell::new(None),
                 subscription: RefCell::new(None),
+                still_waiting_timer: RefCell::new(None),
             }),
         };
         assistant.connect();
@@ -1307,15 +1354,38 @@ impl Assistant {
             let mut state = self.inner.state.borrow_mut();
             if sent {
                 tracing::info!(request, "setup: signing in in the browser");
-                state.pending = Some(Pending::SignIn(request));
-                state.notice = None;
-                state.sign_in_url = None;
-                state.step = Step::SigningIn;
+                state.start_sign_in(request);
             } else {
                 state.notice = Some(text::not_connected());
             }
         }
+        if sent {
+            self.start_still_waiting_timer(request);
+        }
         self.render();
+    }
+
+    /// Shows the note on admin approval once the browser has signed in for `request` for a
+    /// while without an answer.
+    fn start_still_waiting_timer(&self, request: RequestId) {
+        self.inner.stop_still_waiting_timer();
+        let weak = self.weak();
+        let timer = glib::timeout_add_local_once(STILL_WAITING_WAIT.with(Cell::get), move || {
+            if let Some(inner) = weak.upgrade() {
+                inner.still_waiting_timer.take();
+                Assistant { inner }.still_waiting(request);
+            }
+        });
+        self.inner.still_waiting_timer.replace(Some(timer));
+    }
+
+    fn still_waiting(&self, request: RequestId) {
+        if !self.inner.state.borrow_mut().note_still_waiting(request) {
+            return;
+        }
+        tracing::info!(request, "setup: still waiting for the browser");
+        self.render();
+        crate::accessibility::announce(&self.inner.widgets.still_waiting, text::STILL_WAITING);
     }
 
     /// `SignInOpen`: the page goes to the browser, and stays at hand to open again.
@@ -1357,6 +1427,7 @@ impl Assistant {
     /// sign-in's token; an account signed in again is done. A failure says why, and the step's
     /// button signs in again.
     fn signed_in(&self, request: RequestId, result: Result<String, LoginError>) {
+        self.inner.stop_still_waiting_timer();
         let username = match result {
             Ok(username) => username,
             Err(error) => {
@@ -1845,4 +1916,43 @@ impl ManualTexts {
 /// The same mailbox: addresses compare without case or surrounding space.
 fn same_address(a: &str, b: &str) -> bool {
     a.trim().eq_ignore_ascii_case(b.trim())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_note_on_admin_approval_is_for_the_sign_in_still_waiting() {
+        let mut state = State {
+            step: Step::Microsoft,
+            ..State::default()
+        };
+        state.start_sign_in(1);
+        assert!(!state.still_waiting);
+        assert!(state.note_still_waiting(1));
+        assert!(state.still_waiting);
+        // Signing in again starts without the note, and the first sign-in's wait shows none.
+        state.start_sign_in(2);
+        assert!(!state.still_waiting);
+        assert!(!state.note_still_waiting(1));
+        assert!(!state.still_waiting);
+        assert!(state.note_still_waiting(2));
+        // A sign-in that ended or was cancelled before its wait was up shows none.
+        state.start_sign_in(3);
+        state.pending = None;
+        state.step = Step::Microsoft;
+        assert!(!state.note_still_waiting(3));
+        assert!(!state.still_waiting);
+        state.start_sign_in(4);
+        state.step = Step::Adding;
+        assert!(!state.note_still_waiting(4));
+        assert!(!state.still_waiting);
+    }
+
+    #[test]
+    fn the_note_waits_a_minute() {
+        assert_eq!(STILL_WAITING_AFTER, Duration::from_secs(60));
+        assert_eq!(STILL_WAITING_WAIT.with(Cell::get), STILL_WAITING_AFTER);
+    }
 }

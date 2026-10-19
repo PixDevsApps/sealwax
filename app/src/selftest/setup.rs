@@ -33,6 +33,7 @@
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
 //! | `setup-respond NAME RESPONSE` | Answers the alert dialog named NAME (Remove Account's `remove-account`) as its button would |
 //! | `setup-dismiss-toasts` | Closes the toasts shown and queued, as their × would (for previews) |
+//! | `setup-still-waiting-after MS` | Shortens the minute a Microsoft sign-in waits before the note on admin approval shows, for the sign-ins started from then on |
 //! | `assert-setup open\|step\|sources\|focus VALUE` | The assistant's state |
 //! | `assert-setup client-id set\|none` | Whether a Microsoft client ID is in use (`config.toml`; self-tests have no built-in one) |
 //! | `assert-setup sign-in-needed KEY,…\|none` | The accounts the window's banner asks to sign in again, in order |
@@ -44,7 +45,7 @@
 //! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in\|certificate\|quota` | The sidebar's state of the account with ADDRESS |
 //! | `assert-account-folders ADDRESS TITLE,…` | The folders the sidebar shows for the account with ADDRESS, role folders first, by the titles it shows (M8) |
 
-use super::{Harness, StepResult, WAIT_TIMEOUT, equal, with_timeout};
+use super::{Harness, StepResult, WAIT_TIMEOUT, equal, number, with_timeout};
 use crate::desktop::DesktopEvent;
 use crate::engine::EngineOptions;
 use crate::preferences::SettingsFile;
@@ -89,6 +90,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("setup-key", 1, 1),
     ("setup-respond", 2, 2),
     ("setup-dismiss-toasts", 0, 0),
+    ("setup-still-waiting-after", 1, 1),
     ("assert-setup", 2, 2),
     ("assert-text-contains", 2, 2),
     ("assert-field", 2, 2),
@@ -251,6 +253,10 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "engine-reply" => reply(harness, args, false).await,
         "engine-reply-stale" => reply(harness, args, true).await,
+        "setup-still-waiting-after" => {
+            setup::set_still_waiting_after(Duration::from_millis(number(&args[0])? as u64));
+            Ok(())
+        }
         "setup-type" => {
             let field = harness.widget(&args[0])?;
             let editable = field

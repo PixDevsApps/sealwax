@@ -274,6 +274,12 @@ pub fn keep_address(address: &str) -> String {
     format!("Keep {address}")
 }
 
+/// The note under "Waiting for the browser…" once a Microsoft sign-in has waited a minute: an
+/// organization that doesn't let its users approve an unverified app leaves its own page open,
+/// and the browser never comes back.
+pub const STILL_WAITING: &str = "Still waiting for Microsoft. If the browser shows “Need admin \
+     approval”, your organization must approve Sealwax first: see the user guide.";
+
 /// The note in the Microsoft step while no client ID is in use (ADR-008).
 pub const MICROSOFT_UNAVAILABLE: &str =
     "Microsoft sign-in isn't available in this build of Sealwax yet.";
