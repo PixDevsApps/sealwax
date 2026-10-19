@@ -47,7 +47,8 @@ pub struct SyncOptions {
     pub older: u32,
     /// A folder another connection keeps current (INBOX on the IDLE connection).
     pub elsewhere: Option<Elsewhere>,
-    /// The time the window counts back from (Unix seconds); the clock when `None`.
+    /// The time the window and the body prefetch count back from (Unix seconds); the clock
+    /// when `None`.
     pub now: Option<i64>,
     /// Where each step's new mail goes the moment it is committed, besides the report.
     pub arrivals: Option<async_channel::Sender<Arrived>>,
@@ -76,12 +77,16 @@ pub struct Arrived {
 impl SyncOptions {
     /// Where the first-sync window starts.
     pub(crate) fn since(&self) -> i64 {
-        let now = self.now.unwrap_or_else(|| {
+        self.window.since(self.clock())
+    }
+
+    /// `now`, or the clock.
+    pub(crate) fn clock(&self) -> i64 {
+        self.now.unwrap_or_else(|| {
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_or(0, |elapsed| elapsed.as_secs() as i64)
-        });
-        self.window.since(now)
+        })
     }
 }
 

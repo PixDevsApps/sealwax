@@ -793,7 +793,7 @@ pub(super) fn prefetch(shared: &Arc<Shared>) {
     };
     let shared = shared.clone();
     tokio::spawn(async move {
-        match prefetch_ids(&shared.store, &storage, now()).await {
+        match prefetch_ids(&shared.store, &storage, shared.sync.options.clock()).await {
             Ok(ids) if !ids.is_empty() => request(&shared, ids, false),
             Ok(_) => {}
             Err(error) => tracing::warn!(%error, "the prefetch couldn't be planned"),
