@@ -4,6 +4,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 
 ## Not released yet
 
+- **Unread mail in folded subfolders shows:** a folder whose subfolders are folded away now counts their unread mail with its own, as Thunderbird does, so you can see there is new mail inside. Open the folder again and each one shows its own count.
 - **Ctrl+W closes the composer:** a new command, **Close Composer**, saves the draft and closes the composer as its Close button does, from anywhere in it. `keys.toml` can give it another key (`close-composer`).
 - **Moving between messages keeps up on a slow computer:** when you move with `j`/`k`, a click or Previous/Next, the message you left goes from the reader within 150 ms, as a deleted one already did; the next one shows as far as it is ready and fills in. Before, the old message could stay for up to 3 seconds while the next one was prepared.
 - **Large messages show at once:** a message too large to download whole no longer waits for its pictures from the server before it shows. Its text is there at once and the pictures appear as they arrive.

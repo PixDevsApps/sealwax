@@ -2,9 +2,10 @@
 //! with its status and its role folders (Inbox, Drafts, Sent, Archive, Junk, Trash) with their
 //! counts, and its other folders under a collapsible "More"; and a footer with the accounts'
 //! state and `config.toml`. Folders under a folder the sidebar shows are indented under it, a
-//! level a step, and a folder with subfolders folds them away (M9, ADR-020). Between 900 and
-//! 1280 px it becomes a rail of icons with unread badges and the other accounts (DESIGN.md
-//! "Layout", the mock's medium window). The main menu is in the list's bar.
+//! level a step, and a folder with subfolders folds them away (M9, ADR-020), its count adding
+//! their unread mail while they are folded. Between 900 and 1280 px it becomes a rail of icons
+//! with unread badges and the other accounts (DESIGN.md "Layout", the mock's medium window).
+//! The main menu is in the list's bar.
 //!
 //! It shows a plain-data [`SidebarModel`], which the store fills (ML-023). Picking a folder
 //! activates `nav.folder` with the folder's key; the window answers with
@@ -184,12 +185,37 @@ impl SidebarFolder {
         }
     }
 
+    /// Unread messages in the folders under it, at every level (they have no role, so their
+    /// counts are unread mail).
+    pub fn unread_below(&self) -> u32 {
+        self.children.iter().fold(0, |sum, child| {
+            sum.saturating_add(child.count)
+                .saturating_add(child.unread_below())
+        })
+    }
+
+    /// The count its row shows: its own, and while its subfolders are folded away, their unread
+    /// too, as Thunderbird counts. Drafts counts drafts, so it keeps its own.
+    pub fn shown_count(&self, folded: bool) -> u32 {
+        if folded && self.role != Some(FolderRole::Drafts) {
+            self.count.saturating_add(self.unread_below())
+        } else {
+            self.count
+        }
+    }
+
     /// Unread mail in the Inbox or in the user's own folders stands out; the other counts don't.
     fn count_stands_out(&self) -> bool {
         matches!(self.role, None | Some(FolderRole::Inbox))
     }
 
-    fn accessible_label(&self) -> String {
+    /// "Kunder, 3 unread"; folded with unread mail under it, "Kunder, 5 unread with its
+    /// subfolders".
+    fn accessible_label(&self, folded: bool) -> String {
+        let shown = self.shown_count(folded);
+        if shown > self.count {
+            return format!("{}, {shown} unread with its subfolders", self.title());
+        }
         match self.count_text() {
             Some(count) => format!("{}, {count}", self.title()),
             None => self.title().to_owned(),
@@ -761,7 +787,8 @@ impl Sidebar {
     }
 
     /// Folds the subfolders of the folder `key` away, or opens them again (a click on its
-    /// arrow; Left folds, Right opens). The folder shown stays shown.
+    /// arrow; Left folds, Right opens), its count adding their unread while folded. The folder
+    /// shown stays shown; a row that had the keyboard focus keeps it.
     pub fn toggle_folded(&self, key: &str) {
         let has_children = self
             .model
@@ -780,12 +807,7 @@ impl Sidebar {
                 true
             }
         };
-        for row in self.rows.borrow().iter() {
-            if row.kind == RowKind::Folder(key.to_owned()) {
-                set_expanded(row, !folded);
-            }
-        }
-        self.apply_visibility();
+        self.rebuild_list();
         let handler = self.fold_changed.borrow().clone();
         if let Some(handler) = handler {
             handler(key, folded);
@@ -1674,9 +1696,11 @@ fn folder_row(
             .ellipsize(gtk::pango::EllipsizeMode::End)
             .build(),
     );
-    if folder.count > 0 {
+    let folded = place.is_some_and(|place| place.parent && place.folded);
+    let count = folder.shown_count(folded);
+    if count > 0 {
         content.append(&named(
-            count_label(folder.count, stands_out),
+            count_label(count, stands_out),
             &format!("count:{}", folder.key),
         ));
     }
@@ -1698,7 +1722,7 @@ fn folder_row(
         &format!("folder:{}", folder.key),
     );
     widget.update_property(&[
-        gtk::accessible::Property::Label(&folder.accessible_label()),
+        gtk::accessible::Property::Label(&folder.accessible_label(folded)),
         gtk::accessible::Property::Level(i32::try_from(level + 1).unwrap_or(1)),
     ]);
     let row = Row {
@@ -2110,13 +2134,77 @@ mod tests {
     fn accessible_labels_say_what_the_counts_mean() {
         let model = model();
         assert_eq!(
-            model.find("a/inbox").unwrap().1.accessible_label(),
+            model.find("a/inbox").unwrap().1.accessible_label(false),
             "Inbox, 12 unread"
         );
         assert_eq!(
-            model.find("a/drafts").unwrap().1.accessible_label(),
+            model.find("a/drafts").unwrap().1.accessible_label(false),
             "Drafts, 2 drafts"
         );
-        assert_eq!(model.find("a/sent").unwrap().1.accessible_label(), "Sent");
+        assert_eq!(
+            model.find("a/sent").unwrap().1.accessible_label(false),
+            "Sent"
+        );
+    }
+
+    /// Kunder (1 unread) holds Acme (2) and Fjord (0), which holds 2026 (4).
+    fn customers() -> SidebarFolder {
+        let mut fjord = folder("fjord", "Fjord", None, 0);
+        fjord.children = vec![folder("2026", "2026", None, 4)];
+        let mut kunder = folder("kunder", "Kunder", None, 1);
+        kunder.children = vec![folder("acme", "Acme", None, 2), fjord];
+        kunder
+    }
+
+    #[test]
+    fn a_folded_folder_counts_its_subfolders_unread_at_every_level() {
+        let kunder = customers();
+        assert_eq!(kunder.unread_below(), 6);
+        assert_eq!(kunder.shown_count(true), 7);
+        assert_eq!(kunder.shown_count(false), 1);
+        let fjord = kunder.find("fjord").unwrap();
+        assert_eq!(fjord.shown_count(true), 4);
+        assert_eq!(fjord.shown_count(false), 0);
+        let acme = kunder.find("acme").unwrap();
+        assert_eq!(acme.shown_count(true), 2);
+        assert_eq!(
+            kunder.accessible_label(true),
+            "Kunder, 7 unread with its subfolders"
+        );
+        assert_eq!(kunder.accessible_label(false), "Kunder, 1 unread");
+        assert_eq!(
+            fjord.accessible_label(true),
+            "Fjord, 4 unread with its subfolders"
+        );
+        assert_eq!(fjord.accessible_label(false), "Fjord");
+    }
+
+    #[test]
+    fn a_folded_folder_without_unread_below_keeps_its_own_count_and_words() {
+        let mut inbox = folder("inbox", "INBOX", Some(FolderRole::Inbox), 3);
+        inbox.children = vec![folder("receipts", "Kvitteringer", None, 0)];
+        assert_eq!(inbox.shown_count(true), 3);
+        assert_eq!(inbox.accessible_label(true), "Inbox, 3 unread");
+        let mut drafts = folder("drafts", "Drafts", Some(FolderRole::Drafts), 2);
+        drafts.children = vec![folder("old", "Old", None, 5)];
+        assert_eq!(drafts.shown_count(true), 2);
+        assert_eq!(drafts.accessible_label(true), "Drafts, 2 drafts");
+        let mut huge = folder("huge", "Huge", None, u32::MAX);
+        huge.children = vec![folder("more", "More", None, 1)];
+        assert_eq!(huge.shown_count(true), u32::MAX);
+    }
+
+    #[test]
+    fn folding_leaves_all_inboxes_and_the_headings_alone() {
+        let mut model = model();
+        model.accounts[0].folders[1].children =
+            vec![folder("a/receipts-2", "Kvitteringer", None, 5)];
+        model.accounts[0].folders[1].folded = true;
+        assert_eq!(model.all_inboxes_unread(), 16);
+        assert_eq!(model.accounts[0].unread(), 12);
+        assert_eq!(
+            model.heading("a/inbox"),
+            Some(("Inbox".into(), "12 unread · Personal".into()))
+        );
     }
 }

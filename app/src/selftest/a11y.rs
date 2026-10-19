@@ -497,7 +497,7 @@ fn names_from_content(role: gtk::AccessibleRole) -> bool {
 
 /// The accessible name: a labelled-by relation, else the label property, else, for a role
 /// that takes it, the names of what it holds. A tooltip doesn't name anything here.
-fn name(widget: &gtk::Widget) -> Option<String> {
+pub(super) fn name(widget: &gtk::Widget) -> Option<String> {
     if let Some(by) = labelled_by(widget)
         && let Some(text) = referenced_text(widget, &by)
     {
