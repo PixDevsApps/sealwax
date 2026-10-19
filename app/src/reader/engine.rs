@@ -10,6 +10,7 @@
 //! meantime gets its request ended unanswered.
 
 use super::view::MessageView;
+use crate::part_cache;
 use gtk4::{gio, glib};
 use sealwax_domain::model::MessageId;
 use sealwax_domain::theme::WebViewFonts;
@@ -116,6 +117,17 @@ impl InlineParts {
 
     pub fn len(&self) -> usize {
         self.parts.len()
+    }
+
+    /// Some part must come from the server: not stored, and not kept in [`part_cache`] since
+    /// it was last downloaded.
+    pub fn waits_for_server(&self) -> bool {
+        let Some(message) = self.message else {
+            return false;
+        };
+        self.parts.values().any(|source| {
+            matches!(source, Source::Fetch { part, .. } if !part_cache::contains(message, *part))
+        })
     }
 
     /// Parts left to the [`PartLoader`].
@@ -617,6 +629,26 @@ mod tests {
         pages.clear(7);
         assert!(!pages.current(7, again), "released");
         assert!(pages.lookup(7, "image001.png@01D9").is_none());
+    }
+
+    #[test]
+    fn only_parts_neither_stored_nor_kept_wait_for_the_server() {
+        let mut stored = InlineParts::new(MessageId(41));
+        stored.insert(
+            "logo@example.test".into(),
+            InlinePart {
+                mime_type: "image/png".into(),
+                data: glib::Bytes::from_static(b"png"),
+            },
+        );
+        assert!(!stored.waits_for_server());
+        let mut large = InlineParts::new(MessageId(42));
+        large.insert_missing("chart@example.test".into(), 4, "image/png".into());
+        assert!(large.waits_for_server());
+        part_cache::put(MessageId(42), 4, b"png");
+        assert!(!large.waits_for_server(), "kept since it was downloaded");
+        part_cache::forget(&[MessageId(42)]);
+        assert!(large.waits_for_server());
     }
 
     #[test]

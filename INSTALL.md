@@ -107,7 +107,7 @@ This deletes only Sealwax's own files on this computer, never the mail on your p
 
 ## For developers: build from source
 
-**What you need:** Arch Linux on x86_64; `git`, Python 3.11 or later, `base-devel` (makepkg), `pkgconf`, and Rust 1.92 or later with Cargo (Arch's `rust` package, or rustup). At runtime, pacman installs `gtk4` 4.18 or later, `libadwaita` 1.9 or later, `webkitgtk-6.0` 2.52 or later, `sqlite` 3.43 or later, `glib2`, `gcc-libs` and `glibc`. Optional: a Secret Service such as `gnome-keyring` for passwords and tokens (without one, Sealwax keeps them in memory until it quits, and says so); hunspell dictionaries such as `hunspell-en_us` for spell checking.
+**What you need:** Arch Linux on x86_64; `git`, Python 3.11 or later, `base-devel` (makepkg), `pkgconf`, and Rust 1.92 or later with Cargo (Arch's `rust` package, or rustup). At runtime, pacman installs `gtk4` 4.18 or later, `libadwaita` 1.9 or later, `webkitgtk-6.0` 2.52 or later, `sqlite` 3.43 or later, `glib2`, `gcc-libs` and `glibc`. Optional: a Secret Service such as `gnome-keyring` for passwords and tokens (without one, Sealwax keeps them in memory until it quits, and says so); `hunspell` and a dictionary such as `hunspell-en_us` for spell checking (the dictionary alone isn't enough).
 
 **Build and install the Arch package:**
 

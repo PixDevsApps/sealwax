@@ -40,7 +40,7 @@ The development registration "Sealwax (dev)" was made on 2026-10-05 in the owner
 
 ## Where the ID goes
 
-**In Sealwax's packages** (2026-10-09, [ADR-008 amendment](DECISIONS.md#adr-008-amendment--release-packages-carry-the-owners-microsoft-client-id-2026-10-09)): `python3 tools/package-source.py` builds the owner's ID into the package, taken from `SEALWAX_MICROSOFT_CLIENT_ID` or else from the builder's `~/.config/sealwax/config.toml`, and written only into the generated PKGBUILD under `.local/` (never committed); it prints where the ID came from, not the ID. `--no-client-id` leaves it out. Users of such a package need no registration.
+**In Sealwax's packages** (2026-10-09, [ADR-008 amendment](DECISIONS.md#adr-008-amendment--release-packages-carry-the-owners-microsoft-client-id-2026-10-09)): `python3 tools/package-source.py` builds the owner's ID into the package, taken from `SEALWAX_MICROSOFT_CLIENT_ID` or else from the builder's `~/.config/sealwax/config.toml`, and written only into the generated PKGBUILD under `.local/` (never committed); it prints where the ID came from, not the ID. `--no-client-id` leaves it out. Users of such a package need no registration. Packagers of other distributions may build the project's ID in too, on request (2026-10-19, [BUILD.md](BUILD.md#packaging)).
 
 As built in ML-032 (2026-10-05). Put the Microsoft client ID in `~/.config/sealwax/config.toml`; Sealwax applies it when you save the file, and it wins over one built in:
 

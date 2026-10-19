@@ -5,6 +5,10 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 ## Not released yet
 
 - **Ctrl+W closes the composer:** a new command, **Close Composer**, saves the draft and closes the composer as its Close button does, from anywhere in it. `keys.toml` can give it another key (`close-composer`).
+- **Moving between messages keeps up on a slow computer:** when you move with `j`/`k`, a click or Previous/Next, the message you left goes from the reader within 150 ms, as a deleted one already did; the next one shows as far as it is ready and fills in. Before, the old message could stay for up to 3 seconds while the next one was prepared.
+- **Large messages show at once:** a message too large to download whole no longer waits for its pictures from the server before it shows. Its text is there at once and the pictures appear as they arrive.
+- **Spell checking needs `hunspell`:** the package now suggests `hunspell` itself as well as a dictionary such as `hunspell-en_us`; a dictionary alone gave no spell checking. If spelling mistakes aren't underlined in the composer, install both: `sudo pacman -S hunspell hunspell-en_us`.
+- **A quieter log:** Sealwax no longer sets a WebKit setting that does nothing and logged a warning each time a message was shown.
 
 ## 0.4.9 — 2026-10-19
 

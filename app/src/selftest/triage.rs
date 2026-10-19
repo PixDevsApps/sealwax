@@ -23,7 +23,8 @@
 //! | `sidebar-menu-click [NAME]` | Clicks the open menu's item named NAME (`folder-menu-rename`, `account-menu-new-folder`, …), else its first: a folder's Mark Folder as Read, an account's Edit Account |
 //! | `action-log` | Records the window's and the application's commands as they run, from now on |
 //! | `measure-triage KEY COUNT` | Presses KEY COUNT times on the selected message and times each from the command's handler to the list's change and to the frame that shows it |
-//! | `measure-leave KEY COUNT [MS]` | Presses KEY COUNT times on the message the reader shows and times each from the command's handler to the first frame without it in the reader and to the frame with the next one; with MS, fails when it stayed longer |
+//! | `measure-leave KEY COUNT [MS]` | Presses KEY COUNT times on the message the reader shows and times each from the command's handler (the key press for a key that moves the selection, `j`) to the first frame without it in the reader and to the frame with the next one; with MS, fails when it stayed longer |
+//! | `hold-reader-layout BOOL` | Holds the reader's layout of the next conversations unfinished, as a slow machine would, until switched off |
 //! | `assert-focus WHERE` | The keyboard focus is in WHERE (as `focus`) |
 //! | `assert-list-selection none\|POS,…` | The selected rows |
 //! | `assert-select-mode BOOL` | Whether the list is in the select mode |
@@ -36,7 +37,7 @@
 //! | `assert-sidebar-menu closed\|enabled\|disabled [NAME]` | The sidebar's menu, and its item named NAME, else its first (Mark Folder as Read) |
 //! | `assert-action-log NAMES\|none` | The commands run since the last check, in order (`win.archive,win.star`) |
 
-use super::{Harness, StepResult, WAIT_TIMEOUT, broadway, equal, number};
+use super::{Harness, StepResult, WAIT_TIMEOUT, boolean, broadway, equal, number};
 use crate::move_to;
 use gtk4 as gtk;
 use gtk4::glib::translate::IntoGlib;
@@ -73,6 +74,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("action-log", 0, 0),
     ("measure-triage", 2, 2),
     ("measure-leave", 2, 3),
+    ("hold-reader-layout", 1, 1),
     ("assert-focus", 1, 1),
     ("assert-list-selection", 1, 1),
     ("assert-select-mode", 1, 1),
@@ -286,6 +288,11 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "action-log" => start_log(harness),
         "measure-triage" => measure(harness, arg(0), number(arg(1))?).await,
+        "hold-reader-layout" => {
+            let reader = harness.state.reader().ok_or("the reader isn't installed")?;
+            reader.hold_layout(boolean(arg(0))?);
+            Ok(())
+        }
         "measure-leave" => {
             let bound = args.get(2).map(|ms| number(ms)).transpose()?;
             measure_leave(harness, arg(0), number(arg(1))?, bound).await
@@ -948,6 +955,7 @@ async fn measure_leave(
                 mark_next.set(Some(Instant::now()));
             }
         });
+        let pressed = Instant::now();
         let result = press(key);
         let started = Instant::now();
         while result.is_ok() && next.get().is_none() && started.elapsed() < WAIT_TIMEOUT {
@@ -955,9 +963,13 @@ async fn measure_leave(
         }
         clock.disconnect(paint);
         result?;
-        let (Some(gone), Some(next), Some((handled, _))) =
-            (gone.get(), next.get(), harness.state.triage_started())
-        else {
+        let handled = harness
+            .state
+            .triage_started()
+            .map(|(at, _)| at)
+            .filter(|at| *at >= pressed)
+            .unwrap_or(pressed);
+        let (Some(gone), Some(next)) = (gone.get(), next.get()) else {
             failure = Some(format!(
                 "round {round}: the reader never showed the next message"
             ));

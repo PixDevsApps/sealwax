@@ -11,7 +11,8 @@ license=('MIT')
 depends=('gtk4' 'libadwaita' 'webkitgtk-6.0' 'sqlite>=3.43' 'glib2' 'gcc-libs' 'glibc')
 optdepends=(
   'gnome-keyring: a Secret Service that keeps passwords and sign-in tokens'
-  'hunspell-en_us: spell checking in the composer (other hunspell dictionaries work too)'
+  'hunspell: spell checking in the composer, with a dictionary such as hunspell-en_us'
+  'hunspell-en_us: an English dictionary for spell checking (other hunspell dictionaries work too)'
 )
 makedepends=('rust' 'cargo' 'pkgconf')
 # The release profile carries no debug info, so a -debug package would be empty. makepkg's LTO

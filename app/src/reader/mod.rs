@@ -80,10 +80,10 @@ use widgets::Stage;
 
 /// How long a new conversation may take to lay out before it is shown anyway.
 const READY_TIMEOUT: Duration = Duration::from_secs(3);
-/// How long a conversation whose selected message left the list (archived, deleted, moved, gone
-/// in a sync) stays on screen while the next one is laid out: PRD's bar for opening cached
-/// HTML. Then the next one shows as far as it is laid out, its bodies filling in; one not read
-/// yet hides the left one until it is.
+/// How long a conversation stays on screen while the next one is laid out, when the selection
+/// moves on (`j`/`k`, a click, Previous/Next) or its message left the list (archived, deleted,
+/// moved, gone in a sync): PRD's bar for opening cached HTML. Then the next one shows as far as
+/// it is laid out, its bodies filling in; one not read yet hides the left one until it is.
 pub const LEFT_SHOWN: Duration = Duration::from_millis(150);
 /// A reader hidden this long gives its views back (ADR-011: views of hidden bodies are released
 /// and re-rendered on return).
@@ -278,10 +278,12 @@ struct Inner {
     newest_first: Cell<bool>,
     /// `config.toml`'s `[reader] reply` is `all`: Reply answers everyone (issue #8).
     reply_all: Cell<bool>,
-    /// The shown page whose selected message left the list, and when it must be off screen.
+    /// The shown page the selection moved on from, and when it must be off screen.
     left: Cell<Option<(u64, Instant)>>,
-    /// The shown page is hidden: its message left the list and the next page isn't read yet.
+    /// The shown page is hidden: the selection moved on from it and the next page isn't read yet.
     hidden: Cell<bool>,
+    /// Pages being laid out never finish, for the self-tests ([`Reader::hold_layout`]).
+    layout_held: Cell<bool>,
 }
 
 impl Reader {
@@ -342,6 +344,7 @@ impl Reader {
             reply_all: Cell::new(false),
             left: Cell::new(None),
             hidden: Cell::new(false),
+            layout_held: Cell::new(false),
         });
         remote::load(&inner);
         let weak = Rc::downgrade(&inner);
@@ -421,11 +424,11 @@ impl Reader {
         glib::spawn_future_local(async move { inner.load(id, generation).await });
     }
 
-    /// [`Reader::show`] in place of a shown message that left the list (archived, deleted,
-    /// moved, gone in a sync): the left conversation stays on screen at most [`LEFT_SHOWN`],
-    /// then the new one shows as far as it is laid out, or the left one is hidden until the new
-    /// one is read.
-    pub fn show_after_leave(&self, id: MessageId) {
+    /// [`Reader::show`] in place of the shown message, the selection having moved on from it
+    /// or the message having left the list: the left conversation stays on screen at most
+    /// [`LEFT_SHOWN`], then the new one shows as far as it is laid out, or the left one is
+    /// hidden until the new one is read.
+    pub fn show_next(&self, id: MessageId) {
         let left = self
             .inner
             .shown
@@ -552,6 +555,15 @@ impl Reader {
     pub fn show_remote_images(&self) {
         if let Some(id) = self.message() {
             self.inner.allow_remote(id);
+        }
+    }
+
+    /// Holds the layout of the conversations to come unfinished while `held`, as a slow machine
+    /// would: they show only when the shown one may stay no longer. For the self-tests.
+    pub fn hold_layout(&self, held: bool) {
+        self.inner.layout_held.set(held);
+        if !held {
+            let _ = self.inner.progress.0.try_send(());
         }
     }
 

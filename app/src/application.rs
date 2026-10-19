@@ -2336,17 +2336,7 @@ impl AppState {
             if state.reader_shows.replace(Some(id)).is_none() {
                 target.set_reader(&reader.widget());
             }
-            let left = reader.message().is_some_and(|shown| {
-                shown != id
-                    && state
-                        .list()
-                        .is_some_and(|list| list.position(shown).is_none())
-            });
-            if left {
-                reader.show_after_leave(id);
-            } else {
-                reader.show(id);
-            }
+            reader.show_next(id);
             state.update_position();
         });
         let weak = Rc::downgrade(self);

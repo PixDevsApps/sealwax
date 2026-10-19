@@ -1,10 +1,10 @@
-# A message that leaves the list leaves the reader at once (issue: a deleted message stayed in
-# the reader for a second or two on a slower machine). The reader lays the next conversation out
-# unseen and keeps the shown one meanwhile, but one whose message left stays at most 150 ms
-# (reader::LEFT_SHOWN); then the next shows as far as it is laid out. Here the next message's
-# layout can't finish: a large message's inline image waits for the fake engine's FetchPart,
-# which isn't answered until later, so before this change the deleted message stayed the full
-# 3 s (READY_TIMEOUT). Every message is fictional. Run:
+# The reader lays the next conversation out unseen and keeps the shown one meanwhile, but at most
+# 150 ms (reader::LEFT_SHOWN): then the next shows as far as it is laid out. That holds when the
+# selection moves on (j, a click, Previous/Next; the owner's decision, 2026-10-19) as when the
+# shown message leaves the list (a deleted message stayed in the reader for a second or two on a
+# slower machine, 2026-10-12). Here the next layout can't finish (hold-reader-layout, as on a
+# slow machine), so without the rule the shown message would stay the full 3 s
+# (READY_TIMEOUT). Every message is fictional. Run:
 #   tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/reader-leave.sealwax-test
 
 desktop tiling
@@ -12,19 +12,22 @@ resize 1440 900
 engine-attach
 triage-mark-read-on-open false
 mail-account Files
-files-add-text cid
-sleep 1100
-files-add simple
-assert-list-count 2
+files-add newsletter simple dark-promo
+assert-list-count 3
 
-# The simple message is shown; deleting it selects the large one, whose image never comes in
-# time: the deleted message is off the reader well within the 3 s a layout may take.
+# Moving on with j: the newsletter is off the reader well within the 3 s a layout may take.
 list-select 0
-wait-until assert-files message simple
+wait-until assert-files message newsletter
 focus list
+hold-reader-layout true
+measure-leave j 1 1000
+assert-files message simple
+hold-reader-layout false
+wait-until assert-reader-selected
+
+# Deleting: the deleted message is off the reader as quickly.
+hold-reader-layout true
 measure-leave numbersign 1 1000
-assert-files message cid
-engine-expect fetch-part
-assert-files cid-loaded 0
-engine-reply part-fetched ok
-wait-until assert-files cid-loaded 1
+assert-list-count 2
+hold-reader-layout false
+wait-until assert-reader-selected

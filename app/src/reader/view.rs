@@ -1024,10 +1024,10 @@ fn hardened_settings(fonts: &WebViewFonts) -> webkit6::Settings {
     settings.set_allow_top_navigation_to_data_urls(false);
     settings.set_allow_modal_dialogs(false);
     settings.set_print_backgrounds(true);
-    // Both do nothing since WebKitGTK 2.52 (S2); the feature switches below and the pings
-    // filter do the work. They stay off in case a future WebKit honours them again.
+    // Does nothing since WebKitGTK 2.52 (S2); the feature switches below and the pings filter
+    // do the work. It stays off in case a future WebKit honours it again. Hyperlink auditing's
+    // setter is left out: it does nothing either and warns at every view.
     settings.set_enable_dns_prefetching(false);
-    settings.set_enable_hyperlink_auditing(false);
     if let Some(features) = webkit6::Settings::all_features() {
         for index in 0..features.length() {
             if let Some(feature) = features.get(index)

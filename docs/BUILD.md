@@ -14,7 +14,7 @@ Synced: 2026-10-09
 | GLib / GIO | 2.88.3 |
 | libsecret | 0.21.7 (gnome-keyring 50 provides the Secret Service) |
 
-Arch packages needed to build: `gtk4`, `libadwaita`, `webkitgtk-6.0`, `sqlite`, `pkgconf`, `rust` (or rustup). Optional at runtime: `gnome-keyring` (or another Secret Service provider), `hunspell` dictionaries for spell check.
+Arch packages needed to build: `gtk4`, `libadwaita`, `webkitgtk-6.0`, `sqlite`, `pkgconf`, `rust` (or rustup). Optional at runtime: `gnome-keyring` (or another Secret Service provider), `hunspell` with a hunspell dictionary (such as `hunspell-en_us`) for spell check: a dictionary alone isn't enough.
 
 Not installed here (no action needed for M0): mold/lld, rust-analyzer, blueprint-compiler, meson.
 
@@ -191,6 +191,8 @@ SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_
 `python3 tools/package-source.py` writes a deterministic tarball of HEAD and a filled-in PKGBUILD to `.local/package/` (version, SHA-256, `SOURCE_DATE_EPOCH` from the commit). Building it (`cd .local/package && makepkg --cleanbuild --force`) is authorized for M1 as a build without install; installing needs its own authorization. Where Rust comes from rustup (as on the development machine, in `~/.cargo`), pacman can't see `rust` and `cargo`, so add `--nodeps`, as Stet does; pacman checks the runtime dependencies again at install time. The PKGBUILD turns off makepkg's `lto` option: with Arch's default `OPTIONS=(… lto)` makepkg compiles ring's C code to GCC LTO bytecode, which Rust's default linker (rust-lld) can't read, and the link fails with ring's `ring_core_*` symbols undefined (found by the user's soak build, 2026-10-07). Its `build()` and `check()` add `--remap-path-prefix` to `RUSTFLAGS`, mapping the build folder (`$srcdir`) to `/usr/src/sealwax` and Cargo's home (`$CARGO_HOME`, else `~/.cargo`) to `/usr/src/cargo`, so the panic locations in the binary name no path of the machine that built it (2026-10-09; makepkg had warned "Package contains reference to $srcdir"). The app keeps no `CARGO_MANIFEST_DIR` path either: the self-tests find `tests/theme/` beside the script they run. The user's install: `cd .local/package && makepkg --cleanbuild --force --nodeps -si`.
 
 A command line with no Sealwax running asks the session bus to start the installed service and hands its `mailto:` links to it. Development builds (`.Devel`) have no service file and start directly; run `target/debug/sealwax` for logs.
+
+**Packaging Sealwax elsewhere** (Nix, other distributions; 2026-10-19, [ADR-008 amendment](DECISIONS.md#adr-008-amendment--packagers-may-build-in-the-projects-client-id-2026-10-19)): set `SEALWAX_MICROSOFT_CLIENT_ID` when building, and Sign in with Microsoft works in your package as in the release packages. You may build in the project's own client ID: ask for it in an issue. It is a public client's ID, not a secret, but sign-ins through it count as the project's app, so say where the package is published. Without one, your users put their own registration's ID in `config.toml` ([OAUTH-SETUP.md](OAUTH-SETUP.md)).
 
 ## Making a release
 

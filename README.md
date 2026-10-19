@@ -38,7 +38,7 @@ Run the same line again to update. To uninstall: `sudo pacman -R sealwax`.
 
 ## Requirements
 
-Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally hunspell dictionaries for spell checking. Omarchy 4 is the desktop it is made for. Building needs Rust 1.92+.
+Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally `hunspell` and a hunspell dictionary for spell checking. Omarchy 4 is the desktop it is made for. Building needs Rust 1.92+.
 
 ## Documentation
 

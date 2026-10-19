@@ -601,6 +601,18 @@ Built in M3.
 
 **Decision:** When the account a Microsoft sign-in belongs to isn't the address typed (compared without case), the setup assistant asks before it saves: send from the address signed in with, which then becomes the account's address, or keep the one typed (an alias or a shared mailbox can be right). It warns and never blocks. The engine takes a finished sign-in for an add of either address (`Kept::fits`); Back lets the sign-in go (`CancelSignIn`). Signing in again for an account isn't asked.
 
+### ADR-008 amendment — work and school accounts: explained now, the publisher verified later (2026-10-19)
+
+The owner's decision on the sign-off sheet (2026-10-19), "Both": for 1.0, the user guide and OAUTH-SETUP.md explain what a work or school organization's IT admin must approve (the admin-consent link and the permissions Sealwax asks for), and Sealwax says, after a minute of waiting for Microsoft, that a work account may need its admin's approval. Publisher verification (the Microsoft AI Cloud Partner Program and a verified publisher domain) follows when the owner has time; it is their paperwork, not code. Issue #15 may be this case; its reporter hasn't answered.
+
+### ADR-008 amendment — packagers may build in the project's client ID (2026-10-19)
+
+The owner's decision on the sign-off sheet (2026-10-19): packagers of other distributions (such as the Nix recipe in issue #11) may build the project's Microsoft client ID into their packages with `SEALWAX_MICROSOFT_CLIENT_ID`, on request. It is a public client's ID and is in every release binary already; sign-ins through it count as the project's app, so the packager says where the package is published. The ID stays out of the repository. BUILD.md "Packaging" says how.
+
+### ADR-008 amendment — POP3 accounts sign in with a password in 1.0 (2026-10-19)
+
+The owner's decision on the sign-off sheet (2026-10-19), for M8: Sign in with Microsoft asks for IMAP's and SMTP's permissions only, and a POP3 account signs in with a password in 1.0. Microsoft accounts use IMAP.
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
@@ -834,6 +846,10 @@ From a user's report on X (Fastmail, a laptop running Omarchy): after a delete i
 ### ADR-011 amendment — a pings filter in every view, as WebKitGTK 2.54 dropped `LinkDNSPrefetch` (2026-10-19)
 
 WebKitGTK 2.54 removed the `LinkDNSPrefetchEnabled` preference ([310198@main](https://commits.webkit.org/310198@main), WebKit bug 311010): `Settings::all_features()` no longer lists `LinkDNSPrefetch`, and `<link rel=dns-prefetch>` with an http(s) URL always runs. The only check left before the lookup is the content filter, which WebKit asks about the URL as a `ping` load (as it does for `<link rel=preconnect>` and `<a ping>`). The reader's content filter blocks it, but a message whose images the user allowed loads without that filter, so on 2.54 such a message could make WebKit look up any name it lists. Every reader view now also carries a second compiled filter that blocks `resource-type: ping` loads, whatever the user allowed; it compiles with the content filter, and no view is made, and no HTML shown in one, until both have. The runtime features stay off where WebKit has them, so 2.52 keeps both layers; the unit test expects `LinkDNSPrefetch` up to 2.52 and not from 2.54 (`RETIRED_FEATURES`), so a WebKit that brings it back fails it. Checked on WebKitGTK 2.54.1 under `tools/headless.sh` with the DNS canary: a bare view looked up the names of `<link rel=dns-prefetch>` (all but WebKit's first, dropped while it reads the proxy settings), the same view with the pings filter none; the hostile suite's Show images pass now fails on any name but the images', and fails with the pings filter taken out ([TESTING.md](TESTING.md#dns-prefetch-on-webkitgtk-254--2026-10-19)). Not run on 2.52, which this machine no longer has; WebKit's code for the check is the same there. Rejected: removing `<link>` elements from the HTML before it loads (Sealwax doesn't rewrite message HTML, and the filter also stops preconnects and `<a ping>`, which WebKit checks the same way).
+
+### ADR-011 amendment — moving on and large messages don't wait (2026-10-19)
+
+The owner's decisions on the sign-off sheet (2026-10-19). (1) The 150 ms rule of 2026-10-12 also applies when the selection moves on (`j`/`k`, a click, Previous/Next), not only when the shown message leaves the list: the shown conversation stays at most `LEFT_SHOWN`, then the next shows as far as it is laid out (`Reader::show_next`). A page shown before its first screen is laid out keeps its selected message in place while the bodies above it get their heights, instead of the topmost entry it shows. (2) A body whose inline images must come from the server (a large message stored as its text parts, the images neither stored nor kept in the part cache) counts as laid out once it is measured, without waiting for its `load`: the text shows at once and the images fill in. Tests: `reader-leave` (both cases, with a new `hold-reader-layout` command; without (1) the `j` step stays 3,022.8 ms), `files` (`wait-within 1500` for the large message), `reader-conversation`. (3) The `enable-hyperlink-auditing` setter, which does nothing since WebKitGTK 2.52 and warned at every view, is no longer called in the reader or the composer; `<a ping>` stays blocked by the pings filter.
 
 ## ADR-012 — Repository docs canonical, Notion as a mirror (2026-10-04)
 
@@ -1208,6 +1224,14 @@ The composer docked in the main window (ADR-014's amendment of 2026-10-08) adds 
 
 **Status:** Accepted — user decision, 2026-10-19 ("Yes, add a Close Composer command (save and close) on Ctrl+W."), after a user asked on Reddit for a key to close the composer. A new Composer command, **Close Composer** (`close-composer`), saves the draft and closes the card as its Close button does (a new draft closed before anything was typed is discarded), with **Ctrl+W**, which no other command had. It works from the fields and the body, as the composer's other keys do; the Close button's tooltip names it. Escape in a card still does nothing (the 2026-10-08 amendment): it is too easy to press by accident. This replaces M6's "no Close Composer command".
 
+### ADR-017 amendment — the folder list's heading keys accepted (2026-10-19)
+
+The owner accepted the 2026-10-08 proposal on the sign-off sheet (2026-10-19): on an account's heading in the folder list, Enter or Space folds or opens it, Left folds, Right opens, and Menu or Shift+F10 opens its menu.
+
+### ADR-017 amendment — keys for issues #10 and #12, a small set, proposed (2026-10-19)
+
+The owner chose "a small set for 1.0" on the sign-off sheet (2026-10-19), with the exact keys to approve before anything is built. Proposed: `l` also opens the message (Open Message, with Enter and `o`); Scroll Message Down and Scroll Message Up, half a page, from the list and the reader, on `d` and `Shift+D` (or `Ctrl+D` and `Ctrl+Shift+D`; the latter opens GTK's inspector where its key is on); Go to All Inboxes on `g a`; Go to Account 1 to 9, that account's Inbox in the sidebar's order, on `g 1` to `g 9`. The letter hints over the sidebar wait for after 1.0. Nothing is built until the owner answers.
+
 ## ADR-018 — Logging and privacy (2026-10-04)
 
 **Status:** Accepted — plan approval, 2026-10-04.
@@ -1306,6 +1330,10 @@ Five registry commands without keys, at the registry's end in a new Rules catego
 **Reason:** the user expects a new rule to sort what is already there; one rule alone does what its toast says, where the whole script could also move mail by rules the user never asked to run on old mail. The undo window: the engine's test undid a run whose moves had already reached the fake server, which sent no COPYUID, and the store couldn't say where the messages had gone (`Lost::Unknown`); waiting as the user's own moves do makes Undo always local.
 
 **Not chosen:** a checkbox ("Also apply to the Inbox"), as Outlook and Gmail have it, since the user asked for it to happen at once; running the whole script; folders other than the Inbox.
+
+### ADR-020 amendment — the rule-run choices kept (2026-10-19)
+
+The owner kept the choices of 2026-10-09 on the sign-off sheet (2026-10-19): saving a rule runs that one rule on the Inbox's mail, with Undo; switching a rule on, renaming, reordering or bringing it back with Undo doesn't run it; changing what it matches or does runs it again.
 
 ## ADR-021 — A public repository, releases on GitHub and the AUR (2026-10-09)
 
