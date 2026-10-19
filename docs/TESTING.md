@@ -114,7 +114,7 @@ WebKitGTK went from 2.52.6 to 2.54.1 on 2026-10-18 (GTK from 4.22.4 to 4.24.1), 
 | CI on `6ae9bcb`, `SEALWAX_CI_DISPLAY=76 bash tools/ci.sh --ui` | 1,511 passed, 0 failed, 98 ignored; 81 scripts, 7,832 of 7,832 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, 273 s); no daemon left running | Pass |
 | `python3 tools/release.py build` on `v0.4.9` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,087 passed, 0 failed; `pacman -Qp` reads `sealwax 0.4.9-1`; the binary says `sealwax 0.4.9` and has no path of the home folder; `SHA256SUMS` checks | Pass |
 | The release `v0.4.9` (`tools/release.py github`) | GitHub's latest; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build (`ad161ae8…`), read by pacman as `sealwax 0.4.9-1` | Pass |
-| Installing 0.4.9 on this machine | Left to the owner: `sudo` asks for a password, which an agent doesn't type | Not verified |
+| Installing 0.4.9 on this machine (the owner, with INSTALL.md's command, then Ctrl+Q and a restart) | pacman's log: `upgraded sealwax (0.4.7-1 -> 0.4.9-1)` at 14:16; `pacman -Q` reads `sealwax 0.4.9-1`; `/usr/bin/sealwax` byte for byte the build's (SHA-256 `a4e1b07a…`) and says `sealwax 0.4.9`; the running Sealwax started at 14:16:30 from it | Pass |
 
 ### 0.4.8 — 2026-10-13
 
