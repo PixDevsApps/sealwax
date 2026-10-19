@@ -4,6 +4,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 
 ## Not released yet
 
+- **Unread mail in folded subfolders shows:** a folder whose subfolders are folded away now counts their unread mail with its own, as Thunderbird does, so you can see there is new mail inside. Open the folder again and each one shows its own count.
 - **Ctrl+W closes the composer:** a new command, **Close Composer**, saves the draft and closes the composer as its Close button does, from anywhere in it. `keys.toml` can give it another key (`close-composer`).
 
 ## 0.4.9 — 2026-10-19
