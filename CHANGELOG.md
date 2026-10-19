@@ -2,8 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 0.4.9 — 2026-10-19
 
+- **Images in mail no longer make your computer look up their links:** WebKitGTK 2.54, the engine Sealwax shows mail with, dropped the switch that turned DNS prefetch off. A message whose images you had allowed could then make your computer look up the names it lists, which tells the sender's name servers that the message was opened. Sealwax now blocks those lookups in every message, images allowed or not.
 - **Large messages open and answer faster:** a message too large to download whole (Sealwax keeps its text and leaves its attachments on the server) showed its images only after downloading them again each time you opened it. Now they're kept in memory once downloaded, so the message opens at once the next time. Replying to such a message no longer downloads the whole message, attachments and all, before the address and "Re:" appear: the reply is written from the text Sealwax keeps, and only the images the quote shows are downloaded, or taken from memory when you have just read the message. A forward still downloads the whole message, since it carries the attachments.
 
 ## 0.4.8 — 2026-10-13

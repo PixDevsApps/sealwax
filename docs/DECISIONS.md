@@ -31,7 +31,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 019 | Corner radius follows Hyprland | Accepted (user decision at the DESIGN gate); built in M1 |
 | 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); built: folders (A1), the Sieve subset (A2), the rules on new mail (B1) and in the app (B2); the user's review next |
 | 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax. Amended 2026-10-18 (user decision): no AUR package; GitHub Releases only |
-| 022 | The headless checks run GTK's Broadway daemon with a patch of Sealwax's | Proposed (2026-10-19): GTK 4.24.1's daemon aborts in about 30 of the 81 CI scripts; the user's decision |
+| 022 | The headless checks run GTK's Broadway daemon with a patch of Sealwax's | Accepted (2026-10-19) as a stopgap: GTK 4.24.1's daemon aborts in about 30 of the 81 CI scripts; dropped once a GTK release fixes it |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1337,7 +1337,7 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 ## ADR-022 — The headless checks run GTK's Broadway daemon with a patch of Sealwax's (2026-10-19)
 
-**Status:** Proposed — 2026-10-19, from the session asked to keep `tools/ci.sh --ui` working after the system upgrade of 2026-10-18; the user's decision.
+**Status:** Accepted — 2026-10-19 (the user: "Yes please, go ahead", to accepting it as a stopgap until a GTK release fixes the renderer); proposed the same day by the session asked to keep `tools/ci.sh --ui` working after the system upgrade of 2026-10-18. The patch goes once a GTK release fixes the Broadway renderer.
 
 **Decision:** from GTK 4.24, `tools/headless.sh` runs `gtk4-broadwayd` built from GTK's own release tarball for the installed version with `tools/broadwayd/reuse.patch` (`tools/broadwayd/build.sh`: the tarball checked against `tools/broadwayd/SHA256SUMS`, the daemon built once per version into `target/`). The patch makes the daemon copy a node that a frame sends twice, and stand in an empty node for an id it no longer has, instead of aborting. Nothing in Sealwax's package or binary changes. The patch goes when a GTK release fixes the cause; a GTK version without a checksum line stops the headless runs until someone checks the patch against it.
 
