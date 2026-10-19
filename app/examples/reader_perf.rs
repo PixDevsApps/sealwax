@@ -12,7 +12,7 @@
 //! target/release/sealwax-fixtures import --count 2000 --seed 1 \
 //!     --store .local/reader-examples/perf/store.sqlite
 //! SEALWAX_HEADLESS_TIMEOUT=600 tools/headless.sh 37 target/release/examples/reader_perf \
-//!     --store .local/reader-examples/perf/store.sqlite --count 200
+//!     --store .local/reader-examples/perf/store.sqlite --count 200   # or --ids 12,34
 //! ```
 
 #[path = "reader_support/mod.rs"]
@@ -40,17 +40,29 @@ struct Args {
     count: u32,
     /// Opens back to back, without letting the window settle in between.
     back_to_back: bool,
+    /// These messages instead of the Inbox's newest.
+    ids: Vec<MessageId>,
 }
 
 fn args() -> Result<Args, String> {
     let mut store = None;
     let mut count = 200;
     let mut back_to_back = false;
+    let mut ids = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
             "--store" => store = args.next().map(PathBuf::from),
             "--back-to-back" => back_to_back = true,
+            "--ids" => {
+                ids = args
+                    .next()
+                    .ok_or("--ids needs message ids")?
+                    .split(',')
+                    .map(|id| id.trim().parse().map(MessageId))
+                    .collect::<Result<_, _>>()
+                    .map_err(|_| "--ids takes message ids separated by commas")?;
+            }
             "--count" => {
                 count = args
                     .next()
@@ -64,6 +76,7 @@ fn args() -> Result<Args, String> {
         store: store.ok_or("--store PATH (a store sealwax-fixtures imported) is needed")?,
         count,
         back_to_back,
+        ids,
     })
 }
 
@@ -128,9 +141,11 @@ fn main() -> glib::ExitCode {
             let _input = input.clone();
             let count = args.count;
             let back_to_back = args.back_to_back;
+            let chosen = args.ids.clone();
             let cache = cache.clone();
             glib::spawn_future_local(async move {
-                let fixtures = measure(&store, &reader, &window, count, back_to_back).await;
+                let fixtures =
+                    measure(&store, &reader, &window, count, &chosen, back_to_back).await;
                 reader.clear();
                 let samples = conversations(&theme, &cache, &window).await;
                 match (fixtures, samples) {
@@ -213,12 +228,17 @@ async fn measure(
     reader: &Reader,
     window: &sealwax_app::window::Window,
     count: u32,
+    chosen: &[MessageId],
     back_to_back: bool,
 ) -> Result<bool, String> {
     let reports = support::shown_reports(reader);
     support::resize(window.window(), 1440, 900).await?;
     support::sleep(1500).await;
-    let ids = ids(store, count).await?;
+    let ids = if chosen.is_empty() {
+        ids(store, count).await?
+    } else {
+        chosen.to_vec()
+    };
     println!(
         "PERF ENV messages={} live_views_before={} build={} mode={}",
         ids.len(),

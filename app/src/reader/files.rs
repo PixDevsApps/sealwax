@@ -12,6 +12,7 @@
 
 use super::{Inner, Reader};
 use crate::engine_link::{EngineLink, Subscription};
+use crate::part_cache;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
@@ -154,7 +155,8 @@ fn default_root(cache: &Path) -> PathBuf {
 }
 
 /// Takes the engine's answers to `FetchPart` and `FetchOriginal` (`Reader::connect_engine`),
-/// and serves the inline images of a message stored as its text parts through `FetchPart`.
+/// and serves the inline images of a message stored as its text parts through `FetchPart`,
+/// kept in [`part_cache`] for the next time the message is shown.
 pub(super) fn connect_engine(reader: &Reader, engine: &EngineLink) {
     let files = &reader.inner.files;
     files.engine.replace(Some(engine.clone()));
@@ -162,11 +164,13 @@ pub(super) fn connect_engine(reader: &Reader, engine: &EngineLink) {
     reader.set_part_loader(Some(Rc::new(move |message, part| {
         let weak = weak.clone();
         Box::pin(async move {
+            if let Some(data) = part_cache::get(message, part) {
+                return Some(glib::Bytes::from_owned(data));
+            }
             let inner = weak.upgrade()?;
-            fetch_part(&inner, message, part)
-                .await
-                .ok()
-                .map(glib::Bytes::from_owned)
+            let data = fetch_part(&inner, message, part).await.ok()?;
+            part_cache::put(message, part, &data);
+            Some(glib::Bytes::from_owned(data))
         })
     })));
     let weak = Rc::downgrade(&reader.inner);

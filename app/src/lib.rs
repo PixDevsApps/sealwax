@@ -27,6 +27,7 @@ pub mod notify;
 pub mod oauth;
 pub mod outbox;
 pub mod palette;
+pub mod part_cache;
 pub mod pop3;
 pub mod preferences;
 pub mod reader;

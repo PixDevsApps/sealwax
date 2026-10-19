@@ -2397,6 +2397,7 @@ impl AppState {
             let weak = Rc::downgrade(self);
             self.mailbox.connect_event(move |event| {
                 if let Some(state) = weak.upgrade() {
+                    crate::part_cache::forget(&event.removed);
                     state.update_position();
                     if let Some(reader) = state.reader() {
                         reader.store_changed(event);

@@ -120,7 +120,7 @@ fn sample_raw(name: &str, date: i64) -> Result<Vec<u8>, String> {
         .ok_or_else(|| format!("no sample {name}"))
 }
 
-fn added_id(name: &str) -> Result<MessageId, String> {
+pub(super) fn added_id(name: &str) -> Result<MessageId, String> {
     ADDED
         .with(|added| {
             added

@@ -229,8 +229,10 @@ impl Context {
 
     /// The raw message `message` as the server has it: from the blob store, after the engine
     /// downloads its body if the store has none, or whole from the server when the store
-    /// keeps only its text parts. `None` with why it couldn't be had.
-    async fn original(&self, message: MessageId) -> Result<Vec<u8>, String> {
+    /// keeps only its text parts, unless `text_will_do` (a reply, which needs no attachments,
+    /// gets its inline images one by one: [`Self::fetch_parts`]). `None` with why it couldn't
+    /// be had.
+    async fn original(&self, message: MessageId, text_will_do: bool) -> Result<Vec<u8>, String> {
         let store = self.store()?;
         let target = store
             .body_targets(vec![message])
@@ -242,6 +244,7 @@ impl Context {
         let engine = self.state()?.engine();
         match target.body_state {
             BodyState::Full => {}
+            BodyState::Text if text_will_do => {}
             BodyState::Text => {
                 let fetched = ask(
                     &engine,
@@ -294,6 +297,51 @@ impl Context {
             .flatten()
             .ok_or_else(|| "The message couldn't be read.".to_owned())
     }
+
+    /// The bytes of `parts` of `message`, from [`crate::part_cache`] (the reader keeps the
+    /// images it showed) or each downloaded by itself, all at once: `None` for a part the
+    /// engine couldn't get.
+    async fn fetch_parts(&self, message: MessageId, parts: &[u32]) -> Vec<Option<Vec<u8>>> {
+        let Ok(state) = self.state() else {
+            return vec![None; parts.len()];
+        };
+        let engine = state.engine();
+        let fetches: Vec<_> = parts
+            .iter()
+            .map(|&part| {
+                let engine = engine.clone();
+                glib::spawn_future_local(async move {
+                    if let Some(data) = crate::part_cache::get(message, part) {
+                        return Some(data);
+                    }
+                    let data = ask(
+                        &engine,
+                        Command::FetchPart { message, part },
+                        move |event| match event {
+                            Event::PartFetched {
+                                message: answered,
+                                part: index,
+                                result,
+                            } if *answered == message && *index == part => {
+                                Some(result.as_ref().ok().map(|fetched| fetched.data.clone()))
+                            }
+                            _ => None,
+                        },
+                        DOWNLOAD_WAIT,
+                    )
+                    .await
+                    .flatten()?;
+                    crate::part_cache::put(message, part, &data);
+                    Some(data)
+                })
+            })
+            .collect();
+        let mut fetched = Vec::with_capacity(fetches.len());
+        for fetch in fetches {
+            fetched.push(fetch.await.ok().flatten());
+        }
+        fetched
+    }
 }
 
 /// Sends `command` and waits at most `limit` for the first event `pick` takes; `None` when
@@ -314,26 +362,35 @@ async fn ask<T: 'static>(
     mailbox::with_timeout(receiver.recv(), limit).await?.ok()
 }
 
-/// Copies `parts` of `raw` into the blob store; parts whose bytes the message doesn't hold
-/// (a copy stored as its text parts) are left out. Runs off the GTK thread.
+/// Copies `parts` of `raw` into the blob store, in order; `None` for a part whose bytes the
+/// message doesn't hold (a copy stored as its text parts). Runs off the GTK thread.
 fn copy_parts(
     blobs: &BlobStore,
     raw: &[u8],
     parts: &[sealwax_domain::model::Attachment],
-) -> Vec<DraftPart> {
+) -> Vec<Option<DraftPart>> {
     parts
         .iter()
-        .filter_map(|part| {
+        .map(|part| {
             let data = sealwax_domain::message::part(raw, part.part)?.data;
-            if data.is_empty() {
-                return None;
-            }
-            let blob = blobs.put(&data).ok()?;
-            let mut draft_part = reply::draft_part(part, blob);
-            draft_part.size = data.len() as u64;
-            Some(draft_part)
+            store_part(blobs, part, &data)
         })
         .collect()
+}
+
+/// `data`, the bytes of `part`, in the blob store as a draft's part; `None` when empty.
+fn store_part(
+    blobs: &BlobStore,
+    part: &sealwax_domain::model::Attachment,
+    data: &[u8],
+) -> Option<DraftPart> {
+    if data.is_empty() {
+        return None;
+    }
+    let blob = blobs.put(data).ok()?;
+    let mut draft_part = reply::draft_part(part, blob);
+    draft_part.size = data.len() as u64;
+    Some(draft_part)
 }
 
 fn title(kind: ReplyKind) -> &'static str {
@@ -443,19 +500,44 @@ async fn answer(
     kind: ReplyKind,
     typed: &str,
 ) -> Result<Draft, String> {
-    let raw = context.original(message).await?;
+    let raw = context
+        .original(message, kind != ReplyKind::Forward)
+        .await?;
     let blobs = context.blobs()?;
     let senders = context.senders(account);
+    let worker = blobs.clone();
     let planned = gio::spawn_blocking(move || {
         let original = Original::parse(&raw);
         let planned = reply::plan(&original, kind, &senders);
-        let parts = copy_parts(&blobs, &raw, &planned.parts);
+        let parts = copy_parts(&worker, &raw, &planned.parts);
         (planned, parts)
     })
     .await
     .map_err(|_| "The message couldn't be read.".to_owned())?;
-    let (planned, parts) = planned;
+    let (planned, mut parts) = planned;
+    let missing: Vec<usize> = (0..parts.len()).filter(|&at| parts[at].is_none()).collect();
+    if !missing.is_empty() {
+        let indexes: Vec<u32> = missing.iter().map(|&at| planned.parts[at].part).collect();
+        let fetched = context.fetch_parts(message, &indexes).await;
+        let wanted: Vec<_> = missing
+            .iter()
+            .zip(fetched)
+            .filter_map(|(&at, data)| Some((at, planned.parts[at].clone(), data?)))
+            .collect();
+        let stored = gio::spawn_blocking(move || {
+            wanted
+                .into_iter()
+                .map(|(at, part, data)| (at, store_part(&blobs, &part, &data)))
+                .collect::<Vec<_>>()
+        })
+        .await
+        .unwrap_or_default();
+        for (at, part) in stored {
+            parts[at] = part;
+        }
+    }
     let id = message_id(&planned.sender.address);
+    let parts = parts.into_iter().flatten().collect();
     Ok(planned.draft(account.id, message, id, typed, parts))
 }
 
@@ -465,7 +547,7 @@ async fn server_draft(
     account: &Account,
     message: MessageId,
 ) -> Result<Draft, String> {
-    let raw = context.original(message).await?;
+    let raw = context.original(message, false).await?;
     let blobs = context.blobs()?;
     let parsed = gio::spawn_blocking(move || {
         let stored = stored::parse(&raw)?;

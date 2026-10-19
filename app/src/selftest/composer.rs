@@ -1384,14 +1384,16 @@ fn short(text: &str) -> String {
 
 /// The stored message named `name` (`composer-store-message`).
 fn message_named(name: &str) -> Result<MessageId, String> {
-    MESSAGES.with(|messages| {
-        messages
-            .borrow()
-            .iter()
-            .find(|(known, _)| known == name)
-            .map(|(_, id)| *id)
-            .ok_or_else(|| format!("no stored message {name}"))
-    })
+    MESSAGES
+        .with(|messages| {
+            messages
+                .borrow()
+                .iter()
+                .find(|(known, _)| known == name)
+                .map(|(_, id)| *id)
+        })
+        .or_else(|| super::files::added_id(name).ok())
+        .ok_or_else(|| format!("no stored message {name}"))
 }
 
 /// A fictional message for the store-backed tests: `plans` (an HTML message with an inline

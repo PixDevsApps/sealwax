@@ -320,4 +320,35 @@ engine-expect fetch-original
 engine-reply original-fetched ok
 wait-until assert-files eml $TMP/large.eml files-large
 engine-expect none
+
+# Shown again, the large message's inline image comes from memory, not from the server. A
+# reply to it takes the image from there too and never downloads the whole message; a reply
+# to one without inline images asks for nothing; only a forward, which carries every
+# attachment, downloads it whole.
+list-select 0
+wait-until assert-files message cid
+wait-until assert-files cid-loaded 1
+engine-expect none
+composer-backend store
+composer-open reply cid
+composer-wait
+assert-composer db current subject "Re: Saturday ride"
+assert-composer db current inline 1
+engine-expect none but submission-limit,drafts-changed
+composer-close
+composer-open reply files-large
+composer-wait
+assert-composer db current subject "Re: Board pack for October"
+assert-composer db current parts 0
+engine-expect none but submission-limit,drafts-changed
+composer-close
+engine-expect none but submission-limit,drafts-changed
+composer-open forward files-large
+engine-expect fetch-original
+engine-reply original-fetched ok
+composer-wait
+assert-composer db current subject "Fwd: Board pack for October"
+assert-composer db current attached board-pack-october.pdf
+composer-close
+engine-expect none but submission-limit,drafts-changed
 assert-labelled
