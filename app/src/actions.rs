@@ -612,6 +612,7 @@ mod tests {
                 "<Control>i",
                 "<Control>k",
                 "<Control>u",
+                "<Control>w",
                 "<Control>y",
                 "<Control>z",
             ]

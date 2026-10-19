@@ -242,7 +242,7 @@ The rules' commands have no keys; `keys.toml` can give them one (`edit-rules`, `
 - the body;
 - attachments, "Draft saved" with the time, and **Send** (Ctrl+Enter).
 
-The buttons at the right of its header **minimize** it to a bar at the bottom of the window (it shows the subject; click the bar to open it again), **expand** it to a larger card in the middle of the window (click beside it, or **Shrink**, to put it back), and **close** it, keeping the draft. You can have several open at once: each new one opens to the left of the others, and the oldest minimize when there is no more room. In a narrow window the composer fills the window. While you write, the window's own shortcuts still work: Ctrl+N starts another message, and the command palette (Ctrl+Shift+P or F1) also lists the composer's commands. Minimizing or closing the composer puts the keyboard focus back where it was. Without a Sealwax window open (a `mailto:` link, `sealwax --compose`), the window opens with the composer in it. Closing the window keeps every draft in it.
+The buttons at the right of its header **minimize** it to a bar at the bottom of the window (it shows the subject; click the bar to open it again), **expand** it to a larger card in the middle of the window (click beside it, or **Shrink**, to put it back), and **close** it, keeping the draft (**Close Composer**, Ctrl+W, does the same from the keyboard). You can have several open at once: each new one opens to the left of the others, and the oldest minimize when there is no more room. In a narrow window the composer fills the window. While you write, the window's own shortcuts still work: Ctrl+N starts another message, and the command palette (Ctrl+Shift+P or F1) also lists the composer's commands. Minimizing or closing the composer puts the keyboard focus back where it was. Without a Sealwax window open (a `mailto:` link, `sealwax --compose`), the window opens with the composer in it. Closing the window keeps every draft in it.
 
 Pasted text keeps simple formatting and loses the rest; **Paste as Plain Text** (Ctrl+Shift+V) pastes it without any. Spell checking works when a hunspell dictionary for your language is installed (`hunspell-en_us`, for example); the languages come from your locale.
 
@@ -362,6 +362,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Compose | Attach File… | — |  | `attach-file` |
 | Compose | Add Cc and Bcc | — |  | `show-cc-bcc` |
 | Compose | Discard Draft | — |  | `discard-draft` |
+| Compose | Close Composer | Ctrl+W | composer | `close-composer` |
 | Compose | Bold | Ctrl+B | composer | `bold` |
 | Compose | Italic | Ctrl+I | composer | `italic` |
 | Compose | Underline | Ctrl+U | composer | `underline` |

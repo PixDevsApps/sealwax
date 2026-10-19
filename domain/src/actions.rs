@@ -226,6 +226,7 @@ pub enum ActionId {
     AttachFile,
     ShowCcBcc,
     DiscardDraft,
+    CloseComposer,
     Bold,
     Italic,
     Underline,
@@ -265,7 +266,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 75] = [
+    pub const ALL: [Self; 76] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -305,6 +306,7 @@ impl ActionId {
         Self::AttachFile,
         Self::ShowCcBcc,
         Self::DiscardDraft,
+        Self::CloseComposer,
         Self::Bold,
         Self::Italic,
         Self::Underline,
@@ -517,6 +519,15 @@ impl ActionId {
                 Compose,
                 Scope::Composer,
                 &[],
+            ),
+            // Saves the draft and closes the card, as its Close button does: Ctrl+W, the user's
+            // pick after a user asked for a key (ADR-017 amendment, 2026-10-19).
+            Self::CloseComposer => command(
+                "close-composer",
+                "Close Composer",
+                Compose,
+                Scope::Composer,
+                &["<Control>w"],
             ),
             Self::Bold => command("bold", "Bold", Compose, Scope::Composer, &["<Control>b"]),
             Self::Italic => command(
@@ -1066,6 +1077,7 @@ mod tests {
         );
         assert_eq!(keys(ActionId::PasteAsText), ["<Control><Shift>v"]);
         assert_eq!(keys(ActionId::ReplyInComposer), ["<Control><Shift>e"]);
+        assert_eq!(keys(ActionId::CloseComposer), ["<Control>w"]);
         for id in [
             ActionId::EditDraft,
             ActionId::QuickReply,

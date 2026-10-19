@@ -1,7 +1,7 @@
 //! One composer card (ML-067, ML-071, ML-072, ML-079): the approved mock's "New message"
 //! frame, docked in the main window as Gmail's composer (the user's UI tweak, 2026-10-08; a
 //! window of its own before). The header has the title, the From chip, Attach and Discard, then
-//! Minimize, Expand and Close; then the To row with "Cc · Bcc" (Cc and Bcc hidden until asked
+//! Minimize, Expand and Close (Close Composer, Ctrl+W); then the To row with "Cc · Bcc" (Cc and Bcc hidden until asked
 //! for), the subject, the formatting toolbar that follows the editor's state, the body, and the
 //! footer with the attachments, "Draft saved" and Send. The card's own `win.` actions run the
 //! registry's Composer commands (they hide the main window's of the same names inside it), and
@@ -97,11 +97,12 @@ pub fn runs(id: ActionId) -> bool {
 
 /// Every command a composer runs. Compose and the command palette are the main window's, whose
 /// keys work in a card too.
-const COMMANDS: [ActionId; 18] = [
+const COMMANDS: [ActionId; 19] = [
     ActionId::Send,
     ActionId::AttachFile,
     ActionId::ShowCcBcc,
     ActionId::DiscardDraft,
+    ActionId::CloseComposer,
     ActionId::Bold,
     ActionId::Italic,
     ActionId::Underline,
@@ -628,6 +629,12 @@ fn build(editor: &Editor, keymap: &Keymap) -> (gtk::Box, Widgets) {
         icon_button(&["window-close-symbolic"], "Save and close"),
         "composer-close",
     );
+    close.set_tooltip_text(Some(&crate::reader::tooltip(
+        keymap,
+        ActionId::CloseComposer,
+        "Save and close",
+        None,
+    )));
     let header_end = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .build();
@@ -1533,6 +1540,10 @@ impl Inner {
             ActionId::DiscardDraft => {
                 let inner = self.clone();
                 glib::spawn_future_local(async move { inner.discard().await });
+                return;
+            }
+            ActionId::CloseComposer => {
+                self.close();
                 return;
             }
             ActionId::InsertLink => {

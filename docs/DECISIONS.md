@@ -1204,6 +1204,10 @@ The composer docked in the main window (ADR-014's amendment of 2026-10-08) adds 
 
 **Status:** Accepted — user decision, 2026-10-09 ("Keep", answering whether Menu and Shift+F10 should open a message row's right-click menu). They are the message list's own keys, as on the folder list's rows, not registry commands. The five rules commands and the three folder commands have no default keys; `keys.toml` can bind them. The folder list's heading keys (2026-10-08) remain a proposal.
 
+### ADR-017 amendment — Close Composer on Ctrl+W (2026-10-19)
+
+**Status:** Accepted — user decision, 2026-10-19 ("Yes, add a Close Composer command (save and close) on Ctrl+W."), after a user asked on Reddit for a key to close the composer. A new Composer command, **Close Composer** (`close-composer`), saves the draft and closes the card as its Close button does (a new draft closed before anything was typed is discarded), with **Ctrl+W**, which no other command had. It works from the fields and the body, as the composer's other keys do; the Close button's tooltip names it. Escape in a card still does nothing (the 2026-10-08 amendment): it is too easy to press by accident. This replaces M6's "no Close Composer command".
+
 ## ADR-018 — Logging and privacy (2026-10-04)
 
 **Status:** Accepted — plan approval, 2026-10-04.

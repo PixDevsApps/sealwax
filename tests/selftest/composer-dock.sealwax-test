@@ -4,8 +4,9 @@
 # shrinks it back; newer cards open left of older ones, and the oldest minimize when they no
 # longer fit; while one pane fills the window an open card fills the panes above the minimized
 # ones. The focus goes back to the mail when a card minimizes or closes. The command palette
-# opened in a card runs its commands, and Escape there leaves the list's select mode alone. The
-# stand-in backend; every name, address and message is fictional.
+# opened in a card runs its commands, Escape there leaves the list's select mode alone, and
+# Close Composer (Ctrl+W) saves and closes a card. The stand-in backend; every name, address
+# and message is fictional.
 # Run: tools/headless.sh 72 target/debug/sealwax --self-test tests/selftest/composer-dock.sealwax-test
 
 desktop tiling
@@ -149,3 +150,25 @@ composer-key Escape
 assert-select-mode true
 composer-close
 wait-until assert-composer count 0
+key Escape
+assert-select-mode false
+
+# Close Composer (Ctrl+W) saves and closes the card as Close does, from the body and from a
+# field, and the focus goes back to the list.
+focus list
+action win.compose
+composer-wait
+composer-focus body
+composer-insert "Kept by Ctrl+W."
+composer-key <Control>w
+wait-until assert-composer count 0
+assert-composer closed 3
+assert-focus list
+action win.compose
+composer-wait
+composer-focus subject
+composer-type "Kept too"
+composer-key <Control>w
+wait-until assert-composer count 0
+assert-composer closed 4
+assert-focus list
