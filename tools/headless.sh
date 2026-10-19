@@ -2,6 +2,8 @@
 # Runs a command against a private GTK Broadway display and a private D-Bus session,
 # so nothing opens on the live Wayland display. Usage: headless.sh <display-number> <cmd...>
 # SEALWAX_HEADLESS_TIMEOUT (seconds, default 300) bounds the command's run time.
+# From GTK 4.24 the daemon is GTK's with Sealwax's patch (tools/broadwayd/build.sh, built on
+# first use); SEALWAX_BROADWAYD names another one.
 set -euo pipefail
 
 if (($# < 2)) || [[ ! $1 =~ ^[0-9]+$ ]]; then
@@ -21,7 +23,8 @@ fi
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 mkdir -p "$root/.local"
 log="$root/.local/broadway-$display.log"
-gtk4-broadwayd --address 127.0.0.1 ":$display" >"$log" 2>&1 &
+daemon=${SEALWAX_BROADWAYD:-$("$root/tools/broadwayd/build.sh")}
+"${daemon:-gtk4-broadwayd}" --address 127.0.0.1 ":$display" >"$log" 2>&1 &
 broadwayd=$!
 
 cleanup() {

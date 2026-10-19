@@ -189,6 +189,8 @@ assert-layout rail
 setup-dismiss-toasts
 list-select 0
 wait-until assert-reader-page message
+# The pane shows "message" while the conversation is still laid out unseen; Tab would pass it.
+wait-until assert-reader-selected
 assert-accessible window
 focus list
 tab-chain window forward 80
