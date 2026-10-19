@@ -74,6 +74,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The reader doesn't wait, a folded folder's unread, the Microsoft sign-in note — 2026-10-19
+
+The owner's decisions of 2026-10-19 ([ADR-011](DECISIONS.md#adr-011-amendment--moving-on-and-large-messages-dont-wait-2026-10-19), [ADR-009](DECISIONS.md#adr-009-amendment--a-folded-folder-counts-its-subfolders-unread-2026-10-19) and [ADR-008](DECISIONS.md#adr-008-amendment--work-and-school-accounts-explained-now-the-publisher-verified-later-2026-10-19) amendments). This machine, debug, headless under `tools/headless.sh` (Broadway), unless said otherwise.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `reader-leave` (rewritten): `hold-reader-layout true` keeps the next layout from finishing, then `j` and a delete | 20 of 20 steps, three runs: the left message gone 158–176 ms after `j` and 182–187 ms after the delete. With the selection's change still going through `Reader::show` (the old behaviour), both steps fail at 3,022.8 and 3,038.9 ms | Pass |
+| `reader-conversation`, a page shown before it is laid out | Failed at step 81 (the selected message 1,859 px down a scrolled column) until a settling page anchors its selected message; then 118 of 118 | Pass |
+| `files`: a large message whose inline image waits for `FetchPart` shows within 1.5 s (`wait-within 1500`), before the image is answered | 307 of 307 | Pass |
+| The first message after a start (a side agent, release, Sealwax's Broadway client attached, the fictional 2,400-message mailbox) | 107–119 ms (10 runs) with the web process started at the first selection; 27–31 ms (8 runs) with it started at startup; the first frame 300–309 ms either way. In the app, the reader's view came up 35 ms after the first frame with nothing selected | Pass; the owner's ~2 s live not reproduced |
+| `folders-tree`, a folded folder's sum (`assert-folder-count`), and `a11y-window` (side agent) | 141 of 141 and 178 of 178 | Pass |
+| The note after 60 s of waiting for Microsoft (side agent; the wait shortened to 300 ms by `setup-still-waiting-after`) | `setup-microsoft` 225/225, `setup-microsoft-banner` 179/179, `a11y-setup` 144/144 (the announcement), `a11y-dialogs` 168/168 | Pass; not on a work tenant |
+| CI, `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` on `120e1f2` | exit 0; 1,517 passed, 0 failed, 98 ignored; 81 scripts, 7,962 of 7,962 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 273 s) | Pass |
+| On the owner's machine | Not measured | Not verified |
+
 ### GTK 4.24's Broadway daemon, patched for the headless checks — 2026-10-19
 
 GTK went from 4.22.4 to 4.24.1 on this machine on 2026-10-18, and `gtk4-broadwayd` then aborted in about 30 of the 81 CI scripts. This machine, debug build, on `aa56a8f` with the change in the working tree; headless displays 73 and 74.
