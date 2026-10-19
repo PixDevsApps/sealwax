@@ -50,7 +50,7 @@ Outlook.com and Microsoft 365 accept only Microsoft sign-in for mail apps, so fo
 
 1. Sealwax opens Microsoft's sign-in page in your default browser and shows "Waiting for the browser…" with **Cancel**. If you closed the tab too soon, **Open the sign-in page again** opens it again.
 2. Sign in and approve Sealwax. Sealwax never sees your password; it keeps a sign-in token in your keyring. Your address is not put in the sign-in link.
-3. A work or school account may need its organization's admin to approve Sealwax first. The assistant then says "The sign-in was declined".
+3. A work or school account may need its organization's admin to approve Sealwax first ([below](#work-or-school-microsoft-accounts)). The browser then shows "Need admin approval" and doesn't come back: after a minute the assistant says "Still waiting for Microsoft." If you leave Microsoft's page without approving, it says "The sign-in was declined".
 4. If the Microsoft account you signed in with isn't the address you typed, the assistant asks first ("Not the address you typed"): **Send from** the address you signed in with, or **Keep** the address you typed. Microsoft refuses mail from an address your account isn't allowed to send from, so keep the typed one only if it's an alias or a shared mailbox you may send from. **Back** signs in again.
 
 **The client ID.** Sign in with Microsoft needs a Microsoft client ID: the registration that identifies Sealwax to Microsoft. Sealwax's packages carry one, so with an installed package there is nothing to set up. A build from source has one only if it was given one when it was compiled; you can also give your own in `config.toml`, which wins over a built-in one and applies as soon as you save the file:
@@ -63,6 +63,14 @@ client_id = "00000000-0000-0000-0000-000000000000"
 Without a client ID the assistant says "Microsoft sign-in isn't available in this build of Sealwax yet." and how to set one. [OAUTH-SETUP.md](OAUTH-SETUP.md) shows how to register a client ID in Microsoft Entra. The ID isn't a secret (Microsoft's client for desktop apps is public, and Sealwax keeps no client secret), but keep your own registration out of public repositories.
 
 When Microsoft ends the session later, a banner says that the account "needs you to sign in again", with **Sign in**. A Microsoft account is always an IMAP account in Sealwax; POP3 with Sign in with Microsoft isn't supported.
+
+### Work or school Microsoft accounts
+
+Many organizations don't let their people approve an app themselves when Microsoft hasn't verified its publisher yet, and Sealwax's publisher isn't verified yet. Signing in with such an account, the browser shows Microsoft's **Need admin approval** page instead of coming back to Sealwax, and after a minute the assistant says "Still waiting for Microsoft." Nothing is wrong with your account or with Sealwax: your organization has to approve Sealwax once, and then you sign in as usual. **Cancel** the sign-in meanwhile.
+
+Ask your IT admin to approve Sealwax for your organization (in Microsoft's words, to grant admin consent to it). If Microsoft's page offers to request approval, send that request. Tell the admin what Sealwax asks for: to read and manage your mail over IMAP and send mail over SMTP as you (`IMAP.AccessAsUser.All`, `SMTP.Send`), to stay signed in (`offline_access`), and your name and sign-in name (`openid`, `profile`). The admin needs Sealwax's client ID: it's in the address of Microsoft's sign-in page, after `client_id=`. [OAUTH-SETUP.md](OAUTH-SETUP.md) shows the admin how to approve it. Once approved, choose **Sign in with Microsoft** again.
+
+Personal Microsoft accounts (Outlook.com, Hotmail, Live) aren't affected: you approve Sealwax yourself on Microsoft's page.
 
 ### Gmail: with an app password
 
@@ -610,6 +618,7 @@ The folders follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG
 - **"Couldn't save the password"** while adding an account: the keyring refused it; make sure it runs and is unlocked.
 - **"…'s mailbox is full"** The server has no room: new mail may bounce and changes can't be saved there. Delete mail you don't need, or ask your provider for more space.
 - **"Microsoft sign-in isn't available in this build of Sealwax yet."** Set a client ID ([above](#outlookcom-hotmail-and-microsoft-365-sign-in-with-microsoft)).
+- **"Still waiting for Microsoft."** The browser didn't come back from Microsoft's sign-in page. If it shows "Need admin approval", your organization must approve Sealwax first ([above](#work-or-school-microsoft-accounts)); otherwise finish signing in there, or **Open the sign-in page again**. Sealwax stops waiting after 5 minutes.
 - **"A message may have been sent"** See [Sending](#writing-mail).
 - **Old mail is missing.** The first sync keeps the last 90 days of each folder; scroll to the end of the list to load older mail.
 - **Search misses a message** you know is there: in all folders, Trash and Junk are left out; a message whose text isn't downloaded is found by its headers and preview only. **Rebuild Search Index** (palette) indexes the stored mail again.
