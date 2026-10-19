@@ -335,13 +335,25 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Navigation | Previous Message | k, Up | k: list and reader; Up: the list's own | `previous-message` |
 | Navigation | Next Message in Conversation | n | list and reader | `next-in-conversation` |
 | Navigation | Previous Message in Conversation | p | list and reader | `previous-in-conversation` |
-| Navigation | Open Message | Enter, o | list | `open-message` |
+| Navigation | Scroll Message Down | d | list and reader | `scroll-message-down` |
+| Navigation | Scroll Message Up | Shift+D | list and reader | `scroll-message-up` |
+| Navigation | Open Message | Enter, o, l | list | `open-message` |
 | Navigation | Back to List | Escape, u | reader | `back-to-list` |
 | Navigation | Search | /, Ctrl+F | /: list and reader; Ctrl+F: anywhere | `search` |
 | Navigation | Go to Inbox | g then i | list and reader | `go-to-inbox` |
 | Navigation | Go to Starred | g then s | list and reader | `go-to-starred` |
 | Navigation | Go to Sent | g then t | list and reader | `go-to-sent` |
 | Navigation | Go to Drafts | g then d | list and reader | `go-to-drafts` |
+| Navigation | Go to All Inboxes | g then a | list and reader | `go-to-all-inboxes` |
+| Navigation | Go to Account 1 | g then 1 | list and reader | `go-to-account-1` |
+| Navigation | Go to Account 2 | g then 2 | list and reader | `go-to-account-2` |
+| Navigation | Go to Account 3 | g then 3 | list and reader | `go-to-account-3` |
+| Navigation | Go to Account 4 | g then 4 | list and reader | `go-to-account-4` |
+| Navigation | Go to Account 5 | g then 5 | list and reader | `go-to-account-5` |
+| Navigation | Go to Account 6 | g then 6 | list and reader | `go-to-account-6` |
+| Navigation | Go to Account 7 | g then 7 | list and reader | `go-to-account-7` |
+| Navigation | Go to Account 8 | g then 8 | list and reader | `go-to-account-8` |
+| Navigation | Go to Account 9 | g then 9 | list and reader | `go-to-account-9` |
 | Messages | Archive | e, y | list and reader | `archive` |
 | Messages | Delete | #, Delete | list and reader | `delete` |
 | Messages | Move to Junk | !, Ctrl+J | list and reader | `junk` |
@@ -411,7 +423,9 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 
 "—" means the command has no key: the palette, a menu or a button reaches it, and `keys.toml` can give it one.
 
-**Going places.** Go to Inbox, Sent and Drafts (`g` then `i`, `t`, `d`) show that folder of the account the list shows (in All Inboxes, the selected message's account, else the first); Go to Inbox in All Inboxes stays there. Go to Starred (`g` then `s`) turns on the **Starred** chip, as there is no Starred folder. Back to List (Escape or `u` in the reader) puts the keyboard focus in the message list, and in the one-pane layout shows the list, as the reader's back button does.
+**Going places.** Go to Inbox, Sent and Drafts (`g` then `i`, `t`, `d`) show that folder of the account the list shows (in All Inboxes, the selected message's account, else the first); Go to Inbox in All Inboxes stays there. Go to Starred (`g` then `s`) turns on the **Starred** chip, as there is no Starred folder. Back to List (Escape or `u` in the reader) puts the keyboard focus in the message list, and in the one-pane layout shows the list, as the reader's back button does. Go to All Inboxes (`g` then `a`) shows every account's Inbox together, and Go to Account 1 to 9 (`g` then `1` to `9`) shows that account's Inbox, counting the accounts as the sidebar lists them.
+
+**Reading from the list.** Scroll Message Down and Up (`d` and Shift+D) move the open message half a screen, from the list or the reader, so you can read on without leaving the list; `j` and `k` still move between messages. `l` opens the message, as Enter and `o` do.
 
 **Not built yet.** Toggle Sidebar (Ctrl+Shift+S, F9) is in the keymap, but its keys do nothing yet; the Keyboard Shortcuts dialog marks it "Not available yet".
 

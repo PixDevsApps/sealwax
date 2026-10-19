@@ -332,6 +332,8 @@ The keymap ([ADR-017](DECISIONS.md#adr-017--keymap-scoped-one-key-shortcuts-unde
 | A message row's menu (the list's own, 2026-10-09; for the user's decision) | Menu, Shift+F10 |
 | Search | `/`, Ctrl+F |
 | Go to Inbox / Starred / Sent / Drafts | `g` then `i` / `s` / `t` / `d` |
+| Go to All Inboxes / Account 1–9 *(2026-10-19, issue #12)* | `g` then `a` / `1`–`9` |
+| Scroll Message Down / Up *(2026-10-19, issue #10)* | `d` / Shift+D |
 | Send | Ctrl+Enter |
 | Undo | `z`, Ctrl+Z |
 | Command palette | F1, Ctrl+Shift+P |

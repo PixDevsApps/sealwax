@@ -537,6 +537,20 @@ impl Inner {
         });
     }
 
+    /// Scrolls the column half its height down or up (Scroll Message Down and Up, issue #10),
+    /// within the page.
+    pub(super) fn scroll_half_page(&self, down: bool) {
+        let Some(scroller) = self.scroller() else {
+            return;
+        };
+        let adjustment = scroller.vadjustment();
+        let step = adjustment.page_size() / 2.0;
+        let target = adjustment.value() + if down { step } else { -step };
+        let end = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+        self.scheduling.anchor.replace(None);
+        adjustment.set_value(target.clamp(adjustment.lower(), end));
+    }
+
     /// The conversation just shown opens at its selected message.
     pub(super) fn scroll_to_selected(&self) {
         self.scheduling.anchor.replace(None);

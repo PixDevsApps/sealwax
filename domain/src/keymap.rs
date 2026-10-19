@@ -1596,6 +1596,9 @@ mod tests {
             assert_eq!(resolve("s"), [ActionId::GoToStarred]);
             assert_eq!(resolve("t"), [ActionId::GoToSent]);
             assert_eq!(resolve("d"), [ActionId::GoToDrafts]);
+            assert_eq!(resolve("a"), [ActionId::GoToAllInboxes]);
+            assert_eq!(resolve("1"), [ActionId::GoToAccount1]);
+            assert_eq!(resolve("9"), [ActionId::GoToAccount9]);
             assert!(
                 scoped
                     .iter()
@@ -1608,7 +1611,7 @@ mod tests {
             ActionId::Star,
             vec![binding("g")],
         )]));
-        assert_eq!(problems.len(), 4, "{problems:?}");
+        assert_eq!(problems.len(), 14, "{problems:?}");
         assert!(
             problems
                 .iter()
@@ -1690,8 +1693,8 @@ mod tests {
         assert!(!keymap.is_changed(ActionId::Star));
         assert_eq!(keymap.changed_count(), 4);
         // The list's own keys stay.
-        let keymap = parse("next-message = [\"l\"]\n").unwrap();
-        assert_eq!(keymap.display(ActionId::NextMessage), "l, Down");
+        let keymap = parse("next-message = [\"w\"]\n").unwrap();
+        assert_eq!(keymap.display(ActionId::NextMessage), "w, Down");
     }
 
     #[test]

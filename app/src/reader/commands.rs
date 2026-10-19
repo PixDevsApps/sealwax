@@ -15,6 +15,7 @@ type Command = fn(&Reader);
 /// Connects the reader's commands to the window's actions, once the reader exists.
 pub fn connect(actions: &ActionSet, reader: &Reader) {
     conversation(actions, reader);
+    scrolling(actions, reader);
     files(actions, reader);
     remote_content(actions, reader);
     quick_reply(actions, reader);
@@ -43,6 +44,26 @@ fn conversation(actions: &ActionSet, reader: &Reader) {
         if let Some(action) = actions.action(id).cloned() {
             action.set_enabled(reader.state().messages > 1);
             reader.connect_size(move |size| action.set_enabled(size > 1));
+        }
+    }
+}
+
+/// Scroll Message Down and Up (`d`, Shift+D; issue #10), available while the reader shows a
+/// conversation.
+fn scrolling(actions: &ActionSet, reader: &Reader) {
+    for (id, down) in [
+        (ActionId::ScrollMessageDown, true),
+        (ActionId::ScrollMessageUp, false),
+    ] {
+        let target = Rc::downgrade(&reader.inner);
+        actions.connect(id, move || {
+            if let Some(inner) = target.upgrade() {
+                inner.scroll_half_page(down);
+            }
+        });
+        if let Some(action) = actions.action(id).cloned() {
+            action.set_enabled(reader.state().messages > 0);
+            reader.connect_size(move |size| action.set_enabled(size > 0));
         }
     }
 }

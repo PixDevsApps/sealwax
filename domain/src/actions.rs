@@ -191,6 +191,8 @@ pub enum ActionId {
     PreviousMessage,
     NextInConversation,
     PreviousInConversation,
+    ScrollMessageDown,
+    ScrollMessageUp,
     OpenMessage,
     BackToList,
     Search,
@@ -198,6 +200,16 @@ pub enum ActionId {
     GoToStarred,
     GoToSent,
     GoToDrafts,
+    GoToAllInboxes,
+    GoToAccount1,
+    GoToAccount2,
+    GoToAccount3,
+    GoToAccount4,
+    GoToAccount5,
+    GoToAccount6,
+    GoToAccount7,
+    GoToAccount8,
+    GoToAccount9,
     Archive,
     Delete,
     Junk,
@@ -266,11 +278,13 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 76] = [
+    pub const ALL: [Self; 88] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
         Self::PreviousInConversation,
+        Self::ScrollMessageDown,
+        Self::ScrollMessageUp,
         Self::OpenMessage,
         Self::BackToList,
         Self::Search,
@@ -278,6 +292,16 @@ impl ActionId {
         Self::GoToStarred,
         Self::GoToSent,
         Self::GoToDrafts,
+        Self::GoToAllInboxes,
+        Self::GoToAccount1,
+        Self::GoToAccount2,
+        Self::GoToAccount3,
+        Self::GoToAccount4,
+        Self::GoToAccount5,
+        Self::GoToAccount6,
+        Self::GoToAccount7,
+        Self::GoToAccount8,
+        Self::GoToAccount9,
         Self::Archive,
         Self::Delete,
         Self::Junk,
@@ -345,6 +369,22 @@ impl ActionId {
         Self::ApplyRules,
     ];
 
+    /// Go to Account `number` (1 to 9), the sidebar's account in that place.
+    pub const fn go_to_account(number: usize) -> Option<Self> {
+        Some(match number {
+            1 => Self::GoToAccount1,
+            2 => Self::GoToAccount2,
+            3 => Self::GoToAccount3,
+            4 => Self::GoToAccount4,
+            5 => Self::GoToAccount5,
+            6 => Self::GoToAccount6,
+            7 => Self::GoToAccount7,
+            8 => Self::GoToAccount8,
+            9 => Self::GoToAccount9,
+            _ => return None,
+        })
+    }
+
     pub const fn spec(self) -> ActionSpec {
         use Category::*;
         match self {
@@ -385,9 +425,31 @@ impl ActionId {
                 Scope::List,
                 &["p"],
             ),
+            // Half a page of the message the reader shows, from the list and the reader (issue #10,
+            // accepted 2026-10-19): j and k still move between messages.
+            Self::ScrollMessageDown => command(
+                "scroll-message-down",
+                "Scroll Message Down",
+                Navigation,
+                Scope::List,
+                &["d"],
+            ),
+            Self::ScrollMessageUp => command(
+                "scroll-message-up",
+                "Scroll Message Up",
+                Navigation,
+                Scope::List,
+                &["<Shift>d"],
+            ),
+            // `l` (issue #10, accepted 2026-10-19) moves into the message as a file manager does.
             Self::OpenMessage => ActionSpec {
                 key_scopes: LIST,
-                ..on_selection("open-message", "Open Message", Navigation, &["Return", "o"])
+                ..on_selection(
+                    "open-message",
+                    "Open Message",
+                    Navigation,
+                    &["Return", "o", "l"],
+                )
             },
             Self::BackToList => command(
                 "back-to-list",
@@ -408,6 +470,18 @@ impl ActionId {
             Self::GoToStarred => go_to("go-to-starred", "Go to Starred", &["g s"]),
             Self::GoToSent => go_to("go-to-sent", "Go to Sent", &["g t"]),
             Self::GoToDrafts => go_to("go-to-drafts", "Go to Drafts", &["g d"]),
+            // Issue #12 (accepted 2026-10-19): All Inboxes, and the Inbox of the sidebar's first to
+            // ninth account.
+            Self::GoToAllInboxes => go_to("go-to-all-inboxes", "Go to All Inboxes", &["g a"]),
+            Self::GoToAccount1 => go_to("go-to-account-1", "Go to Account 1", &["g 1"]),
+            Self::GoToAccount2 => go_to("go-to-account-2", "Go to Account 2", &["g 2"]),
+            Self::GoToAccount3 => go_to("go-to-account-3", "Go to Account 3", &["g 3"]),
+            Self::GoToAccount4 => go_to("go-to-account-4", "Go to Account 4", &["g 4"]),
+            Self::GoToAccount5 => go_to("go-to-account-5", "Go to Account 5", &["g 5"]),
+            Self::GoToAccount6 => go_to("go-to-account-6", "Go to Account 6", &["g 6"]),
+            Self::GoToAccount7 => go_to("go-to-account-7", "Go to Account 7", &["g 7"]),
+            Self::GoToAccount8 => go_to("go-to-account-8", "Go to Account 8", &["g 8"]),
+            Self::GoToAccount9 => go_to("go-to-account-9", "Go to Account 9", &["g 9"]),
             Self::Archive => on_selection("archive", "Archive", Messages, &["e", "y"]),
             Self::Delete => on_selection("delete", "Delete", Messages, &["numbersign", "Delete"]),
             Self::Junk => on_selection("junk", "Move to Junk", Messages, &["exclam", "<Control>j"]),
@@ -858,7 +932,8 @@ mod tests {
             assert!(!name.contains("--"), "{name}");
             assert!(name.starts_with(|c: char| c.is_ascii_lowercase()), "{name}");
             assert!(
-                name.chars().all(|c| c.is_ascii_lowercase() || c == '-'),
+                name.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-'),
                 "{name}"
             );
         }
@@ -1004,7 +1079,7 @@ mod tests {
         assert_eq!(ActionId::NextMessage.spec().list_keys, ["Down"]);
         assert_eq!(keys(ActionId::PreviousMessage), ["k"]);
         assert_eq!(ActionId::PreviousMessage.spec().list_keys, ["Up"]);
-        assert_eq!(keys(ActionId::OpenMessage), ["Return", "o"]);
+        assert_eq!(keys(ActionId::OpenMessage), ["Return", "o", "l"]);
         assert_eq!(keys(ActionId::BackToList), ["Escape", "u"]);
         assert_eq!(keys(ActionId::Compose), ["c", "<Control>n"]);
         assert_eq!(keys(ActionId::Reply), ["r", "<Control>r"]);
@@ -1023,6 +1098,17 @@ mod tests {
         assert_eq!(keys(ActionId::GoToStarred), ["g s"]);
         assert_eq!(keys(ActionId::GoToSent), ["g t"]);
         assert_eq!(keys(ActionId::GoToDrafts), ["g d"]);
+        // Issues #10 and #12, accepted 2026-10-19.
+        assert_eq!(keys(ActionId::ScrollMessageDown), ["d"]);
+        assert_eq!(keys(ActionId::ScrollMessageUp), ["<Shift>d"]);
+        assert_eq!(keys(ActionId::GoToAllInboxes), ["g a"]);
+        for number in 1..=9 {
+            let id = ActionId::go_to_account(number).unwrap();
+            assert_eq!(keys(id), [format!("g {number}")], "{id:?}");
+            assert_eq!(id.name(), format!("go-to-account-{number}"));
+        }
+        assert_eq!(ActionId::go_to_account(0), None);
+        assert_eq!(ActionId::go_to_account(10), None);
         assert_eq!(keys(ActionId::Send), ["<Control>Return"]);
         assert_eq!(keys(ActionId::Undo), ["z", "<Control>z"]);
         assert_eq!(keys(ActionId::CommandPalette), ["<Control><Shift>p", "F1"]);

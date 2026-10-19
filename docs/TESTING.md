@@ -74,6 +74,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The keys for issues #10 and #12 — 2026-10-20
+
+[ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keys-for-issues-10-and-12-accepted-and-built-2026-10-19). This machine, debug, headless (Broadway).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The registry: `l` on Open Message, `d`/Shift+D, `g a`, `g 1`–`g 9`; the go-to sequences resolve in the list and the reader; the USER_GUIDE table matches | `cargo test -p sealwax-domain`: 492 passed | Pass |
+| `go_to::account_inbox`: the Inbox of the Nth account in the sidebar's order; none for a missing place, an account without an Inbox, or an Inbox that can't be selected | Unit test passes | Pass |
+| `triage-keys`: `l` opens the message, `g a` shows All Inboxes, `g 1` the first account's Inbox, `g 9` (no ninth account) leaves the folder | 264 of 264 steps | Pass |
+| `reader-conversation`: from the list, Shift+D twelve times reaches the top of a conversation 3,559 px down, `d` leaves it, Shift+D comes back | 127 of 127 steps | Pass |
+| CI, `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` | exit 0; 1,518 passed, 0 failed, 98 ignored; 81 scripts, 7,985 of 7,985 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 273 s) | Pass |
+| On the owner's keyboard (US and Norwegian layouts) | Not tried; the keymap audit checks the layouts | Not verified |
+
 ### The reader doesn't wait, a folded folder's unread, the Microsoft sign-in note — 2026-10-19
 
 The owner's decisions of 2026-10-19 ([ADR-011](DECISIONS.md#adr-011-amendment--moving-on-and-large-messages-dont-wait-2026-10-19), [ADR-009](DECISIONS.md#adr-009-amendment--a-folded-folder-counts-its-subfolders-unread-2026-10-19) and [ADR-008](DECISIONS.md#adr-008-amendment--work-and-school-accounts-explained-now-the-publisher-verified-later-2026-10-19) amendments). This machine, debug, headless under `tools/headless.sh` (Broadway), unless said otherwise.

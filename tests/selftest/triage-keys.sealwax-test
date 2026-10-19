@@ -33,6 +33,8 @@ key Return
 assert-action-log win.open-message
 key o
 assert-action-log win.open-message
+key l
+assert-action-log win.open-message
 
 # The mail commands, in the list.
 key s
@@ -280,4 +282,19 @@ assert-folder folder-7
 key g
 key i
 assert-action-log win.go-to-inbox
+assert-folder folder-1
+
+# Issue #12's keys (2026-10-19): g then a goes to All Inboxes, g then 1 to the first account's
+# Inbox; a ninth account that isn't there leaves the folder as it is.
+key g
+key a
+assert-action-log win.go-to-all-inboxes
+assert-folder all-inboxes
+key g
+key 1
+assert-action-log win.go-to-account-1
+assert-folder folder-1
+key g
+key 9
+assert-action-log win.go-to-account-9
 assert-folder folder-1

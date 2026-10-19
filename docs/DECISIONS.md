@@ -1236,6 +1236,10 @@ The owner accepted the 2026-10-08 proposal on the sign-off sheet (2026-10-19): o
 
 The owner chose "a small set for 1.0" on the sign-off sheet (2026-10-19), with the exact keys to approve before anything is built. Proposed: `l` also opens the message (Open Message, with Enter and `o`); Scroll Message Down and Scroll Message Up, half a page, from the list and the reader, on `d` and `Shift+D` (or `Ctrl+D` and `Ctrl+Shift+D`; the latter opens GTK's inspector where its key is on); Go to All Inboxes on `g a`; Go to Account 1 to 9, that account's Inbox in the sidebar's order, on `g 1` to `g 9`. The letter hints over the sidebar wait for after 1.0. Nothing is built until the owner answers.
 
+### ADR-017 amendment — the keys for issues #10 and #12 accepted and built (2026-10-19)
+
+The owner accepted the proposal above on the sign-off sheet (D12, 2026-10-19), as proposed: `l` also opens the message (Open Message: Enter, `o`, `l`); Scroll Message Down and Up on `d` and `Shift+D`, half the column, from the list and the reader (`scroll-message-down`, `scroll-message-up`); Go to All Inboxes on `g a`; Go to Account 1 to 9 on `g 1` to `g 9` (`go-to-account-N`), the Inbox of the sidebar's account in that place, nothing for a place no account fills. The palette lists them under Navigation. The letter hints over the sidebar wait for after 1.0. Tests: the registry's (`the_design_keymap`, `the_go_to_sequences_resolve`), `go_to`'s `account_inbox`, `triage-keys` (`l`, `g a`, `g 1`, `g 9`), `reader-conversation` (Shift+D twelve times to the top, `d` down, Shift+D up).
+
 ## ADR-018 — Logging and privacy (2026-10-04)
 
 **Status:** Accepted — plan approval, 2026-10-04.

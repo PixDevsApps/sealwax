@@ -1,6 +1,8 @@
 //! Go to Inbox, Starred, Sent and Drafts (`g` then `i`, `s`, `t`, `d`) and Back to List
 //! (Escape, `u` in the reader): the keymap's navigation commands, built in M9 (ML-092) with
-//! the keys the registry already had. A go-to shows the account's folder of that role: the
+//! the keys the registry already had. Go to All Inboxes (`g a`) and Go to Account 1 to 9
+//! (`g 1` to `g 9`, that account's Inbox in the sidebar's order) followed for issue #12
+//! (2026-10-19). A go-to shows the account's folder of that role: the
 //! account the list shows, in All Inboxes the selected message's, else the first account's;
 //! Go to Inbox from All Inboxes stays there, and Go to Starred turns on the Starred chip, as
 //! there is no Starred folder. Back to List puts the keyboard focus in the list, showing it
@@ -12,16 +14,26 @@ use crate::mailbox::folder_key;
 use crate::window::{ALL_INBOXES, Pane};
 use gtk4::prelude::*;
 use sealwax_domain::actions::ActionId;
-use sealwax_domain::model::{Folder, FolderId, FolderRole};
+use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole};
 use sealwax_infrastructure::store::{ViewFilter, ViewScope};
 use std::rc::Rc;
 
 /// The commands this module runs.
-pub const COMMANDS: [ActionId; 5] = [
+pub const COMMANDS: [ActionId; 15] = [
     ActionId::GoToInbox,
     ActionId::GoToStarred,
     ActionId::GoToSent,
     ActionId::GoToDrafts,
+    ActionId::GoToAllInboxes,
+    ActionId::GoToAccount1,
+    ActionId::GoToAccount2,
+    ActionId::GoToAccount3,
+    ActionId::GoToAccount4,
+    ActionId::GoToAccount5,
+    ActionId::GoToAccount6,
+    ActionId::GoToAccount7,
+    ActionId::GoToAccount8,
+    ActionId::GoToAccount9,
     ActionId::BackToList,
 ];
 
@@ -57,7 +69,23 @@ pub fn destination(
         .map(|folder| Destination::Folder(folder.id))
 }
 
-/// Connects the five commands on the main window's action set.
+/// The Inbox of the sidebar's account in place `number` (from 1) of `accounts`, in their order.
+pub fn account_inbox(
+    number: usize,
+    accounts: &[AccountId],
+    folders: &[Folder],
+) -> Option<FolderId> {
+    let account = *accounts.get(number.checked_sub(1)?)?;
+    folders
+        .iter()
+        .filter(|folder| {
+            folder.account == account && folder.role == FolderRole::Inbox && folder.selectable
+        })
+        .min_by_key(|folder| folder.id.0)
+        .map(|folder| folder.id)
+}
+
+/// Connects the commands on the main window's action set.
 pub fn install(state: &Rc<AppState>, actions: &crate::actions::ActionSet) {
     for (id, role) in [
         (ActionId::GoToInbox, FolderRole::Inbox),
@@ -68,6 +96,32 @@ pub fn install(state: &Rc<AppState>, actions: &crate::actions::ActionSet) {
         actions.connect(id, move || {
             if let Some(state) = weak.upgrade() {
                 go_to(&state, role);
+            }
+        });
+    }
+    let weak = Rc::downgrade(state);
+    actions.connect(ActionId::GoToAllInboxes, move || {
+        if let Some(state) = weak.upgrade() {
+            show(&state, ALL_INBOXES);
+        }
+    });
+    for number in 1..=9 {
+        let Some(id) = ActionId::go_to_account(number) else {
+            continue;
+        };
+        let weak = Rc::downgrade(state);
+        actions.connect(id, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let accounts: Vec<AccountId> = state
+                .mailbox()
+                .accounts()
+                .iter()
+                .map(|account| account.id)
+                .collect();
+            if let Some(inbox) = account_inbox(number, &accounts, &state.mailbox().folders()) {
+                show(&state, &folder_key(inbox));
             }
         });
     }
@@ -90,7 +144,7 @@ pub fn install(state: &Rc<AppState>, actions: &crate::actions::ActionSet) {
 }
 
 fn go_to(state: &Rc<AppState>, role: FolderRole) {
-    let (Some(window), Some(list)) = (state.window(), state.list()) else {
+    let Some(list) = state.list() else {
         return;
     };
     let selected = list
@@ -102,9 +156,17 @@ fn go_to(state: &Rc<AppState>, role: FolderRole) {
         Some(Destination::Folder(folder)) => folder_key(folder),
         None => return,
     };
+    show(state, &key);
+}
+
+/// Shows the sidebar's folder `key` in the list, which takes the keyboard focus.
+fn show(state: &Rc<AppState>, key: &str) {
+    let (Some(window), Some(list)) = (state.window(), state.list()) else {
+        return;
+    };
     // The folder itself, as picking it in the sidebar shows it: not only its starred mail.
     list.set_filter(ViewFilter::All);
-    window.select_folder(&key);
+    window.select_folder(key);
     list.list_view().grab_focus();
 }
 
@@ -124,7 +186,6 @@ fn back_to_list(state: &Rc<AppState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::model::AccountId;
 
     fn folder(id: i64, account: i64, role: FolderRole) -> Folder {
         Folder {
@@ -183,5 +244,27 @@ mod tests {
             Some(Destination::Folder(FolderId(2)))
         );
         assert_eq!(destination(FolderRole::Junk, first, None, &folders), None);
+    }
+
+    #[test]
+    fn go_to_account_n_is_the_inbox_of_the_nth_account_shown() {
+        let mut folders = vec![
+            folder(1, 7, FolderRole::Inbox),
+            folder(2, 7, FolderRole::Sent),
+            folder(3, 4, FolderRole::Inbox),
+            folder(4, 9, FolderRole::Sent),
+        ];
+        let accounts = [AccountId(7), AccountId(4), AccountId(9)];
+        assert_eq!(account_inbox(1, &accounts, &folders), Some(FolderId(1)));
+        assert_eq!(account_inbox(2, &accounts, &folders), Some(FolderId(3)));
+        assert_eq!(account_inbox(3, &accounts, &folders), None, "no Inbox");
+        assert_eq!(
+            account_inbox(4, &accounts, &folders),
+            None,
+            "no fourth account"
+        );
+        assert_eq!(account_inbox(0, &accounts, &folders), None);
+        folders[2].selectable = false;
+        assert_eq!(account_inbox(2, &accounts, &folders), None);
     }
 }

@@ -118,6 +118,17 @@ wait-until assert-conversation read typical-3 true
 wait-until assert-conversation read typical-8 true
 screenshot $DIR/../../.local/selftest/reader-conversation-typical.png
 
+# Scroll Message Down and Up (d, Shift+D; issue #10) from the list, half a column at a time.
+focus list
+action-log
+key <Shift>d 12
+assert-action-log win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up,win.scroll-message-up
+wait-until assert-conversation at-top true
+key d
+wait-until assert-conversation at-top false
+key <Shift>d
+wait-until assert-conversation at-top true
+
 # In the Unread view the expanded unread messages stay unread until the selection leaves.
 mail-account Work
 conversation-add trip Work
