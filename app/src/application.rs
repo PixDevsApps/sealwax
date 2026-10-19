@@ -2319,6 +2319,7 @@ impl AppState {
             reader.set_default_reply(prefs.config().reader.reply);
         }
         reader.connect_engine(&self.engine);
+        reader.prewarm();
         window.set_reader_toolbar(&reader.toolbar());
         // The batch page stands in for the reader: the Reader scope's keys work there too.
         reader

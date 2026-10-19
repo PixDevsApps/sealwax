@@ -359,6 +359,17 @@ impl Reader {
         Reader { inner }
     }
 
+    /// Starts the web process ahead of the first message, before the reader is first on
+    /// screen (it maps with the first selection), so the first message after a start doesn't
+    /// wait for it. For a reader in a window.
+    pub fn prewarm(&self) {
+        let engine = self.inner.engine.clone();
+        let fonts = self.inner.theme.theme().webview_fonts();
+        glib::idle_add_local_once(move || {
+            glib::spawn_future_local(async move { engine.prewarm(&fonts).await });
+        });
+    }
+
     /// For `Window::set_reader`: the page with the link status strip over it.
     pub fn widget(&self) -> gtk::Widget {
         self.inner.links.root().clone().upcast()
