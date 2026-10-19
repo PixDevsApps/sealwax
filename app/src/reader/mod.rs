@@ -40,7 +40,7 @@ pub use attachments::CardState;
 pub use conversation::{COLLAPSE_OVER, GAP_STEP, KEEP_LATEST};
 pub use engine::{
     CONTENT_SECURITY_POLICY, CidOutcome, CidRequest, InlinePart, MAX_LIVE_VIEWS, NETWORK_FEATURES,
-    PartLoader,
+    PartLoader, RETIRED_FEATURES,
 };
 pub use export::{ORIGINAL_SHOWN, OriginalDialog, original_dialog};
 pub use files::FileChoice;

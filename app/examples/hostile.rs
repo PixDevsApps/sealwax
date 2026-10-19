@@ -18,7 +18,8 @@
 //! Five passes, one row per case: `prod` (the reader as shipped; clicks and hovers are DOM
 //! events from the isolated world, as in S2), `real` (cases with a click or a hover: real
 //! pointer input through Broadway), `shown` (HTML cases after "Show images": only https images
-//! may load, upgraded from http, so the canary sees TLS hellos and never a request), `again`
+//! may load, upgraded from http, so the canary sees TLS hellos and never a request, and the DNS
+//! canary only the images' names), `again`
 //! (`prod` in a second reader that reuses the pooled views `shown` lifted the filter from) and
 //! `ctrl` (a bare WebView with no defences, scripts on, proving the vectors are live). Bodies
 //! collapse their quotes. Exits 0 when `prod`, `real` and `again` are clean in every case,
@@ -147,6 +148,11 @@ struct Recorder {
     events: Vec<(MessageId, ViewEvent)>,
     opened: Vec<String>,
 }
+
+/// The only names `shown` may look up: the `dns-names` case's images. Its dns-prefetch, preconnect
+/// and ping names stay unlooked-up even then (WebKitGTK 2.54 always runs `<link
+/// rel=dns-prefetch>`; the reader's pings filter blocks it).
+const SHOWN_NAMES: [&str; 2] = ["sealwax-dns-image.test", "sealwax-dns-css.test"];
 
 /// The DNS canary's log: one line per name looked up, `process<TAB>name`.
 struct Dns {
@@ -833,6 +839,18 @@ async fn run_case(
     outcome.log = context.canary.snapshot().since(&before);
     outcome.log.requests = outcome.log.requests.iter().map(|r| short(r)).collect();
     outcome.dns = context.dns_since(dns_before);
+    if pass == Pass::ImagesShown {
+        for name in &outcome.dns {
+            if !SHOWN_NAMES
+                .iter()
+                .any(|shown| name.ends_with(&format!("\t{shown}")))
+            {
+                outcome
+                    .failures
+                    .push(format!("a name looked up after Show images: {name}"));
+            }
+        }
+    }
     outcome
 }
 

@@ -1,6 +1,6 @@
 //! WebKit for the reader (ADR-011 with its S2 and S7 amendments; SECURITY.md "Message
 //! rendering"): one web context with an ephemeral network session for the whole process, the
-//! compiled content filter, the `cid:` scheme answered from each view's own message, and a pool
+//! compiled content filters, the `cid:` scheme answered from each view's own message, and a pool
 //! of hardened views that all share one web process (`related-view`). At most
 //! [`MAX_LIVE_VIEWS`] views exist at a time (ADR-011's memory decision).
 //!
@@ -31,7 +31,8 @@ pub const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; img-src cid: data
 
 /// Runtime features that make requests without any script and that the old settings no
 /// longer control in WebKitGTK 2.52 (S2): DNS prefetch, a clicked link's preconnect,
-/// `<link rel=prefetch|preload>` and speculation rules.
+/// `<link rel=prefetch|preload>` and speculation rules. Each is turned off where this WebKit
+/// still has it.
 pub const NETWORK_FEATURES: [&str; 5] = [
     "LinkDNSPrefetch",
     "LinkPreconnect",
@@ -39,6 +40,11 @@ pub const NETWORK_FEATURES: [&str; 5] = [
     "LinkPreload",
     "SpeculationRulesPrefetch",
 ];
+
+/// The [`NETWORK_FEATURES`] WebKit dropped, with the first WebKitGTK (major, minor) without
+/// each. 2.54 has no switch for `<link rel=dns-prefetch>` any more (310198@main): it always
+/// runs there, and only the pings filter stops it.
+pub const RETIRED_FEATURES: [(&str, (u32, u32)); 1] = [("LinkDNSPrefetch", (2, 54))];
 
 /// The most views that exist at once (ADR-011 amendment, memory bar decided; M5 sets the final
 /// number from its measurement).
@@ -56,6 +62,14 @@ const FILTER_JSON: &str = r#"[
   {"trigger": {"url-filter": "^about:"}, "action": {"type": "ignore-previous-rules"}}
 ]"#;
 const FILTER_ID: &str = "sealwax-block-remote";
+
+/// Blocks what WebKit checks as a ping in every view, remote images allowed or not: `<a ping>`,
+/// `<link rel=dns-prefetch>` and `<link rel=preconnect>`. No CSP governs the last two, and
+/// WebKitGTK 2.54 can't turn DNS prefetch off.
+const PINGS_JSON: &str = r#"[
+  {"trigger": {"url-filter": ".*", "resource-type": ["ping"]}, "action": {"type": "block"}}
+]"#;
+const PINGS_ID: &str = "sealwax-block-pings";
 
 /// One inline part a view's message may load through `cid:`.
 #[derive(Debug, Clone)]
@@ -210,8 +224,10 @@ pub struct Engine {
     context: webkit6::WebContext,
     session: webkit6::NetworkSession,
     filter: RefCell<Option<webkit6::UserContentFilter>>,
+    /// In every view, whatever `filter` does.
+    pings: RefCell<Option<webkit6::UserContentFilter>>,
     filter_state: Rc<RefCell<Filter>>,
-    /// Closed once the filter compiled or failed; waiters see the channel close.
+    /// Closed once the filters compiled or failed; waiters see the channel close.
     filter_done: async_channel::Receiver<()>,
     pages: Rc<RefCell<Pages>>,
     loader: Rc<RefCell<Option<PartLoader>>>,
@@ -228,7 +244,7 @@ thread_local! {
 }
 
 impl Engine {
-    /// The process's engine, created on first use. The content filter compiles into
+    /// The process's engine, created on first use. The content filters compile into
     /// `cache/content-filters` (Sealwax's cache folder) in the background.
     pub fn shared(cache: &Path) -> Rc<Engine> {
         ENGINE.with(|engine| engine.get_or_init(|| Engine::new(cache)).clone())
@@ -272,6 +288,7 @@ impl Engine {
             context,
             session,
             filter: RefCell::new(None),
+            pings: RefCell::new(None),
             filter_state: Rc::new(RefCell::new(Filter::Compiling)),
             filter_done,
             pages,
@@ -287,16 +304,22 @@ impl Engine {
         let directory = cache.join("content-filters");
         let weak = Rc::downgrade(&engine);
         glib::spawn_future_local(async move {
-            let compiled = compile_filter(&directory).await;
+            let compiled = async {
+                let filter = compile_filter(&directory, FILTER_ID, FILTER_JSON).await?;
+                let pings = compile_filter(&directory, PINGS_ID, PINGS_JSON).await?;
+                Ok::<_, String>((filter, pings))
+            }
+            .await;
             if let Some(engine) = weak.upgrade() {
                 match compiled {
-                    Ok(filter) => {
+                    Ok((filter, pings)) => {
                         engine.filter.replace(Some(filter));
+                        engine.pings.replace(Some(pings));
                         engine.filter_state.replace(Filter::Ready);
                     }
                     Err(error) => {
                         tracing::error!(
-                            "reader: the content filter did not compile, so HTML is shown as \
+                            "reader: a content filter did not compile, so HTML is shown as \
                              text: {error}"
                         );
                         engine.filter_state.replace(Filter::Failed(error));
@@ -308,8 +331,8 @@ impl Engine {
         engine
     }
 
-    /// The compiled content filter, once ready; `None` when it couldn't be compiled, in which
-    /// case no HTML may be shown in a WebView.
+    /// The compiled content filter, once ready; `None` when it or the pings filter couldn't be
+    /// compiled, in which case no HTML may be shown in a WebView.
     pub async fn filter(&self) -> Option<webkit6::UserContentFilter> {
         if *self.filter_state.borrow() == Filter::Compiling {
             let _ = self.filter_done.recv().await;
@@ -357,7 +380,7 @@ impl Engine {
     }
 
     /// A blank view for a message: an idle one, or a new one while fewer than
-    /// [`MAX_LIVE_VIEWS`] exist. `None` at the cap.
+    /// [`MAX_LIVE_VIEWS`] exist. `None` at the cap, and before the content filters compiled.
     pub fn acquire(self: &Rc<Self>, fonts: &WebViewFonts) -> Option<MessageView> {
         let idle = self.pool.borrow_mut().idle.pop();
         if let Some(view) = idle {
@@ -368,8 +391,12 @@ impl Engine {
             tracing::warn!(cap = MAX_LIVE_VIEWS, "reader: every live view is in use");
             return None;
         }
+        let Some(pings) = self.pings.borrow().clone() else {
+            tracing::warn!("reader: no view without the content filters");
+            return None;
+        };
         let root = self.root.borrow().clone();
-        let view = MessageView::new(self, fonts, root.as_ref());
+        let view = MessageView::new(self, fonts, root.as_ref(), pings);
         if root.is_none() {
             self.root.replace(Some(view.web_view().clone()));
         }
@@ -414,11 +441,15 @@ impl Engine {
     }
 }
 
-async fn compile_filter(directory: &Path) -> Result<webkit6::UserContentFilter, String> {
+async fn compile_filter(
+    directory: &Path,
+    id: &str,
+    json: &'static str,
+) -> Result<webkit6::UserContentFilter, String> {
     ensure_private_dir(directory).map_err(|error| error.to_string())?;
     let store = webkit6::UserContentFilterStore::new(&directory.to_string_lossy());
     store
-        .save_future(FILTER_ID, &glib::Bytes::from_static(FILTER_JSON.as_bytes()))
+        .save_future(id, &glib::Bytes::from_static(json.as_bytes()))
         .await
         .map_err(|error| error.to_string())
 }
@@ -610,6 +641,15 @@ mod tests {
         assert!(
             !FILTER_JSON.contains('|'),
             "WebKit's filter regexes reject alternation"
+        );
+        assert!(PINGS_JSON.contains(
+            r#"{"trigger": {"url-filter": ".*", "resource-type": ["ping"]}, "action": {"type": "block"}}"#
+        ));
+        assert!(
+            RETIRED_FEATURES
+                .iter()
+                .all(|(name, _)| NETWORK_FEATURES.contains(name)),
+            "a retired feature is still turned off where WebKit has it"
         );
     }
 }
