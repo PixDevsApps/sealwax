@@ -143,7 +143,7 @@ WebKitGTK went from 2.52.6 to 2.54.1 on 2026-10-18 (GTK from 4.22.4 to 4.24.1), 
 | `python3 tools/release.py build` on `v0.5.0` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,087 passed, 0 failed; the binary says `sealwax 0.5.0` and has no path of the home folder; the client ID built in (from the owner's `config.toml`) | Pass |
 | The push | A scan of `2f7d980..cdb9ce7`'s diff: no working doc, no address but fictional `example.test` ones, no client ID; `main` and `v0.5.0` pushed | Pass |
 | The release `v0.5.0` (`tools/release.py github`) | GitHub's latest, four files; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build (`2ae75a98…`), read by pacman as `sealwax 0.5.0-1`, `hunspell` among its optional dependencies | Pass |
-| Installing 0.5.0 on this machine | Not done: the owner's, with INSTALL.md's command | Not verified |
+| Installing 0.5.0 on this machine (the owner, with INSTALL.md's command) | pacman's log: `upgraded sealwax (0.4.9-1 -> 0.5.0-1)` at 09:05:29; `pacman -Q` reads `sealwax 0.5.0-1`; `/usr/bin/sealwax` byte for byte the build's (SHA-256 `65c3d3df…`) and says `sealwax 0.5.0`; the running Sealwax started at 09:05:48 from it | Pass |
 
 ### 0.4.9 — 2026-10-19
 
