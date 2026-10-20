@@ -74,6 +74,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 0.5.1 — 2026-10-20
+
+The release of Check for Updates. This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the release commit `07684fe`, `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` | exit 0; 1,531 passed, 0 failed, 99 ignored; 82 scripts, 8,047 of 8,047 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 272 s) | Pass |
+| `tools/release.py build` on `v0.5.1` | makepkg's `check()`: 1,096 passed, 0 failed; the binary says `sealwax 0.5.1` and holds no home-folder path | Pass |
+| The push range (`c223379..07684fe`) scanned before pushing | No personal address, home path or client ID; no working doc | Pass |
+| The release [v0.5.1](https://github.com/PixDevsApps/sealwax/releases/tag/v0.5.1) | Not a draft or pre-release; its four files; `releases/latest/download/…` and `releases/download/v0.5.1/…` both give the build's package (SHA-256 `7acd6a0e…5ac8`); Check for Updates' own request (`updates::tests::github`) reads 0.5.1 | Pass |
+| Installed here | Not yet: the owner's, with INSTALL.md's command | Not verified |
+
 ### Check for Updates — 2026-10-20
 
 [ADR-021 amendment](DECISIONS.md#adr-021-amendment--check-for-updates-only-when-the-user-asks-2026-10-20). This machine, debug, headless (Broadway) unless said.
