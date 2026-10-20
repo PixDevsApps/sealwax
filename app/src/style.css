@@ -1088,6 +1088,12 @@ dialog.sw-setup sheet {
   font-family: monospace;
 }
 
+/* Check for Updates: the command to paste, in the terminal's font. */
+.sw-update-command {
+  font-family: monospace;
+  padding: var(--sw-space-md);
+}
+
 /* The column scrolls under the sheet's right padding, so the scrollbar sits in that gutter,
    6 px from the edge, instead of over the fields (the user's UI tweak, 2026-10-08). */
 scrolledwindow.sw-setup-scroller {

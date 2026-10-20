@@ -56,7 +56,7 @@ mod tests {
     #[test]
     fn sections_follow_the_registry() {
         let menu = primary_menu(&Keymap::default());
-        assert_eq!(menu.n_items(), 3);
+        assert_eq!(menu.n_items(), 4);
         let actions: Vec<Vec<String>> = (0..menu.n_items())
             .map(|section| {
                 let items = menu.item_link(section, "section").unwrap();
@@ -79,6 +79,7 @@ mod tests {
                     "app.start-at-login",
                     "win.edit-rules",
                 ],
+                vec!["app.check-for-updates"],
                 vec!["app.quit"],
             ]
         );

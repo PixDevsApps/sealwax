@@ -474,6 +474,19 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 shared.set_microsoft_client_id(client_id);
                 continue;
             }
+            Command::CheckForUpdates { request } => {
+                let shared = shared.clone();
+                tokio::spawn(async move {
+                    let result =
+                        crate::updates::latest(&crate::updates::latest_release_url()).await;
+                    match &result {
+                        Ok(version) => tracing::info!(%version, "the latest release was read"),
+                        Err(error) => tracing::info!(%error, "the update check failed"),
+                    }
+                    shared.send(Event::UpdateChecked { request, result });
+                });
+                continue;
+            }
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
             Command::EditAccount {
                 request,

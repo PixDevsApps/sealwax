@@ -1,0 +1,82 @@
+# Check for Updates (ADR-021 amendment, 2026-10-20): the registry's app.check-for-updates, after
+# Rules… in the main menu, asks the engine once, only when run; the dialog says it checks, then
+# whether this build is the latest release, newer than it, or behind it, and why when there is no
+# answer. A newer release comes with the command that installs it and a button that copies the
+# command. Cancel while it checks leaves a late answer unused. The engine is the script's: nothing
+# reaches the network.
+# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/updates.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+assert-action-enabled app.check-for-updates true
+engine-expect none but load-older,folder-opened,microsoft-client,storage,accounts
+
+# The latest release is this build.
+action app.check-for-updates
+wait-until assert-shown check-for-updates true
+assert-text-contains check-for-updates "Checking for updates…"
+engine-expect check-for-updates
+engine-reply update-checked running
+assert-text-contains check-for-updates "You have the latest version"
+assert-text-contains check-for-updates "is the newest release."
+assert-accessible dialog
+setup-respond check-for-updates close
+wait-until assert-shown check-for-updates false
+
+# This build is newer than the latest release.
+action app.check-for-updates
+wait-until assert-shown check-for-updates true
+engine-expect check-for-updates
+engine-reply update-checked 0.0.1
+assert-text-contains check-for-updates "You have the latest version"
+assert-text-contains check-for-updates "is newer than the latest release, 0.0.1."
+setup-respond check-for-updates close
+
+# A newer release: its command, selectable, and Copy Command.
+action app.check-for-updates
+wait-until assert-shown check-for-updates true
+engine-expect check-for-updates
+engine-reply update-checked 99.1.2
+assert-text-contains check-for-updates "Sealwax 99.1.2 is available"
+assert-text-contains check-for-updates "paste it into a terminal"
+assert-text-contains check-for-updates "press Ctrl+Q in Sealwax"
+assert-text-contains update-command "curl -L -o /tmp/sealwax.pkg.tar.zst https://github.com/PixDevsApps/sealwax/releases/download/v99.1.2/sealwax-x86_64.pkg.tar.zst && sudo pacman -U /tmp/sealwax.pkg.tar.zst"
+assert-accessible dialog
+tab-chain window forward 10
+assert-tab-chain update-command,update-copy
+setup-click update-copy
+assert-text-contains update-copy Copied
+assert-clipboard "curl -L -o /tmp/sealwax.pkg.tar.zst https://github.com/PixDevsApps/sealwax/releases/download/v99.1.2/sealwax-x86_64.pkg.tar.zst && sudo pacman -U /tmp/sealwax.pkg.tar.zst"
+key Escape
+wait-until assert-shown check-for-updates false
+
+# No answer: why.
+action app.check-for-updates
+wait-until assert-shown check-for-updates true
+engine-expect check-for-updates
+engine-reply update-checked offline
+assert-text-contains check-for-updates "Couldn't check for updates"
+assert-text-contains check-for-updates "Check your internet connection"
+setup-respond check-for-updates close
+action app.check-for-updates
+wait-until assert-shown check-for-updates true
+engine-expect check-for-updates
+engine-reply update-checked busy
+assert-text-contains check-for-updates "Try again in an hour."
+setup-respond check-for-updates close
+
+# Cancel while it checks: the late answer opens nothing.
+action app.check-for-updates
+wait-until assert-shown check-for-updates true
+engine-expect check-for-updates
+setup-respond check-for-updates close
+wait-until assert-shown check-for-updates false
+engine-reply update-checked 99.1.2
+assert-shown check-for-updates false
+
+# Without an engine, it says it couldn't check.
+engine-detach
+action app.check-for-updates
+wait-until assert-text-contains check-for-updates "Couldn't check for updates"
+setup-respond check-for-updates close

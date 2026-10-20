@@ -57,13 +57,15 @@ The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and 
 
 ## Updates
 
+**To see whether there is a new version,** open Sealwax's main menu (the button with three lines, ☰, at the top of the message list) and choose **Check for Updates…**. Sealwax asks GitHub and says "You have the latest version", or shows the command that installs the new one: click **Copy Command**, paste it into a terminal (see [how](#before-you-start)) and press **Enter**.
+
 **To update, run the [install command](#with-one-command-easiest) again.** It always fetches the newest Sealwax and installs it over the one you have. Sealwax doesn't update by itself.
 
 **After an update, restart Sealwax:** click its window and press **Ctrl + Q**, then start it again. Closing the window isn't enough, because Sealwax keeps running in the background to check for new mail.
 
 Your mail, accounts and settings stay as they are. When a new version needs to change how your mail is stored on the computer, it does that by itself the first time it starts. [CHANGELOG.md](CHANGELOG.md) says what's new in each version.
 
-Sealwax never checks for updates by itself and never contacts anything but your mail provider: new versions come only when you install them.
+Sealwax never checks for updates by itself: only when you choose Check for Updates… does it ask GitHub, and that request carries nothing about you. New versions come only when you install them.
 
 ## Uninstall Sealwax
 

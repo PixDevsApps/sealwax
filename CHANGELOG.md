@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Check for Updates:** a new item in the main menu, **Check for Updates…**, asks GitHub which Sealwax is the latest and says "You have the latest version", or shows the command that installs the new one, with a **Copy Command** button: paste it into a terminal and press Enter. Sealwax still never checks by itself, only when you choose it.
+
 ## 0.5.0 — 2026-10-20
 
 - **Unread mail in folded subfolders shows:** a folder whose subfolders are folded away now counts their unread mail with its own, as Thunderbird does, so you can see there is new mail inside. Open the folder again and each one shows its own count.

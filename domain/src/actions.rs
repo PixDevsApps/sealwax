@@ -92,11 +92,12 @@ impl Category {
 pub enum MenuSection {
     View,
     Settings,
+    Updates,
     Quit,
 }
 
 impl MenuSection {
-    pub const ALL: [Self; 3] = [Self::View, Self::Settings, Self::Quit];
+    pub const ALL: [Self; 4] = [Self::View, Self::Settings, Self::Updates, Self::Quit];
 }
 
 /// The shape of the GAction behind an [`ActionId`].
@@ -269,6 +270,7 @@ pub enum ActionId {
     RebuildSearchIndex,
     StartAtLogin,
     DefaultMailApp,
+    CheckForUpdates,
     Quit,
     EditRules,
     NewRuleFromMessage,
@@ -278,7 +280,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 88] = [
+    pub const ALL: [Self; 89] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -361,6 +363,7 @@ impl ActionId {
         Self::RebuildSearchIndex,
         Self::StartAtLogin,
         Self::DefaultMailApp,
+        Self::CheckForUpdates,
         Self::Quit,
         Self::EditRules,
         Self::NewRuleFromMessage,
@@ -827,6 +830,19 @@ impl ActionId {
                 Scope::App,
                 &[],
             ),
+            // Asks GitHub for the latest release, only when the user runs it (ADR-021 amendment,
+            // 2026-10-20); a menu section of its own, between the settings and Quit. No default
+            // key (ADR-017).
+            Self::CheckForUpdates => ActionSpec {
+                menu: Some(MenuSection::Updates),
+                ..command(
+                    "check-for-updates",
+                    "Check for Updates…",
+                    General,
+                    Scope::App,
+                    &[],
+                )
+            },
             Self::Quit => ActionSpec {
                 menu: Some(MenuSection::Quit),
                 ..command("quit", "Quit", General, Scope::App, &["<Control>q"])
@@ -1024,6 +1040,7 @@ mod tests {
                 ActionId::Preferences,
                 ActionId::CustomizeShortcuts,
                 ActionId::StartAtLogin,
+                ActionId::CheckForUpdates,
                 ActionId::Quit,
                 ActionId::EditRules,
             ]

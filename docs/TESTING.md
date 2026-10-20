@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Check for Updates — 2026-10-20
+
+[ADR-021 amendment](DECISIONS.md#adr-021-amendment--check-for-updates-only-when-the-user-asks-2026-10-20). This machine, debug, headless (Broadway) unless said.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `sealwax_domain::updates`: only `vX.Y.Z` with plain numbers reads (a suffix, a sign, spaces, shell text, other digits, a number of 10 digits don't); the running version against the latest; the command for a release | Unit tests pass | Pass |
+| `sealwax_engine::updates` against a server on 127.0.0.1: the tag read from a release's answer; the request is `GET /repos/PixDevsApps/sealwax/releases/latest` with `User-Agent: Sealwax`, GitHub's Accept, no cookie, Referer or Authorization; an answer without a version, with shell text in the tag, or over 512 KiB is unreadable; 404 no release, 403 and 429 busy, 500 unreadable; nothing listening is offline; plain HTTP to another host is refused | Unit tests pass | Pass |
+| The real answer: `cargo test -p sealwax-engine updates::tests::github -- --ignored` (one request to api.github.com, nothing personal in it) | "the latest release is 0.5.0", GitHub's latest | Pass |
+| The registry and the menu: `check-for-updates` in a section of its own between the settings and Quit; the USER_GUIDE table | `cargo test -p sealwax-domain`: 496 passed; the menu's unit test | Pass |
+| `updates` self-test: nothing asked at startup; the dialog checks, then says the latest (this build), newer than the latest, a newer release with its command (selectable, Tab reaches it and Copy Command, the clipboard holds the command, "Copied"), offline, busy; a Cancel before the answer leaves it unused; no engine says it couldn't check; `assert-accessible dialog` | 62 of 62 steps (`tools/headless.sh 57`) | Pass |
+| CI, `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` | exit 0; 1,531 passed, 0 failed, 99 ignored; 82 scripts, 8,047 of 8,047 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 272 s). Log: `.local/ci-ui-update-check-2026-10-20.log` | Pass |
+| In an installed build, on a live desktop, against GitHub | Not tried: it reaches users with the next release | Not verified |
+
 ### The keys for issues #10 and #12 — 2026-10-20
 
 [ADR-017 amendment](DECISIONS.md#adr-017-amendment--the-keys-for-issues-10-and-12-accepted-and-built-2026-10-19). This machine, debug, headless (Broadway).

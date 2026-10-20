@@ -39,4 +39,5 @@ pub mod shortcuts;
 pub mod status;
 pub mod theme;
 pub mod triage;
+pub mod updates;
 pub mod window;

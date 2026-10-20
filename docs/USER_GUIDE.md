@@ -26,6 +26,8 @@ This guide is for people who use Sealwax every day. It describes Sealwax 0.5.0, 
 
 Sealwax is made for Omarchy 4 (Arch Linux, Hyprland), and also runs on other Linux desktops with GTK 4 and a Secret Service such as gnome-keyring.
 
+**Updating.** **Check for Updates…** in the main menu (or the palette) asks GitHub which Sealwax release is the latest and says whether you have it. When a newer one is out, it shows the command that installs it, with a **Copy Command** button: paste the command into a terminal, press Enter and type your computer's password when asked, then quit Sealwax (Ctrl+Q) and start it again. Sealwax never checks by itself and never installs anything itself.
+
 ## First start and adding an account
 
 Start Sealwax from the app launcher, or type `sealwax` in a terminal. Only one Sealwax runs at a time: starting it again shows the window of the one that runs.
@@ -413,6 +415,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | General | Rebuild Search Index | — |  | `rebuild-search-index` |
 | General | Start Sealwax at Login | — |  | `start-at-login` |
 | General | Make Sealwax the Default Mail App… | — |  | `default-mail-app` |
+| General | Check for Updates… | — |  | `check-for-updates` |
 | General | Quit | Ctrl+Q | anywhere | `quit` |
 | Rules | Rules… | — |  | `edit-rules` |
 | Rules | Create Rule from Message… | — |  | `new-rule-from-message` |
@@ -563,8 +566,9 @@ Sealwax talks only to the servers your mail needs, and keeps each message sealed
 | Servers that hold a message's images | Your IP address and the time, as for any web page | Only for a message or sender you allowed |
 | Your browser | A link you chose to open | When you open it |
 | Your desktop's notification server | A new message's sender and subject (only a count with `show = "count"`) | New mail, unless notifications are off |
+| GitHub (`api.github.com`) | A request for Sealwax's latest release, with nothing about you in it; GitHub sees your IP address | Only when you choose Check for Updates… |
 
-Nothing else: **no telemetry**, no update checks, no read receipts, no avatar lookups.
+Nothing else: **no telemetry**, no automatic update checks, no read receipts, no avatar lookups.
 
 - **Messages stay sealed.** No script in a message ever runs; nothing from the internet loads until you allow it; links open only in your browser, with a warning when a link's text doesn't match its address; attachments that can run programs are never opened.
 - **Passwords and sign-in tokens** are kept only in your keyring (the Secret Service: gnome-keyring on Omarchy), never in a file, the store or a log. Without a keyring, Sealwax keeps them in memory until it quits and says so in a banner ("No keyring found").

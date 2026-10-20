@@ -34,6 +34,7 @@ use crate::theme::{self, ThemeController};
 use crate::triage::{
     self, Controller, Directory, MARK_READ_ON_OPEN, Notice, OpsBackend, Origin, Target,
 };
+use crate::updates;
 use crate::window::{self, Attention, BannerAction, Pane, Window};
 use gtk4::{gio, glib};
 use libadwaita as adw;
@@ -797,6 +798,7 @@ impl AppState {
         outbox::install(self);
         notify::install(self);
         search::install(self);
+        updates::install(self);
         crate::rules::install(self);
         background::install(app, self);
         if let Some(options) = self.config.engine.clone() {
