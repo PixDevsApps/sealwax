@@ -133,6 +133,18 @@ WebKitGTK went from 2.52.6 to 2.54.1 on 2026-10-18 (GTK from 4.22.4 to 4.24.1), 
 | `cargo test --workspace -- --skip bodies_download_beside_the_actor_and_the_prefetch_follows_new_mail` | 1,508 passed, 0 failed, 98 ignored. The skipped `engine/tests/actor.rs` test fails on `main` too | Pass |
 | `tools/ci.sh --ui`'s self-tests, run on past failures | 51 passed; 30 stopped when `gtk4-broadwayd` (GTK 4.24.1) aborted on a GLib assertion inside itself (core dumps). `a11y-dialogs` (step 75) and `reader-conversation` (step 88) stop at the same step on `fb5c5a2` without the change; `window-view` passed on a second run | Not this change; Broadway on GTK 4.24.1 |
 
+### 0.5.0 — 2026-10-20
+
+`v0.5.0` is `cdb9ce7`; this machine, rustc 1.98.1, WebKitGTK 2.54.1, GTK 4.24.1 (the headless runs through ADR-022's patched daemon). The release: [v0.5.0](https://github.com/PixDevsApps/sealwax/releases/tag/v0.5.0), at the owner's word ("go ahead, release 0.5.0").
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on `cdb9ce7`, `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` | 1,518 passed, 0 failed, 98 ignored; 81 scripts, 7,985 of 7,985 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 273 s) | Pass |
+| `python3 tools/release.py build` on `v0.5.0` (tagged locally first, pushed only after the build) | makepkg's `check()` 1,087 passed, 0 failed; the binary says `sealwax 0.5.0` and has no path of the home folder; the client ID built in (from the owner's `config.toml`) | Pass |
+| The push | A scan of `2f7d980..cdb9ce7`'s diff: no working doc, no address but fictional `example.test` ones, no client ID; `main` and `v0.5.0` pushed | Pass |
+| The release `v0.5.0` (`tools/release.py github`) | GitHub's latest, four files; INSTALL.md's download URL downloaded with curl: the same SHA-256 as the build (`2ae75a98…`), read by pacman as `sealwax 0.5.0-1`, `hunspell` among its optional dependencies | Pass |
+| Installing 0.5.0 on this machine | Not done: the owner's, with INSTALL.md's command | Not verified |
+
 ### 0.4.9 — 2026-10-19
 
 `v0.4.9` is `6ae9bcb`; this machine, rustc 1.98.1, WebKitGTK 2.54.1, GTK 4.24.1 (the headless runs through ADR-022's patched daemon). The release: [v0.4.9](https://github.com/PixDevsApps/sealwax/releases/tag/v0.4.9), at the owner's word ("Yes please, go ahead", to releasing 0.4.9 and installing it).
