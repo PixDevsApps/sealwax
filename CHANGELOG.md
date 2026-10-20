@@ -2,7 +2,7 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 0.5.0 — 2026-10-20
 
 - **Unread mail in folded subfolders shows:** a folder whose subfolders are folded away now counts their unread mail with its own, as Thunderbird does, so you can see there is new mail inside. Open the folder again and each one shows its own count.
 - **Read and move around from the keyboard:** `d` and Shift+D scroll the open message half a screen down and up from the message list, so you can read on without leaving the list ([issue #10](https://github.com/PixDevsApps/sealwax/issues/10)); `l` opens the message, as Enter and `o` do. `g` then `a` goes to All Inboxes, and `g` then `1` to `9` to that account's Inbox, in the sidebar's order ([issue #12](https://github.com/PixDevsApps/sealwax/issues/12)). `keys.toml` can change them (`scroll-message-down`, `scroll-message-up`, `go-to-all-inboxes`, `go-to-account-1` …).
