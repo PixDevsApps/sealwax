@@ -66,6 +66,14 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 - WebKit pages are memory-heavy: about 45 MiB of GPU memory per accelerated page plus a surface as tall as the whole body; the app plus WebKit's network process already take 274 MiB RSS before any message is shown. Reader and composer views therefore render with `hardware-acceleration-policy = NEVER` (no GPU memory, a 4× faster cold start, scrolling still at 144 Hz).
 - WebKit paces its own frames with a 60 Hz timer here; inside approach A the GTK side still scrolls at the monitor's rate.
 
+### ADR-002 amendment — GTK's default renderer stays; start-up a little over its bar (2026-10-21)
+
+**Status:** Accepted — the owner's answer on the sign-off sheet (D23, "Keep Vulkan"), 2026-10-21.
+
+The performance pass measured, live (TESTING.md "The performance pass, live"): with GTK's default renderer here (Vulkan), process start → first painted frame p50 ~402 ms warm, against the ≤ 400 ms bar (359 ms on 2026-10-05, before GTK 4.24.1 and NVIDIA 615), the window's UI memory 138.1 MiB without the driver's mappings; with GTK's GL renderer 353 ms but 182.6 MiB, over the 150 MB bar; scrolling the same with either. Sealwax sets no renderer: GTK's default stays, and 1.0's release notes say the warm start-up bar is missed by about 15 ms. A user can still choose with `GSK_RENDERER`.
+
+**Reason:** about 15 ms once at start can't be felt; ~45 MiB more is held all day, in background mode too.
+
 ## ADR-003 — Layering with an engine crate; tokio only there (2026-10-04)
 
 **Status:** Proposed.
