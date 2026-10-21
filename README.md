@@ -18,7 +18,7 @@ Run the same line again to update; **Check for Updates…** in Sealwax's main me
 
 ## Status
 
-**Version 0.5.1.** The features below are built and tested, and its author reads their own mail with it every day; 1.0 follows a longer period of daily use with real accounts. Testing so far is on local test mail servers (Dovecot, Stalwart, Mailpit), with Microsoft sign-in checked live on an Outlook.com account and the author's own accounts in daily use; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) are drafted.
+**Version 1.0.0 (release candidate).** The features below are built and tested, and its author has read their own mail with it every day since 7 October 2026: Outlook.com, Microsoft 365 and IMAP, Gmail among them. Testing also covers local test mail servers (Dovecot, Stalwart, Mailpit), a fresh install in a clean Arch Linux container, and measurements on a live desktop; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) say what was checked and what wasn't.
 
 ## Features
 

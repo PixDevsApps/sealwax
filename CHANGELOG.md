@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.0.0 — release candidate, 2026-10-21
+
+Sealwax 1.0: everything in 0.5.1, checked in daily use with real accounts, in a fresh install and on a live desktop ([the 1.0 release notes](docs/RELEASE_NOTES.md)), and these changes:
 
 - **Hide the folder list:** Toggle Sidebar (Ctrl+Shift+S or F9, or the main menu) now works. It hides the folders so the messages get the room, and brings them back; Sealwax remembers it. Before, the command was listed but did nothing.
 - **A clearer icon at small sizes:** at 16 and 24 pixels, as in a bar or a file list, the wax seal's @ turned into a blur; those two sizes now show a bold @ on the seal. The larger sizes are unchanged.

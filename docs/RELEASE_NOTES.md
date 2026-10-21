@@ -1,6 +1,6 @@
-# Sealwax 1.0.0 release notes (draft)
+# Sealwax 1.0.0 release notes
 
-> **Draft, 2026-10-09.** Sealwax 1.0.0 isn't released: 0.4.0, the first public release, came out on 2026-10-09 ([CHANGELOG.md](../CHANGELOG.md)), and 1.0.0 follows the owner's sign-off (ML-096), after M8's gate and the rest of M9. The parts marked *(at the sign-off)* are filled in then, from what was actually run. Nothing here is a measurement made for this page.
+> **Release candidate, 2026-10-21.** 1.0.0 isn't released until its owner's last look at this candidate. "How 1.0.0 was checked" below names what was run, when and on which build; nothing here is a measurement made for this page.
 
 Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and careful with every message: no script in one ever runs, and nothing from the internet loads until you allow it. 1.0.0 is its first stable release.
 
@@ -32,12 +32,17 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 - **Folders and rules** (above).
 - **Google dropped:** Gmail isn't a listed provider and Sign in with Google isn't offered. Gmail works with an app password: [GMAIL.md](GMAIL.md) shows how, step by step.
 - **Proton Mail through Proton Mail Bridge** (0.4.8, [issue #9](https://github.com/PixDevsApps/sealwax/issues/9)): Bridge's own certificate is trusted once, for that server on this computer only.
+- **From the issues people filed** (0.4.1–0.5.0): send from any account's address ([#7](https://github.com/PixDevsApps/sealwax/issues/7)); the others a message went to, in its header, and Reply All by default as a setting ([#8](https://github.com/PixDevsApps/sealwax/issues/8)); a new window opens on the view the last one had ([#5](https://github.com/PixDevsApps/sealwax/issues/5)); newest-first conversations as a setting ([#3](https://github.com/PixDevsApps/sealwax/issues/3)); Microsoft 365's long refusals understood when sending ([#2](https://github.com/PixDevsApps/sealwax/issues/2)); keys to scroll the message from the list and to go to All Inboxes or an account ([#10](https://github.com/PixDevsApps/sealwax/issues/10), [#12](https://github.com/PixDevsApps/sealwax/issues/12)).
+- **Faster where it was slow:** large messages show at once and answer quickly; moving between messages and deleting clear the reader within 150 ms; the first message after a start opens sooner.
+- **Ctrl+W** closes the composer; **Check for Updates…** asks GitHub only when you choose it; **Toggle Sidebar** hides the folder list.
+- **Privacy:** on WebKitGTK 2.54, images you allowed can no longer make your computer look up the names a message lists (DNS prefetch); lookups of your provider's settings say they come from "Sealwax".
+- **The licenses** of the libraries Sealwax is built from come with the package.
 
 ## Requirements
 
 - Arch Linux on x86_64, made for Omarchy 4.
 - At runtime: `gtk4` 4.18 or later, `libadwaita` 1.9 or later, `webkitgtk-6.0` 2.52 or later, `sqlite` 3.43 or later, `glib2`, `gcc-libs`, `glibc` (pacman installs them with the package).
-- Optional: a Secret Service such as `gnome-keyring` (without one, passwords and tokens are kept in memory until Sealwax quits, and a banner says so); hunspell dictionaries for spell checking.
+- Optional: a Secret Service such as `gnome-keyring` (without one, passwords and tokens are kept in memory until Sealwax quits, and a banner says so); `hunspell` and a dictionary such as `hunspell-en_us` for spell checking.
 - To build: Rust 1.92 or later, `base-devel`, `pkgconf`, `git` and Python 3.11 or later.
 - Sign in with Microsoft works as installed: the package carries Sealwax's Microsoft client ID. A build from source needs one ([OAUTH-SETUP.md](OAUTH-SETUP.md#where-the-id-goes)).
 
@@ -56,6 +61,7 @@ Install the release's package with one command, or build the Arch package from t
 - **A hostile IMAP server can keep an account failing** by sending a reply that crashes the IMAP parser Sealwax uses (reported upstream as djc/imap-proto#210); Sealwax restarts the account's sync after a pause and shows it offline meanwhile.
 - **WebKit's sandbox** needs bubblewrap and unprivileged user namespaces.
 - **Sleep and wake** were tested on test servers but not through a real suspend: if mail doesn't arrive after the computer wakes, Refresh (F5) or a restart brings it.
+- **Start-up** takes about 0.4 s to the first frame on the test machine (GTK 4.24.1, an NVIDIA card), a little over the 0.4 s goal; most of it is GTK getting the graphics card ready.
 - **English only**; no translations in 1.0.
 - Not in 1.0: server-side search, schedule send, snooze, templates, calendars, and contacts beyond address suggestions.
 
