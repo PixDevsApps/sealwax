@@ -67,12 +67,16 @@ Install the release's package with one command, or build the Arch package from t
 
 The full list, with what was checked and how, is in [SECURITY.md](SECURITY.md#known-limitations).
 
-## How 1.0.0 was checked *(at the sign-off)*
+## How 1.0.0 was checked
 
-- The CI run on the release commit: tests, self-tests, the accessibility audit and the hostile-mail suite.
-- The owner's daily use with real accounts from 7 to 19 October 2026 (M8's soak): Outlook.com, Microsoft 365 and IMAP, Gmail among them through an app password. POP3 was tested on the test servers only.
-- The clean-container install test (ML-095).
-- The owner's live checks: typing through fcitx5, Orca, the desktop's file chooser and print dialog, the live theme and font, search suggestions, background mode, starting at login, mailto: links, Check for Updates, and how Sealwax's mail looks in Gmail web, Outlook web and Thunderbird.
+On the release candidate (`0cb3f16`, 2026-10-21) unless a line says otherwise. The details, with the commands, are in [TESTING.md](TESTING.md).
+
+- **CI:** 1,531 tests, 84 self-test scripts driving the real app headless (8,135 steps, the accessibility audit of the windows and dialogs among them) and the hostile-mail suite (60 hostile messages: no script ran, nothing was fetched, no name was looked up).
+- **A clean install:** the package installed with pacman in a fresh Arch Linux container, with every dependency from Arch's mirrors, and the installed Sealwax opened a message with its web process in WebKit's sandbox (2026-10-22).
+- **Measured on a live desktop** (2026-10-21; Ryzen 9 5900X, NVIDIA RTX 3070 Ti, 3440×1440 at 144 Hz): a 100,000-message list scrolls without a frame over 16.7 ms, jumps to its end in 79 ms and opens a folder in 40 ms; real-world HTML mail is laid out in 58 ms (p95) and scrolls at p95 7 ms a frame; typing in the composer reaches the screen in at most 14 ms (p95); memory stays level over 1,000 opened messages; start-up takes about 0.40 s (see Known limitations).
+- **Daily use** by the owner with real accounts from 7 to 19 October 2026 (M8's soak): Outlook.com, Microsoft 365 and IMAP, Gmail among them through an app password. POP3 was tested on the test servers only.
+- **The owner's own checks** on the live desktop: typing through fcitx5 with dead keys and æøå, Orca, the desktop's file chooser and print dialog, the live theme and font, search suggestions, background mode, starting at login, mailto: links, Check for Updates, the first message after a restart (73 ms), and how Sealwax's mail looks in Gmail web, Outlook web and Thunderbird.
+- **Not checked:** a real suspend and resume (on test servers only), Proton Mail Bridge's sending, a cold start right after a login, Microsoft work or school accounts outside the owner's organization.
 
 ## License
 

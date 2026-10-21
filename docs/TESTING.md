@@ -79,7 +79,7 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 - **The candidate:** `0cb3f16` (version 1.0.0, CHANGELOG "1.0.0 — release candidate, 2026-10-21", the release notes), not tagged or pushed.
 - **CI:** `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` on `0cb3f16`: exit 0; 1,531 tests passed, 0 failed, 99 ignored; 84 scripts, 8,135/8,135 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 275 s). Log: `.local/ci-ui-1.0.0-rc-2026-10-21.log`.
 - **The package:** `python3 tools/package-source.py` (HEAD `0cb3f16`, the client ID from the builder's config) and `makepkg --cleanbuild --force --nodeps` (Rust from rustup) in `.local/package/`: `sealwax-1.0.0-1-x86_64.pkg.tar.zst`, 11,536,869 bytes, SHA-256 `8b2eb163d7e0eefd8329d77271f2f79a5a7ff4e2e78bd6b977f6472eff5f981e`; finished 23:30. Its binary says `sealwax 1.0.0` and holds no home-folder path; it installs `/usr/share/licenses/sealwax/LICENSE` and `THIRD-PARTY-LICENSES.txt` (SHA-256 `45623b86…a898c65`). Log: `.local/package/makepkg-0cb3f16.log`.
-- **The clean-container install test:** not run yet: Docker's daemon had stopped again by 23:31.
+- **The clean-container install test** (the owner started Docker again; 2026-10-22 00:16): `bash tools/install-test.sh .local/package/sealwax-1.0.0-1-x86_64.pkg.tar.zst`: exit 0; pacman installed it with every dependency (61 MiB then 200 MiB from the mirrors), `sealwax --version` said 1.0.0, `ldd` found every library, both license files installed, `install-smoke` 16/16 with the installed binary, one web process in WebKit's sandbox. Log and screenshot: `.local/install-test/20261022-001630/`.
 
 
 ### The performance pass, live (ML-091) — 2026-10-21
