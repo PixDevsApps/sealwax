@@ -104,6 +104,10 @@ pub fn window(app: &adw::Application, reader: &Reader, size: (i32, i32)) -> Wind
     window.set_reader(&reader.widget());
     window.set_reader_toolbar(&reader.toolbar());
     window.window().set_default_size(size.0, size.1);
+    // A live run's window otherwise gets whatever tile the compositor gives it.
+    if std::env::var_os("SEALWAX_START_FULLSCREEN").is_some_and(|value| value == "1") {
+        window.window().fullscreen();
+    }
     window.show_pane(Pane::Reader);
     window
 }

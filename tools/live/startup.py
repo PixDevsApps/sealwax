@@ -14,6 +14,11 @@ or changed. Runs open a fullscreen window that closes itself after SEALWAX_EXIT_
 
 On the live session this needs the user's live-window authorization (PLAN.md's log). With
 --headless it runs through tools/headless.sh as a dry run (Broadway; not the bar).
+
+--evict drops the binary, the store and the libraries the binary links from the page cache
+before each run (posix_fadvise DONTNEED, no root): a start without Sealwax's own files cached.
+It isn't a true cold start: pages other running programs map (GTK and WebKit, while any GTK
+program runs) stay cached, and so do fonts and icons. A true cold start is right after a login.
 """
 
 import argparse
@@ -60,6 +65,23 @@ def prepare(count):
         (SCRATCH / folder).mkdir(parents=True, exist_ok=True)
 
 
+def evict():
+    linked = subprocess.run(["ldd", str(ROOT / "target/release/sealwax")],
+                            capture_output=True, text=True, check=True).stdout
+    paths = [pathlib.Path(match) for match in re.findall(r"=> (/\S+)", linked)]
+    paths.append(ROOT / "target/release/sealwax")
+    paths.extend((SCRATCH / "data" / "sealwax").glob("store.sqlite*"))
+    for path in paths:
+        try:
+            fd = os.open(path, os.O_RDONLY)
+        except OSError:
+            continue
+        try:
+            os.posix_fadvise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+        finally:
+            os.close(fd)
+
+
 def run_once(headless):
     env = dict(os.environ)
     env.update({
@@ -70,6 +92,8 @@ def run_once(headless):
         "SEALWAX_OMARCHY_STATE": str(SCRATCH / "omarchy"),
         "SEALWAX_EXIT_AFTER_MS": "1500",
         "SEALWAX_START_FULLSCREEN": "1",
+        # An id of its own, so an installed Sealwax that is running isn't asked instead.
+        "SEALWAX_APP_ID": "io.github.pixdevsapps.Sealwax.Startup",
         "RUST_LOG": "info,sealwax_app::application=debug",
     })
     command = [str(ROOT / "target/release/sealwax")]
@@ -90,10 +114,13 @@ def main():
     parser.add_argument("--runs", type=int, default=21)
     parser.add_argument("--count", type=int, default=10000)
     parser.add_argument("--headless", type=int)
+    parser.add_argument("--evict", action="store_true")
     args = parser.parse_args()
     prepare(args.count)
     results = []
     for index in range(args.runs):
+        if args.evict:
+            evict()
         exec_ms, main_ms, no_rows, status = run_once(args.headless)
         print(f"run {index + 1}: from exec {exec_ms} ms, from main {main_ms} ms, "
               f"rows waited out {no_rows}, exit {status}", flush=True)
