@@ -37,8 +37,11 @@ if [[ ${1:-} == --inside ]]; then
     cp -r /test/tools "$work/"
     cp -r /test/selftest "$work/tests/"
     chown -R tester "$work"
+    # The display's socket goes in the runtime folder, which a container has none of.
+    runtime=/run/user/$(id -u tester)
+    install -d -m 700 -o tester "$runtime"
     status=0
-    runuser -u tester -- env -C "$work" SEALWAX_BROADWAYD=gtk4-broadwayd \
+    runuser -u tester -- env -C "$work" XDG_RUNTIME_DIR="$runtime" SEALWAX_BROADWAYD=gtk4-broadwayd \
         SEALWAX_HEADLESS_TIMEOUT=180 tools/headless.sh 9 /usr/bin/sealwax \
         --self-test tests/selftest/install-smoke.sealwax-test || status=$?
     cp "$work/.local/selftest/install-smoke.png" /test/out/ 2>/dev/null || true
