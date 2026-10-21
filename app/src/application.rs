@@ -1118,6 +1118,36 @@ impl AppState {
             }
         });
         let weak = Rc::downgrade(self);
+        win_actions.connect_toggle(ActionId::ToggleSidebar, window.sidebar_shown(), move |on| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(target) = state.window() else {
+                return;
+            };
+            let in_sidebar = gtk4::prelude::GtkWindowExt::focus(target.window())
+                .is_some_and(|focus| focus.is_ancestor(&target.sidebar().root));
+            let remembered = target.show_sidebar(on);
+            // The focus leaves a sidebar that hides for the list.
+            if in_sidebar
+                && !target.sidebar_shown()
+                && let Some(list) = state.list()
+            {
+                list.list_view().grab_focus();
+            }
+            if remembered {
+                state.change_layout(|layout| layout.sidebar_hidden = !on);
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.connect_sidebar_shown(move |shown| {
+            if let Some(state) = weak.upgrade()
+                && let Some(actions) = state.win_actions.borrow().as_ref()
+            {
+                actions.set_toggle_state(ActionId::ToggleSidebar, shown);
+            }
+        });
+        let weak = Rc::downgrade(self);
         window.connect_banner(move |action| {
             if let Some(state) = weak.upgrade() {
                 state.banner_action(action);
@@ -1933,6 +1963,7 @@ impl AppState {
                     .map_or(window::SIDEBAR_WIDTH, f64::from),
                 layout.list_width.map_or(window::LIST_WIDTH, f64::from),
             );
+            window.set_sidebar_hidden(layout.sidebar_hidden);
         }
         self.layout.replace(Some(layout));
     }
@@ -1989,6 +2020,7 @@ impl AppState {
                     .map_or(window::SIDEBAR_WIDTH, f64::from),
                 layout.list_width.map_or(window::LIST_WIDTH, f64::from),
             );
+            window.set_sidebar_hidden(layout.sidebar_hidden);
         }
         let weak = Rc::downgrade(self);
         window.connect_pane_widths(move |sidebar, list| {

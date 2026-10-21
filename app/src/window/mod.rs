@@ -1,7 +1,8 @@
 //! The main window (ML-021): folders, the message list and the reader in an adaptive three-pane
 //! layout (DESIGN.md "Layout"), built from two nested `adw::NavigationSplitView`s. Breakpoints
 //! switch between the full sidebar (≥ 1280 px), a rail of icons (900–1280 px) and one pane at a
-//! time with back navigation (< 900 px). On Hyprland there is no title bar and there are no
+//! time with back navigation (< 900 px). Toggle Sidebar hides the folders pane in the wider two
+//! (the owner's word, 2026-10-21) and shows the folders page in the narrow one. On Hyprland there is no title bar and there are no
 //! window controls; elsewhere the pane bars carry the controls at the window's edges and drag
 //! the window.
 //!
@@ -110,6 +111,7 @@ pub fn tiling_desktop() -> bool {
 
 type FolderHandler = Box<dyn Fn(&Window, &str)>;
 type WidthsHandler = Rc<dyn Fn(f64, f64)>;
+type ShownHandler = Rc<dyn Fn(bool)>;
 
 #[derive(Clone)]
 pub struct Window {
@@ -132,6 +134,8 @@ struct Inner {
     list_subtitle: gtk::Label,
     list_slot: adw::Bin,
     list_menu: gtk::MenuButton,
+    /// "New" in the list's bar, while the sidebar's isn't shown.
+    list_compose: gtk::Button,
     welcome_menu: gtk::MenuButton,
     reader_pane: adw::ToolbarView,
     reader_toolbar: adw::Bin,
@@ -159,6 +163,12 @@ struct Inner {
     list_width: Cell<f64>,
     /// The rail shows: the folders pane is the rail's width, whatever was dragged.
     rail_on: Cell<bool>,
+    /// One pane at a time.
+    narrow_on: Cell<bool>,
+    /// Toggle Sidebar hid the folders pane (in the wider layouts).
+    sidebar_hidden: Cell<bool>,
+    /// Told whether the folders show whenever that may have changed.
+    sidebar_shown_changed: RefCell<Option<ShownHandler>>,
     /// The drag handles on the left edges of the mail area and the reader.
     sidebar_handle: gtk::Box,
     list_handle: gtk::Box,
@@ -339,7 +349,6 @@ impl Window {
         let narrow = breakpoint(RAIL_MIN_WIDTH);
         narrow.add_setter(&panes, "collapsed", Some(&shown));
         narrow.add_setter(&mail, "collapsed", Some(&shown));
-        narrow.add_setter(&list_compose, "visible", Some(&shown));
         narrow.add_setter(&sidebar_handle, "visible", Some(&hidden));
         narrow.add_setter(&list_handle, "visible", Some(&hidden));
         for bar in [&sidebar.bar, &list_bar, &reader_bar, &welcome_bar] {
@@ -388,7 +397,7 @@ impl Window {
             welcome.clone().upcast(),
             add_account.upcast(),
             welcome_hint.clone().upcast(),
-            list_compose.upcast(),
+            list_compose.clone().upcast(),
             list_title.clone().upcast(),
             list_subtitle.clone().upcast(),
             list_slot.clone().upcast(),
@@ -416,6 +425,7 @@ impl Window {
                 list_subtitle,
                 list_slot,
                 list_menu,
+                list_compose,
                 welcome_menu,
                 reader_pane,
                 reader_toolbar,
@@ -435,6 +445,9 @@ impl Window {
                 sidebar_width: Cell::new(SIDEBAR_WIDTH),
                 list_width: Cell::new(LIST_WIDTH),
                 rail_on: Cell::new(false),
+                narrow_on: Cell::new(false),
+                sidebar_hidden: Cell::new(false),
+                sidebar_shown_changed: RefCell::new(None),
                 sidebar_handle,
                 list_handle,
                 widths_changed: RefCell::new(None),
@@ -510,6 +523,20 @@ impl Window {
                 Window { inner }.apply_widths();
             }
         ));
+        let narrow_changed = |narrow: bool| {
+            glib::clone!(
+                #[weak(rename_to = inner)]
+                self.inner,
+                move |_: &adw::Breakpoint| {
+                    inner.narrow_on.set(narrow);
+                    let window = Window { inner };
+                    window.apply_widths();
+                    window.sidebar_shown_changed();
+                }
+            )
+        };
+        inner.narrow.connect_apply(narrow_changed(true));
+        inner.narrow.connect_unapply(narrow_changed(false));
         resize::connect(
             &inner.panes,
             vec![
@@ -552,10 +579,71 @@ impl Window {
         self.inner.widths_changed.replace(Some(Rc::new(handler)));
     }
 
-    /// The widths on the split views: the folders pane is the rail's while the rail shows.
+    /// Whether the folders show: the folders pane in the wider layouts, the folders page while
+    /// one pane fits.
+    pub fn sidebar_shown(&self) -> bool {
+        let inner = &self.inner;
+        if inner.narrow_on.get() {
+            self.pane() == Pane::Folders
+        } else {
+            !inner.sidebar_hidden.get()
+        }
+    }
+
+    /// Whether Toggle Sidebar hid the folders pane, as remembered between runs.
+    pub fn sidebar_hidden(&self) -> bool {
+        self.inner.sidebar_hidden.get()
+    }
+
+    /// Hides the folders pane in the wider layouts or shows it again; while one pane fits, the
+    /// folders page shows once the window widens.
+    pub fn set_sidebar_hidden(&self, hidden: bool) {
+        let inner = &self.inner;
+        inner.sidebar_hidden.set(hidden);
+        inner.sidebar_handle.set_can_target(!hidden);
+        self.apply_widths();
+        self.sidebar_shown_changed();
+    }
+
+    /// Toggle Sidebar: hides or shows the folders pane, or, while one pane fits, goes to the
+    /// folders page or back to the list. True when what is remembered between runs changed.
+    pub fn show_sidebar(&self, shown: bool) -> bool {
+        if self.inner.narrow_on.get() {
+            self.show_pane(if shown { Pane::Folders } else { Pane::List });
+            return false;
+        }
+        let changed = self.sidebar_hidden() == shown;
+        self.set_sidebar_hidden(!shown);
+        changed
+    }
+
+    /// Runs `handler` with [`Self::sidebar_shown`] whenever it may have changed.
+    pub fn connect_sidebar_shown(&self, handler: impl Fn(bool) + 'static) {
+        self.inner
+            .sidebar_shown_changed
+            .replace(Some(Rc::new(handler)));
+        self.sidebar_shown_changed();
+    }
+
+    fn sidebar_shown_changed(&self) {
+        let handler = self.inner.sidebar_shown_changed.borrow().clone();
+        if let Some(handler) = handler {
+            handler(self.sidebar_shown());
+        }
+    }
+
+    /// The widths on the split views: the folders pane is the rail's while the rail shows, and
+    /// none while Toggle Sidebar hides it.
     fn apply_widths(&self) {
         let inner = &self.inner;
-        let folders = if inner.rail_on.get() {
+        let hidden = inner.sidebar_hidden.get() && !inner.narrow_on.get();
+        inner.sidebar.root.set_visible(!hidden);
+        inner
+            .list_compose
+            .set_visible(hidden || inner.narrow_on.get());
+        let folders = if hidden {
+            0.0
+        } else if inner.rail_on.get() {
             RAIL_WIDTH
         } else {
             inner.sidebar_width.get()
@@ -820,6 +908,9 @@ impl Window {
         let current = self.inner.pane.state();
         if current.as_ref().and_then(|state| state.str()) != Some(pane) {
             self.inner.pane.set_state(&pane.to_variant());
+            if self.inner.narrow_on.get() {
+                self.sidebar_shown_changed();
+            }
         }
     }
 

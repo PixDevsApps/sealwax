@@ -47,14 +47,15 @@ Install the release's package with one command, or build the Arch package from t
 
 ## Known limitations
 
-- **Gmail and Google Workspace** have no Sign in with Google: they work with an app password ([GMAIL.md](GMAIL.md)). Gmail isn't yet among the providers tested over longer daily use.
-- **Microsoft work or school accounts** may need their organization's admin to approve Sealwax before it can sign in, as Sealwax's Microsoft registration isn't publisher-verified. *(At the sign-off: whether this changes.)*
+- **Gmail and Google Workspace** have no Sign in with Google: they work with an app password ([GMAIL.md](GMAIL.md)).
+- **Microsoft work or school accounts** may need their organization's admin to approve Sealwax before it can sign in, as Sealwax's Microsoft registration isn't publisher-verified yet (planned after 1.0). After a minute of waiting, the setup assistant says so, and the [user guide](USER_GUIDE.md) explains what to ask the admin.
 - **Rules run in Sealwax**, not on the server: only while Sealwax runs (background mode is on by default), and on headers, not message bodies. Rules aren't uploaded to servers (ManageSieve).
 - **Servers with self-signed certificates elsewhere** (some self-hosted servers) can't be added: only a server on this computer, such as Proton Mail Bridge, can be trusted with its own certificate.
 - **PGP and S/MIME** mail is shown with a notice but not decrypted or verified.
 - **A passwordless keyring:** gnome-keyring's default keyring often has no password, so its file is protected only by disk encryption; the [user guide](USER_GUIDE.md#giving-your-keyring-a-password) shows how to give it one.
 - **A hostile IMAP server can keep an account failing** by sending a reply that crashes the IMAP parser Sealwax uses (reported upstream as djc/imap-proto#210); Sealwax restarts the account's sync after a pause and shows it offline meanwhile.
 - **WebKit's sandbox** needs bubblewrap and unprivileged user namespaces.
+- **Sleep and wake** were tested on test servers but not through a real suspend: if mail doesn't arrive after the computer wakes, Refresh (F5) or a restart brings it.
 - **English only**; no translations in 1.0.
 - Not in 1.0: server-side search, schedule send, snooze, templates, calendars, and contacts beyond address suggestions.
 
@@ -63,10 +64,10 @@ The full list, with what was checked and how, is in [SECURITY.md](SECURITY.md#kn
 ## How 1.0.0 was checked *(at the sign-off)*
 
 - The CI run on the release commit: tests, self-tests, the accessibility audit and the hostile-mail suite.
-- The owner's daily use with real accounts (M8's soak) and the providers it covered.
+- The owner's daily use with real accounts from 7 to 19 October 2026 (M8's soak): Outlook.com, Microsoft 365 and IMAP, Gmail among them through an app password. POP3 was tested on the test servers only.
 - The clean-container install test (ML-095).
-- The owner's live checks: typing through fcitx5, Orca, the desktop's file chooser and print dialog, suspend and resume, and how Sealwax's mail looks in Gmail web, Outlook web and Thunderbird.
+- The owner's live checks: typing through fcitx5, Orca, the desktop's file chooser and print dialog, the live theme and font, search suggestions, background mode, starting at login, mailto: links, Check for Updates, and how Sealwax's mail looks in Gmail web, Outlook web and Thunderbird.
 
 ## License
 
-MIT. The licenses of the Rust crates Sealwax is built with are bundled with the package *(at the sign-off: ML-095's license bundle)*.
+MIT. The licenses of the Rust crates Sealwax is built with are in the package, at `/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt` beside Sealwax's own `LICENSE`, and attached to the release on GitHub. `tools/licenses.py` makes the file from `Cargo.lock` when the package is made ([BUILD.md](BUILD.md#packaging)).

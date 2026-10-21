@@ -613,6 +613,12 @@ The owner's decision on the sign-off sheet (2026-10-19): packagers of other dist
 
 The owner's decision on the sign-off sheet (2026-10-19), for M8: Sign in with Microsoft asks for IMAP's and SMTP's permissions only, and a POP3 account signs in with a password in 1.0. Microsoft accounts use IMAP.
 
+### ADR-008 amendment — publisher verification after 1.0 (2026-10-21)
+
+**Status:** Accepted — the owner's answer on the sign-off sheet (D20, "After 1.0"), 2026-10-21.
+
+Verifying the publisher of the Microsoft app registration (the 2026-10-19 amendment's second half) is the owner's paperwork after 1.0.0; 1.0's release notes keep the work-account limit, and the 60-second note and the user guide stay the answer until then. Nothing in the code depends on it.
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.
@@ -1271,6 +1277,12 @@ Built in M2.
 
 `logging::init` installs a panic hook: a panic located outside Sealwax's own sources (a dependency's or the standard library's code) is reported on stderr by thread and place only, as its message may quote what was being parsed (imap-proto's names a character of the server's reply); Sealwax's own panics keep Rust's report. An actor's panic is logged with the account's id and a count.
 
+### ADR-018 amendment — autodetect's User-Agent is `Sealwax` (2026-10-21)
+
+**Status:** Accepted — the owner's answer on the sign-off sheet (D22, "Sealwax", 2026-10-21), then "Please start the work on whats signed off".
+
+Autodetect's requests (the domain's autoconfig, the ISPDB, the MX operator's autoconfig) say `User-Agent: Sealwax`, without a version, instead of development's placeholder `mail-dev (automated)`. Check for Updates already said `Sealwax`; the Microsoft sign-in's requests keep `Sealwax/<version>`. A version would help a server's admin but tells every domain asked which Sealwax the user runs. The test harnesses' own requests (the corpus fetch, the testbed's Mailpit) keep their generic one.
+
 ## ADR-019 — Corner radius follows Hyprland (2026-10-04)
 
 **Status:** Proposed; the DESIGN gate decides.
@@ -1386,6 +1398,16 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Alternatives:** a check at startup or on a timer, opt-in or not (ADR-021's reasons against still hold, and the user asked for none); opening the releases page (the user asked not to); `github.com/…/releases/latest`'s redirect instead of the API (no rate limit, but it reads an HTML route's Location header, which GitHub may change); installing the update from Sealwax (it would need root through polkit, and a package downloaded and run by the app itself).
 
 **Consequences:** GitHub's API answers 60 requests an hour per address without an account; a network over that limit gets "Try again in an hour". The dialog's command assumes the package install of INSTALL.md (pacman); a build from source gets the same command, which replaces it with the release's package. The user guide's privacy table names GitHub, only on request; INSTALL.md's "Updates" points to the command.
+
+### ADR-021 amendment — what 1.0.0 needs (2026-10-21)
+
+**Status:** Accepted — the owner's answers on the sign-off sheet (D18 "When the P1 cards are done", D14 "Yes, use Docker for 1.0's install test", D16 "Keep the wax seal", D17 "A file in the package, made by our own script", 2026-10-21), then "Please start the work on whats signed off".
+
+**Decision:**
+- **1.0.0 goes out when the sign-off sheet's P1 cards are done.** P2 and P3 cards still open then go into the release notes' known limitations or the 1.x list. Each publishing step still waits for the owner's word.
+- **The clean-container install test** (ML-095) runs for 1.0.0 and its release candidates: `tools/install-test.sh` installs the package in a fresh `archlinux:base` container and runs the installed binary headless, with seccomp and Docker's masked `/proc` paths lifted for that container only, so WebKit's sandbox is tested rather than switched off (the alternatives in the M9 hardening report). Later releases ask again.
+- **The wax seal stays the icon;** the 16 and 24 px sizes smooth the rings and draw a bold @, as the seal's own turned to mush there (`tools/make-icons.py`).
+- **The crates' licenses ship in the package** as `/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt`, made by `tools/licenses.py` from the packaged `Cargo.lock` (the binary's dependencies as `cargo tree -p sealwax` resolves them for x86_64 Linux, normal and build) and attached to each GitHub release. No new tool to install; About Sealwax doesn't list them.
 
 ## ADR-022 — The headless checks run GTK's Broadway daemon with a patch of Sealwax's (2026-10-19)
 

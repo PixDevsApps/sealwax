@@ -1,0 +1,22 @@
+# The installed package's smoke test (ML-095, the clean-container install test: tools/install-test.sh
+# runs it with the package's /usr/bin/sealwax in a fresh Arch container; CI runs it with the
+# build): the window opens over a fictional mailbox, a message opens in the reader, its web process
+# runs in WebKit's sandbox, and the window closes. Every name and message is fictional.
+# Run: tools/headless.sh 35 target/debug/sealwax --self-test tests/selftest/install-smoke.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+triage-account Work work
+mail-add Work:inbox 10m "Kvartalsrapport" "from=Ingrid Solberg" "text=Tallene for tredje kvartal." html
+folder inbox Work
+wait-until assert-sidebar-count Work:inbox 1
+assert-layout wide
+focus list
+list-select 0
+wait-until assert-reader-page message
+wait-until assert-body html-themed
+assert-web-sandbox
+screenshot $DIR/../../.local/selftest/install-smoke.png
+close-window
+wait-until assert-window false

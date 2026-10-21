@@ -39,6 +39,7 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 cargo build --workspace
+python3 tools/test_licenses.py
 
 if $ui; then
     mkdir -p .local

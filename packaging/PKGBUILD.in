@@ -1,7 +1,8 @@
 # Maintainer: Sealwax contributors
 # Generated from packaging/PKGBUILD.in by tools/package-source.py, which fills in the version,
-# the source checksum, SOURCE_DATE_EPOCH (the time of the packaged commit) and the Microsoft
-# client ID to build in.
+# the source checksums, SOURCE_DATE_EPOCH (the time of the packaged commit) and the Microsoft
+# client ID to build in. THIRD-PARTY-LICENSES.txt, the licenses of the crates the binary is built
+# from, is made beside the tarball by tools/licenses.py.
 pkgname=sealwax
 pkgver=@PKGVER@
 pkgrel=1
@@ -18,8 +19,8 @@ makedepends=('rust' 'cargo' 'pkgconf')
 # The release profile carries no debug info, so a -debug package would be empty. makepkg's LTO
 # flags would compile ring's C code to GCC LTO bytecode, which Rust's linker (rust-lld) can't read.
 options=('!debug' '!lto')
-source=("sealwax-${pkgver}.tar.gz")
-sha256sums=('@SHA256@')
+source=("sealwax-${pkgver}.tar.gz" 'THIRD-PARTY-LICENSES.txt')
+sha256sums=('@SHA256@' '@LICENSES_SHA256@')
 export SOURCE_DATE_EPOCH=@SOURCE_DATE_EPOCH@
 # Sign in with Microsoft's client ID, built in so users need no registration of their own (a
 # public client's ID, not a secret; config.toml's client_id wins over it). Empty: none built in.
@@ -72,6 +73,8 @@ package() {
   install -Dm644 packaging/icons/hicolor/scalable/apps/io.github.pixdevsapps.Sealwax.svg \
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.pixdevsapps.Sealwax.svg"
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/sealwax/LICENSE"
+  install -Dm644 "$srcdir/THIRD-PARTY-LICENSES.txt" \
+    "$pkgdir/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt"
   install -Dm644 README.md "$pkgdir/usr/share/doc/sealwax/README.md"
   install -Dm644 docs/INTEGRATIONS.md "$pkgdir/usr/share/doc/sealwax/INTEGRATIONS.md"
   install -Dm644 docs/USER_GUIDE.md "$pkgdir/usr/share/doc/sealwax/USER_GUIDE.md"

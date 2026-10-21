@@ -138,6 +138,7 @@ makepkg --cleanbuild --force --nodeps -si     # Rust from rustup's own installer
 | `/usr/share/dbus-1/services/io.github.pixdevsapps.Sealwax.service` | D-Bus activation |
 | `/usr/share/icons/hicolor/*/apps/io.github.pixdevsapps.Sealwax.png`, `…/scalable/apps/io.github.pixdevsapps.Sealwax.svg` | The icon |
 | `/usr/share/licenses/sealwax/LICENSE` | The MIT license |
+| `/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt` | The licenses of the libraries Sealwax is built from (from the next release) |
 | `/usr/share/doc/sealwax/` | README, INSTALL, the user guide and INTEGRATIONS |
 
 Nothing in your home folder changes until Sealwax runs. Its key binding and Omarchy menu entries are yours to add ([INTEGRATIONS.md](docs/INTEGRATIONS.md#hyprland)).

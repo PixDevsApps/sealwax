@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Build a deterministic source tarball of the committed tree (HEAD) and a PKGBUILD for it.
 
-Writes .local/package/sealwax-<version>.tar.gz and .local/package/PKGBUILD from
-packaging/PKGBUILD.in, filling in the version, the tarball's SHA-256, SOURCE_DATE_EPOCH (the
+Writes .local/package/sealwax-<version>.tar.gz, .local/package/THIRD-PARTY-LICENSES.txt (made
+by the tarball's own tools/licenses.py from its Cargo.lock) and .local/package/PKGBUILD from
+packaging/PKGBUILD.in, filling in the version, both files' SHA-256, SOURCE_DATE_EPOCH (the
 commit time of HEAD) and the Microsoft client ID the package builds in: SEALWAX_MICROSOFT_CLIENT_ID
 if set, else the builder's ~/.config/sealwax/config.toml ([oauth.microsoft] client_id), else none
 (--no-client-id leaves it out). The ID is a public client's, not a secret, and never committed:
@@ -12,11 +13,14 @@ installing it need the user's authorization (AGENTS.md).
 """
 import gzip
 import hashlib
+import io
 import os
 import pathlib
 import re
 import subprocess
 import sys
+import tarfile
+import tempfile
 import tomllib
 
 root = pathlib.Path(__file__).resolve().parents[1]
@@ -71,11 +75,23 @@ def main() -> int:
         compressed.write(tar)
     digest = hashlib.sha256(archive.read_bytes()).hexdigest()
 
+    licenses = out / "THIRD-PARTY-LICENSES.txt"
+    with tempfile.TemporaryDirectory() as tree:
+        with tarfile.open(fileobj=io.BytesIO(tar)) as source:
+            source.extractall(tree, filter="data")
+        packaged = pathlib.Path(tree) / f"sealwax-{version}"
+        subprocess.run(
+            [sys.executable, str(packaged / "tools" / "licenses.py"), "--output", str(licenses)],
+            check=True,
+        )
+    licenses_digest = hashlib.sha256(licenses.read_bytes()).hexdigest()
+
     microsoft, microsoft_source = client_id()
     recipe = (root / "packaging" / "PKGBUILD.in").read_text()
     for placeholder, value in [
         ("@PKGVER@", version),
         ("@SHA256@", digest),
+        ("@LICENSES_SHA256@", licenses_digest),
         ("@SOURCE_DATE_EPOCH@", str(epoch)),
         ("@MICROSOFT_CLIENT_ID@", microsoft),
     ]:
@@ -87,6 +103,8 @@ def main() -> int:
     print(archive)
     print(f"commit {commit}")
     print(f"SHA256 {digest}")
+    print(licenses)
+    print(f"SHA256 {licenses_digest}")
     print(f"SOURCE_DATE_EPOCH {epoch}")
     print(f"Microsoft client ID: {microsoft_source}")
     print(f"Build: cd {out} && makepkg --cleanbuild --force (--nodeps where Rust comes from rustup; -si also installs; an agent needs authorization)")

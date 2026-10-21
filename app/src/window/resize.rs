@@ -104,7 +104,7 @@ fn double_click_time(widget: &impl IsA<gtk::Widget>) -> u32 {
     u32::try_from(time).unwrap_or(400)
 }
 
-/// The handle shown under `(x, y)` in the gesture's widget.
+/// The handle shown under `(x, y)` in the gesture's widget, unless it is switched off.
 fn handle_at(
     gesture: &impl IsA<gtk::EventController>,
     handles: &[(gtk::Box, Moves)],
@@ -115,6 +115,7 @@ fn handle_at(
     let point = graphene::Point::new(x as f32, y as f32);
     handles.iter().position(|(handle, _)| {
         handle.is_mapped()
+            && handle.can_target()
             && parent
                 .compute_point(handle, &point)
                 .is_some_and(|inside| handle.contains(inside.x().into(), inside.y().into()))

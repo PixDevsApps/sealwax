@@ -1,0 +1,93 @@
+# Toggle Sidebar (the owner's word, 2026-10-21): Ctrl+Shift+S and F9 hide the folders pane in the
+# wide and rail layouts and show it again, the list keeping its width, the reader taking the room
+# and the list's bar showing New; a hidden sidebar's border doesn't drag; the keyboard focus
+# leaves a pane that hides; the choice is written to layout.toml and comes back with a new window;
+# while one pane fits, the keys go to the folders page and back to the list. Every name and
+# message is fictional.
+# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/window-sidebar.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+triage-account Work work
+triage-account Club club
+mail-add Work:inbox 10m "Kvartalsrapport" "from=Ingrid Solberg" "text=Tallene for tredje kvartal."
+mail-add Club:inbox 30m "Dugnad lørdag" "from=Leah Kim"
+folder inbox Work
+wait-until assert-sidebar-count Work:inbox 1
+focus list
+list-select 0
+wait-until assert-reader-page message
+assert-shown sidebar true
+assert-width sidebar 220
+assert-width list 380
+assert-width reader 840
+
+# Hidden from the folder list itself: the list and the reader take its place, the list keeps the
+# focus's place, and the file remembers it.
+focus heading:account-1
+key <Control><Shift>s
+assert-shown sidebar false
+assert-shown list-compose true
+assert-width list 380
+assert-width reader 1060
+wait-until assert-focus list
+wait-until assert-file-contains $TMP/state/sealwax/layout.toml "sidebar_hidden = true"
+assert-accessible window
+screenshot $DIR/../../.local/selftest/window-sidebar-hidden.png
+
+# The hidden sidebar's border doesn't drag it back.
+drag sidebar-handle 60
+assert-shown sidebar false
+assert-width list 380
+assert-width reader 1060
+
+# F9 does the same; the rail hides and shows as the sidebar does.
+key F9
+assert-shown sidebar true
+assert-width sidebar 220
+assert-shown list-compose false
+key F9
+assert-shown sidebar false
+resize 1100 900
+assert-layout rail
+assert-shown sidebar false
+key F9
+assert-shown sidebar true
+assert-width sidebar 56
+key F9
+assert-shown sidebar false
+assert-width reader 720
+resize 1440 900
+assert-layout wide
+assert-shown sidebar false
+
+# One pane at a time: the keys go to the folders page and back to the list; the wider layout
+# keeps the sidebar hidden.
+resize 800 900
+assert-layout narrow
+action nav.pane::list
+assert-pane list
+assert-shown list-compose true
+key <Control><Shift>s
+assert-pane folders
+assert-shown sidebar true
+key <Control><Shift>s
+assert-pane list
+resize 1440 900
+assert-layout wide
+assert-shown sidebar false
+
+# A new window (background mode) comes back with the sidebar hidden; the menu's Toggle Sidebar
+# shows it again, and the file forgets it.
+close-window
+wait-until assert-window false
+bus-activate
+wait-until assert-window true
+resize 1440 900
+wait-until assert-shown sidebar false
+action win.toggle-sidebar
+assert-shown sidebar true
+assert-width sidebar 220
+wait-until assert-file-lacks $TMP/state/sealwax/layout.toml "sidebar_hidden"
+screenshot $DIR/../../.local/selftest/window-sidebar-shown.png
