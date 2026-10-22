@@ -982,7 +982,18 @@ fn a_move_retry_finds_a_half_done_move_and_only_deletes_the_source() {
         let mut conn = fake.connect().await;
         let mark = write::mark_target(&mut conn, "Arkiv").await.unwrap();
         // An earlier attempt copied message 2 and died before the source's expunge.
-        fake.world().append_id("Arkiv", &messages[1].1, 1, &[]);
+        write::copy_messages(
+            &mut conn,
+            Copy {
+                from: folder(&fake, "INBOX"),
+                to: "Arkiv",
+                messages: &all[1..2],
+                mark: Some(mark),
+                retry: false,
+            },
+        )
+        .await
+        .unwrap();
         let done = write::move_messages(
             &mut conn,
             request(folder(&fake, "INBOX"), "Arkiv", &all, Some(mark), true),
