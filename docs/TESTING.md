@@ -74,6 +74,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Memory with screenshot-heavy mail (the owner's C17) — 2026-10-22
+
+From the owner's C17 (272 → 538 MiB over a day of mail with large screenshots; at the end the app 264.9 MiB and the reader's web process 269.5 MiB PSS, 188.5 MiB of it WebKit's allocator, `WKFastMalloc`). A scratch mailbox of 30 messages, each with three 3440×1440 PNG screenshots inline (`cid:`; fictional, made from the self-tests' screenshots, 46 MiB raw, `sealwax-fixtures import --dir`), opened one after another in six rounds, the tree's PSS after each round and after 35 s idle (a throwaway self-test, kept in `.local/live/perf-2026-10-21/shots.sealwax-test`). Release build.
+
+| Run | The app (sealwax) | The reader's web process | After 35 s idle |
+| --- | --- | --- | --- |
+| Headless, as built | 102.3 → 119.0 → 120.4 → 123.2 → 123.8 → 124.9 → 125.7 MiB | 129.0 → 189–304 MiB while opening | app 122.1, web 131.2 MiB |
+| Headless, WebKit's memory limit 300 MB (tried) | 100.9 → 117.9 … 124.2 MiB | 130.2 → 188.5–191.8 MiB | app 120.7, web 131.3 MiB |
+| Live, the installed 1.0.0 candidate | 134.8 → 175.4 → 184.1 → 186.0 → 188.1 → 187.8 → 187.8 MiB | 62.9 → 200–260 MiB | app 167.8, web 141.9 MiB |
+| Live, the limit (tried; stopped by its 600 s timeout before the idle step) | 151.3 → 171.1 … 173.0 MiB | 130.2 → 255–314 MiB | not reached |
+
+- **Found:** no leak. The app levels off within a round or two (+1–3 MiB a round after the first); the web process holds what it decoded while messages are being opened and gives it back within about half a minute of rest. WebKit's default memory-pressure limit here is 3,072 MB (`WebKitMemoryPressureSettings`), so it frees nothing for pressure below ~1 GB; a 300 MB limit lowered the headless peak (304 → 191 MiB) but not the live one, so it isn't kept.
+- **Not explained:** the owner's web process at 269.5 MiB some minutes after their last mail; the composer's own web process (screenshots pasted while writing) wasn't measured: it had exited when the tree was read.
+
+
 ### 1.0.0, release candidate with issue #20's fix — 2026-10-22
 
 - **The candidate:** `17da3e7` (the candidate of 2026-10-21, `0cb3f16`, with issue #20's fix `b140cc5` and its line in the release notes), not tagged or pushed.
