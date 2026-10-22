@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.0.0 — 2026-10-22
+
+The release. This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the release commit `0840ebe`, `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` | exit 0; 1,537 passed, 0 failed, 99 ignored; 84 scripts, 8,135 of 8,135 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 272 s). Log: `.local/ci-ui-1.0.0-2026-10-22.log` | Pass |
+| `tools/release.py build` on `v1.0.0` | makepkg's `check()`: 1,102 passed, 0 failed; the binary says `sealwax 1.0.0` and holds no home-folder path; `THIRD-PARTY-LICENSES.txt` in the package and beside it | Pass |
+| The clean-container install test on the release package (`tools/install-test.sh`, 22:27) | pacman installed it with every dependency; both license files; `install-smoke` 16/16 with the installed binary, its web process in WebKit's sandbox | Pass |
+| The push range (`503c01a..0840ebe`, 14 commits) scanned before pushing | No personal address beyond the commit author, no home path (the install test's `/home/tester` is the container's) or client ID; no working doc | Pass |
+| The release [v1.0.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.0.0) | Not a draft or pre-release; GitHub's latest; its five files (the package twice, the tarball, `SHA256SUMS`, `THIRD-PARTY-LICENSES.txt`); `releases/latest/download/…` and `releases/download/v1.0.0/…` both give the build's package (SHA-256 `f6c98d2d…a93b`) | Pass |
+| Installed here | Not yet: the owner's, with INSTALL.md's command (the first candidate is installed) | Not verified |
+
+
 ### Memory with screenshot-heavy mail (the owner's C17) — 2026-10-22
 
 From the owner's C17 (272 → 538 MiB over a day of mail with large screenshots; at the end the app 264.9 MiB and the reader's web process 269.5 MiB PSS, 188.5 MiB of it WebKit's allocator, `WKFastMalloc`). A scratch mailbox of 30 messages, each with three 3440×1440 PNG screenshots inline (`cid:`; fictional, made from the self-tests' screenshots, 46 MiB raw, `sealwax-fixtures import --dir`), opened one after another in six rounds, the tree's PSS after each round and after 35 s idle (a throwaway self-test, kept in `.local/live/perf-2026-10-21/shots.sealwax-test`). Release build.
