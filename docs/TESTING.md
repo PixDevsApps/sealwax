@@ -74,6 +74,13 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.0.0, release candidate with issue #20's fix — 2026-10-22
+
+- **The candidate:** `17da3e7` (the candidate of 2026-10-21, `0cb3f16`, with issue #20's fix `b140cc5` and its line in the release notes), not tagged or pushed.
+- **CI:** `SEALWAX_CI_DISPLAY=80 bash tools/ci.sh --ui` on `17da3e7`: exit 0; 1,537 tests passed, 0 failed, 99 ignored; 84 scripts, 8,135/8,135 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 273 s); no `gtk4-broadwayd` left. Log: `.local/ci-ui-1.0.0-rc2-2026-10-22.log`.
+- **The package:** `python3 tools/package-source.py` (HEAD `17da3e7`, the client ID from the builder's config) and `makepkg --cleanbuild --force --nodeps` (Rust from rustup) in `.local/package/`: `sealwax-1.0.0-1-x86_64.pkg.tar.zst`, 11,555,094 bytes, SHA-256 `006eb1e3b567fa6877a96870431d7ad5379ae854539679db7715960fc65ee70e`; finished 14:31. Its binary says `sealwax 1.0.0`, holds no home-folder path and has the fix's texts; `THIRD-PARTY-LICENSES.txt` unchanged (SHA-256 `45623b86…a898c65`). The 2026-10-21 package is kept in `.local/package/old-rc-0cb3f16/`. Log: `.local/package/makepkg-17da3e7.log`.
+- **The clean-container install test** (2026-10-22 14:32): `bash tools/install-test.sh .local/package/sealwax-1.0.0-1-x86_64.pkg.tar.zst`: exit 0; pacman installed it with every dependency (61 MiB then 200 MiB from the mirrors), `sealwax --version` said 1.0.0, `ldd` found every library, both license files installed, `install-smoke` 16/16 with the installed binary, one web process in WebKit's sandbox. Logs and screenshot: `.local/install-test-17da3e7.log`, `.local/install-test/20261022-143207/`.
+
 ### A reply async-imap can't read (issue #20) — 2026-10-22
 
 - **CI:** `bash tools/ci.sh` (no `--ui`) on the working tree over `fa42669`, on the owner's desktop: exit 0; 1,537 tests passed, 0 failed, 99 ignored. Log: `.local/ci-issue-20-2026-10-22.log`.

@@ -1,6 +1,6 @@
 # Sealwax 1.0.0 release notes
 
-> **Release candidate, 2026-10-21.** 1.0.0 isn't released until its owner's last look at this candidate. "How 1.0.0 was checked" below names what was run, when and on which build; nothing here is a measurement made for this page.
+> **Release candidate, 2026-10-22.** 1.0.0 isn't released until its owner's last look at this candidate. "How 1.0.0 was checked" below names what was run, when and on which build; nothing here is a measurement made for this page.
 
 Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and careful with every message: no script in one ever runs, and nothing from the internet loads until you allow it. 1.0.0 is its first stable release.
 
@@ -70,9 +70,9 @@ The full list, with what was checked and how, is in [SECURITY.md](SECURITY.md#kn
 
 ## How 1.0.0 was checked
 
-On the release candidate (`0cb3f16`, 2026-10-21) unless a line says otherwise. The details, with the commands, are in [TESTING.md](TESTING.md).
+On the release candidate (`17da3e7`, 2026-10-22) unless a line says otherwise. The details, with the commands, are in [TESTING.md](TESTING.md).
 
-- **CI:** 1,531 tests, 84 self-test scripts driving the real app headless (8,135 steps, the accessibility audit of the windows and dialogs among them) and the hostile-mail suite (60 hostile messages: no script ran, nothing was fetched, no name was looked up).
+- **CI:** 1,537 tests, 84 self-test scripts driving the real app headless (8,135 steps, the accessibility audit of the windows and dialogs among them) and the hostile-mail suite (60 hostile messages: no script ran, nothing was fetched, no name was looked up).
 - **A clean install:** the package installed with pacman in a fresh Arch Linux container, with every dependency from Arch's mirrors, and the installed Sealwax opened a message with its web process in WebKit's sandbox (2026-10-22).
 - **Measured on a live desktop** (2026-10-21; Ryzen 9 5900X, NVIDIA RTX 3070 Ti, 3440×1440 at 144 Hz): a 100,000-message list scrolls without a frame over 16.7 ms, jumps to its end in 79 ms and opens a folder in 40 ms; real-world HTML mail is laid out in 58 ms (p95) and scrolls at p95 7 ms a frame; typing in the composer reaches the screen in at most 14 ms (p95); memory stays level over 1,000 opened messages; start-up takes about 0.40 s (see Known limitations).
 - **Daily use** by the owner with real accounts from 7 to 19 October 2026 (M8's soak): Outlook.com, Microsoft 365 and IMAP, Gmail among them through an app password. POP3 was tested on the test servers only.
