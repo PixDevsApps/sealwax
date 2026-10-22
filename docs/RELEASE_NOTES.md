@@ -1,6 +1,6 @@
 # Sealwax 1.0.0 release notes
 
-> **Release candidate, 2026-10-22.** 1.0.0 isn't released until its owner's last look at this candidate. "How 1.0.0 was checked" below names what was run, when and on which build; nothing here is a measurement made for this page.
+> **Released 2026-10-22.** "How 1.0.0 was checked" below names what was run, when and on which build; nothing here is a measurement made for this page.
 
 Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and careful with every message: no script in one ever runs, and nothing from the internet loads until you allow it. 1.0.0 is its first stable release.
 
@@ -70,7 +70,7 @@ The full list, with what was checked and how, is in [SECURITY.md](SECURITY.md#kn
 
 ## How 1.0.0 was checked
 
-On the release candidate (`17da3e7`, 2026-10-22) unless a line says otherwise. The details, with the commands, are in [TESTING.md](TESTING.md).
+On the release candidate (`17da3e7`, 2026-10-22), which 1.0.0 differs from only in its documents, unless a line says otherwise. The details, with the commands, are in [TESTING.md](TESTING.md).
 
 - **CI:** 1,537 tests, 84 self-test scripts driving the real app headless (8,135 steps, the accessibility audit of the windows and dialogs among them) and the hostile-mail suite (60 hostile messages: no script ran, nothing was fetched, no name was looked up).
 - **A clean install:** the package installed with pacman in a fresh Arch Linux container, with every dependency from Arch's mirrors, and the installed Sealwax opened a message with its web process in WebKit's sandbox (2026-10-22).
