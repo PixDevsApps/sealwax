@@ -53,10 +53,9 @@ pub async fn sync_account(
         };
         let mut passed = false;
         if wanted(id, folder, state, options) {
-            if folder
-                .status
-                .is_some_and(|status| unchanged(state, &status))
-            {
+            if folder.status.is_some_and(|status| {
+                unchanged(state, &status, options.unreadable.skipped(id).len())
+            }) {
                 report.stats.status_skips += 1;
             } else {
                 match sync_folder(conn, store, id, options, locks, |p| progress(id, p)).await {
@@ -106,13 +105,20 @@ fn wanted(id: FolderId, folder: &ListedFolder, state: &FolderSync, options: &Syn
             .is_none_or(|elsewhere| elsewhere.backstop && folder.status.is_some())
 }
 
-/// STATUS shows nothing the store doesn't hold. Without HIGHESTMODSEQ a flag change can't
-/// show, so such a folder always gets its pass.
-fn unchanged(state: &FolderSync, status: &FolderStatus) -> bool {
+/// STATUS shows nothing the store doesn't hold, besides the `skipped` messages left out as
+/// unreadable. Without HIGHESTMODSEQ a flag change can't show, so such a folder always gets its
+/// pass.
+fn unchanged(state: &FolderSync, status: &FolderStatus, skipped: usize) -> bool {
     state.state == SyncState::Ready
         && status.uidvalidity.is_some()
         && status.uidvalidity == state.uidvalidity
         && status.uidnext == Some(state.uidnext)
         && status.highestmodseq == Some(state.highestmodseq)
-        && status.messages == Some(state.messages.saturating_add(state.below))
+        && status.messages
+            == Some(
+                state
+                    .messages
+                    .saturating_add(state.below)
+                    .saturating_add(super::count(skipped)),
+            )
 }

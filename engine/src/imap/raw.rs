@@ -16,15 +16,64 @@ pub(crate) type Session = async_imap::Session<super::Stream>;
 /// How long any one read may wait for the server.
 pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Reads one response and hands it to `f`. async-imap's `ResponseData` can't be named outside
-/// the crate, so it never leaves this function.
+/// The commands Sealwax sends, by the words that name them.
+const VERBS: [&str; 28] = [
+    "UID FETCH",
+    "UID SEARCH",
+    "UID STORE",
+    "UID COPY",
+    "UID MOVE",
+    "UID EXPUNGE",
+    "FETCH",
+    "SEARCH",
+    "STORE",
+    "EXPUNGE",
+    "EXAMINE",
+    "SELECT",
+    "UNSELECT",
+    "CLOSE",
+    "STATUS",
+    "LIST",
+    "CREATE",
+    "DELETE",
+    "RENAME",
+    "SUBSCRIBE",
+    "APPEND",
+    "NOOP",
+    "IDLE",
+    "ENABLE",
+    "ID",
+    "GETQUOTAROOT",
+    "CAPABILITY",
+    "LOGOUT",
+];
+
+/// The verb of `command` for an error, without its arguments (folder names, UIDs).
+pub(crate) fn verb(command: &str) -> &'static str {
+    VERBS
+        .into_iter()
+        .find(|verb| {
+            command
+                .get(..verb.len())
+                .is_some_and(|start| start.eq_ignore_ascii_case(verb))
+                && command[verb.len()..]
+                    .chars()
+                    .next()
+                    .is_none_or(|c| c == ' ')
+        })
+        .unwrap_or("a command")
+}
+
+/// Reads one response to `command` (its verb) and hands it to `f`. async-imap's `ResponseData`
+/// can't be named outside the crate, so it never leaves this function.
 async fn next<R>(
     session: &mut Session,
+    command: &'static str,
     f: impl FnOnce(&Response<'_>) -> R,
 ) -> Result<R, ImapError> {
     match tokio::time::timeout(READ_TIMEOUT, session.read_response()).await {
         Err(_) => Err(ImapError::Timeout),
-        Ok(Err(error)) => Err(ImapError::Io(error)),
+        Ok(Err(error)) => Err(ImapError::reading(error, command)),
         Ok(Ok(None)) => Err(ImapError::ConnectionLost),
         Ok(Ok(Some(response))) => Ok(f(response.parsed())),
     }
@@ -135,13 +184,14 @@ enum Step {
 pub(crate) async fn finish<F>(
     session: &mut Session,
     id: &RequestId,
+    command: &'static str,
     mut on_untagged: F,
 ) -> Result<Option<Code>, ImapError>
 where
     F: FnMut(&Response<'_>),
 {
     loop {
-        let step = next(session, |response| match response {
+        let step = next(session, command, |response| match response {
             Response::Done {
                 tag,
                 status,
@@ -188,7 +238,7 @@ where
     F: FnMut(&Response<'_>),
 {
     let id = session.run_command(command).await?;
-    finish(session, &id, on_untagged).await
+    finish(session, &id, verb(command), on_untagged).await
 }
 
 /// What the server said before a literal's data.
@@ -219,8 +269,9 @@ where
 {
     use tokio::io::AsyncWriteExt;
     let id = session.run_command(command).await?;
+    let verb = verb(command);
     loop {
-        let ahead = next(session, |response| match response {
+        let ahead = next(session, verb, |response| match response {
             Response::Continue { .. } => Ahead::Go,
             Response::Done {
                 tag,
@@ -258,7 +309,7 @@ where
     tokio::time::timeout(write_timeout(literal.len()), sent)
         .await
         .map_err(|_| ImapError::Timeout)??;
-    finish(session, &id, on_untagged).await
+    finish(session, &id, verb, on_untagged).await
 }
 
 /// Sends several commands without waiting and reads until every one has completed. Replies may
@@ -276,9 +327,12 @@ where
     for command in commands {
         pending.push(session.run_command(command).await?);
     }
+    let verb = commands
+        .first()
+        .map_or("a command", |command| verb(command));
     let mut failure = None;
     while !pending.is_empty() {
-        let done = next(session, |response| match response {
+        let done = next(session, verb, |response| match response {
             Response::Done {
                 tag,
                 status,
@@ -365,6 +419,17 @@ mod tests {
         assert_eq!(uid_set(&[9, 1, 2, 3, 7, 10, 3]), "1:3,7,9:10");
         assert_eq!(uid_set(&[5]), "5");
         assert_eq!(uid_set(&[]), "");
+    }
+
+    #[test]
+    fn errors_name_the_verb_only() {
+        assert_eq!(verb("UID FETCH 1:* (UID FLAGS)"), "UID FETCH");
+        assert_eq!(verb("EXAMINE \"Søppelpost\" (CONDSTORE)"), "EXAMINE");
+        assert_eq!(verb("uid search UID 5:*"), "UID SEARCH");
+        assert_eq!(verb("LIST \"\" \"*\" RETURN (STATUS (MESSAGES))"), "LIST");
+        assert_eq!(verb("IDLE"), "IDLE");
+        assert_eq!(verb("IDENTIFY x"), "a command");
+        assert_eq!(verb("XLIST x"), "a command");
     }
 
     #[test]

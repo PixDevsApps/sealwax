@@ -640,6 +640,7 @@ The folders follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG
 - **"Microsoft sign-in isn't available in this build of Sealwax yet."** Set a client ID ([above](#outlookcom-hotmail-and-microsoft-365-sign-in-with-microsoft)).
 - **"Still waiting for Microsoft."** The browser didn't come back from Microsoft's sign-in page. If it shows "Need admin approval", your organization must approve Sealwax first ([above](#work-or-school-microsoft-accounts)); otherwise finish signing in there, or **Open the sign-in page again**. Sealwax stops waiting after 5 minutes.
 - **"A message may have been sent"** See [Sending](#writing-mail).
+- **A message is in your webmail but not in Sealwax.** If the server's description of a message is one Sealwax can't read, Sealwax leaves that message out so the rest of the folder and new mail still arrive; the log says "a message's headers couldn't be read". Read that message in your webmail. Sealwax tries it again the next time it starts.
 - **Old mail is missing.** The first sync keeps the last 90 days of each folder; scroll to the end of the list to load older mail.
 - **Search misses a message** you know is there: in all folders, Trash and Junk are left out; a message whose text isn't downloaded is found by its headers and preview only. **Rebuild Search Index** (palette) indexes the stored mail again.
 - **Closing the window didn't quit Sealwax.** That is background mode: Ctrl+Q quits ([above](#notifications-and-background-mode)).

@@ -2,12 +2,13 @@
 //! network beyond 127.0.0.1): new mail through IDLE, NOOP before IDLE, the STATUS backstop,
 //! IDLE issued again, backoff and its reset, `Reconnect` after silently dead connections,
 //! statuses, `FolderOpened`, `LoadOlder`, bodies beside the actor, two accounts at once,
-//! throttled progress, a quick stop and Refresh's `CheckMail`. Timings are short real durations: the store answers
+//! throttled progress, a quick stop, Refresh's `CheckMail` and a message whose headers can't be
+//! read (issue #20). Timings are short real durations: the store answers
 //! from its own threads, so paused tokio time would jump past them.
 
 mod fake;
 
-use fake::{Fake, Flavor, NOW};
+use fake::{Fake, Flavor, Garble, NOW};
 use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, LoginFailure};
 use sealwax_domain::config::Storage;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
@@ -294,6 +295,36 @@ async fn new_mail_flags_and_expunges_arrive_through_idle() {
     assert!(
         commands.iter().filter(|c| c.starts_with("LIST")).count() == 1,
         "no account pass was needed: {commands:?}"
+    );
+}
+
+/// A message whose header FETCH reply async-imap can't parse breaks the connection; the passes
+/// after it ask for less until it is left out, the account shows synced (`add` waits for it),
+/// and the rest of the mail and new mail arrive.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_message_that_cant_be_read_doesnt_stop_the_inbox() {
+    let fake = fake(Flavor::Qresync).await;
+    fake.world()
+        .garbled
+        .insert(("INBOX".into(), 7), Garble::Flags);
+    let mut run = running(&fake, config());
+    let account = run.add(&fake, 1, "garbled").await;
+    let inbox = run.folder(account, "INBOX").await;
+    assert!(
+        within(WAIT, || async { run.count(inbox).await == 19 })
+            .await
+            .is_some(),
+        "all but the unreadable message stored"
+    );
+    within(WAIT, || async { fake.world().count("IDLE") >= 1 }).await;
+    fake.world().append("INBOX", 0, &[]);
+    assert!(
+        within(Duration::from_secs(5), || async {
+            run.count(inbox).await == 20
+        })
+        .await
+        .is_some(),
+        "new mail still arrives"
     );
 }
 

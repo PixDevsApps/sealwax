@@ -6,11 +6,10 @@
 
 use super::connection::Connection;
 use super::error::{ImapError, SyncError};
-use super::fetch::{self, Fetched};
+use super::fetch;
 use super::raw;
 use super::sync::view::{self, View};
 use super::sync::{SyncOptions, load_state};
-use async_imap::imap_proto::Response;
 use sealwax_domain::model::{BlobKey, FolderId};
 use sealwax_infrastructure::store::{
     FirstSyncStep, FolderSync, Ingested, Reply, Store, StoreError, SyncState,
@@ -43,30 +42,6 @@ pub struct FirstSyncReport {
     pub complete: bool,
     /// Raw messages the reset left without a row, for the caller to delete from the blob store.
     pub orphaned_blobs: Vec<BlobKey>,
-}
-
-/// The headers of `uids`. FETCH responses for other UIDs, or without the header section, are
-/// unsolicited hints and are dropped.
-async fn fetch_batch(
-    conn: &mut Connection,
-    uids: &[u32],
-    view: &mut View,
-) -> Result<Vec<Fetched>, ImapError> {
-    let wanted: HashSet<u32> = uids.iter().copied().collect();
-    let mut out = Vec::with_capacity(uids.len());
-    let command = format!("UID FETCH {} {}", raw::uid_set(uids), fetch::items());
-    raw::run(&mut conn.session, &command, |response| match response {
-        Response::Fetch(_, attributes) => {
-            if let Some(found) = fetch::fetched(attributes)
-                && wanted.contains(&found.uid)
-            {
-                out.push(found);
-            }
-        }
-        other => view.track(other),
-    })
-    .await?;
-    Ok(out)
 }
 
 /// A batch handed to the store, not yet known to be committed.
@@ -111,6 +86,7 @@ pub async fn first_sync_with(
         return Err(SyncError::NotSelectable);
     }
     let mut view = view::examine(conn, &state.name_raw).await?;
+    view.unreadable = options.unreadable.clone();
     let mut reset = None;
     if state
         .uidvalidity
@@ -222,7 +198,10 @@ pub(crate) async fn run(
                 None => Ok(None),
             }
         };
-        let (fetched, committed) = tokio::join!(fetch_batch(conn, batch, view), previous);
+        let wanted: HashSet<u32> = batch.iter().copied().collect();
+        let set = raw::uid_set(batch);
+        let fetch = view::fetch_headers(conn, folder, &set, |uid| wanted.contains(&uid), view);
+        let (fetched, committed) = tokio::join!(fetch, previous);
         if let Some(count) = committed? {
             stored += count;
             report.fetched += count;

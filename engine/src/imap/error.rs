@@ -54,6 +54,10 @@ pub enum ImapError {
     ConnectionLost,
     #[error("i/o error ({})", .0.kind())]
     Io(io::Error),
+    /// async-imap couldn't parse the server's reply to the command (issue #20); the bytes it
+    /// couldn't read stay in its buffer, so the connection is done.
+    #[error("the server's reply to {0} couldn't be read")]
+    Unreadable(&'static str),
     #[error("the server said NO")]
     No(ServerText),
     #[error("the server said BAD")]
@@ -92,6 +96,22 @@ impl From<async_imap::error::Error> for ImapError {
 }
 
 impl ImapError {
+    /// An error reading the reply to `command` (its verb only, never its arguments): async-imap
+    /// 0.12 reports a reply imap-proto can't parse, and one past its 512 MiB buffer, as
+    /// `ErrorKind::Other` with these texts.
+    pub(crate) fn reading(error: io::Error, command: &'static str) -> Self {
+        let unreadable = error.kind() == io::ErrorKind::Other
+            && error.get_ref().is_some_and(|inner| {
+                let text = inner.to_string();
+                text.contains(" during parsing of ") || text == "incoming data too large"
+            });
+        if unreadable {
+            ImapError::Unreadable(command)
+        } else {
+            ImapError::Io(error)
+        }
+    }
+
     /// What the setup assistant or the sidebar tells the user.
     pub fn failure(&self) -> LoginFailure {
         match self {
@@ -215,5 +235,38 @@ mod tests {
         assert_eq!(error.failure(), LoginFailure::Other);
         assert!(!error.is_connection());
         assert!(ImapError::Timeout.is_connection());
+    }
+
+    #[test]
+    fn unreadable_replies_are_told_apart_from_io_errors() {
+        let parse = io::Error::other(
+            "Error(Error { input: [41], code: Tag }) during parsing of \"* 1 FETCH (x@example.test\"",
+        );
+        let error = ImapError::reading(parse, "UID FETCH");
+        assert!(
+            matches!(error, ImapError::Unreadable("UID FETCH")),
+            "{error}"
+        );
+        assert_eq!(
+            error.to_string(),
+            "the server's reply to UID FETCH couldn't be read"
+        );
+        assert!(!format!("{error:?}").contains("example.test"));
+        assert!(error.is_connection());
+        let large = io::Error::other("incoming data too large");
+        assert!(matches!(
+            ImapError::reading(large, "LIST"),
+            ImapError::Unreadable("LIST")
+        ));
+        let reset = io::Error::from(io::ErrorKind::ConnectionReset);
+        assert!(matches!(
+            ImapError::reading(reset, "LIST"),
+            ImapError::Io(_)
+        ));
+        let other = io::Error::other("Failure");
+        assert!(matches!(
+            ImapError::reading(other, "LIST"),
+            ImapError::Io(_)
+        ));
     }
 }

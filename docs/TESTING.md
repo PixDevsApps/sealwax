@@ -1,6 +1,6 @@
 # Testing & Acceptance
 
-Synced: 2026-10-09
+Synced: 2026-10-22
 
 Evidence rules: record only what was actually run, with date, command, machine and caveats. "Not verified" is an acceptable result; a guessed number is not.
 
@@ -73,6 +73,12 @@ Measured with release builds unless noted; each entry names its spike or milesto
 Each milestone's exit criteria are the acceptance list. Results go here as dated entries, newest first, with screenshots in `tools/progress/`.
 
 ## Results
+
+### A reply async-imap can't read (issue #20) — 2026-10-22
+
+- **CI:** `bash tools/ci.sh` (no `--ui`) on the working tree over `fa42669`, on the owner's desktop: exit 0; 1,537 tests passed, 0 failed, 99 ignored. Log: `.local/ci-issue-20-2026-10-22.log`.
+- **New:** `engine/tests/sync.rs` `a_body_structure_that_cant_be_read_costs_one_reconnect`, `a_message_that_cant_be_read_is_left_out_and_the_rest_arrives` and `a_first_sync_gets_past_a_message_that_cant_be_read`, on all three flavours of the fake IMAP server, which garbles one message's BODYSTRUCTURE or FLAGS nested so imap-proto 0.17 can't skip it; `engine/tests/actor.rs` `a_message_that_cant_be_read_doesnt_stop_the_inbox` (the actor with IDLE); unit tests of the error's classification and the command verbs. All passed.
+- **Not run:** Zoho (issue #20's reply is not known), the testbed, the headless UI scripts.
 
 ### 1.0.0, release candidate — 2026-10-21
 

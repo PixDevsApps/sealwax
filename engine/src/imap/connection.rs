@@ -211,7 +211,8 @@ where
 {
     let response = client
         .read_response()
-        .await?
+        .await
+        .map_err(|error| ImapError::reading(error, "the greeting"))?
         .ok_or(ImapError::ConnectionLost)?;
     match response.parsed() {
         Response::Data {

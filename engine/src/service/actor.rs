@@ -28,8 +28,8 @@
 use super::{Shared, bodies, log_in_with_password, log_in_with_token};
 use crate::api::{Event, FolderChange, FolderError, RequestId, SyncStatus};
 use crate::imap::{
-    self, Arrived, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, Progress, Stop,
-    SyncError, SyncOptions, SyncReport,
+    self, Arrived, ConnectOptions, Connection, Elsewhere, FolderLocks, Idled, ImapError, Progress,
+    Stop, SyncError, SyncOptions, SyncReport, Unreadable,
 };
 use crate::smtp::submit::Timeouts;
 use futures_util::FutureExt;
@@ -596,6 +596,7 @@ async fn run(
         account,
         status,
         locks: FolderLocks::default(),
+        unreadable: Unreadable::default(),
         signals,
         controls,
         conn: None,
@@ -630,6 +631,8 @@ struct Poller {
     account: AccountId,
     status: Arc<Status>,
     locks: FolderLocks,
+    /// The account's unreadable header FETCHes, kept across reconnects and shared with IDLE.
+    unreadable: Unreadable,
     signals: watch::Receiver<Signal>,
     controls: async_channel::Receiver<Control>,
     conn: Option<Connection>,
@@ -809,6 +812,10 @@ impl Poller {
     /// the next pass.
     fn pass_failed(&mut self, error: &SyncError) {
         match error {
+            SyncError::Imap(ImapError::Unreadable(_)) => {
+                tracing::warn!(account = self.account.0, %error, "connecting again after a reply that couldn't be read");
+                self.lost();
+            }
             SyncError::Imap(imap) if imap.is_connection() => {
                 tracing::info!(account = self.account.0, %error, "the command connection was lost");
                 self.lost();
@@ -1050,6 +1057,7 @@ impl Poller {
     fn options(&self) -> SyncOptions {
         let mut options = self.config().options.clone();
         options.arrivals = Some(self.arrivals.clone());
+        options.unreadable = self.unreadable.clone();
         if self.idling() {
             options.elsewhere = (*self.inbox.borrow()).map(|folder| Elsewhere {
                 folder,
@@ -1218,6 +1226,7 @@ impl Poller {
             self.inbox.subscribe(),
             self.signals.clone(),
             self.arrivals.clone(),
+            self.unreadable.clone(),
         )));
     }
 }
@@ -1233,10 +1242,12 @@ async fn idle(
     inbox: watch::Receiver<Option<FolderId>>,
     signals: watch::Receiver<Signal>,
     arrivals: async_channel::Sender<Arrived>,
+    unreadable: Unreadable,
 ) {
     let config = shared.sync.clone();
     let options = SyncOptions {
         arrivals: Some(arrivals),
+        unreadable,
         ..config.options.clone()
     };
     let mut jitter = Jitter::new(account);

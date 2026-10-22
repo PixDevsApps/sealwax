@@ -20,6 +20,10 @@
 //! [`SyncOptions::arrivals`]. A pass that runs a first sync (a UIDVALIDITY reset's included)
 //! reports none, and neither does older mail; a row the store holds already (one the op runner
 //! re-homed after a move) is never inserted again.
+//!
+//! A header FETCH whose reply async-imap can't read (issue #20) breaks the connection; the
+//! account's [`Unreadable`] remembers the folder, so the passes after it ask for less until the
+//! one message that can't be read at all is left out.
 
 mod account;
 mod folder;
@@ -34,7 +38,7 @@ use super::error::SyncError;
 use sealwax_domain::model::{BlobKey, FolderId, MessageId};
 use sealwax_domain::sync::{OLDER_BATCH, Window};
 use sealwax_infrastructure::store::{FolderSync, Store, StoreError};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -52,6 +56,8 @@ pub struct SyncOptions {
     pub now: Option<i64>,
     /// Where each step's new mail goes the moment it is committed, besides the report.
     pub arrivals: Option<async_channel::Sender<Arrived>>,
+    /// The account's header FETCHes that couldn't be read, kept across its reconnects.
+    pub unreadable: Unreadable,
 }
 
 impl Default for SyncOptions {
@@ -62,6 +68,7 @@ impl Default for SyncOptions {
             elsewhere: None,
             now: None,
             arrivals: None,
+            unreadable: Unreadable::default(),
         }
     }
 }
@@ -192,6 +199,79 @@ impl FolderLocks {
             .or_default()
             .clone();
         lock.lock_owned().await
+    }
+}
+
+/// How a folder's header FETCHes ask, after replies async-imap couldn't read (issue #20).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum Careful {
+    /// Everything [`super::fetch::items`] names.
+    #[default]
+    Full,
+    /// The same without BODYSTRUCTURE, the most involved part of the grammar.
+    Lean,
+    /// Lean, one message per FETCH, so the one that can't be read is found and left out.
+    Single,
+}
+
+#[derive(Debug, Default)]
+struct Folder {
+    careful: Careful,
+    skipped: BTreeSet<u32>,
+}
+
+/// An account's folders whose header FETCH broke the connection with a reply async-imap
+/// couldn't parse, kept by the account across reconnects so the next pass asks for less: each
+/// failure goes one step down from [`Careful::Full`], a FETCH that gets through goes back to
+/// it, and a message that fails on its own is left out until Sealwax starts again. Nothing of
+/// the reply is kept. Clones share it.
+#[derive(Clone, Debug, Default)]
+pub struct Unreadable(Arc<Mutex<HashMap<FolderId, Folder>>>);
+
+impl Unreadable {
+    fn with<R>(&self, folder: FolderId, f: impl FnOnce(&mut Folder) -> R) -> R {
+        let mut folders = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        let entry = folders.entry(folder).or_default();
+        let out = f(entry);
+        if entry.careful == Careful::Full && entry.skipped.is_empty() {
+            folders.remove(&folder);
+        }
+        out
+    }
+
+    pub(crate) fn careful(&self, folder: FolderId) -> Careful {
+        self.with(folder, |entry| entry.careful)
+    }
+
+    /// The messages left out of `folder`, ascending.
+    pub fn skipped(&self, folder: FolderId) -> Vec<u32> {
+        self.with(folder, |entry| entry.skipped.iter().copied().collect())
+    }
+
+    /// A FETCH in `folder` couldn't be read: the next one asks for less.
+    pub(crate) fn failed(&self, folder: FolderId) -> Careful {
+        self.with(folder, |entry| {
+            entry.careful = match entry.careful {
+                Careful::Full => Careful::Lean,
+                Careful::Lean | Careful::Single => Careful::Single,
+            };
+            entry.careful
+        })
+    }
+
+    /// `uid` couldn't be read on its own: it is left out.
+    pub(crate) fn skip(&self, folder: FolderId, uid: u32) {
+        self.with(folder, |entry| entry.skipped.insert(uid));
+    }
+
+    /// A careful FETCH in `folder` got through: the next one asks for everything again.
+    pub(crate) fn passed(&self, folder: FolderId) {
+        self.with(folder, |entry| entry.careful = Careful::Full);
+    }
+
+    /// Forgets the left-out messages of `folder` the server no longer holds.
+    pub(crate) fn retain(&self, folder: FolderId, on_server: impl Fn(u32) -> bool) {
+        self.with(folder, |entry| entry.skipped.retain(|&uid| on_server(uid)));
     }
 }
 

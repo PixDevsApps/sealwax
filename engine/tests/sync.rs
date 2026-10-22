@@ -1,18 +1,18 @@
 //! The sync engine against a fake IMAP server (no network beyond 127.0.0.1, in CI): QRESYNC,
 //! CONDSTORE-only and IMAP4rev1 paths, UIDVALIDITY resets, the count check's UID diff, folders
 //! that disappear, other mail programs' housekeeping left out, the first-sync window and older
-//! mail, the folder policy, connections cut in the middle of a FETCH, and a short randomized run
-//! per flavour.
+//! mail, the folder policy, connections cut in the middle of a FETCH, replies async-imap can't
+//! read (issue #20), and a short randomized run per flavour.
 
 mod fake;
 mod snapshot;
 
-use fake::{Fake, Flavor, Mailbox, NOW};
+use fake::{Fake, Flavor, Garble, Mailbox, NOW};
 use sealwax_domain::model::{AccountId, Flags, FolderId, FolderRole};
 use sealwax_domain::sync::Window;
 use sealwax_engine::imap::{
-    Connection, Elsewhere, FolderLocks, SyncOptions, SyncReport, load_older, sync_account,
-    sync_folder,
+    Connection, Elsewhere, FolderLocks, ImapError, SyncError, SyncOptions, SyncReport, load_older,
+    sync_account, sync_folder,
 };
 use sealwax_infrastructure::store::{FolderSpec, NewAccount, Store, StoreOptions, SyncState};
 use snapshot::{Folder, Rng};
@@ -717,6 +717,166 @@ fn a_cut_flag_fetch_leaves_the_store_untouched() {
             let mut conn = fake.connect().await;
             account_pass(&mut conn, &store, account, &options()).await;
             assert_eq!(diverged(&fake, &store, account).await, Vec::<String>::new());
+            store.close().unwrap();
+        }
+    });
+}
+
+/// An account pass on a new connection that fails on a header FETCH it couldn't read.
+async fn unreadable_pass(fake: &Fake, store: &Store, account: AccountId, options: &SyncOptions) {
+    let mut conn = fake.connect().await;
+    let failed = sync_account(
+        &mut conn,
+        store,
+        account,
+        options,
+        &FolderLocks::default(),
+        |_, _| {},
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(failed, SyncError::Imap(ImapError::Unreadable("UID FETCH"))),
+        "{failed}"
+    );
+}
+
+/// The last header FETCH the fake received.
+fn last_header_fetch(fake: &Fake) -> String {
+    fake.world()
+        .commands
+        .iter()
+        .rev()
+        .find(|command| command.contains("HEADER.FIELDS"))
+        .cloned()
+        .unwrap()
+}
+
+#[test]
+fn a_body_structure_that_cant_be_read_costs_one_reconnect() {
+    runtime().block_on(async {
+        for flavor in Flavor::ALL {
+            let fake = Fake::start(flavor).await;
+            seed(&fake);
+            let (_dir, store, account) = store();
+            let options = options();
+            let mut conn = fake.connect().await;
+            account_pass(&mut conn, &store, account, &options).await;
+            {
+                let mut world = fake.world();
+                world.append("INBOX", 0, &[]);
+                let uid = world.append("INBOX", 0, &["\\Seen"]);
+                world.append("INBOX", 0, &[]);
+                world
+                    .garbled
+                    .insert(("INBOX".into(), uid), Garble::Structure);
+            }
+            unreadable_pass(&fake, &store, account, &options).await;
+            let mut conn = fake.connect().await;
+            let report = account_pass(&mut conn, &store, account, &options).await;
+            assert_eq!(report.stats.stored, 3, "{flavor:?}: {:?}", report.stats);
+            assert!(
+                !last_header_fetch(&fake).contains("BODYSTRUCTURE"),
+                "{flavor:?}"
+            );
+            assert_eq!(diverged(&fake, &store, account).await, Vec::<String>::new());
+            let inbox = folder(&store, account, "INBOX").await;
+            assert!(options.unreadable.skipped(inbox).is_empty(), "{flavor:?}");
+
+            fake.world().append("INBOX", 0, &[]);
+            let report = account_pass(&mut conn, &store, account, &options).await;
+            assert_eq!(report.stats.stored, 1, "{flavor:?}");
+            assert!(
+                last_header_fetch(&fake).contains("BODYSTRUCTURE"),
+                "{flavor:?}: the full FETCH again"
+            );
+            assert_eq!(diverged(&fake, &store, account).await, Vec::<String>::new());
+            assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());
+            store.close().unwrap();
+        }
+    });
+}
+
+#[test]
+fn a_message_that_cant_be_read_is_left_out_and_the_rest_arrives() {
+    runtime().block_on(async {
+        for flavor in Flavor::ALL {
+            let fake = Fake::start(flavor).await;
+            seed(&fake);
+            let (_dir, store, account) = store();
+            let options = options();
+            let mut conn = fake.connect().await;
+            account_pass(&mut conn, &store, account, &options).await;
+            let garbled = {
+                let mut world = fake.world();
+                world.append("INBOX", 0, &[]);
+                let uid = world.append("INBOX", 0, &[]);
+                world.append("INBOX", 0, &["\\Seen"]);
+                world.garbled.insert(("INBOX".into(), uid), Garble::Flags);
+                uid
+            };
+            let inbox = folder(&store, account, "INBOX").await;
+            // The full FETCH, then without BODYSTRUCTURE, then one message at a time.
+            for _ in 0..3 {
+                unreadable_pass(&fake, &store, account, &options).await;
+            }
+            assert_eq!(
+                options.unreadable.skipped(inbox),
+                vec![garbled],
+                "{flavor:?}"
+            );
+            let mut conn = fake.connect().await;
+            let report = account_pass(&mut conn, &store, account, &options).await;
+            assert_eq!(report.stats.stored, 2, "{flavor:?}: {:?}", report.stats);
+            assert_eq!(state(&store, inbox).await.messages, 32, "{flavor:?}");
+
+            let report = account_pass(&mut conn, &store, account, &options).await;
+            let stats = report.stats;
+            assert_eq!(
+                (stats.stored, stats.count_mismatches, stats.uid_diffs),
+                (0, 0, 0),
+                "{flavor:?}: the left-out message counts as held: {stats:?}"
+            );
+
+            fake.world().expunge("INBOX", garbled);
+            account_pass(&mut conn, &store, account, &options).await;
+            assert!(options.unreadable.skipped(inbox).is_empty(), "{flavor:?}");
+            assert_eq!(diverged(&fake, &store, account).await, Vec::<String>::new());
+            assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());
+            store.close().unwrap();
+        }
+    });
+}
+
+#[test]
+fn a_first_sync_gets_past_a_message_that_cant_be_read() {
+    runtime().block_on(async {
+        for flavor in Flavor::ALL {
+            let fake = Fake::start(flavor).await;
+            let garbled = {
+                let mut world = fake.world();
+                world.create("INBOX", &[]);
+                world.append_many("INBOX", 450, |_| 1);
+                world.garbled.insert(("INBOX".into(), 100), Garble::Flags);
+                100
+            };
+            let (_dir, store, account) = store();
+            let options = options();
+            for _ in 0..3 {
+                unreadable_pass(&fake, &store, account, &options).await;
+            }
+            let inbox = folder(&store, account, "INBOX").await;
+            assert_eq!(
+                options.unreadable.skipped(inbox),
+                vec![garbled],
+                "{flavor:?}"
+            );
+            let mut conn = fake.connect().await;
+            account_pass(&mut conn, &store, account, &options).await;
+            let done = state(&store, inbox).await;
+            assert_eq!(done.messages, 449, "{flavor:?}");
+            assert_eq!(done.state, SyncState::Ready, "{flavor:?}");
+            assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());
             store.close().unwrap();
         }
     });

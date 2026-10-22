@@ -9,6 +9,7 @@ Sealwax 1.0: everything in 0.5.1, checked in daily use with real accounts, in a 
 - **Hide the folder list:** Toggle Sidebar (Ctrl+Shift+S or F9, or the main menu) now works. It hides the folders so the messages get the room, and brings them back; Sealwax remembers it. Before, the command was listed but did nothing.
 - **A clearer icon at small sizes:** at 16 and 24 pixels, as in a bar or a file list, the wax seal's @ turned into a blur; those two sizes now show a bold @ on the seal. The larger sizes are unchanged.
 - **The other projects' licenses come with Sealwax:** the package now carries the license texts of the libraries Sealwax is built from, in `/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt`, and each release on GitHub has the same file.
+- **One message the server describes oddly no longer stops a folder:** when the server's reply about a message is one Sealwax can't read, Sealwax used to drop the connection and try again forever, so no new mail came ([issue #20](https://github.com/PixDevsApps/sealwax/issues/20), a Zoho account). It now asks for less about that message, and if it still can't read it, leaves that one message out and carries on; the log says which command's reply couldn't be read instead of "i/o error".
 - **Sealwax names itself when it looks up your provider:** while you add an account, the lookups of your provider's settings now say they come from "Sealwax" instead of a placeholder left from development. They still carry no version and, apart from your domain's own settings server, not your address.
 
 ## 0.5.1 — 2026-10-20

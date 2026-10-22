@@ -19,6 +19,8 @@
 //! For folder management (M9): CREATE, RENAME (with the folders under it), DELETE (refused for
 //! a folder with folders under it, as Dovecot does), SUBSCRIBE and UNSUBSCRIBE with the set of
 //! subscriptions, LIST patterns with `*` and `%`, and a hierarchy delimiter of choice.
+//! For replies async-imap can't parse (issue #20): a message whose header FETCH response has a
+//! garbled BODYSTRUCTURE or garbled FLAGS ([`Garble`]); BODYSTRUCTURE only when asked for.
 //! Synthetic data only.
 
 #![allow(dead_code)]
@@ -143,6 +145,19 @@ pub struct World {
     pub delimiter: char,
     /// The mailboxes SUBSCRIBE named and UNSUBSCRIBE didn't.
     pub subscribed: BTreeSet<String>,
+    /// Messages, by mailbox and UID, whose header FETCH responses are garbled.
+    pub garbled: BTreeMap<(String, u32), Garble>,
+}
+
+/// What a message's header FETCH response gets wrong, so imap-proto can't parse it. A garbled
+/// value one level of parentheses deep would be skipped as an unknown attribute; nested, the
+/// whole response fails.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Garble {
+    /// A multipart BODYSTRUCTURE with a number where a part's subtype belongs.
+    Structure,
+    /// A parenthesized list inside FLAGS, whatever else is asked for.
+    Flags,
 }
 
 struct Cut {
@@ -208,6 +223,7 @@ impl World {
             header_search_misses: false,
             delimiter: '/',
             subscribed: BTreeSet::new(),
+            garbled: BTreeMap::new(),
         }
     }
 
@@ -1287,6 +1303,7 @@ fn uid_command(
     let whole = items.to_ascii_uppercase().contains("BODY.PEEK[]");
     let headers = items.to_ascii_uppercase().contains("HEADER.FIELDS");
     let header_only = items.to_ascii_uppercase().contains("BODY.PEEK[HEADER]");
+    let with_structure = items.to_ascii_uppercase().contains("BODYSTRUCTURE");
     let fields = items
         .find("HEADER.FIELDS (")
         .map(|at| group(&items[at + 14..]).0.to_owned())
@@ -1332,13 +1349,25 @@ fn uid_command(
             let full = header(message, *uid);
             let head = header_fields(&full, &fields);
             let size = full.len() + TEXT.len();
+            let garble = world.garbled.get(&(name.clone(), *uid)).copied();
+            let flags = match garble {
+                Some(Garble::Flags) => "\\Seen (garbled)".to_owned(),
+                _ => flag_list(message),
+            };
+            let structure = match (with_structure, garble) {
+                (false, _) => String::new(),
+                (true, Some(Garble::Structure)) => "BODYSTRUCTURE ((\"text\" 7 1)\
+                     (\"text\" \"html\" NIL NIL NIL \"7bit\" 1 1) \"alternative\") "
+                    .to_owned(),
+                (true, _) => format!(
+                    "BODYSTRUCTURE (\"text\" \"plain\" (\"charset\" \"utf-8\") NIL NIL \"7bit\" {} 1) ",
+                    TEXT.len()
+                ),
+            };
             out.push_str(&format!(
-                "* {seq} FETCH (UID {uid} FLAGS ({}) INTERNALDATE \"{}\" RFC822.SIZE {size} \
-                 BODYSTRUCTURE (\"text\" \"plain\" (\"charset\" \"utf-8\") NIL NIL \"7bit\" {} 1) \
-                 BODY[HEADER.FIELDS ({fields})] {{{}}}\r\n{head} BODY[TEXT]<0> {{{}}}\r\n{TEXT})\r\n",
-                flag_list(message),
+                "* {seq} FETCH (UID {uid} FLAGS ({flags}) INTERNALDATE \"{}\" RFC822.SIZE {size} \
+                 {structure}BODY[HEADER.FIELDS ({fields})] {{{}}}\r\n{head} BODY[TEXT]<0> {{{}}}\r\n{TEXT})\r\n",
                 internal_date(message.date),
-                TEXT.len(),
                 head.len(),
                 TEXT.len(),
             ));

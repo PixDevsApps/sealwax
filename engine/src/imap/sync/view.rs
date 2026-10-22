@@ -3,6 +3,7 @@
 //! SEARCH and the two kinds of UID FETCH. Server notices only ever feed this view; what a pass
 //! concludes comes from the state it fetches (ADR-006).
 
+use super::{Careful, Unreadable};
 use crate::imap::connection::Connection;
 use crate::imap::error::{ImapError, SyncError};
 use crate::imap::fetch::{self, Fetched};
@@ -23,6 +24,8 @@ pub(crate) struct View {
     /// a server may name UIDs that never existed, so they are only ever matched against stored
     /// ones.
     pub vanished: Vec<RangeInclusive<u32>>,
+    /// The account's unreadable FETCHes ([`Unreadable`]), set by the pass from its options.
+    pub unreadable: Unreadable,
 }
 
 impl View {
@@ -144,18 +147,18 @@ pub(crate) async fn fetch_flags(
     Ok(found.into_values().collect())
 }
 
-/// The first sync's header FETCH of `set`, as store rows. Responses for UIDs `wanted` refuses,
+/// One header FETCH of `set` with `items`, added to `out`. Responses for UIDs `wanted` refuses,
 /// or without the header section (unsolicited flag updates), are hints and are dropped.
-pub(crate) async fn fetch_rows(
+async fn fetch_into(
     conn: &mut Connection,
-    folder: FolderId,
     set: &str,
-    wanted: impl Fn(u32) -> bool,
+    items: &str,
+    wanted: &impl Fn(u32) -> bool,
     view: &mut View,
-) -> Result<Vec<NewMessage>, SyncError> {
-    let mut out: Vec<Fetched> = Vec::new();
-    let mut seen = HashSet::new();
-    let command = format!("UID FETCH {set} {}", fetch::items());
+    out: &mut Vec<Fetched>,
+) -> Result<(), ImapError> {
+    let mut seen: HashSet<u32> = out.iter().map(|found| found.uid).collect();
+    let command = format!("UID FETCH {set} {items}");
     raw::run(&mut conn.session, &command, |response| match response {
         Response::Fetch(_, attributes) => {
             if let Some(found) = fetch::fetched(attributes)
@@ -167,7 +170,92 @@ pub(crate) async fn fetch_rows(
         }
         other => view.track(other),
     })
-    .await?;
+    .await
+}
+
+/// The header FETCH of `set` in `folder`, asking as little as the folder's earlier unreadable
+/// replies call for ([`Unreadable`]). Once the folder is careful or has messages left out, the
+/// set's UIDs are searched first, so the left-out ones are never asked for again.
+pub(crate) async fn fetch_headers(
+    conn: &mut Connection,
+    folder: FolderId,
+    set: &str,
+    wanted: impl Fn(u32) -> bool,
+    view: &mut View,
+) -> Result<Vec<Fetched>, ImapError> {
+    let unreadable = view.unreadable.clone();
+    let careful = unreadable.careful(folder);
+    let skipped = unreadable.skipped(folder);
+    let mut out = Vec::new();
+    if careful == Careful::Full && skipped.is_empty() {
+        let fetched = fetch_into(conn, set, &fetch::items(), &wanted, view, &mut out).await;
+        return fetched
+            .map(|()| out)
+            .map_err(|error| failed(&unreadable, folder, error));
+    }
+    let mut uids = uid_search(conn, &format!("UID {set}"), view).await?;
+    uids.retain(|uid| wanted(*uid) && skipped.binary_search(uid).is_err());
+    if uids.is_empty() {
+        return Ok(out);
+    }
+    match careful {
+        Careful::Full | Careful::Lean => {
+            let items = match careful {
+                Careful::Full => fetch::items(),
+                _ => fetch::lean_items(),
+            };
+            let set = raw::uid_set(&uids);
+            fetch_into(conn, &set, &items, &wanted, view, &mut out)
+                .await
+                .map_err(|error| failed(&unreadable, folder, error))?;
+        }
+        Careful::Single => {
+            for uid in uids {
+                let fetched = fetch_into(
+                    conn,
+                    &uid.to_string(),
+                    &fetch::lean_items(),
+                    &wanted,
+                    view,
+                    &mut out,
+                )
+                .await;
+                if let Err(error) = fetched {
+                    if matches!(error, ImapError::Unreadable(_)) {
+                        tracing::warn!(
+                            %folder,
+                            uid,
+                            "a message's headers couldn't be read; it is left out until Sealwax starts again"
+                        );
+                        unreadable.skip(folder, uid);
+                    }
+                    return Err(error);
+                }
+            }
+        }
+    }
+    unreadable.passed(folder);
+    Ok(out)
+}
+
+/// Notes an unreadable reply in `folder`, so the next pass asks for less.
+fn failed(unreadable: &Unreadable, folder: FolderId, error: ImapError) -> ImapError {
+    if matches!(error, ImapError::Unreadable(_)) {
+        let next = unreadable.failed(folder);
+        tracing::warn!(%folder, ?next, "a header FETCH couldn't be read; the next pass asks for less");
+    }
+    error
+}
+
+/// The header FETCH of `set` ([`fetch_headers`]) as store rows.
+pub(crate) async fn fetch_rows(
+    conn: &mut Connection,
+    folder: FolderId,
+    set: &str,
+    wanted: impl Fn(u32) -> bool,
+    view: &mut View,
+) -> Result<Vec<NewMessage>, SyncError> {
+    let out = fetch_headers(conn, folder, set, wanted, view).await?;
     let rows = tokio::task::spawn_blocking(move || {
         out.into_iter()
             .map(|found| fetch::message(folder, found))

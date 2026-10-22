@@ -23,6 +23,15 @@ pub(crate) fn items() -> String {
     )
 }
 
+/// [`items`] without BODYSTRUCTURE, for a folder whose full FETCH couldn't be read: the row
+/// then has no body kind and no attachment clip.
+pub(crate) fn lean_items() -> String {
+    format!(
+        "(UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS ({FIELDS})] \
+         BODY.PEEK[TEXT]<0.{PREVIEW_BYTES}>)"
+    )
+}
+
 /// What the body structure tells the list row.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Structure {
