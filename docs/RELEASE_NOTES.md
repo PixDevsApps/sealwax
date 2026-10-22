@@ -37,6 +37,7 @@ Sealwax is a fast, minimal email client for [Omarchy](https://omarchy.org): nati
 - **Ctrl+W** closes the composer; **Check for Updates…** asks GitHub only when you choose it; **Toggle Sidebar** hides the folder list.
 - **Privacy:** on WebKitGTK 2.54, images you allowed can no longer make your computer look up the names a message lists (DNS prefetch); lookups of your provider's settings say they come from "Sealwax".
 - **The licenses** of the libraries Sealwax is built from come with the package.
+- **One message the server describes oddly no longer stops a folder** ([issue #20](https://github.com/PixDevsApps/sealwax/issues/20)): Sealwax asks for less about it and, if it still can't read it, leaves that one message out and carries on, instead of reconnecting forever.
 
 ## Requirements
 
