@@ -295,7 +295,9 @@ pub(crate) fn reply(code: u16, text: &str) -> LoginFailure {
         LoginFailure::OAuthRequired
     } else if code == 538 || (code == 530 && has("starttls")) {
         LoginFailure::NoTls
-    } else if code == 535 && !has("smtpclientauthentication is disabled") {
+    } else if has("smtpclientauthentication is disabled") {
+        LoginFailure::SmtpAuthDisabled
+    } else if code == 535 {
         LoginFailure::WrongPassword
     } else {
         LoginFailure::Other

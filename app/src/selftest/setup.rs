@@ -1555,6 +1555,7 @@ fn login_failure(name: &str) -> Result<LoginFailure, String> {
         "wrong-password" => LoginFailure::WrongPassword,
         "app-password" => LoginFailure::AppPasswordRequired,
         "imap-disabled" => LoginFailure::ImapDisabled,
+        "smtp-auth-disabled" => LoginFailure::SmtpAuthDisabled,
         "oauth" => LoginFailure::OAuthRequired,
         "sign-in-declined" => LoginFailure::SignInDeclined,
         "no-tls" => LoginFailure::NoTls,

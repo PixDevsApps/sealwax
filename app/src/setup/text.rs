@@ -108,6 +108,14 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
             ),
         )
         .with_link(context.enable_imap),
+        LoginFailure::SmtpAuthDisabled => Notice::problem(
+            "Sending is turned off for this account",
+            format!(
+                "{server} says SMTP AUTH, which mail apps send with, is turned off for this \
+                 mailbox or its organization. Ask your organization's admin to turn it on, then \
+                 try again."
+            ),
+        ),
         LoginFailure::OAuthRequired => Notice::problem(
             "Only a browser sign-in works here",
             format!(
@@ -225,6 +233,14 @@ pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
                 "Turn on IMAP in {}'s settings, or ask your organization's admin, then sign in \
                  again.",
                 provider.unwrap_or("Outlook.com")
+            ),
+        ),
+        LoginFailure::SmtpAuthDisabled => Notice::problem(
+            "Sending is turned off for this account",
+            format!(
+                "{server} says Microsoft 365 has SMTP AUTH, which mail apps send with, turned off \
+                 for this mailbox or its organization. Ask your organization's admin to turn it \
+                 on for your mailbox, then sign in again."
             ),
         ),
         LoginFailure::Unreachable => Notice::problem(
@@ -365,6 +381,7 @@ pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
         ),
         LoginFailure::AppPasswordRequired
         | LoginFailure::ImapDisabled
+        | LoginFailure::SmtpAuthDisabled
         | LoginFailure::SignInDeclined
         | LoginFailure::Timeout
         | LoginFailure::NoUidl
@@ -574,10 +591,11 @@ mod tests {
         }
     }
 
-    const FAILURES: [LoginFailure; 11] = [
+    const FAILURES: [LoginFailure; 12] = [
         LoginFailure::WrongPassword,
         LoginFailure::AppPasswordRequired,
         LoginFailure::ImapDisabled,
+        LoginFailure::SmtpAuthDisabled,
         LoginFailure::OAuthRequired,
         LoginFailure::NoTls,
         LoginFailure::Certificate,
@@ -788,6 +806,20 @@ mod tests {
             None,
         );
         assert!(declined.body.contains("admin may have to approve it"));
+        let smtp_off = sign_in_failure(
+            &LoginError {
+                protocol: Protocol::Smtp,
+                failure: LoginFailure::SmtpAuthDisabled,
+            },
+            None,
+        );
+        assert_eq!(smtp_off.title, "Sending is turned off for this account");
+        assert!(
+            smtp_off
+                .body
+                .starts_with("The outgoing mail server (SMTP) says Microsoft 365")
+        );
+        assert!(smtp_off.body.contains("organization's admin"));
     }
 
     #[test]

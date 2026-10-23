@@ -399,6 +399,9 @@ pub enum LoginFailure {
     AppPasswordRequired,
     /// IMAP is turned off for this account in the provider's settings.
     ImapDisabled,
+    /// SMTP AUTH is turned off for the mailbox or its organization (Microsoft 365's
+    /// "SmtpClientAuthentication is disabled", issue #21): mail comes in, but none can be sent.
+    SmtpAuthDisabled,
     /// The server accepts only a browser sign-in.
     OAuthRequired,
     /// The browser sign-in was declined: by the user, or by their organization's consent policy.
