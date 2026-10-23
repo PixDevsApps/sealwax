@@ -21,6 +21,10 @@ Sealwax handles hostile content (every incoming message), long-lived credentials
 | Hostile or broken rules | A Sieve script pasted from elsewhere that redirects, replies, deletes for good or makes the run slow | Sealwax's subset has no command that sends mail or expunges; `discard` moves to Trash and `\Deleted` can't be set; at most 1 MiB and 32 levels of nesting, each command run at most once per message, `:matches` in at most value × pattern steps; a script outside the subset runs nothing ([mail rules](#mail-rules-m9)) |
 | Data loss | Crashes while writing drafts or sending | WAL store; draft autosave; idempotent op replay; at-most-once send ([ADR-015](DECISIONS.md#adr-015--op-queue-optimistic-overlay-undo-at-most-once-send-2026-10-04)) |
 
+### Retrying moves
+
+A destination message's Message-ID is only a candidate match for an interrupted move. Before deleting a source that still exists, Sealwax compares SHA-256 hashes of both complete messages using 64 KiB partial `BODY.PEEK` reads, checking each folder's UIDVALIDITY. The comparison budget is 16 MiB per message. If contents differ, cannot be verified, or exceed that budget, the source is transferred again before deletion; this may create a duplicate, but does not discard distinct mail based only on a shared Message-ID. A failed comparison command stops the operation without deleting the source. Sources already gone can still be associated with destination messages by Message-ID; copy-only and APPEND retries retain their existing Message-ID matching.
+
 ## Rules
 
 ### Transport
