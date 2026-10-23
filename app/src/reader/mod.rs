@@ -811,7 +811,7 @@ impl Reader {
 
 /// Whether a link may open, and as what: absolute http(s) with a host, or mailto.
 pub fn openable(uri: &str) -> Option<String> {
-    let parsed = glib::Uri::parse(uri.trim(), glib::UriFlags::NONE).ok()?;
+    let parsed = glib::Uri::parse(uri.trim(), glib::UriFlags::ENCODED).ok()?;
     match parsed.scheme().to_ascii_lowercase().as_str() {
         "http" | "https" if parsed.host().is_some_and(|host| !host.is_empty()) => {
             Some(parsed.to_str().to_string())
@@ -1201,6 +1201,13 @@ mod tests {
         );
         assert!(openable("HTTP://example.test/").is_some());
         assert!(openable("mailto:leah@example.test?subject=Hi").is_some());
+        for kept in [
+            "https://track.example.test/m/1/click?signature=abc&url=https%3A%2F%2Fapp.example.test%2Fusers%2Fmagic-link%2FTOKEN%3D%3D%3Freturn_to%3D%26utm_source%3Dmail",
+            "https://example.test/a%20b?q=x%2By%23z#c%2Fd",
+            "mailto:leah@example.test?subject=Hi%20there%26more&body=a%3Db",
+        ] {
+            assert_eq!(openable(kept).as_deref(), Some(kept));
+        }
         for refused in [
             "",
             "about:blank",
