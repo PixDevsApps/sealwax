@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.0.1 — 2026-10-23
+
+The release with issue #21's notice. This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the release commit `b84e066`, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` | exit 0; 1,538 passed, 0 failed; 84 scripts, 8,135 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 273 s); no `gtk4-broadwayd` left. Log: `.local/ci-ui-1.0.1-2026-10-23.log` | Pass |
+| `tools/release.py build` on `v1.0.1` | makepkg's `check()`: 1,103 passed, 0 failed; the binary says `sealwax 1.0.1` and holds no home-folder path; `THIRD-PARTY-LICENSES.txt` in the package and beside it | Pass |
+| The clean-container install test on the release package (`tools/install-test.sh`, 10:47) | pacman installed it with every dependency; both license files; `install-smoke` 16/16 with the installed binary, its web process in WebKit's sandbox | Pass |
+| The push range (`d45dcce..b84e066`, 2 commits) scanned before pushing | No personal address beyond the commit author, no home path or client ID; no working doc | Pass |
+| The release [v1.0.1](https://github.com/PixDevsApps/sealwax/releases/tag/v1.0.1) | Not a draft or pre-release; GitHub's latest; its five files; `releases/latest/download/…` and `releases/download/v1.0.1/…` both give the build's package (SHA-256 `8471dc12…90bc`) | Pass |
+| Microsoft 365 with SMTP AUTH turned off, live | Not run: no such account; scripted only (`a_token_refused_because_smtp_auth_is_off_says_so`) | Not verified |
+| Installed here | Not yet: the owner's, with INSTALL.md's command | Not verified |
+
 ### 1.0.0 — 2026-10-22
 
 The release. This machine.
