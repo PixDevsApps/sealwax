@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.0.1 — 2026-10-23
+
+- **A clear word when Microsoft 365 won't let mail apps send:** many Microsoft 365 organizations have SMTP AUTH, the way mail apps send mail, turned off, for everyone or for some mailboxes. Adding such an account used to end in "The sign-in didn't work" after a sign-in that had worked ([issue #21](https://github.com/PixDevsApps/sealwax/issues/21)). The setup assistant now says "Sending is turned off for this account" and that your organization's admin can turn SMTP AUTH on for your mailbox; then sign in again. The user guide's "Common problems" says the same.
+
 ## 1.0.0 — 2026-10-22
 
 Sealwax 1.0: everything in 0.5.1, checked in daily use with real accounts, in a fresh install and on a live desktop ([the 1.0 release notes](docs/RELEASE_NOTES.md)), and these changes:
