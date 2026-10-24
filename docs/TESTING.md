@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Microsoft access tokens only to Microsoft's servers (GHSA-vhrm-52f2-v9v3) — 2026-10-24
+
+[ADR-008 amendment](DECISIONS.md#adr-008-amendment--an-access-token-goes-only-to-microsofts-servers-2026-10-24). This machine; the fake Microsoft and scripted IMAP and SMTP servers on 127.0.0.1; no real account, and no live reproduction (it needs a Microsoft 365 tenant on a custom domain whose DNS answer can be changed).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The report's chain, read in the code at `a18d9da` (the files are unchanged since 1.0.1 `b84e066`) | Holds as reported: per-protocol detection with SRV above MxPreset; OAuth chosen from the IMAP host; the server card shown on the password step only; the token checked on the presets with `sign_in.servers` `None` in the app; `Kept` without servers; the add storing `found.smtp`; `connect_oauth` to `settings.smtp`. The IMAP side is safe, since only presets set the OAuth hint and their IMAP hosts are Microsoft's; POP3 and the password check refuse OAuth | Confirmed |
+| `oauth::tests::a_token_goes_only_to_microsofts_servers` | Microsoft's four preset hosts (and one in capitals with a trailing dot) take a token. `smtp.example.test`, `office365.com.example.test`, `notoutlook.com`, `outlook.co`, `127.0.0.1`, `localhost` and an empty host don't, under the platform trust. Under the testbed CA alone, `127.0.0.1` does, unless pinned | Pass |
+| `smtp::submit::tests::a_token_goes_to_no_smtp_server_but_microsofts` | `connect_oauth` to a non-Microsoft server under the platform trust is `Connect(Other)`: no token fetched, and nothing connected to the listener within 200 ms. Without the guard it fails (the assertion on the result, after 5 s) | Pass |
+| `engine/tests/sign_in.rs` `an_add_takes_the_servers_its_sign_in_was_checked_on` | An add naming two other scripted servers (which accept the fake Microsoft's tokens) and POP3 stores the checked IMAP and SMTP servers and IMAP, and syncs through the checked IMAP server (2 logins there: the check and the sync). The other servers saw no login. Without the server override the account synced through the other IMAP server, so the token went to it, and stored it (the test fails); without any override, POP3's refusal of OAuth fails the sync | Pass |
+| `cargo test -p sealwax-engine --test sign_in` | 8 passed | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged, and its self-tests check the commands it sends, which are the same) | The first run failed on formatting only (rustfmt's layout of one `if`); after `cargo fmt`, exit 0: 1,543 passed, 0 failed, 99 ignored; Clippy clean; lettre's four dead-code warnings | Pass |
+| A Microsoft account stored with a non-Microsoft server by an earlier version | Refused before any token is fetched, by the guard. The notice is the generic "Other"; not looked at in the app | Not verified |
+
 ### lettre's reply reading bounded — 2026-10-24
 
 [ADR-015 amendment](DECISIONS.md#adr-015-amendment--lettres-reply-reading-bounded-2026-10-24). This machine; scripted SMTP servers over TLS on localhost and a comparison program outside the repository; no real account.

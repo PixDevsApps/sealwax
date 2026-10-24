@@ -635,6 +635,25 @@ The owner's decision on the sign-off sheet (2026-10-19), for M8: Sign in with Mi
 
 Verifying the publisher of the Microsoft app registration (the 2026-10-19 amendment's second half) is the owner's paperwork after 1.0.0; 1.0's release notes keep the work-account limit, and the 60-second note and the user guide stay the answer until then. Nothing in the code depends on it.
 
+### ADR-008 amendment — an access token goes only to Microsoft's servers (2026-10-24)
+
+**Status:** Accepted — the owner's word, 2026-10-24 ("Allow XOAUTH2 only to Microsoft hosts, make an OAuth add use the servers its token was checked on, and add a test with a foreign SMTP host"), on GHSA-vhrm-52f2-v9v3, reported privately by FieldsFury Labs.
+
+**Problem (1.0.2 and earlier):**
+- Detection picks IMAP and SMTP each from the highest-ranked source that offers one, and SRV outranks the MX-matched preset. For Microsoft 365 on a custom domain, a DNS SRV answer alone could therefore name the SMTP server while IMAP came from the Microsoft preset.
+- `settings()` chose Microsoft sign-in from the IMAP host, and the server card that asks the user to confirm such a host shows only on the password step.
+- The sign-in checked its token on Microsoft's preset servers. The add then stored the detected ones, so the first send gave a Microsoft access token, for IMAP and SMTP, to whoever answered that DNS query during setup.
+
+This was confirmed by reading the code, not reproduced live.
+
+**Decision:** Sealwax's own fix, not the reporter's diff.
+- **XOAUTH2 goes only to a host under `outlook.com` or `office365.com`** (`oauth::takes_token`, the same rule that picks Microsoft sign-in). It is checked before a token is fetched or a connection made, in the sign-in's check of both servers, `log_in_with_token` (IMAP sync and body downloads) and `submit::connect_oauth` (sending). A refusal is `LoginFailure::Other`, with a log line that names the protocol, never the host.
+- The one exception is a trust of only the testbed CA, which release builds can't select (`EngineOptions::from_env` reads `SEALWAX_TEST_CA` only with debug assertions) and which no real server can pass. Even then, a server with a pinned certificate never gets a token.
+- **A new OAuth account takes the IMAP and SMTP servers its token was checked on** (`Kept::servers`), with IMAP as the way mail comes in, whatever the add named. Detection's servers don't matter for Microsoft accounts any more.
+- A re-sign-in still checks the account's own servers, so an account stored with a foreign server by an earlier version can't send or sign in again until its servers are edited or it is added anew.
+
+**Consequence:** a Microsoft account can't use any server outside Microsoft's two domains, not even a proxy. That's acceptable, since the token is Outlook's and no other server can take it. A clear notice for a refused server is a follow-up. Until then such an account shows as failing with "Other".
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.

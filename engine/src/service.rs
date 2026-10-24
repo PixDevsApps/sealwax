@@ -172,6 +172,8 @@ struct Kept {
     refresh: Zeroizing<String>,
     access: AccessToken,
     until: Instant,
+    /// The IMAP and SMTP servers the token was checked on, which an add takes.
+    servers: (Endpoint, Endpoint),
 }
 
 impl Kept {
@@ -762,8 +764,9 @@ async fn detect(shared: Arc<Shared>, request: RequestId, address: String) {
     shared.send(Event::Detected { request, detection });
 }
 
-/// An add for the lane. An OAuth account takes its sign-in's refresh token as its secret and
-/// the sign-in's identity as its username; without a usable sign-in it fails at once.
+/// An add for the lane. An OAuth account takes its sign-in's refresh token as its secret, the
+/// sign-in's identity as its username and the IMAP and SMTP servers the token was checked on,
+/// whatever detection found; without a usable sign-in it fails at once.
 fn add_job(
     shared: &Shared,
     request: RequestId,
@@ -779,6 +782,17 @@ fn add_job(
         (Some(sign_in), Some(kept)) => {
             settings.username = kept.username.clone();
             settings.auth = AuthMethod::OAuth(kept.provider);
+            let (imap, smtp) = &kept.servers;
+            if (&settings.incoming, settings.receive, &settings.smtp) != (imap, Receive::Imap, smtp)
+            {
+                tracing::info!(
+                    request,
+                    "the account takes the servers its sign-in was checked on"
+                );
+            }
+            settings.incoming = imap.clone();
+            settings.receive = Receive::Imap;
+            settings.smtp = smtp.clone();
             Some((sign_in, kept))
         }
         (None, None) if settings.auth == AuthMethod::Password => None,
@@ -985,6 +999,10 @@ async fn log_in_with_token(
     shared: &Shared,
     settings: &AccountSettings,
 ) -> Result<imap::Connection, LoginFailure> {
+    if !oauth::takes_token(&settings.incoming, &shared.trust) {
+        tracing::warn!("the account's incoming server isn't Microsoft's; no token goes to it");
+        return Err(LoginFailure::Other);
+    }
     let tls = tls(shared)?;
     let secrets = shared.secrets().await;
     let label = secret_label(&settings.address);
@@ -1206,6 +1224,7 @@ async fn signed_in(
         refresh,
         access: AccessToken::new(tokens.access, tokens.lifetime),
         until: Instant::now() + SIGN_IN_KEPT,
+        servers: (imap, smtp),
     });
     Ok((kept, target))
 }
@@ -1261,6 +1280,15 @@ async fn check_servers(
     username: &str,
     token: &str,
 ) -> Result<(), LoginError> {
+    for (endpoint, protocol) in [(imap, Protocol::Imap), (smtp, Protocol::Smtp)] {
+        if !oauth::takes_token(endpoint, &shared.trust) {
+            tracing::warn!(?protocol, "a server isn't Microsoft's; no token goes to it");
+            return Err(LoginError {
+                protocol,
+                failure: LoginFailure::Other,
+            });
+        }
+    }
     let credentials = Credentials::OAuth2 { username, token };
     let tls = tls(shared).map_err(imap_error)?;
     let connection = imap::connect(imap, credentials, tls)
@@ -1405,6 +1433,7 @@ mod tests {
             refresh: Zeroizing::new(String::new()),
             access: AccessToken::new(Zeroizing::new(String::new()), Duration::from_secs(60)),
             until: Instant::now(),
+            servers: microsoft_servers(&identity(CONSUMER_TENANT), "ann@example.test").unwrap(),
         };
         assert!(kept.fits("ann@example.test"));
         assert!(kept.fits(" Anna.Berg@Example.test "));

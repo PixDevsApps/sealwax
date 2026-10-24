@@ -681,6 +681,10 @@ where
     F: FnMut(bool) -> Fut,
     Fut: Future<Output = Result<Fetched, LoginFailure>>,
 {
+    if !crate::oauth::takes_token(endpoint, trust) {
+        tracing::warn!("the account's SMTP server isn't Microsoft's; no token goes to it");
+        return Err(SubmitError::Connect(LoginFailure::Other));
+    }
     let mut renew = false;
     loop {
         let fetched = token(renew).await.map_err(|failure| match failure {

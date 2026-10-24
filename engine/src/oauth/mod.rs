@@ -21,6 +21,8 @@ pub use id_token::{CONSUMER_TENANT, Identity};
 pub use token::Tokens;
 
 use crate::net::Trust;
+use sealwax_domain::account::Endpoint;
+use sealwax_domain::autoconfig::presets;
 use std::fmt;
 use std::time::Duration;
 use url::Url;
@@ -72,6 +74,15 @@ fn endpoint(text: &str) -> Result<Url, OAuthError> {
         "http" if loopback => Ok(url),
         _ => Err(OAuthError::Endpoint),
     }
+}
+
+/// Whether an access token may go to `endpoint` in XOAUTH2: only to Microsoft's own servers, so
+/// a server that detection, a DNS answer or `accounts.toml` names elsewhere never gets it. With
+/// only the testbed's CA trusted (debug builds and the tests), which no real server can pass, a
+/// server without a pinned certificate may have it too.
+pub(crate) fn takes_token(endpoint: &Endpoint, trust: &Trust) -> bool {
+    presets::microsoft_host(&endpoint.host)
+        || (matches!(trust, Trust::Roots(_)) && endpoint.certificate.is_none())
 }
 
 /// A registered public client (no secret: desktop clients use PKCE) and the HTTP client its

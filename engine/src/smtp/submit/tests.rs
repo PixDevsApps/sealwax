@@ -543,6 +543,43 @@ async fn a_long_acceptance_is_a_sent_message() {
 }
 
 #[tokio::test]
+async fn a_token_goes_to_no_smtp_server_but_microsofts() {
+    // An account whose SMTP server isn't Microsoft's, as detection could find from a DNS answer
+    // alone: no token is fetched for it and nothing connects.
+    let (listener, port) = bind().await;
+    let endpoint = Endpoint {
+        host: "127.0.0.1".into(),
+        port,
+        security: Security::Tls,
+        certificate: None,
+    };
+    let asked = Arc::new(Mutex::new(0));
+    let counted = asked.clone();
+    let result = connect_oauth(
+        &endpoint,
+        "signin@example.test",
+        &Trust::Platform,
+        quick(),
+        move |_| {
+            *counted.lock().unwrap() += 1;
+            async { Ok(fetched("token", false)) }
+        },
+    )
+    .await;
+    assert!(matches!(
+        result,
+        Err(SubmitError::Connect(LoginFailure::Other))
+    ));
+    assert_eq!(*asked.lock().unwrap(), 0, "no token was fetched");
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), listener.accept())
+            .await
+            .is_err(),
+        "nothing connected"
+    );
+}
+
+#[tokio::test]
 async fn a_reply_line_that_never_ends_is_given_up_at_its_limit() {
     // lettre read a whole line before checking its length, so a server that never ended one
     // filled the client's memory until the timeout: 300 s at the message's end.
