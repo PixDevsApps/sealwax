@@ -74,6 +74,24 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### lettre's reply reading bounded — 2026-10-24
+
+[ADR-015 amendment](DECISIONS.md#adr-015-amendment--lettres-reply-reading-bounded-2026-10-24). This machine; scripted SMTP servers over TLS on localhost and a comparison program outside the repository; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| A reply line that never ends, before the change (the test server's byte count, `quick()`'s 0.5 s data timeout) | lettre kept reading until the timeout: the server had sent 80.7 MB (its last 1 MiB mark, 80,740,352 bytes) when the client gave up with `NoReply` | Found |
+| The same, after | `UnreadableReply` after at most 16,385 bytes; the server had sent 516,096 bytes when the client closed | Pass |
+| A reply of many short lines (`250-x` each) at the end of data, before the change, debug build, a 120 s data timeout | 1,000 lines 1.4 s; 4,000 lines 22.6 s; 16,000 lines (112,006 bytes) 268 s, then "too large". The timeout never fired | Found |
+| The same with a first, naive fix (skip parsing while every line read is a continuation line) and a first line `250-a\n` | Read as `Ok` after 605.8 s for the test's three cases; so the timing check below | Found |
+| `cargo test -p sealwax-engine --lib smtp::submit` after | 18 passed. New: a line that never ends at the message's end (`UnreadableReply`, connection dropped) and in the greeting (`Connect(Other)`, not `Timeout`); 14,000 lines with and without a bare-LF first line read in 89.8 and 91.4 ms, 16,000 lines "too large" in 57.7 ms (the test allows 20 s); a multi-line refusal and a reply with mixed codes in the end-of-data table. Against unpatched lettre the endless-line test fails (`NoReply` for `UnreadableReply`) | Pass |
+| The log-capturing test beside the new ones | Failed 3 times in 6 runs once the new tests ran next to it (8 out of 8 passed without them). The cause, read in tracing-core 0.1.36's source: with only one dispatcher ever registered, a new callsite's interest is taken from the registering thread's subscriber alone. With a second dispatcher in the test, 12 out of 12 runs passed | Pass |
+| Old and new reading compared outside the repository (lettre's own `response.rs`, nom 8.0.0, both loops over the same bytes): 2,000,000 random replies from 27 tokens (codes, digits, `-`, space, CRLF, bare LF and CR, `é`, tab) plus 26 at the limits (lines of 16,382–20,000 bytes, 14,284–14,300 lines, invalid UTF-8) | No difference: 109,667 replies read, 250,417 incomplete, 1,639,924 parse errors, 9 lines too long, 7 too large, 2 encoding errors. One built case differs as expected: a 17,000-byte line ending in `\xff` is "line too long" now and an encoding error before | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged) | exit 0; 1,540 passed, 0 failed, 99 ignored; formatting and Clippy clean; lettre's four dead-code warnings | Pass |
+| `rustfmt --edition 2024 --check` on the three changed lettre files; `cargo check --manifest-path fuzz/Cargo.toml --locked` | Clean; builds | Pass |
+| A release build's timing of the many-lines case before the change | Not measured | Not verified |
+| The same patterns in IMAP and POP3 reading | Not looked at | Not verified |
+
 ### 1.0.2 — 2026-10-24
 
 The release with issue #22's fix. This machine.

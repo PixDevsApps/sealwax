@@ -40,6 +40,8 @@ struct Script {
     end: Option<&'static str>,
     /// The end of data is never answered.
     hang: bool,
+    /// The end of data is answered with a line that never ends.
+    endless: bool,
     /// The connection is closed as DATA arrives, unanswered.
     cut_at_data: bool,
     /// The connection is closed as RSET arrives, unanswered.
@@ -56,6 +58,7 @@ impl Default for Script {
             data: "354 go ahead",
             end: Some("250 2.0.0 queued as X1"),
             hang: false,
+            endless: false,
             cut_at_data: false,
             cut_at_rset: false,
         }
@@ -139,6 +142,10 @@ async fn serve(mut peer: Peer, script: Script, seen: Arc<Mutex<Seen>>) {
                 seen.lock().unwrap().messages.push(data);
                 if script.hang {
                     while peer.line().await.is_some() {}
+                    return;
+                }
+                if script.endless {
+                    peer.flood("250 2.0.0 ", b'x').await;
                     return;
                 }
                 match script.end {
@@ -486,6 +493,20 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
             },
             SubmitError::Uncertain(UncertainReason::UnreadableReply),
         ),
+        (
+            Script {
+                end: Some("554-5.7.1 rejected\r\n554 5.7.1 as spam"),
+                ..Script::default()
+            },
+            SubmitError::Refused { code: 554 },
+        ),
+        (
+            Script {
+                end: Some("250-2.0.0 queued\r\n554 5.7.1 rejected"),
+                ..Script::default()
+            },
+            SubmitError::Uncertain(UncertainReason::UnreadableReply),
+        ),
     ] {
         let server = Server::start(vec![script]).await;
         let mut submitter = server.connect().await.unwrap();
@@ -521,6 +542,85 @@ async fn a_long_acceptance_is_a_sent_message() {
     assert_eq!(server.seen().messages.len(), 1);
 }
 
+#[tokio::test]
+async fn a_reply_line_that_never_ends_is_given_up_at_its_limit() {
+    // lettre read a whole line before checking its length, so a server that never ended one
+    // filled the client's memory until the timeout: 300 s at the message's end.
+    let server = Server::start(vec![Script {
+        endless: true,
+        ..Script::default()
+    }])
+    .await;
+    let mut submitter = server.connect().await.unwrap();
+    let error = send(&mut submitter, &to(&["b@x.test"]), MESSAGE)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        error,
+        SubmitError::Uncertain(UncertainReason::UnreadableReply)
+    );
+    assert!(submitter.conn.is_none(), "the connection is dropped");
+
+    let ca = test_ca();
+    let config = ca.server.clone();
+    let (listener, port) = bind().await;
+    tokio::spawn(async move {
+        let mut peer = Peer::accept_tls(&listener, config).await;
+        peer.flood("220 ", b'x').await;
+    });
+    let endpoint = Endpoint {
+        host: "127.0.0.1".into(),
+        port,
+        security: Security::Tls,
+        certificate: None,
+    };
+    let Err(error) = Submitter::connect_with(&endpoint, PASSWORD, &ca.trust, quick()).await else {
+        panic!("a greeting that never ends is no connection");
+    };
+    assert_eq!(error, SubmitError::Connect(LoginFailure::Other));
+}
+
+#[tokio::test]
+async fn a_reply_of_many_lines_is_parsed_once() {
+    // lettre parsed the whole reply again after each line: 16,000 short lines took 268 s in a
+    // debug build before the 100,000-byte cap, and no timeout stops it, since the reply is
+    // already read and the parse never yields. A first line ending in a bare LF, which isn't one
+    // of lettre's lines on its own, mustn't bring that back (605 s with a first, naive fix).
+    for (first, lines, expected) in [
+        ("", 14_000, Ok(())),
+        ("250-a\n", 14_000, Ok(())),
+        (
+            "",
+            16_000,
+            Err(SubmitError::Uncertain(UncertainReason::UnreadableReply)),
+        ),
+    ] {
+        let reply = format!("{first}{}250 ok", "250-x\r\n".repeat(lines));
+        let server = Server::start(vec![Script {
+            end: Some(Box::leak(reply.into_boxed_str())),
+            ..Script::default()
+        }])
+        .await;
+        let timeouts = Timeouts {
+            data: Duration::from_secs(5),
+            ..quick()
+        };
+        let mut submitter =
+            Submitter::connect_with(&server.endpoint(), PASSWORD, &server.ca.trust, timeouts)
+                .await
+                .unwrap();
+        let started = std::time::Instant::now();
+        let result = send(&mut submitter, &to(&["b@x.test"]), MESSAGE).await;
+        let took = started.elapsed();
+        assert_eq!(result, expected, "{first:?} and {lines} lines");
+        assert!(
+            took < Duration::from_secs(20),
+            "{first:?} and {lines} lines took {took:?}"
+        );
+        submitter.quit().await;
+    }
+}
+
 #[derive(Clone, Default)]
 struct Capture(Arc<Mutex<Vec<u8>>>);
 
@@ -544,6 +644,10 @@ async fn an_unreadable_reply_is_logged_by_why_without_the_servers_text() {
         move || sink.clone(),
         false,
     ));
+    // While only one dispatcher was ever made, tracing-core caches a new callsite's interest from
+    // the registering thread's subscriber alone, so a parallel test that reaches a callsite first
+    // turns it off here too; with a second one it asks every dispatcher.
+    let _second = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
     let reply = format!(
         "554 5.2.252 SendAsDenied; {}",
         "secret-words ".repeat(1_400)

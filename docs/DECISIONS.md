@@ -1140,6 +1140,14 @@ Built for rules ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026
 
 **Consequence:** lettre is no longer updated by `cargo update`; a lettre release is taken by copying it into `vendor/` with the same change, or by dropping the patch once lettre fixes #1168.
 
+### ADR-015 amendment — lettre's reply reading bounded (2026-10-24)
+
+**Status:** Accepted — the owner's word, 2026-10-24 ("please do what you suggested regarding the SMTP issue"): fix the resource exhaustion found in lettre's reply reading.
+
+**Decision:** The vendored lettre gets two more changes, both in `read_response` (async and sync) and marked "Sealwax's patch". (1) A line is read through `take(MAX_RESPONSE_LINE_BYTES + 1)` and then checked, where lettre read the whole line before checking it, so a reply that never ended a line grew without bound until Sealwax's timeout. (2) The whole reply goes to `parse_response` only once that can give more than "incomplete". lettre's grammar ends each line at a CRLF, so `is_continuation` checks each finished line once and `may_continue` checks the start of an unfinished one. lettre parsed the whole reply again after every line, which took quadratic time that no timeout stopped, because the reply was already read and the parse never yielded. A naive fix that skipped parsing while every read line was a continuation line is undone by one first line ending in a bare LF (605 s in the test). Results are lettre's own for every reply: 2,000,000 random replies and 26 built at the limits read the same before and after. The one exception is a line over the limit that also holds invalid UTF-8, which is now "too long" instead of an encoding error.
+
+**Consequence:** the patch is no longer one constant. Moving to a newer lettre means making all three changes again, and dropping the patch needs lettre to fix all three. The endless-line and many-lines tests in `engine/src/smtp/submit/tests.rs` hold the behaviour. The many-lines test checks the time taken, since a timeout can't catch a parse that never yields.
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.

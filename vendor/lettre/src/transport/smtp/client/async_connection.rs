@@ -1,6 +1,6 @@
-use std::{fmt::Display, net::IpAddr, time::Duration};
+use std::{fmt::Display, io, net::IpAddr, time::Duration};
 
-use futures_util::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use futures_util::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 
 #[cfg(feature = "tokio1")]
 use super::async_net::AsyncTokioStream;
@@ -19,7 +19,7 @@ use crate::{
         error,
         error::Error,
         extension::{ClientId, Extension, MailBodyParameter, MailParameter, ServerInfo},
-        response::{Response, parse_response},
+        response::{Response, is_continuation, may_continue, parse_response},
     },
 };
 
@@ -359,25 +359,45 @@ impl AsyncSmtpConnection {
     /// Gets the SMTP response
     pub async fn read_response(&mut self) -> Result<Response, Error> {
         let mut buffer = String::with_capacity(100);
-        let mut pre = 0;
+        let mut line = Vec::with_capacity(100);
+        // Sealwax's patch: where the reply's text after its last CRLF starts.
+        let mut start = 0;
 
-        while self
-            .stream
-            .read_line(&mut buffer)
+        // Sealwax's patch: a line is read to one byte past its limit at most, so a server that
+        // never ends one can't grow the buffer without bound.
+        while (&mut self.stream)
+            .take(MAX_RESPONSE_LINE_BYTES as u64 + 1)
+            .read_until(b'\n', &mut line)
             .await
             .map_err(error::network)?
             > 0
         {
-            if buffer.len() - pre > MAX_RESPONSE_LINE_BYTES {
+            if line.len() > MAX_RESPONSE_LINE_BYTES {
                 return Err(error::response("SMTP response line too long"));
             }
+            buffer.push_str(std::str::from_utf8(&line).map_err(|_| {
+                error::network(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "stream did not contain valid UTF-8",
+                ))
+            })?);
+            line.clear();
             if buffer.len() > MAX_RESPONSE_BYTES {
                 return Err(error::response("SMTP response too large"));
             }
-            pre = buffer.len();
 
             #[cfg(feature = "tracing")]
             tracing::debug!("<< {}", escape_crlf(&buffer));
+            // Sealwax's patch: the whole reply is parsed only once that can give more than
+            // "incomplete"; parsing it again after each line took time quadratic in its lines.
+            if buffer.ends_with("\r\n") {
+                if is_continuation(&buffer[start..]) {
+                    start = buffer.len();
+                    continue;
+                }
+            } else if may_continue(&buffer[start..]) {
+                continue;
+            }
             match parse_response(&buffer) {
                 Ok((_remaining, response)) => {
                     return if response.is_positive() {

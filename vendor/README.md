@@ -1,10 +1,14 @@
 # Vendored crates
 
-## lettre 0.11.23, with a longer reply-line limit
+## lettre 0.11.23, with a longer reply-line limit and bounded reply reading
 
-`vendor/lettre/` is [lettre](https://crates.io/crates/lettre) 0.11.23 exactly as published on crates.io (MIT, `LICENSE`), with one change: `MAX_RESPONSE_LINE_BYTES` in `src/transport/smtp/client/mod.rs` is 16,384 bytes instead of 1,000, with its comment. The 100,000-byte cap on a whole reply is unchanged.
+`vendor/lettre/` is [lettre](https://crates.io/crates/lettre) 0.11.23 exactly as published on crates.io (MIT, `LICENSE`), with three changes, each marked "Sealwax's patch" in the code. The 100,000-byte cap on a whole reply is unchanged.
 
-Why: Microsoft 365 can answer the end of a message with a reply line longer than 1,000 bytes, which lettre can't read, so Sealwax couldn't tell whether the message was sent ([issue #2](https://github.com/PixDevsApps/sealwax/issues/2)). The limit isn't configurable in lettre; the upstream request is [lettre/lettre#1168](https://github.com/lettre/lettre/issues/1168).
+1. **A longer reply line** (2026-10-13): `MAX_RESPONSE_LINE_BYTES` in `src/transport/smtp/client/mod.rs` is 16,384 bytes instead of 1,000, with its comment. Microsoft 365 can answer the end of a message with a reply line longer than 1,000 bytes, which lettre can't read, so Sealwax couldn't tell whether the message was sent ([issue #2](https://github.com/PixDevsApps/sealwax/issues/2)). The limit isn't configurable in lettre; the upstream request is [lettre/lettre#1168](https://github.com/lettre/lettre/issues/1168).
+2. **A line is read only up to its limit** (2026-10-24): `read_response` in `src/transport/smtp/client/async_connection.rs` and `client/connection.rs` reads a line through `take(MAX_RESPONSE_LINE_BYTES + 1)` and then checks it. lettre read the whole line first and checked its length afterwards, so a server that never ended a line grew the buffer until Sealwax's timeout: 60 s for a command, 300 s at the message's end. A test server sent it 80.7 MB in half a second, over TLS on one machine.
+3. **A reply is parsed once** (2026-10-24): the same two `read_response`s parse the whole reply only once it can be more than incomplete, using `is_continuation` and `may_continue` after `parse_response` in `src/transport/smtp/response.rs`. lettre parsed the whole reply again after every line, in time quadratic in its lines. In a debug build, 4,000 short lines took 22.6 s and 16,000 took 268 s, and no timeout stopped it: the reply was already read, so the parse never yielded. Every reply is read as before.
+
+For port 587, the greeting and the first EHLO reply come before STARTTLS, so before changes 2 and 3 anyone on the network path could have done either, not only the server.
 
 The workspace's `Cargo.toml` and `fuzz/Cargo.toml` use it through `[patch.crates-io]`; it is excluded from the workspace, so `cargo fmt`, Clippy and the tests don't run on it.
 
@@ -24,6 +28,6 @@ sha256sum target/lettre-check/lettre-0.11.23.crate && tar -xzf target/lettre-che
 diff -r target/lettre-check/lettre-0.11.23 vendor/lettre
 ```
 
-The only difference should be `src/transport/smtp/client/mod.rs`'s constant and its comment.
+The only differences should be the three changes: `src/transport/smtp/client/mod.rs`'s constant and its comment, the two `read_response`s with their imports, and the two functions after `parse_response`.
 
-To drop it once lettre releases a fix: remove both `[patch.crates-io]` entries and this folder, raise `lettre` in `engine/Cargo.toml` (and `spikes/s5-oauth/Cargo.toml`), update the lock files, and keep `engine/src/smtp/submit/tests.rs`'s long-reply cases passing. To move it to a newer lettre, copy the new published crate here and make the same one-line change.
+To drop it once lettre releases fixes for all three: remove both `[patch.crates-io]` entries and this folder, raise `lettre` in `engine/Cargo.toml` (and `spikes/s5-oauth/Cargo.toml`), update the lock files, and keep `engine/src/smtp/submit/tests.rs`'s cases for long replies, a line that never ends and a reply of many lines passing. To move it to a newer lettre, copy the new published crate here and make the same changes.
