@@ -74,6 +74,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.0.3 — 2026-10-24
+
+The security release: [GHSA-vhrm-52f2-v9v3](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-vhrm-52f2-v9v3) and [GHSA-chx5-p5h3-52m5](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-chx5-p5h3-52m5). This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the release commit `62aa066`, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` (21:21–21:36) | exit 0; 1,543 passed, 0 failed, 99 ignored; 84 scripts, 8,135 of 8,135 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 272 s); no `gtk4-broadwayd` left. Log: `.local/ci-ui-1.0.3-2026-10-24.log` | Pass |
+| `tools/release.py build` on `v1.0.3` (tagged locally first, pushed after the build and the install test; 21:37–21:41) | makepkg's `check()`: 1,108 passed, 0 failed, 91 ignored; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.0.3` and holds no home-folder path. The package's `.BUILDINFO` names makepkg's `builddir` and `startdir` under the home folder, as 1.0.2's published package does; both license files are in the package | Pass |
+| The clean-container install test on the release package (`tools/install-test.sh`, 21:41–21:42) | pacman installed it with every dependency; both license files; `install-smoke` 16/16 with the installed binary, its web process in WebKit's sandbox (`.local/install-test/20261024-214137`) | Pass |
+| The push range (`a505a3d..62aa066`, 6 commits) scanned before pushing | No working doc, home path or client ID; the only addresses are the commit author and the live check's dummy `test@outlook.com` | Pass |
+| The release [v1.0.3](https://github.com/PixDevsApps/sealwax/releases/tag/v1.0.3) | Not a draft or pre-release; GitHub's latest; its five files; `releases/latest/download/…` and `releases/download/v1.0.3/…` both give the build's package (SHA-256 `0a80037c…`) | Pass |
+| The two advisories | Accepted, affected `<= 1.0.2`, patched `1.0.3`, GHSA-chx5 widened to the quadratic parse (CWE-770, CWE-407), credit to `fieldsfury` (shown once accepted), CVE IDs requested, published 19:44:03 UTC; both pages answer 200 without signing in | Pass |
+| lettre told first | The same faults reported to lettre privately through GitHub before the push | Done |
+| Installed here | Not yet: the owner's, with INSTALL.md's command | Not verified |
+
 ### Microsoft access tokens only to Microsoft's servers (GHSA-vhrm-52f2-v9v3) — 2026-10-24
 
 [ADR-008 amendment](DECISIONS.md#adr-008-amendment--an-access-token-goes-only-to-microsofts-servers-2026-10-24). This machine; the fake Microsoft and scripted IMAP and SMTP servers on 127.0.0.1; no real account, and no live reproduction (it needs a Microsoft 365 tenant on a custom domain whose DNS answer can be changed).
