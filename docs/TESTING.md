@@ -104,7 +104,7 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 | Old and new reading compared outside the repository (lettre's own `response.rs`, nom 8.0.0, both loops over the same bytes): 2,000,000 random replies from 27 tokens (codes, digits, `-`, space, CRLF, bare LF and CR, `é`, tab) plus 26 at the limits (lines of 16,382–20,000 bytes, 14,284–14,300 lines, invalid UTF-8) | No difference: 109,667 replies read, 250,417 incomplete, 1,639,924 parse errors, 9 lines too long, 7 too large, 2 encoding errors. One built case differs as expected: a 17,000-byte line ending in `\xff` is "line too long" now and an encoding error before | Pass |
 | CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged) | exit 0; 1,540 passed, 0 failed, 99 ignored; formatting and Clippy clean; lettre's four dead-code warnings | Pass |
 | `rustfmt --edition 2024 --check` on the three changed lettre files; `cargo check --manifest-path fuzz/Cargo.toml --locked` | Clean; builds | Pass |
-| A release build's timing of the many-lines case before the change | Not measured | Not verified |
+| A release build's timing of the many-lines case (2026-10-24, later: the comparison program in release, opt-level 3, no debug assertions; AMD Ryzen 9 5900X; in memory, no network; two runs) | Before: 4,000 lines 0.25 s; 14,284 lines (99,996 bytes) 3.06–3.08 s; 16,666 lines of `250-` ("too large") 4.09–4.13 s. After: 0.43–0.45 ms, 1.5–1.6 ms, 0.67–0.74 ms | Measured |
 | The same patterns in IMAP and POP3 reading | Not looked at | Not verified |
 
 ### 1.0.2 — 2026-10-24

@@ -133,7 +133,7 @@ ML-093 checked every rule above against the code as built through M8, with where
 - **Patched lettre** (2026-10-13, 2026-10-24): lettre 0.11.23 is vendored in `vendor/lettre/` with three changes ([vendor/README.md](../vendor/README.md), [ADR-015 amendment](DECISIONS.md#adr-015-amendment--lettres-reply-reading-bounded-2026-10-24)):
   - A reply line may be up to 16 KiB instead of 1,000 bytes ([issue #2](https://github.com/PixDevsApps/sealwax/issues/2)).
   - Since 2026-10-24, a line is read only up to that limit (GHSA-chx5-p5h3-52m5, reported by FieldsFury Labs). lettre read a whole line before checking its length, so a server that never ended a line grew Sealwax's memory until the timeout (60 s for a command, 300 s at the message's end). A test server sent 80.7 MB in half a second.
-  - Since 2026-10-24, a reply is parsed once. lettre parsed it again after every line, in time quadratic in its lines; no timeout stopped it, and in a debug build 16,000 short lines took 268 s of CPU.
+  - Since 2026-10-24, a reply is parsed once. lettre parsed it again after every line, in time quadratic in its lines; no timeout stopped it, and a reply of 14,284 short lines took 3.1 s of CPU in a release build (268 s for 16,000 in a debug build).
 
   For port 587, the greeting and the first EHLO reply come before STARTTLS, so anyone on the network path could have done either, not only the server. With both fixed, a reply holds Sealwax to about 116 KB (the 100,000-byte cap on a whole reply plus one line) and a parse linear in its length. Every reply is read as before, except a line over the limit that also holds invalid UTF-8: it is now "too long" (`UnreadableReply`) instead of a broken connection. The advisory check covers the vendored copy.
 
