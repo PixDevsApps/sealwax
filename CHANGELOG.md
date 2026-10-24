@@ -2,6 +2,13 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.0.3 — 2026-10-24
+
+A security update. Please update.
+
+- **Microsoft sign-in stays with Microsoft:** when you added a Microsoft 365 account on your own domain, Sealwax could save an outgoing mail server that only an unchecked DNS answer named. The first message you sent then gave that server your account's access token, which lets its holder read and send your mail until it expires, usually within about an hour. Your password and the long-lived sign-in were never sent. Sealwax now sends a Microsoft token only to Microsoft's own servers, and a new Microsoft account always uses the servers its sign-in was checked on. If sending from a Microsoft account stops with an error after this update, remove the account and add it again. Reported privately by FieldsFury Labs ([GHSA-vhrm-52f2-v9v3](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-vhrm-52f2-v9v3)).
+- **A hostile mail server can't tie up Sealwax any more:** an outgoing mail server, or anyone on the network before the connection is encrypted on port 587, could make Sealwax fill its memory with a reply line that never ends, or keep a processor busy for seconds with a reply of many short lines. Sealwax now stops reading a reply line at 16 KiB and reads each reply once. The never-ending line was reported privately by FieldsFury Labs ([GHSA-chx5-p5h3-52m5](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-chx5-p5h3-52m5)); the fix is in Sealwax's copy of lettre, the library it sends mail with, and has been reported to lettre.
+
 ## 1.0.2 — 2026-10-24
 
 - **Links open exactly as written:** a link in a message used to reach the browser slightly rewritten, with its encoded characters undone. Most links didn't mind, but a link that carries another link inside it, as sign-in links from a click tracker do, broke and failed to sign in, while the same link pasted into a browser worked ([issue #22](https://github.com/PixDevsApps/sealwax/issues/22)). Sealwax now hands the browser the link unchanged.
