@@ -74,6 +74,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.0.4 — 2026-10-25
+
+The release with imap-proto's nesting limit (the entry below) and [GHSA-wv8g-4592-g5r2](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-wv8g-4592-g5r2). This machine. The release commit is `749bb21`: `d58a74f` with the advisory's link added to the CHANGELOG once the advisory had its ID, nothing else changed (`git diff d58a74f 749bb21`: one line of `CHANGELOG.md`). CI ran on `d58a74f`; the package was built and install-tested on both.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the release commit `d58a74f`, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui`, first run (13:14–13:16) | exit 101 in the engine's unit tests (229 passed, 2 failed), before the UI part: `updates::tests::nothing_listening` got `Ok(0.6.0)` and `reads_the_latest_tag_and_sends_nothing_about_the_user` got `Err(Offline)`. `nothing_listening` binds a port, frees it and connects to it, and the other test's server, running at the same time, was given that port, so each got the other's answer. `engine/src/updates.rs` is unchanged since Check for Updates was built. Log: `.local/ci-ui-1.0.4-2026-10-25-run1.log` | Failed: a race between two tests, not the release |
+| The same, second run (13:16–13:33) | exit 0; 1,545 passed, 0 failed, 99 ignored; 84 scripts, 8,135 of 8,135 steps; the hostile suite clean (60 cases, `dns=production=0 control=11`, `glib_criticals=0`, 272 s); no `gtk4-broadwayd` left. Log: `.local/ci-ui-1.0.4-2026-10-25.log` | Pass |
+| `tools/release.py build` on `v1.0.4` at `d58a74f` (tagged locally, not pushed; 13:34–13:38) | makepkg's `check()`: 1,110 passed, 0 failed, 91 ignored; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.0.4` and holds no home-folder path; both license files are in the package, imap-proto 0.17.0 listed; the source tarball carries `vendor/imap-proto/` with the limit. Package SHA-256 `f3ed7817…a9a3` | Pass |
+| The clean-container install test on that package (`tools/install-test.sh`, 13:38–13:39) | pacman installed it with every dependency, no library missing; both license files; `install-smoke` 16/16 with the installed binary, its web process in WebKit's sandbox (`.local/install-test/20261025-133853`) | Pass |
+| `tools/release.py build` again on `v1.0.4`, moved to `749bb21` (still local; 14:16–14:22) | `check()`: 1,110 passed, 0 failed, 91 ignored; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.0.4`, holds no home-folder path, and is byte for byte the first build's; of the package's files only `.BUILDINFO`, `.MTREE` and `.PKGINFO` differ. Package SHA-256 `1af2ff5d…61f4` (`.local/release/1.0.4/`; the first one kept in `.local/release/1.0.4-first-d58a74f/`) | Pass |
+| The clean-container install test on the rebuilt package (14:22–14:23) | The same: every dependency, no library missing, both license files, `install-smoke` 16/16, the web process in WebKit's sandbox (`.local/install-test/20261025-142258`) | Pass |
+| Push, GitHub release and publishing the advisory (a private draft since 2026-10-25) | Not done: the owner's word | Not done |
+| Installed here | Not yet | Not verified |
+
 ### imap-proto's nesting limit — 2026-10-25
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--imap-proto-vendored-with-a-nesting-limit-2026-10-25). This machine; scripted IMAP servers on localhost and imap-proto on its own; no real account.
