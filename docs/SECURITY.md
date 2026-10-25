@@ -4,6 +4,8 @@ Synced: 2026-10-09
 
 Sealwax handles hostile content (every incoming message), long-lived credentials and private data. This page is the threat model and the rules every change must keep. M9 reviewed it rule by rule against the code as built through M8, with fuzzing and an advisory check (ML-093, [review](#review-and-fuzzing-m9)), and built three of the review's proposals ([hardening](#hardening-m9)).
 
+To report a vulnerability, use GitHub's private vulnerability reporting, as the [security policy](../SECURITY.md) at the repository's root describes.
+
 ## Threat model
 
 | Threat | Example | Defence |

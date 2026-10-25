@@ -46,7 +46,7 @@ Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.
 - [Install](INSTALL.md): installing, updating and uninstalling, in plain words; building from source
 - [What's new](CHANGELOG.md): each release
 - [Release notes for 1.0.0](docs/RELEASE_NOTES.md) (a draft until the sign-off)
-- [Security](docs/SECURITY.md): the threat model, the rules and the known limitations
+- [Security](docs/SECURITY.md): the threat model, the rules and the known limitations; to report a vulnerability, see the [security policy](SECURITY.md)
 - [Integrations](docs/INTEGRATIONS.md): Omarchy, Hyprland key bindings and menu entries, providers
 - [Microsoft sign-in setup](docs/OAUTH-SETUP.md): registering a client ID
 - [Building](docs/BUILD.md) and [testing](docs/TESTING.md)
