@@ -2,9 +2,11 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.0.4 — 2026-10-25
 
-- **A mail server can't make Sealwax quit any more:** when Sealwax fetches new mail, the server describes how each message's parts are nested inside one another. A description nested a few hundred levels deep, under a kilobyte, made Sealwax run out of room and quit at once, and again at each start while the server kept sending it. Anyone on the network could also send one in place of the server's first line on port 143, before the connection is encrypted. Sealwax now stops at 20 levels: such a message shows without its attachment clip. The fix is imap-proto's own, the library Sealwax reads IMAP with, applied to Sealwax's copy until an imap-proto release has it.
+A security update. Please update.
+
+- **A mail server can't make Sealwax quit any more:** when Sealwax fetches new mail, the server describes how each message's parts are nested inside one another. A description nested a few hundred levels deep, under a kilobyte, made Sealwax run out of room and quit at once, and again at each start while the server kept sending it. Anyone on the network could also send one in place of the server's first line on port 143, before the connection is encrypted. Sealwax now stops at 20 levels: such a message shows without its attachment clip. The fix is imap-proto's own, the library Sealwax reads IMAP with, applied to Sealwax's copy until an imap-proto release has it ([GHSA-wv8g-4592-g5r2](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-wv8g-4592-g5r2)).
 
 ## 1.0.3 — 2026-10-24
 
