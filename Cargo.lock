@@ -1860,8 +1860,6 @@ dependencies = [
 [[package]]
 name = "imap-proto"
 version = "0.17.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5ccf963d57074747b455398a1763d174da80bcaba6f51e3671a82252b531a68b"
 dependencies = [
  "nom 8.0.0",
 ]

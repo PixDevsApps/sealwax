@@ -31,3 +31,32 @@ diff -r target/lettre-check/lettre-0.11.23 vendor/lettre
 The only differences should be the three changes: `src/transport/smtp/client/mod.rs`'s constant and its comment, the two `read_response`s with their imports, and the two functions after `parse_response`.
 
 To drop it once lettre releases fixes for all three: remove both `[patch.crates-io]` entries and this folder, raise `lettre` in `engine/Cargo.toml` (and `spikes/s5-oauth/Cargo.toml`), update the lock files, and keep `engine/src/smtp/submit/tests.rs`'s cases for long replies, a line that never ends and a reply of many lines passing. To move it to a newer lettre, copy the new published crate here and make the same changes.
+
+## imap-proto 0.17.0, with upstream's nesting limit
+
+`vendor/imap-proto/` is [imap-proto](https://crates.io/crates/imap-proto) 0.17.0 exactly as published on crates.io (MIT or Apache-2.0, `LICENSE-MIT` and `LICENSE-APACHE`), the parser async-imap reads every IMAP response with, with two commits from imap-proto's own `main` applied (2026-10-25), both in `src/rfc3501/body_structure.rs`:
+
+1. [`f06dc5a0`](https://github.com/djc/imap-proto/commit/f06dc5a00c9376018fc74d155495f741468582b6) "Limit nesting depth of body extensions": a body extension may be nested at most 8 deep.
+2. [`b93964df`](https://github.com/djc/imap-proto/commit/b93964dfb41d6c31a1ccc6c753eed3bed4547994) "Limit nesting depth of body structures" ([djc/imap-proto#212](https://github.com/djc/imap-proto/pull/212)): a BODYSTRUCTURE may be nested at most 20 deep. Its `src/tests.rs` hunk is left out: it changes a test that came after 0.17.0.
+
+A deeper one is a parse failure, which async-imap reports as a reply it can't read; Sealwax then fetches the message without its BODYSTRUCTURE ([ADR-006 amendment](../docs/DECISIONS.md#adr-006-amendment--a-reply-async-imap-cant-read-no-longer-stops-a-folder-2026-10-22)). Without the limit, imap-proto parsed a BODYSTRUCTURE recursively however deep it was, and about 370 nested multiparts (well under 1 KB) overflowed the 2 MiB stack of the engine's threads in a release build and ended the whole process. A server could send that at any time, and anyone on the network path could send it in place of the greeting on a STARTTLS port (143), before the connection is encrypted. imap-proto's `main` has had the limit since 2026-10-12, but no release has it yet: `main` is 0.18.0, with changes async-imap 0.12 doesn't take.
+
+The workspace's `Cargo.toml` and `fuzz/Cargo.toml` use it through `[patch.crates-io]`; it is excluded from the workspace, so `cargo fmt`, Clippy and the tests don't run on it. Its own tests pass with both commits (97, including upstream's five new ones; run outside the repository, where its dev-dependency can be fetched).
+
+To check it, fetch the published crate, whose SHA-256 is the checksum the lock file had before the patch (`5ccf963d57074747b455398a1763d174da80bcaba6f51e3671a82252b531a68b`):
+
+```bash
+mkdir -p target/imap-proto-check && curl -sSL https://static.crates.io/crates/imap-proto/imap-proto-0.17.0.crate -o target/imap-proto-check/imap-proto-0.17.0.crate
+```
+
+```bash
+sha256sum target/imap-proto-check/imap-proto-0.17.0.crate && tar -xzf target/imap-proto-check/imap-proto-0.17.0.crate -C target/imap-proto-check
+```
+
+```bash
+diff -r target/imap-proto-check/imap-proto-0.17.0 vendor/imap-proto
+```
+
+The only difference should be in `src/rfc3501/body_structure.rs`, and it should be the two commits above (`b93964df` without its `src/tests.rs` hunk), applied in that order.
+
+To drop it once an imap-proto release has the limit and async-imap takes that release: remove both `[patch.crates-io]` entries and this folder, raise `async-imap` in the workspace's `Cargo.toml`, update the lock files, and keep `a_greeting_nested_too_deep_is_unreadable_not_a_crash` (`engine/src/imap/connection/tests.rs`) and `a_body_structure_nested_too_deep_costs_one_reconnect` (`engine/tests/sync.rs`) passing.

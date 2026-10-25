@@ -74,6 +74,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### imap-proto's nesting limit — 2026-10-25
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--imap-proto-vendored-with-a-nesting-limit-2026-10-25). This machine; scripted IMAP servers on localhost and imap-proto on its own; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| imap-proto 0.17.0 as published, a BODYSTRUCTURE nested `depth` deep parsed on a thread with a 2 MiB stack, release build | Bare `(`: 372 crash ("has overflowed its stack"), 370 parse; nested multiparts as a server writes them: 369 parse, 371 crash; nested message/rfc822: 536 parse, 538 crash; a debug build crashes at 60. Through async-imap on a two-worker runtime like the engine's: "fatal runtime error: stack overflow, aborting", exit 134 | Found |
+| `vendor/imap-proto/` against the published crate | The `.crate`'s SHA-256 is the old lock entry's checksum (`5ccf963d…`); `diff -r` differs only in `src/rfc3501/body_structure.rs`, where upstream's `f06dc5a0` applies cleanly and `b93964df` does without its `src/tests.rs` hunk | Pass |
+| imap-proto's own tests, outside the repository | 0.17.0: 92 passed; with both commits: 97 passed, 0 failed (the five new ones: the two limits, and 10,000-deep multiparts, messages and extensions) | Pass |
+| `a_greeting_nested_too_deep_is_unreadable_not_a_crash` (a STARTTLS port whose greeting is 10,000 `(` deep) and `a_body_structure_nested_too_deep_costs_one_reconnect` (a message nested 10,000 deep, all three fake-server flavours) | Pass with the vendored copy: `Unreadable("the greeting")`, nothing sent; the message costs one reconnect and arrives without its BODYSTRUCTURE. Against the published 0.17.0 (the patch pointed at it for the run): both test processes end with "fatal runtime error: stack overflow" (SIGABRT) | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; 11:00–11:03) | exit 0; 1,545 passed, 0 failed, 99 ignored; formatting and Clippy clean (the first run stopped at rustfmt's layout of the new test, fixed); no warning from imap-proto, lettre's four as before; `tools/test_licenses.py` 8 passed | Pass |
+| `CARGO_TARGET_DIR=target/fuzz cargo check --manifest-path fuzz/Cargo.toml --locked` | Builds with the vendored copy | Pass |
+| `python3 tools/licenses.py --offline` | imap-proto 0.17.0 listed as `[vendor/imap-proto in Sealwax's source]`, with its `LICENSE-MIT` | Pass |
+| Whether Dovecot or Stalwart pass a deeply nested message on in its BODYSTRUCTURE | Not run: starting the Docker testbed was refused in this session | Not verified |
+
 ### 1.0.3 — 2026-10-24
 
 The security release: [GHSA-vhrm-52f2-v9v3](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-vhrm-52f2-v9v3) and [GHSA-chx5-p5h3-52m5](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-chx5-p5h3-52m5). This machine.

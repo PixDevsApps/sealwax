@@ -73,6 +73,33 @@ async fn a_preauth_greeting_on_a_starttls_port_is_refused() {
     assert_eq!(server.await.unwrap(), "", "nothing at all was sent");
 }
 
+/// Anyone on the path before STARTTLS can send this in place of the greeting. Without
+/// imap-proto's nesting limit (vendor/README.md), parsing it overflowed the stack and ended the
+/// process.
+#[tokio::test]
+async fn a_greeting_nested_too_deep_is_unreadable_not_a_crash() {
+    let ca = test_ca();
+    let (listener, port) = bind().await;
+    let server = tokio::spawn(async move {
+        let mut peer = Peer::accept(&listener).await;
+        peer.send(&format!("* 1 FETCH (BODYSTRUCTURE {}", "(".repeat(10_000)))
+            .await;
+        peer.drain().await
+    });
+    let error = connect(
+        &endpoint(port, Security::StartTls),
+        PASSWORD,
+        ca.trust.client_config().unwrap(),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        matches!(error, ImapError::Unreadable("the greeting")),
+        "{error}"
+    );
+    assert_eq!(server.await.unwrap(), "", "nothing at all was sent");
+}
+
 #[tokio::test]
 async fn starttls_asks_capabilities_again_and_falls_back_to_login() {
     let ca = test_ca();

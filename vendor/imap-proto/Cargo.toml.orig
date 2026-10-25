@@ -1,0 +1,17 @@
+[package]
+name = "imap-proto"
+version = "0.17.0"
+edition = "2021"
+rust-version = "1.70"
+description = "IMAP protocol parser and data structures"
+documentation = "https://docs.rs/imap-proto"
+keywords = ["imap", "email"]
+categories = ["email", "network-programming", "parser-implementations"]
+repository = "https://github.com/djc/imap-proto"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+nom = "8"
+
+[dev-dependencies]
+assert_matches = "1.3"

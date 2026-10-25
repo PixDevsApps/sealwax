@@ -6,7 +6,7 @@ Usage: python3 tools/licenses.py [--output PATH] [--manifest-path Cargo.toml] [-
 The crates are the ones `cargo build -p sealwax` compiles for x86_64-unknown-linux-gnu: cargo tree
 -p sealwax -e normal,build walks Cargo.lock's graph with the binary's own features, so
 dev-dependencies, the spikes, devtools and fuzz, and features only they turn on, stay out.
-Sealwax's own crates are left out; the vendored lettre is in. cargo metadata gives each crate's
+Sealwax's own crates are left out; the vendored crates are in. cargo metadata gives each crate's
 licence expression and source folder, and the file holds every LICENSE*, LICENCE*, COPYING*,
 COPYRIGHT*, NOTICE* and UNLICENSE* file (and LICENSES/) found there, byte-identical texts once
 with the crates they belong to. A crate with no such file gets the standard text of its licence

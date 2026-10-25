@@ -752,8 +752,9 @@ fn last_header_fetch(fake: &Fake) -> String {
         .unwrap()
 }
 
-#[test]
-fn a_body_structure_that_cant_be_read_costs_one_reconnect() {
+/// A message whose BODYSTRUCTURE is `garble` costs one reconnect: the next pass asks without
+/// BODYSTRUCTURE, every message arrives, and a new message gets the full FETCH again.
+fn an_unreadable_structure_costs_one_reconnect(garble: Garble) {
     runtime().block_on(async {
         for flavor in Flavor::ALL {
             let fake = Fake::start(flavor).await;
@@ -767,9 +768,7 @@ fn a_body_structure_that_cant_be_read_costs_one_reconnect() {
                 world.append("INBOX", 0, &[]);
                 let uid = world.append("INBOX", 0, &["\\Seen"]);
                 world.append("INBOX", 0, &[]);
-                world
-                    .garbled
-                    .insert(("INBOX".into(), uid), Garble::Structure);
+                world.garbled.insert(("INBOX".into(), uid), garble);
             }
             unreadable_pass(&fake, &store, account, &options).await;
             let mut conn = fake.connect().await;
@@ -795,6 +794,16 @@ fn a_body_structure_that_cant_be_read_costs_one_reconnect() {
             store.close().unwrap();
         }
     });
+}
+
+#[test]
+fn a_body_structure_that_cant_be_read_costs_one_reconnect() {
+    an_unreadable_structure_costs_one_reconnect(Garble::Structure);
+}
+
+#[test]
+fn a_body_structure_nested_too_deep_costs_one_reconnect() {
+    an_unreadable_structure_costs_one_reconnect(Garble::Deep);
 }
 
 #[test]

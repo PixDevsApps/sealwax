@@ -44,6 +44,7 @@ cargo run -p sealwax -- --version
 | `email-spike-s1` … `email-spike-s7` | `spikes/<id>-<topic>/` | M0 measurement code, one crate per spike (workspace glob `spikes/*`) |
 | `sealwax-fuzz` | `fuzz/` | libFuzzer targets (M9, ML-093); a workspace of its own, excluded from this one, built by `tools/fuzz.sh` |
 | `lettre` (patched) | `vendor/lettre/` | lettre 0.11.23 with a 16 KiB reply-line limit, used through `[patch.crates-io]` here and in `fuzz/`; excluded from the workspace ([vendor/README.md](../vendor/README.md), ADR-015 amendment of 2026-10-13) |
+| `imap-proto` (patched) | `vendor/imap-proto/` | imap-proto 0.17.0 with upstream's nesting limit for BODYSTRUCTURE and body extensions, used through `[patch.crates-io]` here and in `fuzz/`; excluded from the workspace ([vendor/README.md](../vendor/README.md), ADR-006 amendment of 2026-10-25) |
 
 Release profile: thin LTO, one codegen unit. The M0 spike crates keep their `email-spike-*` names (ADR-010).
 

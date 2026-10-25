@@ -156,6 +156,9 @@ pub struct World {
 pub enum Garble {
     /// A multipart BODYSTRUCTURE with a number where a part's subtype belongs.
     Structure,
+    /// A BODYSTRUCTURE of multiparts nested 10,000 deep: past imap-proto's limit, and without
+    /// it, past a 2 MiB stack.
+    Deep,
     /// A parenthesized list inside FLAGS, whatever else is asked for.
     Flags,
 }
@@ -1359,6 +1362,11 @@ fn uid_command(
                 (true, Some(Garble::Structure)) => "BODYSTRUCTURE ((\"text\" 7 1)\
                      (\"text\" \"html\" NIL NIL NIL \"7bit\" 1 1) \"alternative\") "
                     .to_owned(),
+                (true, Some(Garble::Deep)) => format!(
+                    "BODYSTRUCTURE {}(\"text\" \"plain\" NIL NIL NIL \"7bit\" 1 1){} ",
+                    "(".repeat(10_000),
+                    " \"mixed\")".repeat(10_000)
+                ),
                 (true, _) => format!(
                     "BODYSTRUCTURE (\"text\" \"plain\" (\"charset\" \"utf-8\") NIL NIL \"7bit\" {} 1) ",
                     TEXT.len()
