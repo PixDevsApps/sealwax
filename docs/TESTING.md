@@ -74,6 +74,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### A large message whose BODYSTRUCTURE can't be read comes whole — 2026-10-26
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--a-large-message-whose-bodystructure-cant-be-read-comes-whole-2026-10-26). This machine; scripted IMAP servers on 127.0.0.1; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `a_large_message_whose_structure_cant_be_read_comes_whole_on_the_next_connection` (`engine/src/imap/bodies/tests.rs`: two messages of 12.4 MB, the first's BODYSTRUCTURE garbled as in issue #20's kind) | The first connection ends with `Structure` naming that message and answers nothing; with it in the set, the second fetches it whole without asking for its structure, then the other by its structure; both stored whole, only `BODY.PEEK` | Pass |
+| `a_large_message_whose_structure_cant_be_read_comes_whole_after_one_reconnect` (`engine/tests/bodies.rs`, through the engine service: three large messages, the middle one garbled) | All three answered `Ok` and stored as the server has them; the garbled one's BODYSTRUCTURE asked once and its body once; two logins (one reconnect). With the worker's fallback turned off for one run, the two messages from the garbled one on end as `Other` | Pass |
+| The body module's other tests (11) and the service's first body test, after the setup moved into a helper | Pass | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; 12:41–12:44) | exit 0; 1,549 passed, 0 failed, 99 ignored; formatting and Clippy clean (the first two runs stopped at rustfmt's layout of the new tests and a needless borrow in the moved setup, fixed); lettre's four warnings as before; `tools/test_licenses.py` 8 passed | Pass |
+| A real server whose BODYSTRUCTURE imap-proto can't read | Not run: none known; issue #20's reply is not known | Not verified |
+
 ### A staggered connect to a host's addresses — 2026-10-26
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--a-hosts-addresses-tried-in-a-staggered-race-2026-10-26). This machine; listeners on 127.0.0.1 only; no real account and no outside network.

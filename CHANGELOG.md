@@ -4,6 +4,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 
 ## Not released yet
 
+- **Large messages open even when the server describes them oddly:** Sealwax downloads a message over 10 MB without its attachments, which needs the server's description of how the message is put together. When Sealwax couldn't read that description, the message didn't open, and neither did the other large messages asked for with it. Now such a message is downloaded whole instead, after a moment's reconnect, and the others open as usual.
 - **No more waiting on an address that doesn't answer:** a mail server's name often leads to several addresses, usually an IPv6 one first. When the network dropped everything sent to that first address, as a broken IPv6 route does, Sealwax waited on it until its time to connect ran out and said the server didn't answer in time, without trying the others. Sealwax now starts on the next address after a quarter of a second while the first goes on trying, and uses whichever answers first, for incoming and outgoing mail alike.
 
 ## 1.0.4 — 2026-10-25

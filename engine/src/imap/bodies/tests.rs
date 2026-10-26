@@ -222,6 +222,7 @@ async fn small_messages_come_whole_in_one_round_trip_with_peek_only() {
         scratch.sink(),
         &scratch.folder_sync(),
         &targets,
+        &HashSet::new(),
         1_790_000_500,
         |id, result| answers.push((id, result)),
     )
@@ -345,6 +346,7 @@ async fn a_large_message_comes_as_its_text_parts_and_its_attachment_on_demand() 
         scratch.sink(),
         &scratch.folder_sync(),
         &targets,
+        &HashSet::new(),
         1_790_000_500,
         |id, result| answers.push((id, result)),
     )
@@ -399,6 +401,105 @@ async fn a_large_message_comes_as_its_text_parts_and_its_attachment_on_demand() 
     assert_read_only(&second);
 }
 
+/// A multipart BODYSTRUCTURE with a number where a part's subtype belongs: imap-proto fails the
+/// whole FETCH response (issue #20's kind).
+const GARBLED: &str =
+    "((\"text\" 7 1)(\"text\" \"html\" NIL NIL NIL \"7bit\" 1 1) \"alternative\")";
+
+#[tokio::test]
+async fn a_large_message_whose_structure_cant_be_read_comes_whole_on_the_next_connection() {
+    let scratch = Scratch::new();
+    let targets = scratch.headers(&[(9, 12_400_000), (10, 12_400_000)]);
+    let ca = test_ca();
+    let config = ca.server.clone();
+    let (listener, port) = bind().await;
+    let server = tokio::spawn(async move {
+        let mut peer = logged_in(&listener, config.clone()).await;
+        examined(&mut peer, UIDVALIDITY).await;
+        let tag = peer.expect("UID FETCH 9 (UID BODYSTRUCTURE)").await;
+        peer.send(&format!(
+            "* 3 FETCH (UID 9 BODYSTRUCTURE {GARBLED})\r\n{tag} OK fetched\r\n"
+        ))
+        .await;
+        let first = peer.drain().await;
+        let mut peer = logged_in(&listener, config).await;
+        examined(&mut peer, UIDVALIDITY).await;
+        let tag = peer.expect("UID FETCH 9 (UID BODY.PEEK[])").await;
+        peer.send(&format!(
+            "* 3 FETCH (UID 9 {})\r\n{tag} OK fetched\r\n",
+            literal("BODY[]", &small(9))
+        ))
+        .await;
+        let tag = peer.expect("UID FETCH 10 (UID BODYSTRUCTURE)").await;
+        peer.send(&format!(
+            "* 4 FETCH (UID 10 BODYSTRUCTURE (\"TEXT\" \"PLAIN\" (\"CHARSET\" \"utf-8\") NIL NIL \
+             \"7BIT\" 12400000 1 NIL NIL NIL NIL))\r\n{tag} OK fetched\r\n"
+        ))
+        .await;
+        let tag = peer.expect("UID FETCH 10 (UID BODY.PEEK[])").await;
+        peer.send(&format!(
+            "* 4 FETCH (UID 10 {})\r\n{tag} OK fetched\r\n",
+            literal("BODY[]", &small(10))
+        ))
+        .await;
+        (first, peer.drain().await)
+    });
+    let mut whole = HashSet::new();
+    let mut answers: Answers = Vec::new();
+    let mut conn = client(port, &ca.trust).await;
+    let error = fetch_bodies(
+        &mut conn,
+        scratch.sink(),
+        &scratch.folder_sync(),
+        &targets,
+        &whole,
+        0,
+        |id, result| answers.push((id, result)),
+    )
+    .await
+    .unwrap_err();
+    drop(conn);
+    let BodyFetchError::Structure(message) = error else {
+        panic!("{error}");
+    };
+    assert_eq!(message, targets[0].message);
+    assert!(answers.is_empty(), "the caller answers what is left");
+
+    whole.insert(message);
+    let mut conn = client(port, &ca.trust).await;
+    fetch_bodies(
+        &mut conn,
+        scratch.sink(),
+        &scratch.folder_sync(),
+        &targets,
+        &whole,
+        0,
+        |id, result| answers.push((id, result)),
+    )
+    .await
+    .unwrap();
+    drop(conn);
+    assert_eq!(
+        answers,
+        [(targets[0].message, Ok(())), (targets[1].message, Ok(()))]
+    );
+    for (target, uid) in targets.iter().zip([9, 10]) {
+        assert_eq!(scratch.target(target.message).body_state, BodyState::Full);
+        assert_eq!(
+            scratch
+                .store
+                .raw_message(target.message)
+                .recv()
+                .await
+                .unwrap(),
+            Some(small(uid).into_bytes())
+        );
+    }
+    let (first, second) = server.await.unwrap();
+    assert_read_only(&first);
+    assert_read_only(&second);
+}
+
 #[tokio::test]
 async fn a_changed_uidvalidity_answers_gone_without_fetching() {
     let scratch = Scratch::new();
@@ -418,6 +519,7 @@ async fn a_changed_uidvalidity_answers_gone_without_fetching() {
         scratch.sink(),
         &scratch.folder_sync(),
         &targets,
+        &HashSet::new(),
         0,
         |id, result| answers.push((id, result)),
     )
@@ -463,6 +565,7 @@ async fn a_vanished_uid_is_gone_and_the_rest_is_stored() {
         scratch.sink(),
         &scratch.folder_sync(),
         &targets,
+        &HashSet::new(),
         0,
         |id, result| answers.push((id, result)),
     )
@@ -512,6 +615,7 @@ async fn a_connection_cut_mid_fetch_leaves_the_row_unchanged() {
         scratch.sink(),
         &scratch.folder_sync(),
         &targets,
+        &HashSet::new(),
         0,
         |id, result| answers.push((id, result)),
     )

@@ -1,6 +1,7 @@
 //! `Command::FetchBodies` through the engine service, offline, against a scripted IMAP server
 //! on 127.0.0.1: one `BodyFetched` per message, requests coalesced, a vanished message `Gone`,
-//! a refused login `NeedsSignIn`, and `Command::Storage` enforcing the disk cap.
+//! a refused login `NeedsSignIn`, `Command::Storage` enforcing the disk cap, and a large message
+//! whose BODYSTRUCTURE can't be read fetched whole after one reconnect.
 
 mod mock;
 
@@ -8,7 +9,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint, Security};
 use sealwax_domain::config::Storage;
-use sealwax_domain::model::{FolderRole, MessageId};
+use sealwax_domain::model::{FolderId, FolderRole, MessageId};
 use sealwax_engine::api::{BodyError, Command, Event, Password};
 use sealwax_engine::autoconfig::DetectOptions;
 use sealwax_engine::service::{Engine, EngineConfig, SecretBackend, SignInOptions, SyncConfig};
@@ -16,7 +17,7 @@ use sealwax_infrastructure::accounts::AccountPaths;
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{BodyState, NewMessage, Store, StoreOptions};
 use sealwax_infrastructure::xdg::SealwaxDirs;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -38,6 +39,9 @@ fn raw(uid: u32) -> String {
 struct Server {
     /// UID → message in INBOX.
     messages: HashMap<u32, String>,
+    /// UIDs whose BODYSTRUCTURE imap-proto can't read: a multipart with a number where a part's
+    /// subtype belongs.
+    garbled: HashSet<u32>,
     refuse: bool,
     commands: Vec<String>,
 }
@@ -118,17 +122,29 @@ async fn serve(tls: &mock::Tls, state: Arc<Mutex<Server>>) -> u16 {
                         format!("{tag} OK done\r\n")
                     } else if let Some(fetch) = upper.strip_prefix("UID FETCH ") {
                         let (set, items) = fetch.split_once(' ').unwrap();
-                        assert_eq!(items, "(UID BODY.PEEK[])");
+                        let structure = items == "(UID BODYSTRUCTURE)";
+                        assert!(structure || items == "(UID BODY.PEEK[])", "{rest}");
                         let state = state.lock().unwrap();
                         let mut reply = String::new();
                         for (n, uid) in uids(set).into_iter().enumerate() {
-                            if let Some(message) = state.messages.get(&uid) {
-                                reply.push_str(&format!(
-                                    "* {} FETCH (UID {uid} BODY[] {{{}}}\r\n{message})\r\n",
-                                    n + 1,
+                            let Some(message) = state.messages.get(&uid) else {
+                                continue;
+                            };
+                            let attribute = match (structure, state.garbled.contains(&uid)) {
+                                (true, true) => "BODYSTRUCTURE ((\"text\" 7 1)(\"text\" \"html\" \
+                                     NIL NIL NIL \"7bit\" 1 1) \"alternative\")"
+                                    .to_owned(),
+                                (true, false) => format!(
+                                    "BODYSTRUCTURE (\"text\" \"plain\" (\"charset\" \"utf-8\") \
+                                     NIL NIL \"7bit\" {} 1)",
                                     message.len()
-                                ));
-                            }
+                                ),
+                                (false, _) => format!("BODY[] {{{}}}\r\n{message}", message.len()),
+                            };
+                            reply.push_str(&format!(
+                                "* {} FETCH (UID {uid} {attribute})\r\n",
+                                n + 1
+                            ));
                         }
                         format!("{reply}{tag} OK done\r\n")
                     } else if upper.starts_with("LOGOUT") {
@@ -201,16 +217,20 @@ fn bodies_fetched(engine: &Engine, wait: Duration) -> Vec<(MessageId, Result<(),
     out
 }
 
-#[test]
-fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
+/// The engine with one IMAP account on the scripted server, synced and gone quiet.
+struct Running {
+    _runtime: tokio::runtime::Runtime,
+    _tls: mock::Tls,
+    _root: tempfile::TempDir,
+    engine: Engine,
+    store: Arc<Store>,
+    blobs: BlobStore,
+    inbox: FolderId,
+}
+
+fn running(server: &Arc<Mutex<Server>>) -> Running {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     let tls = mock::tls();
-    let server = Arc::new(Mutex::new(Server {
-        messages: [(1, raw(1)), (2, raw(2)), (4, raw(4))]
-            .into_iter()
-            .collect(),
-        ..Server::default()
-    }));
     let port = runtime.block_on(serve(&tls, server.clone()));
     let root = tempfile::tempdir().unwrap();
     let dirs = SealwaxDirs::under(root.path());
@@ -277,7 +297,7 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         }
         _ => None,
     });
-    settle(&server, Duration::from_millis(300));
+    settle(server, Duration::from_millis(300));
     let inbox = store
         .folders()
         .recv_blocking()
@@ -287,6 +307,35 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         .find(|folder| folder.account == account && folder.role == FolderRole::Inbox)
         .unwrap()
         .id;
+    Running {
+        _runtime: runtime,
+        _tls: tls,
+        _root: root,
+        engine,
+        store,
+        blobs,
+        inbox,
+    }
+}
+
+#[test]
+fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
+    let server = Arc::new(Mutex::new(Server {
+        messages: [(1, raw(1)), (2, raw(2)), (4, raw(4))]
+            .into_iter()
+            .collect(),
+        ..Server::default()
+    }));
+    let Running {
+        _runtime,
+        _tls,
+        _root,
+        engine,
+        store,
+        blobs,
+        inbox,
+    } = running(&server);
+    let commands = engine.commands();
     let ids: Vec<MessageId> = store
         .ingest(
             [1, 2, 3, 4]
@@ -411,5 +460,82 @@ fn bodies_are_fetched_once_answered_per_message_and_kept_under_the_cap() {
         .join("\n")
         .to_ascii_uppercase();
     assert!(!received.contains("BODY[") && !received.contains(" STORE"));
+    engine.stop();
+}
+
+#[test]
+fn a_large_message_whose_structure_cant_be_read_comes_whole_after_one_reconnect() {
+    let server = Arc::new(Mutex::new(Server {
+        messages: [(5, raw(5)), (6, raw(6)), (7, raw(7))]
+            .into_iter()
+            .collect(),
+        garbled: HashSet::from([6]),
+        ..Server::default()
+    }));
+    let Running {
+        _runtime,
+        _tls,
+        _root,
+        engine,
+        store,
+        inbox,
+        ..
+    } = running(&server);
+    let large = 12_000_000;
+    let ids: Vec<MessageId> = store
+        .ingest(
+            [5, 6, 7]
+                .into_iter()
+                .map(|uid| NewMessage {
+                    folder: inbox,
+                    uid: Some(uid),
+                    date: 1_790_000_000 + i64::from(uid),
+                    size: large,
+                    snippet: format!("Preview {uid}"),
+                    body_state: BodyState::Partial,
+                    ..NewMessage::default()
+                })
+                .collect(),
+        )
+        .recv_blocking()
+        .unwrap()
+        .ids
+        .into_iter()
+        .map(Option::unwrap)
+        .collect();
+    server.lock().unwrap().commands.clear();
+
+    engine
+        .commands()
+        .send_blocking(Command::FetchBodies {
+            messages: ids.clone(),
+        })
+        .unwrap();
+    let mut answers = bodies_fetched(&engine, Duration::from_secs(2));
+    answers.sort_by_key(|(id, _)| *id);
+    assert_eq!(
+        answers,
+        ids.iter().map(|id| (*id, Ok(()))).collect::<Vec<_>>()
+    );
+    for (id, uid) in ids.iter().zip([5, 6, 7]) {
+        assert_eq!(
+            store.raw_message(*id).recv_blocking().unwrap(),
+            Some(raw(uid).into_bytes())
+        );
+    }
+    let received = server.lock().unwrap().commands.clone();
+    let asked = |command: &str| received.iter().filter(|seen| *seen == command).count();
+    assert_eq!(asked("UID FETCH 6 (UID BODYSTRUCTURE)"), 1, "{received:?}");
+    assert_eq!(asked("UID FETCH 6 (UID BODY.PEEK[])"), 1, "{received:?}");
+    assert_eq!(asked("UID FETCH 5 (UID BODY.PEEK[])"), 1, "{received:?}");
+    assert_eq!(asked("UID FETCH 7 (UID BODYSTRUCTURE)"), 1, "{received:?}");
+    assert_eq!(
+        received
+            .iter()
+            .filter(|command| command.starts_with("AUTHENTICATE"))
+            .count(),
+        2,
+        "one reconnect: {received:?}"
+    );
     engine.stop();
 }

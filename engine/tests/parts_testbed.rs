@@ -19,6 +19,7 @@ use sealwax_domain::model::FolderId;
 use sealwax_engine::imap::{self, bodies};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{BodyState, NewAccount, Store, StoreOptions, ViewSpec};
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -252,9 +253,17 @@ fn parts_and_originals_on_every_server() {
             };
             let mut conn = login(server, Security::Tls, USER).await;
             let mut answers = Vec::new();
-            bodies::fetch_bodies(&mut conn, sink, &sync, &targets, 0, |id, result| {
-                answers.push((id, result));
-            })
+            bodies::fetch_bodies(
+                &mut conn,
+                sink,
+                &sync,
+                &targets,
+                &HashSet::new(),
+                0,
+                |id, result| {
+                    answers.push((id, result));
+                },
+            )
             .await
             .unwrap();
             assert_eq!(answers, [(id, Ok(()))], "{}", server.name);
