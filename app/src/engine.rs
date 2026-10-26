@@ -4,6 +4,7 @@
 //! through the mailbox.
 
 use crate::window::AccountStatus;
+use sealwax_domain::account::LoginFailure;
 use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{Event, SyncStatus};
 use sealwax_engine::autoconfig::DetectOptions;
@@ -84,6 +85,8 @@ fn sidebar_status(status: SyncStatus) -> AccountStatus {
         SyncStatus::Syncing => AccountStatus::Syncing,
         SyncStatus::Synced => AccountStatus::Synced,
         SyncStatus::QuotaFull => AccountStatus::QuotaFull,
+        // Signing in again doesn't help: only the organization's admin can turn it on.
+        SyncStatus::NeedsSignIn(LoginFailure::SmtpAuthDisabled) => AccountStatus::SendingOff,
         SyncStatus::NeedsSignIn(_) => AccountStatus::NeedsSignIn,
         SyncStatus::Offline(_) => AccountStatus::Offline,
         SyncStatus::CertificateChanged => AccountStatus::CertificateChanged,
@@ -93,7 +96,6 @@ fn sidebar_status(status: SyncStatus) -> AccountStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::account::LoginFailure;
     use sealwax_domain::model::FolderId;
 
     #[test]
@@ -118,6 +120,11 @@ mod tests {
         assert_eq!(
             failed(LoginFailure::WrongPassword),
             Some((account, AccountStatus::NeedsSignIn))
+        );
+        assert_eq!(
+            failed(LoginFailure::SmtpAuthDisabled),
+            Some((account, AccountStatus::SendingOff)),
+            "signing in again wouldn't help"
         );
         assert_eq!(
             failed(LoginFailure::Unreachable),

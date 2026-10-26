@@ -92,6 +92,9 @@ pub enum AccountStatus {
     NeedsSignIn,
     /// The server's certificate no longer verifies; Sealwax stopped connecting (ML-048).
     CertificateChanged,
+    /// Microsoft 365 refuses SMTP AUTH for the mailbox, so sends wait; reading still syncs
+    /// (issue #21).
+    SendingOff,
     /// The server says the mailbox is full; reading still syncs (ML-048).
     QuotaFull,
 }
@@ -104,13 +107,14 @@ impl AccountStatus {
             Self::Offline => "offline",
             Self::NeedsSignIn => "needs sign-in",
             Self::CertificateChanged => "bad certificate",
+            Self::SendingOff => "sending off",
             Self::QuotaFull => "mailbox full",
         }
     }
 
     /// The status dot's colour (`style.css`): accent when synced, plain while syncing, warning
-    /// while Sealwax keeps trying or still syncs (offline, mailbox full), error when it stopped
-    /// until the user acts (sign-in, certificate).
+    /// while Sealwax keeps trying or still syncs (offline, sending off, mailbox full), error when
+    /// it stopped until the user acts (sign-in, certificate).
     fn class(self) -> Option<&'static str> {
         match self {
             Self::Synced => Some("sw-synced"),
@@ -118,6 +122,7 @@ impl AccountStatus {
             Self::Offline => Some("sw-offline"),
             Self::NeedsSignIn => Some("sw-attention"),
             Self::CertificateChanged => Some("sw-certificate"),
+            Self::SendingOff => Some("sw-sending"),
             Self::QuotaFull => Some("sw-quota"),
         }
     }
@@ -338,6 +343,8 @@ impl SidebarModel {
             "bad certificate"
         } else if has(AccountStatus::NeedsSignIn) {
             "sign-in needed"
+        } else if has(AccountStatus::SendingOff) {
+            "sending off"
         } else if has(AccountStatus::QuotaFull) {
             "mailbox full"
         } else if has(AccountStatus::Offline) {
@@ -2114,6 +2121,12 @@ mod tests {
                 AccountStatus::CertificateChanged,
                 "bad certificate",
                 Some("sw-certificate"),
+                true,
+            ),
+            (
+                AccountStatus::SendingOff,
+                "sending off",
+                Some("sw-sending"),
                 true,
             ),
             (

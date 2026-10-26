@@ -875,6 +875,21 @@ async fn refused_logins_are_auth_failures_and_nothing_else_is_sent() {
     assert_eq!(error.send_error(&[]), SendError::Offline);
 }
 
+#[tokio::test]
+async fn smtp_auth_turned_off_waits_for_the_account() {
+    let server = Server::start(vec![Script {
+        auth: vec![
+            "535 5.7.139 Authentication unsuccessful, the user's SmtpClientAuthentication is \
+             disabled for the mailbox. Visit https://aka.ms/smtp_auth_disabled for more information.",
+        ],
+        ..Script::default()
+    }])
+    .await;
+    let error = server.connect().await.unwrap_err();
+    assert_eq!(error, SubmitError::Auth(LoginFailure::SmtpAuthDisabled));
+    assert_eq!(error.failure(), SubmitFailure::Account);
+}
+
 fn fetched(token: &str, refreshed: bool) -> Fetched {
     Fetched {
         token: Zeroizing::new(token.to_owned()),

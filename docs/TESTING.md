@@ -74,6 +74,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### SMTP AUTH turned off after setup: "sending off" — 2026-10-26
+
+[ADR-015 amendment](DECISIONS.md#adr-015-amendment--smtp-auth-turned-off-after-setup-holds-the-sends-2026-10-26). This machine; a scripted SMTP server on 127.0.0.1 and the headless UI suites (Broadway, display 19); no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `smtp_auth_turned_off_waits_for_the_account` (`engine/src/smtp/submit/tests.rs`: the login refused with Microsoft's "535 5.7.139 … the user's SmtpClientAuthentication is disabled for the mailbox") | `SubmitError::Auth(SmtpAuthDisabled)`, failure `Account` (was `Retry`) | Pass |
+| The app's tests: the sidebar's words and dots (`sending off`, the warning dot), `NeedsSignIn(SmtpAuthDisabled)` → `SendingOff`, the banner's order (after the sign-ins, before the sends that may have gone) and `sending_turned_off_says_who_can_turn_it_on` | Pass | Pass |
+| CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui`, first run (12:49–13:01) | 1,551 passed, 0 failed, 99 ignored; every self-test script up to `triage-keys` passed, which failed at step 186: the reader's `y` after an archive was lost and every later action-log step was one behind (245 of 264), the P2 flake in the follow-up table. CI stops at a failing script, so the scripts after it and the hostile suite didn't run | Fail (flake) |
+| `triage-keys` alone, three times (`tools/headless.sh 19 … --self-test tests/selftest/triage-keys.sealwax-test`) | 264 of 264, three times | Pass |
+| CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui`, again (13:02–13:15) | exit 0; 1,551 passed, 0 failed, 99 ignored; all 84 self-test scripts, 8,135 of 8,135 steps (`status-banners` 261, `triage-keys` 264, `window-sidebar` 72); the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 272 s; formatting and Clippy clean; no `gtk4-broadwayd` left | Pass |
+| A live Microsoft 365 tenant with SMTP AUTH turned off after the account was added | Not run | Not verified |
+
 ### A large message whose BODYSTRUCTURE can't be read comes whole — 2026-10-26
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--a-large-message-whose-bodystructure-cant-be-read-comes-whole-2026-10-26). This machine; scripted IMAP servers on 127.0.0.1; no real account.

@@ -24,6 +24,8 @@ pub enum Attention {
     CertificateChanged { name: String, host: String },
     /// The server refused the account's password (`browser` false) or its Microsoft sign-in.
     SignIn { name: String, browser: bool },
+    /// Microsoft 365 refuses SMTP AUTH for the account's mailbox, so its sends wait (issue #21).
+    SendingOff { name: String },
     /// The server says the account's mailbox is full.
     QuotaFull { name: String },
     /// A message may have been sent (Sealwax stopped while sending it, or the server's reply
@@ -77,7 +79,8 @@ impl Attention {
     pub fn tone(&self) -> Tone {
         match self {
             Self::CertificateChanged { .. } | Self::SignIn { .. } => Tone::Error,
-            Self::QuotaFull { .. }
+            Self::SendingOff { .. }
+            | Self::QuotaFull { .. }
             | Self::UncertainSend { .. }
             | Self::RulesFailed { .. }
             | Self::Offline { .. } => Tone::Warning,
@@ -94,6 +97,7 @@ impl Attention {
                 "dialog-warning-symbolic",
             ],
             Self::SignIn { .. } => &["dialog-password-symbolic", "dialog-warning-symbolic"],
+            Self::SendingOff { .. } => &["mail-send-symbolic", "dialog-warning-symbolic"],
             Self::QuotaFull { .. } => &["drive-harddisk-symbolic", "dialog-warning-symbolic"],
             Self::UncertainSend { .. } => &["mail-send-symbolic", "dialog-warning-symbolic"],
             Self::RulesFailed { .. } => &["dialog-warning-symbolic"],
@@ -111,6 +115,7 @@ impl Attention {
                 format!("Sealwax stopped connecting to {name}")
             }
             Self::SignIn { name, .. } => format!("{name} needs you to sign in again"),
+            Self::SendingOff { name } => format!("Sending is turned off for {name}"),
             Self::QuotaFull { name } => format!("{name}'s mailbox is full"),
             Self::UncertainSend { .. } => "A message may have been sent".to_owned(),
             Self::RulesFailed { name, .. } => crate::rules::text::failed_title(name),
@@ -138,6 +143,12 @@ impl Attention {
             Self::SignIn { browser: false, .. } => "The server stopped accepting the password \
                                                     Sealwax has. Sealwax keeps your mail; \
                                                     nothing syncs until you type it again."
+                .to_owned(),
+            Self::SendingOff { .. } => "Microsoft 365 has SMTP AUTH, which mail apps send \
+                                        with, turned off for this mailbox or its organization, \
+                                        so your messages wait in the outbox. Ask your \
+                                        organization's admin to turn it on for your mailbox; \
+                                        Sealwax tries again by itself."
                 .to_owned(),
             Self::QuotaFull { .. } => "The server has no room for more mail: new messages may \
                                        bounce, and changes can't be saved. Delete mail you \
@@ -190,7 +201,7 @@ impl Attention {
             ],
             Self::UncertainSend { .. } => [None, Some(("Choose…", BannerAction::Decide))],
             Self::RulesFailed { .. } => [None, Some(("Open File", BannerAction::OpenRules))],
-            Self::QuotaFull { .. } | Self::Offline { .. } => [None, None],
+            Self::SendingOff { .. } | Self::QuotaFull { .. } | Self::Offline { .. } => [None, None],
         }
     }
 
@@ -200,6 +211,7 @@ impl Attention {
             self,
             Self::CertificateChanged { .. }
                 | Self::SignIn { .. }
+                | Self::SendingOff { .. }
                 | Self::QuotaFull { .. }
                 | Self::RulesFailed { .. }
         )
@@ -455,6 +467,23 @@ mod tests {
             body(&Attention::NoKeyring, std::slice::from_ref(&offline))
                 .ends_with(" 1 more problem waits after this one.")
         );
+    }
+
+    #[test]
+    fn sending_turned_off_says_who_can_turn_it_on() {
+        let work = Attention::SendingOff {
+            name: "Work".to_owned(),
+        };
+        assert_eq!(work.title(), "Sending is turned off for Work");
+        assert!(work.body().contains("SMTP AUTH"));
+        assert!(work.body().contains("organization's admin"));
+        assert!(work.body().ends_with("Sealwax tries again by itself."));
+        assert_eq!(work.tone(), Tone::Warning);
+        assert_eq!(work.buttons(), [None, None]);
+        let home = Attention::SendingOff {
+            name: "Home".to_owned(),
+        };
+        assert!(body(&work, &[home]).ends_with(" 1 more account has the same problem."));
     }
 
     #[test]

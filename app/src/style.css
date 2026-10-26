@@ -394,6 +394,7 @@ row.sw-sidebar-heading:active {
 /* Warning while Sealwax keeps trying or still syncs; error when it stopped until the user acts
    (ML-048). */
 .sw-status-dot.sw-offline,
+.sw-status-dot.sw-sending,
 .sw-status-dot.sw-quota {
   background: var(--warning-color);
 }

@@ -125,7 +125,8 @@ pub enum SubmitFailure {
     /// Nothing was delivered; send again later (offline, a timeout, a 4xx reply).
     Retry,
     /// The account's login needs the user: a refused password or token, a certificate that
-    /// doesn't verify, a server without TLS. The send waits.
+    /// doesn't verify, a server without TLS, or SMTP AUTH turned off by an admin (issue #21).
+    /// The send waits.
     Account,
     /// It can't be sent as it is: back to the user as a draft whose send failed.
     Refuse,
@@ -144,6 +145,7 @@ impl SubmitError {
                 LoginFailure::WrongPassword
                 | LoginFailure::OAuthRequired
                 | LoginFailure::AppPasswordRequired
+                | LoginFailure::SmtpAuthDisabled
                 | LoginFailure::Certificate
                 | LoginFailure::NoTls,
             ) => SubmitFailure::Account,

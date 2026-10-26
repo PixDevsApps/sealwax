@@ -1192,6 +1192,13 @@ Built for rules ([ADR-020](#adr-020--folders-and-rules-sieve-run-by-sealwax-2026
 
 **Consequence:** the patch is no longer one constant. Moving to a newer lettre means making all three changes again, and dropping the patch needs lettre to fix all three. The endless-line and many-lines tests in `engine/src/smtp/submit/tests.rs` hold the behaviour. The many-lines test checks the time taken, since a timeout can't catch a parse that never yields.
 
+### ADR-015 amendment — SMTP AUTH turned off after setup holds the sends (2026-10-26)
+
+Built on the user's "Start item 5's small 1.0.x fixes, one commit each, as PLAN.md describes" (2026-10-26), the follow-up to [issue #21](https://github.com/PixDevsApps/sealwax/issues/21): since 1.0.1 setup reads Microsoft 365's refusal ("SmtpClientAuthentication is disabled") as `LoginFailure::SmtpAuthDisabled` and says so, but when an admin turned SMTP AUTH off after the account was added, sending took the same refusal as a passing failure (`SubmitFailure::Retry`): the message waited and was tried again and again, and nothing told the user why.
+
+- **Decision:** a submission login refused as `SmtpAuthDisabled` is an account problem (`SubmitFailure::Account`), as a refused password is: the sends wait and are tried again with the outbox's backoff, and the account's status is `NeedsSignIn(SmtpAuthDisabled)` until a send gets through. The app shows that as its own state, **sending off**, not "needs sign-in", since signing in again can't help: the warning dot (reading still syncs) and a banner in the warning tint, "Sending is turned off for <account>", which says only the organization's admin can turn SMTP AUTH on and that Sealwax tries again by itself, with no button. It comes after the sign-ins and before the sends that may have gone out ([DESIGN.md](DESIGN.md)).
+- **Consequence:** the banner stays until a send gets through, after the admin's change and the next retry; an IMAP pass doesn't clear it. A Microsoft account whose token is refused this way is refreshed once first, as before. Tests: `smtp_auth_turned_off_waits_for_the_account` (`engine/src/smtp/submit/tests.rs`), and in the app the sidebar's words, the status mapping, the banner's order and its text. Not checked against a live tenant with SMTP AUTH turned off.
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.
