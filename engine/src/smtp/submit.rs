@@ -125,8 +125,8 @@ pub enum SubmitFailure {
     /// Nothing was delivered; send again later (offline, a timeout, a 4xx reply).
     Retry,
     /// The account's login needs the user: a refused password or token, a certificate that
-    /// doesn't verify, a server without TLS, or SMTP AUTH turned off by an admin (issue #21).
-    /// The send waits.
+    /// doesn't verify, a server without TLS, SMTP AUTH turned off by an admin (issue #21), or a
+    /// Microsoft account's server that isn't Microsoft's. The send waits.
     Account,
     /// It can't be sent as it is: back to the user as a draft whose send failed.
     Refuse,
@@ -137,9 +137,9 @@ pub enum SubmitFailure {
 impl SubmitError {
     pub fn failure(&self) -> SubmitFailure {
         match self {
-            SubmitError::Connect(LoginFailure::Certificate | LoginFailure::NoTls) => {
-                SubmitFailure::Account
-            }
+            SubmitError::Connect(
+                LoginFailure::Certificate | LoginFailure::NoTls | LoginFailure::ServerNotMicrosoft,
+            ) => SubmitFailure::Account,
             SubmitError::Connect(_) => SubmitFailure::Retry,
             SubmitError::Auth(
                 LoginFailure::WrongPassword
@@ -685,7 +685,7 @@ where
 {
     if !crate::oauth::takes_token(endpoint, trust) {
         tracing::warn!("the account's SMTP server isn't Microsoft's; no token goes to it");
-        return Err(SubmitError::Connect(LoginFailure::Other));
+        return Err(SubmitError::Connect(LoginFailure::ServerNotMicrosoft));
     }
     let mut renew = false;
     loop {

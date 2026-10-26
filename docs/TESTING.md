@@ -74,6 +74,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### A Microsoft account with a server that isn't Microsoft's: "needs adding again" — 2026-10-26
+
+[ADR-008 amendment](DECISIONS.md#adr-008-amendment--a-server-that-isnt-microsofts-says-so-2026-10-26). This machine; a scripted SMTP server on 127.0.0.1 and the headless UI suites (Broadway, display 19); no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `a_token_goes_to_no_smtp_server_but_microsofts` (`engine/src/smtp/submit/tests.rs`) | `SubmitError::Connect(ServerNotMicrosoft)` (was `Other`), failure `Account`; no token fetched, nothing connected | Pass |
+| The assistant's notices (`app/src/setup/text.rs`: one heading per failure with `ServerNotMicrosoft` among them, and its sign-in-again text "This account's server isn't Microsoft's", "Remove the account and add it again") and the app's sidebar words (`needs adding again`, the error dot), `NeedsSignIn(ServerNotMicrosoft)` → `AddAgain`, the banner's order (after the sign-ins) and `a_server_that_isnt_microsofts_says_to_add_the_account_again` | Pass | Pass |
+| CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui`, first run (13:19–13:31) | 1,552 passed, 0 failed, 99 ignored; every script up to `triage-keys` passed, which failed at step 186 as in the run before (the reader's `y` after an archive lost; 245 of 264), so the rest didn't run | Fail (flake) |
+| `triage-keys` alone, five times (load about 1) | 264 of 264, five times | Pass |
+| CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui`, again (13:32–13:45) | exit 0; 1,552 passed, 0 failed, 99 ignored; all 84 self-test scripts, 8,135 of 8,135 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 275 s; formatting and Clippy clean; no `gtk4-broadwayd` left | Pass |
+| A Microsoft account saved by 1.0.2 with a server that isn't Microsoft's | Not run | Not verified |
+
 ### SMTP AUTH turned off after setup: "sending off" — 2026-10-26
 
 [ADR-015 amendment](DECISIONS.md#adr-015-amendment--smtp-auth-turned-off-after-setup-holds-the-sends-2026-10-26). This machine; a scripted SMTP server on 127.0.0.1 and the headless UI suites (Broadway, display 19); no real account.

@@ -123,6 +123,7 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
                  for Microsoft accounts only."
             ),
         ),
+        LoginFailure::ServerNotMicrosoft => not_microsoft(server),
         LoginFailure::SignInDeclined => Notice::problem(
             "The sign-in was declined",
             "Microsoft didn't let Sealwax in. Sign in again and approve Sealwax; for a work \
@@ -196,8 +197,21 @@ pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
     }
 }
 
+/// A Microsoft account saved with a server that isn't Microsoft's (before 1.0.3): only adding it
+/// again helps, since signing in again checks the same servers.
+fn not_microsoft(server: &str) -> Notice {
+    Notice::problem(
+        "This account's server isn't Microsoft's",
+        format!(
+            "{server} saved for this account isn't one of Microsoft's, and Sealwax gives a \
+             Microsoft sign-in only to Microsoft's servers. Remove the account and add it again: \
+             Sealwax then uses the servers the sign-in is checked on."
+        ),
+    )
+}
+
 /// Why a browser sign-in (ML-032) failed and what to do about it: each ends in signing in
-/// again, which the step's button does. `provider` names the account's provider
+/// again, which the step's button does, except a server that isn't Microsoft's. `provider` names the account's provider
 /// ("Outlook.com") when detection knew it.
 pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
     let server = server(error.protocol);
@@ -207,6 +221,7 @@ pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
             "Microsoft didn't let Sealwax in. Sign in again and approve Sealwax; for a work \
              account, your organization's admin may have to approve it first.",
         ),
+        LoginFailure::ServerNotMicrosoft => not_microsoft(server),
         LoginFailure::Timeout => Notice::problem(
             "The sign-in didn't finish in time",
             "Sealwax stopped waiting for the browser or for Microsoft's servers. Check that \
@@ -383,6 +398,7 @@ pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
         | LoginFailure::ImapDisabled
         | LoginFailure::SmtpAuthDisabled
         | LoginFailure::SignInDeclined
+        | LoginFailure::ServerNotMicrosoft
         | LoginFailure::Timeout
         | LoginFailure::NoUidl
         | LoginFailure::Busy => login_failure(error, context),
@@ -591,12 +607,13 @@ mod tests {
         }
     }
 
-    const FAILURES: [LoginFailure; 12] = [
+    const FAILURES: [LoginFailure; 13] = [
         LoginFailure::WrongPassword,
         LoginFailure::AppPasswordRequired,
         LoginFailure::ImapDisabled,
         LoginFailure::SmtpAuthDisabled,
         LoginFailure::OAuthRequired,
+        LoginFailure::ServerNotMicrosoft,
         LoginFailure::NoTls,
         LoginFailure::Certificate,
         LoginFailure::Unreachable,
@@ -766,11 +783,17 @@ mod tests {
 
     #[test]
     fn every_sign_in_failure_ends_in_signing_in_again() {
-        // Microsoft's sign-in reaches IMAP and SMTP, never POP3's failures.
+        // Microsoft's sign-in reaches IMAP and SMTP, never POP3's failures; a server that isn't
+        // Microsoft's ends in adding the account again instead.
         let failures = [LoginFailure::SignInDeclined]
             .into_iter()
             .chain(FAILURES)
-            .filter(|failure| !matches!(failure, LoginFailure::NoUidl | LoginFailure::Busy))
+            .filter(|failure| {
+                !matches!(
+                    failure,
+                    LoginFailure::NoUidl | LoginFailure::Busy | LoginFailure::ServerNotMicrosoft
+                )
+            })
             .collect::<Vec<_>>();
         let mut titles = Vec::new();
         for &failure in &failures {
@@ -820,6 +843,20 @@ mod tests {
                 .starts_with("The outgoing mail server (SMTP) says Microsoft 365")
         );
         assert!(smtp_off.body.contains("organization's admin"));
+        let foreign = sign_in_failure(
+            &LoginError {
+                protocol: Protocol::Smtp,
+                failure: LoginFailure::ServerNotMicrosoft,
+            },
+            None,
+        );
+        assert_eq!(foreign.title, "This account's server isn't Microsoft's");
+        assert!(
+            foreign
+                .body
+                .starts_with("The outgoing mail server (SMTP) saved")
+        );
+        assert!(foreign.body.contains("Remove the account and add it again"));
     }
 
     #[test]

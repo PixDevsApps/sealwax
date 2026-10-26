@@ -3,7 +3,8 @@
 //! shows the first and counts the rest.
 //!
 //! The order, a proposal for the M3 gate: no keyring, then each account whose certificate
-//! changed, each that needs a sign-in, each whose sending is turned off (issue #21), each send
+//! changed, each that needs a sign-in, each that must be added again (a Microsoft account with
+//! a server that isn't Microsoft's), each whose sending is turned off (issue #21), each send
 //! that may have gone out (M6, oldest first, a proposal for the M6 gate), each account whose
 //! mailbox is full (in the sidebar's order), then offline. Offline is one entry: when the desktop has no network, or when every account's
 //! server is out of reach; a single unreachable account shows only in the sidebar.
@@ -53,6 +54,7 @@ pub fn queue(
     let kinds = [
         AccountStatus::CertificateChanged,
         AccountStatus::NeedsSignIn,
+        AccountStatus::AddAgain,
         AccountStatus::SendingOff,
         AccountStatus::QuotaFull,
     ];
@@ -77,6 +79,7 @@ pub fn queue(
                     name,
                     browser: matches!(account.settings.auth, AuthMethod::OAuth(_)),
                 },
+                AccountStatus::AddAgain => Attention::AddAgain { name },
                 AccountStatus::SendingOff => Attention::SendingOff { name },
                 _ => Attention::QuotaFull { name },
             };
@@ -211,6 +214,7 @@ mod tests {
                     Attention::CertificateChanged { .. } => "certificate",
                     Attention::SignIn { browser: true, .. } => "sign-in",
                     Attention::SignIn { browser: false, .. } => "password",
+                    Attention::AddAgain { .. } => "add-again",
                     Attention::SendingOff { .. } => "sending",
                     Attention::QuotaFull { .. } => "quota",
                     Attention::UncertainSend { .. } => "uncertain",
@@ -236,6 +240,7 @@ mod tests {
             settings("per", AuthMethod::Password),
             settings("siri", AuthMethod::Password),
             settings("tor", AuthMethod::Password),
+            settings("una", microsoft),
         ];
         let states = [
             AccountStatus::QuotaFull,
@@ -244,6 +249,7 @@ mod tests {
             AccountStatus::CertificateChanged,
             AccountStatus::Offline,
             AccountStatus::SendingOff,
+            AccountStatus::AddAgain,
         ];
         let accounts: Vec<Account<'_>> = listed
             .iter()
@@ -261,6 +267,7 @@ mod tests {
                 "certificate:per",
                 "sign-in:kari",
                 "password:ola",
+                "add-again:una",
                 "sending:tor",
                 "quota:anne",
                 "offline"
@@ -275,6 +282,7 @@ mod tests {
                 "certificate:per",
                 "sign-in:kari",
                 "password:ola",
+                "add-again:una",
                 "sending:tor",
                 "uncertain",
                 "uncertain",
@@ -288,6 +296,7 @@ mod tests {
                 "certificate:per",
                 "sign-in:kari",
                 "password:ola",
+                "add-again:una",
                 "sending:tor",
                 "quota:anne"
             ],

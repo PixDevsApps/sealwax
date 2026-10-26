@@ -1001,7 +1001,7 @@ async fn log_in_with_token(
 ) -> Result<imap::Connection, LoginFailure> {
     if !oauth::takes_token(&settings.incoming, &shared.trust) {
         tracing::warn!("the account's incoming server isn't Microsoft's; no token goes to it");
-        return Err(LoginFailure::Other);
+        return Err(LoginFailure::ServerNotMicrosoft);
     }
     let tls = tls(shared)?;
     let secrets = shared.secrets().await;
@@ -1285,7 +1285,7 @@ async fn check_servers(
             tracing::warn!(?protocol, "a server isn't Microsoft's; no token goes to it");
             return Err(LoginError {
                 protocol,
-                failure: LoginFailure::Other,
+                failure: LoginFailure::ServerNotMicrosoft,
             });
         }
     }

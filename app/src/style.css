@@ -400,6 +400,7 @@ row.sw-sidebar-heading:active {
 }
 
 .sw-status-dot.sw-attention,
+.sw-status-dot.sw-add-again,
 .sw-status-dot.sw-certificate {
   background: var(--error-color);
 }

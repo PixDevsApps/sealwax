@@ -544,7 +544,8 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
 }
 
 /// A banner entry as `assert-setup banner-queue` names it: `keyring`, `certificate:KEY`,
-/// `sign-in:KEY` (Microsoft), `password:KEY`, `sending:KEY` (SMTP AUTH turned off), `quota:KEY`,
+/// `sign-in:KEY` (Microsoft), `password:KEY`, `add-again:KEY` (a server that isn't Microsoft's),
+/// `sending:KEY` (SMTP AUTH turned off), `quota:KEY`,
 /// `uncertain` (a send that may have gone out, M6), `offline` (no network) or `unreachable` (no
 /// server answers).
 fn waiting_name(waiting: &Waiting) -> String {
@@ -553,6 +554,7 @@ fn waiting_name(waiting: &Waiting) -> String {
         Attention::CertificateChanged { .. } => "certificate",
         Attention::SignIn { browser: true, .. } => "sign-in",
         Attention::SignIn { browser: false, .. } => "password",
+        Attention::AddAgain { .. } => "add-again",
         Attention::SendingOff { .. } => "sending",
         Attention::QuotaFull { .. } => "quota",
         Attention::UncertainSend { .. } => "uncertain",

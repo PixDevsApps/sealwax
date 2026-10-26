@@ -679,6 +679,13 @@ This was confirmed by reading the code, not reproduced live.
 
 **Consequence:** a Microsoft account can't use any server outside Microsoft's two domains, not even a proxy. That's acceptable, since the token is Outlook's and no other server can take it. A clear notice for a refused server is a follow-up. Until then such an account shows as failing with "Other".
 
+### ADR-008 amendment — a server that isn't Microsoft's says so (2026-10-26)
+
+Built on the user's "Start item 5's small 1.0.x fixes, one commit each, as PLAN.md describes" (2026-10-26): the follow-up the amendment above left, a clear notice for a Microsoft account stored with a server that isn't Microsoft's. Such an account, saved by 1.0.2 or earlier, showed "offline" while its IMAP login was refused again and again, or its sends were retried quietly, both as `LoginFailure::Other`.
+
+- **Decision:** the three refusals (the sign-in's check, `log_in_with_token`, `submit::connect_oauth`) are `LoginFailure::ServerNotMicrosoft`. It is a state the user must act on (`SyncStatus::NeedsSignIn`): the account's sync stops as for a refused sign-in, and its sends wait (`SubmitFailure::Account`). The app shows it as its own state, since signing in again checks the same servers: "needs adding again" with the error dot, and a banner in the error tint, "<account> must be added again", saying that a server saved for it isn't one of Microsoft's, that Sealwax gives a Microsoft sign-in only to Microsoft's servers, and to remove the account (Remove Account, in the main menu) and add it again; no button. It comes after the sign-ins. The assistant's notice for it, at a sign-in again, says the same: "This account's server isn't Microsoft's".
+- **Consequence:** no account is changed by itself: the servers in `accounts.toml` stay until the user removes the account, or edits them by hand. The log line still names the protocol, never the host. Tests: `a_token_goes_to_no_smtp_server_but_microsofts` (now `ServerNotMicrosoft`, the sends waiting), the assistant's notices, and in the app the sidebar's words, the status mapping, the banner's order and its text. Not run with an account saved by 1.0.2.
+
 ## ADR-009 — Settings in files: config.toml, keys.toml, accounts.toml (2026-10-04)
 
 **Status:** Proposed.

@@ -92,6 +92,9 @@ pub enum AccountStatus {
     NeedsSignIn,
     /// The server's certificate no longer verifies; Sealwax stopped connecting (ML-048).
     CertificateChanged,
+    /// A Microsoft account saved with a server that isn't Microsoft's: nothing gets its sign-in
+    /// until the account is added again (GHSA-vhrm-52f2-v9v3).
+    AddAgain,
     /// Microsoft 365 refuses SMTP AUTH for the mailbox, so sends wait; reading still syncs
     /// (issue #21).
     SendingOff,
@@ -107,6 +110,7 @@ impl AccountStatus {
             Self::Offline => "offline",
             Self::NeedsSignIn => "needs sign-in",
             Self::CertificateChanged => "bad certificate",
+            Self::AddAgain => "needs adding again",
             Self::SendingOff => "sending off",
             Self::QuotaFull => "mailbox full",
         }
@@ -114,7 +118,7 @@ impl AccountStatus {
 
     /// The status dot's colour (`style.css`): accent when synced, plain while syncing, warning
     /// while Sealwax keeps trying or still syncs (offline, sending off, mailbox full), error when
-    /// it stopped until the user acts (sign-in, certificate).
+    /// it stopped until the user acts (sign-in, certificate, adding again).
     fn class(self) -> Option<&'static str> {
         match self {
             Self::Synced => Some("sw-synced"),
@@ -122,6 +126,7 @@ impl AccountStatus {
             Self::Offline => Some("sw-offline"),
             Self::NeedsSignIn => Some("sw-attention"),
             Self::CertificateChanged => Some("sw-certificate"),
+            Self::AddAgain => Some("sw-add-again"),
             Self::SendingOff => Some("sw-sending"),
             Self::QuotaFull => Some("sw-quota"),
         }
@@ -343,6 +348,8 @@ impl SidebarModel {
             "bad certificate"
         } else if has(AccountStatus::NeedsSignIn) {
             "sign-in needed"
+        } else if has(AccountStatus::AddAgain) {
+            "adding again needed"
         } else if has(AccountStatus::SendingOff) {
             "sending off"
         } else if has(AccountStatus::QuotaFull) {
@@ -2121,6 +2128,12 @@ mod tests {
                 AccountStatus::CertificateChanged,
                 "bad certificate",
                 Some("sw-certificate"),
+                true,
+            ),
+            (
+                AccountStatus::AddAgain,
+                "needs adding again",
+                Some("sw-add-again"),
                 true,
             ),
             (

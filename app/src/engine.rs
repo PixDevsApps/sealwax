@@ -87,6 +87,7 @@ fn sidebar_status(status: SyncStatus) -> AccountStatus {
         SyncStatus::QuotaFull => AccountStatus::QuotaFull,
         // Signing in again doesn't help: only the organization's admin can turn it on.
         SyncStatus::NeedsSignIn(LoginFailure::SmtpAuthDisabled) => AccountStatus::SendingOff,
+        SyncStatus::NeedsSignIn(LoginFailure::ServerNotMicrosoft) => AccountStatus::AddAgain,
         SyncStatus::NeedsSignIn(_) => AccountStatus::NeedsSignIn,
         SyncStatus::Offline(_) => AccountStatus::Offline,
         SyncStatus::CertificateChanged => AccountStatus::CertificateChanged,
@@ -125,6 +126,11 @@ mod tests {
             failed(LoginFailure::SmtpAuthDisabled),
             Some((account, AccountStatus::SendingOff)),
             "signing in again wouldn't help"
+        );
+        assert_eq!(
+            failed(LoginFailure::ServerNotMicrosoft),
+            Some((account, AccountStatus::AddAgain)),
+            "nor here"
         );
         assert_eq!(
             failed(LoginFailure::Unreachable),

@@ -448,7 +448,8 @@ impl SyncStatus {
             | LoginFailure::ImapDisabled
             | LoginFailure::SmtpAuthDisabled
             | LoginFailure::OAuthRequired
-            | LoginFailure::SignInDeclined => SyncStatus::NeedsSignIn(failure),
+            | LoginFailure::SignInDeclined
+            | LoginFailure::ServerNotMicrosoft => SyncStatus::NeedsSignIn(failure),
             LoginFailure::Certificate => SyncStatus::CertificateChanged,
             LoginFailure::NoTls
             | LoginFailure::Unreachable

@@ -566,10 +566,14 @@ async fn a_token_goes_to_no_smtp_server_but_microsofts() {
         },
     )
     .await;
-    assert!(matches!(
-        result,
-        Err(SubmitError::Connect(LoginFailure::Other))
-    ));
+    let Err(error) = result else {
+        panic!("connected");
+    };
+    assert_eq!(
+        error,
+        SubmitError::Connect(LoginFailure::ServerNotMicrosoft)
+    );
+    assert_eq!(error.failure(), SubmitFailure::Account, "the sends wait");
     assert_eq!(*asked.lock().unwrap(), 0, "no token was fetched");
     assert!(
         tokio::time::timeout(Duration::from_millis(200), listener.accept())

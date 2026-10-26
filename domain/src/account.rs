@@ -406,6 +406,10 @@ pub enum LoginFailure {
     OAuthRequired,
     /// The browser sign-in was declined: by the user, or by their organization's consent policy.
     SignInDeclined,
+    /// A Microsoft account whose server isn't one of Microsoft's, saved by a version before
+    /// 1.0.3: its sign-in goes to Microsoft's servers only (GHSA-vhrm-52f2-v9v3), so nothing
+    /// connects until the account is added again.
+    ServerNotMicrosoft,
     /// The server offers neither TLS nor STARTTLS, or STARTTLS failed.
     NoTls,
     /// The server's certificate didn't verify.
