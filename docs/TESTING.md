@@ -81,7 +81,11 @@ The version change for 1.0.5: `Cargo.toml`'s version, both lock files (only Seal
 | Check | Result | Verdict |
 | --- | --- | --- |
 | CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` on the version change (16:56–17:11) | exit 0; 1,553 passed, 0 failed, 99 ignored; all 84 self-test scripts, 8,135 of 8,135 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 272 s; `target/debug/sealwax --version` says `sealwax 1.0.5`; no `gtk4-broadwayd` left | Pass |
-| Tag, package build, install test and release | Not run: the version change only, at the owner's word | — |
+| The push range (`0d1e52d..db974f0`, 1 commit, 6 files) scanned before pushing | No working doc, home path, hostname or client ID; the only address is the commit author | Pass |
+| `v1.0.5` on `db974f0`, `main` and the tag pushed | GitHub's `main` and `v1.0.5` are `db974f0` | Pass |
+| `python3 tools/release.py build` on `v1.0.5` (17:15–17:19) | makepkg's `check()`: 1,115 passed, 0 failed, 91 ignored; the Microsoft client ID built in; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.0.5` and holds no home-folder path or user name; both license files are in the package. Package SHA-256 `ad433f99…7b1e` | Pass |
+| `bash tools/install-test.sh .local/release/1.0.5/sealwax-1.0.5-1-x86_64.pkg.tar.zst` (local `archlinux:base`, `--pull never`; 17:20) | exit 0: pacman installed the package and its dependencies in a fresh container; `/usr/bin/sealwax --version` says `sealwax 1.0.5`; both license files installed; `install-smoke` 16 of 16 (the window, a message in the reader, its web process in WebKit's sandbox); the container removed; log in `.local/install-test/20261026-172002/` | Pass |
+| The release [v1.0.5](https://github.com/PixDevsApps/sealwax/releases/tag/v1.0.5) (`tools/release.py github` from the tagged commit, 16:21:09 UTC) | Not a draft or pre-release; GitHub's latest; its five files; the notes are CHANGELOG's section; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` and `releases/download/v1.0.5/sealwax-1.0.5-1-x86_64.pkg.tar.zst` both give the build's package (SHA-256 `ad433f99…`), and the published `SHA256SUMS` is the local one | Pass |
 
 ### Development builds keep their own folders — 2026-10-26
 
