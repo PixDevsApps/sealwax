@@ -74,6 +74,15 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The new banners in the self-tests — 2026-10-26
+
+`status-banners` gets the two banners of 1.0.5: the scripted engine's `sending-off` (`NeedsSignIn(SmtpAuthDisabled)`) and `add-again` (`NeedsSignIn(ServerNotMicrosoft)`), each with its queue name, sidebar words, title, body, no buttons, tint and contrast, and a screenshot (`.local/selftest/status-sending-off.png`, `status-add-again.png`). This machine, headless (display 34).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `status-banners` alone | 283 of 283 (261 before); formatting and Clippy clean | Pass |
+| The screenshots, looked at | Both banners as designed (the warning tint and the mail-send icon; the error tint and the shield). In the sidebar, "needs adding again" leaves the account's name one letter ("K…") at the default sidebar width, and "sending off" cuts it to "KARI NOR…"; the footer's summary is cut too ("4 accounts · adding a…"). The P3 follow-up on long names, made worse | Found |
+
 ### 1.0.5 — 2026-10-26
 
 The version change for 1.0.5: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.4 → 1.0.5), CHANGELOG's "1.0.5 — 2026-10-26" (the section that was "Not released yet") and README's version line. The five changes are in the sections below. This machine.

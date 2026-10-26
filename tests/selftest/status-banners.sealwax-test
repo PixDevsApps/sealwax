@@ -148,6 +148,32 @@ wait-until assert-setup banner-queue sign-in:kari
 assert-label banner-title "Kari Nordmann needs you to sign in again"
 assert-label banner-body "Microsoft ended the session. Sealwax keeps your mail; nothing syncs until you sign in."
 assert-label banner-primary "Sign in"
+# Microsoft 365 with SMTP AUTH turned off after the account was added (2026-10-26): the warning
+# tint, no button; signing in again wouldn't help.
+engine-reply status kari@example.test sending-off
+wait-until assert-setup banner-queue sending:kari
+assert-account-status kari@example.test sending-off
+assert-label banner-title "Sending is turned off for Kari Nordmann"
+assert-label banner-body "Microsoft 365 has SMTP AUTH, which mail apps send with, turned off for this mailbox or its organization, so your messages wait in the outbox. Ask your organization's admin to turn it on for your mailbox; Sealwax tries again by itself."
+assert-shown banner-primary false
+assert-shown banner-secondary false
+assert-color banner-strip background warning-soft
+assert-contrast banner-strip 4.5
+assert-labelled
+screenshot $DIR/../../.local/selftest/status-sending-off.png
+# A Microsoft account saved with a server that isn't Microsoft's (2026-10-26): the error tint,
+# no button; it must be removed and added again.
+engine-reply status kari@example.test add-again
+wait-until assert-setup banner-queue add-again:kari
+assert-account-status kari@example.test add-again
+assert-label banner-title "Kari Nordmann must be added again"
+assert-label banner-body "A server saved for it isn't one of Microsoft's, and Sealwax gives a Microsoft sign-in only to Microsoft's servers, so it doesn't connect there. Remove the account (Remove Account, in the main menu) and add it again."
+assert-shown banner-primary false
+assert-shown banner-secondary false
+assert-color banner-strip background error-soft
+assert-contrast banner-strip 4.5
+assert-labelled
+screenshot $DIR/../../.local/selftest/status-add-again.png
 engine-reply status kari@example.test synced
 wait-until assert-shown banner false
 

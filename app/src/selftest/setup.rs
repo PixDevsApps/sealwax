@@ -18,7 +18,7 @@
 //! | `engine-reply edited ok [file]\|settings-file\|missing` | `AccountEdited`; `ok file` first writes the label and colour of the last `EditAccount` to the scratch `accounts.toml` through the engine's writer, waits for the app to read them, and names the store's account by its title as the engine's reconcile would |
 //! | `engine-reply removed ok\|keyring\|settings-file\|store\|missing` | `AccountRemoved`; `ok` first removes the account from the app's store |
 //! | `engine-reply sync-failed ADDRESS FAILURE`, `engine-reply sync-finished ADDRESS` | `AccountStatus` for the store's account with ADDRESS: the failure's state, or `Synced` |
-//! | `engine-reply status ADDRESS STATE` | `AccountStatus` for that account: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`, `quota` (ML-048) |
+//! | `engine-reply status ADDRESS STATE` | `AccountStatus` for that account: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`, `quota` (ML-048), `sending-off` (SMTP AUTH turned off), `add-again` (a server that isn't Microsoft's) |
 //! | `engine-reply keyring-unavailable` | `KeyringUnavailable` |
 //! | `engine-reply ops-refused ADDRESS flags\|move\|expunge\|folder-read N` | `OpsRefused` for that account: the server refused N messages' change for good (ML-051) |
 //! | `engine-reply password-updated ok`, `engine-reply password-updated [imap\|pop3\|smtp] FAILURE` | `PasswordUpdated` for the last command (IMAP when no protocol is named) |
@@ -44,7 +44,7 @@
 //! | `assert-clipboard TEXT` | The text Sealwax last put on the clipboard is TEXT |
 //! | `assert-text-contains NAME TEXT` | A label's, a button's or an alert dialog's text (its heading and body) contains TEXT |
 //! | `assert-field NAME TEXT` | A text field's text or a choice's item (never the password's) |
-//! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in\|certificate\|quota` | The sidebar's state of the account with ADDRESS |
+//! | `assert-account-status ADDRESS synced\|syncing\|offline\|needs-sign-in\|certificate\|quota\|sending-off\|add-again` | The sidebar's state of the account with ADDRESS |
 //! | `assert-account-folders ADDRESS TITLE,…` | The folders the sidebar shows for the account with ADDRESS, role folders first, by the titles it shows (M8) |
 
 use super::{Harness, StepResult, WAIT_TIMEOUT, equal, number, with_timeout};
@@ -388,10 +388,12 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
                 "needs-sign-in" => "needs sign-in",
                 "certificate" => "bad certificate",
                 "quota" => "mailbox full",
+                "sending-off" => "sending off",
+                "add-again" => "needs adding again",
                 other => {
                     return Err(format!(
-                        "use synced, syncing, offline, needs-sign-in, certificate or quota, \
-                         not {other}"
+                        "use synced, syncing, offline, needs-sign-in, certificate, quota, \
+                         sending-off or add-again, not {other}"
                     ));
                 }
             };
@@ -1248,7 +1250,7 @@ fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, Strin
 }
 
 /// A `SyncStatus` by name: `syncing`, `synced`, `offline`, `needs-sign-in`, `certificate`,
-/// `quota`.
+/// `quota`, `sending-off`, `add-again`.
 fn sync_status(name: &str) -> Result<SyncStatus, String> {
     Ok(match name {
         "syncing" => SyncStatus::Syncing,
@@ -1257,9 +1259,12 @@ fn sync_status(name: &str) -> Result<SyncStatus, String> {
         "needs-sign-in" => SyncStatus::NeedsSignIn(LoginFailure::WrongPassword),
         "certificate" => SyncStatus::CertificateChanged,
         "quota" => SyncStatus::QuotaFull,
+        "sending-off" => SyncStatus::NeedsSignIn(LoginFailure::SmtpAuthDisabled),
+        "add-again" => SyncStatus::NeedsSignIn(LoginFailure::ServerNotMicrosoft),
         other => {
             return Err(format!(
-                "use syncing, synced, offline, needs-sign-in, certificate or quota, not {other}"
+                "use syncing, synced, offline, needs-sign-in, certificate, quota, sending-off \
+                 or add-again, not {other}"
             ));
         }
     })
