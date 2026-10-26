@@ -1,6 +1,6 @@
 //! Sealwax's own XDG directories (ADR-010): `$XDG_CONFIG_HOME/sealwax`, `$XDG_DATA_HOME/sealwax`,
-//! `$XDG_STATE_HOME/sealwax` and `$XDG_CACHE_HOME/sealwax`. Directories Sealwax creates for
-//! private data are mode 0700.
+//! `$XDG_STATE_HOME/sealwax` and `$XDG_CACHE_HOME/sealwax`, and `sealwax-devel` for a development
+//! build. Directories Sealwax creates for private data are mode 0700.
 
 use std::ffi::OsStr;
 use std::fs::{self, DirBuilder, Permissions};
@@ -9,6 +9,9 @@ use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
 pub const APP_DIR: &str = "sealwax";
+/// A development build's folders (the `.Devel` app-id), so it never opens the installed app's
+/// store or accounts.
+pub const DEVEL_DIR: &str = "sealwax-devel";
 
 /// An XDG base directory: the variable when it holds an absolute path, else `home/fallback`.
 pub fn base_dir(value: Option<&OsStr>, home: &Path, fallback: &str) -> PathBuf {
@@ -53,12 +56,18 @@ pub struct SealwaxDirs {
 }
 
 impl SealwaxDirs {
+    /// The installed app's folders.
     pub fn from_env() -> Self {
+        Self::named(APP_DIR)
+    }
+
+    /// A folder called `name` in each XDG base directory.
+    pub fn named(name: &str) -> Self {
         Self {
-            config: config_home().join(APP_DIR),
-            data: data_home().join(APP_DIR),
-            state: state_home().join(APP_DIR),
-            cache: cache_home().join(APP_DIR),
+            config: config_home().join(name),
+            data: data_home().join(name),
+            state: state_home().join(name),
+            cache: cache_home().join(name),
         }
     }
 
@@ -156,6 +165,14 @@ mod tests {
         );
         assert_eq!(dirs.blobs_dir(), Path::new("/tmp/x/data/sealwax/blobs"));
         assert!(SealwaxDirs::from_env().data.ends_with("sealwax"));
+        let devel = SealwaxDirs::named(DEVEL_DIR);
+        for dir in [devel.config, devel.data, devel.state, devel.cache] {
+            assert_eq!(
+                dir.file_name(),
+                Some(OsStr::new("sealwax-devel")),
+                "{dir:?}"
+            );
+        }
     }
 
     #[test]

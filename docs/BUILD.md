@@ -156,7 +156,9 @@ SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem SEALWAX_SOAK_MINUTES=1440 SEA
 
 ## Accounts in development builds
 
-Development builds (`cfg!(debug_assertions)`) read two overrides that release builds ignore ([SECURITY.md](SECURITY.md#credentials)):
+Development builds (`cfg!(debug_assertions)`, the `.Devel` app-id) keep their own folders, `sealwax-devel` in each XDG base directory where the installed Sealwax has `sealwax` (since 2026-10-26, [ADR-010 amendment](DECISIONS.md#adr-010-amendment--development-builds-keep-their-own-folders-2026-10-26)), so they start with no accounts and never open the installed app's store. The engine's live examples (`send_live`, `oauth_live`) still read the installed Sealwax's `config.toml`.
+
+They read two overrides that release builds ignore ([SECURITY.md](SECURITY.md#credentials)):
 
 - `SEALWAX_TEST_CA=<file>` trusts exactly that CA instead of the system's (the testbed's `tools/testbed/certs/ca.pem`);
 - `SEALWAX_SECRETS=memory` keeps passwords and tokens out of the keyring.

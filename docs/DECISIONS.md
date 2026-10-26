@@ -807,6 +807,13 @@ The brand colours belong to the icon and wordmark only; the app's chrome keeps f
 - **Unchanged:** the brand colours of the wordmark, and the chrome following the Omarchy theme (ADR-004).
 - *Amended the same day (the user: "restart the shell and add the scalable SVG"):* a scalable SVG carrying the 512 px PNG joins the fixed sizes. Omarchy's shell (Quickshell, Qt) keeps the icon paths it found at its start: after the upgrade it still asked for the envelope tile's `scalable/apps/…svg`, gone, and its dock showed the "icon missing" checkerboard until the shell restarted. Its icon index also lists SVGs before PNGs and otherwise takes whichever fixed size it finds first. The SVG is at that path again and is the same picture at every size.
 
+### ADR-010 amendment — development builds keep their own folders (2026-10-26)
+
+Built on the user's "Start item 5's small 1.0.x fixes, one commit each, as PLAN.md describes" (2026-10-26), the P2 follow-up from 2026-10-07: the `.Devel` app-id let a debug build run beside the installed Sealwax, but both used the same folders, so a plain `cargo run` opened the real store, perhaps while the installed app had it open, and the real accounts, rules and layout.
+
+- **Decision:** a debug build's folders are `sealwax-devel` in each XDG base directory (`$XDG_CONFIG_HOME/sealwax-devel`, and the same for data, state and cache; `xdg::DEVEL_DIR`, chosen by the app's `config::DIR_NAME` beside its app-id). Release builds keep `sealwax`. `SealwaxDirs::from_env` stays the installed app's folders, which the engine's live examples read `config.toml` from; the app takes `SealwaxDirs::named(config::DIR_NAME)`.
+- **Consequence:** a debug build starts with no accounts; copying `~/.config/sealwax/` to `~/.config/sealwax-devel/` gives it the real settings, and with them the real accounts' servers ([INSTALL.md](../INSTALL.md#for-developers-build-from-source)). The self-tests and CI's smoke run use folders under a scratch root as before. A debug build's autostart entry and keyring items were already its own (the `.Devel` id).
+
 ## ADR-011 — Reading pane: approach A with hardened WebKit (2026-10-04)
 
 **Status:** Proposed. S2 decides; approach B is the fallback.

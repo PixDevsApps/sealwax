@@ -610,7 +610,7 @@ Sealwax writes a plain-text log of what it does, never with message content, add
   systemctl --user unset-environment RUST_LOG
   ```
   This route is not tried yet. The protocol libraries stay at warnings whatever `RUST_LOG` says, so a debug log carries no protocol traces.
-- **A development build** runs in the terminal and logs there ([INSTALL.md](../INSTALL.md#for-developers-build-from-source), which says how to keep it away from your real mail).
+- **A development build** runs in the terminal and logs there, and keeps its own folders (`sealwax-devel` in place of `sealwax`), away from your real mail ([INSTALL.md](../INSTALL.md#for-developers-build-from-source)).
 
 ### Where Sealwax keeps things
 

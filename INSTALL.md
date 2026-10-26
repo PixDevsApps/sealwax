@@ -145,7 +145,7 @@ Nothing in your home folder changes until Sealwax runs. Its key binding and Omar
 
 **Update a source build:** `git pull`, then the last three commands again, then quit Sealwax with Ctrl+Q and start it again.
 
-**Run from the source tree:** `cargo build` makes a debug build (`target/debug/sealwax`, app-id `io.github.pixdevsapps.Sealwax.Devel`, which runs beside an installed Sealwax with its own keyring items), and `bash tools/ci.sh` runs formatting, Clippy, the tests and the build. Every build uses the same folders as the installed Sealwax (`~/.config/sealwax/`, `~/.local/share/sealwax/`), so a debug build started plainly finds your real accounts; give it scratch folders to keep it away from your mail:
+**Run from the source tree:** `cargo build` makes a debug build (`target/debug/sealwax`, app-id `io.github.pixdevsapps.Sealwax.Devel`, which runs beside an installed Sealwax with its own keyring items), and `bash tools/ci.sh` runs formatting, Clippy, the tests and the build. A debug build keeps its own folders, `sealwax-devel` beside the installed Sealwax's `sealwax` (`~/.config/sealwax-devel/`, `~/.local/share/sealwax-devel/`, and the same under `~/.local/state/` and `~/.cache/`), so it never opens your real store or accounts and starts with none. To try it with your settings, copy `~/.config/sealwax/` to `~/.config/sealwax-devel/`; it then connects to those accounts' servers. For a throwaway run, give it scratch folders:
 
 ```sh
 scratch=$PWD/.local/dev-home

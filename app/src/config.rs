@@ -7,6 +7,14 @@ pub const APP_ID: &str = if cfg!(debug_assertions) {
     "io.github.pixdevsapps.Sealwax"
 };
 
+/// The name of Sealwax's folders in each XDG base directory: debug builds keep their own, so a
+/// `cargo run` never opens the installed app's store, accounts or rules.
+pub const DIR_NAME: &str = if cfg!(debug_assertions) {
+    sealwax_infrastructure::xdg::DEVEL_DIR
+} else {
+    sealwax_infrastructure::xdg::APP_DIR
+};
+
 pub const EXIT_AFTER_ENV: &str = "SEALWAX_EXIT_AFTER_MS";
 
 /// Test hooks for the startup measurement: the launcher's `CLOCK_MONOTONIC` time in ns, taken
@@ -29,5 +37,17 @@ pub fn exit_after_from_env() -> Result<Option<Duration>, String> {
             .map_err(|error| {
                 format!("{EXIT_AFTER_ENV} must be a whole number of milliseconds: {error}")
             }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_development_build_keeps_its_own_folders() {
+        // Tests are debug builds, as `cargo run` is.
+        assert_eq!(APP_ID, "io.github.pixdevsapps.Sealwax.Devel");
+        assert_eq!(DIR_NAME, "sealwax-devel");
     }
 }

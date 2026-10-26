@@ -106,7 +106,7 @@ impl AppConfig {
     pub fn from_env(exit_after: Option<Duration>) -> Self {
         Self {
             app_id: app_id_from_env(),
-            dirs: SealwaxDirs::from_env(),
+            dirs: SealwaxDirs::named(config::DIR_NAME),
             exit_after,
             tiling: window::tiling_desktop(),
             engine: Some(EngineOptions::from_env()),

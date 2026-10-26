@@ -74,6 +74,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Development builds keep their own folders — 2026-10-26
+
+[ADR-010 amendment](DECISIONS.md#adr-010-amendment--development-builds-keep-their-own-folders-2026-10-26). This machine; the headless UI suites (Broadway, display 19); no real account and nothing in the real folders.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `a_development_build_keeps_its_own_folders` (`app/src/config.rs`) and `dirs_under_a_root` (`infrastructure/src/xdg.rs`: `SealwaxDirs::named(DEVEL_DIR)` ends in `sealwax-devel` for all four, `from_env` in `sealwax`) | Pass | Pass |
+| The debug build headless with the four XDG homes in a scratch folder (`SEALWAX_EXIT_AFTER_MS=1500`, display 19) | `first-frame` logged; it made `data/sealwax-devel` and `cache/sealwax-devel` (plus GTK's `cache/gtk-4.0`), no `sealwax` folder | Pass |
+| `background-start` (its spawned Sealwaxes are debug builds; its three paths now `sealwax-devel`) | 65 of 65 alone | Pass |
+| CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` (13:48–14:02) | exit 0; 1,553 passed, 0 failed, 99 ignored; all 84 self-test scripts, 8,135 of 8,135 steps (`activation` 62, `background-start` 65, `reply-mailto-start` 12, `triage-keys` 264); the smoke run's `first-frame`; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 272 s; formatting and Clippy clean; no `gtk4-broadwayd` left | Pass |
+
 ### A Microsoft account with a server that isn't Microsoft's: "needs adding again" — 2026-10-26
 
 [ADR-008 amendment](DECISIONS.md#adr-008-amendment--a-server-that-isnt-microsofts-says-so-2026-10-26). This machine; a scripted SMTP server on 127.0.0.1 and the headless UI suites (Broadway, display 19); no real account.
