@@ -74,6 +74,15 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.0.5 — 2026-10-26
+
+The version change for 1.0.5: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.4 → 1.0.5), CHANGELOG's "1.0.5 — 2026-10-26" (the section that was "Not released yet") and README's version line. The five changes are in the sections below. This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` on the version change (16:56–17:11) | exit 0; 1,553 passed, 0 failed, 99 ignored; all 84 self-test scripts, 8,135 of 8,135 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 272 s; `target/debug/sealwax --version` says `sealwax 1.0.5`; no `gtk4-broadwayd` left | Pass |
+| Tag, package build, install test and release | Not run: the version change only, at the owner's word | — |
+
 ### Development builds keep their own folders — 2026-10-26
 
 [ADR-010 amendment](DECISIONS.md#adr-010-amendment--development-builds-keep-their-own-folders-2026-10-26). This machine; the headless UI suites (Broadway, display 19); no real account and nothing in the real folders.
