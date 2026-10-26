@@ -74,6 +74,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### A staggered connect to a host's addresses — 2026-10-26
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--a-hosts-addresses-tried-in-a-staggered-race-2026-10-26). This machine; listeners on 127.0.0.1 only; no real account and no outside network.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| A listener made with `listen(0)` and one connection queued, on 127.0.0.1 (a Python check before the test was written) | The first connect completed in 0.01 s; the next three each timed out at 0.5 s: the kernel drops their SYNs, as a route that drops packets does. `net.ipv4.tcp_syn_retries` is 6 here, so such a connect gives up after about two minutes | Pass |
+| `an_address_that_never_answers_doesnt_hold_up_the_next` (a refused port, the full listener, then a live listener) and `the_families_take_turns` (`engine/src/net/mod.rs`) | Pass: the net module's 11 tests in 0.45 s. With `ATTEMPT_DELAY` set to an hour for one run, which tries the addresses one after another as before, the first test fails at its 5 s limit ("the live address answers within the limit") | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; 11:24–11:27) | exit 0; 1,547 passed, 0 failed, 99 ignored; formatting and Clippy clean; lettre's four warnings as before; `tools/test_licenses.py` 8 passed | Pass |
+| A real host whose IPv6 route drops packets | Not run: no such network here | Not verified |
+
 ### 1.0.4 — 2026-10-25
 
 The release with imap-proto's nesting limit (the entry below) and [GHSA-wv8g-4592-g5r2](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-wv8g-4592-g5r2). This machine. The release commit is `749bb21`: `d58a74f` with the advisory's link added to the CHANGELOG once the advisory had its ID, nothing else changed (`git diff d58a74f 749bb21`: one line of `CHANGELOG.md`). CI ran on `d58a74f`; the package was built and install-tested on both.

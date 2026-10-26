@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **No more waiting on an address that doesn't answer:** a mail server's name often leads to several addresses, usually an IPv6 one first. When the network dropped everything sent to that first address, as a broken IPv6 route does, Sealwax waited on it until its time to connect ran out and said the server didn't answer in time, without trying the others. Sealwax now starts on the next address after a quarter of a second while the first goes on trying, and uses whichever answers first, for incoming and outgoing mail alike.
+
 ## 1.0.4 — 2026-10-25
 
 A security update. Please update.
