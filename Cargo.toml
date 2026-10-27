@@ -1,6 +1,6 @@
 [workspace]
 members = ["app", "domain", "infrastructure", "engine", "spikes/*", "devtools/*"]
-exclude = ["fuzz", "vendor/lettre", "vendor/imap-proto"]
+exclude = ["fuzz", "vendor/lettre", "vendor/imap-proto", "vendor/async-imap"]
 default-members = ["app"]
 resolver = "3"
 
@@ -53,11 +53,12 @@ quick-xml = "0.42.0"
 psl = "2.1"
 idna = "1.1"
 
-# lettre 0.11.23 with a longer reply-line limit, and imap-proto 0.17.0 with a nesting limit
-# (vendor/README.md).
+# lettre 0.11.23 with a longer reply-line limit, imap-proto 0.17.0 with a nesting limit, and
+# async-imap 0.12.0 with a buffer that grows with a literal's data (vendor/README.md).
 [patch.crates-io]
 lettre = { path = "vendor/lettre" }
 imap-proto = { path = "vendor/imap-proto" }
+async-imap = { path = "vendor/async-imap" }
 
 [profile.release]
 lto = "thin"

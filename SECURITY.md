@@ -23,6 +23,6 @@ Security fixes go into the latest release only. **Check for Updates…** in Seal
 
 ## Scope
 
-Sealwax's own code in this repository, including the copies of lettre and imap-proto in `vendor/`. A problem in another library alone (WebKitGTK, GTK, a mail parser) belongs with that project; tell us as well when the way Sealwax uses it makes it worse.
+Sealwax's own code in this repository, including the copies of lettre, imap-proto and async-imap in `vendor/`. A problem in another library alone (WebKitGTK, GTK, a mail parser) belongs with that project; tell us as well when the way Sealwax uses it makes it worse.
 
 How Sealwax protects you, and the limitations it already knows about, are in [docs/SECURITY.md](docs/SECURITY.md).

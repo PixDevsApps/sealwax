@@ -21,6 +21,8 @@
 //! subscriptions, LIST patterns with `*` and `%`, and a hierarchy delimiter of choice.
 //! For replies async-imap can't parse (issue #20): a message whose header FETCH response has a
 //! garbled BODYSTRUCTURE or garbled FLAGS ([`Garble`]); BODYSTRUCTURE only when asked for.
+//! For a reply that never comes whole: a command answered with text of the test's choosing,
+//! then the connection cut ([`World::cut_with`]).
 //! Synthetic data only.
 
 #![allow(dead_code)]
@@ -189,6 +191,8 @@ enum Fault {
     LoseReply,
     /// It runs, and the server never answers on that connection again.
     Hold,
+    /// Answered with this text alone, and the connection is cut.
+    CutWith(String),
 }
 
 pub const NOW: i64 = 1_791_158_400;
@@ -282,6 +286,13 @@ impl World {
     /// The next command containing `needle` runs, and its connection goes silent for good.
     pub fn hold(&mut self, needle: &str) {
         self.faults.push((needle.to_owned(), Fault::Hold));
+    }
+
+    /// The next command containing `needle` is answered with `text` alone, which needn't be a
+    /// whole reply, and the connection is cut after it.
+    pub fn cut_with(&mut self, needle: &str, text: &str) {
+        self.faults
+            .push((needle.to_owned(), Fault::CutWith(text.to_owned())));
     }
 
     fn fault(&mut self, command: &str) -> Option<Fault> {
@@ -1763,6 +1774,10 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
                     answer(&mut world, &mut state, tag, command);
                     world.cuts += 1;
                     Reply::Silent
+                }
+                Some(Fault::CutWith(text)) => {
+                    world.cuts += 1;
+                    Reply::Cut(text)
                 }
                 None => answer(&mut world, &mut state, tag, command),
             }

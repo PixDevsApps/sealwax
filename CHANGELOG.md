@@ -5,6 +5,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 ## Not released yet
 
 - **A mail server can't fill Sealwax's memory with an answer that never ends:** when Sealwax asked an incoming mail server something, it read the answer until the server said it was done, however long that took, and kept what it was told. A server could keep answering one question until memory ran short. Sealwax now stops far above any honest answer, at two million responses or 256 MiB (1 GiB when downloading messages), drops the connection and connects again a little later.
+- **A mail server can't make Sealwax set aside memory for data it never sends:** a server says how long a message is before sending it, and Sealwax set aside that much memory at once, up to 512 MiB, on the server's word alone. Now it takes memory as the message arrives.
 
 ## 1.0.5 — 2026-10-26
 

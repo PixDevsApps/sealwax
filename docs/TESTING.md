@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### async-imap vendored: a literal's buffer grows with its data — 2026-10-27
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--async-imap-vendored-a-literals-buffer-grows-with-its-data-2026-10-27), [vendor/README.md](../vendor/README.md). This machine; scripted and fake TLS servers on 127.0.0.1 only; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The vendored copy against the published crate: cargo's cached `async-imap-0.12.0.crate`, SHA-256 against the lock file's checksum, then `diff -r` | `f97b87216c9f0ccc63c516263169085fa34bba25633f6d96c6a9b9ca1fd5f70a` on both; identical before the patch; after it, differences only in `src/imap_stream.rs` (`ensure_capacity` and its comment, two tests) | Pass |
+| `a_literals_announced_size_isnt_allocated_before_its_data` (`engine/tests/literal_size.rs`, a counting allocator; a 400 MB literal announced to NOOP, 1 MiB of it sent, then the connection cut) | 2,100,683 bytes allocated (the limit is 32 MiB). With the published `imap_stream.rs` put back for one run: 398,978,470 bytes, and the test fails | Pass |
+| `a_literal_that_arrives_in_pieces_comes_whole` (`engine/src/imap/raw.rs`, 1 MiB in 1,000-byte writes) | Pass: the body read whole and unchanged | Pass |
+| async-imap's own tests on the patched copy, outside the repository (`cargo test --lib`) | 74 passed with `--no-default-features --features runtime-tokio`, 73 with the default `runtime-async-std`; the published crate: 73 with `runtime-tokio` | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; 10:05–10:08) | exit 0; 1,560 passed, 0 failed, 99 ignored; formatting and Clippy clean; four warnings each from lettre and async-imap (local crates); `tools/test_licenses.py` 8 passed | Pass |
+| The fuzz workspace, `cargo check --all-targets` with `CARGO_TARGET_DIR=target/fuzz`; `python3 tools/licenses.py` | Both lock files lose async-imap's source and checksum; the check finished clean; the licence file lists async-imap 0.12.0 from `vendor/async-imap` with its MIT and Apache texts | Pass |
+| A real server announcing a large literal | Not run: no such server | Not verified |
+
 ### Every IMAP command held to a budget — 2026-10-27
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--every-imap-command-held-to-a-budget-2026-10-27). This machine; scripted TLS servers on 127.0.0.1 only; no real account and no outside network.

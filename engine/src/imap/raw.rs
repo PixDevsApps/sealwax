@@ -524,7 +524,7 @@ mod tests {
     use super::*;
     use crate::imap::{Connection, Credentials, connect};
     use crate::net::testing::{Peer, bind, test_ca};
-    use async_imap::imap_proto::MailboxDatum;
+    use async_imap::imap_proto::{AttributeValue, MailboxDatum};
     use sealwax_domain::account::{Endpoint, Security};
 
     #[test]
@@ -755,6 +755,41 @@ mod tests {
             matches!(error, ImapError::TooLong("UID FETCH")),
             "{error:?}"
         );
+        drop(conn);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_literal_that_arrives_in_pieces_comes_whole() {
+        let (mut conn, mut peer) = logged_in().await;
+        let data: String = (0..1 << 20)
+            .map(|n| char::from(b'a' + (n % 26) as u8))
+            .collect();
+        let expected = data.clone();
+        let server = tokio::spawn(async move {
+            let tag = peer.expect("UID FETCH").await;
+            peer.send(&format!("* 1 FETCH (UID 1 BODY[] {{{}}}\r\n", data.len()))
+                .await;
+            for piece in data.as_bytes().chunks(1_000) {
+                peer.send(std::str::from_utf8(piece).unwrap()).await;
+            }
+            peer.send(&format!(")\r\n{tag} OK done\r\n")).await;
+            peer.drain().await
+        });
+        let mut body = None;
+        let command = "UID FETCH 1 (BODY.PEEK[])";
+        run_within(&mut conn.session, command, Budget::BODIES, |response| {
+            if let Response::Fetch(_, attributes) = response {
+                for attribute in attributes {
+                    if let AttributeValue::BodySection { data, .. } = attribute {
+                        body = data.as_deref().map(<[u8]>::to_vec);
+                    }
+                }
+            }
+        })
+        .await
+        .unwrap();
+        assert!(body.as_deref() == Some(expected.as_bytes()));
         drop(conn);
         server.await.unwrap();
     }

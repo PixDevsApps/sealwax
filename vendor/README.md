@@ -60,3 +60,33 @@ diff -r target/imap-proto-check/imap-proto-0.17.0 vendor/imap-proto
 The only difference should be in `src/rfc3501/body_structure.rs`, and it should be the two commits above (`b93964df` without its `src/tests.rs` hunk), applied in that order.
 
 To drop it once an imap-proto release has the limit and async-imap takes that release: remove both `[patch.crates-io]` entries and this folder, raise `async-imap` in the workspace's `Cargo.toml`, update the lock files, and keep `a_greeting_nested_too_deep_is_unreadable_not_a_crash` (`engine/src/imap/connection/tests.rs`) and `a_body_structure_nested_too_deep_costs_one_reconnect` (`engine/tests/sync.rs`) passing.
+
+## async-imap 0.12.0, with a buffer that grows with a literal's data
+
+`vendor/async-imap/` is [async-imap](https://crates.io/crates/async-imap) 0.12.0 exactly as published on crates.io (MIT or Apache-2.0, `LICENSE-MIT` and `LICENSE-APACHE`), the IMAP client Sealwax builds on, with one change (2026-10-27), marked "Sealwax's patch" in `src/imap_stream.rs`:
+
+- **A literal's announced size isn't allocated ahead of its data:** `Buffer::ensure_capacity` grows the buffer only once it is full, by at most its own size at a time towards the size still needed. async-imap grew it to a literal's whole announced size as soon as the line announcing it (`{400000000}`) was read, and zero-filled it, so one line from a server made Sealwax allocate up to 512 MiB, async-imap's limit for one response, and hold it while the read waited. Now the buffer holds at most twice what has arrived: in a test, 2.1 MB for a 400 MB literal of which 1 MiB arrived, against 399 MB before. A line with no literal grows the buffer 4 KiB at a time, as before, and a literal of more than 512 MiB is now refused once that much has arrived rather than at once. `test_buffer_ensure_capacity` checks the new behaviour in place of the old, and `test_ensure_capacity_follows_the_data` is new.
+
+Upstream knows about the allocation: [chatmail/async-imap#148](https://github.com/chatmail/async-imap/pull/148), still open, proposes a configurable limit and a reader that keeps only a body's beginning. The patch here is Sealwax's own, smaller one.
+
+The workspace's `Cargo.toml` and `fuzz/Cargo.toml` use it through `[patch.crates-io]`; it is excluded from the workspace, so `cargo fmt`, Clippy and the tests don't run on it. Its own tests pass with the change (74 with `runtime-tokio`, as Sealwax builds it, and 73 with its default `runtime-async-std`; run outside the repository, where its dev-dependencies can be fetched).
+
+A build prints four warnings from async-imap about its use of the deprecated `unsafe_pinned` macro, for the same reason as lettre's: Cargo shows a local crate's warnings.
+
+To check it, fetch the published crate, whose SHA-256 is the checksum the lock file had before the patch (`f97b87216c9f0ccc63c516263169085fa34bba25633f6d96c6a9b9ca1fd5f70a`):
+
+```bash
+mkdir -p target/async-imap-check && curl -sSL https://static.crates.io/crates/async-imap/async-imap-0.12.0.crate -o target/async-imap-check/async-imap-0.12.0.crate
+```
+
+```bash
+sha256sum target/async-imap-check/async-imap-0.12.0.crate && tar -xzf target/async-imap-check/async-imap-0.12.0.crate -C target/async-imap-check
+```
+
+```bash
+diff -r target/async-imap-check/async-imap-0.12.0 vendor/async-imap
+```
+
+The only differences should be in `src/imap_stream.rs`: `Buffer::ensure_capacity` with its comment, the end of `test_buffer_ensure_capacity`, and the new `test_ensure_capacity_follows_the_data`.
+
+To drop it once an async-imap release no longer allocates a literal's announced size ahead of its data: remove both `[patch.crates-io]` entries and this folder, raise `async-imap` in the workspace's `Cargo.toml` (and `spikes/s1-imap/Cargo.toml`), update the lock files, and keep `a_literals_announced_size_isnt_allocated_before_its_data` (`engine/tests/literal_size.rs`) and `a_literal_that_arrives_in_pieces_comes_whole` (`engine/src/imap/raw.rs`) passing. To move it to a newer async-imap, copy the new published crate here and make the same change.
