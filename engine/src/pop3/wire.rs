@@ -17,6 +17,16 @@ pub(super) const STATUS_LINE: usize = 4096;
 /// The read buffer: a message's data comes in reads of up to this size.
 const BUFFER: usize = 64 * 1024;
 
+/// What a multi-line reply read line by line may hold.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct Limits {
+    /// Octets in a line, its line end included.
+    pub line: usize,
+    pub lines: usize,
+    /// Octets in all, line ends included.
+    pub octets: usize,
+}
+
 pub(super) struct Wire<S> {
     stream: BufReader<S>,
     timeout: Duration,
@@ -163,22 +173,28 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Wire<S> {
     }
 
     /// Calls `each` with every line of a multi-line reply, dot-unstuffed and without its line
-    /// end; at most `max_lines` lines of `max_line` octets.
+    /// end, within `limits`. When `deadline` gives a time for the octets read so far, the next
+    /// line must have come by then.
     pub async fn lines(
         &mut self,
-        max_line: usize,
-        max_lines: usize,
+        limits: Limits,
+        deadline: impl Fn(u64) -> Option<Instant>,
         mut each: impl FnMut(&[u8]) -> Result<(), Pop3Error>,
     ) -> Result<(), Pop3Error> {
         let mut line = Vec::with_capacity(128);
-        for _ in 0..=max_lines {
+        let mut read = 0;
+        for _ in 0..=limits.lines {
             line.clear();
-            self.line_into(&mut line, max_line, None)
+            self.line_into(&mut line, limits.line, deadline(read as u64))
                 .await
                 .map_err(|error| match error {
                     Pop3Error::TooLarge(_) => Pop3Error::Protocol("line too long"),
                     error => error,
                 })?;
+            read += line.len();
+            if read > limits.octets {
+                return Err(Pop3Error::Protocol("reply too long"));
+            }
             if line == b".\r\n" {
                 return Ok(());
             }
@@ -271,20 +287,78 @@ mod tests {
             wire.status().await,
             Err(Pop3Error::Protocol("status line too long"))
         ));
+        let limits = Limits {
+            line: 64,
+            lines: 10,
+            octets: 1024,
+        };
         let mut wire = server(b"1 a\r\n2 b\n..3 c\r\n.\r\n").await;
         let mut seen = Vec::new();
-        wire.lines(64, 10, |line| {
-            seen.push(line.to_vec());
-            Ok(())
-        })
+        wire.lines(
+            limits,
+            |_| None,
+            |line| {
+                seen.push(line.to_vec());
+                Ok(())
+            },
+        )
         .await
         .unwrap();
         assert_eq!(seen, [&b"1 a"[..], b"2 b", b".3 c"]);
         let mut wire = server(b"1\r\n2\r\n3\r\n.\r\n").await;
+        let few = Limits { lines: 2, ..limits };
         assert!(matches!(
-            wire.lines(64, 2, |_| Ok(())).await,
+            wire.lines(few, |_| None, |_| Ok(())).await,
             Err(Pop3Error::Protocol("too many lines"))
         ));
+        let mut wire = server(b"12345\r\n12345\r\n.\r\n").await;
+        let short = Limits {
+            octets: 15,
+            ..limits
+        };
+        assert!(matches!(
+            wire.lines(short, |_| None, |_| Ok(())).await,
+            Err(Pop3Error::Protocol("reply too long"))
+        ));
+        let mut wire = server(b"12345\r\n12345\r\n.\r\n").await;
+        let exact = Limits {
+            octets: 17,
+            ..limits
+        };
+        wire.lines(exact, |_| None, |_| Ok(())).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_listing_has_until_its_deadline_for_the_octets_read() {
+        let (client, mut far) = tokio::io::duplex(1024);
+        let limits = Limits {
+            line: 64,
+            lines: 100,
+            octets: 1024,
+        };
+        tokio::spawn(async move {
+            for n in 0..20 {
+                let line = format!("{n} uid-{n}\r\n");
+                if far.write_all(line.as_bytes()).await.is_err() {
+                    return;
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+            let _ = far.write_all(b".\r\n").await;
+        });
+        let started = Instant::now();
+        let mut wire = Wire::new(client, Duration::from_secs(5));
+        let mut seen = 0;
+        let deadline = |read: u64| Some(started + Duration::from_millis(120 + read));
+        let result = wire
+            .lines(limits, deadline, |_| {
+                seen += 1;
+                Ok(())
+            })
+            .await;
+        assert!(matches!(result, Err(Pop3Error::Timeout)), "{result:?}");
+        assert!((1..10).contains(&seen), "{seen}");
+        assert!(started.elapsed() < Duration::from_millis(700));
     }
 
     #[tokio::test]

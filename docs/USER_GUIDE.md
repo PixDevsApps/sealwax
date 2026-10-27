@@ -121,7 +121,7 @@ What a POP3 account does:
 - **On the server.** By default, downloaded mail stays on the server and Sealwax never deletes it there. To change that, edit the account's `[account.pop3]` table in `accounts.toml`: `delete_after_days = 30` deletes a message there 30 days after it was downloaded (1 to 3650 days), and `leave_on_server = false` deletes each message there as soon as it is downloaded.
 - **Checking.** Sealwax checks a POP3 server when it starts, every 5 minutes, after a reconnect and when you press Refresh (F5 or Ctrl+Alt+R). It downloads the newest mail first. The first download of an account sends no notifications.
 - **Read and unread** are kept by Sealwax on this computer: POP3 can't tell the server.
-- **A message over 100 MiB** isn't downloaded: it stays on the server and its row shows only its header.
+- **A message over 100 MiB** isn't downloaded: it stays on the server and its row shows only its header. So does one that turns out more than twice as large as the server said.
 - **Copies of your sent mail and your drafts** are kept in the local folders, not on the server.
 - **The server must support UIDL.** Without it the assistant says "This POP3 server can't keep track of messages": use IMAP if the provider offers it. "The mailbox is busy" means another mail app is downloading from the same mailbox, or the server wants a pause between sign-ins.
 - **Removing a POP3 account** deletes its local folders for good, with its sent mail, its drafts and any mail the server no longer has.

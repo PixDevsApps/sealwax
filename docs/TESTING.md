@@ -74,6 +74,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### POP3: RETR held to LIST's size, a listing to a size and a pace — 2026-10-27
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--pop3-retr-held-to-lists-size-a-listing-to-a-size-and-a-pace-2026-10-27). This machine; scripted TLS servers on 127.0.0.1 only; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `retr_may_send_up_to_twice_list_s_size_and_no_more`, `a_listing_too_long_in_all_is_refused`, `a_listing_that_trickles_ends_at_its_deadline` (`engine/tests/pop3.rs`) | Pass: 198,970 octets for a LIST of 100,000 read whole; 70,700 for a LIST of 100 too large and the session closed; a 500-line UIDL listing over a 2,000-octet limit refused; a line every 200 ms cut off at the 500 ms deadline instead of running 6 s. The POP3 suite's 28 tests in 2.2 s | Pass |
+| The same three with the RETR bound, the octets limit and the listing deadline turned off for one run | All three failed (25 passed, 3 failed, 6.4 s) | Pass |
+| `a_listing_has_until_its_deadline_for_the_octets_read`, the octets case in `lines_and_status_lines_have_limits` (`wire.rs`), `retr_may_send_twice_list_s_size_and_a_little_more` and `a_listing_has_time_in_proportion_to_what_it_sent` (`session.rs`) | Pass | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; 10:28–10:31) | exit 0; 1,566 passed, 0 failed, 99 ignored, `pop3_corpus` included; formatting and Clippy clean; four warnings each from lettre and async-imap; `tools/test_licenses.py` 8 passed | Pass |
+| The fuzz workspace, `cargo check --all-targets` with `CARGO_TARGET_DIR=target/fuzz` | Finished, no errors. The POP3 target wasn't run | Pass |
+| A real POP3 server's sizes against the RETR bound, and a large real listing against the deadline | Not run: no real POP3 account was used | Not verified |
+
 ### async-imap vendored: a literal's buffer grows with its data — 2026-10-27
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--async-imap-vendored-a-literals-buffer-grows-with-its-data-2026-10-27), [vendor/README.md](../vendor/README.md). This machine; scripted and fake TLS servers on 127.0.0.1 only; no real account.

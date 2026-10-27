@@ -25,8 +25,8 @@ mod wire;
 
 pub use crate::imap::Credentials;
 pub use session::{
-    COMMAND_TIMEOUT, CONNECT_TIMEOUT, Capabilities, Expire, MAX_MESSAGE, MIN_RATE, Mechanism,
-    Options, Session, check_login, connect, connect_with,
+    COMMAND_TIMEOUT, CONNECT_TIMEOUT, Capabilities, Expire, MAX_LISTING, MAX_MESSAGE, MIN_RATE,
+    Mechanism, Options, Session, check_login, connect, connect_with,
 };
 
 use crate::net::ConnectError;

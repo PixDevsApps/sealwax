@@ -94,6 +94,12 @@ impl Peer {
         stream.flush().await.unwrap();
     }
 
+    /// Sends `text`; false once the client has gone.
+    pub async fn try_send(&mut self, text: &str) -> bool {
+        let stream = self.stream.get_mut();
+        stream.write_all(text.as_bytes()).await.is_ok() && stream.flush().await.is_ok()
+    }
+
     /// The client's next line without its line end; `None` once it closed.
     pub async fn line(&mut self) -> Option<String> {
         let mut line = String::new();

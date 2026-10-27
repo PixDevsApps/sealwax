@@ -4,8 +4,8 @@
 
 use super::Pop3Error;
 use super::reply::Status;
-use super::session::{Capabilities, octets, pair, uidl};
-use super::wire::{STATUS_LINE, Wire};
+use super::session::{Capabilities, MAX_LISTING, octets, pair, uidl};
+use super::wire::{Limits, STATUS_LINE, Wire};
 use std::io;
 use std::pin::Pin;
 use std::sync::LazyLock;
@@ -13,6 +13,13 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 use tokio::runtime::Runtime;
+
+/// A listing's limits, as the session reads UIDL and LIST.
+const LISTING: Limits = Limits {
+    line: 1024,
+    lines: 1_000_000,
+    octets: MAX_LISTING,
+};
 
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_current_thread()
@@ -156,10 +163,14 @@ pub fn pop3(data: &[u8]) {
 
         let mut got = Vec::new();
         let result = wire(server, chunk)
-            .lines(1024, 1_000_000, |line| {
-                got.push(line.to_vec());
-                Ok(())
-            })
+            .lines(
+                LISTING,
+                |_| None,
+                |line| {
+                    got.push(line.to_vec());
+                    Ok(())
+                },
+            )
             .await;
         match (result, lines_reference(server, 1024)) {
             (Ok(()), Some(expected)) => assert_eq!(got, expected, "lines read differently"),
