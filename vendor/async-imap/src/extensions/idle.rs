@@ -197,12 +197,14 @@ impl<T: Read + Write + Unpin + fmt::Debug + Send> Handle<T> {
                     outcome,
                     ..
                 } => {
+                    // Sealwax's patch: a refusal without text is an error, not a panic, and a
+                    // `NO` ends IDLE's start as a `BAD` does instead of being waited out.
                     if tag == self.id.as_ref().unwrap()
-                        && let Status::Bad = status
+                        && let Status::Bad | Status::No = status
                     {
                         return Err(std::io::Error::new(
                             std::io::ErrorKind::ConnectionRefused,
-                            outcome.information.as_ref().unwrap().to_string(),
+                            outcome.information.as_deref().unwrap_or("IDLE refused"),
                         )
                         .into());
                     }

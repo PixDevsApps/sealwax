@@ -794,6 +794,41 @@ mod tests {
         server.await.unwrap();
     }
 
+    /// async-imap #151's stream-returning commands ended at a tagged `NO` or `BAD`, or at a lost
+    /// connection, as if the answer were whole. Sealwax reads commands here instead: a refusal
+    /// after data, with or without text, is the command's error, and a connection lost before the
+    /// completion is a connection error.
+    #[tokio::test]
+    async fn an_answer_is_whole_only_at_a_tagged_ok() {
+        for ending in ["NO [SERVERBUG] Failed", "BAD", ""] {
+            let (mut conn, mut peer) = logged_in().await;
+            let server = tokio::spawn(async move {
+                let tag = peer.expect("UID FETCH").await;
+                peer.send("* 1 FETCH (UID 1 FLAGS (\\Seen))\r\n").await;
+                if ending.is_empty() {
+                    return None;
+                }
+                peer.send(&format!("{tag} {ending}\r\n")).await;
+                Some(peer)
+            });
+            let mut seen = 0;
+            let error = run(&mut conn.session, "UID FETCH 1:* (FLAGS)", |_| seen += 1)
+                .await
+                .unwrap_err();
+            assert_eq!(seen, 1, "{ending:?}");
+            match ending {
+                "" => assert!(error.is_connection(), "{error:?}"),
+                "BAD" => assert!(matches!(error, ImapError::Bad(_)), "{error:?}"),
+                _ => assert!(
+                    matches!(&error, ImapError::No(text) if text.code() == Some("SERVERBUG")),
+                    "{error:?}"
+                ),
+            }
+            drop(conn);
+            server.await.unwrap();
+        }
+    }
+
     #[test]
     fn the_budgets_hold_the_largest_honest_answers() {
         let flag_scan = 1_000_000 * (flags(999_999, 999_999).len() as u64 + 40);

@@ -10,8 +10,8 @@
 //! For the op queue's writes (M4): SELECT read-write (or READ-ONLY by mailbox) with
 //! PERMANENTFLAGS, UID STORE, UID MOVE and UID COPY with COPYUID untagged, tagged or absent, UID
 //! EXPUNGE, EXPUNGE and CLOSE, UID SEARCH UNSEEN and UNDELETED; MOVE and UIDPLUS switched on
-//! and off; a command refused with a given reply, cut off before it runs, run with its reply
-//! lost, or run and never answered.
+//! and off; a command refused with a given reply (IDLE too), cut off before it runs, run with
+//! its reply lost, or run and never answered.
 //! A STORE in an EXAMINEd mailbox is answered OK and ignored, as Dovecot does (S1).
 //! For the Sent copy and drafts (M6): APPEND with a synchronizing or non-synchronizing literal,
 //! answered with APPENDUID where UIDPLUS is on; a connection cut part of the way into a literal;
@@ -293,6 +293,13 @@ impl World {
     pub fn cut_with(&mut self, needle: &str, text: &str) {
         self.faults
             .push((needle.to_owned(), Fault::CutWith(text.to_owned())));
+    }
+
+    /// Whether a fault waits for `command`.
+    fn faulted(&self, command: &str) -> bool {
+        self.faults
+            .iter()
+            .any(|(needle, _)| command.contains(needle.as_str()))
     }
 
     fn fault(&mut self, command: &str) -> Option<Fault> {
@@ -1742,7 +1749,13 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
                 None => return,
             }
         }
-        if command.eq_ignore_ascii_case("IDLE") && caps.contains("IDLE") {
+        if command.eq_ignore_ascii_case("IDLE")
+            && caps.contains("IDLE")
+            && !world
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .faulted(command)
+        {
             arrived(
                 &mut world.lock().unwrap_or_else(|e| e.into_inner()),
                 command,

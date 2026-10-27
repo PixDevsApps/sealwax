@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### An IDLE the server refuses is an error, not a panic — 2026-10-27
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--an-idle-the-server-refuses-is-an-error-not-a-panic-2026-10-27), [vendor/README.md](../vendor/README.md), [chatmail/async-imap#151](https://github.com/chatmail/async-imap/issues/151). This machine; scripted and fake TLS servers on 127.0.0.1 only; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| What the panic did to an account: the fake server answering every IDLE with a bare `BAD`, an account added through the engine (account passes every 2 s, INBOX polled every 1 s; a probe test, not kept), before the fix | The IDLE connection panicked at `vendor/async-imap/src/extensions/idle.rs:205` each time it started (five times in 10 s), and started again after each account pass with a new login; the account stayed synced; a new message was announced 1.0 s after it arrived, by the INBOX poll. After the fix: no panic; the IDLE connection reconnected after its backoff; the message was announced after 28 ms | Pass |
+| `an_idle_the_server_refuses_ends_in_an_error_at_once` (`engine/tests/newmail.rs`, the fake server refusing IDLE with `BAD`, `BAD [CLIENTBUG] …`, `NO`, `NO [CANNOT] …`) | Each an error within 5 s. With the published `idle.rs`: the panic. With only `NO` left as published: `NO` took 30.0 s, and the test fails | Pass |
+| `idle_refused` (async-imap's own tests, `src/client.rs`, the same four replies on its mock stream) and the rest of its tests, outside the repository | 75 passed with `--no-default-features --features runtime-tokio`, 74 with the default `runtime-async-std`. With the published `idle.rs`: `idle_refused` panics | Pass |
+| #151's items 2 and 3 against Sealwax's reading: `an_answer_is_whole_only_at_a_tagged_ok` (`engine/src/imap/raw.rs`, a scripted TLS server: a FETCH response, then `NO [SERVERBUG] …`, a bare `BAD`, or the connection dropped) | `ImapError::No` with its code, `ImapError::Bad`, a connection error; one response seen each time. With `raw.rs` reading a `NO` as success for one run: the test fails | Pass |
+| The vendored copy against the published crate (cargo's cached `async-imap-0.12.0`, `diff -r`) | Differences only in `src/imap_stream.rs`, `src/extensions/idle.rs` and `src/client.rs` (the new test) | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; 17:29–17:31; the first run stopped at formatting, fixed) | exit 0; 1,568 passed, 0 failed, 99 ignored; formatting and Clippy clean; four warnings each from lettre and async-imap (local crates) | Pass |
+| A real server refusing IDLE | Not run: no such server | Not verified |
+
 ### 1.0.6 — 2026-10-27
 
 The version change for 1.0.6: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.5 → 1.0.6), CHANGELOG's "1.0.6 — 2026-10-27" (the section that was "Not released yet", with "A security update. Please update.") and README's version line. The three changes (`27bbfea`, `f3defe2`, `dc43bac`) are in the sections below, and the advisory is [GHSA-f9g6-hwxr-7v96](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-f9g6-hwxr-7v96). This machine. The release commit is `7eb94c2`: `27188ee` with the advisory's link added to the CHANGELOG once the advisory had its ID, nothing else changed (`git diff 27188ee 7eb94c2`: two lines of `CHANGELOG.md`). CI ran on `27188ee`; the package was built and install-tested on `7eb94c2`.

@@ -1791,6 +1791,28 @@ mod tests {
         );
     }
 
+    /// Sealwax's patch: IDLE refused with a bare `BAD` (async-imap #151), with text, or with `NO`
+    /// ends `init` in an error, never a panic.
+    #[cfg_attr(feature = "runtime-tokio", tokio::test)]
+    #[cfg_attr(feature = "runtime-async-std", async_std::test)]
+    async fn idle_refused() {
+        for response in [
+            "A0001 BAD\r\n",
+            "A0001 BAD [CLIENTBUG] Not now\r\n",
+            "A0001 NO\r\n",
+            "A0001 NO [CANNOT] Not now\r\n",
+        ] {
+            let mock_stream = MockStream::new(response.as_bytes().to_vec());
+            let session = mock_session!(mock_stream);
+            let mut handle = session.idle();
+            let error = handle.init().await.unwrap_err();
+            assert!(
+                matches!(&error, Error::Io(e) if e.kind() == std::io::ErrorKind::ConnectionRefused),
+                "{response:?}: {error:?}"
+            );
+        }
+    }
+
     #[cfg_attr(feature = "runtime-tokio", tokio::test)]
     #[cfg_attr(feature = "runtime-async-std", async_std::test)]
     async fn rename() {

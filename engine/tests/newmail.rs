@@ -3,7 +3,8 @@
 //! their commit, through IDLE and through polling, in batches past 200, from any synced folder;
 //! nothing for a first sync, a UIDVALIDITY reset, older mail, mail stored before a restart (a new
 //! connection on the same store), or the account's own moves into a folder (re-homed, or found
-//! by the target's sync after a cut). The account's rules run on new mail first (ADR-020).
+//! by the target's sync after a cut). The account's rules run on new mail first (ADR-020). An IDLE
+//! the server refuses, with or without text, ends in an error at once, never a panic.
 //! Synthetic data only.
 
 mod fake;
@@ -438,6 +439,34 @@ async fn new_mail_through_idle_without_qresync() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn new_mail_polled_on_an_imap4rev1_server() {
     new_mail_in(Flavor::Rev1).await;
+}
+
+/// async-imap #151: IDLE's start unwrapped a refusal's text, so a server answering IDLE with a
+/// bare `BAD` panicked the account's IDLE connection, and a `NO` was waited out until
+/// `IDLE_COMMAND_TIMEOUT`. Each is now an error at once, as a `BAD` with text was.
+#[tokio::test]
+async fn an_idle_the_server_refuses_ends_in_an_error_at_once() {
+    let fake = fake(Flavor::Qresync).await;
+    for reply in [
+        "BAD",
+        "BAD [CLIENTBUG] Not now",
+        "NO",
+        "NO [CANNOT] Not now",
+    ] {
+        let conn = fake.connect().await;
+        fake.world().refuse("IDLE", reply);
+        let started = Instant::now();
+        let idled = conn.idle(WAIT, std::future::pending()).await;
+        assert!(
+            matches!(&idled, Err(error) if error.is_connection()),
+            "{reply}: {idled:?}"
+        );
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "{reply}: {:?}",
+            started.elapsed()
+        );
+    }
 }
 
 /// More than a batch at once: SEARCH and batches of 200, each committed and announced on its
