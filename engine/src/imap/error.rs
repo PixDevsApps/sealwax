@@ -58,6 +58,10 @@ pub enum ImapError {
     /// couldn't read stay in its buffer, so the connection is done.
     #[error("the server's reply to {0} couldn't be read")]
     Unreadable(&'static str),
+    /// The server's reply to the command went past its budget (`raw::Budget`); the
+    /// rest of it is never read, so the connection is done.
+    #[error("the server's reply to {0} was too long")]
+    TooLong(&'static str),
     #[error("the server said NO")]
     No(ServerText),
     #[error("the server said BAD")]

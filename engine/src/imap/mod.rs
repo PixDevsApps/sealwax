@@ -18,6 +18,7 @@ pub mod manage;
 pub mod mutf7;
 mod raw;
 pub mod roles;
+mod stream;
 mod sync;
 pub mod write;
 
@@ -37,4 +38,4 @@ pub use sync::{
     sync_account, sync_folder,
 };
 
-pub(crate) type Stream = tokio_rustls::client::TlsStream<tokio::net::TcpStream>;
+pub(crate) use stream::Stream;

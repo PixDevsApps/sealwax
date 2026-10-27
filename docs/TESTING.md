@@ -74,6 +74,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Every IMAP command held to a budget — 2026-10-27
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--every-imap-command-held-to-a-budget-2026-10-27). This machine; scripted TLS servers on 127.0.0.1 only; no real account and no outside network.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The budget's tests (`engine/src/imap/raw.rs`, a test budget of 1,000 responses and 1 MiB): `responses_without_end_stop_at_the_budget`, `long_responses_without_end_stop_at_the_budget_in_bytes`, `an_answer_within_the_budget_is_read_whole_and_one_past_it_is_not`, `pipelined_commands_share_one_budget`, `the_budgets_hold_the_largest_honest_answers` | Pass: the raw module's 11 tests in 0.16 s. Endless `* 1 EXISTS` stops after exactly 1,000 responses; endless 11 KB `* SEARCH` lines stop with no more UIDs collected than 1 MiB holds | Pass |
+| The same tests with the budget's check turned off for one run | The answer one response past the budget and the two pipelined commands failed; the two floods ran past 60 s (since then they have a 30 s limit, so a missed flood fails instead of hanging) | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; ended 09:55) | exit 0; 1,558 passed, 0 failed, 99 ignored; formatting and Clippy clean; lettre's four warnings as before; `tools/test_licenses.py` 8 passed. The first two runs stopped at formatting and then at Clippy (`assertions_on_constants` in the new test), both fixed | Pass |
+| The fuzz workspace, `cargo check --all-targets` with `CARGO_TARGET_DIR=target/fuzz` | Finished, no errors | Pass |
+| A real server's largest honest answer (a full flag scan of a very large folder) against the budget | Not run: estimated from the responses' form (about 100 bytes a message), not measured | Not verified |
+
 ### The new banners in the self-tests — 2026-10-26
 
 `status-banners` gets the two banners of 1.0.5: the scripted engine's `sending-off` (`NeedsSignIn(SmtpAuthDisabled)`) and `add-again` (`NeedsSignIn(ServerNotMicrosoft)`), each with its queue name, sidebar words, title, body, no buttons, tint and contrast, and a screenshot (`.local/selftest/status-sending-off.png`, `status-add-again.png`). This machine, headless (display 34).

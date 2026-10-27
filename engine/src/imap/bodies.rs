@@ -406,41 +406,46 @@ async fn uid_fetch(
     let wanted: HashSet<u32> = uids.iter().copied().collect();
     let mut out: HashMap<u32, Fetched> = HashMap::new();
     let command = format!("UID FETCH {} ({items})", raw::uid_set(uids));
-    let result = raw::run(&mut conn.session, &command, |response| {
-        let Response::Fetch(_, attributes) = response else {
-            return;
-        };
-        let Some(uid) = attributes.iter().find_map(|attribute| match attribute {
-            AttributeValue::Uid(uid) => Some(*uid),
-            _ => None,
-        }) else {
-            return;
-        };
-        if !wanted.contains(&uid) {
-            return;
-        }
-        let entry = out.entry(uid).or_default();
-        for attribute in attributes {
-            match attribute {
-                AttributeValue::BodyStructure(body) => {
-                    entry.structure = Some(Node::from_structure(body));
-                }
-                AttributeValue::BodySection {
-                    section: None,
-                    data,
-                    ..
-                } => entry.whole = Some(data.as_deref().unwrap_or_default().to_vec()),
-                AttributeValue::BodySection { section, data, .. } => {
-                    if let Some(name) = section_name(section) {
-                        entry
-                            .sections
-                            .insert(name, data.as_deref().unwrap_or_default().to_vec());
-                    }
-                }
-                _ => {}
+    let result = raw::run_within(
+        &mut conn.session,
+        &command,
+        raw::Budget::BODIES,
+        |response| {
+            let Response::Fetch(_, attributes) = response else {
+                return;
+            };
+            let Some(uid) = attributes.iter().find_map(|attribute| match attribute {
+                AttributeValue::Uid(uid) => Some(*uid),
+                _ => None,
+            }) else {
+                return;
+            };
+            if !wanted.contains(&uid) {
+                return;
             }
-        }
-    })
+            let entry = out.entry(uid).or_default();
+            for attribute in attributes {
+                match attribute {
+                    AttributeValue::BodyStructure(body) => {
+                        entry.structure = Some(Node::from_structure(body));
+                    }
+                    AttributeValue::BodySection {
+                        section: None,
+                        data,
+                        ..
+                    } => entry.whole = Some(data.as_deref().unwrap_or_default().to_vec()),
+                    AttributeValue::BodySection { section, data, .. } => {
+                        if let Some(name) = section_name(section) {
+                            entry
+                                .sections
+                                .insert(name, data.as_deref().unwrap_or_default().to_vec());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        },
+    )
     .await;
     match result {
         Ok(()) | Err(ImapError::No(_)) => Ok(out),

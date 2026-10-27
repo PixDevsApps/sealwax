@@ -2,9 +2,10 @@
 //! calls for FETCH, STORE, SEARCH, LIST, EXPUNGE, NOOP, CAPABILITY and ID stop at the tagged
 //! completion without checking it, so a refused command reads as an empty success, and they
 //! drop untagged responses past a 100-entry buffer. Every command goes through here instead:
-//! it is sent with `run_command`, every response is read by us with a timeout, every untagged
-//! response reaches the caller, and every completion is checked for OK, NO and BAD. A tagged
-//! OK's COPYUID (RFC 4315) or READ-ONLY reaches the caller too.
+//! it is sent with `run_command`, every response is read by us with a timeout and counted
+//! against the command's budget, every untagged response reaches the caller, and every
+//! completion is checked for OK, NO and BAD. A tagged OK's COPYUID (RFC 4315) or READ-ONLY
+//! reaches the caller too.
 
 use super::error::{ImapError, ServerText};
 use async_imap::imap_proto::rfc4315::UidSetMember;
@@ -15,6 +16,69 @@ pub(crate) type Session = async_imap::Session<super::Stream>;
 
 /// How long any one read may wait for the server.
 pub const READ_TIMEOUT: Duration = Duration::from_secs(60);
+
+const MIB: u64 = 1024 * 1024;
+
+/// How much one command may read: far more than any honest answer to a command Sealwax sends,
+/// so a server that never ends its responses, each one well formed and in time, can't hold the
+/// connection or fill memory with what the caller collects from them. Past either limit the
+/// command ends with [`ImapError::TooLong`], and with it the connection.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Budget {
+    /// Responses, the completion included.
+    responses: u64,
+    /// Bytes read from the server while the command ran.
+    bytes: u64,
+}
+
+impl Budget {
+    /// Any command but a body FETCH. The largest honest answer is a full flag scan: a folder of
+    /// a million messages answers with a million responses of about 100 MB.
+    pub(crate) const COMMAND: Budget = Budget {
+        responses: 2_000_000,
+        bytes: 256 * MIB,
+    };
+    /// A FETCH of bodies or an attachment, one of whose responses may be as large as async-imap
+    /// reads one (512 MiB).
+    pub(crate) const BODIES: Budget = Budget {
+        bytes: 1024 * MIB,
+        ..Budget::COMMAND
+    };
+}
+
+/// The bytes the session has read from the server.
+fn read(session: &mut Session) -> u64 {
+    let stream: &mut super::Stream = session.as_mut();
+    stream.read()
+}
+
+/// What a command has read against its budget.
+struct Spent {
+    budget: Budget,
+    /// The session's bytes read when the command was sent.
+    from: u64,
+    responses: u64,
+}
+
+impl Spent {
+    fn new(session: &mut Session, budget: Budget) -> Self {
+        Spent {
+            budget,
+            from: read(session),
+            responses: 0,
+        }
+    }
+
+    /// Counts the response just read.
+    fn count(&mut self, session: &mut Session, command: &'static str) -> Result<(), ImapError> {
+        self.responses += 1;
+        let bytes = read(session) - self.from;
+        if self.responses > self.budget.responses || bytes > self.budget.bytes {
+            return Err(ImapError::TooLong(command));
+        }
+        Ok(())
+    }
+}
 
 /// The commands Sealwax sends, by the words that name them.
 const VERBS: [&str; 28] = [
@@ -64,19 +128,23 @@ pub(crate) fn verb(command: &str) -> &'static str {
         .unwrap_or("a command")
 }
 
-/// Reads one response to `command` (its verb) and hands it to `f`. async-imap's `ResponseData`
-/// can't be named outside the crate, so it never leaves this function.
+/// Reads one response to `command` (its verb), counts it against the command's budget and hands
+/// it to `f`. async-imap's `ResponseData` can't be named outside the crate, so it never leaves
+/// this function.
 async fn next<R>(
     session: &mut Session,
     command: &'static str,
+    spent: &mut Spent,
     f: impl FnOnce(&Response<'_>) -> R,
 ) -> Result<R, ImapError> {
-    match tokio::time::timeout(READ_TIMEOUT, session.read_response()).await {
-        Err(_) => Err(ImapError::Timeout),
-        Ok(Err(error)) => Err(ImapError::reading(error, command)),
-        Ok(Ok(None)) => Err(ImapError::ConnectionLost),
-        Ok(Ok(Some(response))) => Ok(f(response.parsed())),
-    }
+    let response = match tokio::time::timeout(READ_TIMEOUT, session.read_response()).await {
+        Err(_) => return Err(ImapError::Timeout),
+        Ok(Err(error)) => return Err(ImapError::reading(error, command)),
+        Ok(Ok(None)) => return Err(ImapError::ConnectionLost),
+        Ok(Ok(Some(response))) => response,
+    };
+    spent.count(session, command)?;
+    Ok(f(response.parsed()))
 }
 
 /// The server's text with its response code in front (`[TRYCREATE] …`): imap-proto parses some
@@ -181,17 +249,18 @@ enum Step {
 
 /// Reads until the tagged completion of `id`, handing every other response to `on_untagged`, and
 /// returns what the tagged OK's response code says.
-pub(crate) async fn finish<F>(
+async fn finish<F>(
     session: &mut Session,
     id: &RequestId,
     command: &'static str,
+    spent: &mut Spent,
     mut on_untagged: F,
 ) -> Result<Option<Code>, ImapError>
 where
     F: FnMut(&Response<'_>),
 {
     loop {
-        let step = next(session, command, |response| match response {
+        let step = next(session, command, spent, |response| match response {
             Response::Done {
                 tag,
                 status,
@@ -216,7 +285,7 @@ where
     }
 }
 
-/// Runs one command and reads its responses.
+/// Runs one command and reads its responses, within [`Budget::COMMAND`].
 pub(crate) async fn run<F>(
     session: &mut Session,
     command: &str,
@@ -225,7 +294,20 @@ pub(crate) async fn run<F>(
 where
     F: FnMut(&Response<'_>),
 {
-    run_coded(session, command, on_untagged).await.map(drop)
+    run_within(session, command, Budget::COMMAND, on_untagged).await
+}
+
+/// [`run`] within `budget`.
+pub(crate) async fn run_within<F>(
+    session: &mut Session,
+    command: &str,
+    budget: Budget,
+    on_untagged: F,
+) -> Result<(), ImapError>
+where
+    F: FnMut(&Response<'_>),
+{
+    coded(session, command, budget, on_untagged).await.map(drop)
 }
 
 /// [`run`], returning what the tagged OK's response code says (COPYUID, READ-ONLY).
@@ -237,8 +319,21 @@ pub(crate) async fn run_coded<F>(
 where
     F: FnMut(&Response<'_>),
 {
+    coded(session, command, Budget::COMMAND, on_untagged).await
+}
+
+async fn coded<F>(
+    session: &mut Session,
+    command: &str,
+    budget: Budget,
+    on_untagged: F,
+) -> Result<Option<Code>, ImapError>
+where
+    F: FnMut(&Response<'_>),
+{
     let id = session.run_command(command).await?;
-    finish(session, &id, verb(command), on_untagged).await
+    let mut spent = Spent::new(session, budget);
+    finish(session, &id, verb(command), &mut spent, on_untagged).await
 }
 
 /// What the server said before a literal's data.
@@ -270,8 +365,9 @@ where
     use tokio::io::AsyncWriteExt;
     let id = session.run_command(command).await?;
     let verb = verb(command);
+    let mut spent = Spent::new(session, Budget::COMMAND);
     loop {
-        let ahead = next(session, verb, |response| match response {
+        let ahead = next(session, verb, &mut spent, |response| match response {
             Response::Continue { .. } => Ahead::Go,
             Response::Done {
                 tag,
@@ -309,15 +405,27 @@ where
     tokio::time::timeout(write_timeout(literal.len()), sent)
         .await
         .map_err(|_| ImapError::Timeout)??;
-    finish(session, &id, verb, on_untagged).await
+    finish(session, &id, verb, &mut spent, on_untagged).await
 }
 
-/// Sends several commands without waiting and reads until every one has completed. Replies may
-/// come in any order (Stalwart runs pipelined commands concurrently); the first failure is
-/// returned once all completions are read.
+/// Sends several commands without waiting and reads until every one has completed, all of them
+/// within one [`Budget::COMMAND`]. Replies may come in any order (Stalwart runs pipelined
+/// commands concurrently); the first failure is returned once all completions are read.
 pub(crate) async fn run_pipelined<F>(
     session: &mut Session,
     commands: &[String],
+    on_untagged: F,
+) -> Result<(), ImapError>
+where
+    F: FnMut(&Response<'_>),
+{
+    pipelined(session, commands, Budget::COMMAND, on_untagged).await
+}
+
+async fn pipelined<F>(
+    session: &mut Session,
+    commands: &[String],
+    budget: Budget,
     mut on_untagged: F,
 ) -> Result<(), ImapError>
 where
@@ -330,9 +438,10 @@ where
     let verb = commands
         .first()
         .map_or("a command", |command| verb(command));
+    let mut spent = Spent::new(session, budget);
     let mut failure = None;
     while !pending.is_empty() {
-        let done = next(session, verb, |response| match response {
+        let done = next(session, verb, &mut spent, |response| match response {
             Response::Done {
                 tag,
                 status,
@@ -413,6 +522,10 @@ pub(crate) fn uid_set(uids: &[u32]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::imap::{Connection, Credentials, connect};
+    use crate::net::testing::{Peer, bind, test_ca};
+    use async_imap::imap_proto::MailboxDatum;
+    use sealwax_domain::account::{Endpoint, Security};
 
     #[test]
     fn compresses_uid_sets() {
@@ -495,5 +608,162 @@ mod tests {
             assert_eq!(text(&outcome(line)).code(), Some(expected));
         }
         assert_eq!(text(&outcome(b"A1 NO Something failed\r\n")).code(), None);
+    }
+
+    const SMALL: Budget = Budget {
+        responses: 1_000,
+        bytes: MIB,
+    };
+
+    /// Far longer than a command held to [`SMALL`] takes, so a flood the budget misses fails its
+    /// test instead of holding it.
+    const ENDS: Duration = Duration::from_secs(30);
+
+    /// A client logged in to a scripted server, and the server's side, whose script goes on
+    /// from there.
+    async fn logged_in() -> (Connection, Peer) {
+        let ca = test_ca();
+        let config = ca.server.clone();
+        let (listener, port) = bind().await;
+        let server = tokio::spawn(async move {
+            let mut peer = Peer::accept_tls(&listener, config).await;
+            peer.send("* OK [CAPABILITY IMAP4rev1 AUTH=PLAIN] ready\r\n")
+                .await;
+            let tag = peer.expect("AUTHENTICATE PLAIN").await;
+            peer.send("+ \r\n").await;
+            peer.line().await;
+            peer.send(&format!("{tag} OK authenticated\r\n")).await;
+            let tag = peer.expect("CAPABILITY").await;
+            peer.send("* CAPABILITY IMAP4rev1\r\n").await;
+            peer.send(&format!("{tag} OK done\r\n")).await;
+            peer
+        });
+        let conn = connect(
+            &Endpoint {
+                host: "127.0.0.1".into(),
+                port,
+                security: Security::Tls,
+                certificate: None,
+            },
+            Credentials::Password {
+                username: "user",
+                password: "secret-password",
+            },
+            ca.trust.client_config().unwrap(),
+        )
+        .await
+        .unwrap();
+        (conn, server.await.unwrap())
+    }
+
+    fn flags(from: u32, to: u32) -> String {
+        (from..=to)
+            .map(|n| format!("* {n} FETCH (UID {n} FLAGS (\\Seen))\r\n"))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn responses_without_end_stop_at_the_budget() {
+        let (mut conn, mut peer) = logged_in().await;
+        let server = tokio::spawn(async move {
+            peer.expect("NOOP").await;
+            peer.repeat("* 1 EXISTS\r\n").await;
+        });
+        let mut seen = 0;
+        let run = run_within(&mut conn.session, "NOOP", SMALL, |_| seen += 1);
+        let error = tokio::time::timeout(ENDS, run).await.unwrap().unwrap_err();
+        assert!(matches!(error, ImapError::TooLong("NOOP")), "{error:?}");
+        assert!(error.is_connection());
+        assert_eq!(seen, 1_000);
+        drop(conn);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn long_responses_without_end_stop_at_the_budget_in_bytes() {
+        let (mut conn, mut peer) = logged_in().await;
+        let line = format!("* SEARCH{}\r\n", " 4294967295".repeat(1_000));
+        let server = tokio::spawn(async move {
+            peer.expect("UID SEARCH").await;
+            peer.repeat(&line).await;
+        });
+        let mut uids = 0;
+        let run = run_within(&mut conn.session, "UID SEARCH ALL", SMALL, |response| {
+            if let Response::MailboxData(MailboxDatum::Search(found)) = response {
+                uids += found.len() as u64;
+            }
+        });
+        let error = tokio::time::timeout(ENDS, run).await.unwrap().unwrap_err();
+        assert!(
+            matches!(error, ImapError::TooLong("UID SEARCH")),
+            "{error:?}"
+        );
+        assert!(uids > 0 && uids * 11 <= MIB, "{uids}");
+        drop(conn);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn an_answer_within_the_budget_is_read_whole_and_one_past_it_is_not() {
+        let (mut conn, mut peer) = logged_in().await;
+        let server = tokio::spawn(async move {
+            let tag = peer.expect("UID FETCH").await;
+            peer.send(&format!("{}{tag} OK done\r\n", flags(1, 999)))
+                .await;
+            let tag = peer.expect("UID FETCH").await;
+            peer.send(&format!("{}{tag} OK done\r\n", flags(1, 1_000)))
+                .await;
+            peer.drain().await
+        });
+        let command = "UID FETCH 1:* (UID FLAGS)";
+        let mut seen = 0;
+        run_within(&mut conn.session, command, SMALL, |_| seen += 1)
+            .await
+            .unwrap();
+        assert_eq!(seen, 999);
+        let error = run_within(&mut conn.session, command, SMALL, |_| {})
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, ImapError::TooLong("UID FETCH")),
+            "{error:?}"
+        );
+        drop(conn);
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn pipelined_commands_share_one_budget() {
+        let (mut conn, mut peer) = logged_in().await;
+        let server = tokio::spawn(async move {
+            let first = peer.expect("UID FETCH 1:600").await;
+            let second = peer.expect("UID FETCH 601:1200").await;
+            peer.send(&format!("{}{first} OK done\r\n", flags(1, 600)))
+                .await;
+            peer.send(&format!("{}{second} OK done\r\n", flags(601, 1_200)))
+                .await;
+            peer.drain().await
+        });
+        let commands = [
+            "UID FETCH 1:600 (UID FLAGS)".to_owned(),
+            "UID FETCH 601:1200 (UID FLAGS)".to_owned(),
+        ];
+        let error = pipelined(&mut conn.session, &commands, SMALL, |_| {})
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, ImapError::TooLong("UID FETCH")),
+            "{error:?}"
+        );
+        drop(conn);
+        server.await.unwrap();
+    }
+
+    #[test]
+    fn the_budgets_hold_the_largest_honest_answers() {
+        let flag_scan = 1_000_000 * (flags(999_999, 999_999).len() as u64 + 40);
+        assert!(Budget::COMMAND.bytes > 2 * flag_scan);
+        const { assert!(Budget::COMMAND.responses >= 2 * 1_000_000) };
+        const { assert!(Budget::BODIES.bytes > 512 * MIB + MIB) };
     }
 }

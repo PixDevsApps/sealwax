@@ -816,6 +816,10 @@ impl Poller {
                 tracing::warn!(account = self.account.0, %error, "connecting again after a reply that couldn't be read");
                 self.lost();
             }
+            SyncError::Imap(ImapError::TooLong(_)) => {
+                tracing::warn!(account = self.account.0, %error, "connecting again after a reply that was too long");
+                self.lost();
+            }
             SyncError::Imap(imap) if imap.is_connection() => {
                 tracing::info!(account = self.account.0, %error, "the command connection was lost");
                 self.lost();
