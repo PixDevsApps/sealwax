@@ -74,6 +74,15 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.0.6 — 2026-10-27
+
+The version change for 1.0.6: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.5 → 1.0.6), CHANGELOG's "1.0.6 — 2026-10-27" (the section that was "Not released yet", with "A security update. Please update.") and README's version line. The three changes (`27bbfea`, `f3defe2`, `dc43bac`) are in the sections below. This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` on the version change (11:14–11:30) | exit 0; 1,566 passed, 0 failed, 99 ignored; all 84 self-test scripts, 8,157 of 8,157 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 278 s; `target/debug/sealwax --version` says `sealwax 1.0.6`; no `gtk4-broadwayd` left | Pass |
+| Tag, package build, install test and release | Not part of the version change; recorded with the release | — |
+
 ### POP3: RETR held to LIST's size, a listing to a size and a pace — 2026-10-27
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--pop3-retr-held-to-lists-size-a-listing-to-a-size-and-a-pace-2026-10-27). This machine; scripted TLS servers on 127.0.0.1 only; no real account.
