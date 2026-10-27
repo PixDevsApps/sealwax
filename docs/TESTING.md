@@ -76,12 +76,18 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ### 1.0.6 — 2026-10-27
 
-The version change for 1.0.6: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.5 → 1.0.6), CHANGELOG's "1.0.6 — 2026-10-27" (the section that was "Not released yet", with "A security update. Please update.") and README's version line. The three changes (`27bbfea`, `f3defe2`, `dc43bac`) are in the sections below. This machine.
+The version change for 1.0.6: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.5 → 1.0.6), CHANGELOG's "1.0.6 — 2026-10-27" (the section that was "Not released yet", with "A security update. Please update.") and README's version line. The three changes (`27bbfea`, `f3defe2`, `dc43bac`) are in the sections below, and the advisory is [GHSA-f9g6-hwxr-7v96](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-f9g6-hwxr-7v96). This machine. The release commit is `7eb94c2`: `27188ee` with the advisory's link added to the CHANGELOG once the advisory had its ID, nothing else changed (`git diff 27188ee 7eb94c2`: two lines of `CHANGELOG.md`). CI ran on `27188ee`; the package was built and install-tested on `7eb94c2`.
 
 | Check | Result | Verdict |
 | --- | --- | --- |
 | CI, `SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui` on the version change (11:14–11:30) | exit 0; 1,566 passed, 0 failed, 99 ignored; all 84 self-test scripts, 8,157 of 8,157 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 278 s; `target/debug/sealwax --version` says `sealwax 1.0.6`; no `gtk4-broadwayd` left | Pass |
-| Tag, package build, install test and release | Not part of the version change; recorded with the release | — |
+| The push range (`e8bead1..7eb94c2`, 6 commits, 64 files, 33 of them `vendor/async-imap/`) scanned before pushing | No working doc, home path, user name, hostname or client ID; nothing about findings not yet public; the only addresses are the commit author, test fixtures (`example.com`, `example.org`, `example.test`) and async-imap's own (its author and its test server) | Pass |
+| `v1.0.6` on `7eb94c2`, `main` and the tag pushed | GitHub's `main` and `v1.0.6` are `7eb94c2` (tag object `3b6e58a`) | Pass |
+| `python3 tools/release.py build` on `v1.0.6` (13:25–13:30) | makepkg's `check()`: 1,128 passed, 0 failed, 91 ignored; the Microsoft client ID built in; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.0.6` and holds no home-folder path or user name; both license files are in the package, with async-imap, imap-proto and lettre listed. Package SHA-256 `6aa02595…418f` | Pass |
+| `bash tools/install-test.sh .local/release/1.0.6/sealwax-1.0.6-1-x86_64.pkg.tar.zst` (local `archlinux:base`, `--pull never`; 13:30) | exit 0: pacman installed the package and its dependencies in a fresh container, no library missing; `/usr/bin/sealwax --version` says `sealwax 1.0.6`; both license files installed; `install-smoke` 16 of 16 (the window, a message in the reader, its web process in WebKit's sandbox); the container removed; log in `.local/install-test/20261027-133019/` | Pass |
+| The release [v1.0.6](https://github.com/PixDevsApps/sealwax/releases/tag/v1.0.6) (`tools/release.py github` from the tagged commit, 12:31:12 UTC) | Not a draft or pre-release; GitHub's latest; its five files; the notes are CHANGELOG's section and link the advisory; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` and `releases/download/v1.0.6/sealwax-1.0.6-1-x86_64.pkg.tar.zst` both give the build's package (SHA-256 `6aa02595…`), and the published `SHA256SUMS` is the local one | Pass |
+| [GHSA-f9g6-hwxr-7v96](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-f9g6-hwxr-7v96) | Ecosystem set to Other (affected `<= 1.0.5`, patched `1.0.6`, medium 5.9, CWE-770 and CWE-789 unchanged); a CVE requested (202 Accepted); published 12:31:41 UTC; the page answers 200 without signing in. No CVE ID yet | Pass |
+| Installed here | Not yet | Not verified |
 
 ### POP3: RETR held to LIST's size, a listing to a size and a pace — 2026-10-27
 
