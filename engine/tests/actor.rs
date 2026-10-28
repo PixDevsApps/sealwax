@@ -1,6 +1,7 @@
 //! The per-account sync actor through the engine service, against the fake IMAP server (CI, no
 //! network beyond 127.0.0.1): new mail through IDLE, NOOP before IDLE, the STATUS backstop,
-//! IDLE issued again, backoff and its reset, `Reconnect` after silently dead connections,
+//! IDLE issued again, backoff and its reset (also after an IDLE connection that ran well), INBOX
+//! polled while the IDLE connection waits, `Reconnect` after silently dead connections,
 //! statuses, `FolderOpened`, `LoadOlder`, bodies beside the actor, two accounts at once,
 //! throttled progress, a quick stop, Refresh's `CheckMail` and a message whose headers can't be
 //! read (issue #20). Timings are short real durations: the store answers
@@ -587,6 +588,91 @@ async fn a_closed_idle_connection_is_made_again_at_once() {
             Event::AccountStatus { account: id, status: SyncStatus::Offline(_) } if *id == account
         )),
         "no offline for a connection made again at once"
+    );
+}
+
+/// An IDLE connection that stayed up as long as the longest backoff ran well: each time the
+/// server closes one, the next is made at once, not after a backoff grown by every close.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_idle_connection_that_ran_well_is_made_again_at_once_every_time() {
+    let fake = fake(Flavor::Qresync).await;
+    let mut sync = config();
+    sync.backoff_min = Duration::from_secs(2);
+    sync.backoff_max = Duration::from_secs(2);
+    let mut run = running(&fake, sync);
+    run.add(&fake, 1, "ranwell").await;
+    for round in 1..=3 {
+        assert!(
+            within(WAIT, || async { fake.world().count("IDLE") >= round })
+                .await
+                .is_some(),
+            "round {round}: idling"
+        );
+        tokio::time::sleep(Duration::from_millis(2300)).await;
+        let connections = fake.world().connections.len();
+        fake.world().close_idling();
+        let again = within(Duration::from_secs(5), || async {
+            fake.world().connections.len() > connections
+        })
+        .await;
+        assert!(
+            again.is_some_and(|after| after < Duration::from_millis(500)),
+            "round {round}: made again after {again:?}"
+        );
+    }
+}
+
+/// While the IDLE connection waits to try again, here after the server refused IDLE twice,
+/// the command connection polls INBOX as on a server without IDLE; once IDLE runs, it stops.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn inbox_is_polled_while_the_idle_connection_waits_to_try_again() {
+    let fake = fake(Flavor::Qresync).await;
+    {
+        let mut world = fake.world();
+        world.refuse("IDLE", "NO [CANNOT] Not now");
+        world.refuse("IDLE", "NO [CANNOT] Not now");
+    }
+    let mut sync = config();
+    sync.inbox_poll = Duration::from_millis(300);
+    sync.backoff_min = Duration::from_secs(30);
+    sync.backoff_max = Duration::from_secs(30);
+    let mut run = running(&fake, sync);
+    let account = run.add(&fake, 1, "waits").await;
+    let inbox = run.folder(account, "INBOX").await;
+    assert!(
+        within(WAIT, || async { fake.world().count("IDLE") >= 2 })
+            .await
+            .is_some(),
+        "IDLE refused twice"
+    );
+    fake.world().append("INBOX", 0, &[]);
+    let arrived = within(Duration::from_secs(5), || async {
+        run.count(inbox).await == 21
+    })
+    .await;
+    assert!(
+        arrived.is_some(),
+        "new mail through the INBOX poll within 5 s"
+    );
+    assert_eq!(
+        fake.world().count("IDLE"),
+        2,
+        "the IDLE connection still waits"
+    );
+    run.send(Command::Reconnect);
+    assert!(
+        within(WAIT, || async { fake.world().count("IDLE") >= 3 })
+            .await
+            .is_some(),
+        "IDLE runs after Reconnect"
+    );
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let examined = fake.world().count("EXAMINE");
+    tokio::time::sleep(Duration::from_secs(1)).await;
+    assert_eq!(
+        fake.world().count("EXAMINE"),
+        examined,
+        "no INBOX polls while IDLE runs"
     );
 }
 

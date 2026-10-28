@@ -5,6 +5,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 ## Not released yet
 
 - **A mail server that turns down new-mail notifications no longer trips up Sealwax:** Sealwax asks the server to tell it at once when new mail arrives. A server that said no without giving a reason made that part of Sealwax stop with an internal error until the account's next check, two minutes later, with new mail found by asking once a minute meanwhile. Now Sealwax treats a no like a lost connection and asks again a little later ([chatmail/async-imap#151](https://github.com/chatmail/async-imap/issues/151)).
+- **New mail keeps coming while Sealwax waits to reconnect:** when the connection that brings new mail at once drops and Sealwax waits before making it again, Sealwax now checks the Inbox every minute meanwhile, as it does with servers that don't announce new mail. Before, new mail could wait for the account's next check, up to two minutes. And a connection that worked for a while is made again at once when it drops, instead of after a wait that grew with every drop since Sealwax started.
 
 ## 1.0.6 — 2026-10-27
 

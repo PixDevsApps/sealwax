@@ -3,7 +3,8 @@
 //! - The **command connection** runs an account pass on a schedule (every synced folder's
 //!   STATUS, a pass where it changed), with INBOX left to the IDLE connection and its STATUS as
 //!   the backstop; a pass over the folder the user has open, at once and then more often; older
-//!   mail on request. Servers without IDLE get INBOX polled here. Before all of them it runs
+//!   mail on request. Servers without IDLE get INBOX polled here, and so does every server
+//!   while the IDLE connection waits to try again. Before all of them it runs
 //!   the ops that are due (`ops`): after connecting, on `Command::OpsQueued`, and when the next
 //!   undo window or retry ends; then the outbox and the Drafts folder (`outbox`): after
 //!   connecting, on `Command::OutboxQueued` and `Command::DraftsChanged`, and when the next send,
@@ -11,7 +12,8 @@
 //! - The **IDLE connection** keeps INBOX current: a pass, NOOP (another pass when it reported a
 //!   change, S1's Stalwart gap), IDLE until the server says anything or the restart interval,
 //!   and a pass on every wake.
-//! - Both reconnect with jittered exponential backoff, NOOP a connection that sat unused before
+//! - Both reconnect with jittered exponential backoff (an IDLE connection that ran longer than
+//!   the longest backoff starts its count over), NOOP a connection that sat unused before
 //!   using it again, and drop everything at once on `Command::Reconnect`. A refused login or a
 //!   certificate that no longer verifies stops the retries until `Reconnect` or a new password
 //!   or sign-in (which restarts the actor).
@@ -54,7 +56,7 @@ pub struct SyncConfig {
     pub options: SyncOptions,
     /// An account pass: every synced folder's STATUS, and a pass where it changed.
     pub account_pass: Duration,
-    /// INBOX on servers without IDLE.
+    /// INBOX on servers without IDLE, and while the IDLE connection waits to try again.
     pub inbox_poll: Duration,
     /// The folder the user has open.
     pub opened_poll: Duration,
@@ -66,6 +68,8 @@ pub struct SyncConfig {
     pub noop_timeout: Duration,
     /// The backoff after the second failure in a row; it doubles up to `backoff_max`.
     pub backoff_min: Duration,
+    /// A run longer than this starts the count over: an actor's panics, the IDLE connection's
+    /// losses.
     pub backoff_max: Duration,
     /// `SyncProgress` at most this often per account.
     pub progress_every: Duration,
@@ -606,6 +610,7 @@ async fn run(
         halted: false,
         inbox: watch::channel(None).0,
         idle: None,
+        idle_up: watch::channel(false).0,
         opened: None,
         opened_now: false,
         older: VecDeque::new(),
@@ -645,6 +650,8 @@ struct Poller {
     /// INBOX's id, for the IDLE connection.
     inbox: watch::Sender<Option<FolderId>>,
     idle: Option<tokio::task::JoinHandle<()>>,
+    /// False while the IDLE connection waits to try again, when INBOX is polled here instead.
+    idle_up: watch::Sender<bool>,
     opened: Option<FolderId>,
     opened_now: bool,
     older: VecDeque<FolderId>,
@@ -696,8 +703,13 @@ impl Poller {
         self.signals.borrow().reconnects
     }
 
-    fn idling(&self) -> bool {
+    fn idle_running(&self) -> bool {
         self.idle.as_ref().is_some_and(|task| !task.is_finished())
+    }
+
+    /// The IDLE connection keeps INBOX current: it runs and isn't waiting to try again.
+    fn idling(&self) -> bool {
+        self.idle_running() && *self.idle_up.borrow()
     }
 
     async fn run(&mut self) {
@@ -869,10 +881,12 @@ impl Poller {
                 None => std::future::pending().await,
             }
         };
+        let mut idle_up = self.idle_up.subscribe();
         tokio::select! {
             biased;
             interrupt = interrupted(self.signals.clone(), seen) => Some(Woke::Interrupt(interrupt)),
             control = self.controls.recv() => control.ok().map(Woke::Control),
+            _ = idle_up.changed() => Some(Woke::Due),
             _ = sleep => Some(Woke::Due),
         }
     }
@@ -1210,7 +1224,7 @@ impl Poller {
             .conn
             .as_ref()
             .is_some_and(|conn| conn.caps().has("IDLE"));
-        if !offered || self.idling() || self.inbox.borrow().is_none() {
+        if !offered || self.idle_running() || self.inbox.borrow().is_none() {
             return;
         }
         if let Some(Err(ended)) = self.idle.take().and_then(FutureExt::now_or_never)
@@ -1221,6 +1235,7 @@ impl Poller {
                 "the account's IDLE connection panicked; starting it again"
             );
         }
+        self.idle_up.send_replace(true);
         self.idle = Some(tokio::spawn(idle(
             self.shared.clone(),
             self.settings.clone(),
@@ -1231,11 +1246,13 @@ impl Poller {
             self.signals.clone(),
             self.arrivals.clone(),
             self.unreadable.clone(),
+            self.idle_up.clone(),
         )));
     }
 }
 
 /// The IDLE connection: INBOX current within a moment of every change the server announces.
+/// `up` is false while it waits to try again, and the command connection polls INBOX then.
 #[allow(clippy::too_many_arguments)]
 async fn idle(
     shared: Arc<Shared>,
@@ -1247,6 +1264,7 @@ async fn idle(
     signals: watch::Receiver<Signal>,
     arrivals: async_channel::Sender<Arrived>,
     unreadable: Unreadable,
+    up: watch::Sender<bool>,
 ) {
     let config = shared.sync.clone();
     let options = SyncOptions {
@@ -1254,13 +1272,23 @@ async fn idle(
         unreadable,
         ..config.options.clone()
     };
+    let set_up = |value: bool| {
+        up.send_if_modified(|now| {
+            let changed = *now != value;
+            *now = value;
+            changed
+        });
+    };
     let mut jitter = Jitter::new(account);
     let mut failures = 0u32;
     loop {
         if failures > 0 {
             let seen = signals.borrow().reconnects;
             let delay = backoff_delay(&config, failures, jitter.unit());
-            match race(&signals, seen, tokio::time::sleep(delay)).await {
+            set_up(delay.is_zero());
+            let waited = race(&signals, seen, tokio::time::sleep(delay)).await;
+            set_up(true);
+            match waited {
                 Ok(()) => {}
                 Err(Interrupt::Reconnect) => failures = 0,
                 Err(Interrupt::Stop(_)) => return,
@@ -1272,7 +1300,10 @@ async fn idle(
             Ok(Err(failure)) => {
                 if halts(SyncStatus::from_failure(failure)) {
                     // The command connection reports it; wait for a reconnect or the end.
-                    match interrupted(signals.clone(), seen).await {
+                    set_up(false);
+                    let interrupt = interrupted(signals.clone(), seen).await;
+                    set_up(true);
+                    match interrupt {
                         Interrupt::Reconnect => continue,
                         Interrupt::Stop(_) => return,
                     }
@@ -1283,6 +1314,7 @@ async fn idle(
             Err(Interrupt::Reconnect) => continue,
             Err(Interrupt::Stop(_)) => return,
         };
+        let connected = Instant::now();
         let watch = Idling {
             shared: &shared,
             config: &config,
@@ -1295,7 +1327,13 @@ async fn idle(
             seen,
         };
         match watch.keep_current(conn).await {
-            Kept::Lost => failures += 1,
+            Kept::Lost => {
+                // As in `supervise`; a connection whose IDLE is refused ends sooner.
+                if connected.elapsed() >= config.backoff_max {
+                    failures = 0;
+                }
+                failures += 1;
+            }
             Kept::Reconnect => failures = 0,
             Kept::Stopped => return,
             Kept::Logout(conn, wait) => {

@@ -74,6 +74,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### INBOX polled while the IDLE connection waits, and its count starts over after a good run — 2026-10-28
+
+[ADR-006 amendment](DECISIONS.md#adr-006-amendment--inbox-polled-while-the-idle-connection-waits-and-its-count-starts-over-after-a-good-run-2026-10-28). This machine; the fake TLS server on 127.0.0.1 only; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `inbox_is_polled_while_the_idle_connection_waits_to_try_again` (`engine/tests/actor.rs`: IDLE refused with `NO [CANNOT] …` twice, backoff 30 s, INBOX polled every 300 ms, account passes every 60 s; then `Reconnect`) | New mail in the store within 5 s while the IDLE connection still waits (two IDLEs); after `Reconnect`, IDLE runs and no `EXAMINE` comes in the next second. Before the fix: no new mail within 5 s, and the test fails | Pass |
+| `an_idle_connection_that_ran_well_is_made_again_at_once_every_time` (`engine/tests/actor.rs`: backoff 2 s; three times, 2.3 s of IDLE, then the server closes it) | Each made again within 500 ms. Before the fix: the second after 1.33 s, and the test fails | Pass |
+| The two tests, five runs in a row, alone | 5 of 5 passed (7.0 s each) | Pass |
+| Each part of the fix undone for one run: no new start of the count; the IDLE connection never saying it waits; the command connection not woken by it; the IDLE connection never saying the wait is over | Each fails a test: round 2 made again after 1.87 s; no new mail within 5 s (twice); `EXAMINE`s while IDLE runs | Pass |
+| CI, `bash tools/ci.sh` (no `--ui`: the app is unchanged; 09:26–09:29 on the final tree, after a first run at 09:24–09:26 with comments still being edited, also exit 0) | exit 0; 1,570 passed, 0 failed, 99 ignored; formatting and Clippy clean; four warnings each from lettre and async-imap (local crates) | Pass |
+| A real server refusing IDLE, or a real connection lost after a good run | Not run | Not verified |
+
 ### An IDLE the server refuses is an error, not a panic — 2026-10-27
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--an-idle-the-server-refuses-is-an-error-not-a-panic-2026-10-27), [vendor/README.md](../vendor/README.md), [chatmail/async-imap#151](https://github.com/chatmail/async-imap/issues/151). This machine; scripted and fake TLS servers on 127.0.0.1 only; no real account.
