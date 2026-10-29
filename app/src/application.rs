@@ -1197,6 +1197,7 @@ impl AppState {
         crate::go_to::install(self, &win_actions);
         crate::folders::install(self, window, &win_actions);
         crate::rules::install_window(self, window, &win_actions);
+        crate::unsubscribe::install_window(self, &win_actions);
         self.win_actions.replace(Some(win_actions));
     }
 
@@ -1753,6 +1754,10 @@ impl AppState {
         compose_actions::refresh(actions, &list, &targets, &folders);
         crate::folders::refresh(self, actions);
         crate::rules::refresh(self, actions);
+        actions.set_applies(
+            ActionId::Unsubscribe,
+            crate::unsubscribe::applies(self).is_ok(),
+        );
     }
 
     /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place

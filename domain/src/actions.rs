@@ -227,6 +227,7 @@ pub enum ActionId {
     Print,
     ShowOriginal,
     SaveMessage,
+    Unsubscribe,
     Compose,
     Reply,
     ReplyAll,
@@ -261,6 +262,9 @@ pub enum ActionId {
     Refresh,
     ToggleSidebar,
     CommandPalette,
+    GroupBySender,
+    GroupByDomain,
+    DontGroup,
     AddAccount,
     EditAccount,
     RemoveAccount,
@@ -280,7 +284,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 89] = [
+    pub const ALL: [Self; 93] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -320,6 +324,7 @@ impl ActionId {
         Self::Print,
         Self::ShowOriginal,
         Self::SaveMessage,
+        Self::Unsubscribe,
         Self::Compose,
         Self::Reply,
         Self::ReplyAll,
@@ -354,6 +359,9 @@ impl ActionId {
         Self::Refresh,
         Self::ToggleSidebar,
         Self::CommandPalette,
+        Self::GroupBySender,
+        Self::GroupByDomain,
+        Self::DontGroup,
         Self::AddAccount,
         Self::EditAccount,
         Self::RemoveAccount,
@@ -872,6 +880,23 @@ impl ActionId {
                 Rules,
                 &[],
             ),
+            // Issues #14 and #24 (ADR-023): no default keys until the owner picks them.
+            Self::Unsubscribe => on_selection("unsubscribe", "Unsubscribe…", Messages, &[]),
+            Self::GroupBySender => command(
+                "group-by-sender",
+                "Group by Sender",
+                View,
+                Scope::Window,
+                &[],
+            ),
+            Self::GroupByDomain => command(
+                "group-by-domain",
+                "Group by Domain",
+                View,
+                Scope::Window,
+                &[],
+            ),
+            Self::DontGroup => command("dont-group", "Don't Group", View, Scope::Window, &[]),
             Self::ApplyRules => command(
                 "apply-rules",
                 "Apply Rules to This Folder",
@@ -1073,6 +1098,7 @@ mod tests {
                 ActionId::Print,
                 ActionId::ShowOriginal,
                 ActionId::SaveMessage,
+                ActionId::Unsubscribe,
                 ActionId::Reply,
                 ActionId::ReplyAll,
                 ActionId::ReplySender,
@@ -1210,6 +1236,15 @@ mod tests {
         ] {
             assert!(keys(id).is_empty(), "{id:?}");
             assert_eq!(id.category(), Category::Rules, "{id:?}");
+            assert!(id.spec().palette, "{id:?}");
+        }
+        for id in [
+            ActionId::Unsubscribe,
+            ActionId::GroupBySender,
+            ActionId::GroupByDomain,
+            ActionId::DontGroup,
+        ] {
+            assert!(keys(id).is_empty(), "{id:?}");
             assert!(id.spec().palette, "{id:?}");
         }
         assert_eq!(ActionId::EditRules.detailed_name(), "win.edit-rules");

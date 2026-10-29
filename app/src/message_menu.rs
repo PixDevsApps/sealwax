@@ -117,7 +117,14 @@ fn sections(state: &AppState, targets: &[Target]) -> Vec<Vec<Entry>> {
             triaged(ActionId::MoveTo),
             triaged(ActionId::Junk),
         ],
-        vec![read, triaged(ActionId::Star)],
+        vec![
+            read,
+            triaged(ActionId::Star),
+            Entry {
+                why_not: crate::unsubscribe::applies(state).err(),
+                ..plain(ActionId::Unsubscribe)
+            },
+        ],
         vec![
             rules(
                 ActionId::NewRuleFromMessage,
