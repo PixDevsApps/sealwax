@@ -81,7 +81,12 @@ The version change for 1.1.0: `Cargo.toml`'s version, both lock files (only Seal
 | Check | Result | Verdict |
 | --- | --- | --- |
 | CI, `SEALWAX_CI_DISPLAY=37 bash tools/ci.sh --ui` on the version change (21:43–22:02) | exit 0; 1,589 passed, 0 failed, 99 ignored; all 85 self-test scripts, 8,237 of 8,237 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 272 s; `target/debug/sealwax --version` says `sealwax 1.1.0`; no `gtk4-broadwayd` left | Pass |
+| The push range (`97bb020..7d540e3`, 6 commits, 76 files) scanned before pushing | No working doc, home path, user name or hostname; nothing about findings not yet public; the only addresses are the commit author and test fixtures (`example.test`, `butikk.example`, `shop.example` and other `.example` names) | Pass |
+| `v1.1.0` on `7d540e3`, `main` and the tag pushed | GitHub's `main` and `v1.1.0` are `7d540e3` (tag object `1aad45b`) | Pass |
+| `python3 tools/release.py build` on `v1.1.0` (22:14–22:19) | makepkg's `check()`: 1,150 passed, 0 failed, 91 ignored; the Microsoft client ID built in; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.1.0` and holds no home-folder path or user name; both license files are in the package, with async-imap, imap-proto and lettre listed. Package SHA-256 `cf6d42b0…ea31` | Pass |
 | The clean-container install test | Not run: Docker wasn't running, and starting it is the owner's | Not verified |
+| The release [v1.1.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.0) (`tools/release.py github` from the tagged commit, 21:19:41 UTC) | Not a draft or pre-release; GitHub's latest; its five files; the notes are CHANGELOG's section; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` gives the build's package (SHA-256 `cf6d42b0…`), and the published `SHA256SUMS` is the local one | Pass |
+| Installed here | Not yet | Not verified |
 
 ### Group by sender and List-Unsubscribe (1.1, issues #24 and #14) — 2026-10-29
 
