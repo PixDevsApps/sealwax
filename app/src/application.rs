@@ -2469,6 +2469,7 @@ impl AppState {
             crate::reader::commands::connect(actions, &reader);
         }
         compose_actions::connect_reader(&reader, window);
+        crate::unsubscribe::connect_reader(self, &reader);
         self.reader.replace(Some(reader));
         self.refresh_commands();
     }

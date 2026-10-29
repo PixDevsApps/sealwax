@@ -13,7 +13,6 @@ use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
-use sealwax_domain::actions::ActionId;
 use sealwax_domain::model::{Attachment, MessageDetail};
 use sealwax_domain::theme::{avatar_class, initials};
 
@@ -218,26 +217,18 @@ fn details_grid(detail: &MessageDetail, date: i64, zone: &glib::TimeZone) -> gtk
         ("Date", format::full_date(date, zone)),
         ("List", headers.list_id.clone().unwrap_or_default()),
     ];
-    let mut next = 0;
-    for (title, value) in rows.into_iter().filter(|(_, value)| !value.is_empty()) {
-        let row = next;
-        next += 1;
+    for (row, (title, value)) in rows
+        .into_iter()
+        .filter(|(_, value)| !value.is_empty())
+        .enumerate()
+    {
+        let row = row as i32;
         grid.attach(&label(title, &["sw-small", "sw-secondary"]), 0, row, 1, 1);
         let value = selectable(&value, &["sw-small"]);
         value.set_wrap(true);
         value.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         value.set_hexpand(true);
         grid.attach(&value, 1, row, 1, 1);
-    }
-    if headers.list_unsubscribe.is_some() {
-        let button = gtk::Button::builder()
-            .label(ActionId::Unsubscribe.title())
-            .action_name(ActionId::Unsubscribe.detailed_name())
-            .halign(gtk::Align::Start)
-            .css_classes(["sw-small"])
-            .build();
-        button.set_widget_name("reader-unsubscribe");
-        grid.attach(&button, 1, next, 1, 1);
     }
     grid
 }

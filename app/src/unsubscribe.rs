@@ -27,7 +27,17 @@ pub fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
     let weak = Rc::downgrade(state);
     actions.connect(ActionId::Unsubscribe, move || {
         if let Some(state) = weak.upgrade() {
-            start(&state);
+            start(&state, selected(&state));
+        }
+    });
+}
+
+/// A card's Unsubscribe link in the reader acts on that card's message.
+pub fn connect_reader(state: &Rc<AppState>, reader: &crate::reader::Reader) {
+    let weak = Rc::downgrade(state);
+    reader.connect_unsubscribe(move |id| {
+        if let Some(state) = weak.upgrade() {
+            start(&state, vec![id]);
         }
     });
 }
@@ -66,8 +76,7 @@ fn selected(state: &AppState) -> Vec<MessageId> {
         .collect()
 }
 
-fn start(state: &Rc<AppState>) {
-    let ids = selected(state);
+fn start(state: &Rc<AppState>, ids: Vec<MessageId>) {
     let Some(reply) = state
         .mailbox()
         .store()

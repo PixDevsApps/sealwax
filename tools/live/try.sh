@@ -4,8 +4,9 @@
 # corners, seen in a running window. Run it yourself; it is not run by agents.
 #
 # Data, state and cache are scratch folders under target/try/ (two fictional accounts, dated
-# around today). The configuration home stays the real one, so fontconfig sees the Omarchy font;
-# Sealwax only reads ~/.config/sealwax/ if it exists. The theme is read live and never changed.
+# around today). The configuration home is target/try/config, with the real omarchy, fontconfig
+# and gtk-4.0 folders linked in, so the theme and font are live and never changed, and your
+# accounts.toml, config.toml and keys.toml are never read.
 # Close the window to quit.
 #
 #   bash tools/live/try.sh            # reuse the mailbox in target/try/
@@ -28,7 +29,17 @@ if [[ ! -e $data/store.sqlite ]]; then
       --count "$count" --seed "$seed" --now now --folders spread --account "$name"
   done
 fi
-mkdir -p "$scratch/state" "$scratch/cache"
-
-exec env XDG_DATA_HOME="$scratch/data" XDG_STATE_HOME="$scratch/state" \
+mkdir -p "$scratch/state" "$scratch/cache" "$scratch/config"
+# A configuration home of its own, so this window never sees your real accounts.toml (it would
+# list your accounts, asking to sign in); only what the look needs is linked from the real one.
+real_config=${XDG_CONFIG_HOME:-$HOME/.config}
+for linked in omarchy fontconfig gtk-4.0; do
+  if [[ -e $real_config/$linked && ! -e $scratch/config/$linked ]]; then
+    ln -s "$real_config/$linked" "$scratch/config/$linked"
+  fi
+done
+# An app-id of its own: with the installed id, a launch asks the session bus for the installed
+# Sealwax's service (background mode), which would show its window, over your real mail, instead.
+exec env SEALWAX_APP_ID=io.github.pixdevsapps.Sealwax.Try \
+  XDG_CONFIG_HOME="$scratch/config" XDG_DATA_HOME="$scratch/data" XDG_STATE_HOME="$scratch/state" \
   XDG_CACHE_HOME="$scratch/cache" "$root/target/release/sealwax"

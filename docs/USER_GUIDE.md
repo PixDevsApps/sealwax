@@ -191,7 +191,7 @@ Open a row with Enter or a double click to see that sender's mail as a list, wit
 
 ## Unsubscribing
 
-Newsletters and other mailing lists usually say how to leave them in a hidden header (List-Unsubscribe). For such a message, **Unsubscribe…** is in the message's right-click menu, the command palette and the reader's message details (the arrow by the date). `is:subscription` finds all such mail: search for it, select the results (click the first and Shift+click the last) and choose Unsubscribe… once for all of them.
+Newsletters and other mailing lists usually say how to leave them in a hidden header (List-Unsubscribe). For such a message, the reader shows an **Unsubscribe** link in the message's header, beside the date; **Unsubscribe…** is also in the message's right-click menu, the reader's ⋮ menu and the command palette. `is:subscription` finds all such mail: search for it, select the results (click the first and Shift+click the last) and choose Unsubscribe… once for all of them.
 
 A dialog lists each sender once, with how Sealwax will unsubscribe, and nothing happens until you choose **Unsubscribe**:
 

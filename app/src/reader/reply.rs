@@ -184,6 +184,7 @@ impl fmt::Debug for QuickReport {
 }
 
 type ComposeListener = Rc<dyn Fn(ComposeRequest)>;
+type MessageListener = Rc<dyn Fn(MessageId)>;
 type StateListener = Rc<dyn Fn(QuickState)>;
 /// A future that resolves on the GTK thread.
 pub type Local<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T>>>;
@@ -202,6 +203,7 @@ pub struct Quick {
     /// What each message's quick reply holds, while it holds anything.
     texts: RefCell<HashMap<MessageId, String>>,
     on_compose: RefCell<Vec<ComposeListener>>,
+    on_unsubscribe: RefCell<Vec<MessageListener>>,
     send: RefCell<Option<QuickSend>>,
     on_state: RefCell<Vec<StateListener>>,
     state: Cell<QuickState>,
@@ -412,6 +414,15 @@ impl Reader {
             .push(Rc::new(listener));
     }
 
+    /// Runs `listener` with the message whose card's Unsubscribe link was clicked (issue #14).
+    pub fn connect_unsubscribe(&self, listener: impl Fn(MessageId) + 'static) {
+        self.inner
+            .quick
+            .on_unsubscribe
+            .borrow_mut()
+            .push(Rc::new(listener));
+    }
+
     /// What the quick reply's Send does with its text (M6 phase B: prepared as a reply, saved
     /// and queued with Undo send). Without one, Send keeps the text.
     pub fn set_quick_send(&self, send: impl Fn(MessageId, String) -> Local<bool> + 'static) {
@@ -491,6 +502,31 @@ impl Reader {
 }
 
 impl Inner {
+    /// The Unsubscribe link at the end of message `id`'s card header, before the details
+    /// button, for a message with a List-Unsubscribe (issue #14).
+    pub(super) fn unsubscribe_link(self: &Rc<Self>, header: &gtk::Button, id: MessageId) {
+        let Some(row) = header.parent().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        let link = gtk::Button::builder()
+            .label("Unsubscribe")
+            .valign(gtk::Align::Center)
+            .tooltip_text("Leave this mailing list")
+            .css_classes(["flat", "sw-small", "sw-card-unsubscribe"])
+            .build();
+        link.set_widget_name("reader-card-unsubscribe");
+        let weak = Rc::downgrade(self);
+        link.connect_clicked(move |_| {
+            if let Some(inner) = weak.upgrade() {
+                let listeners = inner.quick.on_unsubscribe.borrow().clone();
+                for listener in listeners {
+                    listener(id);
+                }
+            }
+        });
+        row.insert_child_after(&link, Some(header));
+    }
+
     fn compose(&self, request: ComposeRequest) {
         let listeners = self.quick.on_compose.borrow().clone();
         for listener in listeners {

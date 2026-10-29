@@ -91,3 +91,16 @@ action win.unsubscribe
 sleep 300
 setup-respond unsubscribe-dialog cancel
 engine-expect none but folder-opened,load-older,fetch-bodies
+
+# The reader's card has an Unsubscribe link for such a message, acting on that card's message;
+# a message without the header has none.
+list-select 1
+wait-until assert-shown reader-card-unsubscribe true
+screenshot $DIR/../../.local/selftest/list-senders-card.png
+click reader-card-unsubscribe
+sleep 300
+assert-response unsubscribe-dialog unsubscribe enabled
+setup-respond unsubscribe-dialog cancel
+list-select 3
+wait-until assert-shown reader-card-unsubscribe false
+engine-expect none but folder-opened,load-older,fetch-bodies

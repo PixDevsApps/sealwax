@@ -135,6 +135,9 @@ impl Inner {
                     .is_some_and(|item| item.message.role == FolderRole::Drafts)
             })
             .unwrap_or(false);
+        if !draft && detail.headers.list_unsubscribe.is_some() {
+            self.unsubscribe_link(&widgets.header, id);
+        }
         let replies = self.reply_buttons(&widgets.header, id, draft);
         let weak = Rc::downgrade(&self);
         widgets.header.connect_clicked(move |_| {
