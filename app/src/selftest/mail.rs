@@ -70,6 +70,10 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-selection-reported", 1, 1),
     ("assert-action-enabled", 2, 2),
     ("assert-list-exact", 0, 0),
+    // Group by Sender or Domain (issue #24).
+    ("list-open-group", 1, 1),
+    ("assert-list-groups", 1, 1),
+    ("assert-list-group", 4, 4),
 ];
 
 thread_local! {
@@ -241,6 +245,13 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
             Err(error) => Err(error),
         },
         "list-wait" => settled(harness).await,
+        "list-open-group" => match (list(harness), number(arg(0))) {
+            (Ok(list), Ok(position)) => {
+                list.activate_group(position as u32);
+                settled(harness).await
+            }
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        },
         "list-remember" => match list(harness) {
             Ok(list) => match list.selected() {
                 Some(id) => {
@@ -480,6 +491,11 @@ pub(super) struct Fiction {
     pub(super) to: Option<String>,
     /// A Cc header as written.
     pub(super) cc: Option<String>,
+    /// The sender's address; `<name in lower case>@example.test` when `None`.
+    pub(super) address: Option<String>,
+    /// A List-Unsubscribe URI, with List-Unsubscribe-Post's one-click when `one_click`.
+    pub(super) unsubscribe: Option<String>,
+    pub(super) one_click: bool,
 }
 
 pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> {
@@ -489,8 +505,12 @@ pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> 
         .filter(char::is_ascii_alphanumeric)
         .collect::<String>()
         .to_ascii_lowercase();
+    let address = fiction
+        .address
+        .clone()
+        .unwrap_or_else(|| format!("{local}@example.test"));
     let mut text = format!(
-        "From: {} <{local}@example.test>\r\nTo: {}\r\n\
+        "From: {} <{address}>\r\nTo: {}\r\n\
          Subject: {}\r\nDate: {}\r\nMessage-ID: <selftest-{serial}@example.test>\r\n\
          MIME-Version: 1.0\r\n",
         fiction.from,
@@ -506,6 +526,12 @@ pub(super) fn raw_message(fiction: &Fiction, date: i64, serial: u32) -> Vec<u8> 
     }
     if let Some(list) = &fiction.list_id {
         text.push_str(&format!("List-Id: Nyheter <{list}>\r\n"));
+    }
+    if let Some(uri) = &fiction.unsubscribe {
+        text.push_str(&format!("List-Unsubscribe: <{uri}>\r\n"));
+        if fiction.one_click {
+            text.push_str("List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n");
+        }
     }
     if let Some(parent) = fiction.reply_to {
         text.push_str(&format!(
@@ -574,7 +600,7 @@ async fn ingest_fiction(
         .ok_or_else(|| "the store already held that message".to_owned())
 }
 
-/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [html] [from=NAME] [text=WORDS] [list=ID] [to=HEADER] [cc=HEADER]`.
+/// `mail-add [ACCOUNT:]ROLE WHEN SUBJECT [read] [starred] [attachment] [html] [from=NAME] [address=ADDRESS] [text=WORDS] [list=ID] [unsubscribe=URI] [one-click] [to=HEADER] [cc=HEADER]`.
 async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
     let list = list(harness)?;
     let folder = find_folder(harness, &args[0])?;
@@ -589,6 +615,9 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
         list_id: None,
         to: None,
         cc: None,
+        address: None,
+        unsubscribe: None,
+        one_click: false,
     };
     let mut flags = Flags::NONE;
     for option in &args[3..] {
@@ -597,7 +626,10 @@ async fn add_message(harness: &Harness, args: &[String]) -> StepResult {
             "starred" => flags = flags | Flags::FLAGGED,
             "attachment" => fiction.attachment = true,
             "html" => fiction.html = true,
+            "one-click" => fiction.one_click = true,
             other => match other.split_once('=') {
+                Some(("address", address)) => fiction.address = Some(address.to_owned()),
+                Some(("unsubscribe", uri)) => fiction.unsubscribe = Some(uri.to_owned()),
                 Some(("from", name)) => fiction.from = name.to_owned(),
                 Some(("text", text)) => fiction.text = text.to_owned(),
                 Some(("list", list)) => fiction.list_id = Some(list.to_owned()),
@@ -727,6 +759,9 @@ fn churn_message(rng: &mut Rng, answered: &mut Vec<u32>, folder: FolderId, now: 
         list_id: None,
         to: None,
         cc: None,
+        address: None,
+        unsubscribe: None,
+        one_click: false,
     };
     RawMessage {
         folder,
@@ -1045,6 +1080,8 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
                 "search"
             } else if within(list.list_view().upcast_ref()) {
                 "list"
+            } else if within(list.groups_view().upcast_ref()) {
+                "groups"
             } else {
                 "elsewhere"
             };
@@ -1099,6 +1136,29 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             equal("sidebar count", count, number(arg(1))? as u32)
         }
         "assert-list-exact" => exact(harness, &list).await,
+        "assert-list-groups" | "assert-list-group" => {
+            // The groups follow the store a little after it changes: wait for them.
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                let shown = list.shown_groups();
+                let result = match &shown {
+                    None => Err("the list shows no groups".to_owned()),
+                    Some(groups) if assertion == "assert-list-groups" => {
+                        equal("groups", groups.len(), number(arg(0))?)
+                    }
+                    Some(groups) => match groups.get(number(arg(0))?) {
+                        None => Err(format!("no group {}", arg(0))),
+                        Some(group) => equal("key", group.key.as_str(), arg(1))
+                            .and_then(|()| equal("messages", group.count, number(arg(2))? as u32))
+                            .and_then(|()| equal("unread", group.unread, number(arg(3))? as u32)),
+                    },
+                };
+                if result.is_ok() || Instant::now() > deadline {
+                    return result;
+                }
+                glib::timeout_future(Duration::from_millis(20)).await;
+            }
+        }
         "assert-action-enabled" => {
             let name = arg(0);
             let window = harness.window()?;
@@ -1198,6 +1258,9 @@ mod tests {
             list_id: None,
             to: None,
             cc: None,
+            address: None,
+            unsubscribe: None,
+            one_click: false,
         };
         let raw = raw_message(&fiction, 1_791_072_000, 7);
         let parsed = sealwax_domain::message::parse(&raw);

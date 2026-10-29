@@ -771,6 +771,9 @@ async fn insert_measured(harness: &Harness, count: usize) -> StepResult {
             list_id: None,
             to: None,
             cc: None,
+            address: None,
+            unsubscribe: None,
+            one_click: false,
         };
         let raw = RawMessage {
             folder,

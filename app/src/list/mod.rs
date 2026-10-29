@@ -18,6 +18,7 @@
 //!   covers that folder, with a scope row to search every folder instead; in the unified inbox
 //!   it covers every folder.
 
+mod groups;
 pub mod item;
 pub mod model;
 pub mod row;
@@ -30,6 +31,7 @@ use crate::actions::{self, ScopedShortcuts};
 use crate::mailbox::{Latch, Mailbox};
 use crate::triage::Target;
 use crate::window::empty;
+use groups::Groups;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
@@ -40,6 +42,7 @@ use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use sealwax_domain::search::Date;
+use sealwax_domain::senders::GroupBy;
 use sealwax_infrastructure::store::{ChangeEvent, ViewFilter, ViewScope, ViewSpec};
 use sections::{Thresholds, until_next_day};
 use std::cell::{Cell, RefCell};
@@ -245,6 +248,14 @@ struct Inner {
     /// The quiet row under the list while older mail loads.
     older_row: gtk::Label,
     older: RefCell<std::collections::HashMap<FolderId, Older>>,
+    /// Group by Sender or Domain (issue #24): the view shows `groups` while nothing is searched.
+    group_by: Cell<GroupBy>,
+    groups: Groups,
+    /// The group last opened, selected again when its search ends.
+    opened_group: RefCell<Option<String>>,
+    /// Bumped by every groups request; older answers are dropped.
+    groups_generation: Cell<u64>,
+    groups_queued: Cell<bool>,
 }
 
 impl Drop for Inner {
@@ -380,6 +391,8 @@ impl MessageList {
         empty.widget().set_widget_name("list-empty");
         let stack = gtk::Stack::builder().vexpand(true).build();
         stack.add_named(&scroller, Some("list"));
+        let groups = Groups::new();
+        stack.add_named(groups.widget(), Some("groups"));
         stack.add_named(empty.widget(), Some("empty"));
         stack.set_visible_child_name("list");
         let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -450,6 +463,11 @@ impl MessageList {
                 day_check: RefCell::new(None),
                 older_row,
                 older: RefCell::default(),
+                group_by: Cell::new(GroupBy::None),
+                groups,
+                opened_group: RefCell::new(None),
+                groups_generation: Cell::new(0),
+                groups_queued: Cell::new(false),
             }),
         };
         list.connect();
@@ -469,6 +487,14 @@ impl MessageList {
 
     fn connect(&self) {
         let inner = &self.inner;
+        let weak = self.downgrade();
+        inner.groups.connect_open(move |key| {
+            Self::with(&weak, |list| list.open_group(key));
+        });
+        let weak = self.downgrade();
+        inner.mailbox.connect_event(move |_| {
+            Self::with(&weak, |list| list.queue_groups_refresh());
+        });
         let weak = self.downgrade();
         inner.model.set_listener(move |change| {
             Self::with(&weak, |list| list.model_changed(change));
@@ -542,7 +568,7 @@ impl MessageList {
         inner.search.connect_stop_search(move |_| {
             Self::with(&weak, |list| {
                 list.clear_search();
-                list.inner.view.grab_focus();
+                list.focus_list();
             });
         });
         let weak = self.downgrade();
@@ -732,6 +758,140 @@ impl MessageList {
         self.set_query(String::new());
     }
 
+    /// The groups shown, while the list shows them (the self-test's view).
+    pub fn shown_groups(&self) -> Option<Vec<sealwax_infrastructure::store::SenderGroup>> {
+        (self.grouped() && self.inner.stack.visible_child_name().as_deref() == Some("groups"))
+            .then(|| self.inner.groups.rows())
+    }
+
+    pub fn groups_view(&self) -> &gtk::ListView {
+        self.inner.groups.view()
+    }
+
+    /// Opens the group at `position` (the self-test's Enter).
+    pub fn activate_group(&self, position: u32) {
+        self.inner.groups.activate(position);
+    }
+
+    pub fn group_by(&self) -> GroupBy {
+        self.inner.group_by.get()
+    }
+
+    /// Groups the view by sender or by domain, or not (issue #24); a search ends.
+    pub fn set_group_by(&self, by: GroupBy) {
+        if self.inner.group_by.replace(by) == by {
+            return;
+        }
+        self.inner.opened_group.replace(None);
+        if self.inner.query.borrow().is_empty() {
+            self.reload();
+        } else {
+            self.clear_search();
+        }
+    }
+
+    /// The keyboard focus to the messages, or to the groups while they show.
+    fn focus_list(&self) {
+        if self.grouped() {
+            self.inner.groups.view().grab_focus();
+        } else {
+            self.inner.view.grab_focus();
+        }
+    }
+
+    /// The view shows its groups: grouped, with nothing searched.
+    fn grouped(&self) -> bool {
+        self.inner.group_by.get() != GroupBy::None
+            && self.inner.query.borrow().is_empty()
+            && self.inner.scope.get().is_some()
+    }
+
+    /// The list shows a group's mail: Escape goes back to the groups.
+    fn in_group(&self) -> bool {
+        self.inner.group_by.get() != GroupBy::None
+            && self
+                .inner
+                .opened_group
+                .borrow()
+                .as_ref()
+                .is_some_and(|key| *self.inner.query.borrow() == self.group_query(key))
+    }
+
+    fn group_query(&self, key: &str) -> String {
+        match self.inner.group_by.get() {
+            GroupBy::Domain => format!("domain:{key}"),
+            _ => format!("sender:{key}"),
+        }
+    }
+
+    fn open_group(&self, key: String) {
+        let query = self.group_query(&key);
+        self.inner.opened_group.replace(Some(key));
+        self.set_query(query);
+        self.inner.view.grab_focus();
+    }
+
+    /// Asks the store for the view's groups, then shows them (or the empty state).
+    fn load_groups(&self, spec: ViewSpec) {
+        let inner = &self.inner;
+        let generation = inner.groups_generation.get() + 1;
+        inner.groups_generation.set(generation);
+        let by = inner.group_by.get();
+        let Some(reply) = inner
+            .mailbox
+            .store()
+            .map(|store| store.sender_groups(spec, by))
+        else {
+            return;
+        };
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            let groups = reply.recv().await.unwrap_or_default();
+            Self::with(&weak, |list| {
+                let inner = &list.inner;
+                if inner.groups_generation.get() != generation || !list.grouped() {
+                    return;
+                }
+                let selected = inner.opened_group.borrow().clone();
+                inner.groups.set(groups, selected.as_deref());
+                if inner.groups.len() == 0 {
+                    let title = match spec.filter {
+                        ViewFilter::Unread => "No unread messages",
+                        ViewFilter::Starred => "No starred messages",
+                        ViewFilter::Attachments => "No attachments",
+                        ViewFilter::All => "No messages",
+                    };
+                    inner.empty.set_title(title);
+                    inner
+                        .empty
+                        .set_description(Some("Senders of messages here appear here."));
+                    inner.stack.set_visible_child_name("empty");
+                } else {
+                    inner.stack.set_visible_child_name("groups");
+                }
+            });
+        });
+    }
+
+    /// The store changed: the groups shown are read again, at most a few times a second.
+    fn queue_groups_refresh(&self) {
+        if !self.grouped() || self.inner.groups_queued.replace(true) {
+            return;
+        }
+        let weak = self.downgrade();
+        glib::timeout_add_local_once(Duration::from_millis(300), move || {
+            Self::with(&weak, |list| {
+                list.inner.groups_queued.set(false);
+                if let (true, Some(scope)) = (list.grouped(), list.inner.scope.get()) {
+                    list.load_groups(ViewSpec {
+                        scope,
+                        filter: list.inner.filter.get(),
+                    });
+                }
+            });
+        });
+    }
+
     /// Puts the keyboard focus in the search field (Search: `/`, Ctrl+F).
     pub fn focus_search(&self) {
         self.inner.search.grab_focus();
@@ -863,6 +1023,13 @@ impl MessageList {
         self.update_scope();
         match inner.scope.get() {
             None => inner.model.clear(),
+            Some(scope) if query.is_empty() && inner.group_by.get() != GroupBy::None => {
+                inner.model.clear();
+                self.load_groups(ViewSpec {
+                    scope,
+                    filter: inner.filter.get(),
+                });
+            }
             Some(scope) if query.is_empty() => {
                 let spec = ViewSpec {
                     scope,
@@ -959,6 +1126,9 @@ impl MessageList {
     fn update_empty(&self) {
         let inner = &self.inner;
         let model = &inner.model;
+        if self.grouped() {
+            return;
+        }
         if model.is_pending() {
             return;
         }
@@ -1921,6 +2091,10 @@ impl MessageList {
             Some(delta) if self.inner.select_mode.get() => self.step(delta),
             _ if key == gdk::Key::Escape && !shift && self.inner.select_mode.get() => {
                 self.leave_select_mode();
+            }
+            _ if key == gdk::Key::Escape && !shift && self.in_group() => {
+                self.clear_search();
+                self.focus_list();
             }
             _ => return glib::Propagation::Proceed,
         }

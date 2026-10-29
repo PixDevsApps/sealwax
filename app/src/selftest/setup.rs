@@ -29,6 +29,7 @@
 //! | `engine-reply original-fetched ok\|offline\|needs-sign-in\|gone\|store\|other` | `OriginalFetched` for the last `fetch-original` taken (its field: `message`); `ok` carries the message `files.rs` stored, whole (ML-063) |
 //! | `engine-reply folder-changed ok\|offline\|taken\|not-allowed\|missing\|lost\|store`, `engine-reply folder-changed refused TEXT` | `FolderChanged` for the last `create-folder`, `rename-folder` or `delete-folder` taken (their fields: `account`, `parent` (`none`), `folder`, `name`); `ok` first makes the change in the app's store as the engine would (`folders.rs`); `refused` carries TEXT as the server's words (M9) |
 //! | `engine-reply update-checked VERSION\|running\|offline\|timeout\|certificate\|busy\|no-release\|unreadable` | `UpdateChecked` for the last `check-for-updates` taken: that release (`running`: this build's version) or the failure |
+//! | `engine-reply one-click-unsubscribed ok\|refused\|offline\|timeout\|not-confirmed` | `OneClickUnsubscribed` for the last `one-click-unsubscribe` taken (issue #14) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
 //! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`), clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
@@ -69,7 +70,7 @@ use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
 use sealwax_domain::updates::Version;
 use sealwax_engine::api::{
     AccountError, BodyError, Command, Event, FetchedPart, FolderChange, FolderError, Original,
-    Password, Refused, RequestId, SyncStatus, UpdateError,
+    Password, Refused, RequestId, SyncStatus, UnsubscribeError, UpdateError,
 };
 use sealwax_engine::imap::ServerText;
 use sealwax_engine::net::Trust;
@@ -1146,6 +1147,21 @@ async fn reply(harness: &Harness, args: &[String], stale: bool) -> StepResult {
         ("update-checked", [answer]) => Event::UpdateChecked {
             request,
             result: update_result(answer)?,
+        },
+        ("one-click-unsubscribed", [answer]) => Event::OneClickUnsubscribed {
+            request,
+            result: match answer.as_str() {
+                "ok" => Ok(()),
+                "refused" => Err(UnsubscribeError::Refused),
+                "offline" => Err(UnsubscribeError::Offline),
+                "timeout" => Err(UnsubscribeError::Timeout),
+                "not-confirmed" => Err(UnsubscribeError::NotConfirmed),
+                other => {
+                    return Err(format!(
+                        "use ok, refused, offline, timeout or not-confirmed, not {other}"
+                    ));
+                }
+            },
         },
         _ => return Err(format!("no reply {}", args.join(" "))),
     };

@@ -93,7 +93,7 @@ impl Registry {
 
 /// The partial index each filter reads, and the condition that selects it. Every index leaves
 /// out rows hidden by a pending move or expunge (256) and rows flagged `\Deleted` (8).
-fn filter_sql(filter: ViewFilter) -> (&'static str, &'static str) {
+pub(crate) fn filter_sql(filter: ViewFilter) -> (&'static str, &'static str) {
     match filter {
         ViewFilter::All => ("messages_folder_date", " AND flags & 264 = 0"),
         ViewFilter::Unread => ("messages_unread", " AND flags & 265 = 0"),

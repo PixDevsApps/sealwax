@@ -47,6 +47,7 @@ use sealwax_domain::keymap::Keymap;
 use sealwax_domain::layout::Layout;
 use sealwax_domain::mailto::{self, Mailto};
 use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
+use sealwax_domain::senders::GroupBy;
 use sealwax_domain::triage::Triage;
 use sealwax_engine::api::{Command, Event};
 use sealwax_engine::service::Engine;
@@ -1198,6 +1199,22 @@ impl AppState {
         crate::folders::install(self, window, &win_actions);
         crate::rules::install_window(self, window, &win_actions);
         crate::unsubscribe::install_window(self, &win_actions);
+        for (id, by) in [
+            (ActionId::GroupBySender, GroupBy::Sender),
+            (ActionId::GroupByDomain, GroupBy::Domain),
+            (ActionId::DontGroup, GroupBy::None),
+        ] {
+            let weak = Rc::downgrade(self);
+            win_actions.connect(id, move || {
+                if let Some(state) = weak.upgrade()
+                    && let Some(list) = state.list()
+                {
+                    list.set_group_by(by);
+                    state.change_layout(|layout| layout.group_by = by);
+                    state.refresh_commands();
+                }
+            });
+        }
         self.win_actions.replace(Some(win_actions));
     }
 
@@ -1758,6 +1775,10 @@ impl AppState {
             ActionId::Unsubscribe,
             crate::unsubscribe::applies(self).is_ok(),
         );
+        let group_by = list.group_by();
+        actions.set_applies(ActionId::GroupBySender, group_by != GroupBy::Sender);
+        actions.set_applies(ActionId::GroupByDomain, group_by != GroupBy::Domain);
+        actions.set_applies(ActionId::DontGroup, group_by != GroupBy::None);
     }
 
     /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place
@@ -1970,6 +1991,9 @@ impl AppState {
             );
             window.set_sidebar_hidden(layout.sidebar_hidden);
         }
+        if let Some(list) = self.list() {
+            list.set_group_by(layout.group_by);
+        }
         self.layout.replace(Some(layout));
     }
 
@@ -2026,6 +2050,12 @@ impl AppState {
                 layout.list_width.map_or(window::LIST_WIDTH, f64::from),
             );
             window.set_sidebar_hidden(layout.sidebar_hidden);
+        }
+        if let (Some(list), Some(by)) = (
+            self.list(),
+            self.layout.borrow().as_ref().map(|layout| layout.group_by),
+        ) {
+            list.set_group_by(by);
         }
         let weak = Rc::downgrade(self);
         window.connect_pane_widths(move |sidebar, list| {

@@ -11,6 +11,7 @@ use crate::ingest::{RawMessage, ingest_raw};
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, Attachment, FolderRole, Headers};
 use sealwax_domain::search::{self, Date};
+use sealwax_domain::senders::GroupBy;
 use sealwax_domain::triage::Triage;
 use sealwax_domain::unsubscribe::Method;
 use std::sync::Arc;
@@ -1151,6 +1152,102 @@ fn unsubscribe_targets_one_per_list_newest_first_and_remember_it() {
         Some((Method::OneClick, NOW))
     );
     assert!(targets(&ids[3..]).is_empty());
+}
+
+#[test]
+fn a_view_grouped_by_sender_and_by_domain() {
+    let fx = fixture();
+    let from = |n: u32, date: i64, name: &str, address: &str, seen: bool| {
+        let mut message = mail(fx.inbox, n, date);
+        message.headers.from = vec![Address::new(name, address)];
+        message.flags = if seen { Flags::SEEN } else { Flags::NONE };
+        message
+    };
+    ingest(
+        &fx.store,
+        vec![
+            from(1, NOW - 500, "Butikken", "nytt@post.butikk.example", true),
+            from(
+                2,
+                NOW - 400,
+                "Butikken Kundeservice",
+                "Hjelp@Butikk.example",
+                false,
+            ),
+            from(3, NOW - 300, "Butikken", "NYTT@post.butikk.example", false),
+            from(4, NOW - 200, "", "anna@example.test", true),
+            mail(fx.archive, 5, NOW),
+        ],
+    );
+    let groups = |filter: ViewFilter, by: GroupBy| {
+        fx.store
+            .sender_groups(ViewSpec::folder(fx.inbox).with_filter(filter), by)
+            .recv_blocking()
+            .unwrap()
+            .into_iter()
+            .map(|group| {
+                (
+                    group.key,
+                    group.name,
+                    group.count,
+                    group.unread,
+                    group.latest,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        groups(ViewFilter::All, GroupBy::Sender),
+        [
+            (
+                "anna@example.test".into(),
+                "anna@example.test".into(),
+                1,
+                0,
+                NOW - 200
+            ),
+            (
+                "nytt@post.butikk.example".into(),
+                "Butikken".into(),
+                2,
+                1,
+                NOW - 300
+            ),
+            (
+                "hjelp@butikk.example".into(),
+                "Butikken Kundeservice".into(),
+                1,
+                1,
+                NOW - 400
+            ),
+        ]
+    );
+    assert_eq!(
+        groups(ViewFilter::All, GroupBy::Domain),
+        [
+            (
+                "example.test".into(),
+                "anna@example.test".into(),
+                1,
+                0,
+                NOW - 200
+            ),
+            ("butikk.example".into(), "Butikken".into(), 3, 2, NOW - 300),
+        ]
+    );
+    assert_eq!(
+        groups(ViewFilter::Unread, GroupBy::Domain),
+        [("butikk.example".into(), "Butikken".into(), 2, 2, NOW - 300)]
+    );
+    assert!(groups(ViewFilter::All, GroupBy::None).is_empty());
+    let subject = fx
+        .store
+        .sender_groups(ViewSpec::folder(fx.inbox), GroupBy::Sender)
+        .recv_blocking()
+        .unwrap()[1]
+        .subject
+        .clone();
+    assert_eq!(subject, "Melding 3");
 }
 
 #[test]

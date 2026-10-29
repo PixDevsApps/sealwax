@@ -48,6 +48,7 @@ mod tests {
                 account: AccountKey("work".into()),
                 name: "INBOX".into(),
             }),
+            group_by: sealwax_domain::senders::GroupBy::Sender,
         };
         write(&path, &layout).unwrap();
         assert_eq!(read(&path), layout);

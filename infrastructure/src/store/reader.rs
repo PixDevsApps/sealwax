@@ -59,6 +59,11 @@ pub(crate) enum ReadJob {
         ids: Vec<MessageId>,
         reply: Sender<Vec<super::UnsubscribeTarget>>,
     },
+    Groups {
+        spec: ViewSpec,
+        by: sealwax_domain::senders::GroupBy,
+        reply: Sender<Vec<super::SenderGroup>>,
+    },
     Search {
         text: String,
         folder: Option<FolderId>,
@@ -123,6 +128,7 @@ impl ReadJob {
             ReadJob::Detail { reply, .. } => reply.is_closed(),
             ReadJob::Raw { reply, .. } => reply.is_closed(),
             ReadJob::Unsubscribe { reply, .. } => reply.is_closed(),
+            ReadJob::Groups { reply, .. } => reply.is_closed(),
             ReadJob::Search { reply, .. } => reply.is_closed(),
             ReadJob::Check { reply } => reply.is_closed(),
             ReadJob::FolderSync { reply, .. } => reply.is_closed(),
@@ -212,6 +218,9 @@ impl Reader {
             }
             ReadJob::Unsubscribe { ids, reply } => {
                 let _ = reply.try_send(super::unsubscribe::targets(&self.conn, &ids));
+            }
+            ReadJob::Groups { spec, by, reply } => {
+                let _ = reply.try_send(super::senders::groups(&self.conn, spec, by));
             }
             ReadJob::Search {
                 text,

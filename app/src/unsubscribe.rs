@@ -211,8 +211,10 @@ fn open(state: &Rc<AppState>, targets: Vec<UnsubscribeTarget>) {
         .build();
     dialog.set_extra_child(Some(&scroller));
     let weak = Rc::downgrade(state);
-    dialog.connect_response(Some("unsubscribe"), move |_, _| {
-        if let Some(state) = weak.upgrade() {
+    dialog.connect_response(None, move |_, response| {
+        if response == "unsubscribe"
+            && let Some(state) = weak.upgrade()
+        {
             run(&state, rows.clone());
         }
     });
@@ -271,11 +273,9 @@ fn run(state: &Rc<AppState>, rows: Rc<Vec<Row>>) {
             let text = match (done, failed) {
                 (1, 0) => "Unsubscribed".to_owned(),
                 (done, 0) => format!("Unsubscribed from {done} senders"),
-                (0, _) => {
-                    "Not unsubscribed: the sender didn't confirm it. Try again later.".to_owned()
-                }
+                (0, _) => "Not unsubscribed: it didn't go through. Try again later.".to_owned(),
                 (done, failed) => format!(
-                    "Unsubscribed from {done}; {failed} didn't confirm it. Try those again later."
+                    "Unsubscribed from {done}; {failed} didn't go through. Try those again later."
                 ),
             };
             state.show_toast(&adw::Toast::new(&text), false);

@@ -10,6 +10,7 @@
 
 use crate::account::AccountKey;
 use crate::accounts_file::is_valid_key;
+use crate::senders::GroupBy;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 use toml::Value;
@@ -36,6 +37,8 @@ pub struct Layout {
     pub folded: BTreeMap<AccountKey, BTreeSet<String>>,
     /// The view the window last showed; `None`: the first account's Inbox.
     pub view: Option<View>,
+    /// What the message list groups by (issue #24, ADR-023).
+    pub group_by: GroupBy,
 }
 
 /// A view a new window can open on: All Inboxes, or an account's folder by its whole name.
@@ -121,6 +124,11 @@ impl Layout {
             more_open: keys("more_open"),
             folded,
             view,
+            group_by: table
+                .get("group_by")
+                .and_then(Value::as_str)
+                .and_then(GroupBy::from_name)
+                .unwrap_or_default(),
         }
     }
 
@@ -139,6 +147,9 @@ impl Layout {
         }
         if self.sidebar_hidden {
             text.push_str("sidebar_hidden = true\n");
+        }
+        if self.group_by != GroupBy::None {
+            text.push_str(&format!("group_by = \"{}\"\n", self.group_by.name()));
         }
         let keys: Vec<String> = self
             .collapsed
@@ -290,8 +301,13 @@ mod tests {
                 ]),
             )]),
             view: Some(View::AllInboxes),
+            group_by: GroupBy::Domain,
         };
         assert_eq!(Layout::parse(&layout.to_text()), layout);
+        assert_eq!(
+            Layout::parse("group_by = \"sideways\"").group_by,
+            GroupBy::None
+        );
         assert_eq!(
             Layout::parse(&Layout::default().to_text()),
             Layout::default()
@@ -314,6 +330,7 @@ mod tests {
                 more_open: Vec::new(),
                 folded: BTreeMap::new(),
                 view: None,
+                group_by: GroupBy::None,
             }
         );
         assert_eq!(

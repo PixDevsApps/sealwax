@@ -1,0 +1,93 @@
+# Group by Sender and Group by Domain (issue #24) and Unsubscribe (issue #14), 1.1, ADR-023: the
+# list's groups from the store, a group opened as a `sender:` or `domain:` search and Escape back
+# to the groups, the chips on groups, `is:subscription`, and the Unsubscribe dialog sending a
+# one-click unsubscribe through the self-test's fake engine. Every message and address is
+# fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-senders.sealwax-test
+
+desktop tiling
+resize 1440 900
+list-wait
+engine-attach
+mail-account Personal
+folder inbox Personal
+mail-add Personal:inbox 2m "Tilbud i dag" from=Butikken address=nytt@post.butikk.example unsubscribe=https://butikk.example/u/1 one-click
+mail-add Personal:inbox 3m "Ordren din er sendt" from=Butikken address=ordre@butikk.example read
+mail-add Personal:inbox 4m "Middag på fredag?" "from=Anna Berg" address=anna@example.test
+mail-add Personal:inbox 5m "Ukens nyheter" from=Avisa address=nyheter@avisa.example unsubscribe=mailto:ut@avisa.example?subject=stopp read
+assert-list-count 4
+
+# Mail with a List-Unsubscribe.
+search is:subscription
+assert-list-search 2 false
+assert-list-row 0 subject "Tilbud i dag"
+assert-list-row 1 subject "Ukens nyheter"
+search-escape
+assert-list-count 4
+
+# By sender: one row each, newest first, with their counts.
+assert-action-enabled win.dont-group false
+action win.group-by-sender
+assert-action-enabled win.group-by-sender false
+assert-action-enabled win.dont-group true
+assert-list-groups 4
+assert-list-group 0 nytt@post.butikk.example 1 1
+assert-list-group 1 ordre@butikk.example 1 0
+assert-list-group 2 anna@example.test 1 1
+assert-list-group 3 nyheter@avisa.example 1 0
+screenshot $DIR/../../.local/selftest/list-senders-groups.png
+
+# A group opens as a search for its sender; Escape comes back to the groups.
+list-open-group 2
+assert-list-search 1 false
+assert-list-row 0 subject "Middag på fredag?"
+search-escape
+assert-list-groups 4
+assert-list-focus groups
+
+# By domain: the shop's two addresses are one row.
+action win.group-by-domain
+assert-list-groups 3
+assert-list-group 0 butikk.example 2 1
+assert-list-group 1 example.test 1 1
+assert-list-group 2 avisa.example 1 0
+list-open-group 0
+assert-list-search 2 false
+search-escape
+assert-list-groups 3
+
+# The chips filter the groups.
+chip unread
+assert-list-groups 2
+assert-list-group 0 butikk.example 1 1
+chip all
+assert-list-groups 3
+
+# New mail updates the groups.
+mail-add Personal:inbox 1m "Enda et tilbud" from=Butikken address=nytt@post.butikk.example
+assert-list-group 0 butikk.example 3 2
+
+action win.dont-group
+assert-list-count 5
+
+# Unsubscribe: only for mail with a List-Unsubscribe; one click goes through the engine.
+list-select 1
+assert-action-enabled win.unsubscribe true
+list-select 3
+assert-action-enabled win.unsubscribe false
+list-select 1
+engine-expect none but folder-opened,load-older,fetch-bodies
+action win.unsubscribe
+sleep 300
+assert-response unsubscribe-dialog unsubscribe enabled
+screenshot $DIR/../../.local/selftest/list-senders-unsubscribe.png
+setup-respond unsubscribe-dialog unsubscribe
+engine-expect one-click-unsubscribe
+engine-reply one-click-unsubscribed ok
+assert-toast Unsubscribed
+
+# Cancel sends nothing.
+action win.unsubscribe
+sleep 300
+setup-respond unsubscribe-dialog cancel
+engine-expect none but folder-opened,load-older,fetch-bodies

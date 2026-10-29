@@ -75,12 +75,13 @@ assert-focus search
 
 # The values of is: and has:, narrowed as they are typed; a complete one suggests nothing.
 type is:
-assert-suggestions 3
+assert-suggestions 4
 assert-suggestion 0 is:unread "Unread messages"
 assert-suggestion 1 is:read "Read messages"
 assert-suggestion 2 is:starred "Starred messages"
+assert-suggestion 3 is:subscription "Newsletters and other mail you can unsubscribe from"
 type s
-assert-suggestions 1
+assert-suggestions 2
 key Tab
 assert-field list-search "from:anderslie@example.test is:starred "
 assert-suggestions closed
@@ -102,9 +103,9 @@ assert-search-key /
 # Down with the list closed lists every operator; each letter typed narrows the open list.
 focus search
 key Down
-assert-suggestions 7
+assert-suggestions 9
 assert-suggestion 0 from: "Sender's name or address"
-assert-suggestion 6 after: "Sent on or after a day"
+assert-suggestion 8 after: "Sent on or after a day"
 assert-suggestion-selected none
 assert-suggestion-marked 0 Tab
 assert-focus search

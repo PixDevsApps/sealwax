@@ -183,6 +183,24 @@ Allowed images load only over HTTPS and without cookies. A forged From address c
 
 **Encrypted and signed mail.** Sealwax 1.0 doesn't decrypt or check PGP and S/MIME. An encrypted message shows "This message is encrypted. Sealwax can't read encrypted mail yet." in place of its body; a signed message shows its content with "Signed · not checked".
 
+## Grouping mail by sender or domain
+
+**Group by Sender** and **Group by Domain** (in the command palette) show the folder, or All Inboxes, as one row per sender, or per domain, newest first: the sender's name, their address or domain, how many messages and how many unread, and the newest subject. Grouping by domain counts `news@shop.example` and `orders@mail.shop.example` as `shop.example`. The chips work on the groups too: Unread shows only the senders with unread mail. **Don't Group** goes back to the plain list, and Sealwax remembers your choice for the next start.
+
+Open a row with Enter or a double click to see that sender's mail as a list, with the reader beside it; the search field shows what it found it with (`sender:news@shop.example` or `domain:shop.example`), which you can also type yourself. Escape goes back to the groups. From All Inboxes, an opened group shows that sender's mail in every folder but Trash and Junk.
+
+## Unsubscribing
+
+Newsletters and other mailing lists usually say how to leave them in a hidden header (List-Unsubscribe). For such a message, **Unsubscribe…** is in the message's right-click menu, the command palette and the reader's message details (the arrow by the date). `is:subscription` finds all such mail: search for it, select the results (click the first and Shift+click the last) and choose Unsubscribe… once for all of them.
+
+A dialog lists each sender once, with how Sealwax will unsubscribe, and nothing happens until you choose **Unsubscribe**:
+
+- **One click:** the sender asked for it (RFC 8058), so Sealwax tells the sender's web server directly, naming the server in the dialog. The request carries nothing about you but the address in the link the sender gave.
+- **By email:** Sealwax sends the short message the sender asked for, from the account the newsletter came to. It waits in the outbox for a few seconds, so Undo works as for any message you send.
+- **On the sender's page:** the sender only offers a web page. **Open Page** opens it in your browser; finish there.
+
+A toast says how it went. Sealwax remembers whom you unsubscribed from, and the dialog says so if their mail keeps coming. Mail you already have stays where it is; a sender may take a few days to stop. A sender can't tell you opened the dialog: Sealwax contacts nobody until you choose Unsubscribe or Open Page.
+
 ## Triage: archive, delete, move, undo
 
 | Command | Keys | What it does |
@@ -286,10 +304,13 @@ Press `/` or Ctrl+F (or click the search field) and type: the results follow eve
 | Operator | Finds | Example |
 | --- | --- | --- |
 | `from:` | The sender's name or address | `from:anna` |
+| `sender:` | Mail from exactly this address | `sender:news@shop.example` |
+| `domain:` | Mail from this domain or any of its subdomains | `domain:shop.example` |
 | `to:` | A recipient's name or address | `to:team@example.com` |
 | `subject:` | Words in the subject | `subject:invoice` |
 | `has:attachment` | Messages with attachments | `has:attachment` |
 | `is:unread`, `is:read`, `is:starred` | Unread, read or starred messages | `is:unread` |
+| `is:subscription` | Newsletters and other mail you can unsubscribe from | `is:subscription` |
 | `before:` | Sent before a day | `before:2026-10-01` |
 | `after:` | Sent on or after a day | `after:2026-09-01` |
 
@@ -374,6 +395,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Messages | Print… | Ctrl+P | list and reader | `print` |
 | Messages | Show Original | Ctrl+U | list and reader | `show-original` |
 | Messages | Save as .eml… | Ctrl+S | list and reader | `save-message` |
+| Messages | Unsubscribe… | — |  | `unsubscribe` |
 | Compose | Compose | c, Ctrl+N | c: list and reader; Ctrl+N: anywhere | `compose` |
 | Compose | Reply | r, Ctrl+R | list and reader | `reply` |
 | Compose | Reply All | a, Ctrl+Shift+R | list and reader | `reply-all` |
@@ -408,6 +430,9 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | View | Refresh | Ctrl+Alt+R, F5 | anywhere | `refresh` |
 | View | Toggle Sidebar | Ctrl+Shift+S, F9 | anywhere | `toggle-sidebar` |
 | View | Command Palette | Ctrl+Shift+P, F1 | anywhere | `command-palette` |
+| View | Group by Sender | — |  | `group-by-sender` |
+| View | Group by Domain | — |  | `group-by-domain` |
+| View | Don't Group | — |  | `dont-group` |
 | General | Add Account | — |  | `add-account` |
 | General | Edit Account | — |  | `edit-account` |
 | General | Remove Account | — |  | `remove-account` |

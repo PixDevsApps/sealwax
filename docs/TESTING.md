@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Group by sender and List-Unsubscribe (1.1, issues #24 and #14) — 2026-10-29
+
+[ADR-023](DECISIONS.md#adr-023--group-by-sender-and-list-unsubscribe-2026-10-29). This machine; the fake IMAP server, the POP3 actor's fake and loopback HTTP servers on 127.0.0.1; the app headless on Broadway display 37; no real account and no real sender contacted.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `domain::unsubscribe`, `domain::senders`, the `is:subscription`, `sender:` and `domain:` parser tests, `reads_list_unsubscribe` | Pass: folded URIs joined, only `https:`/`http:`/`mailto:` kept (four at most, 2,048 characters each), one-click only for HTTPS with the Post header, `Debug` prints no URI; `domain:` keys on the registrable domain | Pass |
+| Store: schema v13 from a v12 store (`v13_fills_the_sender_domains_and_marks_folders_for_the_backfill`), headers kept and searched, `unsubscribe_targets` (one per List-Id or sender, newest first, the record read back), `a_view_grouped_by_sender_and_by_domain` (counts, unread, the Unread chip) | Pass; the four older migration tests take a v13 store back first | Pass |
+| Backfill: `mail_stored_before_v13_gets_its_list_unsubscribe_once` (`engine/tests/sync.rs`, QRESYNC, CONDSTORE and IMAP4rev1 flavours) and `mail_stored_before_v13_gets_its_list_unsubscribe_from_the_originals` (POP3 actor) | Rows cleared and folders marked by hand, then one pass fills them and clears the marks; a folder the policy doesn't sync is filled when opened; STATUS skips the folders again afterwards (not on IMAP4rev1, which always passes) | Pass |
+| One-click POST (`engine::unsubscribe`, loopback HTTP) | `POST` with `Content-Type: application/x-www-form-urlencoded`, `User-Agent: Sealwax` and the body `List-Unsubscribe=One-Click`; no Cookie, Authorization or Referer; 302, 404 and 500 not confirmations (no redirect followed); `http:`, `mailto:`, a URI with a password, 127.0.0.1, ::1, 10/8, 192.168/16, 169.254.169.254, fd00::/8 and `localhost` refused before any connection; nothing listening is offline | Pass |
+| Self-test `list-senders` (new) | 69 of 69: groups by sender and domain from the store, a group opened as a search and Escape back with the focus on the groups, the chips, new mail updating the groups, Unsubscribe enabled only with the header, the dialog, a one-click through the fake engine and its toast, Cancel sending nothing | Pass |
+| CI, `SEALWAX_CI_DISPLAY=37 bash tools/ci.sh --ui` on the final tree | exit 0; 1,589 tests passed, 0 failed; 85 self-tests; hostile suite `production_failures=[]`, 60 cases. Three earlier runs failed on pins the change moved, each updated: the keymap tables (USER_GUIDE.md and the M1 report), the message menu's items (`reply-default`, `rules-menu`: a disabled Unsubscribe…) and the search suggestions (`search-suggestions`) | Pass |
+| A real one-click unsubscribe, a `mailto:` unsubscribe sent through SMTP, the backfill on a real account, grouping on a large store | Not run | Not verified |
+
 ### INBOX polled while the IDLE connection waits, and its count starts over after a good run — 2026-10-28
 
 [ADR-006 amendment](DECISIONS.md#adr-006-amendment--inbox-polled-while-the-idle-connection-waits-and-its-count-starts-over-after-a-good-run-2026-10-28). This machine; the fake TLS server on 127.0.0.1 only; no real account.

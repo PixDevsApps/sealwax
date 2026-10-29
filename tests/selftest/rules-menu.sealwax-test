@@ -30,7 +30,7 @@ assert-list-selection none
 row-menu 0
 assert-row-menu open
 assert-list-selection 0
-assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from karinordmann@example.test,Never Junk Messages from karinordmann@example.test"
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Create Rule from Message…,Always Junk Messages from karinordmann@example.test,Never Junk Messages from karinordmann@example.test"
 assert-accessible window
 key Escape
 assert-row-menu closed
@@ -50,7 +50,7 @@ assert-row-menu open
 key Escape
 row-menu 3
 assert-list-selection 3
-assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from mariusdahl@example.test,Never Junk Messages from mariusdahl@example.test"
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Create Rule from Message…,Always Junk Messages from mariusdahl@example.test,Never Junk Messages from mariusdahl@example.test"
 key Escape
 
 # The selection it is in: two messages from one sender, then from two senders.
@@ -59,12 +59,12 @@ click-row 1 shift
 assert-list-selection 0,1
 row-menu 1
 assert-list-selection 0,1
-assert-row-menu-items "!Reply,!Reply All,!Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from karinordmann@example.test,Never Junk Messages from karinordmann@example.test"
+assert-row-menu-items "!Reply,!Reply All,!Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Create Rule from Message…,Always Junk Messages from karinordmann@example.test,Never Junk Messages from karinordmann@example.test"
 key Escape
 click-row 3 ctrl
 assert-list-selection 0,1,3
 row-menu 0
-assert-row-menu-items "!Reply,!Reply All,!Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+assert-row-menu-items "!Reply,!Reply All,!Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
 assert-tooltip message-menu-junk-sender "The messages are from more than one sender"
 key Escape
 key Escape
@@ -91,7 +91,7 @@ engine-expect load-older
 engine-reply older-loaded 0 complete
 assert-list-count 1
 row-menu 0
-assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Not Junk,Mark as Read,Star,Create Rule from Message…,Always Junk Messages from leahkim@example.test,Never Junk Messages from leahkim@example.test"
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Not Junk,Mark as Read,Star,!Unsubscribe…,Create Rule from Message…,Always Junk Messages from leahkim@example.test,Never Junk Messages from leahkim@example.test"
 row-menu-click message-menu-trust-sender
 wait-until assert-toast "Moved 1 message to the Inbox as not junk. Mail from leahkim@example.test stays out of Junk from now on"
 engine-expect ops-queued
