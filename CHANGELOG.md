@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.1.0 — 2026-10-29
+
+Two new features from the issues, and two fixes for new mail.
 
 - **Group your mail by sender or by domain** ([issue #24](https://github.com/PixDevsApps/sealwax/issues/24)): Group by Sender and Group by Domain, in the command palette, show a folder or All Inboxes as one row per sender, or per domain, with how many messages and how many unread. Open a row to see that sender's mail; Escape comes back. The new search words `sender:` and `domain:` do the same from the search field.
 - **Unsubscribe from newsletters** ([issue #14](https://github.com/PixDevsApps/sealwax/issues/14)): an Unsubscribe link in the message's header (also in its right-click menu, the reader's ⋮ menu and the palette) leaves a mailing list the way its sender asks: one click to the sender's server, an email, or their page in your browser. A dialog shows each sender and how before anything is sent. `is:subscription` finds every newsletter, so you can select them all and unsubscribe at once. Mail you already have is read once in the background for the header that makes this work.

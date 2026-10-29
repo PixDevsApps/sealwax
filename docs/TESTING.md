@@ -74,6 +74,15 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.0 — 2026-10-29
+
+The version change for 1.1.0: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.6 → 1.1.0), CHANGELOG's "1.1.0 — 2026-10-29" (the section that was "Not released yet"), README's version line, its search and newsletter lines and its thanks. The changes are in the section below and in the two IDLE sections of 2026-10-27 and 2026-10-28. This machine.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI, `SEALWAX_CI_DISPLAY=37 bash tools/ci.sh --ui` on the version change (21:43–22:02) | exit 0; 1,589 passed, 0 failed, 99 ignored; all 85 self-test scripts, 8,237 of 8,237 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`, 272 s; `target/debug/sealwax --version` says `sealwax 1.1.0`; no `gtk4-broadwayd` left | Pass |
+| The clean-container install test | Not run: Docker wasn't running, and starting it is the owner's | Not verified |
+
 ### Group by sender and List-Unsubscribe (1.1, issues #24 and #14) — 2026-10-29
 
 [ADR-023](DECISIONS.md#adr-023--group-by-sender-and-list-unsubscribe-2026-10-29). This machine; the fake IMAP server, the POP3 actor's fake and loopback HTTP servers on 127.0.0.1; the app headless on Broadway display 37; no real account and no real sender contacted.

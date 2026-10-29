@@ -18,7 +18,7 @@ Run the same line again to update; **Check for Updates…** in Sealwax's main me
 
 ## Status
 
-**Version 1.0.6.** The features below are built and tested, and its author has read their own mail with it every day since 7 October 2026: Outlook.com, Microsoft 365 and IMAP, Gmail among them. Testing also covers local test mail servers (Dovecot, Stalwart, Mailpit), a fresh install in a clean Arch Linux container, and measurements on a live desktop; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) say what was checked and what wasn't.
+**Version 1.1.0.** The features below are built and tested, and its author has read their own mail with it every day since 7 October 2026: Outlook.com, Microsoft 365 and IMAP, Gmail among them. Testing also covers local test mail servers (Dovecot, Stalwart, Mailpit), a fresh install in a clean Arch Linux container, and measurements on a live desktop; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) say what was checked and what wasn't.
 
 ## Features
 
@@ -28,7 +28,8 @@ Run the same line again to update; **Check for Updates…** in Sealwax's main me
 - **Triage:** archive, delete, junk, move, star, read and unread at once, on one message or many, with Undo, also offline; a right-click menu on messages.
 - **Folders and rules:** new subfolders, rename and delete, shown as a tree you can fold; rules in Sieve, the standard mail-filter language, made in a Rules dialog or by hand in `rules/<account>.sieve`, run by Sealwax on new mail (move, copy, mark read, star, junk, delete), with always-junk and never-junk senders and Create Rule from Message.
 - **Writing:** a rich-text composer docked in the main window (minimize, expand, several at once), reply, reply all, forward and a quick reply under the conversation; identities and signatures; attachments with the server's size limit checked; drafts saved as you type and kept on the server; an outbox with Undo send that never sends a message twice; `mailto:` links, and becoming the default mail app when you choose.
-- **Search** on this computer with `from:`, `to:`, `subject:`, `has:attachment`, `is:unread`, `before:`, `after:` and suggestions as you type.
+- **Search** on this computer with `from:`, `to:`, `subject:`, `sender:`, `domain:`, `has:attachment`, `is:unread`, `is:subscription`, `before:`, `after:` and suggestions as you type.
+- **Newsletters and senders:** Unsubscribe in one click from a newsletter's header, the way its sender asks, after a dialog that says how; group any folder by sender or by domain to see who fills your inbox.
 - **New-mail notifications** that open the message, and **background mode**: closing the window keeps mail syncing; Start Sealwax at Login.
 - **Omarchy:** the live theme and font, light and dark; corners that follow Hyprland; no title bar on Hyprland; layouts for wide, half-screen and narrow tiled windows, with panes you can drag wider or narrower.
 - **Keyboard first:** one-key shortcuts in the list and reader, a command palette (F1), and your own keys in `keys.toml`. Settings live in plain files: `config.toml`, `keys.toml`, `accounts.toml`.
@@ -54,6 +55,6 @@ Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.
 
 ## Thanks
 
-Thanks to everyone who reports bugs and suggests improvements in the [issues](https://github.com/PixDevsApps/sealwax/issues), and especially to [@ocewers](https://github.com/ocewers) for detailed reports and ideas (issues #2 to #8).
+Thanks to everyone who reports bugs and suggests improvements in the [issues](https://github.com/PixDevsApps/sealwax/issues), and especially to [@ocewers](https://github.com/ocewers) for detailed reports and ideas (issues #2 to #8), and to [@hurricaane](https://github.com/hurricaane) and [@biddster](https://github.com/biddster) for the ideas behind 1.1 (issues #14 and #24).
 
 License: MIT. The licenses of the crates Sealwax is built from come with the package, in `/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt`.
