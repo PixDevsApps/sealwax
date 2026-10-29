@@ -1,6 +1,7 @@
 //! The parser behind [`super::parse`]: one pass over the text, a token at a time.
 
 use super::{Date, Query, Term};
+use crate::senders;
 
 /// `typing`: the last word, when nothing follows it, is the start of a word (see
 /// [`super::parse_typed`]).
@@ -128,6 +129,18 @@ impl<'a> Token<'a> {
                     _ => &mut query.subject,
                 };
                 column.extend(term(self.value, self.quoted));
+            }
+            "sender" if !self.negated => {
+                let key = senders::sender_key(self.value);
+                if key.contains('@') {
+                    query.sender = Some(key);
+                }
+            }
+            "domain" if !self.negated => {
+                let key = senders::domain_key(&format!("@{}", self.value.trim_start_matches('@')));
+                if !key.is_empty() {
+                    query.domain = Some(key);
+                }
             }
             "has" => match choice(self.value, &["attachment", "attachments"]) {
                 Choice::Known(_) => query.has_attachment = Some(!self.negated),
@@ -266,6 +279,24 @@ mod tests {
         assert_eq!(query.subject, [Term::Phrase("q3 plan".into())]);
         assert_eq!(query.to, [word("team@example.com")]);
         assert!(query.text.is_empty());
+    }
+
+    #[test]
+    fn a_sender_group_and_subscriptions() {
+        let query =
+            parse("sender:News@Shop.Example domain:Mail.Shop.Example.co.uk is:subscription");
+        assert_eq!(query.sender.as_deref(), Some("news@shop.example"));
+        assert_eq!(query.domain.as_deref(), Some("example.co.uk"));
+        assert_eq!(query.subscription, Some(true));
+        assert_eq!(
+            parse("domain:@shop.example").domain.as_deref(),
+            Some("shop.example")
+        );
+        assert_eq!(parse("sender:no-address").sender, None);
+        assert_eq!(parse("domain:").domain, None);
+        assert_eq!(parse("-sender:a@b.example").sender, None);
+        assert_eq!(parse("-is:subscription").subscription, Some(false));
+        assert!(!parse("sender:a@b.example").is_empty());
     }
 
     #[test]

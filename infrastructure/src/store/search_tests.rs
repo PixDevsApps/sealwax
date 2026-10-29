@@ -12,6 +12,7 @@ use rusqlite::Connection;
 use sealwax_domain::model::{Address, Attachment, FolderRole, Headers};
 use sealwax_domain::search::{self, Date};
 use sealwax_domain::triage::Triage;
+use sealwax_domain::unsubscribe::Method;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -1046,6 +1047,29 @@ fn subscriptions_keep_their_unsubscribe_header_and_are_found() {
         Some("<https://butikk.example.co.uk/u/1>")
     );
     assert!(detail.headers.one_click);
+    assert_eq!(
+        find(
+            &fx.store,
+            "sender:Nyhetsbrev@post.butikk.example.co.uk",
+            None,
+            10
+        ),
+        [ids[0]]
+    );
+    assert_eq!(
+        find(&fx.store, "domain:butikk.example.co.uk", None, 10),
+        [ids[0]]
+    );
+    assert_eq!(find(&fx.store, "domain:example.test", None, 10), [ids[1]]);
+    assert!(
+        find(
+            &fx.store,
+            "sender:avsender@example.test is:subscription",
+            None,
+            10
+        )
+        .is_empty()
+    );
     let (path, store) = (fx.path(), fx.store);
     store.close().unwrap();
     let conn = Connection::open(&path).unwrap();
@@ -1057,6 +1081,76 @@ fn subscriptions_keep_their_unsubscribe_header_and_are_found() {
         .collect::<rusqlite::Result<_>>()
         .unwrap();
     assert_eq!(domains, ["example.co.uk", "example.test"]);
+}
+
+#[test]
+fn unsubscribe_targets_one_per_list_newest_first_and_remember_it() {
+    let fx = fixture();
+    let letter = |n: u32, date: i64, list_id: Option<&str>, from: &str| {
+        let mut message = mail(fx.inbox, n, date);
+        message.headers.from = vec![Address::new("Butikken", from)];
+        message.headers.list_id = list_id.map(str::to_owned);
+        message.headers.list_unsubscribe = Some(format!("<https://butikk.example/u/{n}>"));
+        message.headers.one_click = n.is_multiple_of(2);
+        message
+    };
+    let ids = ingest(
+        &fx.store,
+        vec![
+            letter(
+                1,
+                NOW - 300,
+                Some("tilbud.butikk.example"),
+                "a@butikk.example",
+            ),
+            letter(
+                2,
+                NOW - 200,
+                Some("tilbud.butikk.example"),
+                "b@butikk.example",
+            ),
+            letter(3, NOW - 100, None, "Nytt@Butikk.example"),
+            mail(fx.inbox, 4, NOW),
+        ],
+    );
+    let targets = |ids: &[MessageId]| {
+        fx.store
+            .unsubscribe_targets(ids.to_vec())
+            .recv_blocking()
+            .unwrap()
+    };
+    let found = targets(&ids);
+    assert_eq!(
+        found
+            .iter()
+            .map(|target| (target.message, target.key.as_str(), target.one_click))
+            .collect::<Vec<_>>(),
+        [
+            (ids[2], "nytt@butikk.example", false),
+            (ids[1], "tilbud.butikk.example", true),
+        ]
+    );
+    assert_eq!(found[1].list_unsubscribe, "<https://butikk.example/u/2>");
+    assert!(found.iter().all(|target| target.unsubscribed.is_none()));
+    assert!(
+        !format!("{found:?}").contains("butikk"),
+        "no address in Debug"
+    );
+    let account = found[0].account;
+    fx.store
+        .record_unsubscribed(
+            account,
+            "tilbud.butikk.example".into(),
+            Method::OneClick,
+            NOW,
+        )
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(
+        targets(&ids[..1])[0].unsubscribed,
+        Some((Method::OneClick, NOW))
+    );
+    assert!(targets(&ids[3..]).is_empty());
 }
 
 #[test]

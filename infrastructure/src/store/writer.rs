@@ -58,6 +58,13 @@ fn record_wal_frames(_wal: &Wal, frames: c_int) -> rusqlite::Result<()> {
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
 
 pub(crate) enum WriteJob {
+    RecordUnsubscribed {
+        account: AccountId,
+        key: String,
+        method: sealwax_domain::unsubscribe::Method,
+        at: i64,
+        reply: Sender<()>,
+    },
     AddAccount {
         account: NewAccount,
         reply: Sender<Versioned<AccountId>>,
@@ -314,6 +321,17 @@ impl Writer {
 
     fn interactive(&mut self, job: WriteJob) {
         match job {
+            WriteJob::RecordUnsubscribed {
+                account,
+                key,
+                method,
+                at,
+                reply,
+            } => {
+                let _ = reply.try_send(super::unsubscribe::record(
+                    &self.conn, account, &key, method, at,
+                ));
+            }
             WriteJob::AddAccount { account, reply } => {
                 let _ = reply.try_send(self.add_account(&account));
             }

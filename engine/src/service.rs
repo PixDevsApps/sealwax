@@ -489,6 +489,17 @@ async fn run(shared: Arc<Shared>, commands: async_channel::Receiver<Command>) {
                 });
                 continue;
             }
+            Command::OneClickUnsubscribe { request, uri } => {
+                let shared = shared.clone();
+                tokio::spawn(async move {
+                    let result = crate::unsubscribe::one_click(&uri).await;
+                    if let Err(error) = &result {
+                        tracing::info!(%error, "a one-click unsubscribe failed");
+                    }
+                    shared.send(Event::OneClickUnsubscribed { request, result });
+                });
+                continue;
+            }
             Command::RemoveAccount { request, key } => Job::Remove { request, key },
             Command::EditAccount {
                 request,

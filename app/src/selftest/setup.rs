@@ -855,6 +855,9 @@ fn fields(
             (kind, Some(*request), fields)
         }
         Command::CheckForUpdates { request } => ("check-for-updates", Some(*request), Vec::new()),
+        Command::OneClickUnsubscribe { request, .. } => {
+            ("one-click-unsubscribe", Some(*request), Vec::new())
+        }
         Command::Shutdown => ("shutdown", None, Vec::new()),
     }
 }

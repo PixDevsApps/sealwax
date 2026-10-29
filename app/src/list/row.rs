@@ -876,6 +876,7 @@ mod tests {
             flags: Flags::FLAGGED,
             has_attachments: true,
             thread_count: 3,
+            subscription: false,
         };
         assert_eq!(
             accessible_text(&row, "10:32"),

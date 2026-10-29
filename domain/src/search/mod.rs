@@ -80,6 +80,11 @@ pub struct Query {
     pub to: Vec<Term>,
     /// `subject:`.
     pub subject: Vec<Term>,
+    /// `sender:`, one sender's address exactly, [`crate::senders::sender_key`]ed (a sender
+    /// group opened, ADR-023).
+    pub sender: Option<String>,
+    /// `domain:`, the senders of one registrable domain ([`crate::senders::domain_key`]).
+    pub domain: Option<String>,
     /// `has:attachment`.
     pub has_attachment: Option<bool>,
     /// `is:unread` (`Some(true)`) and `is:read` (`Some(false)`).
@@ -109,6 +114,8 @@ impl fmt::Debug for Query {
             .field("from", &self.from.len())
             .field("to", &self.to.len())
             .field("subject", &self.subject.len())
+            .field("sender", &self.sender.is_some())
+            .field("domain", &self.domain.is_some())
             .field("has_attachment", &self.has_attachment)
             .field("unread", &self.unread)
             .field("starred", &self.starred)
@@ -152,6 +159,18 @@ pub const OPERATORS: &[Operator] = &[
         values: &[],
         example: "subject:invoice",
         description: "Words in the subject",
+    },
+    Operator {
+        name: "sender:",
+        values: &[],
+        example: "sender:news@shop.example",
+        description: "Mail from exactly this address",
+    },
+    Operator {
+        name: "domain:",
+        values: &[],
+        example: "domain:shop.example",
+        description: "Mail from a domain and its subdomains",
     },
     Operator {
         name: "has:",

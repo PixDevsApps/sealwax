@@ -234,7 +234,8 @@ fn count_in(conn: &Connection, folder: FolderId, filter: ViewFilter) -> rusqlite
 }
 
 pub(crate) const SUMMARY_COLUMNS: &str = "m.id, m.folder_id, m.thread_id, m.from_name, \
-     m.from_addr, m.subject, m.snippet, m.date, m.flags, m.has_attachments, t.message_count";
+     m.from_addr, m.subject, m.snippet, m.date, m.flags, m.has_attachments, t.message_count, \
+     m.list_unsubscribe IS NOT NULL";
 
 pub(crate) fn summary_row(row: &Row<'_>) -> rusqlite::Result<MessageSummary> {
     Ok(MessageSummary {
@@ -249,6 +250,7 @@ pub(crate) fn summary_row(row: &Row<'_>) -> rusqlite::Result<MessageSummary> {
         flags: sealwax_domain::model::Flags::from_bits(row.get::<_, u32>(8)?),
         has_attachments: row.get(9)?,
         thread_count: row.get(10)?,
+        subscription: row.get(11)?,
     })
 }
 
@@ -403,6 +405,14 @@ pub(crate) fn search(
         }
     }
     let mut values = vec![(":limit", Value::Integer(i64::from(limit)))];
+    if let Some(sender) = &query.sender {
+        conditions.push_str(" AND lower(m.from_addr) = :sender");
+        values.push((":sender", Value::Text(sender.clone())));
+    }
+    if let Some(domain) = &query.domain {
+        conditions.push_str(" AND m.from_domain = :domain");
+        values.push((":domain", Value::Text(domain.clone())));
+    }
     if let Some(after) = after {
         conditions.push_str(" AND m.date >= :after");
         values.push((":after", Value::Integer(after)));

@@ -55,6 +55,10 @@ pub(crate) enum ReadJob {
         id: MessageId,
         reply: Sender<Option<Vec<u8>>>,
     },
+    Unsubscribe {
+        ids: Vec<MessageId>,
+        reply: Sender<Vec<super::UnsubscribeTarget>>,
+    },
     Search {
         text: String,
         folder: Option<FolderId>,
@@ -118,6 +122,7 @@ impl ReadJob {
             ReadJob::Folders { reply } => reply.is_closed(),
             ReadJob::Detail { reply, .. } => reply.is_closed(),
             ReadJob::Raw { reply, .. } => reply.is_closed(),
+            ReadJob::Unsubscribe { reply, .. } => reply.is_closed(),
             ReadJob::Search { reply, .. } => reply.is_closed(),
             ReadJob::Check { reply } => reply.is_closed(),
             ReadJob::FolderSync { reply, .. } => reply.is_closed(),
@@ -204,6 +209,9 @@ impl Reader {
             }
             ReadJob::Raw { id, reply } => {
                 let _ = reply.try_send(self.raw(id));
+            }
+            ReadJob::Unsubscribe { ids, reply } => {
+                let _ = reply.try_send(super::unsubscribe::targets(&self.conn, &ids));
             }
             ReadJob::Search {
                 text,

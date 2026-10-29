@@ -88,6 +88,26 @@ pub enum Method {
     Web,
 }
 
+impl Method {
+    /// The number the store keeps.
+    pub const fn code(self) -> u8 {
+        match self {
+            Self::OneClick => 1,
+            Self::Mail => 2,
+            Self::Web => 3,
+        }
+    }
+
+    pub const fn from_code(code: u8) -> Option<Self> {
+        match code {
+            1 => Some(Self::OneClick),
+            2 => Some(Self::Mail),
+            3 => Some(Self::Web),
+            _ => None,
+        }
+    }
+}
+
 impl Methods {
     pub fn best(&self) -> Option<Method> {
         if self.one_click.is_some() {

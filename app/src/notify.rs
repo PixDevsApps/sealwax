@@ -1036,6 +1036,7 @@ mod tests {
             flags: sealwax_domain::model::Flags::NONE,
             has_attachments: false,
             thread_count: 1,
+            subscription: false,
         };
         assert_eq!(sender(&message), "kari@example.test");
         assert_eq!(subject_text(&message.subject), "(no subject)");
