@@ -26,6 +26,7 @@
 //! one message that can't be read at all is left out.
 
 mod account;
+mod backfill;
 mod folder;
 mod older;
 pub(crate) mod view;

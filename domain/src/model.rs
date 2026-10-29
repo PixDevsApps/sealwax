@@ -329,6 +329,10 @@ pub struct Headers {
     pub references: Vec<String>,
     /// The List-Id identifier, without angle brackets.
     pub list_id: Option<String>,
+    /// List-Unsubscribe's usable URIs, [`crate::unsubscribe::normalize`]d.
+    pub list_unsubscribe: Option<String>,
+    /// List-Unsubscribe-Post asks for a one-click POST (RFC 8058).
+    pub one_click: bool,
     /// The conversation Outlook's `Thread-Index` names.
     pub thread_index: Option<ThreadIndex>,
 }

@@ -387,6 +387,11 @@ pub(crate) fn search(
         (query.unread, "m.flags & 1 = 0", "m.flags & 1 <> 0"),
         (query.starred, "m.flags & 4 <> 0", "m.flags & 4 = 0"),
         (
+            query.subscription,
+            "m.list_unsubscribe IS NOT NULL",
+            "m.list_unsubscribe IS NULL",
+        ),
+        (
             query.has_attachment,
             "m.has_attachments <> 0",
             "m.has_attachments = 0",

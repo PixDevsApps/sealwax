@@ -4,6 +4,7 @@
 //! from it, and flag FETCHes cover the floor's range only. The rows a step stores at or above
 //! the UIDNEXT the store held when the pass began are new mail ([`Arrived`]).
 
+use super::backfill;
 use super::view::{self, View};
 use super::{Arrived, FolderLocks, SyncOptions, SyncReport, count, load_state};
 use crate::imap::connection::Connection;
@@ -83,7 +84,11 @@ pub(super) async fn pass(
         from: (!fresh).then_some(state.uidnext),
         sink: options.arrivals.as_ref(),
     };
-    incremental(conn, store, &state, &mut view, arrivals, report).await
+    incremental(conn, store, &state, &mut view, arrivals, report).await?;
+    if state.unsubscribe_backfill {
+        backfill::unsubscribe(conn, store, folder, &mut view).await?;
+    }
+    Ok(())
 }
 
 /// Where a pass reports new mail: the rows it stores at or above `from`, the UIDNEXT the store

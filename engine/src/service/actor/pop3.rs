@@ -33,7 +33,7 @@ use sealwax_domain::model::{AccountId, Flags, FolderId, MessageId};
 use sealwax_infrastructure::ingest::{self, RawMessage};
 use sealwax_infrastructure::store::{
     BodyState, DraftUpload, DueSentCopy, Failure, NewMessage, Pop3Download, Pop3PassDone, Pop3Uidl,
-    SentCopyDone,
+    SentCopyDone, Store, StoreError, UnsubscribeHeaders,
 };
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -566,6 +566,9 @@ impl<C: Connect> Passes<C> {
                         tracing::warn!(%error, "raw messages left by local ops couldn't be read");
                     }
                 }
+                if let Err(error) = backfill_unsubscribe(&self.shared.store, self.account).await {
+                    tracing::warn!(%error, "List-Unsubscribe couldn't be backfilled");
+                }
             }
             Err(Failed::Server(error)) if error.is_connection() => {
                 tracing::info!(account = self.account.0, %error, "the POP3 connection was lost");
@@ -842,6 +845,35 @@ fn header_only(inbox: FolderId, header: &[u8], size: u64) -> NewMessage {
 /// A downloaded message, its bytes in the blob store and parsed for the Inbox: unread unless
 /// its header says otherwise, sorted by its Date header, or by when it was downloaded without
 /// one.
+/// The one-time List-Unsubscribe backfill (schema v13, ADR-023) of the account's local
+/// folders, from the stored originals; a message kept as its headers alone gets none.
+async fn backfill_unsubscribe(store: &Store, account: AccountId) -> Result<(), StoreError> {
+    for folder in store.account_folders(account).recv().await? {
+        if !folder.unsubscribe_backfill {
+            continue;
+        }
+        let mut found = Vec::new();
+        for stored in store.folder_messages(folder.folder).recv().await? {
+            let Some(raw) = store.raw_message(stored.id).recv().await? else {
+                continue;
+            };
+            let (list_unsubscribe, one_click) = message::unsubscribe_headers(&raw);
+            if list_unsubscribe.is_some() {
+                found.push(UnsubscribeHeaders {
+                    id: stored.id,
+                    list_unsubscribe,
+                    one_click,
+                });
+            }
+        }
+        store
+            .backfill_unsubscribe(folder.folder, found, true)
+            .recv()
+            .await?;
+    }
+    Ok(())
+}
+
 async fn prepare<C: Connect>(passes: &Passes<C>, bytes: Vec<u8>) -> Option<NewMessage> {
     let blobs = passes.shared.blobs.clone();
     let raw = RawMessage {

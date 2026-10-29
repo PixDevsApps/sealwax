@@ -143,6 +143,24 @@ fn decodes_headers() {
 }
 
 #[test]
+fn reads_list_unsubscribe() {
+    let letter = crlf(
+        "From: Butikken <nytt@butikk.example>\nSubject: Tilbud\n\
+         List-Unsubscribe: <mailto:ut@butikk.example?subject=avmeld>,\n <https://butikk.example/u/\n 9>\n\
+         List-Unsubscribe-Post: List-Unsubscribe=One-Click\n\nHei\n",
+    );
+    let headers = parse(&letter).headers;
+    assert_eq!(
+        headers.list_unsubscribe.as_deref(),
+        Some("<mailto:ut@butikk.example?subject=avmeld>, <https://butikk.example/u/9>")
+    );
+    assert!(headers.one_click);
+    let plain = parse(&crlf(PLAIN)).headers;
+    assert_eq!(plain.list_unsubscribe, None);
+    assert!(!plain.one_click);
+}
+
+#[test]
 fn finds_the_body_alternatives() {
     let alternative = parse(&crlf(ALTERNATIVE));
     assert_eq!(alternative.body_kind, BodyKind::Both);

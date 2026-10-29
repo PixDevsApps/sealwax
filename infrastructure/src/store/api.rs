@@ -183,6 +183,9 @@ pub struct FolderSync {
     pub below: u32,
     /// Messages the store holds for the folder.
     pub messages: u32,
+    /// The stored mail predates the header FETCH asking for List-Unsubscribe; one backfill
+    /// fetches it (schema v13, ADR-023).
+    pub unsubscribe_backfill: bool,
 }
 
 impl FolderSync {

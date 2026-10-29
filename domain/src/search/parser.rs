@@ -134,9 +134,13 @@ impl<'a> Token<'a> {
                 Choice::Typing => {}
                 Choice::Other => self.push_operator_text(query, &name),
             },
-            "is" => match choice(self.value, &["unread", "read", "starred", "flagged"]) {
+            "is" => match choice(
+                self.value,
+                &["unread", "read", "starred", "flagged", "subscription"],
+            ) {
                 Choice::Known("unread") => query.unread = Some(!self.negated),
                 Choice::Known("read") => query.unread = Some(self.negated),
+                Choice::Known("subscription") => query.subscription = Some(!self.negated),
                 Choice::Known(_) => query.starred = Some(!self.negated),
                 Choice::Typing => {}
                 Choice::Other => self.push_operator_text(query, &name),

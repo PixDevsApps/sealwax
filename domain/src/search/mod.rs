@@ -86,6 +86,8 @@ pub struct Query {
     pub unread: Option<bool>,
     /// `is:starred`.
     pub starred: Option<bool>,
+    /// `is:subscription`: mail with a List-Unsubscribe header (issue #14).
+    pub subscription: Option<bool>,
     /// `before:`: messages dated before the start of this day.
     pub before: Option<Date>,
     /// `after:`: messages dated on or after the start of this day.
@@ -110,6 +112,7 @@ impl fmt::Debug for Query {
             .field("has_attachment", &self.has_attachment)
             .field("unread", &self.unread)
             .field("starred", &self.starred)
+            .field("subscription", &self.subscription)
             .field("before", &self.before.is_some())
             .field("after", &self.after.is_some())
             .finish()
@@ -158,9 +161,9 @@ pub const OPERATORS: &[Operator] = &[
     },
     Operator {
         name: "is:",
-        values: &["unread", "read", "starred"],
+        values: &["unread", "read", "starred", "subscription"],
         example: "is:unread",
-        description: "Unread, read or starred messages",
+        description: "Unread, read, starred or subscription messages",
     },
     Operator {
         name: "before:",

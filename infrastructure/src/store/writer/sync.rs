@@ -15,7 +15,7 @@ use crate::store::api::{
 };
 use crate::store::overlay::{Change, HIDDEN};
 use crate::store::sync_api::{
-    FlagUpdate, FolderChanges, FolderSynced, FoldersReplaced, ServerStatus,
+    FlagUpdate, FolderChanges, FolderSynced, FoldersReplaced, ServerStatus, UnsubscribeHeaders,
 };
 use crate::store::{RefusedChange, StoreError, codec, views};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
@@ -40,6 +40,12 @@ pub(crate) enum SyncJob {
         folder: FolderId,
         status: ServerStatus,
         reply: Sender<Versioned<bool>>,
+    },
+    BackfillUnsubscribe {
+        folder: FolderId,
+        found: Vec<UnsubscribeHeaders>,
+        done: bool,
+        reply: Sender<()>,
     },
 }
 
@@ -77,7 +83,49 @@ impl Writer {
             } => {
                 let _ = reply.try_send(self.count_below(folder, &status));
             }
+            SyncJob::BackfillUnsubscribe {
+                folder,
+                found,
+                done,
+                reply,
+            } => {
+                let _ = reply.try_send(self.backfill_unsubscribe(folder, &found, done));
+            }
         }
+    }
+
+    fn backfill_unsubscribe(
+        &mut self,
+        folder: FolderId,
+        found: &[UnsubscribeHeaders],
+        done: bool,
+    ) -> Result<(), StoreError> {
+        self.state.account(folder)?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        {
+            let mut update = tx.prepare_cached(
+                "UPDATE messages SET list_unsubscribe = ?3, one_click = ?4 \
+                 WHERE folder_id = ?1 AND id = ?2",
+            )?;
+            for headers in found {
+                update.execute(params![
+                    folder.0,
+                    headers.id.0,
+                    headers.list_unsubscribe,
+                    headers.one_click
+                ])?;
+            }
+        }
+        if done {
+            tx.execute(
+                "UPDATE folders SET unsubscribe_backfill = 0 WHERE id = ?1",
+                [folder.0],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     fn sync_changes(

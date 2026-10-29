@@ -21,6 +21,10 @@ const VALUES: &[(&str, &str)] = &[
     ("unread", "Unread messages"),
     ("read", "Read messages"),
     ("starred", "Starred messages"),
+    (
+        "subscription",
+        "Newsletters and other mail you can unsubscribe from",
+    ),
 ];
 
 /// How far back each day suggested after `before:` and `after:` lies, with what each finds.
@@ -444,9 +448,13 @@ mod tests {
     #[test]
     fn values_of_has_and_is() {
         assert_eq!(titles("has:"), ["has:attachment"]);
-        assert_eq!(titles("is:"), ["is:unread", "is:read", "is:starred"]);
+        assert_eq!(
+            titles("is:"),
+            ["is:unread", "is:read", "is:starred", "is:subscription"]
+        );
         assert_eq!(titles("IS:R"), ["is:read"]);
-        assert_eq!(titles("is:s"), ["is:starred"]);
+        assert_eq!(titles("is:s"), ["is:starred", "is:subscription"]);
+        assert_eq!(titles("is:su"), ["is:subscription"]);
         assert_eq!(hints("is:unread"), None, "a complete value");
         assert_eq!(hints("is:x"), None);
         let Some(Hints::Fixed(found)) = hints("has:att") else {

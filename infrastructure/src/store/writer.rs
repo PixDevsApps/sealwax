@@ -17,6 +17,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, 
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::message::{self, base_subject};
 use sealwax_domain::model::{AccountId, Address, BlobKey, Flags, FolderId, MessageId, ThreadId};
+use sealwax_domain::senders;
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ffi::c_int;
@@ -1137,9 +1138,9 @@ fn insert_message(
             "INSERT INTO messages(folder_id, uid, thread_id, message_id, in_reply_to, refs, \
                date, sent_date, from_name, from_addr, to_addrs, cc_addrs, reply_to, subject, \
                snippet, list_id, flags, keywords, has_attachments, body_kind, size, body_state, \
-               blob_key, thread_index) \
+               blob_key, thread_index, list_unsubscribe, one_click, from_domain) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-               ?18, ?19, ?20, ?21, ?22, ?23, ?24) RETURNING id",
+               ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27) RETURNING id",
         )?
         .query_row(
             params![
@@ -1170,6 +1171,9 @@ fn insert_message(
                     .thread_index
                     .as_ref()
                     .map(|index| index.0.as_slice()),
+                headers.list_unsubscribe,
+                headers.one_click,
+                sender.map_or_else(String::new, |address| senders::domain_key(&address.email)),
             ],
             |row| row.get(0),
         )?,

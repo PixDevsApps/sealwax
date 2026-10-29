@@ -375,7 +375,8 @@ impl Reader {
         let mut detail = tx
             .prepare_cached(
                 "SELECT to_addrs, cc_addrs, reply_to, sent_date, message_id, in_reply_to, refs, \
-                   list_id, keywords, body_kind, size, blob_key, thread_index \
+                   list_id, keywords, body_kind, size, blob_key, thread_index, list_unsubscribe, \
+                   one_click \
                  FROM messages WHERE id = ?1",
             )?
             .query_row([id.0], |row| {
@@ -394,6 +395,8 @@ impl Reader {
                         in_reply_to: codec::decode_words(&row.get::<_, String>(5)?),
                         references: codec::decode_words(&row.get::<_, String>(6)?),
                         list_id: row.get(7)?,
+                        list_unsubscribe: row.get(13)?,
+                        one_click: row.get(14)?,
                         thread_index: row
                             .get::<_, Option<Vec<u8>>>(12)?
                             .and_then(|index| ThreadIndex::from_slice(&index)),
@@ -486,7 +489,7 @@ impl Reader {
 /// The columns `folder_sync_row` reads.
 pub(super) const FOLDER_SYNC: &str = "id, account_id, name_raw, delimiter, role, selectable, \
     uidvalidity, uidnext, highestmodseq, sync_state, initial_top, initial_modseq, sync_floor, \
-    below_floor, (SELECT count(*) FROM messages WHERE folder_id = f.id)";
+    below_floor, (SELECT count(*) FROM messages WHERE folder_id = f.id), unsubscribe_backfill";
 
 pub(super) fn folder_sync_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FolderSync> {
     let state = match row.get::<_, String>(9)?.as_str() {
@@ -514,5 +517,6 @@ pub(super) fn folder_sync_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Folde
         floor: row.get(12)?,
         below: row.get(13)?,
         messages: row.get(14)?,
+        unsubscribe_backfill: row.get(15)?,
     })
 }

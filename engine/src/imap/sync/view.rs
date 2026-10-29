@@ -149,7 +149,7 @@ pub(crate) async fn fetch_flags(
 
 /// One header FETCH of `set` with `items`, added to `out`. Responses for UIDs `wanted` refuses,
 /// or without the header section (unsolicited flag updates), are hints and are dropped.
-async fn fetch_into(
+pub(super) async fn fetch_into(
     conn: &mut Connection,
     set: &str,
     items: &str,

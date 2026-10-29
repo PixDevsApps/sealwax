@@ -110,6 +110,7 @@ fn wanted(id: FolderId, folder: &ListedFolder, state: &FolderSync, options: &Syn
 /// pass.
 fn unchanged(state: &FolderSync, status: &FolderStatus, skipped: usize) -> bool {
     state.state == SyncState::Ready
+        && !state.unsubscribe_backfill
         && status.uidvalidity.is_some()
         && status.uidvalidity == state.uidvalidity
         && status.uidnext == Some(state.uidnext)

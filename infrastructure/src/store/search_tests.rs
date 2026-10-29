@@ -1022,6 +1022,77 @@ fn a_rebuild_goes_on_when_the_store_opens_again() {
 }
 
 #[test]
+fn subscriptions_keep_their_unsubscribe_header_and_are_found() {
+    let fx = fixture();
+    let mut letter = mail(fx.inbox, 1, NOW - 60);
+    letter.headers.from = vec![Address::new(
+        "Butikken",
+        "nyhetsbrev@post.butikk.example.co.uk",
+    )];
+    letter.headers.list_unsubscribe = Some("<https://butikk.example.co.uk/u/1>".into());
+    letter.headers.one_click = true;
+    let ids = ingest(&fx.store, vec![letter, mail(fx.inbox, 2, NOW - 30)]);
+    assert_eq!(find(&fx.store, "is:subscription", None, 10), [ids[0]]);
+    assert_eq!(find(&fx.store, "-is:subscription", None, 10), [ids[1]]);
+    let detail = fx
+        .store
+        .message(ids[0])
+        .recv_blocking()
+        .unwrap()
+        .value
+        .unwrap();
+    assert_eq!(
+        detail.headers.list_unsubscribe.as_deref(),
+        Some("<https://butikk.example.co.uk/u/1>")
+    );
+    assert!(detail.headers.one_click);
+    let (path, store) = (fx.path(), fx.store);
+    store.close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    let domains: Vec<String> = conn
+        .prepare("SELECT from_domain FROM messages ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(domains, ["example.co.uk", "example.test"]);
+}
+
+#[test]
+fn v13_fills_the_sender_domains_and_marks_folders_for_the_backfill() {
+    let fx = fixture();
+    ingest(&fx.store, vec![mail(fx.inbox, 1, NOW)]);
+    let (path, store) = (fx.path(), fx.store);
+    store.close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(super::schema::UNDO_V13).unwrap();
+    drop(conn);
+    reopen(&fx.dir, &fx.blobs).close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    let domain: String = conn
+        .query_row("SELECT from_domain FROM messages", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(domain, "example.test");
+    let marked: Vec<(i64, bool)> = conn
+        .prepare("SELECT id, unsubscribe_backfill FROM folders ORDER BY id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        marked,
+        [
+            (fx.inbox.0, true),
+            (fx.archive.0, false),
+            (fx.trash.0, false),
+            (fx.junk.0, false)
+        ]
+    );
+}
+
+#[test]
 fn v10_indexes_every_message_once() {
     let fx = fixture();
     let ids = ingest_raws(
@@ -1055,6 +1126,7 @@ fn v10_indexes_every_message_once() {
         )
         .unwrap();
     }
+    conn.execute_batch(super::schema::UNDO_V13).unwrap();
     conn.execute_batch(
         "ALTER TABLE outbox DROP COLUMN building; ALTER TABLE drafts DROP COLUMN upload_building; \
          DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \

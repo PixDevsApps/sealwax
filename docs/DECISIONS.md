@@ -32,6 +32,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 020 | Folders and rules: Sieve run by Sealwax | Accepted (user decision, 2026-10-09); built: folders (A1), the Sieve subset (A2), the rules on new mail (B1) and in the app (B2); the user's review next |
 | 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax. Amended 2026-10-18 (user decision): no AUR package; GitHub Releases only. Amended 2026-10-20 (user request): Check for Updates…, run only by the user |
 | 022 | The headless checks run GTK's Broadway daemon with a patch of Sealwax's | Accepted (2026-10-19) as a stopgap: GTK 4.24.1's daemon aborts in about 30 of the 81 CI scripts; dropped once a GTK release fixes it |
+| 023 | Group by sender and List-Unsubscribe | Accepted (user decisions, 2026-10-29), for 1.1; being built |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1067,6 +1068,10 @@ The owner's decisions on the sign-off sheet (2026-10-19). (1) The 150 ms rule of
 
 **Status:** Accepted — the user's word, 2026-10-13 ("Build it for 0.4.8, loopback only"), on issue [#9](https://github.com/PixDevsApps/sealwax/issues/9) (Proton Mail Bridge). Pinned certificates move from 1.x into 0.4.8 and 1.0, **for servers on this computer only** (`localhost`, 127.0.0.0/8, `::1`), with Proton set up through its Bridge ([ADR-007 amendment](#adr-007-amendment--a-pinned-certificate-for-a-server-on-this-computer-2026-10-13)). Pinning a server elsewhere stays out.
 
+### ADR-013 amendment — group by sender and List-Unsubscribe into 1.1 (2026-10-29)
+
+**Status:** Accepted — the user's word, 2026-10-29 ("let's do #24 alongside #14"), on issues [#24](https://github.com/PixDevsApps/sealwax/issues/24) and [#14](https://github.com/PixDevsApps/sealwax/issues/14). List-Unsubscribe moves from the 1.x list into 1.1, with an `is:subscription` search filter and an Unsubscribe command; grouping the message list by sender or domain, on no list before, comes with it. The design is [ADR-023](#adr-023--group-by-sender-and-list-unsubscribe-2026-10-29).
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
@@ -1552,3 +1557,17 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Alternatives:** waiting for a GTK fix (`ci.sh --ui` unusable meanwhile; Broadway is deprecated, so a fix may be slow); `GSK_RENDERER=cairo` (Broadway's cairo path sends a malformed node and aborts on the second frame); an `LD_PRELOAD` that ignores the assertion (`g_assertion_message_expr` doesn't return); a proxy rewriting the app's node stream (it would have to rebuild nodes and pass textures' file descriptors); a GTK of our own for the app (a whole GTK build); changing how Sealwax draws its icons (any two identical symbolic icons trigger it, GTK's own included).
 
 **Consequences:** the headless runs need a C compiler, `pkg-config`, `patch`, `curl` and Python, and download a 17 MB tarball from download.gnome.org once per GTK version and checkout. A browser on such a display could show a copied node or a blank where the stock daemon would have aborted; the self-tests' client draws nothing, and screenshots come from GTK in the app. Each GTK update needs a look at the patch and a checksum line.
+
+## ADR-023 — Group by sender and List-Unsubscribe (2026-10-29)
+
+**Status:** Accepted — the user's decisions, 2026-10-29 ("let's do #24 alongside #14", then the recommended answer to each design question), for 1.1 ([ADR-013 amendment](#adr-013-amendment--group-by-sender-and-list-unsubscribe-into-11-2026-10-29)). Keys are proposed, not bound (ADR-017).
+
+**Decision:**
+- **Group by** (issue [#24](https://github.com/PixDevsApps/sealwax/issues/24)): a mode of the message list, None (as today), Sender or Domain, on any folder and on All Inboxes. Grouped, the list shows one row per sender address (lowercased) or per the address's domain: the latest name, the address or domain, how many messages and how many unread, the latest subject and date, newest first. Opening a row shows that sender's or domain's messages in the same folder as an ordinary list with the reader beside it; Back (and Escape) returns to the groups with the row selected. A search shows its results ungrouped. The mode is remembered with the window's layout.
+- **List-Unsubscribe** (issue [#14](https://github.com/PixDevsApps/sealwax/issues/14)): Sealwax keeps a message's `List-Unsubscribe` and whether `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058) is present; mail already synced gets them once, from a header-only FETCH per folder (or from stored originals for POP3). `is:subscription` finds mail that has the header. **Unsubscribe** acts on the selected messages, one sender at a time, always after a confirmation that names each sender and how it will be done, in this order of preference: (1) **one-click**: Sealwax sends the POST itself (HTTPS only, `List-Unsubscribe=One-Click` as the form body, no cookies or credentials, the generic User-Agent, no redirects followed, a time limit, and never to a loopback, private or link-local address); (2) **by email**: a `mailto:` method becomes a prepared message (its address, its `subject` or "unsubscribe", its `body`) sent through the outbox from the account the mail came to; (3) **a web page**: opened in the browser only from the dialog, one per click. Sealwax remembers what it unsubscribed from, and the reader says so on that sender's later mail.
+
+**Reason:** the owner chose the Spark-like list over Spike's chat view (it reuses the list, the reader and their safety rules; a chat view would be a second reader for hostile HTML), a list mode over a sidebar entry (it works in every folder), unsubscribing in the app over sending everything to the browser (so a search for `is:subscription`, select all, Unsubscribe works, as #14 asks), and a backfill over new mail only (old newsletters are the ones people want to leave).
+
+**Alternatives:** a Spike-style conversation view of a sender's mail; a "Senders" entry in the sidebar; opening every method in the browser or the composer (Sealwax never contacts a sender, but no bulk unsubscribe); new mail only.
+
+**Consequences:** schema v13 (two columns on `messages`, a backfill marker per folder, a table of unsubscribes) and two more header fields in every header FETCH. Sealwax now makes an HTTPS request to an address a message names, which tells that sender the address is read; it happens only on the user's confirmed command, and the safeguards above hold. RFC 8058 asks receivers to check that a DKIM signature covers both headers; Sealwax doesn't verify DKIM, so the dialog names the host the POST goes to. SECURITY.md and the user guide describe both.
