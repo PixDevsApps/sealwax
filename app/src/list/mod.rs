@@ -43,7 +43,9 @@ use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use sealwax_domain::search::Date;
 use sealwax_domain::senders::GroupBy;
-use sealwax_infrastructure::store::{ChangeEvent, ViewFilter, ViewScope, ViewSpec};
+use sealwax_infrastructure::store::{
+    ChangeEvent, GroupMail, SenderGroup, ViewFilter, ViewScope, ViewSpec,
+};
 use sections::{Thresholds, until_next_day};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -134,6 +136,7 @@ type SearchHandler = Rc<dyn Fn(Option<&SearchHeading>)>;
 type CountHandler = Rc<dyn Fn(u32)>;
 type QuickHandler = Rc<dyn Fn(ActionId, Target)>;
 type MenuHandler = Rc<dyn Fn(gdk::Rectangle)>;
+type GroupHandler = Rc<dyn Fn(Option<&SenderGroup>)>;
 
 #[derive(Default)]
 struct Handlers {
@@ -145,6 +148,7 @@ struct Handlers {
     older: RefCell<Vec<FolderHandler>>,
     quick: RefCell<Vec<QuickHandler>>,
     menu: RefCell<Vec<MenuHandler>>,
+    group: RefCell<Vec<GroupHandler>>,
 }
 
 type FolderHandler = Rc<dyn Fn(FolderId)>;
@@ -256,6 +260,11 @@ struct Inner {
     /// Bumped by every groups request; older answers are dropped.
     groups_generation: Cell<u64>,
     groups_queued: Cell<bool>,
+    /// The group last reported selected, and its mail once read (issue #25).
+    group_reported: RefCell<Option<String>>,
+    group_mail: RefCell<Option<(String, GroupMail)>>,
+    /// The group the selection goes to when the selected one leaves the view.
+    group_next: RefCell<Option<String>>,
 }
 
 impl Drop for Inner {
@@ -468,6 +477,9 @@ impl MessageList {
                 opened_group: RefCell::new(None),
                 groups_generation: Cell::new(0),
                 groups_queued: Cell::new(false),
+                group_reported: RefCell::new(None),
+                group_mail: RefCell::new(None),
+                group_next: RefCell::new(None),
             }),
         };
         list.connect();
@@ -490,6 +502,10 @@ impl MessageList {
         let weak = self.downgrade();
         inner.groups.connect_open(move |key| {
             Self::with(&weak, |list| list.open_group(key));
+        });
+        let weak = self.downgrade();
+        inner.groups.connect_selected(move || {
+            Self::with(&weak, |list| list.report_group(false));
         });
         let weak = self.downgrade();
         inner.mailbox.connect_event(move |_| {
@@ -852,8 +868,14 @@ impl MessageList {
                 if inner.groups_generation.get() != generation || !list.grouped() {
                     return;
                 }
-                let selected = inner.opened_group.borrow().clone();
-                inner.groups.set(groups, selected.as_deref());
+                let current = inner.groups.selected().map(|group| group.key);
+                let next = inner.group_next.take();
+                let opened = inner.opened_group.borrow().clone();
+                let wanted: Vec<&str> = [&current, &next, &opened]
+                    .into_iter()
+                    .filter_map(|key| key.as_deref())
+                    .collect();
+                inner.groups.set(groups, &wanted);
                 if inner.groups.len() == 0 {
                     let title = match spec.filter {
                         ViewFilter::Unread => "No unread messages",
@@ -869,8 +891,122 @@ impl MessageList {
                 } else {
                     inner.stack.set_visible_child_name("groups");
                 }
+                list.report_group(true);
             });
         });
+    }
+
+    /// The group selected while the list shows its groups.
+    pub fn selected_group(&self) -> Option<SenderGroup> {
+        (self.grouped() && self.inner.stack.visible_child_name().as_deref() == Some("groups"))
+            .then(|| self.inner.groups.selected())
+            .flatten()
+    }
+
+    /// The selected group's mail as the commands take it, once read.
+    pub fn group_targets(&self) -> Option<Vec<Target>> {
+        let key = self.selected_group()?.key;
+        let mail = self.inner.group_mail.borrow();
+        let (read, mail) = mail.as_ref()?;
+        (*read == key).then(|| targets_of(mail))
+    }
+
+    /// The newest message of the selected group with an unsubscribe link, once its mail is read.
+    pub fn group_subscription(&self) -> Option<MessageId> {
+        let key = self.selected_group()?.key;
+        let mail = self.inner.group_mail.borrow();
+        let (read, mail) = mail.as_ref()?;
+        (*read == key).then_some(mail.subscription).flatten()
+    }
+
+    /// Reads the selected group's mail again from the store, for a command to act on all of it.
+    pub async fn fresh_group_targets(&self) -> Option<Vec<Target>> {
+        let key = self.selected_group()?.key;
+        let reply = self.group_mail_request(key)?;
+        reply.recv().await.ok().map(|mail| targets_of(&mail))
+    }
+
+    /// A command is about to take the selected group's mail out of the view: the selection
+    /// then goes to the next group.
+    pub fn advance_group(&self) {
+        if self.selected_group().is_some() {
+            self.inner.group_next.replace(self.inner.groups.neighbour());
+        }
+    }
+
+    /// Selects the group at `position` (the self-test's click).
+    pub fn select_group(&self, position: u32) {
+        self.inner.groups.select(position);
+    }
+
+    fn group_mail_request(
+        &self,
+        key: String,
+    ) -> Option<sealwax_infrastructure::store::Reply<GroupMail>> {
+        let inner = &self.inner;
+        let scope = inner.scope.get()?;
+        let spec = ViewSpec {
+            scope,
+            filter: inner.filter.get(),
+        };
+        let by = inner.group_by.get();
+        inner
+            .mailbox
+            .store()
+            .map(|store| store.group_mail(spec, by, key))
+    }
+
+    /// Tells the handlers which group is selected when that changed, or, with `again`, when the
+    /// groups were read again; the group's mail is read then, and they hear once more.
+    fn report_group(&self, again: bool) {
+        let inner = &self.inner;
+        let group = self.selected_group();
+        let key = group.as_ref().map(|group| group.key.clone());
+        let changed = *inner.group_reported.borrow() != key;
+        if !changed && !(again && key.is_some()) {
+            return;
+        }
+        inner.group_reported.replace(key.clone());
+        if changed {
+            inner.group_mail.replace(None);
+        }
+        self.emit_group(group.as_ref());
+        let Some(key) = key else {
+            return;
+        };
+        let Some(reply) = self.group_mail_request(key.clone()) else {
+            return;
+        };
+        let weak = self.downgrade();
+        glib::spawn_future_local(async move {
+            let Ok(mail) = reply.recv().await else {
+                return;
+            };
+            Self::with(&weak, |list| {
+                let group = list.selected_group();
+                if group.as_ref().is_some_and(|group| group.key == key) {
+                    list.inner.group_mail.replace(Some((key, mail)));
+                    list.emit_group(group.as_ref());
+                }
+            });
+        });
+    }
+
+    fn emit_group(&self, group: Option<&SenderGroup>) {
+        let handlers = self.inner.handlers.group.borrow().clone();
+        for handler in handlers {
+            handler(group);
+        }
+    }
+
+    /// Runs `handler` with the group selected while the list shows its groups, `None` when
+    /// none is, and again once its mail is read.
+    pub fn connect_group_selected(&self, handler: impl Fn(Option<&SenderGroup>) + 'static) {
+        self.inner
+            .handlers
+            .group
+            .borrow_mut()
+            .push(Rc::new(handler));
     }
 
     /// The store changed: the groups shown are read again, at most a few times a second.
@@ -1051,6 +1187,7 @@ impl MessageList {
             }
         }
         self.emit_search();
+        self.report_group(false);
     }
 
     fn model_changed(&self, change: Change) {
@@ -2410,6 +2547,16 @@ fn extend_keys(keymap: &Keymap) -> Vec<(gdk::Key, i64)> {
         .collect()
 }
 
+fn targets_of(mail: &GroupMail) -> Vec<Target> {
+    mail.messages
+        .iter()
+        .map(|message| Target {
+            id: message.id,
+            folder: message.folder,
+            flags: message.flags,
+        })
+        .collect()
+}
 #[cfg(test)]
 mod tests {
     use super::*;

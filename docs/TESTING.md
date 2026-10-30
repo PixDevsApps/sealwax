@@ -74,6 +74,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Actions on a whole group (issue #25) — 2026-10-30
+
+[ADR-023 amendment](DECISIONS.md#adr-023-amendment--a-group-takes-the-mail-commands-2026-10-30). This machine; the app headless on Broadway display 37; no real account and no real server.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Store: `a_groups_mail_in_the_view_newest_first_with_its_newest_subscription` | A sender's and a domain's mail in the view only (not another folder's), newest first, with folder and flags; the Unread filter takes only the unread; the newest message with List-Unsubscribe; none for `GroupBy::None`, an empty key or an unknown sender; `Debug` without addresses | Pass |
+| Self-test `list-senders` | 127 of 127 (79 before): a selected group's page in the reader (name, "3 messages"), Reply disabled, Archive enabled; Mark as Unread and Mark as Read on all of a group's mail; `e` with the focus on the groups archives the group and the next group is selected; Undo brings it back; with the Unread chip, Archive takes only the group's unread message; Unsubscribe disabled for a group without the header and enabled with it; the dialog's Cancel; Unsubscribe with "Archive" chosen archives the group (the fictional account's `mailto:` unsubscribe itself doesn't go through, as before) | Pass |
+| CI, `SEALWAX_CI_DISPLAY=37 bash tools/ci.sh --ui` on the change (ended 10:52) | exit 0; 1,590 passed, 0 failed, 99 ignored; all 85 self-test scripts, 8,285 of 8,285 steps; hostile suite `production_failures=[]`, 60 cases. A doc comment in `app/src/list/mod.rs` was reworded during the run; `cargo fmt --check` passes after it | Pass |
+| A group action on a real account (the server's moves and flags for a large group), its speed on a large store, the right-click menu on a group row (none is built) | Not run | Not verified |
+
 ### 1.1.0 — 2026-10-29
 
 The version change for 1.1.0: `Cargo.toml`'s version, both lock files (only Sealwax's own crates, 1.0.6 → 1.1.0), CHANGELOG's "1.1.0 — 2026-10-29" (the section that was "Not released yet"), README's version line, its search and newsletter lines and its thanks. The changes are in the section below and in the two IDLE sections of 2026-10-27 and 2026-10-28. This machine.
@@ -86,7 +97,7 @@ The version change for 1.1.0: `Cargo.toml`'s version, both lock files (only Seal
 | `python3 tools/release.py build` on `v1.1.0` (22:14–22:19) | makepkg's `check()`: 1,150 passed, 0 failed, 91 ignored; the Microsoft client ID built in; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.1.0` and holds no home-folder path or user name; both license files are in the package, with async-imap, imap-proto and lettre listed. Package SHA-256 `cf6d42b0…ea31` | Pass |
 | The clean-container install test | Not run: Docker wasn't running, and starting it is the owner's | Not verified |
 | The release [v1.1.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.0) (`tools/release.py github` from the tagged commit, 21:19:41 UTC) | Not a draft or pre-release; GitHub's latest; its five files; the notes are CHANGELOG's section; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` gives the build's package (SHA-256 `cf6d42b0…`), and the published `SHA256SUMS` is the local one | Pass |
-| Installed here | Not yet | Not verified |
+| Installed here | `pacman -Q sealwax`: `1.1.0-1`, installed 2026-10-29 22:27 CET (read 2026-10-30); the binary not compared with the package | Pass |
 
 ### Group by sender and List-Unsubscribe (1.1, issues #24 and #14) — 2026-10-29
 

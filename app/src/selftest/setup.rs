@@ -31,7 +31,7 @@
 //! | `engine-reply update-checked VERSION\|running\|offline\|timeout\|certificate\|busy\|no-release\|unreadable` | `UpdateChecked` for the last `check-for-updates` taken: that release (`running`: this build's version) or the failure |
 //! | `engine-reply one-click-unsubscribed ok\|refused\|offline\|timeout\|not-confirmed` | `OneClickUnsubscribed` for the last `one-click-unsubscribe` taken (issue #14) |
 //! | `engine-reply-stale …` | The same events with a request id the app never used |
-//! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`), clicks a visible, sensitive button |
+//! | `setup-type NAME TEXT`, `setup-choose NAME ITEM`, `setup-click NAME` | Types into a field, picks a choice's item by its text (a security's `tls`, `starttls`; Incoming mail's `imap`, `pop3`; a combo row's too), clicks a visible, sensitive button |
 //! | `setup-key enter\|escape` | Enter in the focused field, Escape in the dialog |
 //! | `setup-respond NAME RESPONSE` | Answers the alert dialog named NAME (Remove Account's `remove-account`) as its button would |
 //! | `setup-dismiss-toasts` | Closes the toasts shown and queued, as their × would (for previews) |
@@ -275,11 +275,16 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         }
         "setup-choose" => {
             let field = harness.widget(&args[0])?;
-            let dropdown = field
-                .downcast_ref::<gtk::DropDown>()
-                .ok_or_else(|| format!("{} is not a choice", args[0]))?;
-            // The security's TLS or STARTTLS, or "Incoming mail"'s IMAP or POP3 (M8), by name.
-            let items = dropdown.model().ok_or("the choice has no items")?;
+            // The security's TLS or STARTTLS, or "Incoming mail"'s IMAP or POP3 (M8), by name;
+            // Unsubscribe's "Their messages here" is a combo row (issue #25).
+            let combo = field.downcast_ref::<libadwaita::ComboRow>();
+            let dropdown = field.downcast_ref::<gtk::DropDown>();
+            let items = match (dropdown, combo) {
+                (Some(dropdown), _) => dropdown.model(),
+                (_, Some(combo)) => combo.model(),
+                _ => return Err(format!("{} is not a choice", args[0])),
+            }
+            .ok_or("the choice has no items")?;
             let position = (0..items.n_items())
                 .find(|&position| {
                     items
@@ -288,7 +293,11 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                         .is_some_and(|item| item.string().eq_ignore_ascii_case(&args[1]))
                 })
                 .ok_or_else(|| format!("{} offers no {}", args[0], args[1]))?;
-            dropdown.set_selected(position);
+            match (dropdown, combo) {
+                (Some(dropdown), _) => dropdown.set_selected(position),
+                (_, Some(combo)) => combo.set_selected(position),
+                _ => {}
+            }
             Ok(())
         }
         "setup-click" => {

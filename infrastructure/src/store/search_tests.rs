@@ -1251,6 +1251,110 @@ fn a_view_grouped_by_sender_and_by_domain() {
 }
 
 #[test]
+fn a_groups_mail_in_the_view_newest_first_with_its_newest_subscription() {
+    let fx = fixture();
+    let from = |folder: FolderId, n: u32, date: i64, address: &str, seen: bool, list: bool| {
+        let mut message = mail(folder, n, date);
+        message.headers.from = vec![Address::new("Butikken", address)];
+        message.flags = if seen { Flags::SEEN } else { Flags::NONE };
+        if list {
+            message.headers.list_unsubscribe = Some(format!("<https://butikk.example/u/{n}>"));
+        }
+        message
+    };
+    let ids = ingest(
+        &fx.store,
+        vec![
+            from(
+                fx.inbox,
+                1,
+                NOW - 500,
+                "nytt@post.butikk.example",
+                true,
+                true,
+            ),
+            from(fx.inbox, 2, NOW - 400, "Hjelp@Butikk.example", false, false),
+            from(
+                fx.inbox,
+                3,
+                NOW - 300,
+                "NYTT@post.butikk.example",
+                false,
+                true,
+            ),
+            from(
+                fx.inbox,
+                4,
+                NOW - 200,
+                "nytt@post.butikk.example",
+                true,
+                false,
+            ),
+            from(fx.inbox, 5, NOW - 100, "anna@example.test", false, true),
+            from(fx.archive, 6, NOW, "nytt@post.butikk.example", false, true),
+        ],
+    );
+    let mail = |filter: ViewFilter, by: GroupBy, key: &str| {
+        fx.store
+            .group_mail(
+                ViewSpec::folder(fx.inbox).with_filter(filter),
+                by,
+                key.into(),
+            )
+            .recv_blocking()
+            .unwrap()
+    };
+    let sender = mail(ViewFilter::All, GroupBy::Sender, "nytt@post.butikk.example");
+    assert_eq!(
+        sender
+            .messages
+            .iter()
+            .map(|message| message.id)
+            .collect::<Vec<_>>(),
+        [ids[3], ids[2], ids[0]]
+    );
+    assert!(
+        sender
+            .messages
+            .iter()
+            .all(|message| message.folder == fx.inbox)
+    );
+    assert_eq!(sender.messages[1].flags, Flags::NONE);
+    assert_eq!(sender.subscription, Some(ids[2]));
+    assert!(
+        !format!("{sender:?}").contains("butikk"),
+        "no address in Debug"
+    );
+    let domain = mail(ViewFilter::All, GroupBy::Domain, "butikk.example");
+    assert_eq!(domain.messages.len(), 4);
+    let unread = mail(ViewFilter::Unread, GroupBy::Domain, "butikk.example");
+    assert_eq!(
+        unread
+            .messages
+            .iter()
+            .map(|message| message.id)
+            .collect::<Vec<_>>(),
+        [ids[2], ids[1]]
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::Sender, "hjelp@butikk.example").subscription,
+        None
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::None, "butikk.example"),
+        GroupMail::default()
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::Sender, ""),
+        GroupMail::default()
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::Sender, "nobody@example.test"),
+        GroupMail::default()
+    );
+}
+
+#[test]
 fn v13_fills_the_sender_domains_and_marks_folders_for_the_backfill() {
     let fx = fixture();
     ingest(&fx.store, vec![mail(fx.inbox, 1, NOW)]);

@@ -1,18 +1,23 @@
 //! The message list grouped by sender or by domain (issue #24, ADR-023): one row per sender, or
 //! per domain, newest first, with its name, how many messages and how many unread, and the
 //! newest subject. Opening a row (Enter or a click) shows its mail; the list does that with a
-//! `sender:` or `domain:` search, so Escape comes back here.
+//! `sender:` or `domain:` search, so Escape comes back here. A selected row takes the mail
+//! commands, which act on all of its mail in the view (issue #25).
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib, pango};
 use sealwax_infrastructure::store::SenderGroup;
+use std::cell::Cell;
+use std::rc::Rc;
 
 pub struct Groups {
     scroller: gtk::ScrolledWindow,
     view: gtk::ListView,
     items: gio::ListStore,
     selection: gtk::SingleSelection,
+    /// Set while `set` replaces the rows, whose passing selections aren't the user's.
+    quiet: Rc<Cell<bool>>,
 }
 
 impl Groups {
@@ -59,6 +64,7 @@ impl Groups {
             view,
             items,
             selection,
+            quiet: Rc::default(),
         }
     }
 
@@ -74,11 +80,14 @@ impl Groups {
         self.items.n_items()
     }
 
-    /// Shows `groups`, keeping the row of `selected` (a group's key) selected when it is there.
-    pub fn set(&self, groups: Vec<SenderGroup>, selected: Option<&str>) {
-        let keep = selected.and_then(|key| groups.iter().position(|group| group.key == key));
+    /// Shows `groups`, selecting the row of the first of `wanted` (groups' keys) that is there.
+    pub fn set(&self, groups: Vec<SenderGroup>, wanted: &[&str]) {
+        let keep = wanted
+            .iter()
+            .find_map(|key| groups.iter().position(|group| group.key == *key));
         let objects: Vec<glib::BoxedAnyObject> =
             groups.into_iter().map(glib::BoxedAnyObject::new).collect();
+        self.quiet.set(true);
         self.items.splice(0, self.items.n_items(), &objects);
         match keep {
             Some(position) => {
@@ -89,6 +98,44 @@ impl Groups {
             }
             None => self.selection.set_selected(gtk::INVALID_LIST_POSITION),
         }
+        self.quiet.set(false);
+    }
+
+    /// The selected group.
+    pub fn selected(&self) -> Option<SenderGroup> {
+        self.selection
+            .selected_item()
+            .and_downcast::<glib::BoxedAnyObject>()
+            .map(|item| item.borrow::<SenderGroup>().clone())
+    }
+
+    /// The key of the group a removed selected row hands the selection to: the next one, or
+    /// the one before when it is the last.
+    pub fn neighbour(&self) -> Option<String> {
+        let position = self.selection.selected();
+        if position == gtk::INVALID_LIST_POSITION {
+            return None;
+        }
+        [position + 1, position.wrapping_sub(1)]
+            .into_iter()
+            .find_map(|candidate| self.items.item(candidate))
+            .and_downcast::<glib::BoxedAnyObject>()
+            .map(|item| item.borrow::<SenderGroup>().key.clone())
+    }
+
+    /// Selects the group at `position` (the self-test's click).
+    pub fn select(&self, position: u32) {
+        self.selection.set_selected(position);
+    }
+
+    /// Runs `handler` when the user's selection changes; `set` reports its own once.
+    pub fn connect_selected(&self, handler: impl Fn() + 'static) {
+        let quiet = self.quiet.clone();
+        self.selection.connect_selection_changed(move |_, _, _| {
+            if !quiet.get() {
+                handler();
+            }
+        });
     }
 
     /// The groups shown, for the self-test.

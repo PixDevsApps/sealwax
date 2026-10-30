@@ -79,7 +79,7 @@ pub use folders_api::*;
 pub use ops_api::*;
 pub use pop3_api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
-pub use senders::{MAX_GROUPS, SenderGroup};
+pub use senders::{GroupMail, GroupMessage, MAX_GROUPS, SenderGroup};
 pub use sync_api::*;
 pub use unsubscribe::UnsubscribeTarget;
 pub use views::ViewHandle;

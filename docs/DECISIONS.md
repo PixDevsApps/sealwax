@@ -1571,3 +1571,15 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Alternatives:** a Spike-style conversation view of a sender's mail; a "Senders" entry in the sidebar; opening every method in the browser or the composer (Sealwax never contacts a sender, but no bulk unsubscribe); new mail only.
 
 **Consequences:** schema v13 (two columns on `messages`, a backfill marker per folder, a table of unsubscribes) and two more header fields in every header FETCH. Sealwax now makes an HTTPS request to an address a message names, which tells that sender the address is read; it happens only on the user's confirmed command, and the safeguards above hold. RFC 8058 asks receivers to check that a DKIM signature covers both headers; Sealwax doesn't verify DKIM, so the dialog names the host the POST goes to. SECURITY.md and the user guide describe both.
+
+### ADR-023 amendment — a group takes the mail commands (2026-10-30)
+
+**Status:** Accepted — the owner's answers of 2026-10-30 on issue [#25](https://github.com/PixDevsApps/sealwax/issues/25) (bulk actions on a group): the group row takes the commands; no confirmation, Undo is enough; Unsubscribe on a group, with its mail archived or deleted too, in the same change; its own release, 1.1.1.
+
+**Decision:** with a group selected in Group by Sender or Domain, Archive, Delete, Move to Junk, Move to…, Star, Mark as Read and Mark as Unread act on all of that group's mail in what the list shows (the folder or All Inboxes, with the chip's filter), with their usual keys, menus and Undo, and the selection goes on to the next group. The mail is read from the store when the command runs, not from the list's rows, so a group larger than the list keeps loaded is taken whole. The reader shows the group's page: its name, how many messages and how many unread, and the commands as buttons, Unsubscribe… among them. **Unsubscribe…** on a group leaves the sender's list from its newest message with the header; the dialog then offers "Their N messages here": Keep, Archive or Delete (the ones that apply), done when Unsubscribe is chosen. With only a web page to unsubscribe on, Unsubscribe in the dialog does that choice only.
+
+**Reason:** the request was to act on a group without handling each message; the commands people already know, on a new target, need no new key (ADR-017). A Select All in the list, the alternative, goes through the list's rows (at most 4,000 loaded, 10,000 search results) and takes two steps.
+
+**Alternatives:** Select All in the message list; several groups selected at once; a confirmation above a size.
+
+**Consequences:** a new store read (`group_mail`); no schema, engine or protocol change: the server sees the moves and flag changes a large selection makes.

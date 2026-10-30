@@ -3,7 +3,9 @@
 //! one-click list gets RFC 8058's POST from the engine; an email list a message from the account
 //! the mail came to, through the outbox (Undo send applies); a list with only a web page gets a
 //! button that opens it in the browser. Each one done is remembered, and the dialog says so the
-//! next time. The lists' addresses never reach a log.
+//! next time. The lists' addresses never reach a log. On a group of Group by Sender or Domain
+//! (issue #25), it leaves the sender's list, from its newest message with the header, and can
+//! archive or delete the group's mail here too.
 
 use crate::actions::ActionSet;
 use crate::application::AppState;
@@ -27,7 +29,10 @@ pub fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
     let weak = Rc::downgrade(state);
     actions.connect(ActionId::Unsubscribe, move || {
         if let Some(state) = weak.upgrade() {
-            start(&state, selected(&state));
+            match state.list().filter(|list| list.selected_group().is_some()) {
+                Some(list) => start_group(&state, &list),
+                None => start(&state, selected(&state), None),
+            }
         }
     });
 }
@@ -37,7 +42,7 @@ pub fn connect_reader(state: &Rc<AppState>, reader: &crate::reader::Reader) {
     let weak = Rc::downgrade(state);
     reader.connect_unsubscribe(move |id| {
         if let Some(state) = weak.upgrade() {
-            start(&state, vec![id]);
+            start(&state, vec![id], None);
         }
     });
 }
@@ -45,6 +50,13 @@ pub fn connect_reader(state: &Rc<AppState>, reader: &crate::reader::Reader) {
 /// Whether Unsubscribe applies to the selected messages, or why not.
 pub fn applies(state: &AppState) -> Result<(), &'static str> {
     let list = state.list().ok_or("Select a message")?;
+    if list.selected_group().is_some() {
+        return match (list.group_targets(), list.group_subscription()) {
+            (_, Some(_)) => Ok(()),
+            (Some(_), None) => Err("This sender's mail has no unsubscribe link"),
+            (None, None) => Err("The sender's mail hasn't loaded"),
+        };
+    }
     let positions = list.selected_positions();
     if positions.is_empty() {
         return Err("Select a message");
@@ -76,7 +88,29 @@ fn selected(state: &AppState) -> Vec<MessageId> {
         .collect()
 }
 
-fn start(state: &Rc<AppState>, ids: Vec<MessageId>) {
+/// What the dialog can also do with a group's mail here once Unsubscribe is chosen.
+struct GroupOffer {
+    count: usize,
+    actions: Vec<ActionId>,
+}
+
+fn start_group(state: &Rc<AppState>, list: &crate::list::MessageList) {
+    let (Some(id), Some(targets)) = (list.group_subscription(), list.group_targets()) else {
+        return;
+    };
+    let folders = state.mailbox().folders();
+    let actions = [ActionId::Archive, ActionId::Delete]
+        .into_iter()
+        .filter(|id| crate::triage::availability(*id, &targets, &folders).enabled())
+        .collect();
+    let offer = GroupOffer {
+        count: targets.len(),
+        actions,
+    };
+    start(state, vec![id], Some(offer));
+}
+
+fn start(state: &Rc<AppState>, ids: Vec<MessageId>, offer: Option<GroupOffer>) {
     let Some(reply) = state
         .mailbox()
         .store()
@@ -90,7 +124,7 @@ fn start(state: &Rc<AppState>, ids: Vec<MessageId>) {
         if let Some(state) = weak.upgrade()
             && !targets.is_empty()
         {
-            open(&state, targets);
+            open(&state, targets, offer);
         }
     });
 }
@@ -145,7 +179,7 @@ impl Row {
     }
 }
 
-fn open(state: &Rc<AppState>, targets: Vec<UnsubscribeTarget>) {
+fn open(state: &Rc<AppState>, targets: Vec<UnsubscribeTarget>, offer: Option<GroupOffer>) {
     let Some(window) = state.window() else {
         return;
     };
@@ -160,12 +194,18 @@ fn open(state: &Rc<AppState>, targets: Vec<UnsubscribeTarget>) {
         [row] => format!("Unsubscribe from {}?", row.name()),
         rows => format!("Unsubscribe from {} senders?", rows.len()),
     };
+    let body = if offer
+        .as_ref()
+        .is_some_and(|offer| !offer.actions.is_empty())
+    {
+        "Sealwax contacts the sender only when you choose Unsubscribe."
+    } else {
+        "Sealwax contacts each sender only when you choose Unsubscribe. \
+         Mail you already have stays where it is."
+    };
     let dialog = adw::AlertDialog::builder()
         .heading(heading)
-        .body(
-            "Sealwax contacts each sender only when you choose Unsubscribe. \
-             Mail you already have stays where it is.",
-        )
+        .body(body)
         .close_response("cancel")
         .default_response("unsubscribe")
         .build();
@@ -173,7 +213,8 @@ fn open(state: &Rc<AppState>, targets: Vec<UnsubscribeTarget>) {
     dialog.add_response("cancel", "Cancel");
     dialog.add_response("unsubscribe", "Unsubscribe");
     dialog.set_response_appearance("unsubscribe", adw::ResponseAppearance::Suggested);
-    dialog.set_response_enabled("unsubscribe", rows.iter().any(Row::in_app));
+    let in_app = rows.iter().any(Row::in_app);
+    dialog.set_response_enabled("unsubscribe", in_app);
     let list = gtk::ListBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .css_classes(["boxed-list"])
@@ -212,6 +253,12 @@ fn open(state: &Rc<AppState>, targets: Vec<UnsubscribeTarget>) {
         }
         list.append(&item);
     }
+    let then = offer
+        .filter(|offer| !offer.actions.is_empty())
+        .map(|offer| then_row(&dialog, &offer, in_app));
+    if let Some((row, _)) = &then {
+        list.append(row);
+    }
     let scroller = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
         .propagate_natural_height(true)
@@ -224,10 +271,50 @@ fn open(state: &Rc<AppState>, targets: Vec<UnsubscribeTarget>) {
         if response == "unsubscribe"
             && let Some(state) = weak.upgrade()
         {
+            if let Some(id) = then
+                .as_ref()
+                .and_then(|(row, actions)| chosen(row, actions))
+            {
+                state.group_command(id);
+            }
             run(&state, rows.clone());
         }
     });
     dialog.present(Some(window.window()));
+}
+
+/// "Their 214 messages here": Keep, Archive or Delete, done when Unsubscribe is chosen. With no
+/// list Sealwax can leave itself, Unsubscribe is there for this choice only.
+fn then_row(
+    dialog: &adw::AlertDialog,
+    offer: &GroupOffer,
+    in_app: bool,
+) -> (adw::ComboRow, Vec<ActionId>) {
+    let choices: Vec<&str> = std::iter::once("Keep")
+        .chain(offer.actions.iter().map(|id| match id {
+            ActionId::Archive => "Archive",
+            _ => "Delete",
+        }))
+        .collect();
+    let title = match offer.count {
+        1 => "Their message here".to_owned(),
+        count => format!("Their {count} messages here"),
+    };
+    let row = adw::ComboRow::builder()
+        .title(title)
+        .model(&gtk::StringList::new(&choices))
+        .build();
+    row.set_widget_name("unsubscribe-then");
+    let dialog = dialog.clone();
+    row.connect_selected_notify(move |row| {
+        dialog.set_response_enabled("unsubscribe", in_app || row.selected() > 0);
+    });
+    (row, offer.actions.clone())
+}
+
+fn chosen(row: &adw::ComboRow, actions: &[ActionId]) -> Option<ActionId> {
+    let index = (row.selected() as usize).checked_sub(1)?;
+    actions.get(index).copied()
 }
 
 fn open_page(state: &AppState, uri: &str) {

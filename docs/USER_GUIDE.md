@@ -189,6 +189,8 @@ Allowed images load only over HTTPS and without cookies. A forged From address c
 
 Open a row with Enter or a double click to see that sender's mail as a list, with the reader beside it; the search field shows what it found it with (`sender:news@shop.example` or `domain:shop.example`), which you can also type yourself. Escape goes back to the groups. From All Inboxes, an opened group shows that sender's mail in every folder but Trash and Junk.
 
+**Acting on a whole group.** Select a row (click it, or move to it with the arrow keys) and the mail commands act on all of that sender's mail in what the list shows: Archive (`e`), Delete (`#`), Move to Junk (`!`), Move to… (`v`), Star (`s`), Mark as Read (`Shift+I`) and Mark as Unread (`Shift+U`), from their keys, the toolbar, the palette or the buttons the reader shows for the group. With a chip on, only the mail it shows: with Unread, Archive takes the sender's unread mail and leaves the rest. Undo brings it back, as for messages, and the selection goes on to the next sender. **Unsubscribe…** on a group leaves the sender's list, and its dialog can archive or delete their messages here at the same time ("Their 12 messages here: Keep, Archive or Delete").
+
 ## Unsubscribing
 
 Newsletters and other mailing lists usually say how to leave them in a hidden header (List-Unsubscribe). For such a message, the reader shows an **Unsubscribe** link in the message's header, beside the date; **Unsubscribe…** is also in the message's right-click menu, the reader's ⋮ menu and the command palette. `is:subscription` finds all such mail: search for it, select the results (click the first and Shift+click the last) and choose Unsubscribe… once for all of them.

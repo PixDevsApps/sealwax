@@ -104,3 +104,59 @@ setup-respond unsubscribe-dialog cancel
 list-select 3
 wait-until assert-shown reader-card-unsubscribe false
 engine-expect none but folder-opened,load-older,fetch-bodies
+
+# A selected group takes the mail commands (issue #25): all of its mail in the view, with Undo,
+# and the selection goes on to the next group. The reader shows the group's page.
+action win.group-by-domain
+wait-until assert-list-groups 3
+list-select-group 0
+wait-until assert-reader-page batch
+assert-text-contains batch-title Butikken
+wait-until assert-text-contains batch-description "3 messages"
+wait-until assert-action-enabled win.archive true
+assert-action-enabled win.reply false
+screenshot $DIR/../../.local/selftest/list-senders-group.png
+action win.mark-unread
+wait-until assert-list-group 0 butikk.example 3 3
+action win.mark-read
+wait-until assert-list-group 0 butikk.example 3 0
+assert-list-focus groups
+key e
+wait-until assert-list-groups 2
+assert-list-group 0 example.test 1 0
+wait-until assert-text-contains batch-title "Anna Berg"
+action win.undo
+wait-until assert-list-groups 3
+assert-list-group 0 butikk.example 3 0
+
+# With the Unread chip, a group's command takes only its unread mail.
+mail-add Personal:inbox 1m "Siste tilbud" from=Butikken address=nytt@post.butikk.example
+wait-until assert-list-group 0 butikk.example 4 1
+chip unread
+wait-until assert-list-groups 1
+list-select-group 0
+wait-until assert-text-contains batch-description "1 message, 1 unread"
+action win.archive
+chip all
+wait-until assert-list-group 0 butikk.example 3 0
+
+# A group without List-Unsubscribe can't be unsubscribed; one with it can, and its mail here can
+# go with it.
+list-select-group 1
+wait-until assert-text-contains batch-title "Anna Berg"
+wait-until assert-action-enabled win.unsubscribe false
+list-select-group 2
+wait-until assert-text-contains batch-title Avisa
+wait-until assert-action-enabled win.unsubscribe true
+action win.unsubscribe
+sleep 300
+assert-text-contains unsubscribe-dialog "Unsubscribe from Avisa?"
+screenshot $DIR/../../.local/selftest/list-senders-group-unsubscribe.png
+setup-respond unsubscribe-dialog cancel
+wait-until assert-list-groups 3
+action win.unsubscribe
+sleep 300
+setup-choose unsubscribe-then archive
+setup-respond unsubscribe-dialog unsubscribe
+wait-until assert-list-groups 2
+assert-list-group 1 example.test 1 0

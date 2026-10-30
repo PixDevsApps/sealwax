@@ -72,6 +72,8 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-list-exact", 0, 0),
     // Group by Sender or Domain (issue #24).
     ("list-open-group", 1, 1),
+    // A group row selected, not opened: the mail commands act on all of its mail (issue #25).
+    ("list-select-group", 1, 1),
     ("assert-list-groups", 1, 1),
     ("assert-list-group", 4, 4),
 ];
@@ -248,6 +250,14 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
         "list-open-group" => match (list(harness), number(arg(0))) {
             (Ok(list), Ok(position)) => {
                 list.activate_group(position as u32);
+                settled(harness).await
+            }
+            (Err(error), _) | (_, Err(error)) => Err(error),
+        },
+        "list-select-group" => match (list(harness), number(arg(0))) {
+            (Ok(list), Ok(position)) => {
+                list.select_group(position as u32);
+                list.groups_view().grab_focus();
                 settled(harness).await
             }
             (Err(error), _) | (_, Err(error)) => Err(error),

@@ -772,6 +772,15 @@ impl Window {
         inner.column.slot.set_child(None::<&gtk::Widget>);
     }
 
+    /// The reader's page for a group selected in Group by Sender or Domain (issue #25): the
+    /// batch page with the group's name and counts.
+    pub fn show_group(&self, name: &str, count: u32, unread: u32) {
+        let inner = &self.inner;
+        inner.batch.set_group(name, count, unread);
+        inner.reader.set_visible_child_name("batch");
+        inner.column.slot.set_child(None::<&gtk::Widget>);
+    }
+
     /// The batch page, for its commands' titles and tooltips.
     pub fn batch_page(&self) -> &empty::BatchPage {
         &self.inner.batch
