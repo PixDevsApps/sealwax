@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.1 — 2026-10-30
+
+This machine. The version commit `2768fb4` (Cargo.toml 1.1.1, both lock files, CHANGELOG "1.1.1 — 2026-10-30", README's version, its newsletter line and thanks).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI, `SEALWAX_CI_DISPLAY=37 bash tools/ci.sh --ui` on the version commit (ended 11:37) | exit 0; 1,590 passed, 0 failed, 99 ignored; all 85 self-test scripts, 8,285 of 8,285 steps; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`b0deee1..2768fb4`, 2 commits, 21 files) scanned before pushing | No working doc or link to one, no home path, user name or hostname, no client ID; nothing about findings not yet public; the only addresses are test fixtures (`example.test`, `butikk.example`, `shop.example`) | Pass |
+| `v1.1.1` on `2768fb4`, `main` and the tag pushed | GitHub's `main` and `v1.1.1` are `2768fb4` (tag object `ea7dcea`) | Pass |
+| `python3 tools/release.py build` on `v1.1.1` (finished 11:42) | makepkg's `check()`: 1,151 passed, 0 failed, 91 ignored; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.1.1`, holds no home path, user name or hostname, and has the Microsoft client ID built in; package SHA-256 `2a8eeaa9…d5677325` | Pass |
+| The clean-container install test | Not run: Docker wasn't running, and starting it is the owner's | Not verified |
+| The release [v1.1.1](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.1) (`tools/release.py github`, 10:43:00 UTC) | Not a draft or pre-release; GitHub's latest; its five files; the notes are CHANGELOG's section; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+| Installed here | Not yet | Not verified |
+
 ### Actions on a whole group (issue #25) — 2026-10-30
 
 [ADR-023 amendment](DECISIONS.md#adr-023-amendment--a-group-takes-the-mail-commands-2026-10-30). This machine; the app headless on Broadway display 37; no real account and no real server.
