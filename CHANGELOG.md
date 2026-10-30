@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.1.1 — 2026-10-30
+
+One more idea from the issues, for grouped mail.
 
 - **Act on a whole group at once** ([issue #25](https://github.com/PixDevsApps/sealwax/issues/25)): in Group by Sender or Group by Domain, select a sender's row and Archive, Delete, Move to Junk, Move to…, Star, Mark as Read or Mark as Unread act on all of their mail in the folder you're looking at, with the same keys and Undo as for messages. The reader shows the sender's page with those commands as buttons. With the Unread chip on, they take only the unread mail.
 - **Unsubscribe from a sender's row:** Unsubscribe… on a group leaves that sender's list, and the dialog can archive or delete their mail here at the same time.
