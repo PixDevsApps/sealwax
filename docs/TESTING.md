@@ -74,6 +74,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.2 — 2026-10-31
+
+This machine. The version commit `43717f3` (Cargo.toml 1.1.2, both lock files with only Sealwax's own versions, CHANGELOG "1.1.2 — 2026-10-31", README's version, its feature line and thanks for #26), on the feature commit `472c841` (the section below).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| CI on the version commit | Not run whole: the host app this session runs in probes every new 127.0.0.1 port (the section below). On it: `cargo fmt --check`, the build (`sealwax --version` 1.1.2), `sealwax-domain` (504 unit tests and the guide-table tests) and the app's 237 unit tests pass; the code is the feature commit's, whose results are below | Partly verified |
+| The push range (`3bd957c..43717f3`, 2 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname, no co-author line, nothing about findings not yet public; the only addresses are test fixtures (`example.test`, `kraft.example`, `klatring.example`, `butikk.example`, `avisa.example`) | Pass |
+| `v1.1.2` on `43717f3`, `main` and the tag pushed | GitHub's `main` is `43717f3`, `v1.1.2` the tag object `b78039e` | Pass |
+| `python3 tools/release.py build` on `v1.1.2` | The first run stopped in makepkg's `check()` at `failed_connections_back_off_and_reconnect_tries_at_once`, which counts every connection its fake server accepts and so the host app's probes (0 of 5 failures in a private network namespace, 4 of 5 outside). Run again in one (`unshare -rn`, loopback up, then `unshare -U --map-user=1000`, `CARGO_NET_OFFLINE=true`; the crates fetched by the first run), finished 12:13 UTC: `check()` 1,156 passed, 0 failed, 91 ignored; the package's binary says `sealwax 1.1.2` and holds no home path, user name or hostname; package SHA-256 `2b934962…0976ad6b` | Pass |
+| The clean-container install test | Not run: Docker isn't running, and starting it is the owner's | Not verified |
+| The release [v1.1.2](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.2) (`tools/release.py github`, 12:13:36 UTC) | Not a draft or pre-release; GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+| Installed here | Not yet | Not verified |
+
 ### Pinned senders (issue #26) — 2026-10-31
 
 [ADR-024](DECISIONS.md#adr-024--pinned-senders-2026-10-31). This machine; the app headless on Broadway display 37; no real account and no real server; every address fictional.
