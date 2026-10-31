@@ -74,6 +74,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.3 — 2026-10-31
+
+This machine. The feature commit `2f5c7b2` (pinned groups first in Group by, issue #26, ADR-024 amendment) and the version commit `9cbd507` (Cargo.toml 1.1.3, both lock files with only Sealwax's own versions, CHANGELOG "1.1.3 — 2026-10-31", README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The reporter's case (#26: a domain pinned *always*, its mail all read, expected first in Group by) | Store test `pinned_groups_come_first_in_the_inboxes`: Group by Domain and Group by Sender in an Inbox and All Inboxes, *until read* with and without unread mail, the Unread chip, the Archive keeping its dates. Self-test `list-pinned` (136 steps, all pass): in Group by Domain the club's read group stays in its date pinned *until read*, goes first with a pin after Keep Pinned, its sender goes first in Group by Sender, and back to its date after Unpin | Pass |
+| `SEALWAX_CI_DISPLAY=37 bash tools/ci.sh --ui` on the tree committed (in a private network namespace, as the build below; the host app probes 127.0.0.1 ports) | Formatting, Clippy `-D warnings`, 1,597 tests passed, 0 failed, 99 ignored; all 86 self-test scripts pass; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`7d916b3..9cbd507`, 2 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname, no co-author line, nothing about findings not yet public; the only addresses are test fixtures | Pass |
+| `v1.1.3` on `9cbd507`, `main` and the tag pushed | GitHub's `main` is `9cbd507`, `v1.1.3` the tag object `14d39b2` | Pass |
+| `python3 tools/release.py build` on `v1.1.3` (in a private network namespace, offline) | Finished 23:00 CET: `check()` 1,157 passed, 0 failed; the package's binary says `sealwax 1.1.3` and holds no home path, user name or hostname; package SHA-256 `8da339db…e9a288b` | Pass |
+| The clean-container install test | Not run: Docker isn't running, and starting it is the owner's | Not verified |
+| The release [v1.1.3](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.3) (`tools/release.py github`, 22:00:52 UTC) | Not a draft or pre-release; GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+| Installed here | Not yet (1.1.2 is) | Not verified |
+
 ### 1.1.2 — 2026-10-31
 
 This machine. The version commit `43717f3` (Cargo.toml 1.1.2, both lock files with only Sealwax's own versions, CHANGELOG "1.1.2 — 2026-10-31", README's version, its feature line and thanks for #26), on the feature commit `472c841` (the section below).
