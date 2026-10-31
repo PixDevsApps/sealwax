@@ -72,6 +72,8 @@ impl Flavor {
 
 #[derive(Clone, Debug)]
 pub struct Message {
+    /// The UID used to generate its subject at arrival; COPY must preserve the contents.
+    content_uid: u32,
     pub flags: Vec<String>,
     pub modseq: u64,
     /// INTERNALDATE, Unix seconds.
@@ -379,6 +381,7 @@ impl World {
     /// A new message with the given Message-ID (without angle brackets); returns its UID.
     pub fn append_id(&mut self, name: &str, message_id: &str, days: i64, flags: &[&str]) -> u32 {
         let message = Message {
+            content_uid: 0,
             flags: flags.iter().map(|f| f.to_string()).collect(),
             modseq: 0,
             date: NOW - days * 86_400 + 3_600,
@@ -403,6 +406,9 @@ impl World {
     fn put(&mut self, name: &str, mut message: Message) -> u32 {
         let mailbox = self.mailbox(name);
         let uid = mailbox.uidnext;
+        if message.content_uid == 0 {
+            message.content_uid = uid;
+        }
         mailbox.uidnext += 1;
         mailbox.modseq += 1;
         message.modseq = mailbox.modseq;
@@ -722,7 +728,8 @@ fn search_date(text: &str) -> i64 {
     (era * 146_097 + doe - 719_468) * 86_400
 }
 
-fn header(message: &Message, uid: u32) -> String {
+fn header(message: &Message) -> String {
+    let uid = message.content_uid;
     format!(
         "Date: Mon, 5 Oct 2026 09:00:00 +0000\r\nFrom: \"Fake Sender\" <sender@example.test>\r\n\
          To: <test@example.test>\r\nSubject: Fake message {uid}\r\nMessage-ID: <{}>\r\n{}\
@@ -992,6 +999,11 @@ fn manage(world: &mut World, verb: &str, names: &[String]) -> Result<(), String>
 
 enum Reply {
     Text(String),
+    /// Partial literals may split a UTF-8 code point, so preserve their exact bytes.
+    Bytes {
+        data: Vec<u8>,
+        cut: bool,
+    },
     /// Send the text, then drop the connection without a reply.
     Cut(String),
     /// Answer nothing more on this connection.
@@ -1322,6 +1334,14 @@ fn uid_command(
         }
     }
     let whole = items.to_ascii_uppercase().contains("BODY.PEEK[]");
+    let partial = items
+        .to_ascii_uppercase()
+        .split_once("BODY.PEEK[]<")
+        .and_then(|(_, rest)| {
+            let (range, _) = rest.split_once('>')?;
+            let (offset, count) = range.split_once('.')?;
+            Some((offset.parse::<usize>().ok()?, count.parse::<usize>().ok()?))
+        });
     let headers = items.to_ascii_uppercase().contains("HEADER.FIELDS");
     let header_only = items.to_ascii_uppercase().contains("BODY.PEEK[HEADER]");
     let with_structure = items.to_ascii_uppercase().contains("BODYSTRUCTURE");
@@ -1343,6 +1363,7 @@ fn uid_command(
         }
     }
     let mut sent = 0;
+    let mut binary = Vec::new();
     for (uid, message) in &mailbox.messages {
         if star.is_none() || !in_set(&set, *uid) {
             continue;
@@ -1355,19 +1376,35 @@ fn uid_command(
         };
         let seq = seq + 1;
         if whole {
-            let full = format!("{}{TEXT}", header(message, *uid));
-            out.push_str(&format!(
-                "* {seq} FETCH (UID {uid} BODY[] {{{}}}\r\n{full})\r\n",
-                full.len()
-            ));
+            let full = format!("{}{TEXT}", header(message));
+            if let Some((offset, count)) = partial {
+                let bytes = &full.as_bytes()
+                    [offset.min(full.len())..offset.saturating_add(count).min(full.len())];
+                binary.extend_from_slice(out.as_bytes());
+                out.clear();
+                binary.extend_from_slice(
+                    format!(
+                        "* {seq} FETCH (UID {uid} BODY[]<{offset}> {{{}}}\r\n",
+                        bytes.len()
+                    )
+                    .as_bytes(),
+                );
+                binary.extend_from_slice(bytes);
+                binary.extend_from_slice(b")\r\n");
+            } else {
+                out.push_str(&format!(
+                    "* {seq} FETCH (UID {uid} BODY[] {{{}}}\r\n{full})\r\n",
+                    full.len()
+                ));
+            }
         } else if header_only {
-            let head = header(message, *uid);
+            let head = header(message);
             out.push_str(&format!(
                 "* {seq} FETCH (UID {uid} BODY[HEADER] {{{}}}\r\n{head})\r\n",
                 head.len()
             ));
         } else if headers {
-            let full = header(message, *uid);
+            let full = header(message);
             let head = header_fields(&full, &fields);
             let size = full.len() + TEXT.len();
             let garble = world.garbled.get(&(name.clone(), *uid)).copied();
@@ -1412,10 +1449,24 @@ fn uid_command(
         sent += 1;
         if cut.is_some_and(|after| sent >= after) {
             world.cuts += 1;
+            if !binary.is_empty() {
+                binary.extend_from_slice(out.as_bytes());
+                return Reply::Bytes {
+                    data: binary,
+                    cut: true,
+                };
+            }
             return Reply::Cut(out);
         }
     }
     out.push_str(&format!("{tag} OK fetched\r\n"));
+    if !binary.is_empty() {
+        binary.extend_from_slice(out.as_bytes());
+        return Reply::Bytes {
+            data: binary,
+            cut: false,
+        };
+    }
     Reply::Text(out)
 }
 
@@ -1796,6 +1847,14 @@ async fn session(mut io: BufReader<Box<dyn Io>>, world: Arc<Mutex<World>>, epoch
             }
         };
         match reply {
+            Reply::Bytes { data, cut } => {
+                if io.get_mut().write_all(&data).await.is_err()
+                    || io.get_mut().flush().await.is_err()
+                    || cut
+                {
+                    return;
+                }
+            }
             Reply::Text(text) => {
                 if write(&mut io, &text).await.is_err() {
                     return;
@@ -1904,6 +1963,7 @@ async fn append(
             let uid = world.put(
                 &name,
                 Message {
+                    content_uid: 0,
                     flags,
                     modseq: 0,
                     date: NOW,
