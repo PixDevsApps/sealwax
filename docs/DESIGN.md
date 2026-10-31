@@ -74,7 +74,8 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 
 **Message list**
 - Search field and filter chips on top, then sections (Today, Yesterday, This week, This month, Older).
-- Row anatomy: unread dot · avatar (32 px) · sender (bold when unread) and time · subject · one- or two-line snippet · indicators (attachment, star, thread count).
+- *As built for issue #26 (ADR-024):* in each Inbox and All Inboxes, a **Pinned** section comes before Today: the newest 10 messages from pinned senders or domains (unread ones only for a pin *until read*), not repeated in the dates. Its rows show their time as their date section would.
+- Row anatomy: unread dot · avatar (32 px) · sender (bold when unread), a pin when the sender or domain is pinned (`view-pin-symbolic`, the indicators' colour), and time · subject · one- or two-line snippet · indicators (attachment, star, thread count).
 - Selection mode with checkboxes for batch actions; hover shows quick actions (archive, delete, star).
 - Rules from S3 (2026-10-04) — GtkListView keeps about 205 row widgets realized whatever the window size, so one row's layout cost sets the cost of every jump, first paint and fast drag:
   - no ligatures in list text (`font-feature-settings: "liga" 0, "calt" 0`): 30–36 % less layout with JetBrains Mono;

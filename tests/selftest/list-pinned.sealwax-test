@@ -1,0 +1,131 @@
+# Pinned senders (issue #26, ADR-024): Pin Sender from the row's menu puts the sender's unread
+# mail in a Pinned section at the top of the Inbox, with a pin on their rows; reading it sends it
+# back to its date; Pin Domain with the toast's Keep Pinned keeps a domain's mail there, read or
+# not; new mail from a pinned sender comes in pinned; the chips filter the section; Unpin and its
+# Undo; the Pinned Senders dialog; a group of Group by pinned; All Inboxes. Every message and
+# address is fictional.
+# Run: tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/list-pinned.sealwax-test
+
+desktop tiling
+resize 1440 900
+list-wait
+engine-attach
+triage-mark-read-on-open false
+mail-account Personal
+folder inbox Personal
+mail-add Personal:inbox 2m "Strømregning for oktober" from=Kraftselskapet address=regning@kraft.example
+mail-add Personal:inbox 3m "Treningstider i november" from=Klatresenteret address=trener@klatring.example read
+mail-add Personal:inbox 4m "Middag på fredag?" "from=Anna Berg" address=anna@example.test
+mail-add Personal:inbox 5m "Ukens nyheter" from=Avisa address=nyheter@avisa.example read
+assert-list-count 4
+assert-list-sections Today:4
+assert-list-row 2 pin-icon false
+
+# Pin Sender from the row's menu: Anna's unread message goes to the top, under Pinned.
+row-menu 2
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Pin Sender,Pin Domain,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+row-menu-click message-menu-pin-sender
+wait-until assert-toast "anna@example.test pinned until read"
+wait-until assert-list-sections Pinned:1,Today:3
+assert-list-headers "PINNED,TODAY"
+assert-list-row 0 subject "Middag på fredag?"
+assert-list-row 0 section Pinned
+assert-list-row 0 pinned true
+assert-list-row 0 pin-icon true
+assert-list-row 1 pin-icon false
+assert-list-count 4
+assert-list-exact
+wait-until assert-text-contains reader-position "1 of 4"
+screenshot $DIR/../../.local/selftest/list-pinned-section.png
+
+# Its menu now offers Unpin Sender instead.
+list-select 0
+assert-action-enabled win.pin-sender false
+assert-action-enabled win.unpin-sender true
+row-menu 0
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Unpin Sender,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+key Escape
+
+# Opened and read, it goes back to its date and keeps its pin; the reader still shows it.
+triage-mark-read-on-open true
+list-select 3
+list-select 0
+wait-until assert-list-sections Today:4
+assert-list-row 2 subject "Middag på fredag?"
+assert-list-row 2 pin-icon true
+assert-list-row 2 unread false
+assert-list-exact
+triage-mark-read-on-open false
+
+# Pin Domain, made to stay with the toast's Keep Pinned: the club's read mail leads too.
+list-select 1
+action win.pin-domain
+wait-until assert-toast "klatring.example pinned until read"
+assert-list-sections Today:4
+toast-click "Keep Pinned"
+wait-until assert-list-sections Pinned:1,Today:3
+assert-list-row 0 subject "Treningstider i november"
+assert-list-exact
+
+# New mail from a pinned sender comes in pinned, newest first.
+mail-add Personal:inbox 1m "Kino i kveld?" "from=Anna Berg" address=anna@example.test
+wait-until assert-list-sections Pinned:2,Today:3
+assert-list-row 0 subject "Kino i kveld?"
+assert-list-row 1 subject "Treningstider i november"
+assert-list-exact
+
+# The chips filter the section like the rest of the list.
+chip unread
+wait-until assert-list-sections Pinned:1,Today:1
+assert-list-row 0 subject "Kino i kveld?"
+chip all
+wait-until assert-list-sections Pinned:2,Today:3
+
+# Unpin Sender from the row's menu, and the toast's Undo.
+row-menu 1
+row-menu-click message-menu-unpin-sender
+wait-until assert-toast "klatring.example unpinned"
+wait-until assert-list-sections Pinned:1,Today:4
+toast-undo
+wait-until assert-list-sections Pinned:2,Today:3
+assert-list-exact
+
+# Pinned Senders…: each pin with how long its mail leads, and Unpin.
+action win.pinned-senders
+wait-until assert-dialog "Pinned Senders"
+assert-text-contains pin-0 anna@example.test
+assert-text-contains pin-1 klatring.example
+screenshot $DIR/../../.local/selftest/list-pinned-dialog.png
+setup-choose pin-0-mode always
+wait-until assert-list-sections Pinned:3,Today:2
+assert-list-row 2 subject "Middag på fredag?"
+click pin-1-remove
+wait-until assert-list-sections Pinned:2,Today:3
+key Escape
+wait-until assert-dialog none
+
+# A group of Group by Domain pinned: the paper's mail is read, so it stays in its date with a pin.
+action win.group-by-domain
+wait-until assert-list-groups 4
+list-select-group 3
+wait-until assert-action-enabled win.pin-domain true
+assert-action-enabled win.pin-sender false
+action win.pin-domain
+wait-until assert-toast "avisa.example pinned until read"
+action win.dont-group
+wait-until assert-list-sections Pinned:2,Today:3
+assert-list-row 4 subject "Ukens nyheter"
+assert-list-row 4 pin-icon true
+
+# All Inboxes leads with the pinned mail too; the Archive doesn't.
+folder all-inboxes
+wait-until assert-list-sections Pinned:2,Today:3
+assert-list-row 0 subject "Kino i kveld?"
+folder inbox Personal
+list-select 0
+key e
+wait-until assert-list-sections Pinned:1,Today:3
+assert-list-exact
+folder archive Personal
+wait-until assert-list-sections Today:1
+assert-list-row 0 pin-icon true

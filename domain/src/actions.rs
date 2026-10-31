@@ -228,6 +228,9 @@ pub enum ActionId {
     ShowOriginal,
     SaveMessage,
     Unsubscribe,
+    PinSender,
+    PinDomain,
+    UnpinSender,
     Compose,
     Reply,
     ReplyAll,
@@ -276,6 +279,7 @@ pub enum ActionId {
     DefaultMailApp,
     CheckForUpdates,
     Quit,
+    PinnedSenders,
     EditRules,
     NewRuleFromMessage,
     JunkSender,
@@ -284,7 +288,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 93] = [
+    pub const ALL: [Self; 97] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -325,6 +329,9 @@ impl ActionId {
         Self::ShowOriginal,
         Self::SaveMessage,
         Self::Unsubscribe,
+        Self::PinSender,
+        Self::PinDomain,
+        Self::UnpinSender,
         Self::Compose,
         Self::Reply,
         Self::ReplyAll,
@@ -373,6 +380,7 @@ impl ActionId {
         Self::DefaultMailApp,
         Self::CheckForUpdates,
         Self::Quit,
+        Self::PinnedSenders,
         Self::EditRules,
         Self::NewRuleFromMessage,
         Self::JunkSender,
@@ -882,6 +890,20 @@ impl ActionId {
             ),
             // Issues #14 and #24 (ADR-023): no default keys until the owner picks them.
             Self::Unsubscribe => on_selection("unsubscribe", "Unsubscribe…", Messages, &[]),
+            // Issue #26 (ADR-024): no default keys until the owner picks them.
+            Self::PinSender => on_selection("pin-sender", "Pin Sender", Messages, &[]),
+            Self::PinDomain => on_selection("pin-domain", "Pin Domain", Messages, &[]),
+            Self::UnpinSender => on_selection("unpin-sender", "Unpin Sender", Messages, &[]),
+            Self::PinnedSenders => ActionSpec {
+                menu: Some(MenuSection::Settings),
+                ..command(
+                    "pinned-senders",
+                    "Pinned Senders…",
+                    General,
+                    Scope::Window,
+                    &[],
+                )
+            },
             Self::GroupBySender => command(
                 "group-by-sender",
                 "Group by Sender",
@@ -1067,6 +1089,7 @@ mod tests {
                 ActionId::StartAtLogin,
                 ActionId::CheckForUpdates,
                 ActionId::Quit,
+                ActionId::PinnedSenders,
                 ActionId::EditRules,
             ]
         );
@@ -1099,6 +1122,9 @@ mod tests {
                 ActionId::ShowOriginal,
                 ActionId::SaveMessage,
                 ActionId::Unsubscribe,
+                ActionId::PinSender,
+                ActionId::PinDomain,
+                ActionId::UnpinSender,
                 ActionId::Reply,
                 ActionId::ReplyAll,
                 ActionId::ReplySender,
@@ -1240,6 +1266,10 @@ mod tests {
         }
         for id in [
             ActionId::Unsubscribe,
+            ActionId::PinSender,
+            ActionId::PinDomain,
+            ActionId::UnpinSender,
+            ActionId::PinnedSenders,
             ActionId::GroupBySender,
             ActionId::GroupByDomain,
             ActionId::DontGroup,

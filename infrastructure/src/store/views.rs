@@ -229,13 +229,47 @@ pub(crate) fn position(
     Ok(position as u32)
 }
 
+/// The position of a row of the view that isn't in its Pinned section, from `base`, its
+/// position counting every row: the section comes first, and its rows newer than this one
+/// aren't where they were.
+pub(crate) fn dated_position(
+    pinned: &[(MessageId, i64)],
+    base: u32,
+    date: i64,
+    id: MessageId,
+) -> u32 {
+    let newer = pinned
+        .iter()
+        .filter(|(pin, pin_date)| (*pin_date, pin.0) > (date, id.0))
+        .count() as u32;
+    pinned.len() as u32 + base.saturating_sub(newer)
+}
+
+/// The rows dated at or after `start` in the dated part of the view, after its Pinned section.
+pub(crate) fn dated_since(pinned: &[(MessageId, i64)], since: u32, start: i64) -> u32 {
+    let newer = pinned.iter().filter(|(_, date)| *date >= start).count() as u32;
+    pinned.len() as u32 + since.saturating_sub(newer)
+}
+
 fn count_in(conn: &Connection, folder: FolderId, filter: ViewFilter) -> rusqlite::Result<u32> {
     count(conn, &[folder], filter)
 }
 
-pub(crate) const SUMMARY_COLUMNS: &str = "m.id, m.folder_id, m.thread_id, m.from_name, \
-     m.from_addr, m.subject, m.snippet, m.date, m.flags, m.has_attachments, t.message_count, \
-     m.list_unsubscribe IS NOT NULL";
+/// Whether a pin names the sender or the domain of `messages m` (issue #26).
+macro_rules! pinned_sql {
+    () => {
+        "EXISTS(SELECT 1 FROM pinned_senders p \
+         WHERE (p.kind = 0 AND p.key = lower(trim(m.from_addr))) \
+            OR (p.kind = 1 AND p.key = m.from_domain AND m.from_domain <> ''))"
+    };
+}
+pub(crate) use pinned_sql;
+
+pub(crate) const SUMMARY_COLUMNS: &str = concat!(
+    "m.id, m.folder_id, m.thread_id, m.from_name, m.from_addr, m.subject, m.snippet, m.date, \
+     m.flags, m.has_attachments, t.message_count, m.list_unsubscribe IS NOT NULL, ",
+    pinned_sql!()
+);
 
 pub(crate) fn summary_row(row: &Row<'_>) -> rusqlite::Result<MessageSummary> {
     Ok(MessageSummary {
@@ -251,6 +285,7 @@ pub(crate) fn summary_row(row: &Row<'_>) -> rusqlite::Result<MessageSummary> {
         has_attachments: row.get(9)?,
         thread_count: row.get(10)?,
         subscription: row.get(11)?,
+        pinned: row.get(12)?,
     })
 }
 
@@ -269,7 +304,71 @@ pub(crate) fn summary(conn: &Connection, id: MessageId) -> rusqlite::Result<Mess
 /// the folders' index walks without sorting and reads only the rows up to the page. Without a
 /// filter, folders that hold at least half of all mail walk the global date index instead,
 /// which costs less per row than the merge and skips little.
+///
+/// A view with a Pinned section (`pinned`, from `pins::section`) lists those rows first and
+/// leaves them out of the dates.
 pub(crate) fn page(
+    conn: &Connection,
+    folders: &[FolderId],
+    filter: ViewFilter,
+    total: u32,
+    offset: u32,
+    limit: u32,
+    pinned: &[(MessageId, i64)],
+) -> rusqlite::Result<Vec<MessageSummary>> {
+    if pinned.is_empty() {
+        return walk_page(conn, folders, filter, total, offset, limit);
+    }
+    let count = pinned.len() as u32;
+    let mut rows = Vec::new();
+    if offset < count && limit > 0 {
+        let end = count.min(offset.saturating_add(limit));
+        let ids = &pinned[offset as usize..end as usize];
+        let sql = format!(
+            "SELECT {SUMMARY_COLUMNS} FROM messages m JOIN threads t ON t.id = m.thread_id \
+             WHERE m.id IN ({}) ORDER BY m.date DESC, m.id DESC",
+            list(ids.iter().map(|(id, _)| id.0))
+        );
+        rows = conn
+            .prepare(&sql)?
+            .query_map([], summary_row)?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+    }
+    let left = limit - (rows.len() as u32).min(limit);
+    let dated = offset.saturating_sub(count);
+    if left == 0 {
+        return Ok(rows);
+    }
+    // The dates' row `dated` is the `newer`-th row outside the section from the whole view's row
+    // `dated` on, where `newer` is how many of the section's rows come before that one: one walk
+    // of the plain index, `2 × count` rows longer, instead of a check of every row it passes.
+    let window = walk_page(
+        conn,
+        folders,
+        filter,
+        total,
+        dated,
+        left.saturating_add(2 * count),
+    )?;
+    let Some(first) = window.first() else {
+        return Ok(rows);
+    };
+    let newer = pinned
+        .iter()
+        .filter(|(id, date)| (*date, id.0) > (first.date, first.id.0))
+        .count();
+    rows.extend(
+        window
+            .into_iter()
+            .filter(|row| !pinned.iter().any(|(id, _)| *id == row.id))
+            .skip(newer)
+            .take(left as usize),
+    );
+    Ok(rows)
+}
+
+/// Rows `offset..offset + limit` of the whole view, in list order.
+fn walk_page(
     conn: &Connection,
     folders: &[FolderId],
     filter: ViewFilter,
@@ -290,7 +389,8 @@ pub(crate) fn page(
     let (index, condition) = filter_sql(filter);
     let inner = if let [folder] = folders {
         format!(
-            "SELECT id FROM messages INDEXED BY {index} WHERE folder_id = {}{condition} \
+            "SELECT id FROM messages INDEXED BY {index} \
+             WHERE folder_id = {}{condition} \
              ORDER BY date {order}, id {order} LIMIT ?1 OFFSET ?2",
             folder.0
         )

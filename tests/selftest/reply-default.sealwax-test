@@ -39,7 +39,7 @@ action win.reply-sender
 assert-compose-last reply selected reply
 composer-close
 row-menu 1
-assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Unsubscribe…,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Unsubscribe…,Pin Sender,Pin Domain,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
 key Escape
 wait-until assert-row-menu closed
 
@@ -67,7 +67,7 @@ action win.reply-sender
 assert-compose-last reply selected reply
 composer-close
 row-menu 1
-assert-row-menu-items "Reply All,Reply to Sender,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Unsubscribe…,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+assert-row-menu-items "Reply All,Reply to Sender,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Unread,Star,!Unsubscribe…,Pin Sender,Pin Domain,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
 key Escape
 wait-until assert-row-menu closed
 assert-labelled

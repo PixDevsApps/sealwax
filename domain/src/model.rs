@@ -274,6 +274,8 @@ pub struct MessageSummary {
     pub thread_count: u32,
     /// The message has a List-Unsubscribe that Sealwax can use (ADR-023).
     pub subscription: bool,
+    /// Its sender or the sender's domain is pinned (issue #26).
+    pub pinned: bool,
 }
 
 /// Which body alternatives a message has.

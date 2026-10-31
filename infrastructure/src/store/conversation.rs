@@ -189,6 +189,7 @@ mod tests {
                 has_attachments: false,
                 thread_count: 1,
                 subscription: false,
+                pinned: false,
             },
             stored_flags: 0,
             role,

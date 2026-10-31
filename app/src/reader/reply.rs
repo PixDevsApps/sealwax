@@ -1079,6 +1079,7 @@ mod tests {
                 has_attachments: false,
                 thread_count: 1,
                 subscription: false,
+                pinned: false,
             },
             role,
             copies: Vec::new(),

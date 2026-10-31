@@ -149,6 +149,7 @@ struct Handlers {
     quick: RefCell<Vec<QuickHandler>>,
     menu: RefCell<Vec<MenuHandler>>,
     group: RefCell<Vec<GroupHandler>>,
+    reloaded: RefCell<Vec<Handler>>,
 }
 
 type FolderHandler = Rc<dyn Fn(FolderId)>;
@@ -1227,6 +1228,10 @@ impl MessageList {
                         self.focus_after_layout();
                     }
                     self.restore_selection();
+                    let handlers = self.inner.handlers.reloaded.borrow().clone();
+                    for handler in handlers {
+                        handler();
+                    }
                 } else {
                     self.inner.wanted.borrow_mut().clear();
                     self.inner.leaving.take();
@@ -2267,6 +2272,16 @@ impl MessageList {
     }
 
     /// Runs `handler` when no message is selected any more (another folder, the message gone).
+    /// Runs `handler` after the view shown was read again (a reload, which may move rows: a
+    /// pinned sender's message going to or from the Pinned section).
+    pub fn connect_reloaded(&self, handler: impl Fn() + 'static) {
+        self.inner
+            .handlers
+            .reloaded
+            .borrow_mut()
+            .push(Rc::new(handler));
+    }
+
     pub fn connect_selection_cleared(&self, handler: impl Fn() + 'static) {
         self.inner
             .handlers

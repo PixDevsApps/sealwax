@@ -6,7 +6,7 @@ use super::api::{
     BodyCandidate, BodyTarget, BodyUsage, FolderSync, OpenView, Page, PartSource, StoreVersion,
     SyncState, Versioned, ViewOpened, ViewSpec,
 };
-use super::{Shared, StoreError, check, codec, views};
+use super::{Shared, StoreError, check, codec, pins, views};
 use rusqlite::{Connection, OptionalExtension};
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{
@@ -109,6 +109,9 @@ pub(crate) enum ReadJob {
     RemoteSenders {
         reply: Sender<Vec<String>>,
     },
+    Pins {
+        reply: Sender<Vec<super::Pin>>,
+    },
     Conversation {
         id: MessageId,
         reply: Sender<Versioned<Option<crate::store::Conversation>>>,
@@ -147,6 +150,7 @@ impl ReadJob {
             ReadJob::BodyUsage { reply } => reply.is_closed(),
             ReadJob::PendingOps { reply, .. } => reply.is_closed(),
             ReadJob::RemoteSenders { reply } => reply.is_closed(),
+            ReadJob::Pins { reply } => reply.is_closed(),
             ReadJob::Conversation { reply, .. } => reply.is_closed(),
             ReadJob::Pop3Uidls { reply, .. } => reply.is_closed(),
             ReadJob::IsPop3 { reply, .. } => reply.is_closed(),
@@ -279,6 +283,9 @@ impl Reader {
             ReadJob::RemoteSenders { reply } => {
                 let _ = reply.try_send(self.remote_senders());
             }
+            ReadJob::Pins { reply } => {
+                let _ = reply.try_send(pins::list(&self.conn));
+            }
             ReadJob::Conversation { id, reply } => {
                 let _ = reply.try_send(self.conversation(id));
             }
@@ -309,16 +316,29 @@ impl Reader {
         };
         let folders = views::folders(&tx, spec.scope)?;
         let total = views::count(&tx, &folders, spec.filter)?;
+        let pinned = pins::section(&tx, spec.scope, &folders, spec.filter)?.unwrap_or_default();
         let section_counts = request
             .section_starts
             .iter()
-            .map(|start| views::count_since(&tx, &folders, spec.filter, *start))
+            .map(|start| {
+                views::count_since(&tx, &folders, spec.filter, *start)
+                    .map(|since| views::dated_since(&pinned, since, *start))
+            })
             .collect::<rusqlite::Result<Vec<_>>>()?;
-        let rows = views::page(&tx, &folders, spec.filter, total, 0, request.first_page)?;
+        let rows = views::page(
+            &tx,
+            &folders,
+            spec.filter,
+            total,
+            0,
+            request.first_page,
+            &pinned,
+        )?;
         Ok(ViewOpened {
             version,
             view,
             total,
+            pinned: pinned.len() as u32,
             section_counts,
             rows,
         })
@@ -329,7 +349,8 @@ impl Reader {
         let version = version(&tx)?;
         let folders = views::folders(&tx, spec.scope)?;
         let total = views::count(&tx, &folders, spec.filter)?;
-        let rows = views::page(&tx, &folders, spec.filter, total, offset, limit)?;
+        let pinned = pins::section(&tx, spec.scope, &folders, spec.filter)?.unwrap_or_default();
+        let rows = views::page(&tx, &folders, spec.filter, total, offset, limit, &pinned)?;
         Ok(Page {
             version,
             offset,

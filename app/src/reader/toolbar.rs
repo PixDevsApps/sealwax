@@ -40,12 +40,17 @@ const ACTIONS: [(ActionId, &[&str]); 7] = [
 ];
 
 /// The More menu's sections (the approved mock's "Show original, Save as .eml", then M5's
-/// conversation and remote-content commands).
-const MORE: [&[ActionId]; 4] = [
+/// conversation and remote-content commands, Unsubscribe and the pins).
+const MORE: [&[ActionId]; 5] = [
     &[ActionId::ShowOriginal, ActionId::SaveMessage],
     &[ActionId::ExpandAll, ActionId::CollapseAll],
     &[ActionId::ShowImages, ActionId::AlwaysShowImages],
     &[ActionId::Unsubscribe],
+    &[
+        ActionId::PinSender,
+        ActionId::PinDomain,
+        ActionId::UnpinSender,
+    ],
 ];
 
 /// Where the shown message is in its list.

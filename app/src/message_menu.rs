@@ -4,7 +4,8 @@
 //!
 //! Reply, Reply All, Forward (with `[reader] reply = "all"`: Reply as Reply All, Reply to Sender,
 //! Forward; issue #8); Archive, Delete, Move to…, Move to Junk (Not Junk in a Junk
-//! folder); Mark as Read (Unread when all are read), Star (Unstar when all are starred); Create
+//! folder); Mark as Read (Unread when all are read), Star (Unstar when all are starred),
+//! Unsubscribe…; Pin Sender and Pin Domain, or Unpin Sender (issue #26); Create
 //! Rule from Message…, Always Junk Messages from {address}, Never Junk Messages from {address}.
 //! Each item runs its registry command, so it does what the command's key does, and is
 //! insensitive where the command is, with the reason as its tooltip; its key shows at its end.
@@ -125,6 +126,7 @@ fn sections(state: &AppState, targets: &[Target]) -> Vec<Vec<Entry>> {
                 ..plain(ActionId::Unsubscribe)
             },
         ],
+        pins(state),
         vec![
             rules(
                 ActionId::NewRuleFromMessage,
@@ -140,6 +142,20 @@ fn sections(state: &AppState, targets: &[Target]) -> Vec<Vec<Entry>> {
             ),
         ],
     ]
+}
+
+/// Pin Sender and Pin Domain, or Unpin Sender when the sender or its domain is pinned.
+fn pins(state: &AppState) -> Vec<Entry> {
+    let entry = |id: ActionId| Entry {
+        id,
+        title: id.title().to_owned(),
+        why_not: crate::pins::applies(state, id).err(),
+    };
+    if crate::pins::applies(state, ActionId::UnpinSender).is_ok() {
+        vec![entry(ActionId::UnpinSender)]
+    } else {
+        vec![entry(ActionId::PinSender), entry(ActionId::PinDomain)]
+    }
 }
 
 fn show(state: &Rc<AppState>, view: &gtk::ListView, at: gdk::Rectangle) {

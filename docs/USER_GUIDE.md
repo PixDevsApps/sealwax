@@ -141,7 +141,7 @@ What a POP3 account does:
 Three panes, left to right:
 
 - **The sidebar:** **New message** at the top; **All Inboxes**; each account with its Inbox, Drafts, Sent, Archive, Junk and Trash and their unread counts, its other folders under **More folders** (other mail programs' housekeeping folders are left out: Outlook's Sync Issues and, on Outlook.com and Microsoft 365, Notes and Outbox; Mailspring's folder while it is empty); at the bottom a summary of the accounts and a button that opens `config.toml`. Click an account's heading (or press Enter, Space, Left or Right on it) to fold its folders away under it; folded, the heading shows the account's unread count. Sealwax remembers which accounts are folded, and the view you last had: a new window opens on it, All Inboxes or a folder, as long as it still exists. Subfolders show indented under their folder by their own name, the Inbox's under the Inbox; a folder with subfolders has an arrow that folds them away (or press Left on it, and Right to open them again); folded, its count adds the unread mail in its subfolders to its own, so none goes unseen, and opened again each folder counts its own. Sealwax remembers the folds too, as it remembers whether **More folders** is open: the sidebar comes back as you left it, also after you rename a folder ([Folders](#folders-new-rename-delete)).
-- **The message list:** the search field, the filter chips **All**, **Unread**, **Starred** and **Attachments**, then the messages in sections: Today, Yesterday, This week, This month, Older. A row shows the sender, the time, the subject, a two-line preview, and marks for unread, starred, attachments and the size of the conversation. The **main menu** button is at the end of the list's bar.
+- **The message list:** the search field, the filter chips **All**, **Unread**, **Starred** and **Attachments**, then the messages in sections: Today, Yesterday, This week, This month, Older (in an Inbox, [Pinned](#pinned-senders) first when you have pinned senders). A row shows the sender, the time, the subject, a two-line preview, and marks for unread, starred, attachments and the size of the conversation. The **main menu** button is at the end of the list's bar.
 - **The reader:** the selected message's conversation ([Reading mail](#reading-mail)).
 
 The layout follows the window's width, so it works tiled:
@@ -190,6 +190,19 @@ Allowed images load only over HTTPS and without cookies. A forged From address c
 Open a row with Enter or a double click to see that sender's mail as a list, with the reader beside it; the search field shows what it found it with (`sender:news@shop.example` or `domain:shop.example`), which you can also type yourself. Escape goes back to the groups. From All Inboxes, an opened group shows that sender's mail in every folder but Trash and Junk.
 
 **Acting on a whole group.** Select a row (click it, or move to it with the arrow keys) and the mail commands act on all of that sender's mail in what the list shows: Archive (`e`), Delete (`#`), Move to Junk (`!`), Move to… (`v`), Star (`s`), Mark as Read (`Shift+I`) and Mark as Unread (`Shift+U`), from their keys, the toolbar, the palette or the buttons the reader shows for the group. With a chip on, only the mail it shows: with Unread, Archive takes the sender's unread mail and leaves the rest. Undo brings it back, as for messages, and the selection goes on to the next sender. **Unsubscribe…** on a group leaves the sender's list, and its dialog can archive or delete their messages here at the same time ("Their 12 messages here: Keep, Archive or Delete").
+
+## Pinned senders
+
+Some mail mustn't get lost in the rest: a bill, a school, a club. **Pin Sender** keeps a sender's mail at the top of the Inbox, in a **Pinned** section above Today, and **Pin Domain** does it for everyone who writes from that domain (`trener@klatring.example` and `leder@post.klatring.example` are both `klatring.example`). Both are in the message's right-click menu, the reader's ⋮ menu and the command palette; on a group of Group by Sender or Domain they pin that group.
+
+A new pin lasts **until read**: an unread message from them waits at the top, and once you've read it, it goes back to its date. To keep their mail at the top whether you've read it or not, for as long as it's in the Inbox, choose **Keep Pinned** in the toast that comes after pinning, or **Always** in Pinned Senders…. Archive or delete a pinned message and it leaves the section like any other.
+
+- The section is in every Inbox and in All Inboxes, shows the newest 10 pinned messages, and follows the chips: with Unread, only the unread ones. A pinned sender's older mail stays in its date.
+- Every message from a pinned sender, in any folder or search, shows a pin beside the sender's name.
+- **Unpin Sender** (the same menus, on one of their messages) takes the pin off, sender and domain; the toast's Undo puts it back.
+- **Pinned Senders…** in the main menu lists every pin, with how long its mail stays at the top (**Until read** or **Always**) and a button that unpins it.
+
+Pins are kept on this computer, for all accounts; your mail server and your other mail apps don't see them. To make a sender stand out on your phone too, a [rule](#rules) can star their mail.
 
 ## Unsubscribing
 
@@ -398,6 +411,9 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Messages | Show Original | Ctrl+U | list and reader | `show-original` |
 | Messages | Save as .eml… | Ctrl+S | list and reader | `save-message` |
 | Messages | Unsubscribe… | — |  | `unsubscribe` |
+| Messages | Pin Sender | — |  | `pin-sender` |
+| Messages | Pin Domain | — |  | `pin-domain` |
+| Messages | Unpin Sender | — |  | `unpin-sender` |
 | Compose | Compose | c, Ctrl+N | c: list and reader; Ctrl+N: anywhere | `compose` |
 | Compose | Reply | r, Ctrl+R | list and reader | `reply` |
 | Compose | Reply All | a, Ctrl+Shift+R | list and reader | `reply-all` |
@@ -446,6 +462,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | General | Make Sealwax the Default Mail App… | — |  | `default-mail-app` |
 | General | Check for Updates… | — |  | `check-for-updates` |
 | General | Quit | Ctrl+Q | anywhere | `quit` |
+| General | Pinned Senders… | — |  | `pinned-senders` |
 | Rules | Rules… | — |  | `edit-rules` |
 | Rules | Create Rule from Message… | — |  | `new-rule-from-message` |
 | Rules | Always Junk Messages from Sender | — |  | `junk-sender` |

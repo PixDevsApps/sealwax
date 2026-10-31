@@ -77,6 +77,7 @@ mod tests {
                     "app.preferences",
                     "app.customize-shortcuts",
                     "app.start-at-login",
+                    "win.pinned-senders",
                     "win.edit-rules",
                 ],
                 vec!["app.check-for-updates"],

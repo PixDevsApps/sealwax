@@ -7,9 +7,10 @@ use sealwax_domain::senders;
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 13;
+pub const VERSION: i64 = 14;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13];
+pub(super) const MIGRATIONS: &[&str] =
+    &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -472,6 +473,27 @@ CREATE TABLE unsubscribed(
 ) WITHOUT ROWID;
 ";
 
+/// Pinned senders (issue #26, ADR-024): an address (`kind` 0, its `lower(trim(from_addr))`) or a
+/// registrable domain (`kind` 1, its `from_domain`) whose mail in the Inboxes is listed first,
+/// while unread (`mode` 0) or for as long as it is there (`mode` 1); not tied to an account. The
+/// indexes hold a sender's or a domain's mail in each folder newest first, with what the filters
+/// and the modes check, so a view's newest pinned rows are read from them alone.
+const V14: &str = "
+CREATE TABLE pinned_senders(
+    kind INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    mode INTEGER NOT NULL,
+    added INTEGER NOT NULL,
+    PRIMARY KEY(kind, key)
+) WITHOUT ROWID;
+CREATE INDEX messages_sender
+    ON messages(lower(trim(from_addr)), folder_id, date, id, flags, has_attachments)
+    WHERE flags & 264 = 0;
+CREATE INDEX messages_domain
+    ON messages(from_domain, folder_id, date, id, flags, has_attachments)
+    WHERE flags & 264 = 0;
+";
+
 /// SQLite 3.43 brought `contentless_delete`.
 const MIN_SQLITE: i32 = 3_043_000;
 
@@ -523,9 +545,22 @@ pub fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
     Ok(())
 }
 
-/// Takes a v13 store back to v12, for the tests that migrate an older store.
+/// Takes a v14 store back to v13, for the tests that migrate an older store.
+#[cfg(test)]
+pub(super) const UNDO_V14: &str = "
+DROP INDEX messages_sender;
+DROP INDEX messages_domain;
+DROP TABLE pinned_senders;
+DELETE FROM schema_migrations WHERE version >= 14;
+PRAGMA user_version = 13;
+";
+
+/// Takes a v14 store back to v12, for the tests that migrate an older store.
 #[cfg(test)]
 pub(super) const UNDO_V13: &str = "
+DROP INDEX messages_sender;
+DROP INDEX messages_domain;
+DROP TABLE pinned_senders;
 DROP INDEX messages_subscription;
 ALTER TABLE messages DROP COLUMN list_unsubscribe;
 ALTER TABLE messages DROP COLUMN one_click;

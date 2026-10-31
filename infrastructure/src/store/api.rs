@@ -78,7 +78,10 @@ pub struct ViewOpened {
     /// Keeps the view registered for change events; dropping it closes the view.
     pub view: ViewHandle,
     pub total: u32,
-    /// For each section start, the number of rows dated at or after it.
+    /// Rows of the Pinned section, the first of the view (issue #26); 0 when it has none.
+    pub pinned: u32,
+    /// For each section start, the number of rows before the first one dated before it: the
+    /// Pinned section and the rows dated at or after it.
     pub section_counts: Vec<u32>,
     pub rows: Vec<MessageSummary>,
 }

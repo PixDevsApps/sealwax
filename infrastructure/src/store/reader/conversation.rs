@@ -37,9 +37,9 @@ impl Reader {
             .query_map([thread], |row| {
                 Ok(Row {
                     summary: summary_row(row)?,
-                    stored_flags: row.get(12)?,
-                    role: FolderRole::parse(&row.get::<_, String>(13)?),
-                    message_id: row.get(14)?,
+                    stored_flags: row.get(13)?,
+                    role: FolderRole::parse(&row.get::<_, String>(14)?),
+                    message_id: row.get(15)?,
                 })
             })?
             .collect::<rusqlite::Result<Vec<_>>>()?;

@@ -18,6 +18,7 @@
 //! | `triage-mark-read-on-open true\|false` | Switches marking a message read when the reader shows it |
 //! | `triage-undo-window MS` | Shortens the undo window (the toast shows at least a second) |
 //! | `toast-undo` | Clicks the toast's Undo |
+//! | `toast-click LABEL` | Clicks the toast button LABEL (`Keep Pinned`) |
 //! | `sidebar-menu all-inboxes\|[ACCOUNT:]ROLE` | Right-clicks a sidebar folder |
 //! | `account-menu KEY` | Right-clicks the heading of the sidebar's account KEY (`account-1`) |
 //! | `sidebar-menu-click [NAME]` | Clicks the open menu's item named NAME (`folder-menu-rename`, `account-menu-new-folder`, …), else its first: a folder's Mark Folder as Read, an account's Edit Account |
@@ -68,6 +69,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("triage-mark-read-on-open", 1, 1),
     ("triage-undo-window", 1, 1),
     ("toast-undo", 0, 0),
+    ("toast-click", 1, 1),
     ("sidebar-menu", 1, 1),
     ("account-menu", 1, 1),
     ("sidebar-menu-click", 0, 1),
@@ -219,6 +221,13 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 .into_iter()
                 .find(|button| button.label().as_deref() == Some("Undo"))
                 .ok_or("no toast offers Undo")?;
+            click_button(harness, &button).await
+        }
+        "toast-click" => {
+            let button = toast_buttons(harness)?
+                .into_iter()
+                .find(|button| button.label().as_deref() == Some(arg(0)))
+                .ok_or_else(|| format!("no toast offers {}", arg(0)))?;
             click_button(harness, &button).await
         }
         "sidebar-menu" => {

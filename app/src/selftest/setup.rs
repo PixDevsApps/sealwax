@@ -521,6 +521,8 @@ pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult 
                     dialog.heading().unwrap_or_default(),
                     dialog.body()
                 )
+            } else if let Some(row) = found.downcast_ref::<adw::ActionRow>() {
+                format!("{}\n{}", row.title(), row.subtitle().unwrap_or_default())
             } else {
                 return Err(format!("{} has no text", args[0]));
             };

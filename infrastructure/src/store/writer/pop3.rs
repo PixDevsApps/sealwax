@@ -18,7 +18,7 @@ use crate::store::pop3_api::{
 use crate::store::{StoreError, compose, views};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::model::{AccountId, BlobKey, DraftId, FolderId, FolderRole, MessageId};
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
@@ -371,7 +371,7 @@ impl Writer {
         }
         let shared = Arc::clone(&self.state.shared);
         let open = shared.registry.lock();
-        let views = view_changes(&tx, &open.open, &rows, &BTreeMap::new())?;
+        let views = view_changes(&tx, &open.open, &rows, &super::Leaving::default())?;
         let event = ChangeEvent {
             inserted: rows.iter().map(|row| row.id).collect(),
             folders: folder_counts(&tx, &folders)?,

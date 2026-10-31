@@ -1072,6 +1072,10 @@ The owner's decisions on the sign-off sheet (2026-10-19). (1) The 150 ms rule of
 
 **Status:** Accepted — the user's word, 2026-10-29 ("let's do #24 alongside #14"), on issues [#24](https://github.com/PixDevsApps/sealwax/issues/24) and [#14](https://github.com/PixDevsApps/sealwax/issues/14). List-Unsubscribe moves from the 1.x list into 1.1, with an `is:subscription` search filter and an Unsubscribe command; grouping the message list by sender or domain, on no list before, comes with it. The design is [ADR-023](#adr-023--group-by-sender-and-list-unsubscribe-2026-10-29).
 
+### ADR-013 amendment — pinned senders, its own release (2026-10-31)
+
+**Status:** Accepted — the owner's word, 2026-10-31, on issue [#26](https://github.com/PixDevsApps/sealwax/issues/26) ("Own release when it is finished"), after the reporter's two use cases. Pinning senders, on no list before, is built for a release of its own, which the owner reviews before anything is committed. The design is [ADR-024](#adr-024--pinned-senders-2026-10-31).
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
@@ -1583,3 +1587,20 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Alternatives:** Select All in the message list; several groups selected at once; a confirmation above a size.
 
 **Consequences:** a new store read (`group_mail`); no schema, engine or protocol change: the server sees the moves and flag changes a large selection makes.
+
+## ADR-024 — Pinned senders (2026-10-31)
+
+**Status:** Accepted — the owner's answers of 2026-10-31 on issue [#26](https://github.com/PixDevsApps/sealwax/issues/26): the name "Pinned"; a new pin lasts *until read* by default; its own release ([ADR-013 amendment](#adr-013-amendment--pinned-senders-its-own-release-2026-10-31)). The reporter's two cases, from the issue: a domain whose mail stays pinned (a club whose coaches write from one domain, read again often), and a sender whose mail is pinned until it is read (monthly bills). No key (ADR-017).
+
+**Decision:**
+- A **pin** names a sender address (as `sender:` takes it) or a registrable domain (as `domain:` takes it), and has a mode: **until read** (the default) or **always** (for as long as the mail is in the Inbox). Pins belong to no account and stay on this computer; they never reach the server.
+- **Pin Sender**, **Pin Domain** and **Unpin Sender** act on the selected messages, or on a group of Group by Sender or Domain. They are in the message's right-click menu (Pin Sender and Pin Domain, or Unpin Sender when it is pinned), the reader's ⋮ menu and the command palette. Pinning shows a toast whose **Keep Pinned** makes the pin *always*; unpinning shows one with Undo. **Pinned Senders…** (main menu, palette) lists every pin with its mode and an Unpin button. Sealwax's Preferences is `config.toml`, so the list is a dialog of its own (the reply on #26 said "Preferences").
+- Each Inbox and All Inboxes list a **Pinned** section first: the newest 10 messages of the view whose sender or domain is pinned, unread for an *until read* pin, any for an *always* pin; the chips filter it. Those rows aren't repeated in the dates; a pinned sender's older mail stays in its date. Every row from a pinned sender, in any folder or search, shows a pin beside the name.
+- **Store:** schema v14, a table `pinned_senders` and two partial indexes, a sender's and a domain's mail per folder newest first with the filters' columns, so the section is read from the indexes alone, ten rows per pin and folder at most. The view's count, paging and change events stay those of the whole view: the section's rows come first, and a page of the dates walks the plain index from the matching place and skips the section's rows in Rust. A change to a pinned sender's message, or to the pins, reloads the open views; any other change is a splice as before.
+
+**Reason:** the reporter asked for both modes, and for domains; a section at the top of the list is where "don't miss it" mail belongs, and the cap keeps the dates on the first screen (14 rows show at 1440 px). Measured on the 100,000-message fixture Inbox (TESTING.md, 2026-10-31), the list is as fast with pins as without: the speed risk the reply on #26 named was a query that read the whole index, found by that measurement and fixed before this was accepted.
+
+**Alternatives:** a Pinned view in the sidebar (cheap, but a place to go and look, not the top of the list); starred mail first (moves every starred message, not the senders chosen); leaving pinned rows in their dates as well (no paging change, but every pinned message twice); a key (none until the owner picks one).
+
+**Consequences:** schema v14; the indexes take about 16 MB at 100,000 messages (the fixture store's file went from 215.6 to 231.9 MB through the migration and the benchmark), built once by the migration. The sections gain a sixth, Pinned, before Today. A reload instead of a splice when a pinned sender's message changes (marking it read moves it to its date); the reader's "n of N" follows the list after a reload.
+

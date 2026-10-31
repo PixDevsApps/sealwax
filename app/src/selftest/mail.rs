@@ -974,6 +974,12 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
                 "starred" => row.flags.is_flagged().to_string(),
                 "attachment" => row.has_attachments.to_string(),
                 "threads" => row.thread_count.to_string(),
+                "pinned" => row.pinned.to_string(),
+                "pin-icon" => list
+                    .row_widget(position)
+                    .ok_or_else(|| format!("row {position} isn't bound"))?
+                    .shows_pin()
+                    .to_string(),
                 other => return Err(format!("no field {other}")),
             };
             equal(
@@ -1233,11 +1239,14 @@ async fn exact(harness: &Harness, list: &MessageList) -> StepResult {
                 }
             }
         }
-        let sections = crate::list::sections::Bounds::from_dates(
-            page.rows.iter().map(|row| row.date),
+        let pinned = model.section_counts()[crate::list::sections::PINNED];
+        let mut counts = crate::list::sections::Bounds::from_dates(
+            page.rows.iter().skip(pinned as usize).map(|row| row.date),
             &model.thresholds(),
-        );
-        equal("section counts", model.section_counts(), sections.counts())?;
+        )
+        .counts();
+        counts[crate::list::sections::PINNED] = pinned;
+        equal("section counts", model.section_counts(), counts)?;
         println!(
             "  # {loaded} loaded rows of {total} equal the store's at version {}",
             version.0

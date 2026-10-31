@@ -95,6 +95,7 @@ enum Stashed {
     Sections {
         version: StoreVersion,
         thresholds: Thresholds,
+        pinned: u32,
         counts: Vec<u32>,
         total: u32,
     },
@@ -453,8 +454,8 @@ impl MessageModel {
         self.imp().state.borrow().stats
     }
 
-    /// Rows in each section (Today, Yesterday, This week, This month, Older).
-    pub fn section_counts(&self) -> [u32; 5] {
+    /// Rows in each section (Pinned, Today, Yesterday, This week, This month, Older).
+    pub fn section_counts(&self) -> [u32; super::sections::SECTIONS] {
         self.imp().state.borrow().bounds.counts()
     }
 
@@ -716,7 +717,7 @@ impl MessageModel {
             let queued = std::mem::take(&mut view.queued);
             state.thresholds = thresholds;
             state.total = opened.total;
-            state.bounds = Bounds::from_counts(&opened.section_counts, opened.total);
+            state.bounds = Bounds::from_counts(opened.pinned, &opened.section_counts, opened.total);
             state.slots = vec![None; opened.total as usize];
             state.loaded = 0;
             state.last_position = 0;
@@ -1080,10 +1081,11 @@ impl MessageModel {
                 }
                 Stashed::Sections {
                     thresholds,
+                    pinned,
                     counts,
                     total,
                     ..
-                } => self.set_sections(thresholds, Bounds::from_counts(&counts, total)),
+                } => self.set_sections(thresholds, Bounds::from_counts(pinned, &counts, total)),
             }
         }
     }
@@ -1165,6 +1167,7 @@ impl MessageModel {
                 view.stash.push(Stashed::Sections {
                     version: counted.version,
                     thresholds,
+                    pinned: counted.pinned,
                     counts: counted.section_counts,
                     total: counted.total,
                 });
@@ -1173,6 +1176,7 @@ impl MessageModel {
                 Some(None)
             } else {
                 Some(Some(Bounds::from_counts(
+                    counted.pinned,
                     &counted.section_counts,
                     counted.total,
                 )))
@@ -1478,6 +1482,7 @@ mod tests {
             has_attachments: false,
             thread_count: 1,
             subscription: false,
+            pinned: false,
         }
     }
 

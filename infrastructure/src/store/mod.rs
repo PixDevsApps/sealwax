@@ -16,6 +16,7 @@ pub mod fts;
 mod maintenance;
 mod ops_api;
 mod overlay;
+mod pins;
 mod pop3_api;
 mod reader;
 mod schema;
@@ -72,11 +73,15 @@ mod search_tests;
 #[cfg(test)]
 mod pop3_tests;
 
+#[cfg(test)]
+mod pin_tests;
+
 pub use api::*;
 pub use compose_api::*;
 pub use conversation::{Conversation, ConversationMessage};
 pub use folders_api::*;
 pub use ops_api::*;
+pub use pins::{PINNED_MAX, Pin, PinKind, PinMode, PinTarget};
 pub use pop3_api::*;
 pub use schema::VERSION as SCHEMA_VERSION;
 pub use senders::{GroupMail, GroupMessage, MAX_GROUPS, SenderGroup};

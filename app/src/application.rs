@@ -1199,6 +1199,7 @@ impl AppState {
         crate::folders::install(self, window, &win_actions);
         crate::rules::install_window(self, window, &win_actions);
         crate::unsubscribe::install_window(self, &win_actions);
+        crate::pins::install_window(self, &win_actions);
         for (id, by) in [
             (ActionId::GroupBySender, GroupBy::Sender),
             (ActionId::GroupByDomain, GroupBy::Domain),
@@ -1840,6 +1841,7 @@ impl AppState {
             ActionId::Unsubscribe,
             crate::unsubscribe::applies(self).is_ok(),
         );
+        crate::pins::refresh(self, actions);
         let group_by = list.group_by();
         actions.set_applies(ActionId::GroupBySender, group_by != GroupBy::Sender);
         actions.set_applies(ActionId::GroupByDomain, group_by != GroupBy::Domain);
@@ -2473,6 +2475,12 @@ impl AppState {
             }
             reader.show_next(id);
             state.update_position();
+        });
+        let weak = Rc::downgrade(self);
+        list.connect_reloaded(move || {
+            if let Some(state) = weak.upgrade() {
+                state.update_position();
+            }
         });
         let weak = Rc::downgrade(self);
         list.connect_selection_cleared(move || {
