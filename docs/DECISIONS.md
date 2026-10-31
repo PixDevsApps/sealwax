@@ -1074,7 +1074,7 @@ The owner's decisions on the sign-off sheet (2026-10-19). (1) The 150 ms rule of
 
 ### ADR-013 amendment — pinned senders, its own release (2026-10-31)
 
-**Status:** Accepted — the owner's word, 2026-10-31, on issue [#26](https://github.com/PixDevsApps/sealwax/issues/26) ("Own release when it is finished"), after the reporter's two use cases. Pinning senders, on no list before, is built for a release of its own, which the owner reviews before anything is committed. The design is [ADR-024](#adr-024--pinned-senders-2026-10-31).
+**Status:** Accepted — the owner's word, 2026-10-31, on issue [#26](https://github.com/PixDevsApps/sealwax/issues/26) ("Own release when it is finished"), after the reporter's two use cases. Pinning senders, on no list before, is built for a release of its own, 1.1.2 (the owner, 2026-10-31), which the owner reviewed before it was committed. The design is [ADR-024](#adr-024--pinned-senders-2026-10-31).
 
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 

@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.1.2 — 2026-10-31
+
+One more idea from the issues, for the mail you mustn't miss.
 
 - **Pin the senders you mustn't miss** ([issue #26](https://github.com/PixDevsApps/sealwax/issues/26)): **Pin Sender** or **Pin Domain** on a message (its right-click menu, the reader's ⋮ menu or the command palette) puts that sender's mail in a **Pinned** section at the top of the Inbox and All Inboxes, newest first, with a pin beside their name everywhere. A pin lasts until you've read the message, then it goes back to its date; choose **Keep Pinned** in the toast to keep their mail at the top for as long as it's in the Inbox. **Pinned Senders…** in the main menu lists your pins, to change or remove them. The section shows the newest 10, so the rest of your mail still shows. Pins stay on this computer.
 
