@@ -2,6 +2,12 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.1.3 — 2026-10-31
+
+A fix for pinned senders, from the first report on 1.1.2.
+
+- **Pinned senders come first in Group by too** ([issue #26](https://github.com/PixDevsApps/sealwax/issues/26)): in Group by Sender or Group by Domain, a pinned sender or domain now comes first in the Inbox and All Inboxes, with a pin on its row: always, if it's pinned that way, or while it has unread mail. In 1.1.2 a pinned domain's group stayed where its newest message put it.
+
 ## 1.1.2 — 2026-10-31
 
 One more idea from the issues, for the mail you mustn't miss.
