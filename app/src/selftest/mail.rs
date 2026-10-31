@@ -75,7 +75,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     // A group row selected, not opened: the mail commands act on all of its mail (issue #25).
     ("list-select-group", 1, 1),
     ("assert-list-groups", 1, 1),
-    ("assert-list-group", 4, 4),
+    ("assert-list-group", 4, 5),
 ];
 
 thread_local! {
@@ -1166,7 +1166,21 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
                         None => Err(format!("no group {}", arg(0))),
                         Some(group) => equal("key", group.key.as_str(), arg(1))
                             .and_then(|()| equal("messages", group.count, number(arg(2))? as u32))
-                            .and_then(|()| equal("unread", group.unread, number(arg(3))? as u32)),
+                            .and_then(|()| equal("unread", group.unread, number(arg(3))? as u32))
+                            .and_then(|()| match args.get(4).map(String::as_str) {
+                                Some("pinned") => {
+                                    equal("pinned", group.pinned, true).and_then(|()| {
+                                        equal("pin", list.group_shows_pin(&group.key), Some(true))
+                                    })
+                                }
+                                Some("unpinned") => {
+                                    equal("pinned", group.pinned, false).and_then(|()| {
+                                        equal("pin", list.group_shows_pin(&group.key), Some(false))
+                                    })
+                                }
+                                Some(other) => Err(format!("pinned or unpinned, not {other}")),
+                                None => Ok(()),
+                            }),
                     },
                 };
                 if result.is_ok() || Instant::now() > deadline {

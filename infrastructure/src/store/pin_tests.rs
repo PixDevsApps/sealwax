@@ -1,11 +1,11 @@
 //! Pinned senders (issue #26): the Pinned section ahead of the dates, its paging, its change
-//! events and the pins themselves.
+//! events, pinned groups first in Group by, and the pins themselves.
 
 use super::tests::{Model, Rng, scratch, whole};
 use super::*;
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, FolderRole, Headers, MessageSummary};
-use sealwax_domain::senders::{domain_key, sender_key};
+use sealwax_domain::senders::{GroupBy, domain_key, sender_key};
 
 const NOW: i64 = 1_800_000_000;
 
@@ -237,6 +237,146 @@ fn pinned_mail_leads_the_inboxes_while_unread_or_kept() {
     let again = pin(&fx.store, PinTarget::Message(ids[6]), PinKind::Sender).unwrap();
     assert_eq!(again.added, bills.added);
     assert_eq!(fx.store.pins().recv_blocking().unwrap(), pins);
+}
+
+/// The groups of `spec` as `(key, pinned)`, in their order.
+fn groups(store: &Store, spec: ViewSpec, by: GroupBy) -> Vec<(String, bool)> {
+    store
+        .sender_groups(spec, by)
+        .recv_blocking()
+        .unwrap()
+        .into_iter()
+        .map(|group| (group.key, group.pinned))
+        .collect()
+}
+
+fn keys(list: &[(&str, bool)]) -> Vec<(String, bool)> {
+    list.iter()
+        .map(|(key, pinned)| ((*key).to_owned(), *pinned))
+        .collect()
+}
+
+/// The reporter's case on #26: a club's domain pinned *always*, its mail all read and older than
+/// the rest, comes first in Group by Domain and its senders first in Group by Sender; a bill's
+/// sender pinned *until read* comes first only while it has unread mail. Only in the Inboxes;
+/// elsewhere the groups keep their dates and show the pin.
+#[test]
+fn pinned_groups_come_first_in_the_inboxes() {
+    let fx = fixture();
+    let ids = ingest(
+        &fx.store,
+        vec![
+            mail(fx.inbox, 1, "trener@klatring.example", true),
+            mail(fx.inbox, 2, "leder@post.klatring.example", true),
+            mail(fx.inbox, 3, "regning@kraft.example", true),
+            mail(fx.inbox, 4, "anna@example.test", false),
+            mail(fx.inbox, 5, "nyheter@avisa.example", true),
+            mail(fx.other_inbox, 6, "ola@example.test", false),
+            mail(fx.archive, 7, "trener@klatring.example", true),
+            mail(fx.archive, 8, "anna@example.test", true),
+        ],
+    );
+    let inbox = ViewSpec::folder(fx.inbox);
+    let by_date = keys(&[
+        ("avisa.example", false),
+        ("example.test", false),
+        ("kraft.example", false),
+        ("klatring.example", false),
+    ]);
+    assert_eq!(groups(&fx.store, inbox, GroupBy::Domain), by_date);
+
+    // Pinned until read, the club's read mail stays where its date puts it, with a pin.
+    let club = pin(&fx.store, PinTarget::Message(ids[0]), PinKind::Domain).unwrap();
+    assert_eq!(club.key, "klatring.example");
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Domain),
+        keys(&[
+            ("avisa.example", false),
+            ("example.test", false),
+            ("kraft.example", false),
+            ("klatring.example", true),
+        ])
+    );
+    // Always: it comes first, read or not, in either grouping, its senders newest first.
+    keep(&fx.store, club);
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Domain),
+        keys(&[
+            ("klatring.example", true),
+            ("avisa.example", false),
+            ("example.test", false),
+            ("kraft.example", false),
+        ])
+    );
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Sender),
+        keys(&[
+            ("leder@post.klatring.example", true),
+            ("trener@klatring.example", true),
+            ("nyheter@avisa.example", false),
+            ("anna@example.test", false),
+            ("regning@kraft.example", false),
+        ])
+    );
+
+    // The bill's sender until read: first only while one is unread.
+    pin(&fx.store, PinTarget::Message(ids[2]), PinKind::Sender).unwrap();
+    let senders = groups(&fx.store, inbox, GroupBy::Sender);
+    assert_eq!(senders[2], ("nyheter@avisa.example".to_owned(), false));
+    assert_eq!(senders[4], ("regning@kraft.example".to_owned(), true));
+    fx.store
+        .set_flags(vec![ids[2]], Flags::NONE, Flags::SEEN)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Sender),
+        keys(&[
+            ("regning@kraft.example", true),
+            ("leder@post.klatring.example", true),
+            ("trener@klatring.example", true),
+            ("nyheter@avisa.example", false),
+            ("anna@example.test", false),
+        ])
+    );
+    // A sender's pin doesn't move its domain's group.
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Domain)[..2],
+        keys(&[("klatring.example", true), ("avisa.example", false)])
+    );
+    // The Unread chip: the club has no unread mail, so it has no group there.
+    assert_eq!(
+        groups(
+            &fx.store,
+            inbox.with_filter(ViewFilter::Unread),
+            GroupBy::Sender
+        ),
+        keys(&[
+            ("regning@kraft.example", true),
+            ("anna@example.test", false),
+        ])
+    );
+
+    // All Inboxes too; the Archive keeps its dates.
+    assert_eq!(
+        groups(&fx.store, ViewSpec::unified_inbox(), GroupBy::Domain),
+        keys(&[
+            ("klatring.example", true),
+            ("example.test", false),
+            ("avisa.example", false),
+            ("kraft.example", false),
+        ])
+    );
+    assert_eq!(
+        groups(&fx.store, ViewSpec::folder(fx.archive), GroupBy::Domain),
+        keys(&[("example.test", false), ("klatring.example", true)])
+    );
+    assert_eq!(
+        groups(&fx.store, ViewSpec::folder(fx.archive), GroupBy::Sender),
+        keys(&[
+            ("anna@example.test", false),
+            ("trener@klatring.example", true),
+        ])
+    );
 }
 
 #[test]

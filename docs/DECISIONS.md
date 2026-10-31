@@ -1604,3 +1604,9 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 **Consequences:** schema v14; the indexes take about 16 MB at 100,000 messages (the fixture store's file went from 215.6 to 231.9 MB through the migration and the benchmark), built once by the migration. The sections gain a sixth, Pinned, before Today. A reload instead of a splice when a pinned sender's message changes (marking it read moves it to its date); the reader's "n of N" follows the list after a reload.
 
+### ADR-024 amendment — pinned groups first in Group by (2026-10-31)
+
+**Status:** Accepted — the owner's word, 2026-10-31 ("build the pinned-groups-first change, test that it's working as it should according to the users request, bump to 1.1.3"), after the reporter's reply on #26: with the club's domain pinned *always* and its mail all read, they expected its group at the top of Group by, and 1.1.2 left it where its newest message put it. The first design sketch had pinned groups first; 1.1.2 left it out.
+
+**Decision:** in Group by Sender and Group by Domain, in an Inbox and in All Inboxes, the pinned groups come first, newest first, then the rest as before: a group whose pin is *always*, and one whose pin is *until read* while it has unread mail (the Pinned section's rule, applied to the group). In Group by Sender a sender is pinned by its address or by its domain; in Group by Domain only a domain's pin names the group, so a pinned sender doesn't move its domain. Every pinned group shows a pin, in any folder; outside the Inboxes the groups keep their dates. The store sorts them (`senders::groups`, one subquery on `pinned_senders` per group), so the 5,000-group cap never drops a pinned one. Store test `pinned_groups_come_first_in_the_inboxes`; self-test `list-pinned` takes the reporter's case.
+

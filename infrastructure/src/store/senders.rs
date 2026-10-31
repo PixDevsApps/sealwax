@@ -1,9 +1,9 @@
 //! Group by Sender and Group by Domain (issue #24, ADR-023): a view's messages as one row per
-//! sender address or per registrable domain, newest first, with the view's filter applied.
+//! sender address or per registrable domain, newest first, with the view's filter applied. In
+//! the Inboxes, pinned groups come first, as the Pinned section does in the list (issue #26).
 
 use super::reader::ReadJob;
-use super::views;
-use super::{Reply, Store, StoreError, ViewSpec};
+use super::{Reply, Store, StoreError, ViewSpec, pins, views};
 use rusqlite::Connection;
 use sealwax_domain::model::{Flags, FolderId, MessageId};
 use sealwax_domain::senders::GroupBy;
@@ -24,6 +24,8 @@ pub struct SenderGroup {
     /// The newest message's date and subject.
     pub latest: i64,
     pub subject: String,
+    /// A pin names the group: its address or its domain, or its domain in Group by Domain.
+    pub pinned: bool,
 }
 
 impl std::fmt::Debug for SenderGroup {
@@ -32,6 +34,7 @@ impl std::fmt::Debug for SenderGroup {
             .field("count", &self.count)
             .field("unread", &self.unread)
             .field("latest", &self.latest)
+            .field("pinned", &self.pinned)
             .finish_non_exhaustive()
     }
 }
@@ -63,7 +66,9 @@ impl std::fmt::Debug for GroupMail {
 
 impl Store {
     /// The view's messages grouped `by` sender or domain, newest group first, at most
-    /// [`MAX_GROUPS`]. `GroupBy::None` gives none.
+    /// [`MAX_GROUPS`]. In an Inbox and in All Inboxes the pinned groups come first, newest
+    /// first: an *always* pin's group, and an *until read* pin's while it has unread mail.
+    /// `GroupBy::None` gives none.
     pub fn sender_groups(&self, spec: ViewSpec, by: GroupBy) -> Reply<Vec<SenderGroup>> {
         self.read(|reply| ReadJob::Groups { spec, by, reply })
     }
@@ -77,6 +82,21 @@ impl Store {
             key,
             reply,
         })
+    }
+}
+
+/// The mode of the pins that name a group (the higher wins: *always*), or NULL; on a row of the
+/// group, whose key and domain are the group's.
+fn pin_sql(by: GroupBy) -> &'static str {
+    match by {
+        GroupBy::Domain => {
+            "(SELECT p.mode FROM pinned_senders p WHERE p.kind = 1 AND p.key = from_domain)"
+        }
+        GroupBy::None | GroupBy::Sender => {
+            "(SELECT max(p.mode) FROM pinned_senders p \
+               WHERE (p.kind = 0 AND p.key = lower(trim(from_addr))) \
+                  OR (p.kind = 1 AND p.key = from_domain AND from_domain <> ''))"
+        }
     }
 }
 
@@ -145,17 +165,21 @@ pub(super) fn groups(
         return Ok(Vec::new());
     };
     let (index, condition) = views::filter_sql(spec.filter);
+    let pin = pin_sql(by);
+    let pinnable = pins::pinnable(conn, spec.scope)?;
     // SQLite takes the bare columns of an aggregate with max() from the row holding the max.
     let sql = format!(
-        "SELECT {key} AS k, count(*), sum(flags & 1 = 0), max(date), from_name, from_addr, \
-           subject \
+        "SELECT {key} AS k, count(*), sum(flags & 1 = 0) AS unread, max(date), from_name, \
+           from_addr, subject, coalesce({pin}, -1) AS pin \
          FROM messages INDEXED BY {index} \
          WHERE folder_id IN ({ids}){condition} AND {key} <> '' \
-         GROUP BY k ORDER BY max(date) DESC, k LIMIT {MAX_GROUPS}"
+         GROUP BY k \
+         ORDER BY ?1 AND (pin = 1 OR (pin = 0 AND unread > 0)) DESC, max(date) DESC, k \
+         LIMIT {MAX_GROUPS}"
     );
     let groups = conn
         .prepare_cached(&sql)?
-        .query_map([], |row| {
+        .query_map([pinnable], |row| {
             let name: String = row.get(4)?;
             let address: String = row.get(5)?;
             Ok(SenderGroup {
@@ -169,6 +193,7 @@ pub(super) fn groups(
                     name
                 },
                 subject: row.get(6)?,
+                pinned: row.get::<_, i64>(7)? >= 0,
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;

@@ -2,7 +2,8 @@
 # mail in a Pinned section at the top of the Inbox, with a pin on their rows; reading it sends it
 # back to its date; Pin Domain with the toast's Keep Pinned keeps a domain's mail there, read or
 # not; new mail from a pinned sender comes in pinned; the chips filter the section; Unpin and its
-# Undo; the Pinned Senders dialog; a group of Group by pinned; All Inboxes. Every message and
+# Undo; the Pinned Senders dialog; a group of Group by pinned; pinned groups first in Group by
+# (the reporter's case: a domain kept pinned, its mail all read); All Inboxes. Every message and
 # address is fictional.
 # Run: tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/list-pinned.sealwax-test
 
@@ -116,6 +117,44 @@ action win.dont-group
 wait-until assert-list-sections Pinned:2,Today:3
 assert-list-row 4 subject "Ukens nyheter"
 assert-list-row 4 pin-icon true
+
+# The reporter's case on #26: the club's domain pinned always, its mail read. In Group by Domain
+# its group comes first, with a pin; an until-read pin with nothing unread keeps its date.
+action win.group-by-domain
+wait-until assert-list-groups 4
+assert-list-group 0 example.test 2 1 unpinned
+assert-list-group 1 kraft.example 1 1 unpinned
+assert-list-group 2 klatring.example 1 0 unpinned
+assert-list-group 3 avisa.example 1 0 pinned
+list-select-group 2
+wait-until assert-action-enabled win.pin-domain true
+action win.pin-domain
+wait-until assert-toast "klatring.example pinned until read"
+wait-until assert-list-group 2 klatring.example 1 0 pinned
+assert-list-group 0 example.test 2 1 unpinned
+toast-click "Keep Pinned"
+wait-until assert-list-group 0 klatring.example 1 0 pinned
+assert-list-group 1 example.test 2 1 unpinned
+assert-list-group 2 kraft.example 1 1 unpinned
+assert-list-group 3 avisa.example 1 0 pinned
+screenshot $DIR/../../.local/selftest/list-pinned-groups.png
+# Group by Sender: the pinned senders first, newest first, then the rest by date.
+action win.group-by-sender
+wait-until assert-list-groups 4
+assert-list-group 0 anna@example.test 2 1 pinned
+assert-list-group 1 trener@klatring.example 1 0 pinned
+assert-list-group 2 regning@kraft.example 1 1 unpinned
+assert-list-group 3 nyheter@avisa.example 1 0 pinned
+# Unpinned from its group, it goes back to its date.
+action win.group-by-domain
+wait-until assert-list-group 0 klatring.example 1 0 pinned
+list-select-group 0
+action win.unpin-sender
+wait-until assert-toast "klatring.example unpinned"
+wait-until assert-list-group 2 klatring.example 1 0 unpinned
+assert-list-group 0 example.test 2 1 unpinned
+action win.dont-group
+wait-until assert-list-sections Pinned:2,Today:3
 
 # All Inboxes leads with the pinned mail too; the Archive doesn't.
 folder all-inboxes

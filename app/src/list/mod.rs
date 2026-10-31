@@ -781,6 +781,11 @@ impl MessageList {
             .then(|| self.inner.groups.rows())
     }
 
+    /// Whether the row of the group `key` shows its pin (the self-test's view).
+    pub fn group_shows_pin(&self, key: &str) -> Option<bool> {
+        self.inner.groups.shows_pin(key)
+    }
+
     pub fn groups_view(&self) -> &gtk::ListView {
         self.inner.groups.view()
     }

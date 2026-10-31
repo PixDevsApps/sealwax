@@ -154,7 +154,7 @@ fn any(conn: &Connection) -> rusqlite::Result<bool> {
 }
 
 /// Whether a view lists pinned mail first: All Inboxes and every Inbox.
-fn pinnable(conn: &Connection, scope: ViewScope) -> rusqlite::Result<bool> {
+pub(crate) fn pinnable(conn: &Connection, scope: ViewScope) -> rusqlite::Result<bool> {
     match scope {
         ViewScope::UnifiedInbox => Ok(true),
         ViewScope::Folder(folder) => Ok(conn

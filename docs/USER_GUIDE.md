@@ -199,6 +199,7 @@ A new pin lasts **until read**: an unread message from them waits at the top, an
 
 - The section is in every Inbox and in All Inboxes, shows the newest 10 pinned messages, and follows the chips: with Unread, only the unread ones. A pinned sender's older mail stays in its date.
 - Every message from a pinned sender, in any folder or search, shows a pin beside the sender's name.
+- In **Group by Sender** or **Group by Domain**, the pinned senders or domains come first in the Inbox and All Inboxes, with a pin on their row, by the same rule: always, or while they have unread mail. A pinned domain also brings its senders first in Group by Sender; a pinned sender doesn't move its domain's group.
 - **Unpin Sender** (the same menus, on one of their messages) takes the pin off, sender and domain; the toast's Undo puts it back.
 - **Pinned Senders…** in the main menu lists every pin, with how long its mail stays at the top (**Until read** or **Always**) and a button that unpins it.
 

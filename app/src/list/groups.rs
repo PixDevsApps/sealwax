@@ -2,7 +2,8 @@
 //! per domain, newest first, with its name, how many messages and how many unread, and the
 //! newest subject. Opening a row (Enter or a click) shows its mail; the list does that with a
 //! `sender:` or `domain:` search, so Escape comes back here. A selected row takes the mail
-//! commands, which act on all of its mail in the view (issue #25).
+//! commands, which act on all of its mail in the view (issue #25). A pinned group shows a pin,
+//! and in the Inboxes the store puts it first (issue #26).
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -147,6 +148,29 @@ impl Groups {
             .collect()
     }
 
+    /// Whether the shown row of the group `key` shows its pin; `None` when no row shows it.
+    pub fn shows_pin(&self, key: &str) -> Option<bool> {
+        let mut stack = vec![self.view.clone().upcast::<gtk::Widget>()];
+        while let Some(widget) = stack.pop() {
+            if let Some(row) = widget.downcast_ref::<gtk::Box>()
+                && row.has_css_class("sw-sender-group")
+            {
+                if let Some((shown, pin)) = shown(row)
+                    && shown == key
+                {
+                    return Some(pin);
+                }
+                continue;
+            }
+            let mut child = widget.first_child();
+            while let Some(next) = child {
+                child = next.next_sibling();
+                stack.push(next);
+            }
+        }
+        None
+    }
+
     /// Opens the group at `position`, as Enter on it does.
     pub fn activate(&self, position: u32) {
         self.view.emit_by_name::<()>("activate", &[&position]);
@@ -175,8 +199,16 @@ fn row() -> gtk::Box {
         .xalign(1.0)
         .css_classes(["sw-small", "sw-secondary"])
         .build();
+    let pin = gtk::Image::builder()
+        .icon_name("view-pin-symbolic")
+        .tooltip_text("Pinned")
+        .visible(false)
+        .build();
+    pin.add_css_class("sw-pin");
+    pin.add_css_class("sw-indicator");
     let top = gtk::Box::builder().spacing(8).build();
     top.append(&name);
+    top.append(&pin);
     top.append(&count);
     let detail = gtk::Label::builder()
         .xalign(0.0)
@@ -224,6 +256,9 @@ fn bind(list_item: &gtk::ListItem, row: &gtk::Box, group: &SenderGroup) {
     let [name, count, detail, subject] = labels.as_slice() else {
         return;
     };
+    if let Some(pin) = pin_of(row) {
+        pin.set_visible(group.pinned);
+    }
     let count_text = count_text(group.count, group.unread);
     name.set_text(&group.name);
     let attributes = pango::AttrList::new();
@@ -235,7 +270,28 @@ fn bind(list_item: &gtk::ListItem, row: &gtk::Box, group: &SenderGroup) {
     detail.set_text(&group.key);
     detail.set_visible(!group.key.eq_ignore_ascii_case(&group.name));
     subject.set_text(&group.subject);
-    list_item.set_accessible_label(&format!("{}, {}, {}", group.name, group.key, count_text));
+    let pinned = if group.pinned { ", pinned" } else { "" };
+    list_item.set_accessible_label(&format!(
+        "{}, {}, {}{pinned}",
+        group.name, group.key, count_text
+    ));
+}
+
+/// The pin of a group's row.
+fn pin_of(row: &gtk::Box) -> Option<gtk::Image> {
+    row.first_child()?
+        .first_child()?
+        .next_sibling()
+        .and_downcast::<gtk::Image>()
+}
+
+/// The key a group's row shows, and whether its pin shows.
+fn shown(row: &gtk::Box) -> Option<(String, bool)> {
+    let detail = row
+        .first_child()?
+        .next_sibling()
+        .and_downcast::<gtk::Label>()?;
+    Some((detail.text().to_string(), pin_of(row)?.is_visible()))
 }
 
 /// "12 messages, 3 unread".
