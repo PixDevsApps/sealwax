@@ -93,7 +93,7 @@ This machine. The feature commit `00e3c65` (the #26 fixes: a pinned sender lifts
 | `python3 tools/release.py build` on `v1.1.4` (offline: `unshare -rn`, loopback up, then `unshare -U --map-user=1000`, `CARGO_NET_OFFLINE=true`) | Finished 18:47 CET: `check()` 1,159 passed, 0 failed, 91 ignored; the package's binary says `sealwax 1.1.4` and holds no home path, user name or hostname; package SHA-256 `e7ca9101…5e10229` | Pass |
 | The clean-container install test (`bash tools/install-test.sh` on the package) | 16 of 16 steps in a fresh `archlinux:base` container: the libraries and licence files there, the installed binary's window and a message in the reader, its web process in WebKit's sandbox | Pass |
 | The release [v1.1.4](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.4) (`tools/release.py github`, 17:47:56 UTC) | Not a draft or pre-release; GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
-| Installed here | Not done: `pacman -U` needs sudo (1.1.2 is installed) | Not verified |
+| Installed here | Not done: `pacman -U` needs sudo (1.1.3 is installed) | Not verified |
 
 ### 1.1.3 — 2026-10-31
 
