@@ -2,6 +2,14 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.1.4 — 2026-11-01
+
+A fix for pinned senders, and dark colours for styled mail, both from the issues.
+
+- **A pinned sender brings its domain first in Group by Domain** ([issue #26](https://github.com/PixDevsApps/sealwax/issues/26)): in 1.1.3 only a pinned domain moved its group, so changing a sender's pin in Pinned Senders seemed to do nothing there. Now a domain's group comes first, with a pin, while one of its senders is pinned (always, or while that sender's mail is unread), and Unpin Sender on the group takes off its senders' pins too.
+- **Pinned Senders no longer opens empty:** when Sealwax's window was ready before its mail, the list of pins wasn't read until the next pin was made, so the dialog sometimes showed nothing.
+- **Styled mail in dark colours** ([issue #27](https://github.com/PixDevsApps/sealwax/issues/27)): newsletters and receipts keep their own design on a light card, which is bright under a dark theme. Set `dark_styled_mail = true` under `[appearance]` in `config.toml` and, when your theme is dark, their light backgrounds turn dark and their dark text light, keeping their colours' hues and readable contrast. Images keep their colours; a message with its own dark design shows that one. Off unless you turn it on.
+
 ## 1.1.3 — 2026-10-31
 
 A fix for pinned senders, from the first report on 1.1.2.
