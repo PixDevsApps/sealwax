@@ -1,0 +1,68 @@
+# Dark styled mail (issue #27): with dark_styled_mail on and a dark theme, a styled message's
+# light design is turned dark: a full-width receipt on white and a newsletter's column, every
+# text readable against what is behind it (WCAG 4.5:1), the layout and its height unchanged. A
+# message with a dark design of its own keeps it, a light theme keeps the paper card, and
+# turning the setting off or switching the theme recolours the open message in place. Run:
+#   tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/reader-dark.sealwax-test
+
+desktop tiling
+resize 1440 900
+theme matte-black
+sidebar sample
+reader-open
+
+# Off (the default): the receipt keeps its design on the white paper card.
+reader-show receipt
+assert-reader body html-paper
+assert-reader dark false
+assert-reader follows-theme true
+assert-reader margins false
+screenshot $DIR/../../.local/selftest/reader-dark-off.png
+
+# On: the open receipt turns dark in place, every text readable.
+dark-styled-mail on
+wait-until assert-reader dark true
+assert-reader height-exact true
+assert-reader margins false
+assert-reader text-contains "NOK 849"
+screenshot $DIR/../../.local/selftest/reader-dark-receipt.png
+
+# Shown again, it loads dark.
+reader-show plain
+reader-show receipt
+assert-reader dark true
+assert-reader height-exact true
+assert-reader follows-theme true
+
+# The newsletter's column sits on the theme's background, dark itself.
+reader-show newsletter
+assert-reader dark true
+assert-reader margins true
+assert-reader height-exact true
+assert-reader cid-loaded 1
+screenshot $DIR/../../.local/selftest/reader-dark-newsletter.png
+
+# A dark design of its own isn't changed.
+reader-show dark-promo
+assert-reader body html-paper
+assert-reader margins false
+
+# Another dark theme: the open message takes its colours.
+reader-show receipt
+theme tokyo-night
+wait-until assert-reader dark true
+assert-reader follows-theme true
+screenshot $DIR/../../.local/selftest/reader-dark-tokyo-night.png
+
+# A light theme keeps the paper card, setting or not.
+theme catppuccin-latte
+wait-until assert-reader dark false
+assert-reader follows-theme true
+theme matte-black
+wait-until assert-reader dark true
+
+# Off again: back to its own design.
+dark-styled-mail off
+wait-until assert-reader dark false
+assert-reader follows-theme true
+assert-reader height-exact true

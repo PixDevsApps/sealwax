@@ -166,7 +166,7 @@ On Hyprland the window has no title bar; on other desktops the window controls s
 
 **Conversations.** Selecting a message shows its whole conversation in the reader, oldest first; set `conversation_order = "newest-first"` under `[reader]` in `config.toml` to have the latest message on top, with the quick reply above it. The selected message, unread ones and the latest are expanded as cards; the others are one-line rows that a click, Enter or Space expands. A conversation of over 100 messages folds its middle ("N earlier messages"). **Expand All Messages** and **Collapse All Messages** are in the reader's More menu and the palette. `n` and `p` move to the next and previous message in the conversation, down and up the screen. A message the reader shows is marked read. A card's details button shows From, Reply-To, To, Cc, the full date and the mailing list.
 
-**HTML mail.** No script in a message ever runs. Plain text and simple HTML take your theme's colours and fonts. A styled message, such as a newsletter or a receipt, keeps its own design on a light "paper" card, and a message with its own dark design shows it under a dark theme. When the design is a column narrower than the reader, the space beside it takes your theme's background instead.
+**HTML mail.** No script in a message ever runs. Plain text and simple HTML take your theme's colours and fonts. A styled message, such as a newsletter or a receipt, keeps its own design on a light "paper" card, and a message with its own dark design shows it under a dark theme. When the design is a column narrower than the reader, the space beside it takes your theme's background instead. To read styled mail in dark colours under a dark theme, set `dark_styled_mail = true` under `[appearance]` in `config.toml` ([Theme, fonts and corners](#theme-fonts-and-corners)).
 
 **Remote images.** Images and other content from the internet are hidden until you allow them, so a sender can't tell when or where you opened a message. Each message's banner says "Images are hidden so the sender can't tell you opened this.":
 
@@ -199,7 +199,7 @@ A new pin lasts **until read**: an unread message from them waits at the top, an
 
 - The section is in every Inbox and in All Inboxes, shows the newest 10 pinned messages, and follows the chips: with Unread, only the unread ones. A pinned sender's older mail stays in its date.
 - Every message from a pinned sender, in any folder or search, shows a pin beside the sender's name.
-- In **Group by Sender** or **Group by Domain**, the pinned senders or domains come first in the Inbox and All Inboxes, with a pin on their row, by the same rule: always, or while they have unread mail. A pinned domain also brings its senders first in Group by Sender; a pinned sender doesn't move its domain's group.
+- In **Group by Sender** or **Group by Domain**, the pinned senders or domains come first in the Inbox and All Inboxes, with a pin on their row, by the same rule: always, or while they have unread mail. A pinned domain also brings its senders first in Group by Sender, and a pinned sender brings its domain's group first in Group by Domain. **Unpin Sender** on a domain's group takes off the domain's pin and those of the senders in it.
 - **Unpin Sender** (the same menus, on one of their messages) takes the pin off, sender and domain; the toast's Undo puts it back.
 - **Pinned Senders…** in the main menu lists every pin, with how long its mail stays at the top (**Until read** or **Always**) and a button that unpins it.
 
@@ -503,6 +503,7 @@ Sealwax follows your **live Omarchy theme**. Its colours come from the current t
 
 - **Corners** follow Hyprland's window rounding (`decoration:rounding`): square on a stock Omarchy, rounded where your Hyprland rounds windows. `corner_radius` in `config.toml` sets a number of pixels instead.
 - **Fonts:** `chrome_font = "sans"` puts the sidebar, list and toolbars in the sans-serif font; `reading_font = "mono"` puts message text in the monospace font.
+- **Dark styled mail:** newsletters, receipts and other mail with a design of its own keep it on a light card. `dark_styled_mail = true` shows them in dark colours when your theme is dark: light backgrounds turn dark, dark text turns light, colours keep their hue, and text stays readable against what's behind it. Images keep their colours, so a dark logo made for a white page can be hard to see. A message with its own dark design shows that one. A light theme keeps the light card. The change applies to an open message as soon as you save the file, and it's off unless you turn it on.
 - **Outside Omarchy** Sealwax uses one of two built-in palettes, light or dark, following the desktop's dark-style preference; corners follow Hyprland when it runs, and are square elsewhere unless `corner_radius` says otherwise.
 - **Avatars** are initials on a colour from the theme. Sealwax never fetches pictures (no Gravatar, BIMI or favicons).
 - **Account colours** are the one colour you choose rather than the theme: eight fixed, muted hues. Their lightness follows the theme, so an account's name reads as well on a light theme as on a dark one.

@@ -1,8 +1,9 @@
 //! HTML mail inside the theme (DESIGN.md; ADR-011): simple HTML takes the theme's
 //! background, text, accent links and muted quotes; HTML with colours of its own keeps its
-//! design on a light "paper" card. The reader adds the stylesheet as a user stylesheet,
-//! sets the view background and WebKit's default fonts from here, and restyles every view
-//! when the theme changes.
+//! design on a light "paper" card, or, with `dark_styled_mail` under a dark theme, has its
+//! colours turned dark by the reader's script (issue #27). The reader adds the stylesheet as a
+//! user stylesheet, sets the view background and WebKit's default fonts from here, and restyles
+//! every view when the theme changes.
 
 use super::Theme;
 use super::color::Rgb;
@@ -24,6 +25,12 @@ pub const MEASURE_CSS: &str =
 /// The custom property that carries the theme's background into a paper body, for the space
 /// beside a design narrower than the view.
 pub const MARGINS_COLOR: &str = "--sealwax-margins-color";
+
+/// The custom properties that carry the theme's background and text into a paper body when it
+/// is shown dark; the reader's script maps the message's colours toward them, and leaves the
+/// body as designed when they are absent.
+pub const DARK_BACKGROUND: &str = "--sealwax-dark-background";
+pub const DARK_TEXT: &str = "--sealwax-dark-text";
 
 /// How a body is shown, decided by the reader's colour heuristic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -58,7 +65,9 @@ impl Theme {
     /// Paper paints no background of its own, so a message's body background reaches the
     /// canvas as in a browser (a dark-mode design fills the card), and the view's white shows
     /// where the message paints none. Its `--sealwax-margins-color` is the theme's background,
-    /// for the reader's script that puts a narrow design's column on it.
+    /// for the reader's script that puts a narrow design's column on it; with
+    /// [`Theme::dark_paper`] the theme's background and text go along for the script that turns
+    /// the message's colours dark.
     pub fn webview_css(&self, style: BodyStyle) -> String {
         let mut css = String::with_capacity(1024);
         css.push_str(MEASURE_CSS);
@@ -69,10 +78,19 @@ impl Theme {
                 let _ = write!(
                     css,
                     ":root{{color-scheme:light!important;\
-                     {MARGINS_COLOR}:{margins}!important}}\n\
-                     html{{color:{PAPER_TEXT}}}\n",
+                     {MARGINS_COLOR}:{margins}!important",
                     margins = self.palette.background,
                 );
+                if self.dark_paper {
+                    let _ = write!(
+                        css,
+                        ";{DARK_BACKGROUND}:{background}!important;\
+                         {DARK_TEXT}:{text}!important",
+                        background = self.palette.background,
+                        text = self.palette.foreground,
+                    );
+                }
+                let _ = writeln!(css, "}}\nhtml{{color:{PAPER_TEXT}}}");
             }
         }
         css
@@ -133,11 +151,12 @@ impl Theme {
         }
     }
 
-    /// The view's background: the theme's for themed bodies, white paper otherwise.
+    /// The view's background: the theme's for themed bodies and dark paper, white paper
+    /// otherwise.
     pub fn webview_background(&self, style: BodyStyle) -> Rgb {
         match style {
-            BodyStyle::Themed => self.palette.background,
-            BodyStyle::Paper => PAPER,
+            BodyStyle::Paper if !self.dark_paper => PAPER,
+            BodyStyle::Themed | BodyStyle::Paper => self.palette.background,
         }
     }
 }
@@ -146,6 +165,14 @@ impl Theme {
 mod tests {
     use super::super::{FontFamilies, ReadingFont, ThemeInputs, ThemeOptions};
     use super::*;
+
+    fn dark_theme(mode: Mode) -> Theme {
+        let options = ThemeOptions {
+            dark_styled_mail: true,
+            ..ThemeOptions::default()
+        };
+        Theme::new(&ThemeInputs::builtin(mode), &options)
+    }
 
     fn theme(mode: Mode, reading: ReadingFont) -> Theme {
         let inputs = ThemeInputs {
@@ -198,6 +225,40 @@ mod tests {
         );
         assert!(!css.contains(&theme.palette.foreground.to_string()));
         assert_eq!(theme.webview_background(BodyStyle::Paper), PAPER);
+    }
+
+    #[test]
+    fn dark_styled_mail_carries_the_theme_into_paper_under_a_dark_theme() {
+        let theme = dark_theme(Mode::Dark);
+        let p = &theme.palette;
+        assert!(theme.dark_paper);
+        let css = theme.webview_css(BodyStyle::Paper);
+        assert!(css.contains(&format!("{DARK_BACKGROUND}:{}!important", p.background)));
+        assert!(css.contains(&format!("{DARK_TEXT}:{}!important", p.foreground)));
+        assert!(css.contains(":root{color-scheme:light!important;"));
+        assert!(css.contains("html{color:#1f1f1f}"));
+        assert_eq!(theme.webview_background(BodyStyle::Paper), p.background);
+        assert!(
+            !theme
+                .webview_css(BodyStyle::Themed)
+                .contains(DARK_BACKGROUND)
+        );
+
+        let light = dark_theme(Mode::Light);
+        assert!(!light.dark_paper);
+        assert!(
+            !light
+                .webview_css(BodyStyle::Paper)
+                .contains(DARK_BACKGROUND)
+        );
+        assert_eq!(light.webview_background(BodyStyle::Paper), PAPER);
+        let off = theme_off(Mode::Dark);
+        assert!(!off.dark_paper);
+        assert!(!off.webview_css(BodyStyle::Paper).contains(DARK_BACKGROUND));
+    }
+
+    fn theme_off(mode: Mode) -> Theme {
+        Theme::new(&ThemeInputs::builtin(mode), &ThemeOptions::default())
     }
 
     #[test]

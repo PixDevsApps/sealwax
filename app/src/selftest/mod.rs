@@ -323,6 +323,7 @@ impl Harness {
             }
             "theme" => self.switch_theme(arg(0)).await,
             "corners" => self.set_corners(arg(0)),
+            "dark-styled-mail" => self.set_dark_styled_mail(arg(0)),
             "write-file" => self.write_file(arg(0), arg(1)),
             "sidebar" => {
                 let model = match arg(0) {

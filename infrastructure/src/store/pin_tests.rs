@@ -338,10 +338,16 @@ fn pinned_groups_come_first_in_the_inboxes() {
             ("anna@example.test", false),
         ])
     );
-    // A sender's pin doesn't move its domain's group.
+    // A sender's pin moves its domain's group too, while it leads (#26, on 1.1.3: the bill's
+    // sender kept its domain's group in its date).
     assert_eq!(
-        groups(&fx.store, inbox, GroupBy::Domain)[..2],
-        keys(&[("klatring.example", true), ("avisa.example", false)])
+        groups(&fx.store, inbox, GroupBy::Domain),
+        keys(&[
+            ("kraft.example", true),
+            ("klatring.example", true),
+            ("avisa.example", false),
+            ("example.test", false),
+        ])
     );
     // The Unread chip: the club has no unread mail, so it has no group there.
     assert_eq!(
@@ -356,6 +362,41 @@ fn pinned_groups_come_first_in_the_inboxes() {
         ])
     );
 
+    // Read, the bill's domain goes back to its date, with its pin.
+    fx.store
+        .set_flags(vec![ids[2]], Flags::SEEN, Flags::NONE)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Domain),
+        keys(&[
+            ("klatring.example", true),
+            ("avisa.example", false),
+            ("example.test", false),
+            ("kraft.example", true),
+        ])
+    );
+    // Kept pinned, it leads read or not, as in Group by Sender.
+    let bills = fx.store.pins().recv_blocking().unwrap();
+    let bills = bills
+        .into_iter()
+        .find(|pin| pin.kind == PinKind::Sender)
+        .unwrap();
+    keep(&fx.store, bills.clone());
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Domain)[..2],
+        keys(&[("kraft.example", true), ("klatring.example", true)])
+    );
+    assert_eq!(
+        groups(&fx.store, inbox, GroupBy::Sender)[..3],
+        keys(&[
+            ("regning@kraft.example", true),
+            ("leder@post.klatring.example", true),
+            ("trener@klatring.example", true),
+        ])
+    );
+    fx.store.restore_pins(vec![bills]).recv_blocking().unwrap();
+
     // All Inboxes too; the Archive keeps its dates.
     assert_eq!(
         groups(&fx.store, ViewSpec::unified_inbox(), GroupBy::Domain),
@@ -363,7 +404,7 @@ fn pinned_groups_come_first_in_the_inboxes() {
             ("klatring.example", true),
             ("example.test", false),
             ("avisa.example", false),
-            ("kraft.example", false),
+            ("kraft.example", true),
         ])
     );
     assert_eq!(
@@ -674,4 +715,110 @@ fn v14_adds_the_pins_to_a_v13_store() {
     pin(&store, PinTarget::Message(ids[0]), PinKind::Domain).unwrap();
     assert!(whole(&store, ViewSpec::folder(fx.inbox)).rows[0].pinned);
     assert_eq!(store.check().recv_blocking().unwrap(), Vec::<String>::new());
+}
+
+/// Random mailboxes and pins: the groups' order and pins match a model, in both groupings, in an
+/// Inbox and in All Inboxes. A group leads when a pin on it does (*always*, or *until read* with
+/// unread mail: the group's for its own pin, the sender's for a sender's pin on a domain group).
+#[test]
+fn pinned_groups_match_a_model() {
+    const ADDRESSES: [&str; 10] = [
+        "Trener@Klatring.example",
+        "leder@post.klatring.example",
+        "kafe@klatring.example",
+        "Regning@Kraft.example",
+        "kunde@kraft.example",
+        "anna@example.test",
+        "Ola@Example.test",
+        "nyheter@avisa.example",
+        "tips@avisa.example",
+        "x@solo.example",
+    ];
+    for seed in 0..60u64 {
+        let fx = fixture();
+        let mut rng = Rng(seed);
+        let folders = [fx.inbox, fx.other_inbox, fx.archive];
+        let mut sent = Vec::new();
+        for n in 0..60u32 {
+            let folder = folders[rng.below(3) as usize];
+            let address = ADDRESSES[rng.below(ADDRESSES.len() as u64) as usize];
+            sent.push((folder, address, rng.below(3) != 0, n));
+        }
+        let ids = ingest(
+            &fx.store,
+            sent.iter()
+                .map(|(folder, address, seen, n)| mail(*folder, *n, address, *seen))
+                .collect(),
+        );
+        for _ in 0..3 {
+            let id = ids[rng.below(ids.len() as u64) as usize];
+            let kind = if rng.below(2) == 0 {
+                PinKind::Sender
+            } else {
+                PinKind::Domain
+            };
+            if let Some(made) = pin(&fx.store, PinTarget::Message(id), kind)
+                && rng.below(2) == 0
+            {
+                keep(&fx.store, made);
+            }
+        }
+        let pins = fx.store.pins().recv_blocking().unwrap();
+        let names = |pin: &Pin, address: &str| match pin.kind {
+            PinKind::Sender => pin.key == sender_key(address),
+            PinKind::Domain => pin.key == domain_key(address),
+        };
+        for (spec, shown) in [
+            (ViewSpec::folder(fx.inbox), vec![fx.inbox]),
+            (ViewSpec::unified_inbox(), vec![fx.inbox, fx.other_inbox]),
+        ] {
+            for by in [GroupBy::Sender, GroupBy::Domain] {
+                let key = |address: &str| match by {
+                    GroupBy::Domain => domain_key(address),
+                    _ => sender_key(address),
+                };
+                let mail: Vec<_> = sent
+                    .iter()
+                    .filter(|(folder, ..)| shown.contains(folder))
+                    .collect();
+                let mut model: Vec<(String, u32, bool, bool)> = Vec::new();
+                for (_, address, _, _) in &mail {
+                    let group = key(address);
+                    if model.iter().any(|(known, ..)| *known == group) {
+                        continue;
+                    }
+                    let members: Vec<_> = mail.iter().filter(|m| key(m.1) == group).collect();
+                    let latest = members.iter().map(|m| m.3).max().unwrap();
+                    let (mut pinned, mut leads) = (false, false);
+                    for pin in &pins {
+                        let named: Vec<_> = members.iter().filter(|m| names(pin, m.1)).collect();
+                        let counts = match (by, pin.kind) {
+                            (GroupBy::Domain, PinKind::Sender) => !named.is_empty(),
+                            _ => named.len() == members.len(),
+                        };
+                        if !counts {
+                            continue;
+                        }
+                        pinned = true;
+                        let unread = match (by, pin.kind) {
+                            (GroupBy::Domain, PinKind::Sender) => named.iter().any(|m| !m.2),
+                            _ => members.iter().any(|m| !m.2),
+                        };
+                        leads |= pin.mode == PinMode::Keep || unread;
+                    }
+                    model.push((group, latest, pinned, leads));
+                }
+                model.sort_by(|a, b| b.3.cmp(&a.3).then(b.1.cmp(&a.1)).then(a.0.cmp(&b.0)));
+                let wanted: Vec<(String, bool)> = model
+                    .into_iter()
+                    .map(|(key, _, pinned, _)| (key, pinned))
+                    .collect();
+                assert_eq!(
+                    groups(&fx.store, spec, by),
+                    wanted,
+                    "seed {seed}, {by:?}, {spec:?}, {pins:?}"
+                );
+            }
+        }
+    }
 }

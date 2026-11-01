@@ -18,6 +18,10 @@
 //!     tools/headless.sh 33 target/release/examples/reader_corpus [--previews] [--only=ID,…]
 //! ```
 //!
+//! `--dark-styled-mail` turns `dark_styled_mail` on (issue #27): in the dark theme every paper
+//! body is turned dark by the reader's script, and its lowest text contrast must be at least
+//! 4.5, or as low as the design's own on white.
+//!
 //! `--previews` saves the gate's screenshots of a few templates in both themes into
 //! `tools/progress/public/`; `--bodies` saves every HTML body's whole document, as WebKit
 //! renders it, into `.local/corpus/bodies/`. `--no-snapshots` skips the two blank-frame checks, which render the
@@ -102,6 +106,11 @@ struct Row {
     body_background: String,
     /// A paper body's column sits on the theme's background (the reader's margins script).
     fitted: bool,
+    /// With `--dark-styled-mail`, in the dark theme: whether the body was turned dark, its
+    /// lowest text contrast, and the design's own on white.
+    darkened: Option<bool>,
+    contrast: f64,
+    designed: f64,
     ready_ms: f64,
     painted_ms: f64,
     failures: Vec<String>,
@@ -395,6 +404,7 @@ fn main() -> glib::ExitCode {
     let previews = args.iter().any(|arg| arg == "--previews");
     let bodies = args.iter().any(|arg| arg == "--bodies");
     let snapshots = !args.iter().any(|arg| arg == "--no-snapshots");
+    let dark_styled_mail = args.iter().any(|arg| arg == "--dark-styled-mail");
     let only: Option<Vec<String>> = args
         .iter()
         .find_map(|arg| arg.strip_prefix("--only="))
@@ -464,7 +474,11 @@ fn main() -> glib::ExitCode {
         #[strong]
         passed,
         move |app| {
-            let theme = ThemeController::start(ThemeOptions::default(), STARTUP_WAIT);
+            let options = ThemeOptions {
+                dark_styled_mail,
+                ..ThemeOptions::default()
+            };
+            let theme = ThemeController::start(options, STARTUP_WAIT);
             let reader = support::reader(&scratch, &theme);
             let window = support::window(app, &reader, (1600, 1000));
             window.present();
@@ -603,7 +617,8 @@ async fn run(
         "SUMMARY messages={} rows={} html={} paper={} fitted={} themed={} heights_ok={}/{} stable={}/{} \
          blank_webkit={} blank_gtk={} overflow={} dark_query={} open_ready_p50={:.1} \
          open_ready_p95={:.1} open_painted_p50={:.1} open_painted_p95={:.1} scroll_frames={} \
-         scroll_p95={:.2} canary_connections={} canary_tls={} criticals={criticals} {}",
+         scroll_p95={:.2} darkened={} not_darkened={} canary_connections={} canary_tls={} \
+         criticals={criticals} {}",
         messages.len(),
         rows.len(),
         html_rows.len(),
@@ -624,6 +639,8 @@ async fn run(
         percentile(&painted, 95.0),
         frames.len(),
         percentile(&frames, 95.0),
+        count(&|row| row.darkened == Some(true)),
+        count(&|row| row.darkened == Some(false)),
         total.connections,
         total.tls_hellos,
         if ok { "PASS" } else { "FAIL" }
@@ -732,6 +749,21 @@ async fn measure(
     row.fitted = std::iter::successors(view.parent(), |widget| widget.parent())
         .find(|widget| widget.widget_name() == "reader-frame")
         .is_some_and(|frame| frame.has_css_class("sw-paper-fitted"));
+    if row.style == "paper" && theme == "dark" && reader_theme_darkens(&view) {
+        match dark_probe(reader, &view).await {
+            Ok((darkened, contrast, designed)) => {
+                row.darkened = Some(darkened);
+                row.contrast = contrast;
+                row.designed = designed;
+                if darkened && contrast < designed.min(4.5) - 0.01 {
+                    row.failures.push(format!(
+                        "dark, text contrast {contrast:.2} (as designed {designed:.2})"
+                    ));
+                }
+            }
+            Err(error) => row.failures.push(error),
+        }
+    }
     let capped = height >= sealwax_app::reader::MAX_VIEW_HEIGHT;
     row.height_ok = (capped
         || ((first.document - height).abs() <= 1 && first.document <= first.inner_height + 1))
@@ -804,6 +836,82 @@ async fn settle(reader: &Reader, window: &sealwax_app::window::Window) {
             return;
         }
     }
+}
+
+/// The dark script runs only when the view's background is the theme's dark one; a paper view
+/// under `dark_styled_mail` has it.
+fn reader_theme_darkens(view: &webkit6::WebView) -> bool {
+    let color = webkit6::prelude::WebViewExt::background_color(view);
+    color.red() + color.green() + color.blue() < 1.5
+}
+
+/// As the self-test's `assert-reader dark`: whether the body is dark, its lowest text contrast
+/// against what is painted behind it, and the design's own on white.
+const DARK_PROBE_JS: &str = r#"
+const channel = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+const luminance = (rgb) => 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+const painted = (text) => {
+  const match = /^rgba?\(([^)]*)\)$/.exec(text.trim());
+  if (!match) return null;
+  const parts = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+  if (parts.length > 3 && parts[3] === 0) return null;
+  return luminance(parts);
+};
+const root = document.documentElement;
+const body = document.body;
+if (!body) return [0, 21, 21];
+const look = (canvas) => {
+  const page = painted(getComputedStyle(root).backgroundColor)
+    ?? painted(getComputedStyle(body).backgroundColor) ?? canvas;
+  let worst = 21;
+  for (const element of [body, ...body.querySelectorAll('*')]) {
+    if (![...element.childNodes].some((node) => node.nodeType === 3 && node.data.trim())) continue;
+    const style = getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden') continue;
+    const text = painted(style.color);
+    if (text === null) continue;
+    let behind = null;
+    for (let at = element; at && at !== root && behind === null; at = at.parentElement) {
+      behind = painted(getComputedStyle(at).backgroundColor);
+    }
+    if (behind === null) behind = page;
+    worst = Math.min(worst, (Math.max(text, behind) + 0.05) / (Math.min(text, behind) + 0.05));
+  }
+  return worst;
+};
+const darkened = window.sealwaxDarkened === true;
+const worst = look(CANVAS);
+let designed = worst;
+if (darkened) {
+  window.sealwaxDark.undo();
+  designed = look(1);
+  window.sealwaxDark();
+}
+return [darkened ? 1 : 0, worst, designed];
+"#;
+
+async fn dark_probe(reader: &Reader, view: &webkit6::WebView) -> Result<(bool, f64, f64), String> {
+    let color = webkit6::prelude::WebViewExt::background_color(view);
+    let channel = |value: f32| {
+        let value = f64::from(value);
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let canvas = 0.2126 * channel(color.red())
+        + 0.7152 * channel(color.green())
+        + 0.0722 * channel(color.blue());
+    let value = reader
+        .eval(&DARK_PROBE_JS.replace("CANVAS", &canvas.to_string()))
+        .await?;
+    let at = |index: u32| {
+        value
+            .object_get_property_at_index(index)
+            .map_or(f64::NAN, |value| value.to_double())
+    };
+    Ok((at(0) == 1.0, at(1), at(2)))
 }
 
 struct Probe {
@@ -937,8 +1045,8 @@ fn print_row(row: &Row) {
     println!(
         "ROW theme={} id={} group={} kind={} style={} evidence={} size={}x{} document={} \
          height_ok={} stable={} scroll_width={} overflow={} blank_webkit={:?} blank_gtk={:?} \
-         dark_query={} declares_dark={} body_bg={:?} fitted={} ready_ms={:.1} painted_ms={:.1} \
-         failures={:?}",
+         dark_query={} declares_dark={} body_bg={:?} fitted={} darkened={:?} contrast={:.2} \
+         designed={:.2} ready_ms={:.1} painted_ms={:.1} failures={:?}",
         row.theme,
         row.id,
         row.group,
@@ -958,6 +1066,9 @@ fn print_row(row: &Row) {
         row.declares_dark,
         row.body_background,
         row.fitted,
+        row.darkened,
+        row.contrast,
+        row.designed,
         row.ready_ms,
         row.painted_ms,
         row.failures,

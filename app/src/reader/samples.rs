@@ -282,7 +282,7 @@ pub struct Sample {
 }
 
 /// The sample names, in the order [`all`] returns them.
-pub const NAMES: [&str; 9] = [
+pub const NAMES: [&str; 10] = [
     "plain",
     "simple",
     "newsletter",
@@ -292,6 +292,7 @@ pub const NAMES: [&str; 9] = [
     "latin1",
     "short",
     "dark-promo",
+    "receipt",
 ];
 
 /// Every sample, dated a little before `now`.
@@ -449,6 +450,36 @@ fn draft(name: &str, date: i64) -> Draft {
                 "sample-short",
             );
             draft.text = Some("Sounds good, see you at noon by the fountain.\n".into());
+            draft
+        }
+        "receipt" => {
+            let mut draft = Draft::new(
+                ("Harbour Rail", "receipts@harbourrail.example.test"),
+                "Your receipt: Oslo S – Bergen",
+                date,
+                "sample-receipt",
+            );
+            draft.html = Some(
+                "<!DOCTYPE html><html><body style=\"margin:0;background:#ffffff;color:#222222;\
+                 font:15px/1.5 Helvetica,Arial,sans-serif\"><table role=\"presentation\" \
+                 width=\"100%\" cellpadding=\"0\" cellspacing=\"0\"><tr><td \
+                 style=\"background:#f3f4f6;padding:16px 24px;border-bottom:1px solid #dddddd\">\
+                 <b style=\"color:#0b5cad\">Harbour Rail</b></td></tr><tr><td \
+                 style=\"padding:8px 24px 24px\"><p>Thanks for travelling with us. Here is \
+                 the receipt for your trip on 28 October.</p><table width=\"100%\" \
+                 style=\"border-collapse:collapse\"><tr><td style=\"border-bottom:1px solid \
+                 #e5e5e5;padding:8px 0\">Oslo S – Bergen</td><td align=\"right\" \
+                 style=\"border-bottom:1px solid #e5e5e5\">NOK 849</td></tr><tr><td \
+                 style=\"padding:8px 0;color:#666666\">Seat 42, car 3</td><td \
+                 align=\"right\"><b>Paid</b></td></tr></table><p><a \
+                 href=\"https://example.test/trips\" style=\"color:#0b5cad\">See your \
+                 trips</a></p><p><a href=\"https://example.test/receipt\" \
+                 style=\"display:inline-block;padding:10px 18px;background:#0b5cad;\
+                 color:#ffffff;text-decoration:none\">Download the receipt</a></p><p \
+                 style=\"background:#fff4d6;padding:8px 12px;color:#5c4400\">Tickets are \
+                 personal: bring the card you paid with.</p></td></tr></table></body></html>"
+                    .into(),
+            );
             draft
         }
         _ => {

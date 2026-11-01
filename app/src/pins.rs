@@ -31,6 +31,9 @@ thread_local! {
     /// Every pin, as last read from the store.
     static PINS: RefCell<Vec<Pin>> = const { RefCell::new(Vec::new()) };
     static LOADED: Cell<bool> = const { Cell::new(false) };
+    /// The last read asked for: an older one that answers later is dropped (the store has two
+    /// readers).
+    static READS: Cell<u64> = const { Cell::new(0) };
     /// Run when the pins were read again (the Pinned Senders dialog); one that gives `false` is
     /// dropped.
     static LISTENERS: RefCell<Vec<Rc<dyn Fn() -> bool>>> = const { RefCell::new(Vec::new()) };
@@ -66,7 +69,15 @@ pub fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
             }
         });
     }
-    reload(state);
+    // The window can be built before the store opens (#26: the dialog then showed no pins).
+    let ready = state.mailbox().wait_ready();
+    let weak = Rc::downgrade(state);
+    glib::spawn_future_local(async move {
+        ready.await;
+        if let Some(state) = weak.upgrade() {
+            reload(&state);
+        }
+    });
 }
 
 /// Reads the pins again, then tells the listeners and refreshes the commands.
@@ -74,11 +85,18 @@ pub fn reload(state: &Rc<AppState>) {
     let Some(reply) = state.mailbox().store().map(|store| store.pins()) else {
         return;
     };
+    let read_number = READS.with(|reads| {
+        reads.set(reads.get() + 1);
+        reads.get()
+    });
     let weak = Rc::downgrade(state);
     glib::spawn_future_local(async move {
         let Ok(read) = reply.recv().await else {
             return;
         };
+        if READS.with(Cell::get) != read_number {
+            return;
+        }
         PINS.with(|pins| pins.replace(read));
         LOADED.with(|loaded| loaded.set(true));
         let listeners = LISTENERS.with(|listeners| listeners.borrow().clone());
@@ -137,6 +155,23 @@ fn pinned(kind: PinKind, key: &str) -> bool {
     })
 }
 
+/// The pins that pin a group of Group by: its own, and for a domain the pins of the senders
+/// writing from it.
+fn of_group(kind: PinKind, key: &str) -> Vec<Pin> {
+    PINS.with(|pins| {
+        pins.borrow()
+            .iter()
+            .filter(|pin| {
+                (pin.kind == kind && pin.key == key)
+                    || (kind == PinKind::Domain
+                        && pin.kind == PinKind::Sender
+                        && domain_key(&pin.key) == key)
+            })
+            .cloned()
+            .collect()
+    })
+}
+
 /// Whether a pin names the sender `address` or its domain.
 fn names(address: &str) -> bool {
     let domain = domain_key(address);
@@ -157,7 +192,9 @@ pub fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
             PinKind::Domain => Ok(()),
             PinKind::Sender => Err("Group by Domain to pin a domain"),
         },
-        (ActionId::UnpinSender, Picked::Group(kind, key)) if pinned(kind, &key) => Ok(()),
+        (ActionId::UnpinSender, Picked::Group(kind, key)) if !of_group(kind, &key).is_empty() => {
+            Ok(())
+        }
         (ActionId::UnpinSender, Picked::Group(..)) => Err("This group isn't pinned"),
         (ActionId::PinSender, Picked::Messages(rows)) => {
             if rows
@@ -232,16 +269,18 @@ fn run(state: &Rc<AppState>, id: ActionId) {
         }
         ActionId::UnpinSender => match picked {
             Picked::Group(kind, key) => {
-                let removed: Vec<Pin> = pins()
-                    .into_iter()
-                    .filter(|pin| pin.kind == kind && pin.key == key)
-                    .collect();
+                let removed = of_group(kind, &key);
                 if let Some(store) = state.mailbox().store() {
-                    let reply = store.remove_pin(kind, key);
+                    let replies: Vec<_> = removed
+                        .iter()
+                        .map(|pin| store.remove_pin(pin.kind, pin.key.clone()))
+                        .collect();
                     drop(store);
                     let weak = Rc::downgrade(state);
                     glib::spawn_future_local(async move {
-                        let _ = reply.recv().await;
+                        for reply in replies {
+                            let _ = reply.recv().await;
+                        }
                         if let Some(state) = weak.upgrade() {
                             unpinned(&state, removed);
                         }
@@ -322,7 +361,7 @@ fn pin(state: &Rc<AppState>, targets: Vec<PinTarget>, kind: PinKind) {
                 }
             });
         }
-        state.show_toast(&toast, false);
+        state.show_toast(&toast, true);
     });
 }
 
@@ -375,7 +414,7 @@ fn unpinned(state: &Rc<AppState>, removed: Vec<Pin>) {
             restore(&state, removed.clone());
         }
     });
-    state.show_toast(&toast, false);
+    state.show_toast(&toast, true);
 }
 
 /// Puts `pins` back as they are given, or sets their mode.
@@ -471,6 +510,7 @@ pub fn present(state: &Rc<AppState>) {
     };
     fill();
     connect_changed(fill);
+    reload(state);
     dialog.present(Some(window.window()));
 }
 

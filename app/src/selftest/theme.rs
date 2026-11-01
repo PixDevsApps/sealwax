@@ -1,4 +1,4 @@
-//! Omarchy themes and corners for self-tests (`theme`, `corners`). The harness points the theme
+//! Omarchy themes and corners for self-tests (`theme`, `corners`, `dark-styled-mail`). The harness points the theme
 //! follower at a scratch Omarchy state directory (`SEALWAX_OMARCHY_STATE`, set before the app
 //! starts), so a run never depends on the desktop's theme, and swaps the fixtures of
 //! `tests/theme/` into it the way `omarchy-theme-set` does (as `app/examples/theme_switch.rs`
@@ -123,6 +123,26 @@ impl Harness {
             0 => Ok(()),
             errors => Err(format!("{errors} CSS errors (see the log)")),
         }
+    }
+
+    /// `dark-styled-mail on|off`: `config.toml`'s `dark_styled_mail`, applied as the settings
+    /// would.
+    pub(super) fn set_dark_styled_mail(&self, value: &str) -> StepResult {
+        let controller = self
+            .state
+            .theme()
+            .ok_or("the theme follower isn't running")?;
+        let dark_styled_mail = match value {
+            "on" => true,
+            "off" => false,
+            other => return Err(format!("dark-styled-mail takes on or off, not {other}")),
+        };
+        controller.set_options(ThemeOptions {
+            dark_styled_mail,
+            ..controller.options()
+        });
+        println!("  # dark paper: {}", controller.theme().dark_paper);
+        Ok(())
     }
 
     /// `corners auto|PX`: `config.toml`'s `corner_radius`, applied as the settings would.

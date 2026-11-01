@@ -3,7 +3,8 @@
 # back to its date; Pin Domain with the toast's Keep Pinned keeps a domain's mail there, read or
 # not; new mail from a pinned sender comes in pinned; the chips filter the section; Unpin and its
 # Undo; the Pinned Senders dialog; a group of Group by pinned; pinned groups first in Group by
-# (the reporter's case: a domain kept pinned, its mail all read); All Inboxes. Every message and
+# (the reporter's cases: a domain kept pinned, its mail all read; a sender kept pinned lifts its
+# domain's group, and Unpin on that group takes it off); All Inboxes. Every message and
 # address is fictional.
 # Run: tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/list-pinned.sealwax-test
 
@@ -119,10 +120,11 @@ assert-list-row 4 subject "Ukens nyheter"
 assert-list-row 4 pin-icon true
 
 # The reporter's case on #26: the club's domain pinned always, its mail read. In Group by Domain
-# its group comes first, with a pin; an until-read pin with nothing unread keeps its date.
+# its group comes first, with a pin; an until-read pin with nothing unread keeps its date. Anna
+# is pinned always as a sender, so her domain's group leads too.
 action win.group-by-domain
 wait-until assert-list-groups 4
-assert-list-group 0 example.test 2 1 unpinned
+assert-list-group 0 example.test 2 1 pinned
 assert-list-group 1 kraft.example 1 1 unpinned
 assert-list-group 2 klatring.example 1 0 unpinned
 assert-list-group 3 avisa.example 1 0 pinned
@@ -131,10 +133,10 @@ wait-until assert-action-enabled win.pin-domain true
 action win.pin-domain
 wait-until assert-toast "klatring.example pinned until read"
 wait-until assert-list-group 2 klatring.example 1 0 pinned
-assert-list-group 0 example.test 2 1 unpinned
+assert-list-group 0 example.test 2 1 pinned
 toast-click "Keep Pinned"
-wait-until assert-list-group 0 klatring.example 1 0 pinned
-assert-list-group 1 example.test 2 1 unpinned
+wait-until assert-list-group 1 klatring.example 1 0 pinned
+assert-list-group 0 example.test 2 1 pinned
 assert-list-group 2 kraft.example 1 1 unpinned
 assert-list-group 3 avisa.example 1 0 pinned
 screenshot $DIR/../../.local/selftest/list-pinned-groups.png
@@ -145,14 +147,53 @@ assert-list-group 0 anna@example.test 2 1 pinned
 assert-list-group 1 trener@klatring.example 1 0 pinned
 assert-list-group 2 regning@kraft.example 1 1 unpinned
 assert-list-group 3 nyheter@avisa.example 1 0 pinned
-# Unpinned from its group, it goes back to its date.
+
+# The reporter's case on 1.1.3: a sender pinned from its group, its mail read, then switched to
+# Always in Pinned Senders: it comes first in Group by Sender and its domain's group comes first
+# in Group by Domain, both moving under the dialog.
+list-select-group 2
+wait-until assert-action-enabled win.pin-sender true
+action win.pin-sender
+wait-until assert-toast "regning@kraft.example pinned until read"
+wait-until assert-list-group 1 regning@kraft.example 1 1 pinned
+action win.dont-group
+wait-until assert-list-row 1 subject "Strømregning for oktober"
+mail-flag 1 +read
+action win.group-by-sender
+wait-until assert-list-group 2 regning@kraft.example 1 0 pinned
+assert-list-group 1 trener@klatring.example 1 0 pinned
 action win.group-by-domain
-wait-until assert-list-group 0 klatring.example 1 0 pinned
-list-select-group 0
+wait-until assert-list-group 2 kraft.example 1 0 pinned
+assert-list-group 1 klatring.example 1 0 pinned
+action win.pinned-senders
+wait-until assert-dialog "Pinned Senders"
+assert-text-contains pin-1 regning@kraft.example
+setup-choose pin-1-mode always
+wait-until assert-list-group 1 kraft.example 1 0 pinned
+assert-list-group 0 example.test 2 1 pinned
+assert-list-group 2 klatring.example 1 0 pinned
+key Escape
+wait-until assert-dialog none
+action win.group-by-sender
+wait-until assert-list-group 1 regning@kraft.example 1 0 pinned
+assert-list-group 2 trener@klatring.example 1 0 pinned
+# Unpin on the domain's group takes the sender's pin off too.
+action win.group-by-domain
+wait-until assert-list-group 1 kraft.example 1 0 pinned
+list-select-group 1
+wait-until assert-action-enabled win.unpin-sender true
+action win.unpin-sender
+wait-until assert-toast "regning@kraft.example unpinned"
+wait-until assert-list-group 2 kraft.example 1 0 unpinned
+
+# Unpinned from its group, it goes back to its date.
+wait-until assert-list-group 1 klatring.example 1 0 pinned
+list-select-group 1
 action win.unpin-sender
 wait-until assert-toast "klatring.example unpinned"
-wait-until assert-list-group 2 klatring.example 1 0 unpinned
-assert-list-group 0 example.test 2 1 unpinned
+wait-until assert-list-group 1 kraft.example 1 0 unpinned
+assert-list-group 0 example.test 2 1 pinned
+assert-list-group 2 klatring.example 1 0 unpinned
 action win.dont-group
 wait-until assert-list-sections Pinned:2,Today:3
 

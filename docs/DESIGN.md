@@ -76,6 +76,7 @@ The window is often tiled, so the layout adapts to width (AdwBreakpoints), not t
 - Search field and filter chips on top, then sections (Today, Yesterday, This week, This month, Older).
 - *As built for issue #26 (ADR-024):* in each Inbox and All Inboxes, a **Pinned** section comes before Today: the newest 10 messages from pinned senders or domains (unread ones only for a pin *until read*), not repeated in the dates. Its rows show their time as their date section would.
 - *2026-10-31, 1.1.3 (ADR-024 amendment):* in Group by Sender and Group by Domain, a pinned group shows the same pin between its name and its count (tooltip "Pinned"; screen readers hear ", pinned" after the counts), and in the Inboxes the pinned groups come first.
+- *2026-11-01, 1.1.4 (ADR-024 amendment):* in Group by Domain a pinned sender pins its domain's group too (the pin, and first in the Inboxes while the sender's pin leads); Unpin on that group takes off its senders' pins with the domain's.
 - Row anatomy: unread dot · avatar (32 px) · sender (bold when unread), a pin when the sender or domain is pinned (`view-pin-symbolic`, the indicators' colour), and time · subject · one- or two-line snippet · indicators (attachment, star, thread count).
 - Selection mode with checkboxes for batch actions; hover shows quick actions (archive, delete, star).
 - Rules from S3 (2026-10-04) — GtkListView keeps about 205 row widgets realized whatever the window size, so one row's layout cost sets the cost of every jump, first paint and fast drag:
@@ -293,6 +294,8 @@ Roles map to palette positions, never hue names: matte-black's `green` is amber 
 - Quotes are collapsed behind "…" when they repeat earlier messages in the conversation.
 - Nothing remote loads until allowed ([SECURITY.md](SECURITY.md)); hidden images keep the box their HTML declares (WebKit outlines it and shows the alt text), so the page doesn't jump when shown.
 - Themed bodies paint their root in the theme's background: with a transparent root and `color-scheme: dark`, WebKit would paint its own dark canvas. Plain-text bodies set `line-height: 1.35` in GTK, about the 1.55 of message text in a browser (M1).
+
+*2026-11-01, 1.1.4 ([ADR-011 amendment](DECISIONS.md#adr-011-amendment--dark-styled-mail-2026-11-01), issue #27):* with `dark_styled_mail = true` and a dark theme, styled HTML is recoloured dark instead of sitting on the light card: light backgrounds map toward the theme's background (white to it exactly), dark text toward the theme's text, hues kept, in OKLab; text keeps a lightness gap to what is behind it; images, SVG and background images keep their design. The card's surface and the view's background are the theme's background, the card keeps its 1 px border, and a narrow column still sits on the theme. A message with its own dark-mode rules shows its own design. Off by default; a light theme keeps the paper card.
 
 *As built in M5 (ML-059; checked on 69 open-licensed real-world templates in a dark and a light theme):*
 - A message with dark-mode rules (`@media (prefers-color-scheme: dark)`) shows its own dark design under a dark theme; its body fills the paper card, which paints no surface of its own under a message's background. The card keeps its 1 px border (accepted at the M5 gate).

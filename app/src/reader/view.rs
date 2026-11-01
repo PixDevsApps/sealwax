@@ -343,7 +343,8 @@ const MARGINS_JS: &str = r#"(() => {
       const rootColour = getComputedStyle(root).backgroundColor;
       const bodyColour = getComputedStyle(body).backgroundColor;
       const canvas = !clear(rootColour) ? rootColour
-        : !clear(bodyColour) ? bodyColour : 'rgb(255, 255, 255)';
+        : !clear(bodyColour) ? bodyColour
+        : window.sealwaxDarkened ? 'var(--sealwax-dark-background)' : 'rgb(255, 255, 255)';
       const rootBox = root.getBoundingClientRect();
       keep(root);
       set(root, 'background-color', 'var(--sealwax-margins-color, transparent)');
@@ -365,9 +366,213 @@ const MARGINS_JS: &str = r#"(() => {
       post(fitted);
     }
   };
+  window.sealwaxMargins = {restore, run};
   run();
   new ResizeObserver(run).observe(root);
   window.addEventListener('load', run, {once: true});
+})();"#;
+
+/// Turns a styled body's colours dark (issue #27, `dark_styled_mail` under a dark theme): the
+/// reader stylesheet gives the theme's background and text (`--sealwax-dark-background`,
+/// `--sealwax-dark-text`); without them the body stays as designed. Light backgrounds go dark
+/// (white to the theme's background), dark text and borders go light (black to the theme's
+/// text), hues kept and near-greys tinted like the theme, in OKLab; text keeps a lightness gap
+/// to the background behind it. Images and SVG keep their design, as do background images
+/// (the colour under one is mapped like any other). Every element's computed colours are read before any is
+/// changed, then set inline (`!important`), saved to be put back; the layout never moves.
+/// A message with dark-mode rules of its own keeps its own design, as does one with more than
+/// 20,000 elements; either way a body that paints no background of its own gets the white
+/// page it was designed on. `window.sealwaxDark` runs it again (a theme change), around the
+/// margins script, which reads the colours it leaves. `window.sealwaxDarkened` tells whether
+/// the body is dark, and `window.sealwaxDark.undo` shows the design as it came, until the next
+/// run (both for the self-test).
+const DARK_JS: &str = r#"(() => {
+  const root = document.documentElement;
+  const body = document.body;
+  if (!root || !body) return;
+  const LIMIT = 20000;
+  const SKIP = 'img,svg,video,canvas,picture,iframe,object,embed';
+  const SIDES = ['top', 'right', 'bottom', 'left'];
+  const PROPS = ['color', 'background-color'].concat(SIDES.map((side) => 'border-' + side + '-color'));
+  let saved = [];
+  const keep = (element) => saved.push([element, PROPS.map((name) =>
+    [name, element.style.getPropertyValue(name), element.style.getPropertyPriority(name)])]);
+  const restore = () => {
+    for (const [element, values] of saved) {
+      for (const [name, value, priority] of values) {
+        if (value) element.style.setProperty(name, value, priority);
+        else element.style.removeProperty(name);
+      }
+    }
+    saved = [];
+  };
+  const parse = (text) => {
+    text = (text || '').trim();
+    let match = /^#([0-9a-f]{6})$/i.exec(text);
+    if (match) {
+      const n = parseInt(match[1], 16);
+      return [n >> 16, (n >> 8) & 255, n & 255, 1];
+    }
+    match = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*(?:[,/]\s*([\d.]+)(%?))?\s*\)$/.exec(text);
+    if (!match) return null;
+    const alpha = match[4] === undefined ? 1 : parseFloat(match[4]) / (match[5] ? 100 : 1);
+    return [+match[1], +match[2], +match[3], alpha];
+  };
+  const linear = (c) => {
+    c /= 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const encode = (c) => {
+    c = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+    return Math.round(Math.min(1, Math.max(0, c)) * 255);
+  };
+  const lab = (rgba) => {
+    if (!rgba) return null;
+    const [r, g, b] = rgba.slice(0, 3).map(linear);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+    const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+    const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return {
+      L: 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s,
+      a: 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s,
+      b: 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s,
+      alpha: rgba[3],
+    };
+  };
+  const css = (c) => {
+    const l = Math.pow(c.L + 0.3963377774 * c.a + 0.2158037573 * c.b, 3);
+    const m = Math.pow(c.L - 0.1055613458 * c.a - 0.0638541728 * c.b, 3);
+    const s = Math.pow(c.L - 0.0894841775 * c.a - 1.291485548 * c.b, 3);
+    const r = encode(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
+    const g = encode(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
+    const b = encode(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s);
+    return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + c.alpha + ')';
+  };
+  const tinted = (c, L, toward, scale) => {
+    const weight = Math.min(1, Math.hypot(c.a, c.b) / 0.05);
+    return {
+      L,
+      a: toward.a * (1 - weight) + c.a * scale * weight,
+      b: toward.b * (1 - weight) + c.b * scale * weight,
+      alpha: c.alpha,
+    };
+  };
+  const ownDark = () => {
+    const scan = (rules) => {
+      for (const rule of rules) {
+        if (rule.media && /prefers-color-scheme\s*:\s*dark/i.test(rule.media.mediaText)) return true;
+        if (rule.cssRules && scan(rule.cssRules)) return true;
+      }
+      return false;
+    };
+    for (const sheet of document.styleSheets) {
+      let rules = null;
+      try { rules = sheet.cssRules; } catch (error) { rules = null; }
+      if (rules && scan(rules)) return true;
+    }
+    return false;
+  };
+  const set = (element, name, value) => element.style.setProperty(name, value, 'important');
+  const painted = (c) => c && c.alpha > 0;
+  const darken = () => {
+    const style = getComputedStyle(root);
+    const theme = {
+      bg: lab(parse(style.getPropertyValue('--sealwax-dark-background'))),
+      fg: lab(parse(style.getPropertyValue('--sealwax-dark-text'))),
+    };
+    if (!theme.bg || !theme.fg) return null;
+    const elements = [root, ...root.querySelectorAll('body, body *')];
+    if (elements.length > LIMIT || ownDark()) return false;
+    const top = Math.max(theme.bg.L + 0.04, 0.42);
+    const background = (c) => {
+      if (c.L < 0.5) return null;
+      const L = theme.bg.L + (1 - c.L) / 0.5 * (top - theme.bg.L);
+      return tinted(c, L, theme.bg, L / c.L);
+    };
+    const light = Math.max(theme.fg.L, 0.75);
+    const text = (c, under) => {
+      let mapped = c.L > 0.62 ? null : tinted(c, light - c.L / 0.62 * (light - 0.7), theme.fg, 1);
+      const L = mapped ? mapped.L : c.L;
+      if (under < 0.6 && L < under + 0.4) {
+        mapped = Object.assign({}, mapped || c, {L: Math.min(0.97, under + 0.4)});
+      }
+      return mapped;
+    };
+    const line = (c) => c.L >= 0.5 ? tinted(c, theme.bg.L + 0.1 + (1 - c.L) * 0.4, theme.bg, 0.6)
+      : c.L < 0.35 ? tinted(c, 0.5, theme.fg, 1) : null;
+    const read = elements.map((element) => {
+      const computed = getComputedStyle(element);
+      const borders = SIDES.map((side) =>
+        parseFloat(computed.getPropertyValue('border-' + side + '-width')) > 0
+          && !/^(none|hidden)$/.test(computed.getPropertyValue('border-' + side + '-style'))
+          ? lab(parse(computed.getPropertyValue('border-' + side + '-color'))) : null);
+      return {
+        element,
+        color: lab(parse(computed.color)),
+        background: lab(parse(computed.backgroundColor)),
+        borders,
+        media: element.matches(SKIP),
+      };
+    });
+    const info = new Map(read.map((entry) => [entry.element, entry]));
+    const rootEntry = read[0];
+    const bodyEntry = info.get(body);
+    const canvas = painted(rootEntry.background) ? rootEntry.background
+      : bodyEntry && painted(bodyEntry.background) ? bodyEntry.background : null;
+    const darkCanvas = canvas ? (background(canvas) || canvas).L : theme.bg.L;
+    for (const entry of read) {
+      const parent = entry.element === root ? null : info.get(entry.element.parentElement);
+      if (parent && parent.skipped) {
+        entry.skipped = true;
+        continue;
+      }
+      if (entry.media) {
+        entry.skipped = true;
+        continue;
+      }
+      keep(entry.element);
+      let under = parent ? parent.under : darkCanvas;
+      if (painted(entry.background)) {
+        const mapped = background(entry.background);
+        if (mapped) set(entry.element, 'background-color', css(mapped));
+        if (entry.background.alpha >= 0.5) under = (mapped || entry.background).L;
+      }
+      entry.under = under;
+      if (entry.color) {
+        const mapped = text(entry.color, under);
+        if (mapped) set(entry.element, 'color', css(mapped));
+      }
+      SIDES.forEach((side, index) => {
+        const border = entry.borders[index];
+        const mapped = border && painted(border) ? line(border) : null;
+        if (mapped) set(entry.element, 'border-' + side + '-color', css(mapped));
+      });
+    }
+    return true;
+  };
+  const run = () => {
+    const margins = window.sealwaxMargins;
+    if (margins) margins.restore();
+    restore();
+    let dark = null;
+    try { dark = darken(); } catch (error) { restore(); dark = false; }
+    if (dark === false) {
+      const rootColour = lab(parse(getComputedStyle(root).backgroundColor));
+      const bodyColour = lab(parse(getComputedStyle(body).backgroundColor));
+      if (!painted(rootColour) && !painted(bodyColour)) {
+        keep(root);
+        set(root, 'background-color', 'rgb(255, 255, 255)');
+      }
+    }
+    window.sealwaxDarkened = dark === true;
+    if (margins) margins.run();
+  };
+  run.undo = () => {
+    if (window.sealwaxMargins) window.sealwaxMargins.restore();
+    restore();
+  };
+  window.sealwaxDark = run;
+  run();
 })();"#;
 
 /// A link the user activated in a message.
@@ -580,6 +785,7 @@ impl MessageView {
         let tagged = |script: &str| script.replace("SEALWAX_LOAD", &load.to_string());
         let mut scripts = Vec::new();
         if self.state.fit_margins.get() {
+            scripts.push(DARK_JS.to_owned());
             scripts.push(tagged(MARGINS_JS));
         }
         scripts.extend([tagged(HEIGHT_JS), tagged(LINKS_JS)]);
@@ -612,6 +818,23 @@ impl MessageView {
             &[],
         ));
         self.view.set_background_color(background);
+    }
+
+    /// After [`MessageView::set_style`]: a styled body's colours follow the new stylesheet,
+    /// dark or as designed (`DARK_JS`), and its margins after them.
+    pub fn restyled(&self) {
+        if !self.state.fit_margins.get() {
+            return;
+        }
+        let view = self.clone();
+        glib::spawn_future_local(async move {
+            if let Err(error) = view
+                .eval("if (window.sealwaxDark) window.sealwaxDark();")
+                .await
+            {
+                tracing::debug!(%error, "reader: a styled body didn't take the new colours");
+            }
+        });
     }
 
     /// Forgets the message: no handler, a blank page, the content filter back on, no
@@ -1078,7 +1301,7 @@ mod tests {
     /// (SECURITY.md "Message rendering", ML-093).
     #[test]
     fn helper_scripts_load_nothing() {
-        for script in [HEIGHT_JS, LINKS_JS, QUOTES_JS, MARGINS_JS] {
+        for script in [HEIGHT_JS, LINKS_JS, QUOTES_JS, MARGINS_JS, DARK_JS] {
             for call in [
                 "fetch",
                 "XMLHttpRequest",
@@ -1107,6 +1330,16 @@ mod tests {
             "var({}, transparent)",
             sealwax_domain::theme::MARGINS_COLOR
         )));
+    }
+
+    /// The dark script reads the colours the paper stylesheet sets, and the margins beside a
+    /// dark column take the dark background.
+    #[test]
+    fn dark_colours_come_from_the_stylesheet() {
+        use sealwax_domain::theme::{DARK_BACKGROUND, DARK_TEXT};
+        assert!(DARK_JS.contains(&format!("getPropertyValue('{DARK_BACKGROUND}')")));
+        assert!(DARK_JS.contains(&format!("getPropertyValue('{DARK_TEXT}')")));
+        assert!(MARGINS_JS.contains(&format!("'var({DARK_BACKGROUND})'")));
     }
 
     /// A feature WebKit renamed would silently stay on. One it dropped is known up to the

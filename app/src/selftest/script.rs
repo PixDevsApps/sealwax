@@ -41,6 +41,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     // A theme from tests/theme/ (or none) in the scratch Omarchy state; corners auto or px.
     ("theme", 1, 1),
     ("corners", 1, 1),
+    ("dark-styled-mail", 1, 1),
     // A file under $TMP, such as $TMP/config/sealwax/keys.toml.
     ("write-file", 2, 2),
     ("sidebar", 1, 1),
