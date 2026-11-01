@@ -74,6 +74,27 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.4 — 2026-11-01
+
+This machine. The feature commit `00e3c65` (the #26 fixes: a pinned sender lifts its domain's group in Group by Domain, the pins read once the store is open, ADR-024 amendment; dark styled mail, #27, ADR-011 amendment) and the version commit `2a73188` (Cargo.toml 1.1.4, both lock files with only Sealwax's own versions, CHANGELOG "1.1.4 — 2026-11-01", README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The #26 report on 1.1.3 reproduced | A headless repro of a sender pinned *until read*, read, switched to Always in Pinned Senders: first in Group by Sender (23 of 23 steps, before any change); a randomized store check against a model (200 mailboxes) agreed. In Group by Domain the sender's domain stayed in its date, as the 2026-10-31 amendment said | Pass (the cause found) |
+| The fix | Store tests `pinned_groups_come_first_in_the_inboxes` (updated) and `pinned_groups_match_a_model` (new, 60 random mailboxes and pins, both groupings, an Inbox and All Inboxes); self-test `list-pinned` 169 of 169 steps, the reporter's flow included (a read sender's pin switched to Always under the dialog moves its group in both groupings; Unpin on the domain's group takes the sender's pin off) | Pass |
+| The empty Pinned Senders dialog | Found by reading: the pins were read when the window was built, and the store can open after it. Now read once the store is open, again when the dialog opens, and an older read is dropped. No test reproduces the startup race | Fixed, not reproduced |
+| Dark styled mail in the reader | Self-test `reader-dark` (new, 45 of 45 steps, matte-black, tokyo-night, catppuccin-latte): off, the receipt keeps the white card; turned on, the open message goes dark in place; its lowest text contrast 6.67 (its design's 5.74), the newsletter's 6.02 (4.48); heights exact; margins kept; a theme change, a light theme and turning it off apply in place. `reader` 93/93, `live-theme` 29/29, `theme` 84/84 | Pass |
+| The real corpus with `--dark-styled-mail` (`tools/headless.sh 33 target/release/examples/reader_corpus --dark-styled-mail --no-snapshots`, in a private network namespace) | 144 messages, 276 HTML bodies in a dark and a light theme: heights 276/276 exact and stable, no overflow, the canary saw nothing, no GLib critical: PASS. In the dark theme 101 of the 125 styled bodies turned dark, the other 24 have dark-mode rules of their own. Lowest text contrast median 6.39, 10th percentile 5.12; three below 4.5, each at least its design's own (2.13 of 2.13, 2.35 of 2.25, 4.15 of 3.20). Every darkened body's full-document image has under 4 % light pixels (ImageMagick, threshold 78 %). Outside the namespace the same run counted 18 canary connections from the host app's port probes | Pass |
+| A first version froze everything under a background image | sendwithus-airmail-invoice stayed light though reported dark (its wrapper has a background image); fixed by mapping the colour under a background image, then the whole corpus run again (above) | Fixed |
+| `SEALWAX_CI_DISPLAY=39 bash tools/ci.sh --ui` (in a private network namespace, on the tree before the commits; the commits differ from it only in CHANGELOG's date line, and CI wasn't run again on them) | Formatting, Clippy `-D warnings`, 1,600 tests passed, 0 failed, 99 ignored; 83 self-test scripts passed, then `window-layout` failed at step 54 (a saved pane width still in `layout.toml` after 15 s) and CI stopped | Fail (a flake, below) |
+| The rest by hand, as `ci.sh` runs them (same namespace and display) | `window-layout` alone 91/91 four times out of four; `window` 107/107, `window-sidebar` 72/72, `window-view` 20/20; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`0e2e2de..2a73188`, 2 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname, no co-author line, nothing about findings not yet public; the only addresses are test fixtures | Pass |
+| `v1.1.4` on `2a73188`, `main` and the tag pushed | GitHub's `main` is `2a73188`, `v1.1.4` the tag object `396cc59` | Pass |
+| `python3 tools/release.py build` on `v1.1.4` (offline: `unshare -rn`, loopback up, then `unshare -U --map-user=1000`, `CARGO_NET_OFFLINE=true`) | Finished 18:47 CET: `check()` 1,159 passed, 0 failed, 91 ignored; the package's binary says `sealwax 1.1.4` and holds no home path, user name or hostname; package SHA-256 `e7ca9101…5e10229` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package) | 16 of 16 steps in a fresh `archlinux:base` container: the libraries and licence files there, the installed binary's window and a message in the reader, its web process in WebKit's sandbox | Pass |
+| The release [v1.1.4](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.4) (`tools/release.py github`, 17:47:56 UTC) | Not a draft or pre-release; GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+| Installed here | Not done: `pacman -U` needs sudo (1.1.2 is installed) | Not verified |
+
 ### 1.1.3 — 2026-10-31
 
 This machine. The feature commit `2f5c7b2` (pinned groups first in Group by, issue #26, ADR-024 amendment) and the version commit `9cbd507` (Cargo.toml 1.1.3, both lock files with only Sealwax's own versions, CHANGELOG "1.1.3 — 2026-10-31", README's version).
