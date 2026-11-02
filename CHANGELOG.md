@@ -2,10 +2,6 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
-
-- **Proton Mail syncs every folder again:** Proton Mail Bridge describes some messages in a way the mail standard doesn't allow, and Sealwax broke off the connection each time it met one, so the folders listed after it (Archive, Trash and others) never finished downloading. Sealwax now reads it.
-
 ## 1.1.4 — 2026-11-01
 
 A fix for pinned senders, and dark colours for styled mail, both from the issues.
