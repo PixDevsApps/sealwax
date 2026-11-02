@@ -68,7 +68,7 @@ impl Default for DetectOptions {
             probe_delay: Duration::from_secs(2),
             probe_budget: Duration::from_secs(5),
             dns_server: None,
-            user_agent: "mail-dev (automated)".into(),
+            user_agent: "Sealwax".into(),
             rules: Rules::default(),
         }
     }

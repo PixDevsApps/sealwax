@@ -248,6 +248,8 @@ mod tests {
                 flags: Flags::NONE,
                 has_attachments: parsed.has_attachments(),
                 thread_count: 1,
+                subscription: false,
+                pinned: false,
             },
             headers: parsed.headers,
             body_kind: parsed.body_kind,

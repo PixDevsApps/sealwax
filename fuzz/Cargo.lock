@@ -111,8 +111,6 @@ dependencies = [
 [[package]]
 name = "async-imap"
 version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f97b87216c9f0ccc63c516263169085fa34bba25633f6d96c6a9b9ca1fd5f70a"
 dependencies = [
  "async-channel 2.5.0",
  "async-compression",
@@ -2107,7 +2105,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sealwax-domain"
-version = "0.4.9"
+version = "1.1.4"
 dependencies = [
  "ammonia",
  "html2text",
@@ -2123,7 +2121,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-engine"
-version = "0.4.9"
+version = "1.1.4"
 dependencies = [
  "async-channel 2.5.0",
  "async-imap",
@@ -2164,7 +2162,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-infrastructure"
-version = "0.4.9"
+version = "1.1.4"
 dependencies = [
  "async-channel 2.5.0",
  "getrandom 0.4.3",

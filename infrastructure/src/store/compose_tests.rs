@@ -776,6 +776,7 @@ fn v12_migrates_a_v11_store_with_a_queued_send() {
     cx.store.queue_send(id, NOW).recv_blocking().unwrap();
     cx.store.close().unwrap();
     let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(super::schema::UNDO_V13).unwrap();
     conn.execute_batch(
         "ALTER TABLE outbox DROP COLUMN building; ALTER TABLE drafts DROP COLUMN upload_building; \
          DELETE FROM schema_migrations WHERE version >= 12; PRAGMA user_version = 11;",
@@ -1193,6 +1194,7 @@ fn v9_migrates_a_v8_store_with_mail_and_fills_the_contacts() {
     let kept = rows(&conn);
     assert_eq!(kept.len(), 4);
     // Back to v8: what M5 left on disk, with mail in it.
+    conn.execute_batch(super::schema::UNDO_V13).unwrap();
     conn.execute_batch(
         "DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \
          DROP TABLE contact_terms; DROP TABLE contacts; DROP TABLE draft_deletions; \

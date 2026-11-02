@@ -143,6 +143,23 @@ impl Peer {
         stream.flush().await.unwrap();
     }
 
+    /// Sends `text`, then `byte` without end until the client closes.
+    pub async fn flood(&mut self, text: &str, byte: u8) {
+        let stream = self.stream.get_mut();
+        let chunk = [byte; 4096];
+        if stream.write_all(text.as_bytes()).await.is_err() {
+            return;
+        }
+        while stream.write_all(&chunk).await.is_ok() && stream.flush().await.is_ok() {}
+    }
+
+    /// Sends `text` again and again until the client closes.
+    pub async fn repeat(&mut self, text: &str) {
+        let stream = self.stream.get_mut();
+        let chunk = text.repeat(4096_usize.div_ceil(text.len()));
+        while stream.write_all(chunk.as_bytes()).await.is_ok() && stream.flush().await.is_ok() {}
+    }
+
     /// The client's next line without CRLF; `None` once it closed.
     pub async fn line(&mut self) -> Option<String> {
         let mut line = String::new();

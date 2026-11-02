@@ -105,6 +105,9 @@ pub struct Scheduling {
     /// `scroll_target` (Next or Previous Message in Conversation).
     scroll_to: Cell<bool>,
     scroll_target: Cell<Option<MessageId>>,
+    /// The shown page came on screen before its first screen was laid out: its selected
+    /// message keeps its place while the bodies get their heights.
+    settling: Cell<bool>,
     clock: RefCell<Option<(gdk::FrameClock, glib::SignalHandlerId)>>,
     column: RefCell<Option<(gtk::Adjustment, Vec<glib::SignalHandlerId>)>>,
 }
@@ -172,7 +175,8 @@ fn first_window(page: &Page, height: f64) -> Option<(f64, f64)> {
 }
 
 /// Every expanded HTML body up to the selected message, and those below it that start within
-/// the first screen, is needed; done once measured at its width and loaded.
+/// the first screen, is needed; done once measured at its width and loaded, or only measured
+/// when its images must come from the server (they fill in as they arrive).
 fn first_screen(page: &Page, height: f64) -> Option<FirstScreen> {
     let window = first_window(page, height)?;
     let selected = page
@@ -195,7 +199,7 @@ fn first_screen(page: &Page, height: f64) -> Option<FirstScreen> {
         if index > selected && top >= window.1 {
             continue;
         }
-        if html.measured_at(html.holder.width()) && html.loaded {
+        if html.measured_at(html.holder.width()) && (html.loaded || html.parts.waits_for_server()) {
             if bottom > window.0 && top < window.1 {
                 done.push(item.id());
             }
@@ -474,7 +478,7 @@ impl Inner {
     pub(super) fn first_screen_waiting(&self, key: u64) -> Option<bool> {
         let pending = self.pending.borrow();
         let page = pending.as_ref().filter(|page| page.key == key)?;
-        if page.root.width() <= 1 {
+        if page.root.width() <= 1 || self.layout_held.get() {
             return Some(true);
         }
         let Some(height) = self.column_height() else {
@@ -483,8 +487,15 @@ impl Inner {
         Some(first_screen(page, height).is_some_and(|screen| !screen.needed.is_empty()))
     }
 
+    /// The page just shown came on screen before its first screen was laid out (`early`): its
+    /// selected message keeps its place until it is.
+    pub(super) fn settle(&self, early: bool) {
+        self.scheduling.settling.set(early);
+    }
+
     /// Keeps what the column shows in place while what is above it changes: the topmost entry
-    /// it shows keeps its place on screen for [`HOLD`].
+    /// it shows keeps its place on screen for [`HOLD`]; the selected message instead while the
+    /// page is [settling](Self::settle).
     pub(super) fn hold_scroll(&self) {
         let now = Instant::now();
         let mut anchor = self.scheduling.anchor.borrow_mut();
@@ -496,6 +507,22 @@ impl Inner {
         let Some(page) = shown.as_ref() else {
             return;
         };
+        if self.scheduling.settling.get() {
+            let laid_out = self
+                .column_height()
+                .and_then(|height| first_screen(page, height))
+                .is_some_and(|screen| screen.needed.is_empty());
+            if laid_out {
+                self.scheduling.settling.set(false);
+            } else if let Some(item) = page.item(page.selected) {
+                *anchor = top_in(&item.slot, &page.root).map(|top| Anchor {
+                    widget: item.slot.clone().upcast(),
+                    top,
+                    until: now + HOLD,
+                });
+                return;
+            }
+        }
         let Some((top, _)) = self.window(page) else {
             return;
         };
@@ -508,6 +535,20 @@ impl Inner {
                 until: now + HOLD,
             })
         });
+    }
+
+    /// Scrolls the column half its height down or up (Scroll Message Down and Up, issue #10),
+    /// within the page.
+    pub(super) fn scroll_half_page(&self, down: bool) {
+        let Some(scroller) = self.scroller() else {
+            return;
+        };
+        let adjustment = scroller.vadjustment();
+        let step = adjustment.page_size() / 2.0;
+        let target = adjustment.value() + if down { step } else { -step };
+        let end = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+        self.scheduling.anchor.replace(None);
+        adjustment.set_value(target.clamp(adjustment.lower(), end));
     }
 
     /// The conversation just shown opens at its selected message.

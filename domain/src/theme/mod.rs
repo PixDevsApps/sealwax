@@ -27,7 +27,10 @@ pub use typography::{
     ChromeFont, DEFAULT_BASE_SIZE, FontFamilies, Fonts, MAX_BASE_SIZE, READING_LINE_HEIGHT,
     READING_SIZE, ReadingFont, TypeScale, css_family,
 };
-pub use webview::{BodyStyle, MARGINS_COLOR, MEASURE_CSS, PAPER, PAPER_TEXT, WebViewFonts};
+pub use webview::{
+    BodyStyle, DARK_BACKGROUND, DARK_TEXT, MARGINS_COLOR, MEASURE_CSS, PAPER, PAPER_TEXT,
+    WebViewFonts,
+};
 
 use std::str::FromStr;
 
@@ -77,6 +80,9 @@ pub struct ThemeOptions {
     pub corner_radius: CornerRadius,
     pub chrome_font: ChromeFont,
     pub reading_font: ReadingFont,
+    /// Styled HTML mail shown in dark colours under a dark theme (issue #27), instead of on
+    /// the light paper card.
+    pub dark_styled_mail: bool,
 }
 
 /// Where the palette came from.
@@ -129,6 +135,9 @@ pub struct Theme {
     pub radius: u32,
     /// Chips, folder rows and icon buttons.
     pub radius_small: u32,
+    /// Styled HTML is recoloured dark (the setting is on and the palette is dark): the paper
+    /// card takes the theme's colours.
+    pub dark_paper: bool,
 }
 
 impl Theme {
@@ -150,6 +159,7 @@ impl Theme {
             scale,
             radius,
             radius_small: (radius * 3 + 2) / 4,
+            dark_paper: options.dark_styled_mail && palette.mode == Mode::Dark,
         }
     }
 

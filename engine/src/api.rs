@@ -7,7 +7,8 @@
 //! draft in the store's outbox and wakes the account, which sends it at most once, saves the
 //! Sent copy and keeps the Drafts folder's copy of every draft current. M9 adds folder
 //! management (ADR-020): a folder created, renamed or deleted on the server, or at once among
-//! a POP3 account's local folders.
+//! a POP3 account's local folders. Check for Updates asks GitHub for the latest release, only when
+//! the user runs it.
 
 use crate::imap::ServerText;
 use sealwax_domain::account::{
@@ -17,6 +18,7 @@ use sealwax_domain::account::{
 use sealwax_domain::config::Storage;
 use sealwax_domain::folders::NameProblem;
 use sealwax_domain::model::{AccountId, DraftId, FolderId, MessageId};
+use sealwax_domain::updates::Version;
 use sealwax_infrastructure::store::BatchId;
 use std::fmt;
 use zeroize::Zeroizing;
@@ -173,6 +175,13 @@ pub enum Command {
         account: AccountId,
         change: FolderChange,
     },
+    /// Ask GitHub which release of Sealwax is the latest (Check for Updates, ADR-021
+    /// amendment): one HTTPS request, only when the user runs the command. Answered with one
+    /// `UpdateChecked`.
+    CheckForUpdates { request: RequestId },
+    /// Unsubscribe's one-click POST to `uri` (RFC 8058, ADR-023), after the user confirmed it.
+    /// Answered with one `OneClickUnsubscribed`.
+    OneClickUnsubscribe { request: RequestId, uri: String },
     /// Stop every connection and the runtime.
     Shutdown,
 }
@@ -353,6 +362,16 @@ pub enum Event {
         account: AccountId,
         result: Result<(), FolderError>,
     },
+    /// The answer to `CheckForUpdates`: the latest release's version.
+    UpdateChecked {
+        request: RequestId,
+        result: Result<Version, UpdateError>,
+    },
+    /// The answer to `OneClickUnsubscribe`.
+    OneClickUnsubscribed {
+        request: RequestId,
+        result: Result<(), UnsubscribeError>,
+    },
 }
 
 /// Why an account's rules didn't run.
@@ -435,8 +454,10 @@ impl SyncStatus {
             LoginFailure::WrongPassword
             | LoginFailure::AppPasswordRequired
             | LoginFailure::ImapDisabled
+            | LoginFailure::SmtpAuthDisabled
             | LoginFailure::OAuthRequired
-            | LoginFailure::SignInDeclined => SyncStatus::NeedsSignIn(failure),
+            | LoginFailure::SignInDeclined
+            | LoginFailure::ServerNotMicrosoft => SyncStatus::NeedsSignIn(failure),
             LoginFailure::Certificate => SyncStatus::CertificateChanged,
             LoginFailure::NoTls
             | LoginFailure::Unreachable
@@ -555,6 +576,39 @@ pub enum FolderError {
     Lost,
     #[error("the local store failed")]
     Store,
+}
+
+/// Why Check for Updates has no answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum UpdateError {
+    #[error("GitHub couldn't be reached")]
+    Offline,
+    #[error("GitHub didn't answer in time")]
+    Timeout,
+    #[error("GitHub's certificate didn't verify")]
+    Certificate,
+    /// GitHub limits requests without an account (60 an hour from one address).
+    #[error("GitHub refused the request for now")]
+    Busy,
+    #[error("GitHub has no release")]
+    NoRelease,
+    #[error("GitHub's answer couldn't be read")]
+    Unreadable,
+}
+
+/// Why a one-click unsubscribe didn't go through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum UnsubscribeError {
+    /// Not an HTTPS URI, one with a user name or password, or a host that isn't public.
+    #[error("the address isn't one Sealwax sends to")]
+    Refused,
+    #[error("the sender's server couldn't be reached")]
+    Offline,
+    #[error("the sender's server didn't answer in time")]
+    Timeout,
+    /// An answer other than 2xx, a redirect included.
+    #[error("the sender's server didn't confirm it")]
+    NotConfirmed,
 }
 
 /// Why saving or removing an account failed.

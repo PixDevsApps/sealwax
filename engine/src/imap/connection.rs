@@ -211,7 +211,8 @@ where
 {
     let response = client
         .read_response()
-        .await?
+        .await
+        .map_err(|error| ImapError::reading(error, "the greeting"))?
         .ok_or(ImapError::ConnectionLost)?;
     match response.parsed() {
         Response::Data {
@@ -323,7 +324,7 @@ async fn connect_inner(
     let (mut client, greeting_caps) = match endpoint.security {
         Security::Tls => {
             let stream = net::tls(tcp, tls, endpoint, CONNECT_TIMEOUT).await?;
-            let mut client = Client::new(stream);
+            let mut client = Client::new(super::Stream::new(stream));
             match greeting(&mut client).await? {
                 Greeting::Ok(caps) => (client, caps),
                 Greeting::PreAuth => return Err(ImapError::Protocol("PREAUTH greeting")),
@@ -347,7 +348,7 @@ async fn connect_inner(
             // into_inner drops whatever was buffered after the OK, so plaintext injected there
             // is never read as if it came over TLS. Capabilities are asked again over TLS.
             let stream = net::tls(plain.into_inner(), tls, endpoint, CONNECT_TIMEOUT).await?;
-            (Client::new(stream), None)
+            (Client::new(super::Stream::new(stream)), None)
         }
     };
     let caps = match greeting_caps {

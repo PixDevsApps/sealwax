@@ -280,6 +280,46 @@ fn pkce_matches_the_rfc_7636_example() {
 }
 
 #[test]
+fn a_token_goes_only_to_microsofts_servers() {
+    use sealwax_domain::account::{CertificatePin, Endpoint, Security};
+    let at = |host: &str| Endpoint {
+        host: host.into(),
+        port: 587,
+        security: Security::StartTls,
+        certificate: None,
+    };
+    let platform = Trust::Platform;
+    for host in [
+        "outlook.office365.com",
+        "smtp.office365.com",
+        "smtp-mail.outlook.com",
+        "imap-mail.outlook.com",
+        "SMTP.Office365.com.",
+    ] {
+        assert!(takes_token(&at(host), &platform), "{host}");
+    }
+    for host in [
+        "smtp.example.test",
+        "office365.com.example.test",
+        "notoutlook.com",
+        "outlook.co",
+        "127.0.0.1",
+        "localhost",
+        "",
+    ] {
+        assert!(!takes_token(&at(host), &platform), "{host}");
+    }
+    let testbed = Trust::Roots("ca.pem".into());
+    assert!(takes_token(&at("127.0.0.1"), &testbed));
+    let pinned = Endpoint {
+        certificate: Some(CertificatePin([0x22; 32])),
+        ..at("127.0.0.1")
+    };
+    assert!(!takes_token(&pinned, &testbed));
+    assert!(!takes_token(&pinned, &platform));
+}
+
+#[test]
 fn endpoints_must_be_https_except_on_loopback() {
     assert!(
         Provider::new(

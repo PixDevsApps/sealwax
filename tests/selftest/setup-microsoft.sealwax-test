@@ -1,7 +1,8 @@
 # Microsoft sign-in in the setup assistant (ML-032) on a scripted engine. Without a client ID
 # the step says how to set one and sends nothing; with one in config.toml, "Sign in with
 # Microsoft" sends SignIn, the page the engine names goes to the browser opener (recorded,
-# never opened), it opens again on request, Cancel and Escape stop the sign-in, and the
+# never opened), it opens again on request, a note on admin approval shows after a minute
+# without an answer (shortened here), Cancel and Escape stop the sign-in, and the
 # username the sign-in belongs to is saved with the sign-in's token. Every address, name and
 # link is fictional. Screenshots go to .local/selftest/.
 # Run: tools/headless.sh 61 target/debug/sealwax --self-test tests/selftest/setup-microsoft.sealwax-test
@@ -71,6 +72,7 @@ assert-shown setup-back false
 assert-shown setup-primary false
 assert-sensitive setup-close true
 assert-setup focus setup-cancel
+assert-shown setup-still-waiting false
 assert-opened count 0
 # The engine names the page: it goes to the browser opener once.
 engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=one
@@ -122,6 +124,58 @@ setup-click setup-close
 engine-expect cancel-sign-in sign-in=last
 assert-setup open false
 engine-expect none
+
+# A minute without an answer (here 300 ms): a work account's organization may show "Need admin
+# approval" and never send the browser back, so a calm note says so under the waiting row, and
+# a screen reader hears it. Cancel keeps the focus and still cancels; signing in again starts
+# without the note, and an answer before the wait is up leaves none.
+setup-still-waiting-after 300
+assert-announced none
+action win.add-account
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply detected microsoft
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test account=none
+assert-shown setup-still-waiting false
+engine-reply sign-in-open https://login.example.test/authorize?client_id=fictional&state=slow
+wait-until assert-shown setup-still-waiting true
+assert-label setup-still-waiting "Still waiting for Microsoft. If the browser shows “Need admin approval”, your organization must approve Sealwax first: see the user guide."
+assert-announced "Still waiting for Microsoft. If the browser shows “Need admin approval”, your organization must approve Sealwax first: see the user guide."
+assert-label setup-waiting-label "Waiting for the browser…"
+assert-shown setup-open-again true
+assert-sensitive setup-cancel true
+assert-setup focus setup-cancel
+assert-setup step signing-in
+assert-labelled
+screenshot $DIR/../../.local/selftest/setup-microsoft-still-waiting.png
+engine-expect none
+setup-click setup-cancel
+engine-expect cancel-sign-in sign-in=last
+assert-setup step microsoft
+assert-shown setup-still-waiting false
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+assert-shown setup-still-waiting false
+engine-reply signed-in timeout
+assert-setup step microsoft
+sleep 500
+assert-shown setup-still-waiting false
+assert-announced none
+# Escape cancels while the note shows, too.
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@example.test
+wait-until assert-shown setup-still-waiting true
+assert-announced "Still waiting for Microsoft. If the browser shows “Need admin approval”, your organization must approve Sealwax first: see the user guide."
+setup-key escape
+engine-expect cancel-sign-in sign-in=last
+assert-setup step microsoft
+assert-shown setup-still-waiting false
+setup-click setup-close
+assert-setup open false
+engine-expect none
+setup-still-waiting-after 60000
 
 # Without an engine the button says so.
 engine-detach

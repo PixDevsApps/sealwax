@@ -86,20 +86,26 @@ pub const BATCH_ACTIONS: [ActionId; 7] = [
     ActionId::MarkUnread,
 ];
 
+const BATCH_HINT: &str = "Every action here applies to all of them. Escape leaves the select mode.";
+
 /// The reader in the select mode: "3 messages selected", what applies to them, and the batch
-/// actions as buttons bound to the registry's commands.
+/// actions as buttons bound to the registry's commands. A group selected in Group by Sender or
+/// Domain shows here too, its commands acting on all of its mail (issue #25).
 pub struct BatchPage {
     pub widget: gtk::Widget,
     title: gtk::Label,
+    description: gtk::Label,
     buttons: Vec<(ActionId, gtk::Button)>,
+    /// Unsubscribe, offered for a group only.
+    unsubscribe: gtk::Button,
 }
 
 impl BatchPage {
     pub fn new() -> Self {
-        let (state, title, _) = empty_state_parts(
+        let (state, title, description) = empty_state_parts(
             &["object-select-symbolic", "checkbox-checked-symbolic"],
             "No messages selected",
-            "Every action here applies to all of them. Escape leaves the select mode.",
+            BATCH_HINT,
             "sw-batch-page",
         );
         let row = classed(
@@ -124,12 +130,25 @@ impl BatchPage {
             row.insert(&button, -1);
             buttons.push((id, button));
         }
+        let unsubscribe = classed(
+            gtk::Button::builder()
+                .label(ActionId::Unsubscribe.title())
+                .action_name(ActionId::Unsubscribe.detailed_name())
+                .visible(false)
+                .build(),
+            &["sw-batch-action"],
+        );
+        unsubscribe.set_widget_name("batch-unsubscribe");
+        row.insert(&unsubscribe, -1);
         state.append(&row);
         title.set_widget_name("batch-title");
+        description.set_widget_name("batch-description");
         Self {
             widget: centred(&state),
             title,
+            description,
             buttons,
+            unsubscribe,
         }
     }
 
@@ -139,6 +158,31 @@ impl BatchPage {
             1 => "1 message selected".to_owned(),
             count => format!("{count} messages selected"),
         });
+        self.description.set_label(BATCH_HINT);
+        self.unsubscribe.set_visible(false);
+    }
+
+    /// A group's page: its name, "214 messages, 12 unread", and the commands for all of them.
+    pub fn set_group(&self, name: &str, count: u32, unread: u32) {
+        self.title.set_label(name);
+        let messages = match count {
+            1 => "1 message".to_owned(),
+            count => format!("{count} messages"),
+        };
+        let counted = if unread == 0 {
+            messages
+        } else {
+            format!("{messages}, {unread} unread")
+        };
+        self.description.set_label(&format!(
+            "{counted}. Every action here applies to all of them; Enter shows them."
+        ));
+        self.unsubscribe.set_visible(true);
+    }
+
+    /// The page's heading and text, for the self-test.
+    pub fn text(&self) -> (glib::GString, glib::GString) {
+        (self.title.label(), self.description.label())
     }
 
     /// A command's title here (Not Junk, Unstar) and its tooltip.

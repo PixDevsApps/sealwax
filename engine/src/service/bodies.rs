@@ -592,6 +592,8 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
         .map_or(0, |signals| signals.borrow().reconnects);
     let mut connection: Option<Connection> = None;
     let mut used = Instant::now();
+    // Large messages whose BODYSTRUCTURE couldn't be read, fetched whole from then on.
+    let mut whole: HashSet<MessageId> = HashSet::new();
     loop {
         let Some(work) = next_work(&shared, account) else {
             let woken =
@@ -662,10 +664,18 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
                 },
             };
             let mut answered = Vec::new();
-            let fetch = fetch_bodies(conn, sink(&shared), &sync, &left, now(), |id, result| {
-                answered.push(id);
-                answer(&shared, id, result);
-            });
+            let fetch = fetch_bodies(
+                conn,
+                sink(&shared),
+                &sync,
+                &left,
+                &whole,
+                now(),
+                |id, result| {
+                    answered.push(id);
+                    answer(&shared, id, result);
+                },
+            );
             // A reconnect (resume, network back) abandons a fetch on a connection that may be
             // dead; the batch is tried once more on a new one.
             let fetched = match &signals {
@@ -683,6 +693,18 @@ async fn worker(shared: Arc<Shared>, account: AccountId) {
             let Err(error) = fetched else {
                 continue;
             };
+            // Each such message is fetched whole on the next connection, so this ends.
+            if let BodyFetchError::Structure(message) = error {
+                tracing::warn!(
+                    %folder,
+                    %message,
+                    "a large message's structure couldn't be read; fetching it whole"
+                );
+                whole.insert(message);
+                connection = None;
+                attempts -= 1;
+                continue;
+            }
             let connection_lost =
                 matches!(&error, BodyFetchError::Imap(failure) if failure.is_connection());
             if connection_lost {

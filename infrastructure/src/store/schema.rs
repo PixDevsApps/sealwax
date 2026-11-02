@@ -3,12 +3,14 @@
 
 use super::StoreError;
 use rusqlite::{Connection, OpenFlags};
+use sealwax_domain::senders;
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 12;
+pub const VERSION: i64 = 14;
 
-pub(super) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12];
+pub(super) const MIGRATIONS: &[&str] =
+    &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -450,6 +452,48 @@ ALTER TABLE outbox ADD COLUMN building INTEGER;
 ALTER TABLE drafts ADD COLUMN upload_building INTEGER;
 ";
 
+/// List-Unsubscribe and group by sender (1.1, ADR-023): a message's unsubscribe URIs, whether
+/// it asked for one-click and its sender's registrable domain (filled from the rows in the
+/// migration's transaction); folders whose mail predates the header FETCH asking for
+/// List-Unsubscribe, to fetch it once; and what the user unsubscribed from, by the list's key.
+const V13: &str = "
+ALTER TABLE messages ADD COLUMN list_unsubscribe TEXT;
+ALTER TABLE messages ADD COLUMN one_click INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE messages ADD COLUMN from_domain TEXT NOT NULL DEFAULT '';
+CREATE INDEX messages_subscription ON messages(folder_id, date, id)
+    WHERE list_unsubscribe IS NOT NULL;
+ALTER TABLE folders ADD COLUMN unsubscribe_backfill INTEGER NOT NULL DEFAULT 0;
+UPDATE folders SET unsubscribe_backfill = 1 WHERE total_count > 0 OR uidnext > 1;
+CREATE TABLE unsubscribed(
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    method INTEGER NOT NULL,
+    at INTEGER NOT NULL,
+    PRIMARY KEY(account_id, key)
+) WITHOUT ROWID;
+";
+
+/// Pinned senders (issue #26, ADR-024): an address (`kind` 0, its `lower(trim(from_addr))`) or a
+/// registrable domain (`kind` 1, its `from_domain`) whose mail in the Inboxes is listed first,
+/// while unread (`mode` 0) or for as long as it is there (`mode` 1); not tied to an account. The
+/// indexes hold a sender's or a domain's mail in each folder newest first, with what the filters
+/// and the modes check, so a view's newest pinned rows are read from them alone.
+const V14: &str = "
+CREATE TABLE pinned_senders(
+    kind INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    mode INTEGER NOT NULL,
+    added INTEGER NOT NULL,
+    PRIMARY KEY(kind, key)
+) WITHOUT ROWID;
+CREATE INDEX messages_sender
+    ON messages(lower(trim(from_addr)), folder_id, date, id, flags, has_attachments)
+    WHERE flags & 264 = 0;
+CREATE INDEX messages_domain
+    ON messages(from_domain, folder_id, date, id, flags, has_attachments)
+    WHERE flags & 264 = 0;
+";
+
 /// SQLite 3.43 brought `contentless_delete`.
 const MIN_SQLITE: i32 = 3_043_000;
 
@@ -488,12 +532,57 @@ pub fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
         if version == 9 {
             super::contacts::backfill(&tx)?;
         }
+        if version == 13 {
+            fill_from_domains(&tx)?;
+        }
         tx.execute(
             "INSERT INTO schema_migrations(version, applied) VALUES (?1, unixepoch())",
             [version],
         )?;
         tx.pragma_update(None, "user_version", version)?;
         tx.commit()?;
+    }
+    Ok(())
+}
+
+/// Takes a v14 store back to v13, for the tests that migrate an older store.
+#[cfg(test)]
+pub(super) const UNDO_V14: &str = "
+DROP INDEX messages_sender;
+DROP INDEX messages_domain;
+DROP TABLE pinned_senders;
+DELETE FROM schema_migrations WHERE version >= 14;
+PRAGMA user_version = 13;
+";
+
+/// Takes a v14 store back to v12, for the tests that migrate an older store.
+#[cfg(test)]
+pub(super) const UNDO_V13: &str = "
+DROP INDEX messages_sender;
+DROP INDEX messages_domain;
+DROP TABLE pinned_senders;
+DROP INDEX messages_subscription;
+ALTER TABLE messages DROP COLUMN list_unsubscribe;
+ALTER TABLE messages DROP COLUMN one_click;
+ALTER TABLE messages DROP COLUMN from_domain;
+ALTER TABLE folders DROP COLUMN unsubscribe_backfill;
+DROP TABLE unsubscribed;
+DELETE FROM schema_migrations WHERE version >= 13;
+PRAGMA user_version = 12;
+";
+
+/// v13's `from_domain` for the rows already stored.
+fn fill_from_domains(tx: &Connection) -> rusqlite::Result<()> {
+    let mut select = tx.prepare("SELECT DISTINCT from_addr FROM messages")?;
+    let mut update = tx.prepare("UPDATE messages SET from_domain = ?2 WHERE from_addr = ?1")?;
+    let addresses = select
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for address in addresses {
+        let domain = senders::domain_key(&address);
+        if !domain.is_empty() {
+            update.execute((&address, &domain))?;
+        }
     }
     Ok(())
 }

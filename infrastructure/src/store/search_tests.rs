@@ -11,7 +11,9 @@ use crate::ingest::{RawMessage, ingest_raw};
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, Attachment, FolderRole, Headers};
 use sealwax_domain::search::{self, Date};
+use sealwax_domain::senders::GroupBy;
 use sealwax_domain::triage::Triage;
+use sealwax_domain::unsubscribe::Method;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -1022,6 +1024,370 @@ fn a_rebuild_goes_on_when_the_store_opens_again() {
 }
 
 #[test]
+fn subscriptions_keep_their_unsubscribe_header_and_are_found() {
+    let fx = fixture();
+    let mut letter = mail(fx.inbox, 1, NOW - 60);
+    letter.headers.from = vec![Address::new(
+        "Butikken",
+        "nyhetsbrev@post.butikk.example.co.uk",
+    )];
+    letter.headers.list_unsubscribe = Some("<https://butikk.example.co.uk/u/1>".into());
+    letter.headers.one_click = true;
+    let ids = ingest(&fx.store, vec![letter, mail(fx.inbox, 2, NOW - 30)]);
+    assert_eq!(find(&fx.store, "is:subscription", None, 10), [ids[0]]);
+    assert_eq!(find(&fx.store, "-is:subscription", None, 10), [ids[1]]);
+    let detail = fx
+        .store
+        .message(ids[0])
+        .recv_blocking()
+        .unwrap()
+        .value
+        .unwrap();
+    assert_eq!(
+        detail.headers.list_unsubscribe.as_deref(),
+        Some("<https://butikk.example.co.uk/u/1>")
+    );
+    assert!(detail.headers.one_click);
+    assert_eq!(
+        find(
+            &fx.store,
+            "sender:Nyhetsbrev@post.butikk.example.co.uk",
+            None,
+            10
+        ),
+        [ids[0]]
+    );
+    assert_eq!(
+        find(&fx.store, "domain:butikk.example.co.uk", None, 10),
+        [ids[0]]
+    );
+    assert_eq!(find(&fx.store, "domain:example.test", None, 10), [ids[1]]);
+    assert!(
+        find(
+            &fx.store,
+            "sender:avsender@example.test is:subscription",
+            None,
+            10
+        )
+        .is_empty()
+    );
+    let (path, store) = (fx.path(), fx.store);
+    store.close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    let domains: Vec<String> = conn
+        .prepare("SELECT from_domain FROM messages ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(domains, ["example.co.uk", "example.test"]);
+}
+
+#[test]
+fn unsubscribe_targets_one_per_list_newest_first_and_remember_it() {
+    let fx = fixture();
+    let letter = |n: u32, date: i64, list_id: Option<&str>, from: &str| {
+        let mut message = mail(fx.inbox, n, date);
+        message.headers.from = vec![Address::new("Butikken", from)];
+        message.headers.list_id = list_id.map(str::to_owned);
+        message.headers.list_unsubscribe = Some(format!("<https://butikk.example/u/{n}>"));
+        message.headers.one_click = n.is_multiple_of(2);
+        message
+    };
+    let ids = ingest(
+        &fx.store,
+        vec![
+            letter(
+                1,
+                NOW - 300,
+                Some("tilbud.butikk.example"),
+                "a@butikk.example",
+            ),
+            letter(
+                2,
+                NOW - 200,
+                Some("tilbud.butikk.example"),
+                "b@butikk.example",
+            ),
+            letter(3, NOW - 100, None, "Nytt@Butikk.example"),
+            mail(fx.inbox, 4, NOW),
+        ],
+    );
+    let targets = |ids: &[MessageId]| {
+        fx.store
+            .unsubscribe_targets(ids.to_vec())
+            .recv_blocking()
+            .unwrap()
+    };
+    let found = targets(&ids);
+    assert_eq!(
+        found
+            .iter()
+            .map(|target| (target.message, target.key.as_str(), target.one_click))
+            .collect::<Vec<_>>(),
+        [
+            (ids[2], "nytt@butikk.example", false),
+            (ids[1], "tilbud.butikk.example", true),
+        ]
+    );
+    assert_eq!(found[1].list_unsubscribe, "<https://butikk.example/u/2>");
+    assert!(found.iter().all(|target| target.unsubscribed.is_none()));
+    assert!(
+        !format!("{found:?}").contains("butikk"),
+        "no address in Debug"
+    );
+    let account = found[0].account;
+    fx.store
+        .record_unsubscribed(
+            account,
+            "tilbud.butikk.example".into(),
+            Method::OneClick,
+            NOW,
+        )
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(
+        targets(&ids[..1])[0].unsubscribed,
+        Some((Method::OneClick, NOW))
+    );
+    assert!(targets(&ids[3..]).is_empty());
+}
+
+#[test]
+fn a_view_grouped_by_sender_and_by_domain() {
+    let fx = fixture();
+    let from = |n: u32, date: i64, name: &str, address: &str, seen: bool| {
+        let mut message = mail(fx.inbox, n, date);
+        message.headers.from = vec![Address::new(name, address)];
+        message.flags = if seen { Flags::SEEN } else { Flags::NONE };
+        message
+    };
+    ingest(
+        &fx.store,
+        vec![
+            from(1, NOW - 500, "Butikken", "nytt@post.butikk.example", true),
+            from(
+                2,
+                NOW - 400,
+                "Butikken Kundeservice",
+                "Hjelp@Butikk.example",
+                false,
+            ),
+            from(3, NOW - 300, "Butikken", "NYTT@post.butikk.example", false),
+            from(4, NOW - 200, "", "anna@example.test", true),
+            mail(fx.archive, 5, NOW),
+        ],
+    );
+    let groups = |filter: ViewFilter, by: GroupBy| {
+        fx.store
+            .sender_groups(ViewSpec::folder(fx.inbox).with_filter(filter), by)
+            .recv_blocking()
+            .unwrap()
+            .into_iter()
+            .map(|group| {
+                (
+                    group.key,
+                    group.name,
+                    group.count,
+                    group.unread,
+                    group.latest,
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        groups(ViewFilter::All, GroupBy::Sender),
+        [
+            (
+                "anna@example.test".into(),
+                "anna@example.test".into(),
+                1,
+                0,
+                NOW - 200
+            ),
+            (
+                "nytt@post.butikk.example".into(),
+                "Butikken".into(),
+                2,
+                1,
+                NOW - 300
+            ),
+            (
+                "hjelp@butikk.example".into(),
+                "Butikken Kundeservice".into(),
+                1,
+                1,
+                NOW - 400
+            ),
+        ]
+    );
+    assert_eq!(
+        groups(ViewFilter::All, GroupBy::Domain),
+        [
+            (
+                "example.test".into(),
+                "anna@example.test".into(),
+                1,
+                0,
+                NOW - 200
+            ),
+            ("butikk.example".into(), "Butikken".into(), 3, 2, NOW - 300),
+        ]
+    );
+    assert_eq!(
+        groups(ViewFilter::Unread, GroupBy::Domain),
+        [("butikk.example".into(), "Butikken".into(), 2, 2, NOW - 300)]
+    );
+    assert!(groups(ViewFilter::All, GroupBy::None).is_empty());
+    let subject = fx
+        .store
+        .sender_groups(ViewSpec::folder(fx.inbox), GroupBy::Sender)
+        .recv_blocking()
+        .unwrap()[1]
+        .subject
+        .clone();
+    assert_eq!(subject, "Melding 3");
+}
+
+#[test]
+fn a_groups_mail_in_the_view_newest_first_with_its_newest_subscription() {
+    let fx = fixture();
+    let from = |folder: FolderId, n: u32, date: i64, address: &str, seen: bool, list: bool| {
+        let mut message = mail(folder, n, date);
+        message.headers.from = vec![Address::new("Butikken", address)];
+        message.flags = if seen { Flags::SEEN } else { Flags::NONE };
+        if list {
+            message.headers.list_unsubscribe = Some(format!("<https://butikk.example/u/{n}>"));
+        }
+        message
+    };
+    let ids = ingest(
+        &fx.store,
+        vec![
+            from(
+                fx.inbox,
+                1,
+                NOW - 500,
+                "nytt@post.butikk.example",
+                true,
+                true,
+            ),
+            from(fx.inbox, 2, NOW - 400, "Hjelp@Butikk.example", false, false),
+            from(
+                fx.inbox,
+                3,
+                NOW - 300,
+                "NYTT@post.butikk.example",
+                false,
+                true,
+            ),
+            from(
+                fx.inbox,
+                4,
+                NOW - 200,
+                "nytt@post.butikk.example",
+                true,
+                false,
+            ),
+            from(fx.inbox, 5, NOW - 100, "anna@example.test", false, true),
+            from(fx.archive, 6, NOW, "nytt@post.butikk.example", false, true),
+        ],
+    );
+    let mail = |filter: ViewFilter, by: GroupBy, key: &str| {
+        fx.store
+            .group_mail(
+                ViewSpec::folder(fx.inbox).with_filter(filter),
+                by,
+                key.into(),
+            )
+            .recv_blocking()
+            .unwrap()
+    };
+    let sender = mail(ViewFilter::All, GroupBy::Sender, "nytt@post.butikk.example");
+    assert_eq!(
+        sender
+            .messages
+            .iter()
+            .map(|message| message.id)
+            .collect::<Vec<_>>(),
+        [ids[3], ids[2], ids[0]]
+    );
+    assert!(
+        sender
+            .messages
+            .iter()
+            .all(|message| message.folder == fx.inbox)
+    );
+    assert_eq!(sender.messages[1].flags, Flags::NONE);
+    assert_eq!(sender.subscription, Some(ids[2]));
+    assert!(
+        !format!("{sender:?}").contains("butikk"),
+        "no address in Debug"
+    );
+    let domain = mail(ViewFilter::All, GroupBy::Domain, "butikk.example");
+    assert_eq!(domain.messages.len(), 4);
+    let unread = mail(ViewFilter::Unread, GroupBy::Domain, "butikk.example");
+    assert_eq!(
+        unread
+            .messages
+            .iter()
+            .map(|message| message.id)
+            .collect::<Vec<_>>(),
+        [ids[2], ids[1]]
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::Sender, "hjelp@butikk.example").subscription,
+        None
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::None, "butikk.example"),
+        GroupMail::default()
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::Sender, ""),
+        GroupMail::default()
+    );
+    assert_eq!(
+        mail(ViewFilter::All, GroupBy::Sender, "nobody@example.test"),
+        GroupMail::default()
+    );
+}
+
+#[test]
+fn v13_fills_the_sender_domains_and_marks_folders_for_the_backfill() {
+    let fx = fixture();
+    ingest(&fx.store, vec![mail(fx.inbox, 1, NOW)]);
+    let (path, store) = (fx.path(), fx.store);
+    store.close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch(super::schema::UNDO_V13).unwrap();
+    drop(conn);
+    reopen(&fx.dir, &fx.blobs).close().unwrap();
+    let conn = Connection::open(&path).unwrap();
+    let domain: String = conn
+        .query_row("SELECT from_domain FROM messages", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(domain, "example.test");
+    let marked: Vec<(i64, bool)> = conn
+        .prepare("SELECT id, unsubscribe_backfill FROM folders ORDER BY id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<rusqlite::Result<_>>()
+        .unwrap();
+    assert_eq!(
+        marked,
+        [
+            (fx.inbox.0, true),
+            (fx.archive.0, false),
+            (fx.trash.0, false),
+            (fx.junk.0, false)
+        ]
+    );
+}
+
+#[test]
 fn v10_indexes_every_message_once() {
     let fx = fixture();
     let ids = ingest_raws(
@@ -1055,6 +1421,7 @@ fn v10_indexes_every_message_once() {
         )
         .unwrap();
     }
+    conn.execute_batch(super::schema::UNDO_V13).unwrap();
     conn.execute_batch(
         "ALTER TABLE outbox DROP COLUMN building; ALTER TABLE drafts DROP COLUMN upload_building; \
          DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \

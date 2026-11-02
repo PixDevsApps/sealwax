@@ -1757,3 +1757,64 @@ async fn rules_run_on_downloaded_mail_and_copies_are_stored_again() {
     assert_eq!(subjects, ["Melding 5", "Melding 6"], "Junk isn't new mail");
     stop(actor).await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn mail_stored_before_v13_gets_its_list_unsubscribe_from_the_originals() {
+    let fake = Fake::with(1..=2);
+    fake.lock().messages.push((
+        "u3".into(),
+        b"From: Butikken <nytt@butikk.example>\r\nSubject: Tilbud\r\n\
+          Message-ID: <pop3@example.test>\r\n\
+          List-Unsubscribe: <https://butikk.example/u/3>\r\n\
+          List-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n\r\nHei.\r\n"
+            .to_vec(),
+    ));
+    let mut h = harness(Pop3Policy::default(), quick(), None, fake).await;
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    stop(actor).await;
+    let found = |store: Arc<Store>| async move {
+        store
+            .search("is:subscription", None, 10)
+            .recv()
+            .await
+            .unwrap()
+            .value
+            .len()
+    };
+    assert_eq!(found(h.shared.store.clone()).await, 1, "stored with it");
+    // What a store migrated to v13 holds: the rows without it, the folders marked.
+    let db = rusqlite::Connection::open(SealwaxDirs::under(h._dir.path()).store_file()).unwrap();
+    db.busy_timeout(Duration::from_secs(5)).unwrap();
+    db.execute_batch(
+        "UPDATE messages SET list_unsubscribe = NULL, one_click = 0;
+         UPDATE folders SET unsubscribe_backfill = 1;",
+    )
+    .unwrap();
+    assert_eq!(found(h.shared.store.clone()).await, 0);
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    let store = h.shared.store.clone();
+    h.eventually(|| {
+        let store = store.clone();
+        async move { found(store).await == 1 }
+    })
+    .await;
+    let still: i64 = db
+        .query_row(
+            "SELECT count(*) FROM folders WHERE unsubscribe_backfill <> 0",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(still, 0);
+    let one_click: bool = db
+        .query_row(
+            "SELECT one_click FROM messages WHERE list_unsubscribe IS NOT NULL",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(one_click);
+    stop(actor).await;
+}

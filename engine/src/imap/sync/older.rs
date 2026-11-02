@@ -56,6 +56,7 @@ pub async fn load_older(
         });
     }
     let mut view = view::examine(conn, &state.name_raw).await?;
+    view.unreadable = options.unreadable.clone();
     if state.uidvalidity != Some(view.uidvalidity) {
         pass(conn, store, folder, options, &mut |_| {}, &mut report).await?;
         let complete = load_state(store, folder).await?.complete();

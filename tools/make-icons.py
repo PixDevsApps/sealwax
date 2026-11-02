@@ -7,7 +7,10 @@ No background or frame around it").
 
 reads packaging/icons/source/sealwax-seal.png (1024 px, transparent around the seal) and writes
 hicolor/{16,24,32,48,64,128,256,512}x…/apps/<id>.png, scaled down with Lanczos; at 64 px and
-below the wax gets a little more contrast and sharpening, so the @ still shows. It also writes
+below the wax gets a little more contrast and sharpening, so the @ still shows. At 24 px and
+below that isn't enough (the @ among the seal's rings turned to mush), so those sizes smooth the
+rings away inside the rim and draw a bold, light @ in Noto Sans Bold over the middle (the owner's
+1.0 icon check, 2026-10-21; sign-off sheet D16). It also writes
 hicolor/scalable/apps/<id>.svg, the 512 px PNG inside an SVG: the same picture at every size,
 for docks and launchers that prefer a scalable icon (Omarchy's shell indexes SVGs before PNGs)
 and at the path the envelope tile's SVG had, which a shell started before an upgrade still
@@ -22,11 +25,41 @@ import base64
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 APP_ID = "io.github.pixdevsapps.Sealwax"
 SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 # The sizes that get the extra contrast and sharpening.
 SMALL = 64
+# The sizes drawn with a bold @ instead of the seal's own.
+TINY = 24
+
+
+def magick(*args):
+    subprocess.run(["magick", *map(str, args)], check=True)
+
+
+def tiny(master, size, path):
+    """The seal at `size` px with its rings smoothed away and a bold @, drawn at 8× and scaled
+    down."""
+    big = size * 8
+    with tempfile.TemporaryDirectory() as scratch:
+        scratch = pathlib.Path(scratch)
+        seal, mask, middle, smooth, stamped = (
+            scratch / f"{name}.png" for name in ("seal", "mask", "middle", "smooth", "stamped"))
+        magick(master, "-resize", f"{big}x{big}", seal)
+        magick(master, "-alpha", "extract", "-resize", f"{big}x{big}", mask)
+        magick(mask, "-morphology", "Erode", f"Disk:{big // 16 + big // 12}",
+               "-blur", f"0x{big // 30}", middle)
+        magick(seal, "(", "+clone", "-blur", f"0x{big // 14}", ")", middle,
+               "-compose", "over", "-composite", smooth)
+        magick(smooth, "(", "-size", f"{big}x{big}", "xc:none", "-font", "Noto-Sans-Bold",
+               "-pointsize", big * 58 // 100, "-fill", "#eebcae", "-gravity", "center",
+               "-annotate", f"+0+{big // 40}", "@", ")", "-compose", "over", "-composite",
+               stamped)
+        magick(stamped, mask, "-alpha", "off", "-compose", "CopyOpacity", "-composite",
+               "-filter", "Lanczos", "-resize", f"{size}x{size}", "-strip",
+               "-define", "png:compression-level=9", f"PNG32:{path}")
 
 
 def main():
@@ -40,6 +73,10 @@ def main():
     for size in SIZES:
         path = out / "hicolor" / f"{size}x{size}" / "apps" / f"{APP_ID}.png"
         path.parent.mkdir(parents=True, exist_ok=True)
+        if size <= TINY:
+            tiny(master, size, path)
+            print(path)
+            continue
         command = ["magick", str(master), "-filter", "Lanczos", "-resize", f"{size}x{size}"]
         if size <= SMALL:
             command += ["-channel", "RGB", "-sigmoidal-contrast", "2.5,45%",

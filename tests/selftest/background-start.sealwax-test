@@ -2,6 +2,7 @@
 # folders under $TMP, its log in a file of its own; the ones started through the private test bus
 # (whose only service is Sealwax's own `--gapplication-service`) log to $TMP/testbus/daemon.err.
 # Every name and address is fictional; the account's servers are a closed port on 127.0.0.1.
+# They are debug builds, so their folders are `sealwax-devel` (ADR-010 amendment, 2026-10-26).
 # Run: tools/headless.sh 58 target/debug/sealwax --self-test tests/selftest/background-start.sealwax-test
 
 desktop tiling
@@ -11,7 +12,7 @@ desktop tiling
 background-spawn once
 wait-until assert-file-contains $TMP/once.err "the last window closed; running in the background"
 wait-until assert-file-contains $TMP/once.err "background notice sent"
-assert-file-contains $TMP/once/state/sealwax/background-notice-shown "Delete this file"
+assert-file-contains $TMP/once/state/sealwax-devel/background-notice-shown "Delete this file"
 assert-running once true
 signal once TERM
 wait-process once 0
@@ -25,7 +26,7 @@ wait-process once 0
 assert-file-contains $TMP/once.err "SIGTERM: quitting"
 
 # `[background] enabled = false`: closing the window quits, with no notice.
-write-file $TMP/off/config/sealwax/config.toml "[background]\nenabled = false\n"
+write-file $TMP/off/config/sealwax-devel/config.toml "[background]\nenabled = false\n"
 background-spawn off
 wait-process off 0
 assert-file-contains $TMP/off.err "background mode on=false"
@@ -35,7 +36,7 @@ assert-file-lacks $TMP/off.err "background notice sent"
 # `--background` with no Sealwax running: the bus starts the service, which shows no window and
 # starts its engine once the store and the settings are ready, with the watch on resume and the
 # network; the command line exits.
-write-file $TMP/activated/config/sealwax/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\n\n[account.imap]\nhost = \"127.0.0.1\"\nport = 1\n\n[account.smtp]\nhost = \"127.0.0.1\"\nport = 1\n"
+write-file $TMP/activated/config/sealwax-devel/accounts.toml "[[account]]\nkey = \"kari\"\nname = \"Kari Nordmann\"\naddress = \"kari@example.test\"\n\n[account.imap]\nhost = \"127.0.0.1\"\nport = 1\n\n[account.smtp]\nhost = \"127.0.0.1\"\nport = 1\n"
 test-bus-start
 test-bus-spawn first --background
 wait-process first 0

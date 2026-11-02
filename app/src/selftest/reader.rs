@@ -10,7 +10,7 @@
 //! | `reader-show-images` | "Show images" for the shown message; waits for the reload |
 //! | `reader-click SELECTOR` | A DOM `click()` in Sealwax's isolated world of the shown body |
 //! | `reader-clear` | Shows nothing |
-//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `released` (the view went back while hidden), `remote-allowed`, `remote-requests` (remote loads that started since `reader-show`), `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `margins` (a styled body's column sits on the theme's background, the card without its edge), `text-contains`, `opened` (the last link handed to the opener; `none`) |
+//! | `assert-reader FIELD VALUE` | `body` (html-themed, html-paper, plain, text-fallback, empty, none), `banner`, `released` (the view went back while hidden), `remote-allowed`, `remote-requests` (remote loads that started since `reader-show`), `attachments`, `live-views-at-most`, `cid-loaded` (images served through `cid:`), `remote-loaded` (images from the network), `height-exact` (the view is as tall as its document, at its width), `margins` (a styled body's column sits on the theme's background, the card without its edge), `dark` (the dark script turned a styled body dark; when it did, the page's luminance is at most 0.1 and every text's contrast against what is behind it at least 4.5, or as low as the design's own lowest), `text-contains`, `opened` (the last link handed to the opener; `none`) |
 
 use super::{Harness, StepResult, blocking, equal};
 use crate::reader::{Reader, ReaderState, Shown, ShownBody, ViewEvent, samples};
@@ -356,11 +356,17 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
                     .unwrap_or_default()
             };
             let (background, text) = (at(0), at(1));
+            let canvas = theme.webview_background(style);
             let paper_canvas = style == BodyStyle::Paper
                 && background == "rgba(0, 0, 0, 0)"
                 && opened.reader.web_view().is_some_and(|view| {
                     let color = webkit6::prelude::WebViewExt::background_color(&view);
-                    (color.red(), color.green(), color.blue()) == (1.0, 1.0, 1.0)
+                    let channel = |value: f32| (value * 255.0).round() as u8;
+                    (
+                        channel(color.red()),
+                        channel(color.green()),
+                        channel(color.blue()),
+                    ) == (canvas.r, canvas.g, canvas.b)
                 });
             let paper_margins =
                 style == BodyStyle::Paper && css_rgb_near(&background, theme.palette.background);
@@ -411,6 +417,45 @@ pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 ));
             }
             equal("margins fitted", edgeless, boolean(value)?)
+        }
+        "dark" => {
+            let view = opened.reader.web_view().ok_or("no HTML body is shown")?;
+            let canvas = webkit6::prelude::WebViewExt::background_color(&view);
+            let probe = opened
+                .reader
+                .eval(&DARK_PROBE_JS.replace(
+                    "CANVAS",
+                    &format!(
+                        "[{}, {}, {}]",
+                        canvas.red() * 255.0,
+                        canvas.green() * 255.0,
+                        canvas.blue() * 255.0
+                    ),
+                ))
+                .await?;
+            let at = |index: u32| {
+                probe
+                    .object_get_property_at_index(index)
+                    .map(|value| value.to_double())
+                    .unwrap_or(f64::NAN)
+            };
+            let (darkened, worst, page, designed) = (at(0) == 1.0, at(1), at(2), at(3));
+            let note = probe
+                .object_get_property_at_index(4)
+                .map(|value| value.to_str().to_string())
+                .unwrap_or_default();
+            println!(
+                "  # dark: {darkened}, page luminance {page:.3}, lowest text contrast {worst:.2} \
+                 ({note}; as designed {designed:.2})"
+            );
+            let wanted = designed.min(4.5) - 0.01;
+            if darkened && (page > 0.1 || worst < wanted) {
+                return Err(format!(
+                    "dark, but the page's luminance is {page:.3} and the lowest text contrast \
+                     {worst:.2} (wanted at most 0.1 and at least {wanted:.2})"
+                ));
+            }
+            equal("dark", darkened, boolean(value)?)
         }
         "text-contains" => {
             let text = match state.body {
@@ -486,6 +531,58 @@ async fn wait_until(timeout: Duration, condition: impl Fn() -> bool) -> bool {
 
 /// Whether a computed CSS colour (`rgb(r, g, b)` or `rgba(…)`) is `expected`, within 2 per
 /// channel.
+/// Whether the dark script turned the body dark, the lowest WCAG contrast of any text against
+/// the background painted behind it, the page's luminance (`CANVAS` is the view's colour, for a
+/// page that paints none), and the lowest contrast of the design as it came, on white.
+const DARK_PROBE_JS: &str = r#"
+  const channel = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+  const luminance = (rgb) => 0.2126 * channel(rgb[0]) + 0.7152 * channel(rgb[1]) + 0.0722 * channel(rgb[2]);
+  const painted = (text) => {
+    const match = /^rgba?\(([^)]*)\)$/.exec(text.trim());
+    if (!match) return null;
+    const parts = match[1].split(/[\s,/]+/).filter(Boolean).map(Number);
+    if (parts.length > 3 && parts[3] === 0) return null;
+    return luminance(parts);
+  };
+  const root = document.documentElement;
+  const body = document.body;
+  const look = (canvas) => {
+    const page = painted(getComputedStyle(root).backgroundColor)
+      ?? painted(getComputedStyle(body).backgroundColor) ?? luminance(canvas);
+    let worst = 21;
+    let note = '';
+    for (const element of [body, ...body.querySelectorAll('*')]) {
+      if (![...element.childNodes].some((node) => node.nodeType === 3 && node.data.trim())) continue;
+      const style = getComputedStyle(element);
+      if (style.display === 'none' || style.visibility === 'hidden') continue;
+      const text = painted(style.color);
+      if (text === null) continue;
+      let behind = null;
+      let under = 'the page';
+      for (let at = element; at && at !== root && behind === null; at = at.parentElement) {
+        behind = painted(getComputedStyle(at).backgroundColor);
+        if (behind !== null) under = getComputedStyle(at).backgroundColor;
+      }
+      if (behind === null) behind = page;
+      const contrast = (Math.max(text, behind) + 0.05) / (Math.min(text, behind) + 0.05);
+      if (contrast < worst) {
+        worst = contrast;
+        note = element.localName + ' ' + style.color + ' on ' + under;
+      }
+    }
+    return [worst, page, note];
+  };
+  const darkened = window.sealwaxDarkened === true;
+  const [worst, page, note] = look(CANVAS);
+  let designed = worst;
+  if (darkened) {
+    window.sealwaxDark.undo();
+    designed = look([255, 255, 255])[0];
+    window.sealwaxDark();
+  }
+  return [darkened ? 1 : 0, worst, page, designed, note];
+"#;
+
 fn css_rgb_near(css: &str, expected: Rgb) -> bool {
     let inner = css
         .trim()

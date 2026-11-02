@@ -287,10 +287,11 @@ engine-reply part-fetched ok
 wait-until assert-files folder 8
 
 # A large message's inline image isn't stored: the reader asks for it by its section
-# (FetchPart) and serves it as the type the message declares (M5 phase B).
+# (FetchPart) and serves it as the type the message declares (M5 phase B). The message shows
+# before the image is in, well within the 3 s a body may take to lay out.
 files-add-text cid
 list-select 0
-wait-until assert-files message cid
+wait-within 1500 assert-files message cid
 engine-expect fetch-part
 assert-files cid-loaded 0
 engine-reply part-fetched ok

@@ -63,7 +63,7 @@ assert-shortcut "Go to Inbox" built
 assert-shortcut "Back to List" built
 assert-shortcut Bold built
 assert-shortcut "Undo Typing" built
-assert-shortcut "Toggle Sidebar" "not built"
+assert-shortcut "Toggle Sidebar" built
 key Escape
 assert-dialog none
 assert-focus list

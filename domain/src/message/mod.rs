@@ -6,6 +6,7 @@ mod html;
 
 use crate::model::{Address, Attachment, BodyKind, Headers, ThreadIndex};
 use crate::snippet::{self, SNIPPET_CHARS};
+use crate::unsubscribe;
 use mail_parser::decoders::base64::base64_decode;
 use mail_parser::{HeaderValue, Message, MessageParser, MimeHeaders, PartType};
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -239,8 +240,30 @@ fn headers(message: &Message<'_>) -> Headers {
         in_reply_to: ids(message.in_reply_to()),
         references: limit_references(ids(message.references())),
         list_id: list_id(message.list_id()),
+        list_unsubscribe: message
+            .header_raw("List-Unsubscribe")
+            .and_then(unsubscribe::normalize),
+        one_click: message
+            .header_raw("List-Unsubscribe-Post")
+            .is_some_and(unsubscribe::is_one_click),
         thread_index: message.header_raw("Thread-Index").and_then(thread_index),
     }
+}
+
+/// List-Unsubscribe ([`unsubscribe::normalize`]d) and whether List-Unsubscribe-Post asks for
+/// one-click, from a message's header block alone (the backfill's FETCH, ADR-023).
+pub fn unsubscribe_headers(header: &[u8]) -> (Option<String>, bool) {
+    let Some(message) = MessageParser::default().parse_headers(header) else {
+        return (None, false);
+    };
+    (
+        message
+            .header_raw("List-Unsubscribe")
+            .and_then(unsubscribe::normalize),
+        message
+            .header_raw("List-Unsubscribe-Post")
+            .is_some_and(unsubscribe::is_one_click),
+    )
 }
 
 fn clean(text: &str) -> String {

@@ -1,8 +1,8 @@
 //! The POP3 client (ML-087) against a scripted server on 127.0.0.1, over TLS with a throwaway
 //! CA: implicit TLS and STLS that never downgrades, CAPA's variants and the mechanism they pick,
 //! SASL PLAIN, USER and PASS, XOAUTH2 with its error challenge, refusals with RFC 2449 and 3206
-//! codes, UIDL and LIST, RETR's multi-line edge cases, sizes over the limit, timeouts, DELE,
-//! RSET, NOOP, TOP and QUIT. What reaches the log is `pop3_log.rs`'s. Synthetic data only.
+//! codes, UIDL and LIST, RETR's multi-line edge cases, sizes over the limit or far over LIST's,
+//! timeouts, a listing too long in all or too slow, DELE, RSET, NOOP, TOP and QUIT. What reaches the log is `pop3_log.rs`'s. Synthetic data only.
 
 mod pop3_script;
 
@@ -764,6 +764,109 @@ async fn a_huge_listing() {
         } else {
             "release"
         }
+    );
+    drop(session);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn retr_may_send_up_to_twice_list_s_size_and_no_more() {
+    let line = format!("{}\r\n", "x".repeat(99));
+    let within = line.repeat(1_970).into_bytes();
+    let beyond = line.repeat(700).into_bytes();
+    let sent = within.clone();
+    let ca = ca();
+    let (port, server) = serve(Some(ca.server.clone()), move |mut peer| async move {
+        peer.logged_in().await;
+        answer_listing(&mut peer, &[100_000, 100]).await;
+        peer.expect("RETR 1").await;
+        peer.send_bytes(&wire_form(&sent)).await;
+        peer.expect("RETR 2").await;
+        peer.send_bytes(&wire_form(&beyond)).await;
+        peer
+    })
+    .await;
+    let mut session = connect(&ca, port, PASSWORD).await.unwrap();
+    session.listing().await.unwrap();
+    assert_eq!(
+        session.retrieve(1).await.unwrap(),
+        within,
+        "1.97 times LIST's size, as from a server that counts a line end as one octet"
+    );
+    let error = session.retrieve(2).await.unwrap_err();
+    let limit = 2 * 100 + 64 * 1024;
+    assert!(
+        matches!(error, Pop3Error::TooLarge(n) if n > limit && n < 70_700),
+        "{error}"
+    );
+    assert!(matches!(
+        session.noop().await,
+        Err(Pop3Error::ConnectionLost)
+    ));
+    drop(session);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_listing_too_long_in_all_is_refused() {
+    let sizes = vec![1000; 500];
+    let (uidl, _) = listing_replies(&sizes);
+    let ca = ca();
+    let (port, server) = serve(Some(ca.server.clone()), move |mut peer| async move {
+        peer.logged_in().await;
+        peer.expect("UIDL").await;
+        peer.send(&uidl).await;
+        peer
+    })
+    .await;
+    let options = Options {
+        max_listing: 2_000,
+        ..quick()
+    };
+    let mut session = pop3::connect_with(
+        &endpoint(port, Security::Tls),
+        PASSWORD,
+        ca.trust.client_config().unwrap(),
+        options,
+    )
+    .await
+    .unwrap();
+    let error = session.listing().await.unwrap_err();
+    assert!(
+        matches!(error, Pop3Error::Protocol("reply too long")),
+        "{error}"
+    );
+    assert!(matches!(
+        session.noop().await,
+        Err(Pop3Error::ConnectionLost)
+    ));
+    drop(session);
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn a_listing_that_trickles_ends_at_its_deadline() {
+    let ca = ca();
+    let (port, server) = serve(Some(ca.server.clone()), |mut peer| async move {
+        peer.logged_in().await;
+        peer.expect("UIDL").await;
+        peer.send("+OK\r\n").await;
+        for n in 1..=30 {
+            if !peer.try_send(&format!("{n} uid-{n}\r\n")).await {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
+        peer
+    })
+    .await;
+    let mut session = connect(&ca, port, PASSWORD).await.unwrap();
+    let started = Instant::now();
+    let error = session.listing().await.unwrap_err();
+    assert!(matches!(error, Pop3Error::Timeout), "{error}");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "a line every 200 ms, each within the 500 ms wait, for 6 s in all"
     );
     drop(session);
     server.await.unwrap();

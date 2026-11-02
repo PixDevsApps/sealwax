@@ -4,6 +4,7 @@
 //! from it, and flag FETCHes cover the floor's range only. The rows a step stores at or above
 //! the UIDNEXT the store held when the pass began are new mail ([`Arrived`]).
 
+use super::backfill;
 use super::view::{self, View};
 use super::{Arrived, FolderLocks, SyncOptions, SyncReport, count, load_state};
 use crate::imap::connection::Connection;
@@ -61,6 +62,7 @@ pub(super) async fn pass(
         return Err(SyncError::NotSelectable);
     }
     let mut view = view::examine(conn, &state.name_raw).await?;
+    view.unreadable = options.unreadable.clone();
     report.stats.passes += 1;
     if state
         .uidvalidity
@@ -82,7 +84,11 @@ pub(super) async fn pass(
         from: (!fresh).then_some(state.uidnext),
         sink: options.arrivals.as_ref(),
     };
-    incremental(conn, store, &state, &mut view, arrivals, report).await
+    incremental(conn, store, &state, &mut view, arrivals, report).await?;
+    if state.unsubscribe_backfill {
+        backfill::unsubscribe(conn, store, folder, &mut view).await?;
+    }
+    Ok(())
 }
 
 /// Where a pass reports new mail: the rows it stores at or above `from`, the UIDNEXT the store
@@ -195,8 +201,9 @@ async fn incremental(
     let known_next = state.uidnext;
     let floor = state.floor.unwrap_or(1).max(1);
     let modseq = view.highestmodseq.filter(|_| conn.condstore());
+    let skipped = count(view.unreadable.skipped(folder).len());
     if view.uidnext == Some(known_next)
-        && view.exists == state.messages.saturating_add(state.below)
+        && view.exists == state.messages.saturating_add(state.below + skipped)
         && modseq == Some(state.highestmodseq)
     {
         report.stats.fast_path += 1;
@@ -260,8 +267,8 @@ async fn incremental(
     .await
 }
 
-/// S1's count check: the stored count plus the messages below the floor must equal the
-/// server's EXISTS, kept current through the pass. Too few first fetches new UIDs again;
+/// S1's count check: the stored count plus the messages below the floor (and those left out as
+/// unreadable) must equal the server's EXISTS, kept current through the pass. Too few first fetches new UIDs again;
 /// anything else falls back to the UID diff, which also counts the messages below the floor
 /// again.
 #[allow(clippy::too_many_arguments)]
@@ -277,7 +284,8 @@ async fn count_check(
 ) -> Result<(), SyncError> {
     for _ in 0..3 {
         let state = load_state(store, folder).await?;
-        let expected = state.messages.saturating_add(below);
+        let skipped = count(view.unreadable.skipped(folder).len());
+        let expected = state.messages.saturating_add(below + skipped);
         if expected == view.exists {
             return Ok(());
         }
@@ -285,7 +293,7 @@ async fn count_check(
         if expected < view.exists {
             fetch_new(conn, store, folder, state.uidnext, view, arrivals, report).await?;
             let state = load_state(store, folder).await?;
-            if state.messages.saturating_add(below) == view.exists {
+            if state.messages.saturating_add(below + skipped) == view.exists {
                 return Ok(());
             }
         }
@@ -386,6 +394,8 @@ async fn uid_diff(
     view.vanished.clear();
     let local: HashSet<u32> = stored(store, folder).await?.into_keys().collect();
     let on_server: HashSet<u32> = server.iter().copied().collect();
+    view.unreadable
+        .retain(folder, |uid| on_server.contains(&uid));
     let missing: Vec<u32> = server
         .iter()
         .copied()

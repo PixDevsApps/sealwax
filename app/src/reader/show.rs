@@ -87,13 +87,15 @@ impl Inner {
         self.request_bodies(generation);
         let prepared = started.elapsed();
         let staged = self.stage_pending(generation);
+        let mut early = false;
         if staged {
-            self.lay_out(generation).await;
+            early = !self.lay_out(generation).await;
             if self.stale(generation) {
                 return;
             }
         }
         self.present(generation, staged, started, fetched, prepared);
+        self.settle(early);
     }
 
     /// The page of `conversation`: the heading, then a row or an expanded card's place for each
@@ -268,25 +270,24 @@ impl Inner {
     }
 
     /// Waits until the bodies the page's first screen needs have their heights at the column's
-    /// width and their images in: every expanded HTML body up to the selected message, and
+    /// width and their images in (not those from the server, which fill in once it is shown):
+    /// every expanded HTML body up to the selected message, and
     /// those below it that start within a screen of its top. At most [`READY_TIMEOUT`], and no
-    /// longer than a conversation whose message left the list may stay ([`super::LEFT_SHOWN`]).
-    async fn lay_out(self: &Rc<Self>, key: u64) {
+    /// longer than a conversation the selection moved on from may stay ([`super::LEFT_SHOWN`]).
+    /// `false` when it is shown before its first screen is laid out.
+    async fn lay_out(self: &Rc<Self>, key: u64) -> bool {
         let deadline = Instant::now() + READY_TIMEOUT;
         while let Some(waiting) = self.first_screen_waiting(key) {
-            if !waiting {
-                return;
-            }
-            if !self.stage.is_mapped() {
-                return;
+            if !waiting || !self.stage.is_mapped() {
+                return true;
             }
             let due = self.left_due_at();
             let now = Instant::now();
             if due.is_some_and(|due| due <= now) {
                 tracing::debug!(
-                    "reader: shown before it was laid out, in place of a message that left the list"
+                    "reader: shown before it was laid out, in place of the message the selection left"
                 );
-                return;
+                return false;
             }
             let left = deadline.saturating_duration_since(now);
             if left.is_zero() {
@@ -294,7 +295,7 @@ impl Inner {
                     "reader: the conversation took over {} s to lay out; shown as it is",
                     READY_TIMEOUT.as_secs()
                 );
-                return;
+                return false;
             }
             self.schedule_now();
             let wait = due.map_or(left, |due| left.min(due.saturating_duration_since(now)));
@@ -305,9 +306,10 @@ impl Inner {
             .await;
             while self.progress.1.try_recv().is_ok() {}
             if self.stale(key) {
-                return;
+                return true;
             }
         }
+        true
     }
 
     /// Puts the page being laid out on screen; the page it replaces gives its views back.
@@ -355,6 +357,7 @@ impl Inner {
         }
         self.left.set(None);
         self.hidden.set(false);
+        self.settle(false);
         self.scroll_to_selected();
         tracing::debug!(
             message = selected.0,
@@ -385,7 +388,7 @@ impl Inner {
         self.schedule();
     }
 
-    /// When the shown conversation, whose message left the list, must be off screen.
+    /// When the shown conversation, which the selection moved on from, must be off screen.
     fn left_due_at(&self) -> Option<Instant> {
         self.left
             .get()
@@ -393,7 +396,7 @@ impl Inner {
             .map(|(_, due)| due)
     }
 
-    /// The time a conversation whose message left the list may stay is up: a next one being
+    /// The time a conversation the selection moved on from may stay is up: a next one being
     /// laid out shows as it is; one not read yet hides the left one until it is.
     pub(super) fn left_due(self: &Rc<Self>, key: u64) {
         if self.left.get().is_none_or(|(left, _)| left != key) || !self.is_shown(key) {
@@ -416,7 +419,7 @@ impl Inner {
                 .update_state(&[gtk::accessible::State::Hidden(true)]);
         }
         self.hidden.set(true);
-        tracing::debug!("reader: a message that left the list hidden; the next isn't read yet");
+        tracing::debug!("reader: the message the selection left hidden; the next isn't read yet");
     }
 
     /// The bodies of page `key` that came on screen and weren't reported yet.

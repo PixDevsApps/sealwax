@@ -18,6 +18,7 @@ use sealwax_engine::api::BodyError;
 use sealwax_engine::imap::{self, bodies};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{BodyState, NewAccount, Store, StoreOptions};
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -301,9 +302,17 @@ fn bodies_on_every_server() {
             let mut conn = login(server, Security::Tls, USER).await;
             let connected = started.elapsed();
             let mut answers: Vec<(MessageId, Result<(), BodyError>, Duration)> = Vec::new();
-            bodies::fetch_bodies(&mut conn, sink, &sync, &targets, 0, |id, result| {
-                answers.push((id, result, started.elapsed()));
-            })
+            bodies::fetch_bodies(
+                &mut conn,
+                sink,
+                &sync,
+                &targets,
+                &HashSet::new(),
+                0,
+                |id, result| {
+                    answers.push((id, result, started.elapsed()));
+                },
+            )
             .await
             .unwrap();
             let fetched = started.elapsed();

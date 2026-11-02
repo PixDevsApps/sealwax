@@ -131,6 +131,20 @@ assert-accessible dialog
 setup-key escape
 engine-expect cancel-sign-in
 assert-setup step microsoft
+# The note on admin approval after a minute without an answer (here 300 ms) is spoken, and
+# every control stays named with it.
+setup-still-waiting-after 300
+assert-announced none
+setup-click setup-microsoft-button
+engine-expect sign-in address=kari@outlook.example.test
+wait-until assert-shown setup-still-waiting true
+assert-announced "Still waiting for Microsoft. If the browser shows “Need admin approval”, your organization must approve Sealwax first: see the user guide."
+assert-accessible dialog
+assert-accessible-name setup-cancel Cancel
+setup-key escape
+engine-expect cancel-sign-in
+assert-setup step microsoft
+setup-still-waiting-after 60000
 setup-key escape
 assert-setup step address
 setup-key escape

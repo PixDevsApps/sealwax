@@ -29,6 +29,15 @@ pub struct StoredMessage {
     pub keywords: Vec<String>,
 }
 
+/// A stored message's List-Unsubscribe headers, as the backfill fetched them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnsubscribeHeaders {
+    pub id: MessageId,
+    /// [`sealwax_domain::unsubscribe::normalize`]d.
+    pub list_unsubscribe: Option<String>,
+    pub one_click: bool,
+}
+
 /// What one step of a pass changes in a folder whose first sync is done, by UID. The writer
 /// applies it in one transaction with one change event: what the server says goes to the
 /// server's columns, and what is shown keeps the pending ops' overlay (ADR-015).
@@ -132,6 +141,25 @@ impl Store {
             WriteJob::Sync(SyncJob::CountBelow {
                 folder,
                 status,
+                reply,
+            })
+        })
+    }
+
+    /// The List-Unsubscribe headers of a folder's stored messages, from the one-time backfill
+    /// (ADR-023); messages no longer in the folder are ignored. `done` clears the folder's mark.
+    /// Nothing the list shows changes, so there is no change event.
+    pub fn backfill_unsubscribe(
+        &self,
+        folder: FolderId,
+        found: Vec<UnsubscribeHeaders>,
+        done: bool,
+    ) -> Reply<()> {
+        self.write(|reply| {
+            WriteJob::Sync(SyncJob::BackfillUnsubscribe {
+                folder,
+                found,
+                done,
                 reply,
             })
         })

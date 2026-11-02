@@ -114,8 +114,13 @@ impl Theme {
         );
         push("--sw-error-soft-bg-color", ui.error_soft.to_string());
         push("--sw-warning-soft-bg-color", ui.warning_soft.to_string());
-        push("--sw-paper-bg-color", PAPER.to_string());
-        push("--sw-paper-fg-color", PAPER_TEXT.to_string());
+        let (paper, paper_text) = if self.dark_paper {
+            (self.palette.background, self.palette.foreground)
+        } else {
+            (PAPER, PAPER_TEXT)
+        };
+        push("--sw-paper-bg-color", paper.to_string());
+        push("--sw-paper-fg-color", paper_text.to_string());
 
         push(
             "--sw-control-bg-color",

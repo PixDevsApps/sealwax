@@ -459,6 +459,8 @@ mod tests {
                 flags: if read { Flags::SEEN } else { Flags::NONE },
                 has_attachments: false,
                 thread_count: 1,
+                subscription: false,
+                pinned: false,
             },
             role: FolderRole::Inbox,
             copies: Vec::new(),

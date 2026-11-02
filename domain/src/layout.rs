@@ -1,5 +1,6 @@
 //! The window's layout between runs (the user's UI tweaks, 2026-10-08): the widths the user
-//! dragged the sidebar and the message list to, the accounts folded in the sidebar, the
+//! dragged the sidebar and the message list to, whether the sidebar is hidden (Toggle Sidebar,
+//! the owner's word on 2026-10-21), the accounts folded in the sidebar, the
 //! accounts whose "More folders" are open, the folders whose subfolders it folds away (M9,
 //! folders; the sidebar comes back as the user left it, their word on 2026-10-09), and the view
 //! the window last showed, which a new window opens on (issue #5, 2026-10-11), in
@@ -9,6 +10,7 @@
 
 use crate::account::AccountKey;
 use crate::accounts_file::is_valid_key;
+use crate::senders::GroupBy;
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::RangeInclusive;
 use toml::Value;
@@ -24,6 +26,8 @@ pub struct Layout {
     pub sidebar_width: Option<u32>,
     /// The message list's width beside the reader; `None` for the default.
     pub list_width: Option<u32>,
+    /// Toggle Sidebar hid the sidebar.
+    pub sidebar_hidden: bool,
     /// The accounts whose folders the sidebar folds away, by key.
     pub collapsed: Vec<AccountKey>,
     /// The accounts whose "More folders" are open, by key.
@@ -33,6 +37,8 @@ pub struct Layout {
     pub folded: BTreeMap<AccountKey, BTreeSet<String>>,
     /// The view the window last showed; `None`: the first account's Inbox.
     pub view: Option<View>,
+    /// What the message list groups by (issue #24, ADR-023).
+    pub group_by: GroupBy,
 }
 
 /// A view a new window can open on: All Inboxes, or an account's folder by its whole name.
@@ -113,18 +119,24 @@ impl Layout {
         Self {
             sidebar_width: width("sidebar_width", &SIDEBAR_WIDTHS),
             list_width: width("list_width", &LIST_WIDTHS),
+            sidebar_hidden: table.get("sidebar_hidden").and_then(Value::as_bool) == Some(true),
             collapsed: keys("collapsed"),
             more_open: keys("more_open"),
             folded,
             view,
+            group_by: table
+                .get("group_by")
+                .and_then(Value::as_str)
+                .and_then(GroupBy::from_name)
+                .unwrap_or_default(),
         }
     }
 
     pub fn to_text(&self) -> String {
         let mut text = String::from(
             "# Sealwax keeps the window's layout here: the widths the sidebar and the message\n\
-             # list were dragged to, the accounts and folders folded or open in the sidebar, and\n\
-             # the view the window last showed.\n\
+             # list were dragged to, whether the sidebar is hidden, the accounts and folders folded\n\
+             # or open in the sidebar, and the view the window last showed.\n\
              # It isn't a setting; delete the file to go back to the defaults.\n",
         );
         if let Some(width) = self.sidebar_width {
@@ -132,6 +144,12 @@ impl Layout {
         }
         if let Some(width) = self.list_width {
             text.push_str(&format!("list_width = {width}\n"));
+        }
+        if self.sidebar_hidden {
+            text.push_str("sidebar_hidden = true\n");
+        }
+        if self.group_by != GroupBy::None {
+            text.push_str(&format!("group_by = \"{}\"\n", self.group_by.name()));
         }
         let keys: Vec<String> = self
             .collapsed
@@ -271,6 +289,7 @@ mod tests {
         let layout = Layout {
             sidebar_width: Some(240),
             list_width: Some(420),
+            sidebar_hidden: true,
             collapsed: vec![AccountKey("work".into()), AccountKey("k3j5x8m2q9wa".into())],
             more_open: vec![AccountKey("home".into())],
             folded: BTreeMap::from([(
@@ -282,8 +301,13 @@ mod tests {
                 ]),
             )]),
             view: Some(View::AllInboxes),
+            group_by: GroupBy::Domain,
         };
         assert_eq!(Layout::parse(&layout.to_text()), layout);
+        assert_eq!(
+            Layout::parse("group_by = \"sideways\"").group_by,
+            GroupBy::None
+        );
         assert_eq!(
             Layout::parse(&Layout::default().to_text()),
             Layout::default()
@@ -301,10 +325,12 @@ mod tests {
             Layout {
                 sidebar_width: None,
                 list_width: None,
+                sidebar_hidden: false,
                 collapsed: vec![AccountKey("work".into()), AccountKey("home".into())],
                 more_open: Vec::new(),
                 folded: BTreeMap::new(),
                 view: None,
+                group_by: GroupBy::None,
             }
         );
         assert_eq!(
@@ -324,6 +350,8 @@ mod tests {
         );
         assert_eq!(Layout::parse("list_width = 280").list_width, Some(280));
         assert_eq!(Layout::parse("list_width = 279").list_width, None);
+        assert!(Layout::parse("sidebar_hidden = true").sidebar_hidden);
+        assert!(!Layout::parse("sidebar_hidden = \"yes\"").sidebar_hidden);
     }
 
     #[test]

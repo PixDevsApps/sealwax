@@ -29,7 +29,8 @@ impl fmt::Display for ParseError {
 }
 
 /// Commands and their argument counts (minimum, maximum). Assertions (`assert-*`) may also
-/// follow `wait-until`, which polls them.
+/// follow `wait-until`, which polls them, and `wait-within MS`, which polls them for at most MS
+/// milliseconds.
 pub const COMMANDS: &[(&str, usize, usize)] = &[
     // Before the app starts: `tiling` (no window controls, as on Hyprland) or `other`.
     ("desktop", 1, 1),
@@ -40,6 +41,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     // A theme from tests/theme/ (or none) in the scratch Omarchy state; corners auto or px.
     ("theme", 1, 1),
     ("corners", 1, 1),
+    ("dark-styled-mail", 1, 1),
     // A file under $TMP, such as $TMP/config/sealwax/keys.toml.
     ("write-file", 2, 2),
     ("sidebar", 1, 1),
@@ -52,6 +54,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("screenshot", 1, 2),
     ("dump-layout", 0, 0),
     ("wait-until", 1, usize::MAX),
+    ("wait-within", 2, usize::MAX),
     ("quit", 0, 2),
     // Other processes and D-Bus.
     ("spawn", 0, usize::MAX),
@@ -159,6 +162,21 @@ pub fn parse(text: &str, vars: &[(&str, &str)]) -> Result<Vec<Step>, ParseError>
                 )));
             }
             check_arity(&words[0], words.len() - 1).map_err(error)?;
+        }
+        if command == "wait-within" {
+            if words[0].parse::<u64>().is_err() {
+                return Err(error(format!(
+                    "wait-within needs milliseconds, not {}",
+                    words[0]
+                )));
+            }
+            if !words[1].starts_with("assert-") {
+                return Err(error(format!(
+                    "wait-within needs an assertion, not {}",
+                    words[1]
+                )));
+            }
+            check_arity(&words[1], words.len() - 2).map_err(error)?;
         }
         steps.push(Step {
             line,
@@ -322,6 +340,14 @@ mod tests {
             (
                 "wait-until assert-layout",
                 "assert-layout takes 1 arguments, got 0",
+            ),
+            (
+                "wait-within soon assert-layout x",
+                "wait-within needs milliseconds, not soon",
+            ),
+            (
+                "wait-within 500 sleep 5",
+                "wait-within needs an assertion, not sleep",
             ),
         ] {
             let error = parse(script, VARS).unwrap_err();

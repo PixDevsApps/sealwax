@@ -394,11 +394,13 @@ row.sw-sidebar-heading:active {
 /* Warning while Sealwax keeps trying or still syncs; error when it stopped until the user acts
    (ML-048). */
 .sw-status-dot.sw-offline,
+.sw-status-dot.sw-sending,
 .sw-status-dot.sw-quota {
   background: var(--warning-color);
 }
 
 .sw-status-dot.sw-attention,
+.sw-status-dot.sw-add-again,
 .sw-status-dot.sw-certificate {
   background: var(--error-color);
 }
@@ -1086,6 +1088,12 @@ dialog.sw-setup sheet {
    one Bridge or openssl shows. */
 .sw-setup-fingerprint {
   font-family: monospace;
+}
+
+/* Check for Updates: the command to paste, in the terminal's font. */
+.sw-update-command {
+  font-family: monospace;
+  padding: var(--sw-space-md);
 }
 
 /* The column scrolls under the sheet's right padding, so the scrollbar sits in that gutter,

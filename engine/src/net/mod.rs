@@ -3,13 +3,16 @@
 //! that CA, never by weakening verification (SECURITY.md, Transport). A server on this computer
 //! can instead be trusted with one pinned certificate ([`pinned`]; issue #9, Proton Mail Bridge).
 
+use futures_util::stream::{FuturesUnordered, StreamExt};
 use rustls::{ClientConfig, RootCertStore};
 use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::{CertificateDer, ServerName};
 use rustls_platform_verifier::BuilderVerifierExt;
 use sealwax_domain::account::{Endpoint, LoginFailure};
 use socket2::{SockRef, TcpKeepalive};
+use std::collections::VecDeque;
 use std::io;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,6 +31,10 @@ pub(crate) use pinned::{loopback_peer, pinned_config};
 const KEEPALIVE_IDLE: Duration = Duration::from_secs(60);
 const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(15);
 const KEEPALIVE_RETRIES: u32 = 4;
+
+/// How long a connection attempt to one of a host's addresses goes on alone before the next
+/// starts beside it (RFC 8305's Connection Attempt Delay).
+const ATTEMPT_DELAY: Duration = Duration::from_millis(250);
 
 /// Which certificates a connection trusts.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -143,23 +150,63 @@ pub(crate) async fn tcp(
             .await
             .map_err(ConnectError::Resolve)?
             .collect();
-        let mut last = None;
-        for address in addresses {
-            match TcpStream::connect(address).await {
-                Ok(stream) => {
-                    keepalive(&stream).map_err(ConnectError::Connect)?;
-                    stream.set_nodelay(true).map_err(ConnectError::Connect)?;
-                    return Ok(stream);
-                }
-                Err(error) => last = Some(error),
-            }
-        }
-        Err(ConnectError::Connect(last.unwrap_or_else(|| {
-            io::Error::new(io::ErrorKind::NotFound, "no address")
-        })))
+        let stream = first_to_answer(addresses)
+            .await
+            .map_err(ConnectError::Connect)?;
+        keepalive(&stream).map_err(ConnectError::Connect)?;
+        stream.set_nodelay(true).map_err(ConnectError::Connect)?;
+        Ok(stream)
     })
     .await
     .map_err(|_| ConnectError::Timeout)?
+}
+
+/// Connects to `addresses` in a staggered race (RFC 8305, Happy Eyeballs): the address families
+/// take turns, and the next address is tried as soon as an attempt fails, or after
+/// [`ATTEMPT_DELAY`] while the earlier attempts go on. An address that never answers, as through
+/// a broken IPv6 route, then holds up the others by a quarter second instead of the whole
+/// timeout. The first connection made wins and the other attempts are dropped.
+async fn first_to_answer(addresses: Vec<SocketAddr>) -> io::Result<TcpStream> {
+    let mut queue = interleaved(addresses);
+    let mut attempts = FuturesUnordered::new();
+    let mut last = None;
+    loop {
+        if attempts.is_empty() {
+            let Some(address) = queue.pop_front() else {
+                return Err(
+                    last.unwrap_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no address"))
+                );
+            };
+            attempts.push(TcpStream::connect(address));
+        }
+        tokio::select! {
+            Some(result) = attempts.next() => match result {
+                Ok(stream) => return Ok(stream),
+                Err(error) => {
+                    last = Some(error);
+                    attempts.extend(queue.pop_front().map(TcpStream::connect));
+                }
+            },
+            () = tokio::time::sleep(ATTEMPT_DELAY), if !queue.is_empty() => {
+                attempts.extend(queue.pop_front().map(TcpStream::connect));
+            }
+        }
+    }
+}
+
+/// `addresses` in the resolver's order (RFC 6724), the two families taking turns from the
+/// first address's (RFC 8305, section 4).
+fn interleaved(addresses: Vec<SocketAddr>) -> VecDeque<SocketAddr> {
+    let first_v6 = addresses.first().is_some_and(SocketAddr::is_ipv6);
+    let (mut first, mut second): (VecDeque<_>, VecDeque<_>) = addresses
+        .into_iter()
+        .partition(|address| address.is_ipv6() == first_v6);
+    let mut order = VecDeque::with_capacity(first.len() + second.len());
+    while !first.is_empty() || !second.is_empty() {
+        order.extend(first.pop_front());
+        order.extend(second.pop_front());
+    }
+    order
 }
 
 fn keepalive(stream: &TcpStream) -> io::Result<()> {
@@ -226,6 +273,69 @@ mod tests {
             LoginFailure::Unreachable
         );
         assert_eq!(ConnectError::Timeout.failure(), LoginFailure::Timeout);
+    }
+
+    /// A listener whose accept queue is full and never drained: the kernel drops new SYNs, so a
+    /// connect to it hangs as one through a route that drops packets does.
+    struct Unanswering {
+        listener: tokio::net::TcpListener,
+        _queued: Vec<TcpStream>,
+    }
+
+    async fn unanswering() -> Unanswering {
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let listener = socket.listen(0).unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut queued = Vec::new();
+        while let Ok(Ok(stream)) =
+            tokio::time::timeout(Duration::from_millis(200), TcpStream::connect(address)).await
+        {
+            queued.push(stream);
+            assert!(queued.len() < 8, "the accept queue doesn't fill");
+        }
+        Unanswering {
+            listener,
+            _queued: queued,
+        }
+    }
+
+    #[test]
+    fn the_families_take_turns() {
+        let address = |text: &str| text.parse::<SocketAddr>().unwrap();
+        let (v6a, v6b, v6c) = (
+            address("[2001:db8::1]:993"),
+            address("[2001:db8::2]:993"),
+            address("[2001:db8::3]:993"),
+        );
+        let (v4a, v4b) = (address("192.0.2.1:993"), address("192.0.2.2:993"));
+        assert_eq!(
+            interleaved(vec![v6a, v6b, v6c, v4a, v4b]),
+            [v6a, v4a, v6b, v4b, v6c]
+        );
+        assert_eq!(interleaved(vec![v4a, v6a, v4b]), [v4a, v6a, v4b]);
+        assert_eq!(interleaved(vec![v4a, v4b]), [v4a, v4b]);
+        assert!(interleaved(Vec::new()).is_empty());
+    }
+
+    #[tokio::test]
+    async fn an_address_that_never_answers_doesnt_hold_up_the_next() {
+        let refused = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap()
+        };
+        let silent = unanswering().await;
+        let live = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addresses = vec![
+            refused,
+            silent.listener.local_addr().unwrap(),
+            live.local_addr().unwrap(),
+        ];
+        let stream = tokio::time::timeout(Duration::from_secs(5), first_to_answer(addresses))
+            .await
+            .expect("the live address answers within the limit")
+            .unwrap();
+        assert_eq!(stream.peer_addr().unwrap(), live.local_addr().unwrap());
     }
 
     #[tokio::test]

@@ -413,7 +413,6 @@ fn hardened_settings(theme: &Theme) -> webkit6::Settings {
     settings.set_allow_top_navigation_to_data_urls(false);
     settings.set_allow_modal_dialogs(false);
     settings.set_enable_dns_prefetching(false);
-    settings.set_enable_hyperlink_auditing(false);
     if let Some(features) = webkit6::Settings::all_features() {
         for index in 0..features.length() {
             if let Some(feature) = features.get(index)

@@ -245,7 +245,12 @@ pub struct Config {
     pub reader: ReaderSettings,
 }
 
-const APPEARANCE_SETTINGS: [&str; 3] = ["corner_radius", "chrome_font", "reading_font"];
+const APPEARANCE_SETTINGS: [&str; 4] = [
+    "corner_radius",
+    "chrome_font",
+    "reading_font",
+    "dark_styled_mail",
+];
 const STORAGE_SETTINGS: [&str; 2] = ["cache_size", "prefetch_days"];
 const NOTIFICATION_SETTINGS: [&str; 2] = ["enabled", "show"];
 const BACKGROUND_SETTINGS: [&str; 1] = ["enabled"];
@@ -370,6 +375,11 @@ impl Reader<'_> {
                         ),
                     ),
                 },
+                "dark_styled_mail" => {
+                    if let Some(dark) = self.boolean(name, value) {
+                        appearance.dark_styled_mail = dark;
+                    }
+                }
                 _ => self.error(
                     key.span(),
                     format!(
@@ -720,6 +730,9 @@ pub fn default_config_file() -> String {
          # chrome_font = \"omarchy\"\n\
          # Message text: \"sans\" or \"mono\".\n\
          # reading_font = \"sans\"\n\
+         # Newsletters and other mail with a design of its own keep it on a light card. true\n\
+         # shows them in dark colours when your theme is dark.\n\
+         # dark_styled_mail = false\n\
          \n\
          # Your own OAuth client for Sign in with Microsoft, in place of the one Sealwax was\n\
          # built with (docs/OAUTH-SETUP.md).\n\
@@ -777,13 +790,15 @@ mod tests {
         assert_eq!(defaults.appearance.corner_radius, CornerRadius::Auto);
         assert_eq!(defaults.appearance.chrome_font, ChromeFont::Omarchy);
         assert_eq!(defaults.appearance.reading_font, ReadingFont::Sans);
+        assert!(!defaults.appearance.dark_styled_mail);
         assert_eq!(defaults.oauth, OAuth::default());
     }
 
     #[test]
     fn reads_every_setting() {
         let text = "[appearance]\ncorner_radius = 8\nchrome_font = \"sans\"\n\
-                    reading_font = \"mono\"\n\n[oauth.microsoft]\nclient_id = \" id.example \"\n";
+                    reading_font = \"mono\"\ndark_styled_mail = true\n\n\
+                    [oauth.microsoft]\nclient_id = \" id.example \"\n";
         let config = Config::parse(text).unwrap();
         assert_eq!(
             config.appearance,
@@ -791,6 +806,7 @@ mod tests {
                 corner_radius: CornerRadius::Px(8),
                 chrome_font: ChromeFont::Sans,
                 reading_font: ReadingFont::Mono,
+                dark_styled_mail: true,
             }
         );
         assert_eq!(

@@ -8,7 +8,8 @@ mod mock;
 
 use mock::{CLIENT, Microsoft, Server, Tls};
 use sealwax_domain::account::{
-    AccountKey, AccountSettings, AuthMethod, LoginError, LoginFailure, OAuthProvider, Protocol,
+    AccountKey, AccountSettings, AuthMethod, LoginError, LoginFailure, OAuthProvider, Pop3Policy,
+    Protocol, Receive,
 };
 use sealwax_domain::model::AccountId;
 use sealwax_engine::api::{AccountError, Command, Event, Password, RequestId, SyncStatus};
@@ -191,11 +192,20 @@ async fn add(
     request: RequestId,
     sign_in: Option<RequestId>,
 ) -> Result<AccountId, AccountError> {
+    add_settings(engine, setup.settings(), request, sign_in).await
+}
+
+async fn add_settings(
+    engine: &Engine,
+    settings: AccountSettings,
+    request: RequestId,
+    sign_in: Option<RequestId>,
+) -> Result<AccountId, AccountError> {
     send(
         engine,
         Command::AddAccount {
             request,
-            settings: setup.settings(),
+            settings,
             password: Password::new(String::new()),
             sign_in,
         },
@@ -308,6 +318,41 @@ async fn a_sign_in_checks_both_servers_as_the_token_identity_and_the_account_syn
     })
     .await;
     assert_eq!(removed, Ok(()));
+    stop(engine);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_add_takes_the_servers_its_sign_in_was_checked_on() {
+    // Detection can take SMTP from a DNS answer alone while IMAP is Microsoft's, and the add
+    // stored what detection found, so the first send gave the token to that server. Here the
+    // add names other servers, which would see any login, and POP3.
+    let setup = setup().await;
+    let other_imap = mock::imap(&setup.tls, &setup.microsoft).await;
+    let other_smtp = mock::smtp(&setup.tls, &setup.microsoft).await;
+    let engine = setup.start(Some(CLIENT));
+    assert_eq!(sign_in(&engine, 1, None).await, Ok(USER.to_owned()));
+    let settings = AccountSettings {
+        incoming: other_imap.endpoint(),
+        receive: Receive::Pop3(Pop3Policy {
+            leave_on_server: true,
+            delete_after_days: None,
+        }),
+        smtp: other_smtp.endpoint(),
+        ..setup.settings()
+    };
+    let account = add_settings(&engine, settings, 2, Some(1)).await.unwrap();
+    assert_eq!(synced(&engine, account).await, Ok(()));
+
+    let listed = setup.listed();
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].incoming, setup.imap.endpoint());
+    assert_eq!(listed[0].receive, Receive::Imap);
+    assert_eq!(listed[0].smtp, setup.smtp.endpoint());
+    assert_eq!(setup.imap.logins().len(), 2, "the check and the sync");
+    assert!(
+        other_imap.logins().is_empty() && other_smtp.logins().is_empty(),
+        "no token went to the servers the add named"
+    );
     stop(engine);
 }
 

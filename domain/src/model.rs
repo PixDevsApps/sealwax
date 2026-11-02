@@ -272,6 +272,10 @@ pub struct MessageSummary {
     pub has_attachments: bool,
     /// Messages in the conversation, each Message-ID counted once.
     pub thread_count: u32,
+    /// The message has a List-Unsubscribe that Sealwax can use (ADR-023).
+    pub subscription: bool,
+    /// Its sender or the sender's domain is pinned (issue #26).
+    pub pinned: bool,
 }
 
 /// Which body alternatives a message has.
@@ -329,6 +333,10 @@ pub struct Headers {
     pub references: Vec<String>,
     /// The List-Id identifier, without angle brackets.
     pub list_id: Option<String>,
+    /// List-Unsubscribe's usable URIs, [`crate::unsubscribe::normalize`]d.
+    pub list_unsubscribe: Option<String>,
+    /// List-Unsubscribe-Post asks for a one-click POST (RFC 8058).
+    pub one_click: bool,
     /// The conversation Outlook's `Thread-Index` names.
     pub thread_index: Option<ThreadIndex>,
 }

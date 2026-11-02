@@ -13,12 +13,22 @@ pub const PREVIEW_BYTES: u32 = 1024;
 
 /// The header fields mail-parser reads into `Headers`, plus what decoding the preview needs.
 const FIELDS: &str = "DATE FROM SENDER TO CC REPLY-TO SUBJECT MESSAGE-ID IN-REPLY-TO \
-    REFERENCES THREAD-INDEX LIST-ID MIME-VERSION CONTENT-TYPE CONTENT-TRANSFER-ENCODING";
+    REFERENCES THREAD-INDEX LIST-ID LIST-UNSUBSCRIBE LIST-UNSUBSCRIBE-POST MIME-VERSION CONTENT-TYPE \
+    CONTENT-TRANSFER-ENCODING";
 
 /// The FETCH items of the first sync.
 pub(crate) fn items() -> String {
     format!(
         "(UID FLAGS INTERNALDATE RFC822.SIZE BODYSTRUCTURE BODY.PEEK[HEADER.FIELDS ({FIELDS})] \
+         BODY.PEEK[TEXT]<0.{PREVIEW_BYTES}>)"
+    )
+}
+
+/// [`items`] without BODYSTRUCTURE, for a folder whose full FETCH couldn't be read: the row
+/// then has no body kind and no attachment clip.
+pub(crate) fn lean_items() -> String {
+    format!(
+        "(UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[HEADER.FIELDS ({FIELDS})] \
          BODY.PEEK[TEXT]<0.{PREVIEW_BYTES}>)"
     )
 }

@@ -399,10 +399,17 @@ pub enum LoginFailure {
     AppPasswordRequired,
     /// IMAP is turned off for this account in the provider's settings.
     ImapDisabled,
+    /// SMTP AUTH is turned off for the mailbox or its organization (Microsoft 365's
+    /// "SmtpClientAuthentication is disabled", issue #21): mail comes in, but none can be sent.
+    SmtpAuthDisabled,
     /// The server accepts only a browser sign-in.
     OAuthRequired,
     /// The browser sign-in was declined: by the user, or by their organization's consent policy.
     SignInDeclined,
+    /// A Microsoft account whose server isn't one of Microsoft's, saved by a version before
+    /// 1.0.3: its sign-in goes to Microsoft's servers only (GHSA-vhrm-52f2-v9v3), so nothing
+    /// connects until the account is added again.
+    ServerNotMicrosoft,
     /// The server offers neither TLS nor STARTTLS, or STARTTLS failed.
     NoTls,
     /// The server's certificate didn't verify.

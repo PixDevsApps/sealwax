@@ -441,7 +441,13 @@ async fn a_delete_goes_deepest_first_with_folders_the_store_never_saw() {
             "DELETE \"Kunder\"",
         ]
     );
-    assert_eq!(fake.world().count("UNSUBSCRIBE"), 4);
+    let unsubscribes = fake
+        .world()
+        .commands
+        .iter()
+        .filter(|command| command.starts_with("UNSUBSCRIBE"))
+        .count();
+    assert_eq!(unsubscribes, 4);
     assert_eq!(run.names(account).await, ["INBOX", "Kunderservice"]);
 }
 

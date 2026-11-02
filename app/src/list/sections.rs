@@ -1,13 +1,23 @@
-//! The list's date sections (DESIGN.md "Message list"): Today, Yesterday, This week (from
+//! The list's sections (DESIGN.md "Message list"): Pinned (issue #26: an Inbox's newest mail from
+//! pinned senders, ahead of the dates), then the date sections Today, Yesterday, This week (from
 //! Monday), This month and Older, starting at local midnights. Ported from S3. A list is ordered
-//! newest first, so each section is one run of positions; [`Bounds`] holds where the runs end
-//! and shifts them as rows come and go.
+//! newest first after its Pinned rows, so each section is one run of positions; [`Bounds`] holds
+//! where the runs end and shifts them as rows come and go.
 
 use gtk4::glib;
 use std::time::Duration;
 
-pub const LABELS: [&str; 5] = ["Today", "Yesterday", "This week", "This month", "Older"];
-pub const OLDER: usize = 4;
+pub const LABELS: [&str; SECTIONS] = [
+    "Pinned",
+    "Today",
+    "Yesterday",
+    "This week",
+    "This month",
+    "Older",
+];
+pub const SECTIONS: usize = 6;
+pub const PINNED: usize = 0;
+pub const OLDER: usize = SECTIONS - 1;
 
 /// Start times of the first four sections (Unix seconds, local midnights), non-increasing, so a
 /// section that is empty on a given day (This week on a Monday) starts where the one before it
@@ -43,11 +53,12 @@ impl Thresholds {
         ))
     }
 
+    /// The date section of a row dated `date` (never [`PINNED`]).
     pub fn section_of(&self, date: i64) -> usize {
         self.starts
             .iter()
             .position(|start| date >= *start)
-            .unwrap_or(OLDER)
+            .map_or(OLDER, |index| index + 1)
     }
 
     /// The starts as the store's `OpenView::section_starts` takes them.
@@ -70,16 +81,17 @@ pub fn until_next_day(now: &glib::DateTime) -> Duration {
 /// Where each section ends in list positions: `ends[i]` is one past the last row of section `i`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Bounds {
-    ends: [u32; 5],
+    ends: [u32; SECTIONS],
 }
 
 impl Bounds {
-    /// From the rows dated at or after each section start, as the store counts them, and the
-    /// row count.
-    pub fn from_counts(counts: &[u32], total: u32) -> Self {
-        let mut ends = [0; 5];
+    /// From the Pinned rows, the rows before the first one dated before each section start (the
+    /// Pinned ones included), as the store counts them, and the row count.
+    pub fn from_counts(pinned: u32, counts: &[u32], total: u32) -> Self {
+        let mut ends = [0; SECTIONS];
+        ends[PINNED] = pinned.min(total);
         ends[OLDER] = total;
-        for (end, count) in ends[..OLDER].iter_mut().zip(counts) {
+        for (end, count) in ends[PINNED + 1..OLDER].iter_mut().zip(counts) {
             *end = (*count).min(total);
         }
         for index in 1..ends.len() {
@@ -90,11 +102,11 @@ impl Bounds {
 
     /// From the dates of rows ordered newest first.
     pub fn from_dates(dates: impl IntoIterator<Item = i64>, thresholds: &Thresholds) -> Self {
-        let mut counts = [0u32; 5];
+        let mut counts = [0u32; SECTIONS];
         for date in dates {
             counts[thresholds.section_of(date)] += 1;
         }
-        let mut ends = [0; 5];
+        let mut ends = [0; SECTIONS];
         let mut sum = 0;
         for (end, count) in ends.iter_mut().zip(counts) {
             sum += count;
@@ -108,8 +120,8 @@ impl Bounds {
     }
 
     /// Rows in each section.
-    pub fn counts(&self) -> [u32; 5] {
-        let mut counts = [0; 5];
+    pub fn counts(&self) -> [u32; SECTIONS] {
+        let mut counts = [0; SECTIONS];
         let mut start = 0;
         for (count, end) in counts.iter_mut().zip(self.ends) {
             *count = end - start;
@@ -160,9 +172,9 @@ mod tests {
         let today = 100 * DAY;
         let thresholds = Thresholds::new(today, today - DAY, today, today - 20 * DAY);
         assert_eq!(thresholds.starts[2], thresholds.starts[1]);
-        assert_eq!(thresholds.section_of(today + 5), 0);
-        assert_eq!(thresholds.section_of(today - 5), 1);
-        assert_eq!(thresholds.section_of(today - 3 * DAY), 3);
+        assert_eq!(thresholds.section_of(today + 5), 1);
+        assert_eq!(thresholds.section_of(today - 5), 2);
+        assert_eq!(thresholds.section_of(today - 3 * DAY), 4);
         assert_eq!(thresholds.section_of(today - 40 * DAY), OLDER);
         assert_eq!(thresholds.section_of(0), OLDER);
     }
@@ -204,34 +216,48 @@ mod tests {
             today - 31 * DAY,
         ];
         let from_dates = Bounds::from_dates(dates, &thresholds);
-        let from_counts = Bounds::from_counts(&[2, 3, 4, 5], 7);
+        let from_counts = Bounds::from_counts(0, &[2, 3, 4, 5], 7);
         assert_eq!(from_dates, from_counts);
-        assert_eq!(from_dates.counts(), [2, 1, 1, 1, 2]);
-        assert_eq!(from_dates.section_at(0), (0, 0, 2));
-        assert_eq!(from_dates.section_at(2), (1, 2, 3));
+        assert_eq!(from_dates.counts(), [0, 2, 1, 1, 1, 2]);
+        assert_eq!(from_dates.section_at(0), (1, 0, 2));
+        assert_eq!(from_dates.section_at(2), (2, 2, 3));
         assert_eq!(from_dates.section_at(6), (OLDER, 5, 7));
         assert_eq!(from_dates.section_at(7), (OLDER, 7, u32::MAX));
     }
 
     #[test]
     fn rows_shift_later_sections() {
-        let mut bounds = Bounds::from_counts(&[0, 7, 20, 20], 100);
-        assert_eq!(bounds.section_at(0), (1, 0, 7));
-        bounds.insert(0);
-        assert_eq!(bounds.section_at(0), (0, 0, 1));
-        assert_eq!(bounds.section_at(1), (1, 1, 8));
+        let mut bounds = Bounds::from_counts(0, &[0, 7, 20, 20], 100);
+        assert_eq!(bounds.section_at(0), (2, 0, 7));
+        bounds.insert(1);
+        assert_eq!(bounds.section_at(0), (1, 0, 1));
+        assert_eq!(bounds.section_at(1), (2, 1, 8));
         assert_eq!(bounds.total(), 101);
-        bounds.remove(0);
-        assert_eq!(bounds, Bounds::from_counts(&[0, 7, 20, 20], 100));
+        bounds.remove(1);
+        assert_eq!(bounds, Bounds::from_counts(0, &[0, 7, 20, 20], 100));
         bounds.remove(OLDER);
         assert_eq!(bounds.total(), 99);
-        assert_eq!(bounds.counts(), [0, 7, 13, 0, 79]);
+        assert_eq!(bounds.counts(), [0, 0, 7, 13, 0, 79]);
     }
 
     #[test]
     fn counts_past_the_total_are_clamped() {
-        let bounds = Bounds::from_counts(&[5, 3, 9, 12], 10);
-        assert_eq!(bounds.counts(), [5, 0, 4, 1, 0]);
-        assert_eq!(Bounds::from_counts(&[], 4).counts(), [0, 0, 0, 0, 4]);
+        let bounds = Bounds::from_counts(0, &[5, 3, 9, 12], 10);
+        assert_eq!(bounds.counts(), [0, 5, 0, 4, 1, 0]);
+        assert_eq!(Bounds::from_counts(0, &[], 4).counts(), [0, 0, 0, 0, 0, 4]);
+    }
+
+    #[test]
+    fn the_pinned_rows_come_first() {
+        // Two pinned rows, then one today, two yesterday, none this week or month, four older.
+        let bounds = Bounds::from_counts(2, &[3, 5, 5, 5], 9);
+        assert_eq!(bounds.counts(), [2, 1, 2, 0, 0, 4]);
+        assert_eq!(bounds.section_at(0), (PINNED, 0, 2));
+        assert_eq!(bounds.section_at(1), (PINNED, 0, 2));
+        assert_eq!(bounds.section_at(2), (1, 2, 3));
+        assert_eq!(
+            Bounds::from_counts(12, &[3], 9).counts(),
+            [9, 0, 0, 0, 0, 0]
+        );
     }
 }

@@ -9,6 +9,7 @@ mod corpus;
 mod import;
 mod mime;
 mod ops;
+mod pins;
 mod remove;
 mod rng;
 mod search;
@@ -32,6 +33,7 @@ const USAGE: &str = "usage:
   sealwax-fixtures bench-unified --store PATH [--blobs DIR] [--cold N] [--warm N] [--inserts N] [--now UNIX]
   sealwax-fixtures bench-ops --store PATH [--cold N] [--warm N] [--samples N] [--overlays N] [--now UNIX]
   sealwax-fixtures bench-conversation --store PATH [--blobs DIR] [--cold N] [--warm N] [--now UNIX]
+  sealwax-fixtures bench-pins --store PATH [--blobs DIR] [--cold N] [--warm N] [--now UNIX]
   sealwax-fixtures bench-compose --store PATH [--samples N] [--contacts N] [--now UNIX]
   sealwax-fixtures bench-search --store PATH [--blobs DIR] [--cold N] [--warm N] [--rebuild yes] [--date-keyed yes]
   sealwax-fixtures check --store PATH
@@ -42,7 +44,8 @@ the order of a first sync. `bench-unified` measures All Inboxes over several acc
 imported with its own --account. `bench-ops` measures the op queue with the fixture account made a
 server account (it gets a key), so run it on a copy of a store. `bench-conversation` measures the
 reader's read of a conversation and files a 150-message one into the INBOX the first time, so run
-it on a copy too. `bench-search` times search and Rebuild Search Index (`--rebuild yes`), and
+it on a copy too. `bench-pins` measures the INBOX with pinned senders (issue #26) and pins and
+unpins, so run it on a copy as well. `bench-search` times search and Rebuild Search Index (`--rebuild yes`), and
 indexes an earlier build's store again once (schema v10); `--date-keyed yes` adds S3's date-keyed
 table to compare, so run it on a copy.";
 
@@ -249,6 +252,7 @@ fn main() -> Result<()> {
             date_keyed: args.get("date-keyed") == Some("yes"),
         }),
         "bench-conversation" => conversation::run(&args.bench()?),
+        "bench-pins" => pins::run(&args.bench()?),
         "bench-ops" => ops::run(&ops::Options {
             store: args.path("store")?,
             cold: args.number("cold", 5)?,

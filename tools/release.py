@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Make a Sealwax release from the commit tagged v<version> (ADR-021). Three steps, in order:
 
-  python3 tools/release.py build    the Arch package, a tarball of its files for the AUR and their
-                                    SHA-256 sums, in .local/release/<version>/
+  python3 tools/release.py build    the Arch package, a tarball of its files for the AUR, the
+                                    package's THIRD-PARTY-LICENSES.txt and their SHA-256 sums, in
+                                    .local/release/<version>/
   python3 tools/release.py github   the GitHub release v<version> with those files and the notes
                                     from CHANGELOG.md
   python3 tools/release.py aur      sealwax-bin's PKGBUILD and .SRCINFO for <version>, committed
@@ -56,6 +57,7 @@ def files(ver: str) -> list[pathlib.Path]:
         out / f"sealwax-{ver}-1-x86_64.pkg.tar.zst",
         out / STABLE_NAME,
         out / f"sealwax-{ver}-x86_64.tar.gz",
+        out / "THIRD-PARTY-LICENSES.txt",
         out / "SHA256SUMS",
     ]
 
@@ -103,9 +105,10 @@ def build(ver: str) -> None:
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    named, stable, tarball, sums = files(ver)
+    named, stable, tarball, licenses, sums = files(ver)
     shutil.copy2(package, named)
     shutil.copy2(package, stable)
+    shutil.copy2(package_dir / licenses.name, licenses)
 
     # The package's own files (usr/…) as a plain tarball, for sealwax-bin: owned by root, in
     # name order, with the package's times, so the same package gives the same bytes.
@@ -129,10 +132,10 @@ def build(ver: str) -> None:
 
     lines = [
         f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}"
-        for path in (named, stable, tarball)
+        for path in (named, stable, tarball, licenses)
     ]
     sums.write_text("\n".join(lines) + "\n")
-    for path in (named, stable, tarball, sums):
+    for path in (named, stable, tarball, licenses, sums):
         print(path)
 
 

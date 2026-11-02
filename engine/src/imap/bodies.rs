@@ -3,7 +3,9 @@
 //! marked `\Seen`. By RFC822.SIZE, a message up to [`WHOLE_LIMIT`] comes whole, several per
 //! round trip; a larger one as its header and the text parts the reader shows, rebuilt in the
 //! message's own MIME structure with every attachment left empty and recorded by its IMAP
-//! section, which [`fetch_part`] fetches on demand. Each body goes into the blob store before
+//! section, which [`fetch_part`] fetches on demand. A large message whose BODYSTRUCTURE
+//! imap-proto can't read ends the connection with [`BodyFetchError::Structure`]; asked again
+//! among the caller's `whole` messages, it comes whole. Each body goes into the blob store before
 //! the store's upgrade refers to it. [`fetch_original`] fetches a message whole for Show
 //! Original and Save as .eml (M5), storing nothing.
 
@@ -52,6 +54,9 @@ pub enum BodyFetchError {
     Store(#[from] StoreError),
     #[error("the blob store failed ({0})")]
     Blob(io::ErrorKind),
+    /// The BODYSTRUCTURE of this large message couldn't be read, which ends the connection.
+    #[error("a large message's structure couldn't be read")]
+    Structure(MessageId),
 }
 
 impl BodyFetchError {
@@ -59,7 +64,7 @@ impl BodyFetchError {
     pub fn body_error(&self) -> BodyError {
         match self {
             BodyFetchError::Imap(error) if error.is_connection() => BodyError::Offline,
-            BodyFetchError::Imap(_) => BodyError::Other,
+            BodyFetchError::Imap(_) | BodyFetchError::Structure(_) => BodyError::Other,
             BodyFetchError::Store(_) | BodyFetchError::Blob(_) => BodyError::Store,
         }
     }
@@ -401,41 +406,46 @@ async fn uid_fetch(
     let wanted: HashSet<u32> = uids.iter().copied().collect();
     let mut out: HashMap<u32, Fetched> = HashMap::new();
     let command = format!("UID FETCH {} ({items})", raw::uid_set(uids));
-    let result = raw::run(&mut conn.session, &command, |response| {
-        let Response::Fetch(_, attributes) = response else {
-            return;
-        };
-        let Some(uid) = attributes.iter().find_map(|attribute| match attribute {
-            AttributeValue::Uid(uid) => Some(*uid),
-            _ => None,
-        }) else {
-            return;
-        };
-        if !wanted.contains(&uid) {
-            return;
-        }
-        let entry = out.entry(uid).or_default();
-        for attribute in attributes {
-            match attribute {
-                AttributeValue::BodyStructure(body) => {
-                    entry.structure = Some(Node::from_structure(body));
-                }
-                AttributeValue::BodySection {
-                    section: None,
-                    data,
-                    ..
-                } => entry.whole = Some(data.as_deref().unwrap_or_default().to_vec()),
-                AttributeValue::BodySection { section, data, .. } => {
-                    if let Some(name) = section_name(section) {
-                        entry
-                            .sections
-                            .insert(name, data.as_deref().unwrap_or_default().to_vec());
-                    }
-                }
-                _ => {}
+    let result = raw::run_within(
+        &mut conn.session,
+        &command,
+        raw::Budget::BODIES,
+        |response| {
+            let Response::Fetch(_, attributes) = response else {
+                return;
+            };
+            let Some(uid) = attributes.iter().find_map(|attribute| match attribute {
+                AttributeValue::Uid(uid) => Some(*uid),
+                _ => None,
+            }) else {
+                return;
+            };
+            if !wanted.contains(&uid) {
+                return;
             }
-        }
-    })
+            let entry = out.entry(uid).or_default();
+            for attribute in attributes {
+                match attribute {
+                    AttributeValue::BodyStructure(body) => {
+                        entry.structure = Some(Node::from_structure(body));
+                    }
+                    AttributeValue::BodySection {
+                        section: None,
+                        data,
+                        ..
+                    } => entry.whole = Some(data.as_deref().unwrap_or_default().to_vec()),
+                    AttributeValue::BodySection { section, data, .. } => {
+                        if let Some(name) = section_name(section) {
+                            entry
+                                .sections
+                                .insert(name, data.as_deref().unwrap_or_default().to_vec());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        },
+    )
     .await;
     match result {
         Ok(()) | Err(ImapError::No(_)) => Ok(out),
@@ -481,15 +491,31 @@ async fn keep(
     })
 }
 
+/// Fetches one message whole and stores it.
+async fn fetch_whole(
+    conn: &mut Connection,
+    sink: Sink<'_>,
+    target: &BodyTarget,
+    used: i64,
+) -> Result<Result<(), BodyError>, BodyFetchError> {
+    let mut fetched = uid_fetch(conn, &[target.uid], "UID BODY.PEEK[]").await?;
+    match fetched.remove(&target.uid).and_then(|found| found.whole) {
+        Some(raw) => keep(sink, target, raw, None, used).await,
+        None => Ok(Err(BodyError::Gone)),
+    }
+}
+
 /// Downloads the bodies of `targets`, all in `folder`, and stores them, calling `done` for each
 /// message as soon as it is answered: stored, or `Gone` when the server no longer has it (its
-/// UID, or the folder's UIDVALIDITY changed). An error ends the batch; `done` was not called
-/// for the messages left.
+/// UID, or the folder's UIDVALIDITY changed). A large message in `whole` is fetched whole
+/// without asking for its BODYSTRUCTURE. An error ends the batch; `done` was not called for the
+/// messages left.
 pub async fn fetch_bodies(
     conn: &mut Connection,
     sink: Sink<'_>,
     folder: &FolderSync,
     targets: &[BodyTarget],
+    whole: &HashSet<MessageId>,
     used: i64,
     mut done: impl FnMut(MessageId, Result<(), BodyError>),
 ) -> Result<(), BodyFetchError> {
@@ -505,12 +531,12 @@ pub async fn fetch_bodies(
         }
         return Ok(());
     }
-    let (whole, large): (Vec<&BodyTarget>, Vec<&BodyTarget>) = targets
+    let (small, large): (Vec<&BodyTarget>, Vec<&BodyTarget>) = targets
         .iter()
         .partition(|target| target.size <= WHOLE_LIMIT);
     let mut chunks: Vec<Vec<&BodyTarget>> = Vec::new();
     let mut bytes = 0;
-    for target in whole {
+    for target in small {
         match chunks.last_mut() {
             Some(chunk)
                 if chunk.len() < WHOLE_BATCH && bytes + target.size <= WHOLE_BATCH_BYTES =>
@@ -537,40 +563,42 @@ pub async fn fetch_bodies(
             done(target.message, answer);
         }
     }
-    if !large.is_empty() {
-        let uids: Vec<u32> = large.iter().map(|target| target.uid).collect();
-        let mut structures = uid_fetch(conn, &uids, "UID BODYSTRUCTURE").await?;
-        for target in large {
-            let Some(root) = structures
-                .remove(&target.uid)
-                .and_then(|found| found.structure)
-            else {
-                done(target.message, Err(BodyError::Gone));
-                continue;
-            };
-            let answer = match plan(&root) {
-                Plan::Whole => {
-                    let mut fetched = uid_fetch(conn, &[target.uid], "UID BODY.PEEK[]").await?;
-                    match fetched.remove(&target.uid).and_then(|found| found.whole) {
-                        Some(raw) => keep(sink, target, raw, None, used).await?,
-                        None => Err(BodyError::Gone),
-                    }
+    // One BODYSTRUCTURE per round trip, so one that can't be read names its message.
+    for target in large {
+        let root = if whole.contains(&target.message) {
+            None
+        } else {
+            match uid_fetch(conn, &[target.uid], "UID BODYSTRUCTURE").await {
+                Ok(mut found) => {
+                    let Some(root) = found.remove(&target.uid).and_then(|found| found.structure)
+                    else {
+                        done(target.message, Err(BodyError::Gone));
+                        continue;
+                    };
+                    Some(root)
                 }
-                Plan::Parts(items) => {
-                    let items = format!("UID {}", items.join(" "));
-                    let mut fetched = uid_fetch(conn, &[target.uid], &items).await?;
-                    match fetched.remove(&target.uid) {
-                        Some(found) if found.sections.contains_key("HEADER") => {
-                            let raw = rebuild(&root, &found.sections);
-                            keep(sink, target, raw, Some(root), used).await?
-                        }
-                        _ => Err(BodyError::Gone),
-                    }
+                Err(ImapError::Unreadable(_)) => {
+                    return Err(BodyFetchError::Structure(target.message));
                 }
-            };
-            stored += u32::from(answer.is_ok());
-            done(target.message, answer);
-        }
+                Err(error) => return Err(error.into()),
+            }
+        };
+        let answer = match root.map(|root| (plan(&root), root)) {
+            Some((Plan::Parts(items), root)) => {
+                let items = format!("UID {}", items.join(" "));
+                let mut fetched = uid_fetch(conn, &[target.uid], &items).await?;
+                match fetched.remove(&target.uid) {
+                    Some(found) if found.sections.contains_key("HEADER") => {
+                        let raw = rebuild(&root, &found.sections);
+                        keep(sink, target, raw, Some(root), used).await?
+                    }
+                    _ => Err(BodyError::Gone),
+                }
+            }
+            Some((Plan::Whole, _)) | None => fetch_whole(conn, sink, target, used).await?,
+        };
+        stored += u32::from(answer.is_ok());
+        done(target.message, answer);
     }
     tracing::debug!(
         %folder.folder,

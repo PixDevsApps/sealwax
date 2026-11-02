@@ -10,13 +10,14 @@ use super::api::{
 };
 use super::maintenance::Maintenance;
 use super::{
-    RefusedChange, Removed, RemovedAccount, Shared, StoreError, codec, contacts, fts, views,
+    RefusedChange, Removed, RemovedAccount, Shared, StoreError, codec, contacts, fts, pins, views,
 };
 use rusqlite::hooks::Wal;
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::message::{self, base_subject};
 use sealwax_domain::model::{AccountId, Address, BlobKey, Flags, FolderId, MessageId, ThreadId};
+use sealwax_domain::senders;
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::ffi::c_int;
@@ -30,6 +31,7 @@ pub(crate) mod folders;
 mod index;
 pub(crate) mod ops;
 pub(crate) mod overlay;
+mod pinned;
 pub(crate) mod pop3;
 mod remote;
 pub(crate) mod sync;
@@ -57,6 +59,13 @@ fn record_wal_frames(_wal: &Wal, frames: c_int) -> rusqlite::Result<()> {
 type Sender<T> = async_channel::Sender<Result<T, StoreError>>;
 
 pub(crate) enum WriteJob {
+    RecordUnsubscribed {
+        account: AccountId,
+        key: String,
+        method: sealwax_domain::unsubscribe::Method,
+        at: i64,
+        reply: Sender<()>,
+    },
     AddAccount {
         account: NewAccount,
         reply: Sender<Versioned<AccountId>>,
@@ -136,6 +145,25 @@ pub(crate) enum WriteJob {
     },
     RebuildIndex {
         reply: Sender<super::IndexRebuilt>,
+    },
+    Pin {
+        target: super::PinTarget,
+        kind: super::PinKind,
+        at: i64,
+        reply: Sender<Option<super::Pin>>,
+    },
+    Unpin {
+        message: MessageId,
+        reply: Sender<Vec<super::Pin>>,
+    },
+    RestorePins {
+        pins: Vec<super::Pin>,
+        reply: Sender<()>,
+    },
+    RemovePin {
+        kind: super::PinKind,
+        key: String,
+        reply: Sender<()>,
     },
 }
 
@@ -313,6 +341,17 @@ impl Writer {
 
     fn interactive(&mut self, job: WriteJob) {
         match job {
+            WriteJob::RecordUnsubscribed {
+                account,
+                key,
+                method,
+                at,
+                reply,
+            } => {
+                let _ = reply.try_send(super::unsubscribe::record(
+                    &self.conn, account, &key, method, at,
+                ));
+            }
             WriteJob::AddAccount { account, reply } => {
                 let _ = reply.try_send(self.add_account(&account));
             }
@@ -386,6 +425,23 @@ impl Writer {
                 let _ = reply.try_send(self.forget_remote_sender(&address));
             }
             WriteJob::RebuildIndex { reply } => self.start_rebuild(reply),
+            WriteJob::Pin {
+                target,
+                kind,
+                at,
+                reply,
+            } => {
+                let _ = reply.try_send(self.pin(&target, kind, at));
+            }
+            WriteJob::Unpin { message, reply } => {
+                let _ = reply.try_send(self.unpin(message));
+            }
+            WriteJob::RestorePins { pins, reply } => {
+                let _ = reply.try_send(self.restore_pins(&pins));
+            }
+            WriteJob::RemovePin { kind, key, reply } => {
+                let _ = reply.try_send(self.remove_pin(kind, &key));
+            }
             WriteJob::Ingest { .. } => unreachable!("ingest jobs are bulk"),
         }
     }
@@ -777,7 +833,7 @@ impl Writer {
         }
         let shared = Arc::clone(&self.state.shared);
         let open = shared.registry.lock();
-        let views = view_changes(&tx, &open.open, &rows, &BTreeMap::new())?;
+        let views = view_changes(&tx, &open.open, &rows, &Leaving::default())?;
         let event = ChangeEvent {
             inserted: rows.iter().map(|row| row.id).collect(),
             folders: folder_counts(&tx, &folders)?,
@@ -1137,9 +1193,9 @@ fn insert_message(
             "INSERT INTO messages(folder_id, uid, thread_id, message_id, in_reply_to, refs, \
                date, sent_date, from_name, from_addr, to_addrs, cc_addrs, reply_to, subject, \
                snippet, list_id, flags, keywords, has_attachments, body_kind, size, body_state, \
-               blob_key, thread_index) \
+               blob_key, thread_index, list_unsubscribe, one_click, from_domain) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, \
-               ?18, ?19, ?20, ?21, ?22, ?23, ?24) RETURNING id",
+               ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27) RETURNING id",
         )?
         .query_row(
             params![
@@ -1170,6 +1226,9 @@ fn insert_message(
                     .thread_index
                     .as_ref()
                     .map(|index| index.0.as_slice()),
+                headers.list_unsubscribe,
+                headers.one_click,
+                sender.map_or_else(String::new, |address| senders::domain_key(&address.email)),
             ],
             |row| row.get(0),
         )?,
@@ -1343,15 +1402,48 @@ fn in_view(
     })
 }
 
+/// What leaves the open views, measured before a transaction's changes.
+#[derive(Default)]
+pub(crate) struct Leaving {
+    /// Each view's positions of the rows that leave it, before any change.
+    positions: BTreeMap<ViewId, Vec<u32>>,
+    /// Views whose Pinned section the changes may touch: they reload.
+    reload: BTreeSet<ViewId>,
+}
+
+/// Whether one of `rows` in the view is a pinned sender's: its Pinned section may change, which
+/// moves rows in and out of the dates, so the view reloads (issue #26).
+fn touches_pins(
+    tx: &Connection,
+    filter: ViewFilter,
+    folders: &[FolderId],
+    rows: &[RowChange],
+) -> rusqlite::Result<bool> {
+    for row in rows {
+        let touched = in_view(filter, folders, row.folder, row.before)
+            || in_view(filter, folders, row.folder, row.after);
+        if touched && pins::matches(tx, row.id)? {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 /// Positions, before any change of this transaction, of the rows that leave each open view.
 fn removed_positions(
     tx: &Connection,
     open: &BTreeMap<ViewId, ViewSpec>,
     rows: &[RowChange],
-) -> rusqlite::Result<BTreeMap<ViewId, Vec<u32>>> {
-    let mut removed = BTreeMap::new();
+) -> rusqlite::Result<Leaving> {
+    let mut removed = Leaving::default();
     for (view, spec) in open {
         let folders = views::folders(tx, spec.scope)?;
+        let pinned = pins::section(tx, spec.scope, &folders, spec.filter)?;
+        if pinned.is_some() && touches_pins(tx, spec.filter, &folders, rows)? {
+            removed.reload.insert(*view);
+            continue;
+        }
+        let pinned = pinned.unwrap_or_default();
         let leaving: Vec<&RowChange> = rows
             .iter()
             .filter(|row| {
@@ -1360,15 +1452,20 @@ fn removed_positions(
             })
             .collect();
         if leaving.is_empty() || leaving.len() > MAX_SPLICE {
-            removed.insert(*view, Vec::with_capacity(leaving.len()));
+            removed
+                .positions
+                .insert(*view, Vec::with_capacity(leaving.len()));
             continue;
         }
         let mut positions = leaving
             .iter()
-            .map(|row| views::position(tx, &folders, spec.filter, row.date, row.id, row.folder))
+            .map(|row| {
+                views::position(tx, &folders, spec.filter, row.date, row.id, row.folder)
+                    .map(|base| views::dated_position(&pinned, base, row.date, row.id))
+            })
             .collect::<rusqlite::Result<Vec<_>>>()?;
         positions.sort_unstable_by(|a, b| b.cmp(a));
-        removed.insert(*view, positions);
+        removed.positions.insert(*view, positions);
     }
     Ok(removed)
 }
@@ -1378,7 +1475,7 @@ fn view_changes(
     tx: &Connection,
     open: &BTreeMap<ViewId, ViewSpec>,
     rows: &[RowChange],
-    removed: &BTreeMap<ViewId, Vec<u32>>,
+    removed: &Leaving,
 ) -> rusqlite::Result<Vec<ViewChange>> {
     let mut changes = Vec::new();
     for (view, spec) in open {
@@ -1400,22 +1497,27 @@ fn view_changes(
             continue;
         }
         let total = views::count(tx, &folders, spec.filter)?;
-        let diff = if leaving + entering.len() + staying.len() > MAX_SPLICE {
+        let pinned = pins::section(tx, spec.scope, &folders, spec.filter)?;
+        let reload = removed.reload.contains(view)
+            || (pinned.is_some() && touches_pins(tx, spec.filter, &folders, rows)?);
+        let pinned = pinned.unwrap_or_default();
+        let diff = if reload || leaving + entering.len() + staying.len() > MAX_SPLICE {
             ViewDiff::Reload { total }
         } else {
             let positioned = |list: &[&RowChange]| -> rusqlite::Result<Vec<Positioned>> {
                 let mut out = list
                     .iter()
                     .map(|row| {
+                        let base = views::position(
+                            tx,
+                            &folders,
+                            spec.filter,
+                            row.date,
+                            row.id,
+                            row.folder,
+                        )?;
                         Ok(Positioned {
-                            position: views::position(
-                                tx,
-                                &folders,
-                                spec.filter,
-                                row.date,
-                                row.id,
-                                row.folder,
-                            )?,
+                            position: views::dated_position(&pinned, base, row.date, row.id),
                             row: views::summary(tx, row.id)?,
                         })
                     })
@@ -1424,7 +1526,7 @@ fn view_changes(
                 Ok(out)
             };
             ViewDiff::Splice {
-                removed: removed.get(view).cloned().unwrap_or_default(),
+                removed: removed.positions.get(view).cloned().unwrap_or_default(),
                 inserted: positioned(&entering)?,
                 changed: positioned(&staying)?,
                 total,

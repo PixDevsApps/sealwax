@@ -330,6 +330,28 @@ pub(crate) fn parse_response(i: &str) -> IResult<&str, Response> {
     ))
 }
 
+/// Sealwax's patch: whether `line`, a reply's text up to and including a CRLF and holding no
+/// other, is one continuation line (`250-text\r\n`) as [`parse_response`]'s `many0` takes it.
+/// While every such line of a reply is one, `parse_response` asks for more.
+pub(crate) fn is_continuation(line: &str) -> bool {
+    matches!(
+        (
+            parse_code,
+            preceded(tag("-"), take_until("\r\n")),
+            tag("\r\n"),
+        )
+            .parse(line),
+        Ok(("", _))
+    )
+}
+
+/// Sealwax's patch: whether `rest`, a reply's text after its last CRLF, starts as a line that
+/// [`parse_response`] waits on (`250-` or `250 `). After continuation lines only, it asks for
+/// more then, and otherwise fails.
+pub(crate) fn may_continue(rest: &str) -> bool {
+    (parse_code, alt((tag("-"), tag(" ")))).parse(rest).is_ok()
+}
+
 #[cfg(test)]
 mod test {
     use super::*;

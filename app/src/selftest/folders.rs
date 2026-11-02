@@ -11,6 +11,7 @@
 //! | `assert-sidebar-tree ACCOUNT ROWS` | The account's folder rows on screen, in order, by the names they show, a `>` before a name per level (`Inbox,>Kvitteringer,Drafts`) |
 //! | `assert-folder-level SPEC N` | The folder row's accessible level (1 at the top) |
 //! | `assert-folder-expanded SPEC true\|false\|undefined` | The folder row's expanded state: its subfolders shown, folded away, or none |
+//! | `assert-folder-count SPEC N [NAME]` | The count the folder row shows (0 for none), and its accessible name |
 //! | `assert-folder-stored SPEC BOOL` | Whether the app's store holds the folder |
 //! | `assert-response DIALOG RESPONSE enabled\|disabled\|default` | An alert dialog's response: whether it can be chosen, or that it is the default |
 //!
@@ -36,6 +37,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-sidebar-tree", 2, 2),
     ("assert-folder-level", 2, 2),
     ("assert-folder-expanded", 2, 2),
+    ("assert-folder-count", 2, 3),
     ("assert-folder-stored", 2, 2),
     ("assert-response", 3, 3),
 ];
@@ -144,6 +146,30 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             let widget = row(harness, arg(0))?;
             let state = super::a11y::state_value(&widget, gtk4::AccessibleState::Expanded);
             equal(&format!("{} expanded", arg(0)), state.as_str(), arg(1))
+        }
+        "assert-folder-count" => {
+            let key = super::mail::folder_key_for(harness, arg(0))?;
+            let shown = harness
+                .widget(&format!("count:{key}"))
+                .ok()
+                .and_downcast::<gtk4::Label>()
+                .map_or_else(|| "0".to_owned(), |label| label.label().to_string());
+            equal(
+                &format!("{}'s count", arg(0)),
+                shown.as_str(),
+                number(arg(1))?.to_string().as_str(),
+            )?;
+            match args.get(2) {
+                Some(wanted) => {
+                    let name = super::a11y::name(&row(harness, arg(0))?).unwrap_or_default();
+                    equal(
+                        &format!("{}'s accessible name", arg(0)),
+                        name.as_str(),
+                        wanted.as_str(),
+                    )
+                }
+                None => Ok(()),
+            }
         }
         "assert-folder-stored" => {
             let stored = super::mail::find_folder(harness, arg(0)).is_ok();

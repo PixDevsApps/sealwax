@@ -47,6 +47,11 @@ pub fn get(message: MessageId, part: u32) -> Option<Vec<u8>> {
     })
 }
 
+/// Whether part `part` of `message` is kept, without counting as a use.
+pub fn contains(message: MessageId, part: u32) -> bool {
+    CACHE.with_borrow(|cache| cache.entries.iter().any(|(key, _)| *key == (message, part)))
+}
+
 /// Keeps `data` as part `part` of `message`, dropping the least recently used to stay in
 /// [`CAP`].
 pub fn put(message: MessageId, part: u32, data: &[u8]) {

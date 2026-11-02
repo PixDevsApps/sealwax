@@ -4,8 +4,9 @@
 # away with its arrow, Left and Right; screen readers hear each row's level and the parents'
 # expanded state; the folds and an open "More folders" are written to layout.toml and come back
 # with a new window, as the user left them (their word, 2026-10-09); picking
-# a folder under a folded one opens it. The folder row's menu offers New Subfolder, Rename and
-# Delete Folder where they apply, the account heading's New Folder. Every name is fictional.
+# a folder under a folded one opens it; a folded folder counts its subfolders' unread mail with
+# its own (2026-10-19). The folder row's menu offers New Subfolder, Rename and Delete Folder
+# where they apply, the account heading's New Folder. Every name is fictional.
 # Run: tools/headless.sh 81 target/debug/sealwax --self-test tests/selftest/folders-tree.sealwax-test
 
 desktop tiling
@@ -68,8 +69,10 @@ key Left
 assert-folder-expanded Work:Kunder false
 
 # Picking a folder under a folded one opens it.
+assert-folder-count Work:Kunder 1
 folder Work:Kunder/Acme
 assert-folder-expanded Work:Kunder true
+assert-folder-count Work:Kunder 0 Kunder
 assert-label list-title Acme
 assert-list-count 1
 folder-arrow Work:Kunder
@@ -83,6 +86,7 @@ wait-until assert-window true
 resize 1440 900
 wait-until assert-folder-expanded Work:Kunder false
 assert-sidebar-tree Work "Inbox,>Kvitteringer,>>2026,Drafts,Sent,Archive,Junk,Trash,Arkiv 2019,Kunder,Prosjekter/Høst"
+assert-folder-count Work:Kunder 1 "Kunder, 1 unread with its subfolders"
 folder-arrow Work:Kunder
 
 # The folder row's menu: New Subfolder, Rename and Delete where they apply, with why not.
@@ -125,3 +129,45 @@ assert-action-enabled win.rename-folder true
 assert-action-enabled win.delete-folder true
 folder all-inboxes
 assert-action-enabled win.new-folder false
+
+# Folded, a folder counts its subfolders' unread mail with its own, at every level, as
+# Thunderbird does (the owner's word, 2026-10-19); opened again, each folder counts its own. A
+# screen reader hears where the count comes from. All Inboxes, the folded account's heading and
+# the list's heading keep the Inbox's own.
+mail-add Work:inbox 30m "Møtereferat" "from=Ingrid Solberg"
+mail-add Work:INBOX/Kvitteringer/2026 40m "Kvittering 2026-1" "from=Marius Dahl"
+wait-until assert-folder-count Work:INBOX/Kvitteringer/2026 1 "2026, 1 unread"
+assert-folder-count Work:inbox 1 "Inbox, 1 unread"
+assert-folder-count Work:Kunder 0 Kunder
+assert-folder-count Work:Kunder/Acme 1 "Acme, 1 unread"
+folder-arrow Work:Kunder
+assert-folder-count Work:Kunder 1 "Kunder, 1 unread with its subfolders"
+folder-arrow Work:Kunder
+assert-folder-count Work:Kunder 0 Kunder
+assert-folder-count Work:Kunder/Acme 1
+folder-arrow Work:INBOX/Kvitteringer
+assert-folder-count Work:INBOX/Kvitteringer 2 "Kvitteringer, 2 unread with its subfolders"
+assert-folder-count Work:inbox 1
+folder-arrow Work:inbox
+assert-folder-expanded Work:inbox false
+assert-folder-count Work:inbox 3 "Inbox, 3 unread with its subfolders"
+assert-sidebar-count all-inboxes 1
+assert-sidebar-count Work:inbox 1
+assert-accessible window
+folder inbox Work
+assert-label list-title Inbox
+assert-label list-subtitle "1 unread · Work"
+click heading:account-1
+assert-label heading-count:account-1 1
+focus heading:account-1
+key Right
+assert-folder-count Work:inbox 3
+focus-folder Work:inbox
+key Right
+assert-folder-expanded Work:inbox true
+assert-focus-stop folder:folder-1
+assert-folder-count Work:inbox 1 "Inbox, 1 unread"
+assert-folder-count Work:INBOX/Kvitteringer 2
+folder-arrow Work:INBOX/Kvitteringer
+assert-folder-count Work:INBOX/Kvitteringer 1 "Kvitteringer, 1 unread"
+assert-folder-count Work:INBOX/Kvitteringer/2026 1

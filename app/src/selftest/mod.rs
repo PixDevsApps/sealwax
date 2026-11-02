@@ -323,6 +323,7 @@ impl Harness {
             }
             "theme" => self.switch_theme(arg(0)).await,
             "corners" => self.set_corners(arg(0)),
+            "dark-styled-mail" => self.set_dark_styled_mail(arg(0)),
             "write-file" => self.write_file(arg(0), arg(1)),
             "sidebar" => {
                 let model = match arg(0) {
@@ -393,17 +394,13 @@ impl Harness {
                 );
                 Ok(())
             }
-            "wait-until" => {
-                let started = Instant::now();
-                loop {
-                    match self.check(&args[0], &args[1..]).await {
-                        Ok(()) => return Ok(()),
-                        Err(error) if started.elapsed() > WAIT_TIMEOUT => {
-                            return Err(format!("still failing after {WAIT_TIMEOUT:?}: {error}"));
-                        }
-                        Err(_) => glib::timeout_future(Duration::from_millis(20)).await,
-                    }
-                }
+            "wait-until" => self.wait_for(WAIT_TIMEOUT, &args[0], &args[1..]).await,
+            "wait-within" => {
+                let limit = arg(0)
+                    .parse::<u64>()
+                    .map_err(|_| format!("expected milliseconds, got {}", arg(0)))?;
+                self.wait_for(Duration::from_millis(limit), &args[1], &args[2..])
+                    .await
             }
             // Ends the app once every step has run (see `end`).
             "quit" => match args.as_slice() {
@@ -538,6 +535,20 @@ impl Harness {
     }
 
     /// Lets idle handlers at default priority run once.
+    /// Polls the assertion `check` until it passes, failing once `limit` has passed.
+    async fn wait_for(&self, limit: Duration, check: &str, args: &[String]) -> Result<(), String> {
+        let started = Instant::now();
+        loop {
+            match self.check(check, args).await {
+                Ok(()) => return Ok(()),
+                Err(error) if started.elapsed() > limit => {
+                    return Err(format!("still failing after {limit:?}: {error}"));
+                }
+                Err(_) => glib::timeout_future(Duration::from_millis(20)).await,
+            }
+        }
+    }
+
     async fn wait_until_settled(&self) {
         let (sender, receiver) = async_channel::bounded(1);
         glib::idle_add_local_full(glib::Priority::LOW, move || {

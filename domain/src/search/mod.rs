@@ -80,12 +80,19 @@ pub struct Query {
     pub to: Vec<Term>,
     /// `subject:`.
     pub subject: Vec<Term>,
+    /// `sender:`, one sender's address exactly, [`crate::senders::sender_key`]ed (a sender
+    /// group opened, ADR-023).
+    pub sender: Option<String>,
+    /// `domain:`, the senders of one registrable domain ([`crate::senders::domain_key`]).
+    pub domain: Option<String>,
     /// `has:attachment`.
     pub has_attachment: Option<bool>,
     /// `is:unread` (`Some(true)`) and `is:read` (`Some(false)`).
     pub unread: Option<bool>,
     /// `is:starred`.
     pub starred: Option<bool>,
+    /// `is:subscription`: mail with a List-Unsubscribe header (issue #14).
+    pub subscription: Option<bool>,
     /// `before:`: messages dated before the start of this day.
     pub before: Option<Date>,
     /// `after:`: messages dated on or after the start of this day.
@@ -107,9 +114,12 @@ impl fmt::Debug for Query {
             .field("from", &self.from.len())
             .field("to", &self.to.len())
             .field("subject", &self.subject.len())
+            .field("sender", &self.sender.is_some())
+            .field("domain", &self.domain.is_some())
             .field("has_attachment", &self.has_attachment)
             .field("unread", &self.unread)
             .field("starred", &self.starred)
+            .field("subscription", &self.subscription)
             .field("before", &self.before.is_some())
             .field("after", &self.after.is_some())
             .finish()
@@ -151,6 +161,18 @@ pub const OPERATORS: &[Operator] = &[
         description: "Words in the subject",
     },
     Operator {
+        name: "sender:",
+        values: &[],
+        example: "sender:news@shop.example",
+        description: "Mail from exactly this address",
+    },
+    Operator {
+        name: "domain:",
+        values: &[],
+        example: "domain:shop.example",
+        description: "Mail from a domain and its subdomains",
+    },
+    Operator {
         name: "has:",
         values: &["attachment"],
         example: "has:attachment",
@@ -158,9 +180,9 @@ pub const OPERATORS: &[Operator] = &[
     },
     Operator {
         name: "is:",
-        values: &["unread", "read", "starred"],
+        values: &["unread", "read", "starred", "subscription"],
         example: "is:unread",
-        description: "Unread, read or starred messages",
+        description: "Unread, read, starred or subscription messages",
     },
     Operator {
         name: "before:",

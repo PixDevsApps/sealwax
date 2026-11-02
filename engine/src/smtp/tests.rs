@@ -52,7 +52,12 @@ fn replies_are_classified() {
         (
             535,
             "5.7.139 authentication unsuccessful, smtpclientauthentication is disabled for the tenant.",
-            LoginFailure::Other,
+            LoginFailure::SmtpAuthDisabled,
+        ),
+        (
+            535,
+            "5.7.139 authentication unsuccessful, the user's smtpclientauthentication is disabled for the mailbox.",
+            LoginFailure::SmtpAuthDisabled,
         ),
         (
             530,
@@ -72,6 +77,15 @@ fn replies_are_classified() {
 
 /// An implicit-TLS submission server that offers `auth` and answers AUTH with `answer`.
 async fn implicit(auth: &'static str, answer: &'static str) -> (Result<(), LoginFailure>, String) {
+    implicit_as(PASSWORD, auth, answer).await
+}
+
+/// [`implicit`], logging in with `credentials`.
+async fn implicit_as(
+    credentials: Credentials<'static>,
+    auth: &'static str,
+    answer: &'static str,
+) -> (Result<(), LoginFailure>, String) {
     let ca = test_ca();
     let config = ca.server.clone();
     let (listener, port) = bind().await;
@@ -93,7 +107,7 @@ async fn implicit(auth: &'static str, answer: &'static str) -> (Result<(), Login
         }
         format!("{ehlo}\n{}", peer.drain().await)
     });
-    let result = check_login(&endpoint(port, Security::Tls), PASSWORD, &ca.trust).await;
+    let result = check_login(&endpoint(port, Security::Tls), credentials, &ca.trust).await;
     (result, server.await.unwrap())
 }
 
@@ -128,6 +142,23 @@ async fn refusals_and_oauth_only_servers_are_classified() {
     let (result, received) = implicit("AUTH XOAUTH2 OAUTHBEARER", "").await;
     assert_eq!(result, Err(LoginFailure::OAuthRequired));
     assert!(!received.contains("AUTH ") && !received.contains("secret"));
+}
+
+/// Microsoft 365 with SMTP AUTH turned off (issue #21) refuses a working sign-in's token.
+#[tokio::test]
+async fn a_token_refused_because_smtp_auth_is_off_says_so() {
+    let token = Credentials::OAuth2 {
+        username: "user",
+        token: "access-token",
+    };
+    let (result, _) = implicit_as(
+        token,
+        "AUTH LOGIN XOAUTH2",
+        "535 5.7.139 Authentication unsuccessful, SmtpClientAuthentication is disabled for the \
+         Tenant. Visit https://aka.ms/smtp_auth_disabled for more information.\r\n",
+    )
+    .await;
+    assert_eq!(result, Err(LoginFailure::SmtpAuthDisabled));
 }
 
 #[tokio::test]

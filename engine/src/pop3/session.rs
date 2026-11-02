@@ -1,7 +1,7 @@
 //! Connecting, logging in and the maildrop's commands.
 
 use super::reply::{Refusal, Status};
-use super::wire::Wire;
+use super::wire::{Limits, Wire};
 use super::{Credentials, Listing, Mailbox, Pop3Error};
 use crate::imap::xoauth2_response;
 use crate::net;
@@ -30,6 +30,17 @@ pub const MAX_MESSAGE: u64 = 100 * 1024 * 1024;
 /// The slowest rate a message's data may arrive at: RETR may take [`COMMAND_TIMEOUT`] plus the
 /// LIST size at this rate.
 pub const MIN_RATE: u64 = 16 * 1024;
+/// What RETR may send beyond LIST's size, which it may also exceed twofold: a server that
+/// counts each line end as one octet is short by up to half, and some add a header or two as
+/// they send.
+const RETR_SLACK: u64 = 64 * 1024;
+/// A UIDL or LIST reply's octets in all: a million messages with RFC 1939's UIDLs of at most
+/// 70 characters take about 80 MB.
+pub const MAX_LISTING: usize = 128 * 1024 * 1024;
+/// The slowest rate a listing may come at: a UIDL or LIST reply has [`COMMAND_TIMEOUT`], and
+/// a second more for each this many octets read. Lower than [`MIN_RATE`], as a server may work
+/// out UIDLs while it lists them.
+const LISTING_RATE: u64 = 1024;
 /// QUIT after the login check, whose answer doesn't matter.
 const CHECK_QUIT: Duration = Duration::from_secs(2);
 /// A header from TOP.
@@ -39,8 +50,12 @@ const MAX_MESSAGES: usize = 1_000_000;
 const LISTING_LINE: usize = 1024;
 /// RFC 1939 allows 70 characters; some servers use more.
 const MAX_UIDL: usize = 255;
-/// CAPA's lines.
-const CAPA_LINES: usize = 256;
+/// CAPA's reply.
+const CAPA: Limits = Limits {
+    line: LISTING_LINE,
+    lines: 256,
+    octets: 256 * LISTING_LINE,
+};
 /// The longest AUTH command with an initial response, CRLF included (RFC 5034, 4).
 const AUTH_LINE: usize = 255;
 
@@ -55,6 +70,8 @@ pub struct Options {
     pub command_timeout: Duration,
     /// [`MIN_RATE`], in octets a second.
     pub min_rate: u64,
+    /// [`MAX_LISTING`].
+    pub max_listing: usize,
 }
 
 impl Default for Options {
@@ -64,6 +81,7 @@ impl Default for Options {
             connect_timeout: CONNECT_TIMEOUT,
             command_timeout: COMMAND_TIMEOUT,
             min_rate: MIN_RATE,
+            max_listing: MAX_LISTING,
         }
     }
 }
@@ -72,6 +90,18 @@ impl Options {
     /// The time a message of `size` octets may take, from RETR to its last line.
     fn data_time(&self, size: u64) -> Duration {
         self.command_timeout + Duration::from_secs(size / self.min_rate.max(1))
+    }
+
+    /// The time a listing may take, from its `+OK` to the line after `read` octets of it.
+    fn listing_time(&self, read: u64) -> Duration {
+        self.command_timeout + Duration::from_secs(read / LISTING_RATE)
+    }
+
+    /// The most RETR may send for a message LIST says has `size` octets.
+    fn retr_limit(&self, size: u64) -> u64 {
+        size.saturating_mul(2)
+            .saturating_add(RETR_SLACK)
+            .min(self.max_message)
     }
 }
 
@@ -259,7 +289,8 @@ impl Session {
         self.note(result)
     }
 
-    /// One command with a multi-line answer, read line by line.
+    /// One command with a multi-line answer, read line by line within [`MAX_MESSAGES`] lines,
+    /// [`Options::max_listing`] octets and [`Options::listing_time`].
     async fn multi(
         &mut self,
         command: &[u8],
@@ -270,7 +301,17 @@ impl Session {
         let result = async {
             self.wire.send(command).await?;
             match self.wire.status().await? {
-                Status::Ok(_) => self.wire.lines(LISTING_LINE, MAX_MESSAGES, each).await,
+                Status::Ok(_) => {
+                    let limits = Limits {
+                        line: LISTING_LINE,
+                        lines: MAX_MESSAGES,
+                        octets: self.options.max_listing,
+                    };
+                    let started = Instant::now();
+                    let options = self.options;
+                    let deadline = |read| Some(started + options.listing_time(read));
+                    self.wire.lines(limits, deadline, each).await
+                }
                 Status::Err(refusal) => Err(refused(&refusal)),
                 Status::Continue => Err(Pop3Error::Protocol("a continuation outside AUTH")),
             }
@@ -406,7 +447,7 @@ impl Mailbox for Session {
             return Err(Pop3Error::TooLarge(size));
         }
         let deadline = Instant::now() + self.options.data_time(size);
-        let max = usize::try_from(self.options.max_message).unwrap_or(usize::MAX);
+        let max = usize::try_from(self.options.retr_limit(size)).unwrap_or(usize::MAX);
         let message = self
             .data(format!("RETR {number}").as_bytes(), max, deadline)
             .await;
@@ -553,10 +594,14 @@ async fn capabilities(wire: &mut Wire<Stream>) -> Result<Option<Capabilities>, P
         Status::Continue => return Err(Pop3Error::Protocol("a continuation outside AUTH")),
     }
     let mut caps = Capabilities::default();
-    wire.lines(LISTING_LINE, CAPA_LINES, |line| {
-        caps.read(line);
-        Ok(())
-    })
+    wire.lines(
+        CAPA,
+        |_| None,
+        |line| {
+            caps.read(line);
+            Ok(())
+        },
+    )
     .await?;
     Ok(Some(caps))
 }
@@ -723,6 +768,25 @@ mod tests {
         for bad in [&b""[..], &[b'a'; 256], b"a b", b"\xc3\xa6", b"a\x7f"] {
             assert!(uidl(bad).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn retr_may_send_twice_list_s_size_and_a_little_more() {
+        let options = Options::default();
+        assert_eq!(options.retr_limit(0), RETR_SLACK);
+        assert_eq!(options.retr_limit(1_000_000), 2_000_000 + RETR_SLACK);
+        assert_eq!(options.retr_limit(80 * 1024 * 1024), MAX_MESSAGE);
+        assert_eq!(options.retr_limit(u64::MAX), MAX_MESSAGE);
+    }
+
+    #[test]
+    fn a_listing_has_time_in_proportion_to_what_it_sent() {
+        let options = Options::default();
+        assert_eq!(options.listing_time(0), COMMAND_TIMEOUT);
+        assert_eq!(
+            options.listing_time(80_000_000),
+            COMMAND_TIMEOUT + Duration::from_secs(78_125)
+        );
     }
 
     #[test]

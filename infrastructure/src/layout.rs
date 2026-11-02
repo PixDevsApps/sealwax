@@ -40,6 +40,7 @@ mod tests {
         let layout = Layout {
             sidebar_width: Some(250),
             list_width: None,
+            sidebar_hidden: false,
             collapsed: vec![AccountKey("work".into())],
             more_open: vec![AccountKey("work".into())],
             folded: Default::default(),
@@ -47,6 +48,7 @@ mod tests {
                 account: AccountKey("work".into()),
                 name: "INBOX".into(),
             }),
+            group_by: sealwax_domain::senders::GroupBy::Sender,
         };
         write(&path, &layout).unwrap();
         assert_eq!(read(&path), layout);

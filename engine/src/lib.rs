@@ -16,6 +16,8 @@ pub mod pop3;
 pub mod secrets;
 pub mod service;
 pub mod smtp;
+pub mod unsubscribe;
+pub mod updates;
 pub mod verify;
 
 /// The engine's runtime: two worker threads, so sync never competes with the GTK thread.
