@@ -2,10 +2,13 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## 1.1.7 — Not released yet
+## 1.1.7 — 2026-11-03
+
+Two fixes, and a pointer for NixOS.
 
 - **Mail servers that speak only the newest IMAP (IMAP4rev2) sync:** such a server answers every search with a newer kind of reply that Sealwax couldn't read, so no folder came. Now Sealwax reads it.
 - **No stray "Loading older messages…" under Group by:** while the list asked the server for older mail, that line stayed at the bottom of the window after switching to Group by Sender or Domain, where it meant nothing. Now it shows only over the plain list.
+- **Sealwax on NixOS:** INSTALL.md now points to an unofficial NixOS recipe a user shared ([issue #11](https://github.com/PixDevsApps/sealwax/issues/11)). The project doesn't maintain or check it.
 
 ## 1.1.6 — 2026-11-03
 
