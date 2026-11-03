@@ -90,7 +90,7 @@ This machine. PR #28 (@chrisonline: `c7a85d5`, the merge `a1bb40a`, `d275758`; v
 | The push range (`e3716cc..c235c83`, 7 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname, nothing about findings not yet public; the only co-author line is in the contributor's own commit `c7a85d5` | Pass |
 | `v1.1.5` on `c235c83`, `main` and the tag pushed | GitHub's `main` is `c235c83`, `v1.1.5` the tag object `85d4452`; PR #28 marked merged (09:54:28 UTC) | Pass |
 | `python3 tools/release.py build` on `v1.1.5` (offline: `unshare -rn`, loopback up, then `unshare -U --map-user=1000`, `CARGO_NET_OFFLINE=true`) | Finished 10:58 CET: `check()` 1,170 passed, 0 failed, 91 ignored; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.1.5` and holds no home path, user name or hostname; package SHA-256 `5cddeae4…88077c8f` | Pass |
-| The clean-container install test | Not run: Docker off | Not verified |
+| The clean-container install test (`bash tools/install-test.sh` on the package, 11:09 CET, after the owner started Docker) | 16 of 16 steps in a fresh `archlinux:base` container: the libraries and licence files there, the installed binary's window and a message in the reader, its web process in WebKit's sandbox; the container removed afterwards | Pass |
 | The release [v1.1.5](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.5) (`tools/release.py github`, 09:59:11 UTC) | Not a draft or pre-release; GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
 
 ### 1.1.4 — 2026-11-01
