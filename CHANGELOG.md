@@ -2,6 +2,12 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.1.5 — Not released yet
+
+Two fixes from contributors.
+
+- **Proton Mail Bridge's mail reads fully** ([PR #28](https://github.com/PixDevsApps/sealwax/pull/28), thanks @chrisonline): Bridge describes some messages in a way that breaks the mail standard (an inline part without details, a forwarded message, a file name with a special character), and Sealwax couldn't read that description. Mail still came, read the slower way, but those messages showed no attachment clip and a large one was downloaded whole. Now Sealwax reads Bridge's way too.
+
 ## 1.1.4 — 2026-11-01
 
 A fix for pinned senders, and dark colours for styled mail, both from the issues.
