@@ -189,6 +189,16 @@ This machine, the working tree on `b1e9d33` (ADR-025's workspace changes and ten
 
 Not run: the testbed suites, the install test.
 
+### 1.2.2: async-imap reads a response once — 2026-11-03
+
+This machine (AMD Ryzen 9 5900X), on a local branch. The change and its tests: [vendor/README.md](../vendor/README.md), [ADR-006 amendment](DECISIONS.md#adr-006-amendment--async-imap-frames-a-response-before-parsing-it-and-its-parse-errors-hold-no-response-2026-11-03).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The vendored async-imap's own tests (a copy with the vendored imap-proto outside the repository, `cargo test`) | 84 passed with `runtime-tokio`, 78 with `runtime-async-std`, 0 failed; among them a 1 MB FLAGS response in 1 KiB pieces parsed once (and test-parsed 13 times before its end), five responses with literals in pieces of 1 to 4,096 bytes, 200 random mixes the same as imap-proto reading them whole | Pass |
+| The report's cases, release builds, one run each, load average about 1.4: 1.1.6's vendored copy, then the change (one write / 16 KiB writes / 1 KiB writes) | FLAGS 1 MB 0.73 s / 0.73 s / 0.73 s → 18 ms / 13 ms / 12 ms; FLAGS 4 MB 12.25 s / 12.13 s / 12.18 s → 57 ms / 55 ms / 52 ms; SEARCH 4 MB 8.30 s / 8.10 s / 8.09 s → 37 ms / 37 ms / 37 ms; a 4 MB quoted string 0.82 s → 5 ms; the error after a 10 MB literal and one wrong byte 80,000,234 bytes (0x01) and 50,000,234 bytes (`a`) → 63 bytes | Pass |
+| `a_long_reply_without_literals_is_read_at_once` (`engine/tests/long_reply.rs`, a 2 MB FLAGS reply through the fake server, test build) | 0.70 s with the change; with 1.1.6's `imap_stream.rs` put back, 67 s and the test fails | Pass |
+
 ### 1.1.7 — 2026-11-03
 
 This machine. The changes since 1.1.6: `c8cb0ca` (Group by's stray "Loading older messages…" row), `8c9bfee` (INSTALL.md's community packages), `8540c5a` (connections from programs outside the test's process tree aren't counted, above), `f8fa5ee` (`triage-keys` waits for the reader), `15e279a` (ESEARCH read as SEARCH), `e1ba6ba` (ADR-013 amendment) and the version commit `35d6dc7` (Cargo.toml 1.1.7, both lock files, README, CHANGELOG "1.1.7 — 2026-11-03", a vendor/README.md wording fix).

@@ -102,7 +102,8 @@ impl From<async_imap::error::Error> for ImapError {
 impl ImapError {
     /// An error reading the reply to `command` (its verb only, never its arguments): async-imap
     /// 0.12 reports a reply imap-proto can't parse, and one past its 512 MiB buffer, as
-    /// `ErrorKind::Other` with these texts.
+    /// `ErrorKind::Other` with these texts (the first without the reply since Sealwax's patch,
+    /// `vendor/README.md`).
     pub(crate) fn reading(error: io::Error, command: &'static str) -> Self {
         let unreadable = error.kind() == io::ErrorKind::Other
             && error.get_ref().is_some_and(|inner| {
@@ -257,6 +258,11 @@ mod tests {
         );
         assert!(!format!("{error:?}").contains("example.test"));
         assert!(error.is_connection());
+        let parse = io::Error::other("Tag at byte 11 during parsing of a 27-byte response");
+        assert!(matches!(
+            ImapError::reading(parse, "NOOP"),
+            ImapError::Unreadable("NOOP")
+        ));
         let large = io::Error::other("incoming data too large");
         assert!(matches!(
             ImapError::reading(large, "LIST"),

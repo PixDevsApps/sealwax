@@ -2801,14 +2801,13 @@ mod tests {
         let command = "A0001 NOOP\r\n";
         let mock_stream = MockStream::new(response);
         let mut session = mock_session!(mock_stream);
+        // Sealwax's patch: the error says where parsing failed, not what the server sent.
+        let error = session.noop().await.unwrap_err().to_string();
         assert!(
-            session
-                .noop()
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("220 mail.example.org ESMTP Postcow")
+            error.contains(" during parsing of a 36-byte response"),
+            "{error}"
         );
+        assert!(!error.contains("Postcow"), "{error}");
         assert!(
             session.stream.inner.written_buf == command.as_bytes().to_vec(),
             "Invalid NOOP command"

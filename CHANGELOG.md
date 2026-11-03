@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.2.2 — Not released yet
+
+- **A mail server can't keep Sealwax busy with one long reply:** Sealwax read a long reply again from its start every time another 4 KiB of it arrived, so a reply of a few megabytes without attachments (a long list of flags or search results) could take seconds of processor time, and a server, or anyone on the network before the connection is encrypted, could send one after another. Now Sealwax reads each reply once, when all of it has arrived. And a reply Sealwax can't read no longer makes a copy of itself several times its size in memory.
+
 ## 1.2.1 — 2026-11-09
 
 Folders with a backslash or a quote in their name.
