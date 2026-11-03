@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.1.7 — Not released yet
+
+- **No stray "Loading older messages…" under Group by:** while the list asked the server for older mail, that line stayed at the bottom of the window after switching to Group by Sender or Domain, where it meant nothing. Now it shows only over the plain list.
+
 ## 1.1.6 — 2026-11-03
 
 A look that fits in better.

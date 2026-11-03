@@ -540,6 +540,10 @@ impl MessageList {
         });
         self.connect_selection_input();
         let weak = self.downgrade();
+        inner.stack.connect_visible_child_name_notify(move |_| {
+            Self::with(&weak, |list| list.show_older_row());
+        });
+        let weak = self.downgrade();
         inner.context.set_quick(move |action, target| {
             Self::with(&weak, |list| {
                 let handlers = list.inner.handlers.quick.borrow().clone();
@@ -1570,6 +1574,7 @@ impl MessageList {
         if self.is_growing()
             || inner.model.is_pending()
             || inner.older.borrow().contains_key(&folder)
+            || inner.stack.visible_child_name().as_deref() != Some("list")
         {
             return;
         }
@@ -1579,7 +1584,7 @@ impl MessageList {
             return;
         }
         inner.older.borrow_mut().insert(folder, Older::Asked);
-        inner.older_row.set_visible(true);
+        self.show_older_row();
         let handlers = inner.handlers.older.borrow().clone();
         for handler in handlers {
             handler(folder);
@@ -1607,9 +1612,21 @@ impl MessageList {
         } else {
             older.insert(folder, Older::Paused);
         }
-        let asking = older.values().any(|state| *state == Older::Asked);
         drop(older);
-        self.inner.older_row.set_visible(asking);
+        self.show_older_row();
+    }
+
+    /// "Loading older messages…" shows while older mail is asked for and the list, not its
+    /// groups or the empty page, is shown.
+    fn show_older_row(&self) {
+        let inner = &self.inner;
+        let asking = inner
+            .older
+            .borrow()
+            .values()
+            .any(|state| *state == Older::Asked);
+        let list = inner.stack.visible_child_name().as_deref() == Some("list");
+        inner.older_row.set_visible(asking && list);
     }
 
     /// Rows show their text again after a fast scroll.

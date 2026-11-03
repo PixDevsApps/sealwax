@@ -16,6 +16,8 @@ mail-add Personal:inbox 3m "Ordren din er sendt" from=Butikken address=ordre@but
 mail-add Personal:inbox 4m "Middag på fredag?" "from=Anna Berg" address=anna@example.test
 mail-add Personal:inbox 5m "Ukens nyheter" from=Avisa address=nyheter@avisa.example unsubscribe=mailto:ut@avisa.example?subject=stopp read
 assert-list-count 4
+# The fake engine never answers older mail, so the plain list keeps asking for it.
+assert-shown list-older true
 
 # Mail with a List-Unsubscribe.
 search is:subscription
@@ -31,6 +33,8 @@ action win.group-by-sender
 assert-action-enabled win.group-by-sender false
 assert-action-enabled win.dont-group true
 assert-list-groups 4
+# No "Loading older messages…" under the groups (from 1.1.0 to 1.1.6 the plain list's row stayed).
+assert-shown list-older false
 assert-list-group 0 nytt@post.butikk.example 1 1
 assert-list-group 1 ordre@butikk.example 1 0
 assert-list-group 2 anna@example.test 1 1
@@ -69,6 +73,7 @@ assert-list-group 0 butikk.example 3 2
 
 action win.dont-group
 assert-list-count 5
+wait-until assert-shown list-older true
 
 # Unsubscribe: only for mail with a List-Unsubscribe; one click goes through the engine.
 list-select 1
