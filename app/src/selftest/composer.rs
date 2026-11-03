@@ -807,16 +807,21 @@ fn set_clipboard(kind: &str, text: Option<&str>) -> StepResult {
 
 fn start_canary() -> StepResult {
     let listener = TcpListener::bind(("127.0.0.1", 0)).map_err(|error| error.to_string())?;
-    let port = listener
-        .local_addr()
-        .map_err(|error| error.to_string())?
-        .port();
+    let local = listener.local_addr().map_err(|error| error.to_string())?;
+    let port = local.port();
     let hits = Arc::new(Mutex::new(Vec::new()));
     let log = hits.clone();
     std::thread::Builder::new()
         .name("sealwax-selftest-canary".into())
         .spawn(move || {
             for mut stream in listener.incoming().flatten() {
+                // A desktop app probing new ports isn't Sealwax loading something.
+                if stream
+                    .peer_addr()
+                    .is_ok_and(|peer| sealwax_infrastructure::loopback::from_outside(peer, local))
+                {
+                    continue;
+                }
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
                 let mut buffer = [0u8; 2048];
                 let read = stream.read(&mut buffer).unwrap_or(0);

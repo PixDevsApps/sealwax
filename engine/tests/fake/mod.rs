@@ -522,8 +522,12 @@ impl Fake {
         let world = Arc::new(Mutex::new(World::new(flavor)));
         let shared = world.clone();
         let acceptor = tokio_rustls::TlsAcceptor::from(server);
+        let local = listener.local_addr().unwrap();
         tokio::spawn(async move {
-            while let Ok((tcp, _)) = listener.accept().await {
+            while let Ok((tcp, peer)) = listener.accept().await {
+                if sealwax_infrastructure::loopback::from_outside(peer, local) {
+                    continue;
+                }
                 let _ = tcp.set_nodelay(true);
                 let epoch = {
                     let mut world = shared.lock().unwrap_or_else(|e| e.into_inner());

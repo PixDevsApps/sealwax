@@ -49,6 +49,8 @@ Evidence rules: record only what was actually run, with date, command, machine a
 
 Pass with the production reader: 0 connections (not just 0 requests — WebKit pre-connects), 0 TLS hellos, 0 DNS lookups, 0 script traces, each case's own expectation, no allowed navigation, new window or download; the `cid:` test image renders and a foreign `cid:` part never loads. After Show images, the DNS canary may see only the images' names: `<link rel=dns-prefetch>` (an absolute URL, since the reader's pages have no base URL) must stay unlooked-up, because WebKitGTK 2.54 has no switch for it and only the reader's pings filter stops it. In the same run, a no-defence control must show the vectors are live, and a remote-allowed control (CSP widened with the canary's origin, no filter) must load images only.
 
+**Other programs' connections** (2026-11-03): some desktop programs connect to every new port on 127.0.0.1 (the T3 Code app does, about every 16 s), and the tests that count what reaches a local port (this suite's canary, `composer-safety`'s canary, the engine's fake server, the M0 relay test) counted them. `sealwax_infrastructure::loopback::from_outside` reads `/proc` to tell a connection made by a process outside the test's own process tree, and those four leave such connections out. A connection whose process can't be told (the socket gone, its holder unreadable) still counts, so a leak from Sealwax or its WebKit processes is never left out. Before, CI ran clean here only in a private network namespace (`unshare -rn`).
+
 ## Performance targets
 
 Measured with release builds unless noted; each entry names its spike or milestone.

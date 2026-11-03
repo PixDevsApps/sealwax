@@ -40,7 +40,10 @@ impl Relay {
             let state = state.clone();
             let accepted = accepted.clone();
             tokio::spawn(async move {
-                while let Ok((client, _)) = listener.accept().await {
+                while let Ok((client, peer)) = listener.accept().await {
+                    if sealwax_infrastructure::loopback::from_outside(peer, addr) {
+                        continue;
+                    }
                     accepted.fetch_add(1, Ordering::SeqCst);
                     let id = ids.fetch_add(1, Ordering::SeqCst);
                     let kill = Arc::new(Notify::new());

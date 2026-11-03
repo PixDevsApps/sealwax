@@ -1,7 +1,9 @@
 //! A local HTTP canary, from S2: a `TcpListener` on 127.0.0.1 with a random port that answers
 //! every request and records what reached it, including connections that send nothing (a
-//! preconnect) and TLS ClientHellos (an upgraded or https request).
+//! preconnect) and TLS ClientHellos (an upgraded or https request). Connections from programs
+//! outside this process's tree (a desktop app probing new ports) aren't counted.
 
+use sealwax_infrastructure::loopback::from_outside;
 use std::io::{self, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -57,13 +59,20 @@ pub struct Canary {
 impl Canary {
     pub fn start() -> io::Result<Self> {
         let listener = TcpListener::bind(("127.0.0.1", 0))?;
-        let port = listener.local_addr()?.port();
+        let local = listener.local_addr()?;
+        let port = local.port();
         let log = Arc::new(Mutex::new(Log::default()));
         let accept_log = Arc::clone(&log);
         thread::Builder::new()
             .name("canary".into())
             .spawn(move || {
                 for stream in listener.incoming().flatten() {
+                    if stream
+                        .peer_addr()
+                        .is_ok_and(|peer| from_outside(peer, local))
+                    {
+                        continue;
+                    }
                     lock(&accept_log).connections += 1;
                     let log = Arc::clone(&accept_log);
                     let _ = thread::Builder::new()

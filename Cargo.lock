@@ -853,6 +853,7 @@ dependencies = [
  "libadwaita",
  "libc",
  "rusqlite",
+ "sealwax-infrastructure",
  "serde",
  "serde_json",
  "tempfile",
