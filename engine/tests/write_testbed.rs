@@ -532,6 +532,98 @@ fn a_rules_copy_on_every_server_and_its_retry_makes_no_second() {
     });
 }
 
+/// A move's retry after a half-done move, with another message in the target that shares a
+/// moved message's Message-ID (PR #19): the copies the first attempt made are matched by size,
+/// internal date and contents, and the other message is not taken for one.
+#[test]
+#[ignore = "needs the testbed: tools/testbed/up.sh && tools/testbed/seed.sh"]
+fn a_move_retry_checks_its_matches_on_every_server() {
+    runtime().block_on(async {
+        for server in SERVERS {
+            for moves in paths(server) {
+                let name = format!("{} {}", server.name, path_name(moves));
+                let mut test = client(server, "ops").await;
+                reset(&mut test).await;
+                let mut rng = Rng(29);
+                fill(&mut test, INBOX, "verify", 4, "", &mut rng).await;
+                let rows = read(&mut test, INBOX).await;
+                let messages = moving(&rows);
+                let mut conn = engine(server.tls, "ops", moves).await;
+                let mark = write::mark_target(&mut conn, ARCHIVE).await.unwrap();
+                let inbox = opened(&mut conn, INBOX).await;
+                // An earlier attempt copied the first two and died before the source's expunge.
+                write::copy_messages(
+                    &mut conn,
+                    Copy {
+                        from: inbox,
+                        to: ARCHIVE,
+                        messages: &messages[..2],
+                        mark: Some(mark),
+                        retry: false,
+                    },
+                )
+                .await
+                .unwrap();
+                // Another message with the fourth's Message-ID, and other contents.
+                let other = testbed_client::message(&rows[3].id, &mut rng);
+                test.append(ARCHIVE, "", &other).await.unwrap();
+                let other_uid = read(&mut test, ARCHIVE)
+                    .await
+                    .iter()
+                    .map(|row| row.uid)
+                    .max()
+                    .unwrap();
+                let done = write::move_messages(
+                    &mut conn,
+                    Move {
+                        mark: Some(mark),
+                        retry: true,
+                        ..plain(inbox, ARCHIVE, &messages)
+                    },
+                )
+                .await
+                .unwrap();
+                conn.logout().await;
+                let archive = read(&mut test, ARCHIVE).await;
+                let left: Vec<Row> = read(&mut test, INBOX)
+                    .await
+                    .into_iter()
+                    .filter(|row| !row.deleted())
+                    .collect();
+                assert!(left.is_empty(), "{name}: every source moved, {left:?}");
+                assert_eq!(archive.len(), 5, "{name}: two copies, two moved, the other");
+                for row in &rows[..3] {
+                    assert_eq!(
+                        archive.iter().filter(|got| got.id == row.id).count(),
+                        1,
+                        "{name}: {} once",
+                        row.id
+                    );
+                }
+                assert_eq!(
+                    archive.iter().filter(|got| got.id == rows[3].id).count(),
+                    2,
+                    "{name}: the fourth moved beside the other message"
+                );
+                assert!(
+                    archive.iter().any(|row| row.uid == other_uid),
+                    "{name}: the other stays"
+                );
+                assert_eq!(done.moved.len(), 4, "{name}: {:?}", done.moved);
+                assert!(
+                    done.moved.iter().all(|(_, to)| *to != other_uid),
+                    "{name}: the other message is no one's copy, {:?}",
+                    done.moved
+                );
+                pairs_match(&done, &rows, &archive);
+                println!("{name}: 2 copies matched, the other message left alone, 2 moved");
+                reset(&mut test).await;
+                test.logout().await;
+            }
+        }
+    });
+}
+
 #[test]
 #[ignore = "needs the testbed: tools/testbed/up.sh && tools/testbed/seed.sh"]
 fn deleting_for_good_on_every_server() {
