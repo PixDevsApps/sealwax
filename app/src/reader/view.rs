@@ -229,7 +229,9 @@ const QUOTES_JS: &str = r#"(() => {
 /// media; centred text beside them must fit within it. A design with other text, an image or a
 /// background image across a box as wide as its container fills the view and stays as it is.
 /// Only the root's background and the body's clip change, so the layout never moves; the column
-/// is found again whenever the root's size changes. The state goes out as `margins`.
+/// is found again whenever the root's size changes. With the theme's corner radius
+/// (`--sealwax-margins-radius`) the column's corners are rounded like the rest of Sealwax's
+/// surfaces, its body clipped to them. The state goes out as `margins`.
 const MARGINS_JS: &str = r#"(() => {
   const load = SEALWAX_LOAD;
   const root = document.documentElement;
@@ -346,19 +348,51 @@ const MARGINS_JS: &str = r#"(() => {
         : !clear(bodyColour) ? bodyColour
         : window.sealwaxDarkened ? 'var(--sealwax-dark-background)' : 'rgb(255, 255, 255)';
       const rootBox = root.getBoundingClientRect();
+      const width = column.right - column.left;
+      const x = column.left - rootBox.left;
+      const height = Math.max(rootBox.height, root.scrollHeight);
+      const radius = Math.min(px(getComputedStyle(root), '--sealwax-margins-radius'),
+        width / 2, height / 2);
+      const fill = 'linear-gradient(' + canvas + ',' + canvas + ')';
       keep(root);
       set(root, 'background-color', 'var(--sealwax-margins-color, transparent)');
-      set(root, 'background-image', 'linear-gradient(' + canvas + ',' + canvas + ')');
-      set(root, 'background-size', (column.right - column.left) + 'px 100%');
-      set(root, 'background-position', (column.left - rootBox.left) + 'px 0');
-      set(root, 'background-repeat', 'repeat-y');
-      if (column.clipped) {
+      if (radius > 0) {
+        const corner = (centre) => 'radial-gradient(circle at ' + centre + ', transparent '
+          + (radius - 0.5) + 'px, var(--sealwax-margins-color) ' + (radius + 0.5) + 'px)';
+        const near = x + 'px';
+        const far = (x + width - radius) + 'px';
+        const bottom = (height - radius) + 'px';
+        set(root, 'background-image', [corner('100% 100%'), corner('0 100%'),
+          corner('100% 0'), corner('0 0'), fill].join(','));
+        const tile = radius + 'px ' + radius + 'px';
+        set(root, 'background-size', [tile, tile, tile, tile, width + 'px ' + height + 'px']
+          .join(','));
+        set(root, 'background-position', [near + ' 0', far + ' 0', near + ' ' + bottom,
+          far + ' ' + bottom, near + ' 0'].join(','));
+        set(root, 'background-repeat', 'no-repeat');
         const box = body.getBoundingClientRect();
-        const from = (column.left - box.left) + 'px';
-        const to = (column.right - box.left) + 'px';
+        const l = column.left - box.left;
+        const r = column.right - box.left;
+        const t = rootBox.top - box.top;
+        const b = t + height;
+        const arc = (toX, toY) => ' A ' + radius + ' ' + radius + ' 0 0 1 ' + toX + ' ' + toY;
         keep(body);
-        set(body, 'clip-path', 'polygon(' + from + ' -100000px, ' + to + ' -100000px, '
-          + to + ' calc(100% + 100000px), ' + from + ' calc(100% + 100000px))');
+        set(body, 'clip-path', "path('M " + (l + radius) + ' ' + t + ' H ' + (r - radius)
+          + arc(r, t + radius) + ' V ' + (b - radius) + arc(r - radius, b) + ' H ' + (l + radius)
+          + arc(l, b - radius) + ' V ' + (t + radius) + arc(l + radius, t) + " Z')");
+      } else {
+        set(root, 'background-image', fill);
+        set(root, 'background-size', width + 'px 100%');
+        set(root, 'background-position', x + 'px 0');
+        set(root, 'background-repeat', 'repeat-y');
+        if (column.clipped) {
+          const box = body.getBoundingClientRect();
+          const from = (column.left - box.left) + 'px';
+          const to = (column.right - box.left) + 'px';
+          keep(body);
+          set(body, 'clip-path', 'polygon(' + from + ' -100000px, ' + to + ' -100000px, '
+            + to + ' calc(100% + 100000px), ' + from + ' calc(100% + 100000px))');
+        }
       }
     }
     if (fitted !== !!column) {
@@ -1323,13 +1357,12 @@ mod tests {
         }
     }
 
-    /// The margins take the colour the paper stylesheet sets.
+    /// The margins take the colour the paper stylesheet sets, and the column its radius.
     #[test]
-    fn margins_take_the_stylesheet_colour() {
-        assert!(MARGINS_JS.contains(&format!(
-            "var({}, transparent)",
-            sealwax_domain::theme::MARGINS_COLOR
-        )));
+    fn margins_take_the_stylesheet_colour_and_radius() {
+        use sealwax_domain::theme::{MARGINS_COLOR, MARGINS_RADIUS};
+        assert!(MARGINS_JS.contains(&format!("var({MARGINS_COLOR}, transparent)")));
+        assert!(MARGINS_JS.contains(&format!("'{MARGINS_RADIUS}'")));
     }
 
     /// The dark script reads the colours the paper stylesheet sets, and the margins beside a

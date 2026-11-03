@@ -28,8 +28,8 @@ pub use typography::{
     READING_SIZE, ReadingFont, TypeScale, css_family,
 };
 pub use webview::{
-    BodyStyle, DARK_BACKGROUND, DARK_TEXT, MARGINS_COLOR, MEASURE_CSS, PAPER, PAPER_TEXT,
-    WebViewFonts,
+    BodyStyle, DARK_BACKGROUND, DARK_TEXT, MARGINS_COLOR, MARGINS_RADIUS, MEASURE_CSS, PAPER,
+    PAPER_TEXT, WebViewFonts,
 };
 
 use std::str::FromStr;

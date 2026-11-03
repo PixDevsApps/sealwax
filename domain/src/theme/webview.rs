@@ -26,6 +26,10 @@ pub const MEASURE_CSS: &str =
 /// beside a design narrower than the view.
 pub const MARGINS_COLOR: &str = "--sealwax-margins-color";
 
+/// The custom property that carries the theme's corner radius into a paper body, for the
+/// corners of a narrow design's column.
+pub const MARGINS_RADIUS: &str = "--sealwax-margins-radius";
+
 /// The custom properties that carry the theme's background and text into a paper body when it
 /// is shown dark; the reader's script maps the message's colours toward them, and leaves the
 /// body as designed when they are absent.
@@ -64,8 +68,9 @@ impl Theme {
     /// paint a dark canvas behind a light design that declares `color-scheme: light dark`.
     /// Paper paints no background of its own, so a message's body background reaches the
     /// canvas as in a browser (a dark-mode design fills the card), and the view's white shows
-    /// where the message paints none. Its `--sealwax-margins-color` is the theme's background,
-    /// for the reader's script that puts a narrow design's column on it; with
+    /// where the message paints none. Its `--sealwax-margins-color` is the theme's background
+    /// and its `--sealwax-margins-radius` the theme's corner radius, for the reader's script
+    /// that puts a narrow design's column on it with rounded corners; with
     /// [`Theme::dark_paper`] the theme's background and text go along for the script that turns
     /// the message's colours dark.
     pub fn webview_css(&self, style: BodyStyle) -> String {
@@ -78,7 +83,9 @@ impl Theme {
                 let _ = write!(
                     css,
                     ":root{{color-scheme:light!important;\
+                     {MARGINS_RADIUS}:{radius}px!important;\
                      {MARGINS_COLOR}:{margins}!important",
+                    radius = self.radius,
                     margins = self.palette.background,
                 );
                 if self.dark_paper {
@@ -218,6 +225,7 @@ mod tests {
             "{MARGINS_COLOR}:{}!important}}",
             theme.palette.background
         )));
+        assert!(css.contains(&format!("{MARGINS_RADIUS}:{}px!important;", theme.radius)));
         assert!(css.contains("html{color:#1f1f1f}"));
         assert!(
             !css.contains("background"),

@@ -308,6 +308,8 @@ Roles map to palette positions, never hue names: matte-black's `green` is amber 
 - The column is found again when the reader's width or the body's height changes; the layout itself never changes, only the root's background and the body's clip. Print and export keep the message as designed.
 - On the real-world corpus (in matte-black and catppuccin-latte alike): 65 of the 69 templates and all 55 of S2's synthetic newsletters sit on the theme; email-boilerplate-full and -lite, sendwithus-airmail-invoice and -oxygen-upsell, and an Outlook web reply keep the full-width card.
 
+*2026-11-03, at the user's request:* a narrow column's corners take the theme's corner radius (`radius`, the surfaces' one; ADR-019), so it reads as one of Sealwax's cards. The paper stylesheet carries it as `--sealwax-margins-radius`; the margins script masks the column's four corners with the theme's background and clips the body to the same rounded shape (an SVG path), so the message's own backgrounds at the column's top and bottom are rounded too. A radius of 0 keeps the square column as before. A full-width design was already rounded by the card it fills.
+
 ## Avatars
 
 Initials from the display name (or the address), on a tint chosen by hashing the address. Never fetched from Gravatar, BIMI or favicons (privacy).
