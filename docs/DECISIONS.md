@@ -1108,6 +1108,10 @@ The owner's decisions on the sign-off sheet (2026-10-19). (1) The 150 ms rule of
 
 **Status:** Accepted — the owner's word, 2026-10-31, on issue [#26](https://github.com/PixDevsApps/sealwax/issues/26) ("Own release when it is finished"), after the reporter's two use cases. Pinning senders, on no list before, is built for a release of its own, 1.1.2 (the owner, 2026-10-31), which the owner reviewed before it was committed. The design is [ADR-024](#adr-024--pinned-senders-2026-10-31).
 
+### ADR-013 amendment — four 1.x items into 1.2 (2026-11-03)
+
+**Status:** Accepted — the owner's word, 2026-11-03, choosing what goes into 1.2: "Unread count + bar widget (#17); Forward as attachment; Go to Folder… picker (#12); Saved searches". From the 1.x list: an Omarchy bar unread widget ([#17](https://github.com/PixDevsApps/sealwax/issues/17)) with an unread count other programs can read, forward as attachment, and saved searches; and a Go to Folder… picker, on no list before, from [#12](https://github.com/PixDevsApps/sealwax/issues/12). The rest of the 1.x list (COMPRESS, pinned certificates for servers elsewhere, schedule send, snooze, server-side search, templates) stays there. How each is built, its keys (ADR-017) and the interface the widget reads are decided before each is built.
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
