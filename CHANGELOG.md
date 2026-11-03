@@ -2,7 +2,7 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## 1.1.5 — Not released yet
+## 1.1.5 — 2026-11-03
 
 Two fixes from contributors.
 
