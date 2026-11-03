@@ -76,6 +76,23 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.7 — 2026-11-03
+
+This machine. The changes since 1.1.6: `c8cb0ca` (Group by's stray "Loading older messages…" row), `8c9bfee` (INSTALL.md's community packages), `8540c5a` (connections from programs outside the test's process tree aren't counted, above), `f8fa5ee` (`triage-keys` waits for the reader), `15e279a` (ESEARCH read as SEARCH), `e1ba6ba` (ADR-013 amendment) and the version commit `35d6dc7` (Cargo.toml 1.1.7, both lock files, README, CHANGELOG "1.1.7 — 2026-11-03", a vendor/README.md wording fix).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `list-senders` on the Group by fix (`tools/headless.sh 36`) | 130 of 130 steps; on the old code the new step fails (`list-older shown: got true, wanted false`, 129 of 130); `preview-m3` 54 of 54, `list-pinned` 169 of 169 | Pass |
+| `esearch_replies_sync_on_every_flavour` (`engine/tests/sync.rs`, the fake server answering `UID SEARCH` with ESEARCH on Qresync, Condstore and Rev1) | Pass; without the imap-proto change it fails: "the server's reply to UID SEARCH couldn't be read". imap-proto's own tests 100 passed (a copy outside the repository) | Pass |
+| The probe filter: `failed_connections_back_off_and_reconnect_tries_at_once` and `relays_cuts_and_freezes` outside a network namespace while T3 Code probed new ports (6 connections in 40 s to a test listener, `ss`: `t3code`) | 5 of 5 and 15 of 15 (4 of 5 of the first failed before); `loopback::tests` 4 passed, among them a child process counted as this tree's and an orphaned one as outside | Pass |
+| `triage-keys` after its wait | 266 of 266 steps in 6 runs alone and 8 runs four at a time (4 of them under 16 busy loops); before, it failed at step 186 in 2 of 5 full CI runs, so this narrows the flake, it doesn't prove it gone | Pass |
+| `SEALWAX_CI_DISPLAY=41 bash tools/ci.sh --ui` on the version commit, **outside any network namespace** (`CARGO_NET_OFFLINE=true`) | Formatting, Clippy `-D warnings`, 1,616 tests passed, 0 failed; 87 self-test scripts, 8,504 steps, all passed; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`6358773..35d6dc7`, 7 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname | Pass |
+| `v1.1.7` on `35d6dc7`, `main` and the tag pushed | GitHub's `main` is `35d6dc7`, `v1.1.7` the tag object `3e69456` | Pass |
+| `python3 tools/release.py build` on `v1.1.7` (offline: `unshare -rn`, loopback up, then `unshare -U --map-user=1000`, `CARGO_NET_OFFLINE=true`) | Finished 18:39 CET: `check()` 1,175 passed, 0 failed, 92 ignored; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.1.7`, has no home path, user name or hostname, and carries the Microsoft client ID; package SHA-256 `69cbb5211ed5f630fddc3908fdfd945e32162293e51260fe76e191a3ac218626` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package) | 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261103-183954`) | Pass |
+| The release [v1.1.7](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.7) (`tools/release.py github`, 17:40:29 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+
 ### 1.1.6 — 2026-11-03
 
 This machine. The feature commit `233c862` (a narrow styled message's column takes the theme's corner radius: `--sealwax-margins-radius` in the paper stylesheet, the margins script rounds the column's corners and clips the body to them; DESIGN.md) and the version commit `5d939c7` (Cargo.toml 1.1.6, both lock files with only Sealwax's own versions, CHANGELOG "1.1.6 — 2026-11-03", README's version).
