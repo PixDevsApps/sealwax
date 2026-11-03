@@ -47,6 +47,12 @@ When it's done, the terminal shows the prompt again, and you can close it.
 2. Under the newest release, open **Assets** and click the file whose name starts with `sealwax-` and ends with `-x86_64.pkg.tar.zst`. Your browser saves it in your Downloads folder.
 3. In a terminal, type `sudo pacman -U ~/Downloads/` and the file's name (press **Tab** after typing `~/Downloads/sealwax` to have the rest filled in), then press **Enter**.
 
+### Community packages
+
+Other people package Sealwax for other systems. The project doesn't maintain or check these:
+
+- **NixOS:** an unofficial recipe, with notes on what it installs, in [issue #11](https://github.com/PixDevsApps/sealwax/issues/11).
+
 ## Start Sealwax and add your email
 
 1. Press **Super + Alt + Space** to open the app menu, type `Sealwax`, and press **Enter**.
