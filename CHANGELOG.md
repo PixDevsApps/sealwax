@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.1.6 — 2026-11-03
+
+A look that fits in better.
 
 - **Styled mail gets rounded corners:** a newsletter or receipt narrower than the reader sits on your theme's background, and its corners now take the same rounding as the rest of Sealwax (your Hyprland rounding, or `corner_radius` in `config.toml`). Square themes stay square.
 
