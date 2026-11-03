@@ -205,9 +205,13 @@ wait-until assert-action-log win.star
 key Delete
 wait-until assert-action-log win.delete
 wait-until assert-reader-page message
+# The reader shows the next message before its body takes the keys: focused while the old one
+# was still leaving, the key went to a view about to go (the flake at the `y` below, 2026-10-26).
+wait-until assert-reader-selected
 focus reader
 key e
 wait-until assert-action-log win.archive
+wait-until assert-reader-selected
 focus reader
 key y
 key numbersign
