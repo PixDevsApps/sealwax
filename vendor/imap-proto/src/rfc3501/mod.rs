@@ -340,6 +340,60 @@ fn mailbox_data_search(i: &[u8]) -> IResult<&[u8], MailboxDatum<'_>> {
     .parse(i)
 }
 
+/// The most numbers an ESEARCH's ALL may stand for (Sealwax's change).
+pub const ESEARCH_MAX: u64 = 10_000_000;
+
+// Sealwax's change (vendor/README.md): ESEARCH (RFC 4731, and RFC 9051 for every SEARCH on an
+// IMAP4rev2-only server), read as the Search it answers. ALL's numbers are kept; MIN, MAX,
+// COUNT and MODSEQ are passed over. A set standing for more than ESEARCH_MAX numbers is refused,
+// so one short line can't make a list of billions.
+//
+// esearch-response = "ESEARCH" [search-correlator] [SP "UID"] *(SP search-return-data)
+fn mailbox_data_esearch(i: &[u8]) -> IResult<&[u8], MailboxDatum<'_>> {
+    let (i, _) = tag_no_case("ESEARCH").parse(i)?;
+    let (i, _) = opt(preceded(
+        tag(" "),
+        delimited(tag_no_case("(TAG "), string, tag(")")),
+    ))
+    .parse(i)?;
+    let (i, _) = opt(tag_no_case(" UID")).parse(i)?;
+    let (rest, sets) = many0(preceded(
+        tag(" "),
+        alt((
+            map(preceded(tag_no_case("ALL "), sequence_set), Some),
+            value(None, preceded(tag_no_case("MIN "), number)),
+            value(None, preceded(tag_no_case("MAX "), number)),
+            value(None, preceded(tag_no_case("COUNT "), number)),
+            value(None, preceded(tag_no_case("MODSEQ "), number_64)),
+        )),
+    ))
+    .parse(i)?;
+    let ranges: Vec<(u32, u32)> = sets
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|range| {
+            let (a, b) = (*range.start(), *range.end());
+            (a.min(b), a.max(b))
+        })
+        .collect();
+    let total: u64 = ranges
+        .iter()
+        .map(|&(low, high)| u64::from(high - low) + 1)
+        .sum();
+    if total > ESEARCH_MAX {
+        return Err(nom::Err::Failure(nom::error::Error::new(
+            i,
+            nom::error::ErrorKind::TooLarge,
+        )));
+    }
+    let mut numbers = Vec::with_capacity(total as usize);
+    for (low, high) in ranges {
+        numbers.extend(low..=high);
+    }
+    Ok((rest, MailboxDatum::Search(numbers)))
+}
+
 fn mailbox_data_flags(i: &[u8]) -> IResult<&[u8], MailboxDatum<'_>> {
     map(
         preceded(tag_no_case("FLAGS "), flag_list),
@@ -651,6 +705,7 @@ impl<'a> MailboxDatum<'a> {
             mailbox_data_status,
             mailbox_data_recent,
             mailbox_data_search,
+            mailbox_data_esearch,
             gmail::mailbox_data_gmail_labels,
             gmail::mailbox_data_gmail_msgid,
             gmail::mailbox_data_gmail_thrid,
@@ -1289,6 +1344,35 @@ mod tests {
     use super::{AttributeValue, Capability, NameAttribute};
     use assert_matches::assert_matches;
     use std::borrow::Cow;
+
+    /// Sealwax's change: ESEARCH is read as the Search it answers.
+    #[test]
+    fn test_esearch_as_search() {
+        use crate::{MailboxDatum, Response};
+        let cases: &[(&[u8], &[u32])] = &[
+            (b"* ESEARCH (TAG \"A7\") UID ALL 1:3,5,9:8\r\n", &[1, 2, 3, 5, 8, 9]),
+            (b"* ESEARCH (TAG \"A7\") UID\r\n", &[]),
+            (b"* ESEARCH UID COUNT 2 ALL 4,2 MIN 2 MAX 4\r\n", &[4, 2]),
+            (b"* esearch (tag \"x\") all 7 modseq 917162500\r\n", &[7]),
+        ];
+        for (line, numbers) in cases {
+            match Response::parse(line) {
+                Ok((rest, Response::MailboxData(MailboxDatum::Search(found)))) => {
+                    assert!(rest.is_empty());
+                    assert_eq!(&found[..], *numbers);
+                }
+                other => panic!("{:?}: {other:?}", String::from_utf8_lossy(line)),
+            }
+        }
+        // A set standing for billions of numbers is refused.
+        let huge = b"* ESEARCH (TAG \"A7\") UID ALL 1:4000000000\r\n";
+        assert!(matches!(
+            Response::parse(huge),
+            Err(nom::Err::Failure(_) | nom::Err::Error(_))
+        ));
+        let limit = format!("* ESEARCH ALL 1:{}\r\n", super::ESEARCH_MAX);
+        assert!(Response::parse(limit.as_bytes()).is_ok());
+    }
 
     #[test]
     fn test_list() {

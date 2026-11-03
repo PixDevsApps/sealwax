@@ -32,7 +32,7 @@ The only differences should be the three changes: `src/transport/smtp/client/mod
 
 To drop it once lettre releases fixes for all three: remove both `[patch.crates-io]` entries and this folder, raise `lettre` in `engine/Cargo.toml` (and `spikes/s5-oauth/Cargo.toml`), update the lock files, and keep `engine/src/smtp/submit/tests.rs`'s cases for long replies, a line that never ends and a reply of many lines passing. To move it to a newer lettre, copy the new published crate here and make the same changes.
 
-## imap-proto 0.17.0, with upstream's nesting limit and Proton Mail Bridge's replies
+## imap-proto 0.17.0, with upstream's nesting limit, Proton Mail Bridge's replies and ESEARCH
 
 `vendor/imap-proto/` is [imap-proto](https://crates.io/crates/imap-proto) 0.17.0 exactly as published on crates.io (MIT or Apache-2.0, `LICENSE-MIT` and `LICENSE-APACHE`), the parser async-imap reads every IMAP response with, with two commits from imap-proto's own `main` applied (2026-10-25), both in `src/rfc3501/body_structure.rs`:
 
@@ -47,9 +47,11 @@ Three changes of Sealwax's own (2026-11-03, [PR #28](https://github.com/PixDevsA
 2. **No space after a message's envelope** (the same file, `body_type_message`): a `message/rfc822` part whose envelope is followed at once by its body, `…"<id>")("text" …`, is read; the grammar has a space there.
 3. **Other escapes in a quoted string** (`src/core.rs`, `quoted`): a backslash followed by any TEXT-CHAR is kept as it is (Bridge writes JSON-style escapes such as `\u00ad` in file names); the grammar escapes only `\` and `"`. A line break after the backslash is still refused. Sealwax uses a BODYSTRUCTURE only for whether a message has plain text, HTML or attachments, never for a file name, so a name kept as written shows nowhere.
 
-Each only accepts what was refused before, so a reply that follows the grammar is read exactly as before, and the nesting limits are unchanged. Upstream's `main` has none of the three, and its newer `quoted` unescapes the string and refuses any other escape, so moving to a newer imap-proto means making the third change there again.
+Each only accepts what was refused before, so a reply that follows the grammar is read exactly as before, and the nesting limits are unchanged.
 
-The workspace's `Cargo.toml` and `fuzz/Cargo.toml` use it through `[patch.crates-io]`; it is excluded from the workspace, so `cargo fmt`, Clippy and the tests don't run on it. Its own tests pass with both commits and the three changes (99: upstream's five new ones and two for the changes, with `test_quoted` changed for the third; run outside the repository, where its dev-dependency can be fetched).
+A fourth change of Sealwax's own (2026-11-03, `src/rfc3501/mod.rs`, `mailbox_data_esearch`): **ESEARCH** ([RFC 4731](https://www.rfc-editor.org/rfc/rfc4731), and [RFC 9051](https://www.rfc-editor.org/rfc/rfc9051) for every SEARCH an IMAP4rev2-only server answers) is read as the `MailboxDatum::Search` it answers: `* ESEARCH (TAG "A7") UID ALL 1:3,5` gives the UIDs 1, 2, 3 and 5; MIN, MAX, COUNT and MODSEQ are passed over. imap-proto 0.17.0 has no ESEARCH at all, so such a server's every `UID SEARCH` was a reply Sealwax couldn't read, and the folder never synced. An ALL standing for more than `ESEARCH_MAX` (10,000,000) numbers is refused, so one short line can't make a list of billions. `test_esearch_as_search` is new. Upstream's `main` has none of the three, and its newer `quoted` unescapes the string and refuses any other escape, so moving to a newer imap-proto means making the third change there again.
+
+The workspace's `Cargo.toml` and `fuzz/Cargo.toml` use it through `[patch.crates-io]`; it is excluded from the workspace, so `cargo fmt`, Clippy and the tests don't run on it. Its own tests pass with both commits and the four changes (100: upstream's five new ones and three for the changes, with `test_quoted` changed for the third; run outside the repository, where its dev-dependency can be fetched).
 
 To check it, fetch the published crate, whose SHA-256 is the checksum the lock file had before the patch (`5ccf963d57074747b455398a1763d174da80bcaba6f51e3671a82252b531a68b`):
 
@@ -65,9 +67,9 @@ sha256sum target/imap-proto-check/imap-proto-0.17.0.crate && tar -xzf target/ima
 diff -r target/imap-proto-check/imap-proto-0.17.0 vendor/imap-proto
 ```
 
-The differences should be in `src/rfc3501/body_structure.rs`, the two commits above (`b93964df` without its `src/tests.rs` hunk) applied in that order and changes 1 and 2 with their tests, and in `src/core.rs`, change 3 with `test_quoted`'s cases.
+The differences should be in `src/rfc3501/body_structure.rs`, the two commits above (`b93964df` without its `src/tests.rs` hunk) applied in that order and changes 1 and 2 with their tests, in `src/core.rs`, change 3 with `test_quoted`'s cases, and in `src/rfc3501/mod.rs`, ESEARCH (`ESEARCH_MAX`, `mailbox_data_esearch`, its place in `MailboxDatum::parse`, `test_esearch_as_search`).
 
-To drop it once an imap-proto release has the limit and Bridge's three cases, and async-imap takes that release: remove both `[patch.crates-io]` entries and this folder, raise `async-imap` in the workspace's `Cargo.toml`, update the lock files, and keep `a_greeting_nested_too_deep_is_unreadable_not_a_crash` (`engine/src/imap/connection/tests.rs`) and `a_body_structure_nested_too_deep_costs_one_reconnect` (`engine/tests/sync.rs`) and `bridges_empty_disposition_parameters_parse` (`engine/src/imap/fetch.rs`) passing.
+To drop it once an imap-proto release has the limit, Bridge's three cases and ESEARCH, and async-imap takes that release: remove both `[patch.crates-io]` entries and this folder, raise `async-imap` in the workspace's `Cargo.toml`, update the lock files, and keep `a_greeting_nested_too_deep_is_unreadable_not_a_crash` (`engine/src/imap/connection/tests.rs`) and `a_body_structure_nested_too_deep_costs_one_reconnect` (`engine/tests/sync.rs`) `bridges_empty_disposition_parameters_parse` (`engine/src/imap/fetch.rs`) and `esearch_replies_sync_on_every_flavour` (`engine/tests/sync.rs`) passing.
 
 ## async-imap 0.12.0, with a buffer that grows with a literal's data and an IDLE that can be refused
 

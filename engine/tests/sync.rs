@@ -152,6 +152,46 @@ fn seed(fake: &Fake) {
     world.append_many("Arkiv2", 3, |_| 2);
 }
 
+/// An IMAP4rev2-only server answers every SEARCH with ESEARCH, which imap-proto couldn't read
+/// (the vendored copy's change, vendor/README.md): the first sync, new mail and expunges come
+/// through.
+#[test]
+fn esearch_replies_sync_on_every_flavour() {
+    runtime().block_on(async {
+        for flavor in Flavor::ALL {
+            let fake = Fake::start(flavor).await;
+            seed(&fake);
+            fake.world().esearch = true;
+            let (_dir, store, account) = store();
+            let mut conn = fake.connect().await;
+            let first = account_pass(&mut conn, &store, account, &options()).await;
+            assert_eq!(first.stats.stored, 35, "{flavor:?}");
+            {
+                let mut world = fake.world();
+                world.append("INBOX", 0, &[]);
+                world.append("INBOX", 0, &["\\Seen"]);
+                world.expunge("INBOX", 4);
+            }
+            let second = account_pass(&mut conn, &store, account, &options()).await;
+            assert_eq!(
+                (second.stats.stored, second.stats.removed),
+                (2, 1),
+                "{flavor:?}: {:?}",
+                second.stats
+            );
+            assert_eq!(
+                diverged(&fake, &store, account).await,
+                Vec::<String>::new(),
+                "{flavor:?}"
+            );
+            assert!(fake.world().count("SEARCH") > 0, "{flavor:?}");
+            assert_eq!(store.check().recv().await.unwrap(), Vec::<String>::new());
+            conn.logout().await;
+            store.close().unwrap();
+        }
+    });
+}
+
 #[test]
 fn new_mail_flag_changes_and_expunges_reach_the_store_on_every_flavour() {
     runtime().block_on(async {

@@ -541,6 +541,16 @@ Built on the user's "Yes, fix the IDLE follow-up: reset the failure count after 
 
 **Consequence:** the vendored copy now carries changes no upstream has, so dropping it needs an imap-proto release that takes them too; upstream's `main` unescapes quoted strings and refuses other escapes, so the third change would have to be made there again. A name with such an escape would show as written, but Sealwax uses a BODYSTRUCTURE only for what kinds of parts a message has.
 
+### ADR-006 amendment — ESEARCH read as SEARCH (2026-11-03)
+
+**Status:** Accepted — the owner's word, 2026-11-03 (the sign-off page, item 9: "IMAP4rev2-only servers' ESEARCH replies").
+
+**Found:** a server that speaks only IMAP4rev2 (RFC 9051) answers every SEARCH with ESEARCH, which imap-proto 0.17.0 doesn't parse, so every `UID SEARCH` Sealwax sends was a reply it couldn't read and no folder synced (a P2 follow-up since M3).
+
+**Decision:** the vendored imap-proto reads ESEARCH as the `MailboxDatum::Search` it answers (`vendor/README.md`, the fourth change): ALL's sequence set expanded into UIDs, MIN, MAX, COUNT and MODSEQ passed over, and an ALL standing for more than 10,000,000 numbers refused. Sealwax doesn't send `ENABLE IMAP4rev2` or `RETURN` options; it reads what such a server sends unasked. The engine is unchanged.
+
+**Consequence:** one more change that an imap-proto release would have to carry before the copy can go. A folder of more than 10 million UIDs in one ALL can't sync on such a server (none is known). Test: `esearch_replies_sync_on_every_flavour` (`engine/tests/sync.rs`, the fake server answering with ESEARCH on all three flavours: first sync, new mail and an expunge); before the change it failed with "the server's reply to UID SEARCH couldn't be read".
+
 ## ADR-007 — SMTP, MIME and privacy defaults (2026-10-04)
 
 **Status:** Proposed. S7 confirms the output in Gmail web, Outlook web and Thunderbird.

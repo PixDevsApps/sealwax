@@ -4,6 +4,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 
 ## 1.1.7 — Not released yet
 
+- **Mail servers that speak only the newest IMAP (IMAP4rev2) sync:** such a server answers every search with a newer kind of reply that Sealwax couldn't read, so no folder came. Now Sealwax reads it.
 - **No stray "Loading older messages…" under Group by:** while the list asked the server for older mail, that line stayed at the bottom of the window after switching to Group by Sender or Domain, where it meant nothing. Now it shows only over the plain list.
 
 ## 1.1.6 — 2026-11-03

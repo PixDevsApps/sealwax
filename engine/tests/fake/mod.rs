@@ -145,6 +145,8 @@ pub struct World {
     literal_cut: Option<usize>,
     /// `UID SEARCH HEADER …` finds nothing, as Stalwart's search of Message-IDs (S1).
     pub header_search_misses: bool,
+    /// `UID SEARCH` is answered with ESEARCH, as an IMAP4rev2-only server answers every SEARCH.
+    pub esearch: bool,
     /// The hierarchy delimiter LIST reports (`/` by default).
     pub delimiter: char,
     /// The mailboxes SUBSCRIBE named and UNSUBSCRIBE didn't.
@@ -230,6 +232,7 @@ impl World {
             faults: Vec::new(),
             literal_cut: None,
             header_search_misses: false,
+            esearch: false,
             delimiter: '/',
             subscribed: BTreeSet::new(),
             garbled: BTreeMap::new(),
@@ -1252,7 +1255,9 @@ fn uid_command(
                     .collect()
             }
         };
-        let line = if found.is_empty() {
+        let line = if world.esearch {
+            esearch(tag, &found)
+        } else if found.is_empty() {
             "* SEARCH\r\n".to_owned()
         } else {
             format!("* SEARCH {}\r\n", found.join(" "))
@@ -2018,4 +2023,33 @@ async fn write(io: &mut BufReader<Box<dyn Io>>, text: &str) -> std::io::Result<(
 /// Mailbox names in `world`, as LIST shows them.
 pub fn names(world: &World) -> BTreeSet<String> {
     world.mailboxes.keys().cloned().collect()
+}
+
+/// An IMAP4rev2 answer to `UID SEARCH`: the UIDs as a sequence set, runs as ranges.
+fn esearch(tag: &str, found: &[String]) -> String {
+    let mut uids: Vec<u32> = found.iter().filter_map(|uid| uid.parse().ok()).collect();
+    uids.sort_unstable();
+    let mut runs: Vec<(u32, u32)> = Vec::new();
+    for uid in uids {
+        match runs.last_mut() {
+            Some((_, high)) if *high + 1 == uid => *high = uid,
+            _ => runs.push((uid, uid)),
+        }
+    }
+    let mut line = format!("* ESEARCH (TAG \"{tag}\") UID");
+    if !runs.is_empty() {
+        let set: Vec<String> = runs
+            .iter()
+            .map(|&(low, high)| {
+                if low == high {
+                    low.to_string()
+                } else {
+                    format!("{low}:{high}")
+                }
+            })
+            .collect();
+        line.push_str(&format!(" ALL {}", set.join(",")));
+    }
+    line.push_str("\r\n");
+    line
 }
