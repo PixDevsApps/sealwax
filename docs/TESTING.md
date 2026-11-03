@@ -74,6 +74,22 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.6 — 2026-11-03
+
+This machine. The feature commit `233c862` (a narrow styled message's column takes the theme's corner radius: `--sealwax-margins-radius` in the paper stylesheet, the margins script rounds the column's corners and clips the body to them; DESIGN.md) and the version commit `5d939c7` (Cargo.toml 1.1.6, both lock files with only Sealwax's own versions, CHANGELOG "1.1.6 — 2026-11-03", README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The rounded column, headless (a scratch script run from a temporary copy in `tests/selftest/`, removed; `corners 12` on matte-black and catppuccin-latte, the newsletter sample in a 1440×1300 window) | `margins true`; all four corners of the column rounded and anti-aliased against the theme's background, the message's own top and bottom bands rounded with them; `corners 0` keeps the square column | Pass |
+| `reader`, `reader-dark` and `live-theme` self-tests on the change | 93 of 93, 45 of 45, 29 of 29 steps | Pass |
+| `SEALWAX_CI_DISPLAY=44 bash tools/ci.sh --ui` on `5d939c7` (in a private network namespace, `CARGO_NET_OFFLINE=true`) | Formatting, Clippy `-D warnings`, 1,611 tests passed, 0 failed; 87 self-test scripts, every step passed; the hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The real-world corpus with rounded corners | Not run | Not verified |
+| The push range (`ce2250e..5d939c7`, 2 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname | Pass |
+| `v1.1.6` on `5d939c7`, `main` and the tag pushed | GitHub's `main` is `5d939c7`, `v1.1.6` the tag object `b605a3a` | Pass |
+| `python3 tools/release.py build` on `v1.1.6` (offline: `unshare -rn`, loopback up, then `unshare -U --map-user=1000`, `CARGO_NET_OFFLINE=true`) | Finished 16:07 CET: `check()` 1,170 passed, 0 failed, 92 ignored; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.1.6` and holds no home path, user name or hostname; package SHA-256 `699f54a6…df931c0` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package, 16:07 CET) | 16 of 16 steps in a fresh `archlinux:base` container: the libraries and licence files there, the installed binary's window and a message in the reader, its web process in WebKit's sandbox; the container removed afterwards | Pass |
+| The release [v1.1.6](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.6) (`tools/release.py github`, 15:07:46 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+
 ### 1.1.5 — 2026-11-03
 
 This machine. PR #28 (@chrisonline: `c7a85d5`, the merge `a1bb40a`, `d275758`; vendored imap-proto reads Proton Mail Bridge's BODYSTRUCTUREs) with its docs `d9fe517` (vendor README, ADR-006 amendment); PR #19 (@alauppe's `6d23c1b` rebased onto 1.1.4 as `5e28abe`) finished in `dd4c868` (two stages batched per folder, ADR-015 amendment); the version commit `c235c83` (Cargo.toml 1.1.5, both lock files with only Sealwax's own versions, CHANGELOG "1.1.5 — 2026-11-03", README's version and thanks).
