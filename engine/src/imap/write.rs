@@ -11,12 +11,12 @@
 //!   folder's PERMANENTFLAGS keeps them.
 //! - [`move_messages`]: `UID MOVE` with COPYUID; without MOVE, `UID COPY`, `\Deleted` and
 //!   `UID EXPUNGE` (UIDPLUS), or the messages stay flagged `\Deleted`. A retry first looks for
-//!   candidates by Message-ID among the target's UIDs from the [`Mark`] up, then verifies their
-//!   complete contents before deleting a source that is still present. Unverified sources are
-//!   transferred again (S1: a blind replay of a COPY-based move made two copies, and Stalwart
-//!   never matches `SEARCH HEADER Message-ID`). COPYUID's pairs are checked against
-//!   the target's Message-IDs before they are reported: Stalwart 0.16 lists both of its sets in
-//!   ascending order whatever order it copied in.
+//!   candidates by Message-ID among the target's UIDs from the [`Mark`] up, then checks a
+//!   candidate's size, internal date and contents before deleting a source that is still there
+//!   (`retry`); one that differs is moved again (S1: a blind replay of a COPY-based move made
+//!   two copies, and Stalwart never matches `SEARCH HEADER Message-ID`). COPYUID's pairs are
+//!   checked against the target's Message-IDs before they are reported: Stalwart 0.16 lists both
+//!   of its sets in ascending order whatever order it copied in.
 //! - [`copy_messages`] (ADR-020): `UID COPY` for a rule's `fileinto :copy`; a retry looks for
 //!   the copies by Message-ID from the [`Mark`] up first, as a move's does.
 //! - [`expunge`]: `\Deleted`, then `UID EXPUNGE` with UIDPLUS; otherwise left flagged.
@@ -725,10 +725,10 @@ pub async fn store_flags(
 /// first. UIDs no longer in the source count as done.
 ///
 /// A retry looks for Message-ID candidates among the target's UIDs from the mark up
-/// (a MOVE retry only with a mark: a replayed UID MOVE of a gone UID is harmless, S1). Before
-/// deleting a source that is still present, its complete contents must match the candidate
-/// within the retry comparison budget. Otherwise it is moved or copied again: a possible
-/// duplicate is preferable to deleting distinct mail that shares a Message-ID.
+/// (a MOVE retry only with a mark: a replayed UID MOVE of a gone UID is harmless, S1). A source
+/// that is still there is only deleted if its candidate has the same size, internal date and
+/// contents, checked in batches per folder (`retry`); otherwise it is moved or copied again: a
+/// duplicate rather than deleting another message that shares its Message-ID.
 ///
 /// The target UIDs in [`Done::moved`] are checked: COPYUID's pairs against the target's
 /// Message-IDs (Stalwart's can swap messages), and where COPYUID is missing the target's new
@@ -759,28 +759,30 @@ pub async fn move_messages(conn: &mut Connection, request: Move<'_>) -> Result<D
             .collect();
         done.target_uidvalidity = Some(look.uidvalidity);
         done.moved = assign(request.messages, &present, &look.entries, &mut claimed);
-        let mut verified = Vec::new();
-        for (source, target) in std::mem::take(&mut done.moved) {
-            if !present.contains(&source)
-                || retry::same_message(
-                    conn,
-                    request.from,
-                    source,
-                    request.to,
-                    look.uidvalidity,
-                    target,
-                )
-                .await?
-            {
-                verified.push((source, target));
-            } else {
-                claimed.remove(&target);
-            }
+        let candidates: Vec<(u32, u32)> = done
+            .moved
+            .iter()
+            .copied()
+            .filter(|(source, _)| present.contains(source))
+            .collect();
+        if !candidates.is_empty() {
+            let verified = retry::verify(
+                conn,
+                request.from,
+                request.to,
+                look.uidvalidity,
+                &candidates,
+            )
+            .await?;
+            selected = verified.selected;
+            done.moved.retain(|pair| {
+                let kept = !present.contains(&pair.0) || verified.same.contains(pair);
+                if !kept {
+                    claimed.remove(&pair.1);
+                }
+                kept
+            });
         }
-        done.moved = verified;
-        // Content comparisons EXAMINE both folders. Restore a writable source and check its
-        // UIDVALIDITY again before any flags, copies or deletions.
-        selected = open(conn, request.from).await?;
         let found: HashSet<u32> = done.moved.iter().map(|(source, _)| *source).collect();
         (stale, remaining) = present.iter().copied().partition(|uid| found.contains(uid));
     }

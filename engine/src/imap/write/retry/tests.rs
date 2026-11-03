@@ -11,6 +11,8 @@ enum BodyReply {
     Missing,
     Refused,
     SourceReset,
+    /// The target's INTERNALDATE differs: moved again without a download.
+    OtherDate,
 }
 
 /// A source and an unrelated destination deliberately share their Message-ID. The fake server
@@ -78,6 +80,19 @@ async fn scenario(native_move: bool, same: bool, reply: BodyReply, padding: usiz
             } else if command.contains("HEADER.FIELDS (MESSAGE-ID)") {
                 let header = "Message-ID: <shared@example.test>\r\n\r\n";
                 peer.send(&format!("* 1 FETCH (UID 40 BODY[HEADER.FIELDS (MESSAGE-ID)] {{{}}}\r\n{header})\r\n{tag} OK fetched\r\n", header.len())).await;
+            } else if command.ends_with(" (UID RFC822.SIZE INTERNALDATE)") {
+                let (uid, bytes, day) = if folder == "INBOX" {
+                    (5, &source, 5)
+                } else if matches!(reply, BodyReply::OtherDate) {
+                    (40, &target, 6)
+                } else {
+                    (40, &target, 5)
+                };
+                assert_eq!(
+                    command,
+                    format!("UID FETCH {uid} (UID RFC822.SIZE INTERNALDATE)")
+                );
+                peer.send(&format!("* 1 FETCH (UID {uid} RFC822.SIZE {} INTERNALDATE \"0{day}-Oct-2026 09:00:00 +0000\")\r\n{tag} OK fetched\r\n", bytes.len())).await;
             } else if command.contains("BODY.PEEK[]<") {
                 partial_reads += 1;
                 if matches!(reply, BodyReply::Refused) {
@@ -187,11 +202,15 @@ async fn scenario(native_move: bool, same: bool, reply: BodyReply, padding: usiz
         assert!(deleted);
         assert_eq!(done.moved, vec![(5, if verified { 40 } else { 41 })]);
     }
-    assert!(
-        reads > 0,
-        "Message-ID alone must never authorize source deletion"
-    );
-    if padding >= CHUNK_BYTES as usize && matches!(reply, BodyReply::Complete) {
+    if within_budget && !matches!(reply, BodyReply::OtherDate) {
+        assert!(
+            reads > 0,
+            "Message-ID alone must never authorize source deletion"
+        );
+    } else {
+        assert_eq!(reads, 0, "a size or date that differs needs no download");
+    }
+    if within_budget && padding >= CHUNK_BYTES as usize && matches!(reply, BodyReply::Complete) {
         assert!(
             reads >= 4,
             "the comparison must include bytes after the first chunk"
@@ -250,4 +269,11 @@ async fn identical_messages_exactly_at_the_budget_are_deduplicated() {
 #[tokio::test]
 async fn source_uidvalidity_is_checked_again_after_comparison() {
     scenario(false, true, BodyReply::SourceReset, 0).await;
+}
+
+#[tokio::test]
+async fn a_different_internal_date_is_transferred_without_a_download() {
+    for native_move in [false, true] {
+        scenario(native_move, true, BodyReply::OtherDate, 0).await;
+    }
 }

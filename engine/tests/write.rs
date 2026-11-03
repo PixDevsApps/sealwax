@@ -1011,6 +1011,70 @@ fn a_move_retry_finds_a_half_done_move_and_only_deletes_the_source() {
 }
 
 #[test]
+fn a_move_retry_checks_its_candidates_in_one_batch_per_folder() {
+    runtime().block_on(async {
+        let fake = fake(Flavor::Qresync, true, true).await;
+        for _ in 0..6 {
+            fake.world().append("INBOX", 1, &[]);
+        }
+        let messages = listed(&fake, "INBOX");
+        let all = moving(&messages);
+        let mut conn = fake.connect().await;
+        let mark = write::mark_target(&mut conn, "Arkiv").await.unwrap();
+        // An earlier attempt copied five of the six and died before the source's expunge.
+        write::copy_messages(
+            &mut conn,
+            Copy {
+                from: folder(&fake, "INBOX"),
+                to: "Arkiv",
+                messages: &all[..5],
+                mark: Some(mark),
+                retry: false,
+            },
+        )
+        .await
+        .unwrap();
+        // Another message with the sixth's Message-ID, received a day earlier.
+        fake.world().append_id("Arkiv", &messages[5].1, 2, &[]);
+        let before = fake.world().commands.len();
+        let done = write::move_messages(
+            &mut conn,
+            request(folder(&fake, "INBOX"), "Arkiv", &all, Some(mark), true),
+        )
+        .await
+        .unwrap();
+        assert_eq!(done.moved, [(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 7)]);
+        assert!(fake.world().uids("INBOX").is_empty());
+        assert_eq!(fake.world().ids("Arkiv").len(), 7);
+        let commands = fake.world().commands[before..].to_vec();
+        let count = |verb: &str| {
+            commands
+                .iter()
+                .filter(|command| command.starts_with(verb))
+                .count()
+        };
+        assert_eq!(count("EXAMINE"), 2, "{commands:?}");
+        assert_eq!(count("SELECT"), 2, "{commands:?}");
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| command.ends_with("(UID RFC822.SIZE INTERNALDATE)"))
+                .count(),
+            2,
+            "{commands:?}"
+        );
+        assert_eq!(
+            commands
+                .iter()
+                .filter(|command| command.contains("BODY.PEEK[]<0."))
+                .count(),
+            2,
+            "only the five that passed the first stage, one command per folder: {commands:?}"
+        );
+    });
+}
+
+#[test]
 fn a_copy_retry_without_a_mark_looks_through_the_whole_target() {
     runtime().block_on(async {
         let server = SERVERS[1];

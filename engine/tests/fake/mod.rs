@@ -1345,6 +1345,7 @@ fn uid_command(
     let headers = items.to_ascii_uppercase().contains("HEADER.FIELDS");
     let header_only = items.to_ascii_uppercase().contains("BODY.PEEK[HEADER]");
     let with_structure = items.to_ascii_uppercase().contains("BODYSTRUCTURE");
+    let size_and_date = items.to_ascii_uppercase().contains("RFC822.SIZE");
     let fields = items
         .find("HEADER.FIELDS (")
         .map(|at| group(&items[at + 14..]).0.to_owned())
@@ -1433,6 +1434,12 @@ fn uid_command(
                 internal_date(message.date),
                 head.len(),
                 TEXT.len(),
+            ));
+        } else if size_and_date {
+            out.push_str(&format!(
+                "* {seq} FETCH (UID {uid} RFC822.SIZE {} INTERNALDATE \"{}\")\r\n",
+                header(message).len() + TEXT.len(),
+                internal_date(message.date),
             ));
         } else if changedsince.is_some() {
             out.push_str(&format!(

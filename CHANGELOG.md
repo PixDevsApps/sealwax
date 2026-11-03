@@ -7,6 +7,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 Two fixes from contributors.
 
 - **Proton Mail Bridge's mail reads fully** ([PR #28](https://github.com/PixDevsApps/sealwax/pull/28), thanks @chrisonline): Bridge describes some messages in a way that breaks the mail standard (an inline part without details, a forwarded message, a file name with a special character), and Sealwax couldn't read that description. Mail still came, read the slower way, but those messages showed no attachment clip and a large one was downloaded whole. Now Sealwax reads Bridge's way too.
+- **Moving mail again after an interruption never deletes a different message** ([PR #19](https://github.com/PixDevsApps/sealwax/pull/19), thanks @alauppe): when a move to another folder was cut off (a suspend, a lost connection), Sealwax finished it by looking in that folder for the messages it had already moved, by their Message-ID, and deleted the originals it found there. Another message with the same Message-ID, such as a resent newsletter, could get the original deleted without it ever having been moved. Now Sealwax checks that the two are the same message, size, date and contents, before deleting, and moves it again if they aren't.
 
 ## 1.1.4 — 2026-11-01
 
