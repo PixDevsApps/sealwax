@@ -196,7 +196,7 @@ mod tests {
 
     #[test]
     fn stores_once_and_reads_back() {
-        let dir = crate::store::tests::scratch();
+        let dir = crate::store::unit_tests::scratch();
         let root = dir.path().join("blobs");
         let blobs = BlobStore::open(&root).unwrap();
         let first = blobs.put(b"From: a@example.test\r\n\r\nhei\r\n").unwrap();
@@ -241,7 +241,7 @@ mod tests {
 
     #[test]
     fn directories_are_0700_and_files_0600() {
-        let dir = crate::store::tests::scratch();
+        let dir = crate::store::unit_tests::scratch();
         let root = dir.path().join("data/blobs");
         let blobs = BlobStore::open(&root).unwrap();
         let key = blobs.put(b"private").unwrap();
@@ -255,7 +255,7 @@ mod tests {
 
     #[test]
     fn removes_stale_temporary_files_on_open() {
-        let dir = crate::store::tests::scratch();
+        let dir = crate::store::unit_tests::scratch();
         let root = dir.path().join("blobs");
         BlobStore::open(&root).unwrap();
         let stale = root.join(TEMP_DIR).join("stale");
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn concurrent_writers_agree() {
-        let dir = crate::store::tests::scratch();
+        let dir = crate::store::unit_tests::scratch();
         let blobs = BlobStore::open(&dir.path().join("blobs")).unwrap();
         let keys: Vec<Vec<BlobKey>> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..8)

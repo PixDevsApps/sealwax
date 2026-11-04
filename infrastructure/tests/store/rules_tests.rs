@@ -2,10 +2,10 @@
 //! their own that run before what follows, a copy refused as a copy, Undo leaving copies made,
 //! and local accounts leaving copies to the caller.
 
-use super::ops_tests::{
+use crate::ops_tests::{
     NOW, clean, counts, due, held_ids, ingest_local, local, server, server_flags, shown, ten,
 };
-use super::*;
+use crate::prelude::*;
 
 fn rules(store: &Store, messages: Vec<RuleChanges>) -> Queued {
     store.queue_rules(messages, 0).recv_blocking().unwrap()

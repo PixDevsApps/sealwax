@@ -7,9 +7,9 @@
 //! `Store::check` finds nothing; after every full sync the store's server columns equal the
 //! model server. At the end the runner drains the queue and the store equals the server.
 
-use super::ops_tests::{NOW, UIDVALIDITY, server};
-use super::tests::{Model, whole};
-use super::*;
+use crate::common::{Model, whole};
+use crate::ops_tests::{NOW, UIDVALIDITY, server};
+use crate::prelude::*;
 use proptest::prelude::*;
 use rusqlite::{Connection, OpenFlags};
 use sealwax_domain::model::{Address, Headers};

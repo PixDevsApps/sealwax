@@ -180,7 +180,7 @@ mod tests {
 
     #[test]
     fn stores_parses_and_threads() {
-        let dir = crate::store::tests::scratch();
+        let dir = crate::store::unit_tests::scratch();
         let blobs = BlobStore::open(&dir.path().join("blobs")).unwrap();
         let store = Store::open(
             &dir.path().join("store.sqlite"),

@@ -26,55 +26,10 @@ mod unsubscribe;
 mod views;
 mod writer;
 
+#[cfg(feature = "test-support")]
+pub mod testing;
 #[cfg(test)]
-mod resync_tests;
-#[cfg(test)]
-mod sync_tests;
-#[cfg(test)]
-pub(crate) mod tests;
-
-#[cfg(test)]
-mod account_tests;
-#[cfg(test)]
-mod thread_tests;
-#[cfg(test)]
-mod unified_tests;
-
-#[cfg(test)]
-mod body_tests;
-
-#[cfg(test)]
-mod count_tests;
-
-#[cfg(test)]
-mod conversation_tests;
-
-#[cfg(test)]
-mod ops_prop_tests;
-#[cfg(test)]
-mod ops_tests;
-#[cfg(test)]
-mod rules_tests;
-
-#[cfg(test)]
-mod compose_prop_tests;
-#[cfg(test)]
-mod compose_tests;
-
-#[cfg(test)]
-mod folders_tests;
-
-#[cfg(test)]
-mod remote_tests;
-
-#[cfg(test)]
-mod search_tests;
-
-#[cfg(test)]
-mod pop3_tests;
-
-#[cfg(test)]
-mod pin_tests;
+pub(crate) mod unit_tests;
 
 pub use api::*;
 pub use compose_api::*;

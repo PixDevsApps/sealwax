@@ -1,8 +1,8 @@
 //! Pinned senders (issue #26): the Pinned section ahead of the dates, its paging, its change
 //! events, pinned groups first in Group by, and the pins themselves.
 
-use super::tests::{Model, Rng, scratch, whole};
-use super::*;
+use crate::common::{Model, Rng, scratch, whole};
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, FolderRole, Headers, MessageSummary};
 use sealwax_domain::senders::{GroupBy, domain_key, sender_key};
@@ -708,7 +708,7 @@ fn v14_adds_the_pins_to_a_v13_store() {
     let path = fx.dir.path().join("store.sqlite");
     fx.store.close().unwrap();
     let conn = Connection::open(&path).unwrap();
-    conn.execute_batch(super::schema::UNDO_V14).unwrap();
+    conn.execute_batch(testing::UNDO_V14).unwrap();
     drop(conn);
     let store = Store::open(&path, StoreOptions::default()).unwrap();
     assert!(store.pins().recv_blocking().unwrap().is_empty());

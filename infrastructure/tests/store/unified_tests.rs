@@ -2,8 +2,8 @@
 //! date under each filter chip, each account's folders keep only its own mail, a detached
 //! account's mail leaves it, and accounts that sync at once keep the open views exact.
 
-use super::tests::{Model, scratch};
-use super::*;
+use crate::common::{Model, scratch};
+use crate::prelude::*;
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{Address, FolderRole, Headers};
 use std::collections::{BTreeMap, BTreeSet};
@@ -129,7 +129,8 @@ fn expected(
     let mut rows: Vec<(i64, MessageId)> = stored
         .iter()
         .filter(|(_, m)| {
-            folders.contains(&m.folder) && views::passes(filter, m.flags.bits(), m.has_attachments)
+            folders.contains(&m.folder)
+                && testing::passes(filter, m.flags.bits(), m.has_attachments)
         })
         .map(|(id, m)| (m.date, *id))
         .collect();

@@ -546,7 +546,7 @@ pub fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
 }
 
 /// Takes a v14 store back to v13, for the tests that migrate an older store.
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 pub(super) const UNDO_V14: &str = "
 DROP INDEX messages_sender;
 DROP INDEX messages_domain;
@@ -556,7 +556,7 @@ PRAGMA user_version = 13;
 ";
 
 /// Takes a v14 store back to v12, for the tests that migrate an older store.
-#[cfg(test)]
+#[cfg(feature = "test-support")]
 pub(super) const UNDO_V13: &str = "
 DROP INDEX messages_sender;
 DROP INDEX messages_domain;

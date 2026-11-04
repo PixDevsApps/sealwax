@@ -2,8 +2,8 @@
 //! across restarts and account removals, added once, forgotten, with no change event, and a v7
 //! store migrating to an empty list.
 
-use super::tests::scratch;
-use super::*;
+use crate::common::scratch;
+use crate::prelude::*;
 use rusqlite::Connection;
 
 fn senders(store: &Store) -> Vec<String> {
@@ -121,7 +121,7 @@ fn a_v7_store_migrates_to_an_empty_list() {
     let dir = scratch();
     let path = dir.path().join("store.sqlite");
     let conn = Connection::open(&path).unwrap();
-    for (index, sql) in schema::MIGRATIONS[..7].iter().enumerate() {
+    for (index, sql) in testing::MIGRATIONS[..7].iter().enumerate() {
         conn.execute_batch(sql).unwrap();
         conn.execute(
             "INSERT INTO schema_migrations VALUES (?1, 0)",

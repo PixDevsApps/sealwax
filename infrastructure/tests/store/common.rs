@@ -1,7 +1,7 @@
-use super::*;
-use crate::ingest::{RawMessage, ingest_raw};
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, Attachment, BodyKind, FolderRole, Headers, ThreadId};
+use sealwax_infrastructure::ingest::{RawMessage, ingest_raw};
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Command, Stdio};
@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 /// A scratch directory under the workspace's `target/`, on the real disk (`/tmp` is tmpfs here,
 /// where fsync costs nothing).
-pub(crate) fn scratch() -> tempfile::TempDir {
+pub fn scratch() -> tempfile::TempDir {
     let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../target/scratch");
     fs::create_dir_all(&base).unwrap();
     tempfile::Builder::new()
@@ -457,14 +457,14 @@ fn threads_join_late_parents_merge_and_count_each_message_id_once() {
 }
 
 /// A list model as the GTK side would keep it, fed only by change events.
-pub(crate) struct Model {
-    pub(crate) view: ViewHandle,
-    pub(crate) rows: Vec<MessageSummary>,
-    pub(crate) version: StoreVersion,
+pub struct Model {
+    pub view: ViewHandle,
+    pub rows: Vec<MessageSummary>,
+    pub version: StoreVersion,
 }
 
 impl Model {
-    pub(crate) fn apply(&mut self, store: &Store, event: &ChangeEvent) {
+    pub fn apply(&mut self, store: &Store, event: &ChangeEvent) {
         assert_eq!(
             event.version.0,
             self.version.0 + 1,
@@ -1105,7 +1105,7 @@ fn kill_during_ingest_leaves_a_consistent_store() {
             .args([
                 "--ignored",
                 "--exact",
-                "store::tests::crash_child",
+                "common::crash_child",
                 "--nocapture",
                 "--test-threads=1",
             ])
@@ -1216,76 +1216,4 @@ fn kill_during_ingest_leaves_a_consistent_store() {
         store.close().unwrap();
     }
     eprintln!("kill -9 test: {repaired} messages re-indexed after kills");
-}
-
-#[test]
-fn a_store_thread_that_panics_says_so_in_the_log() {
-    #[derive(Clone, Default)]
-    struct Capture(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
-    impl Write for Capture {
-        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-            self.0.lock().unwrap().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> std::io::Result<()> {
-            Ok(())
-        }
-    }
-    let capture = Capture::default();
-    let sink = capture.clone();
-    let quiet = Capture::default();
-    let quiet_sink = quiet.clone();
-    let subscriber = crate::logging::subscriber(
-        tracing_subscriber::EnvFilter::new("info"),
-        move || sink.clone(),
-        false,
-    );
-    let calm = crate::logging::subscriber(
-        tracing_subscriber::EnvFilter::new("info"),
-        move || quiet_sink.clone(),
-        false,
-    );
-    let panicked = std::thread::spawn(move || {
-        tracing::subscriber::with_default(subscriber, || {
-            let _watch = PanicWatch("writer");
-            panic!("a job's bug");
-        })
-    })
-    .join();
-    assert!(panicked.is_err());
-    let log = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
-    assert!(
-        log.contains("a store thread stopped after a panic"),
-        "{log}"
-    );
-    assert!(log.contains("thread=\"writer\""), "{log}");
-    // A thread that ends as it should logs nothing.
-    std::thread::spawn(move || {
-        tracing::subscriber::with_default(calm, || drop(PanicWatch("writer")));
-    })
-    .join()
-    .unwrap();
-    assert!(quiet.0.lock().unwrap().is_empty());
-}
-
-#[test]
-fn a_reader_on_an_unmigrated_store_says_it_is_older_not_newer() {
-    let dir = scratch();
-    let path = dir.path().join("store.sqlite");
-    drop(Store::open(&path, StoreOptions::default()).unwrap());
-    let conn = Connection::open(&path).unwrap();
-    conn.execute_batch(&format!("PRAGMA user_version={}", SCHEMA_VERSION - 1))
-        .unwrap();
-    drop(conn);
-    let error = schema::open_reader(&path).err().unwrap();
-    assert!(
-        matches!(
-            error,
-            StoreError::OlderSchema {
-                found,
-                expected: SCHEMA_VERSION
-            } if found == SCHEMA_VERSION - 1
-        ),
-        "{error}"
-    );
 }

@@ -9,6 +9,11 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[features]
+# The store's schema steps and internals its suites (tests/store/) check: for tests only (ADR-025
+# amendment).
+test-support = []
+
 [dependencies]
 sealwax-domain.workspace = true
 tracing.workspace = true
@@ -21,5 +26,7 @@ getrandom.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
+# Itself with test-support, so `cargo test` builds tests/store/ without a flag.
+sealwax-infrastructure = { path = ".", features = ["test-support"] }
 proptest.workspace = true
 tempfile.workspace = true

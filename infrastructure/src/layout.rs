@@ -34,7 +34,7 @@ mod tests {
 
     #[test]
     fn writes_privately_and_reads_back() {
-        let root = crate::store::tests::scratch();
+        let root = crate::store::unit_tests::scratch();
         let path = SealwaxDirs::under(root.path()).layout_file();
         assert_eq!(read(&path), Layout::default());
         let layout = Layout {

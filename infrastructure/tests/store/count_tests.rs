@@ -3,8 +3,8 @@
 //! events, with the clamps, stale STATUS ignored, older mail moving counts across the floor and
 //! a v5 store migrating.
 
-use super::tests::scratch;
-use super::*;
+use crate::common::scratch;
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, FolderRole, Headers};
 
@@ -420,7 +420,7 @@ fn a_v5_store_migrates_with_nothing_unread_below() {
     let dir = scratch();
     let path = dir.path().join("store.sqlite");
     let conn = Connection::open(&path).unwrap();
-    for (index, sql) in schema::MIGRATIONS[..5].iter().enumerate() {
+    for (index, sql) in testing::MIGRATIONS[..5].iter().enumerate() {
         conn.execute_batch(sql).unwrap();
         conn.execute(
             "INSERT INTO schema_migrations VALUES (?1, 0)",

@@ -1,9 +1,9 @@
 //! The reader's read of a conversation (ML-057): order, copies, the Trash and Junk, rows the
 //! overlay hides, merges and messages that arrive later, through the store's own threading.
 
-use super::ops_tests::{arrive, server};
-use super::tests::scratch;
-use super::*;
+use crate::common::scratch;
+use crate::ops_tests::{arrive, server};
+use crate::prelude::*;
 use sealwax_domain::model::{Address, FolderRole, Headers};
 use sealwax_domain::triage::Triage;
 

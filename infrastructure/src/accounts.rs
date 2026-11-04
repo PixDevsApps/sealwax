@@ -317,7 +317,7 @@ mod tests {
     use std::os::unix::fs::symlink;
 
     fn scratch() -> tempfile::TempDir {
-        crate::store::tests::scratch()
+        crate::store::unit_tests::scratch()
     }
 
     fn mode(path: &Path) -> u32 {

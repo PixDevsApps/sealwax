@@ -3,9 +3,9 @@
 //! account's folders; a POP3 account's local folders take the same changes. Every name is
 //! fictional.
 
-use super::ops_tests::message;
-use super::tests::scratch;
-use super::*;
+use crate::common::scratch;
+use crate::ops_tests::message;
+use crate::prelude::*;
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{Flags, FolderRole};
 

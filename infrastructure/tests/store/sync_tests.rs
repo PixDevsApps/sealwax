@@ -1,7 +1,7 @@
 //! The folder list and the first sync's state (M2: ML-036, ML-037).
 
-use super::tests::scratch;
-use super::*;
+use crate::common::scratch;
+use crate::prelude::*;
 use sealwax_domain::model::{FolderRole, Headers};
 
 fn listed(

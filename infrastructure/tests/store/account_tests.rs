@@ -1,10 +1,10 @@
 //! Keyed accounts, detaching, the v1 → v2 migration and account removal (ML-034, ML-038).
 
-use super::tests::scratch;
-use super::*;
-use crate::ingest::{RawMessage, ingest_raw};
+use crate::common::scratch;
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::model::FolderRole;
+use sealwax_infrastructure::ingest::{RawMessage, ingest_raw};
 use std::collections::BTreeSet;
 
 fn key(text: &str) -> AccountKey {
@@ -123,7 +123,7 @@ fn a_v1_store_migrates_and_keeps_its_accounts_keyless() {
     let dir = scratch();
     let path = dir.path().join("store.sqlite");
     let conn = Connection::open(&path).unwrap();
-    conn.execute_batch(schema::V1).unwrap();
+    conn.execute_batch(testing::V1).unwrap();
     conn.execute_batch(
         "INSERT INTO schema_migrations VALUES (1, 0); PRAGMA user_version = 1;
          INSERT INTO accounts(name, address) VALUES ('Fixture', 'fixture@example.test');

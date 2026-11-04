@@ -2,11 +2,11 @@
 //! in one transaction, the end of a pass, ops done at once with Undo, sending with the Sent copy
 //! filed locally and no Drafts-folder copies, the disk cap, removal and the v11 migration.
 
-use super::body_tests::{raw, upgrade};
-use super::compose_tests::{draft, prepared, save};
-use super::ops_tests::{NOW, WINDOW, counts, held_ids, message};
-use super::tests::scratch;
-use super::*;
+use crate::body_tests::{raw, upgrade};
+use crate::common::scratch;
+use crate::compose_tests::{draft, prepared, save};
+use crate::ops_tests::{NOW, WINDOW, counts, held_ids, message};
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::compose::{DraftSource, ReplyKind};
@@ -868,7 +868,7 @@ fn v11_migrates_a_v10_store_and_a_newer_one_is_refused() {
     pop.store.close().unwrap();
     // Back to v10: what M7 left on disk, with mail in it.
     let conn = Connection::open(&path).unwrap();
-    conn.execute_batch(super::schema::UNDO_V13).unwrap();
+    conn.execute_batch(testing::UNDO_V13).unwrap();
     conn.execute_batch(
         "ALTER TABLE outbox DROP COLUMN building; ALTER TABLE drafts DROP COLUMN upload_building; \
          DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \

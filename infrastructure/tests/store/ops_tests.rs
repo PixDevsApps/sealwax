@@ -2,8 +2,8 @@
 //! events, the undo window and inverse ops, what the runner reads and records, sync next to
 //! pending ops, UIDVALIDITY re-targeting, hidden `\Deleted` messages and local accounts.
 
-use super::tests::{Model, scratch, whole};
-use super::*;
+use crate::common::{Model, scratch, whole};
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::model::{Address, FolderRole, Headers};
@@ -1832,7 +1832,7 @@ fn a_v6_store_migrates_hiding_deleted_messages() {
     let dir = scratch();
     let path = dir.path().join("store.sqlite");
     let conn = Connection::open(&path).unwrap();
-    for (index, sql) in schema::MIGRATIONS[..6].iter().enumerate() {
+    for (index, sql) in testing::MIGRATIONS[..6].iter().enumerate() {
         conn.execute_batch(sql).unwrap();
         conn.execute(
             "INSERT INTO schema_migrations VALUES (?1, 0)",

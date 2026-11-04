@@ -13,9 +13,9 @@
 //! authorization is held: no path sends a message twice without the user. After every step the
 //! outbox's states and the due sends equal the model's and `check()` is clean.
 
-use super::compose_tests::{draft, key, server};
-use super::ops_tests::NOW;
-use super::*;
+use crate::compose_tests::{draft, key, server};
+use crate::ops_tests::NOW;
+use crate::prelude::*;
 use proptest::prelude::*;
 use sealwax_domain::model::DraftId;
 use std::collections::BTreeMap;

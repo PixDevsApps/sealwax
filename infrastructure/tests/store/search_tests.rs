@@ -2,21 +2,21 @@
 //! matches checked against a scan, æ and ø typed either way, attachment names, what a search of
 //! every folder leaves out, and Rebuild Search Index. Every name and address is fictional.
 
-use super::ops_tests::{self, NOW, WINDOW};
-use super::tests::scratch;
-use super::views::local_midnight;
-use super::*;
-use crate::blobs::BlobStore;
-use crate::ingest::{RawMessage, ingest_raw};
+use crate::common::scratch;
+use crate::ops_tests::{self, NOW, WINDOW};
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, Attachment, FolderRole, Headers};
 use sealwax_domain::search::{self, Date};
 use sealwax_domain::senders::GroupBy;
 use sealwax_domain::triage::Triage;
 use sealwax_domain::unsubscribe::Method;
+use sealwax_infrastructure::blobs::BlobStore;
+use sealwax_infrastructure::ingest::{RawMessage, ingest_raw};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+use testing::local_midnight;
 
 /// 2026-03-02, a Monday.
 const T0: i64 = 1_772_409_600;
@@ -347,7 +347,7 @@ fn flags_are_the_ones_the_list_shows() {
     queue(Triage::Archive, &ids[3..4]);
     let listed = |filter: ViewFilter| -> Vec<MessageId> {
         let mut rows: Vec<MessageId> =
-            super::tests::whole(&fx.store, ViewSpec::folder(fx.inbox).with_filter(filter))
+            crate::common::whole(&fx.store, ViewSpec::folder(fx.inbox).with_filter(filter))
                 .rows
                 .iter()
                 .map(|row| row.id)
@@ -506,7 +506,7 @@ fn any_text_is_a_search() {
             .map(|n| mail(fx.inbox, n, T0 + i64::from(n)))
             .collect(),
     );
-    let mut rng = super::tests::Rng(7);
+    let mut rng = crate::common::Rng(7);
     let pieces = [
         "\"",
         "*",
@@ -638,7 +638,7 @@ impl Modelled {
     }
 }
 
-fn pick(rng: &mut super::tests::Rng) -> Vec<&'static str> {
+fn pick(rng: &mut crate::common::Rng) -> Vec<&'static str> {
     WORDS
         .iter()
         .enumerate()
@@ -652,7 +652,7 @@ fn pick(rng: &mut super::tests::Rng) -> Vec<&'static str> {
 #[test]
 fn plans_agree_with_a_scan() {
     let fx = fixture();
-    let mut rng = super::tests::Rng(42);
+    let mut rng = crate::common::Rng(42);
     let folders = [fx.inbox, fx.inbox, fx.archive, fx.trash, fx.junk];
     // Word n is in about one subject or body of n² + 2, so the first words are common and the
     // last ones rare, on both sides of the few-matches threshold.
@@ -757,7 +757,7 @@ fn plans_agree_with_a_scan() {
             expected,
             "{text:?} in {folder:?}, limit {limit}"
         );
-        let expression = super::fts::Expression::of(&query);
+        let expression = sealwax_infrastructure::store::fts::Expression::of(&query);
         if expression.matching.is_some() && !expression.prefix {
             let words = model
                 .iter()
@@ -1362,7 +1362,7 @@ fn v13_fills_the_sender_domains_and_marks_folders_for_the_backfill() {
     let (path, store) = (fx.path(), fx.store);
     store.close().unwrap();
     let conn = Connection::open(&path).unwrap();
-    conn.execute_batch(super::schema::UNDO_V13).unwrap();
+    conn.execute_batch(testing::UNDO_V13).unwrap();
     drop(conn);
     reopen(&fx.dir, &fx.blobs).close().unwrap();
     let conn = Connection::open(&path).unwrap();
@@ -1422,7 +1422,7 @@ fn v10_indexes_every_message_once() {
         )
         .unwrap();
     }
-    conn.execute_batch(super::schema::UNDO_V13).unwrap();
+    conn.execute_batch(testing::UNDO_V13).unwrap();
     conn.execute_batch(
         "ALTER TABLE outbox DROP COLUMN building; ALTER TABLE drafts DROP COLUMN upload_building; \
          DROP TABLE blob_deletions; DROP TABLE pop3_uidls; DROP TABLE pop3_accounts; \

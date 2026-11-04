@@ -2,12 +2,12 @@
 //! dedupe, what removals do, and a property test that ingests random corpora in any order and
 //! in batches of any size, with removals, against a reference model of the alias graph.
 
-use super::tests::scratch;
-use super::*;
-use crate::ingest::{RawMessage, ingest_raw};
+use crate::common::scratch;
+use crate::prelude::*;
 use proptest::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, FolderRole, Headers, ThreadId, ThreadIndex};
+use sealwax_infrastructure::ingest::{RawMessage, ingest_raw};
 use std::collections::{BTreeMap, BTreeSet};
 
 fn open(dir: &Path) -> Store {
@@ -385,7 +385,11 @@ fn the_check_finds_aliases_that_point_elsewhere_or_are_missing() {
             |row| row.get(0),
         )
         .unwrap();
-    let thread_index_alias = format!("{}{}", writer::THREAD_INDEX_ALIAS, conversation(3).to_hex());
+    let thread_index_alias = format!(
+        "{}{}",
+        testing::THREAD_INDEX_ALIAS,
+        conversation(3).to_hex()
+    );
     // Each key, whether its alias is deleted or pointed at another conversation, and how many
     // messages then disagree.
     for (key, missing, disagree) in [

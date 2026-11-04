@@ -1,8 +1,8 @@
 //! The sync engine's store side (ML-041, ML-043): a folder's changes by UID with exact change
 //! events, the folder list made to match the server's, and the reads the passes compare with.
 
-use super::tests::{Model, Rng, scratch, whole};
-use super::*;
+use crate::common::{Model, Rng, scratch, whole};
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::model::{Address, FolderRole, Headers};
 use std::collections::BTreeMap;
@@ -513,7 +513,7 @@ fn a_v2_store_migrates_and_complete_folders_get_floor_one() {
     let dir = scratch();
     let path = dir.path().join("store.sqlite");
     let conn = Connection::open(&path).unwrap();
-    conn.execute_batch(schema::V1).unwrap();
+    conn.execute_batch(testing::V1).unwrap();
     conn.execute_batch(
         "ALTER TABLE accounts ADD COLUMN key TEXT;
          ALTER TABLE accounts ADD COLUMN detached INTEGER NOT NULL DEFAULT 0;

@@ -2,8 +2,8 @@
 //! orphans after a crash between the blob and the commit, the disk cap's eviction, and the
 //! bodies table following the rows.
 
-use super::tests::scratch;
-use super::*;
+use crate::common::scratch;
+use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::account::AccountKey;
 use sealwax_domain::message;
@@ -581,7 +581,7 @@ fn kill_between_blob_and_commit_leaves_orphans_and_no_broken_row() {
             .args([
                 "--ignored",
                 "--exact",
-                "store::body_tests::body_crash_child",
+                "body_tests::body_crash_child",
                 "--nocapture",
                 "--test-threads=1",
             ])
@@ -633,10 +633,18 @@ fn kill_between_blob_and_commit_leaves_orphans_and_no_broken_row() {
             match key {
                 Some(key) => {
                     let key = BlobKey::from_slice(key).unwrap();
-                    assert_eq!(*state, BodyState::Full.code(), "round {round}, uid {uid}");
+                    assert_eq!(
+                        *state,
+                        testing::body_state_code(BodyState::Full),
+                        "round {round}, uid {uid}"
+                    );
                     assert_eq!(blobs.get(&key).unwrap(), raw(*uid), "round {round}");
                 }
-                None => assert_eq!(*state, BodyState::Partial.code(), "round {round}"),
+                None => assert_eq!(
+                    *state,
+                    testing::body_state_code(BodyState::Partial),
+                    "round {round}"
+                ),
             }
         }
         for uid in &committed {
@@ -649,7 +657,7 @@ fn kill_between_blob_and_commit_leaves_orphans_and_no_broken_row() {
         let (_, key, state) = rows.iter().find(|(uid, _, _)| *uid == paused).unwrap();
         assert_eq!(
             (key.as_ref(), *state),
-            (None, BodyState::Partial.code()),
+            (None, testing::body_state_code(BodyState::Partial)),
             "round {round}: killed before its commit, the row is as it was"
         );
         assert!(
