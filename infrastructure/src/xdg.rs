@@ -98,9 +98,9 @@ impl SealwaxDirs {
         self.config.join(crate::rules::RULES_DIR)
     }
 
-    /// The window's layout between runs (`domain::layout`).
+    /// The window's layout between runs (`ui_model::layout`).
     pub fn layout_file(&self) -> PathBuf {
-        self.state.join(sealwax_domain::layout::LAYOUT_FILE)
+        self.state.join(sealwax_ui_model::layout::LAYOUT_FILE)
     }
 
     /// The SQLite store.

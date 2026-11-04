@@ -4,8 +4,8 @@
 
 use gtk4::gio;
 use gtk4::prelude::*;
-use sealwax_domain::actions::{ActionId, MenuSection};
-use sealwax_domain::keymap::Keymap;
+use sealwax_ui_model::actions::{ActionId, MenuSection};
+use sealwax_ui_model::keymap::Keymap;
 
 /// The primary menu. GTK shows an action's first application accelerator by itself; an action
 /// with scoped keys only shows its first single key. Items of disabled actions are hidden, so
@@ -55,7 +55,7 @@ fn item(id: ActionId, keymap: &Keymap) -> gio::MenuItem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::keymap::Binding;
+    use sealwax_ui_model::keymap::Binding;
 
     fn attribute(menu: &gio::MenuModel, index: i32, name: &str) -> Option<String> {
         menu.item_attribute_value(index, name, None)

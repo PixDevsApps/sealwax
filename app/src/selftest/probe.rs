@@ -8,7 +8,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{graphene, gsk};
 use sealwax_domain::account::AccountColor;
-use sealwax_domain::theme::{Rgb, Theme};
+use sealwax_ui_model::theme::{Rgb, Theme};
 use std::collections::HashMap;
 
 /// How far a channel may be from the theme's value (rounding, colour conversions).

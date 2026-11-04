@@ -14,7 +14,7 @@ use crate::webview::{apply_fonts, hardened_settings};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
-use sealwax_domain::theme::WebViewFonts;
+use sealwax_ui_model::theme::WebViewFonts;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use webkit6::prelude::*;
@@ -1303,7 +1303,7 @@ mod tests {
     /// The margins take the colour the paper stylesheet sets, and the column its radius.
     #[test]
     fn margins_take_the_stylesheet_colour_and_radius() {
-        use sealwax_domain::theme::{MARGINS_COLOR, MARGINS_RADIUS};
+        use sealwax_ui_model::theme::{MARGINS_COLOR, MARGINS_RADIUS};
         assert!(MARGINS_JS.contains(&format!("var({MARGINS_COLOR}, transparent)")));
         assert!(MARGINS_JS.contains(&format!("'{MARGINS_RADIUS}'")));
     }
@@ -1312,7 +1312,7 @@ mod tests {
     /// dark column take the dark background.
     #[test]
     fn dark_colours_come_from_the_stylesheet() {
-        use sealwax_domain::theme::{DARK_BACKGROUND, DARK_TEXT};
+        use sealwax_ui_model::theme::{DARK_BACKGROUND, DARK_TEXT};
         assert!(DARK_JS.contains(&format!("getPropertyValue('{DARK_BACKGROUND}')")));
         assert!(DARK_JS.contains(&format!("getPropertyValue('{DARK_TEXT}')")));
         assert!(MARGINS_JS.contains(&format!("'var({DARK_BACKGROUND})'")));

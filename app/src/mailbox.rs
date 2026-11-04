@@ -12,7 +12,7 @@ use crate::window::{
 use gtk4::glib;
 use sealwax_domain::account::{AccountColor, AccountKey};
 use sealwax_domain::folders;
-use sealwax_domain::layout::View;
+use sealwax_ui_model::layout::View;
 use sealwax_domain::model::{Account, AccountId, Folder, FolderId, FolderRole as StoreRole};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{

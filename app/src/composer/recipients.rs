@@ -13,7 +13,7 @@ use gtk4::{gdk, glib};
 use libadwaita as adw;
 use sealwax_domain::compose::address;
 use sealwax_domain::model::Address;
-use sealwax_domain::theme::{avatar_class, initials};
+use sealwax_ui_model::theme::{avatar_class, initials};
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 

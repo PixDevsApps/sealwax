@@ -9,7 +9,7 @@ use crate::account::{
     AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, Endpoint, Identity,
     OAuthProvider, Pop3Policy, Protocol, Receive, Security, is_loopback,
 };
-use crate::config::{FileError, article, did_you_mean, entries, parse_toml};
+use crate::settings_file::{FileError, article, did_you_mean, entries, parse_toml};
 use std::net::Ipv6Addr;
 use std::ops::Range;
 use toml::Spanned;

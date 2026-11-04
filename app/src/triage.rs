@@ -11,12 +11,12 @@
 use crate::engine_link::EngineLink;
 use crate::mailbox::Mailbox;
 use gtk4::glib;
-use sealwax_domain::actions::ActionId;
 use sealwax_domain::model::{Account, AccountId, Flags, Folder, FolderId, FolderRole, MessageId};
 use sealwax_domain::triage::{self, FolderInfo, Plan, Triage, Unavailable};
 use sealwax_engine::api::{Command, Refused};
 pub(crate) use sealwax_infrastructure::store::{BatchId, Lost, NotApplied, Queued, Undone};
 use sealwax_infrastructure::store::{QueueTriage, Reply};
+use sealwax_ui_model::actions::ActionId;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
 use std::fmt;

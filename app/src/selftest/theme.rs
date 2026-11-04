@@ -6,7 +6,7 @@
 
 use super::{Harness, StepResult, WAIT_TIMEOUT};
 use gtk4::glib;
-use sealwax_domain::theme::{CornerRadius, ThemeOptions, ThemeSource};
+use sealwax_ui_model::theme::{CornerRadius, ThemeOptions, ThemeSource};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};

@@ -18,8 +18,8 @@ use crate::window::panes::{classed, named};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
-use sealwax_domain::actions::ActionId;
 use sealwax_domain::compose::ReplyKind;
+use sealwax_ui_model::actions::ActionId;
 use std::cell::RefCell;
 use std::rc::Rc;
 

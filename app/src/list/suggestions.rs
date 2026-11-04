@@ -1,6 +1,6 @@
 //! The search field's suggestions (ML-082): a popover under the field with the operators that
 //! start with the word typed, the values of `has:` and `is:`, days after `before:` and `after:`
-//! (`domain::search::hints`), and people after `from:` and `to:` from the store's contacts,
+//! (`ui_model::search_hints`), and people after `from:` and `to:` from the store's contacts,
 //! asked off the GTK thread. It opens as the text changes while the field has the keyboard
 //! focus, follows the cursor, and closes when the focus leaves; Down with it closed lists every
 //! operator that starts with the word at the cursor (all of them in an empty field). The field
@@ -16,9 +16,9 @@ use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use sealwax_domain::model::AccountId;
 use sealwax_domain::search::Date;
-use sealwax_domain::search::hints::{self, At, Hints, Kind, Suggestion};
-use sealwax_domain::theme::{avatar_class, initials};
 use sealwax_infrastructure::store::Contact;
+use sealwax_ui_model::search_hints::{self as hints, At, Hints, Kind, Suggestion};
+use sealwax_ui_model::theme::{avatar_class, initials};
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::Rc;

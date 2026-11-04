@@ -11,7 +11,7 @@ use crate::theme::{ListenerId, ThemeController};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
-use sealwax_domain::theme::{Rgb, Theme};
+use sealwax_ui_model::theme::{Rgb, Theme};
 use sealwax_domain::{links, quotes};
 use std::cell::Cell;
 use std::rc::Rc;

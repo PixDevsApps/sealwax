@@ -14,7 +14,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use sealwax_domain::model::{Attachment, MessageDetail};
-use sealwax_domain::theme::{avatar_class, initials};
+use sealwax_ui_model::theme::{avatar_class, initials};
 
 /// The widgets of one message's card that the reader changes after building it.
 pub(super) struct CardWidgets {

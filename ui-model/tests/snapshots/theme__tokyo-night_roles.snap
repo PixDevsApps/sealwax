@@ -1,0 +1,29 @@
+---
+source: ui-model/tests/theme.rs
+expression: roles(&theme)
+---
+mode dark
+secondary_text #7d839f
+hovered row: secondary_text #8187a5 on #1f212b
+selected row: secondary_text #9198b8 on #2e303d
+star #7aa2f7
+unread #7aa2f7
+selected_chip #7aa2f7 on #2b334c
+accent_text #1a1b26
+border #2f3347
+error #f7768e warning #e0af68 success #9ece6a
+avatar 0 #ffffff on #2f4574
+avatar 1 #ffffff on #542f74
+avatar 2 #ffffff on #742f5a
+avatar 3 #ffffff on #743f2f
+avatar 4 #ffffff on #6e742f
+avatar 5 #ffffff on #34742f
+avatar 6 #ffffff on #2f7465
+account rose #d19b9e
+account clay #cca184
+account olive #b7ab7c
+account sage #92b692
+account teal #79b8b7
+account slate #89b0d2
+account iris #aaa4d2
+account mauve #c59cbb

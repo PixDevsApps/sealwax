@@ -1437,7 +1437,8 @@ fn protocol_named(name: &str) -> Result<Protocol, String> {
     }
 }
 
-/// The key the fake engine gives an added account: its address's local part.
+/// The key the fake engine gives an added account: its address's local part, lower case, with
+/// `-` for each character a key can't hold (`kari.nordmann` → `kari-nordmann`).
 fn fake_key(settings: &AccountSettings) -> AccountKey {
     AccountKey(
         settings

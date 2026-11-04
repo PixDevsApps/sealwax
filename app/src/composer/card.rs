@@ -30,9 +30,9 @@ use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::actions::{ActionId, Scope};
+use sealwax_ui_model::actions::{ActionId, Scope};
 use sealwax_domain::compose::{Draft, DraftPart, mime};
-use sealwax_domain::keymap::Keymap;
+use sealwax_ui_model::keymap::Keymap;
 use sealwax_domain::model::{AccountId, DraftId};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -247,13 +247,13 @@ impl Composer {
             .as_ref()
             .map(|controller| controller.theme())
             .unwrap_or_else(|| {
-                Rc::new(sealwax_domain::theme::Theme::new(
-                    &sealwax_domain::theme::ThemeInputs::builtin(
-                        sealwax_domain::theme::Mode::from_dark(
+                Rc::new(sealwax_ui_model::theme::Theme::new(
+                    &sealwax_ui_model::theme::ThemeInputs::builtin(
+                        sealwax_ui_model::theme::Mode::from_dark(
                             adw::StyleManager::default().is_dark(),
                         ),
                     ),
-                    &sealwax_domain::theme::ThemeOptions::default(),
+                    &sealwax_ui_model::theme::ThemeOptions::default(),
                 ))
             });
         let keymap = state

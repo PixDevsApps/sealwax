@@ -18,8 +18,8 @@ use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use sealwax_app::theme::{STARTUP_WAIT, ThemeController};
-use sealwax_domain::theme::{Mode, Rgb, Theme, ThemeOptions, avatar_class};
 use sealwax_infrastructure::omarchy::{OmarchyPaths, STATE_DIR_ENV};
+use sealwax_ui_model::theme::{Mode, Rgb, Theme, ThemeOptions, avatar_class};
 use std::cell::{Cell, RefCell};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -237,7 +237,7 @@ fn build_window(app: &adw::Application, theme: &Theme) -> adw::ApplicationWindow
     );
 
     let avatar = gtk::Label::builder()
-        .label(sealwax_domain::theme::initials("Ingrid Solberg", SENDER))
+        .label(sealwax_ui_model::theme::initials("Ingrid Solberg", SENDER))
         .valign(gtk::Align::Start)
         .css_classes(["sw-avatar".to_owned(), avatar_class(SENDER)])
         .build();

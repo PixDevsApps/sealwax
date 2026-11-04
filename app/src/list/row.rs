@@ -20,11 +20,11 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{glib, pango};
-use sealwax_domain::actions::ActionId;
 #[cfg(any(test, feature = "test-hooks"))]
 use sealwax_domain::model::MessageId;
 use sealwax_domain::model::MessageSummary;
-use sealwax_domain::theme::{avatar_index, initials};
+use sealwax_ui_model::actions::ActionId;
+use sealwax_ui_model::theme::{avatar_index, initials};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
 
@@ -886,7 +886,7 @@ impl SectionHeader {
 mod tests {
     use super::*;
     use sealwax_domain::model::{Flags, FolderId, ThreadId};
-    use sealwax_domain::theme::avatar_class;
+    use sealwax_ui_model::theme::avatar_class;
 
     #[test]
     fn text_is_cut_at_characters_not_bytes() {

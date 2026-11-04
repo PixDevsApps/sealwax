@@ -18,7 +18,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use sealwax_domain::model::{FolderRole, MessageDetail, MessageId};
-use sealwax_domain::theme::BodyStyle;
+use sealwax_ui_model::theme::BodyStyle;
 use sealwax_engine::api::BodyError;
 use std::rc::Rc;
 

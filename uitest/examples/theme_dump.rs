@@ -4,11 +4,11 @@
 //! files as a Flatpak reads them). Without an
 //! Omarchy theme it shows the built-in dark palette (the app follows the system preference).
 
-use sealwax_domain::theme::{
-    BodyStyle, Mode, Palette, Theme, ThemeInputs, ThemeOptions, ThemeSource,
-};
 use sealwax_infrastructure::omarchy::{
     self, OmarchyPaths, Request, colors, font, hypr_lua, hyprland, shell,
+};
+use sealwax_ui_model::theme::{
+    BodyStyle, Mode, Palette, Theme, ThemeInputs, ThemeOptions, ThemeSource,
 };
 use std::time::{Duration, Instant};
 

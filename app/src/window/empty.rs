@@ -7,8 +7,8 @@ use gtk4 as gtk;
 #[cfg(feature = "test-hooks")]
 use gtk4::glib;
 use gtk4::prelude::*;
-use sealwax_domain::actions::ActionId;
-use sealwax_domain::keymap::{Binding, Keymap};
+use sealwax_ui_model::actions::ActionId;
+use sealwax_ui_model::keymap::{Binding, Keymap};
 
 /// "No accounts yet", with "Add an account" (the setup assistant, `win.add-account`) and a
 /// hint with the command palette's keys.

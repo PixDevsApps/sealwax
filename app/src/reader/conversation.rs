@@ -18,7 +18,7 @@ use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use sealwax_domain::model::{MessageId, MessageSummary, ThreadId};
-use sealwax_domain::theme::{BodyStyle, avatar_class, initials};
+use sealwax_ui_model::theme::{BodyStyle, avatar_class, initials};
 use sealwax_infrastructure::store::ConversationMessage;
 use std::collections::HashSet;
 use std::ops::Range;
@@ -159,7 +159,7 @@ pub(super) struct Card {
     /// Its body has remote images (ML-058).
     pub remote_images: bool,
     /// The header's Reply, Reply all and Forward buttons, or Edit draft (M6).
-    pub replies: Vec<(sealwax_domain::actions::ActionId, gtk::Button)>,
+    pub replies: Vec<(sealwax_ui_model::actions::ActionId, gtk::Button)>,
     /// Whom Reply All answers, To then Cc: the quick reply names them when Reply answers
     /// everyone (issue #8).
     pub everyone: Vec<sealwax_domain::model::Address>,

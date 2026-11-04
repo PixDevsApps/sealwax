@@ -11,10 +11,10 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::actions::ActionId;
-use sealwax_domain::keymap::Keymap;
 use sealwax_domain::updates::{self, Outcome, Version};
 use sealwax_engine::api::{Command, Event, UpdateError};
+use sealwax_ui_model::actions::ActionId;
+use sealwax_ui_model::keymap::Keymap;
 use std::cell::Cell;
 use std::rc::Rc;
 

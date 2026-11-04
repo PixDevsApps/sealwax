@@ -18,7 +18,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use sealwax_domain::model::BlobKey;
-use sealwax_domain::theme::{Mode, Theme, css_family};
+use sealwax_ui_model::theme::{Mode, Theme, css_family};
 use sealwax_infrastructure::blobs::BlobStore;
 use std::cell::{Cell, OnceCell, RefCell};
 use std::collections::HashMap;
@@ -886,7 +886,7 @@ fn parse_event(value: &Value, state: &State) -> Option<EditorEvent> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::theme::{ThemeInputs, ThemeOptions};
+    use sealwax_ui_model::theme::{ThemeInputs, ThemeOptions};
 
     #[test]
     fn the_body_takes_the_theme() {

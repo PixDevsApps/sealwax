@@ -13,7 +13,7 @@ pub mod shell;
 pub use colors::{OmarchyTheme, read_theme};
 pub use paths::{OmarchyPaths, STATE_DIR_ENV};
 
-use sealwax_domain::theme::{FontFamilies, ShellValues};
+use sealwax_ui_model::theme::{FontFamilies, ShellValues};
 
 /// Which inputs a reload reads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]

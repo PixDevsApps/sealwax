@@ -1,5 +1,6 @@
-//! Sync policy (ML-041, ML-043): which folders the engine keeps current by itself, and how far
-//! back a folder's first sync reaches. Pure functions; the engine applies them.
+//! Sync policy (ML-041, ML-043): which folders the engine keeps current by itself, how far back
+//! a folder's first sync reaches, and the state a failure leaves an account in (ML-048). Pure
+//! functions; the engine applies them.
 
 use crate::model::FolderRole;
 

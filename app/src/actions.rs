@@ -1,12 +1,12 @@
 //! The registry's actions in GTK (ADR-017): GActions on the application and the window,
 //! application accelerators, and scoped shortcuts on the list, reader and composer widgets.
-//! Nothing here decides what exists; it only wires up `sealwax_domain::actions`.
+//! Nothing here decides what exists; it only wires up `sealwax_ui_model::actions`.
 
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
-use sealwax_domain::actions::{ActionId, ActionKind, Scope};
-use sealwax_domain::keymap::Keymap;
+use sealwax_ui_model::actions::{ActionId, ActionKind, Scope};
+use sealwax_ui_model::keymap::Keymap;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;

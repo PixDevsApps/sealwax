@@ -14,7 +14,7 @@ use crate::part_cache;
 use crate::test_hooks::Log;
 use gtk4::{gio, glib};
 use sealwax_domain::model::MessageId;
-use sealwax_domain::theme::WebViewFonts;
+use sealwax_ui_model::theme::WebViewFonts;
 use crate::webview;
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;

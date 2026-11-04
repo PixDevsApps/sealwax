@@ -23,11 +23,11 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use sealwax_app::reader::{Reader, Shown, ShownBody, samples};
 use sealwax_app::theme::{STARTUP_WAIT, ThemeController};
-use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{FolderRole, MessageId};
-use sealwax_domain::theme::ThemeOptions;
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{FolderSpec, NewAccount, Store, StoreOptions, ViewSpec};
+use sealwax_ui_model::keymap::Keymap;
+use sealwax_ui_model::theme::ThemeOptions;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -187,7 +187,7 @@ async fn ids(store: &Store, count: u32) -> Result<Vec<MessageId>, String> {
 fn kind(body: &ShownBody) -> &'static str {
     match body {
         ShownBody::Html {
-            style: sealwax_domain::theme::BodyStyle::Paper,
+            style: sealwax_ui_model::theme::BodyStyle::Paper,
             ..
         } => "html-paper",
         ShownBody::Html { .. } => "html-themed",

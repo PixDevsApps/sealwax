@@ -24,7 +24,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use sealwax_domain::account::AccountColor;
-use sealwax_domain::actions::ActionId;
+use sealwax_ui_model::actions::ActionId;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;

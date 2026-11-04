@@ -9,8 +9,8 @@ use crate::window::{
 };
 use gtk4 as gtk;
 use gtk4::prelude::*;
-use sealwax_domain::actions::ActionId;
-use sealwax_domain::theme::{avatar_class, initials};
+use sealwax_ui_model::actions::ActionId;
+use sealwax_ui_model::theme::{avatar_class, initials};
 
 pub(super) fn model() -> SidebarModel {
     SidebarModel {

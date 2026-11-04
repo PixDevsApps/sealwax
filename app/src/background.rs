@@ -21,9 +21,9 @@ use crate::application::{AppState, ICON_NAME, SealwaxApplication};
 use crate::{autostart, portal};
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
-use sealwax_domain::actions::ActionId;
-use sealwax_domain::keymap::Keymap;
 use sealwax_infrastructure::sandbox;
+use sealwax_ui_model::actions::ActionId;
+use sealwax_ui_model::keymap::Keymap;
 use sealwax_infrastructure::xdg::ensure_private_dir;
 use std::cell::{Cell, RefCell};
 use std::fs::OpenOptions;
@@ -315,7 +315,7 @@ fn close_after_first_frame(app: &SealwaxApplication, state: &Rc<AppState>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::keymap::Binding;
+    use sealwax_ui_model::keymap::Binding;
 
     fn scratch(name: &str) -> std::path::PathBuf {
         let dir =

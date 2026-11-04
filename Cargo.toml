@@ -1,7 +1,7 @@
 [workspace]
-members = ["app", "domain", "infrastructure", "engine", "uitest", "devtools/*"]
+members = ["app", "domain", "ui-model", "infrastructure", "engine", "uitest", "devtools/*"]
 exclude = ["fuzz", "archive/spikes", "vendor/lettre", "vendor/imap-proto", "vendor/async-imap"]
-default-members = ["app", "domain", "infrastructure", "engine"]
+default-members = ["app", "domain", "ui-model", "infrastructure", "engine"]
 resolver = "3"
 
 [workspace.package]
@@ -13,6 +13,7 @@ publish = false
 
 [workspace.dependencies]
 sealwax-domain = { path = "domain" }
+sealwax-ui-model = { path = "ui-model" }
 sealwax-infrastructure = { path = "infrastructure" }
 sealwax-engine = { path = "engine" }
 gtk4 = { version = "0.11.5", features = ["v4_18"] }

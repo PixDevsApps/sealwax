@@ -33,7 +33,7 @@ use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::actions::ActionId;
+use sealwax_ui_model::actions::ActionId;
 use std::cell::{Cell, RefCell};
 use std::fs::{self, File};
 use std::process::{Command, Stdio};

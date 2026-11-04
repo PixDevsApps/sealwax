@@ -5,8 +5,6 @@
 
 mod parser;
 
-pub mod hints;
-
 use std::fmt;
 
 /// A day as typed (`before:2026-10-01`). The store places it in the local time zone.

@@ -9,8 +9,8 @@
 use crate::application::AppState;
 use gtk4::glib;
 use libadwaita as adw;
-use sealwax_domain::actions::ActionId;
 use sealwax_infrastructure::store::IndexRebuilt;
+use sealwax_ui_model::actions::ActionId;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::Duration;

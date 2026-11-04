@@ -17,7 +17,7 @@ use gtk4::{gdk, gio, glib, graphene};
 use libadwaita as adw;
 use sealwax_app::reader::samples;
 use sealwax_app::theme::{STARTUP_WAIT, ThemeController};
-use sealwax_domain::theme::ThemeOptions;
+use sealwax_ui_model::theme::ThemeOptions;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};

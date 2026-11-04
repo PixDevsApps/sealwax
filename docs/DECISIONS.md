@@ -171,6 +171,16 @@ Built in M7; accepted at the M7 gate (the user's delegation, 2026-10-07).
 - **A closed window is freed** with its list and reader: the window's handlers look the window and the list up through `AppState`, and no closure the window owns keeps a clone of `Window`, `MessageList` or `Reader` (`background-memory` and `assert-freed` check it). Before the fix every close and reopen kept about 7.5 MiB (debug: 155.7 → 381.2 MiB over 30 cycles); after it memory stays flat. A window built again creates its reader after its own first frame; activation from background mode → first frame p50 63.8 ms, p95 67.1 ms (release, headless).
 - **Opt-in autostart** (PRD D6's P1 part) is Start Sealwax at Login: an XDG autostart entry running `sealwax --background`, written only after the user agrees; Omarchy runs XDG autostart entries through uwsm and systemd's generator (read on this machine, 2026-10-06).
 
+### ADR-003 amendment — the UI model is its own crate (2026-11-04)
+
+**Status:** Accepted (the owner, 2026-11-04: the architecture review's decision 3).
+
+**Decision:** `sealwax-ui-model` (`ui-model/`) sits between domain and infrastructure: `sealwax-domain` ← `sealwax-ui-model` ← `sealwax-infrastructure` ← `sealwax-engine` ← `sealwax`. It holds what was the UI half of domain: the action registry (`actions`), the keymap and `keys.toml` (`keymap`), the command palette's matcher (`palette`), the theme and its stylesheets (`theme`), the window layout (`layout`) and the search field's suggestions (`search_hints`, was `search::hints`). Pure like domain: no I/O, no GTK, `#![forbid(unsafe_code)]`. What `config.toml` says about appearance (the corner radius and the two fonts) stays in domain as plain values (`domain::appearance`), re-exported by `ui_model::theme`; the settings files' shared TOML diagnostics are `domain::settings_file`. The fuzz targets that reach these modules call `sealwax_ui_model::fuzz` (`keys`, `search_hints`, `theme`).
+
+**Reason:** "domain" had come to mean two contexts: mail and the window. The UI half (7.2k lines, GTK and WebKit vocabulary) was used by the app alone, with infrastructure reading the theme's and the layout's files, and every edit there rebuilt the store and the engine. The engine doesn't depend on the new crate.
+
+**Consequence:** a change to a key, a colour or the layout rebuilds infrastructure and the app, not the engine's own code. No behaviour changes: the same tests moved with their modules (the theme's snapshots, the user guide's key table).
+
 ## ADR-004 — Follow the live Omarchy theme (2026-10-04)
 
 **Status:** Accepted — user request, 2026-10-04.

@@ -5,8 +5,8 @@
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
-use sealwax_domain::actions::ActionId;
-use sealwax_domain::keymap::Keymap;
+use sealwax_ui_model::actions::ActionId;
+use sealwax_ui_model::keymap::Keymap;
 use std::cell::RefCell;
 
 struct Entry {
@@ -65,7 +65,7 @@ pub(crate) fn with_keys(label: &str, keys: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::keymap::Binding;
+    use sealwax_ui_model::keymap::Binding;
 
     #[test]
     fn tooltips_name_the_keys_in_use() {

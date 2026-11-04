@@ -6,7 +6,7 @@
 //! GTK thread).
 
 use gtk4::{gio, glib};
-use sealwax_domain::theme::WebViewFonts;
+use sealwax_ui_model::theme::WebViewFonts;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
@@ -259,7 +259,7 @@ pub(crate) async fn compile_filter(
 mod tests {
     use super::*;
     use gtk4::prelude::*;
-    use sealwax_domain::theme::{Mode, Theme, ThemeInputs, ThemeOptions};
+    use sealwax_ui_model::theme::{Mode, Theme, ThemeInputs, ThemeOptions};
 
     fn fonts() -> WebViewFonts {
         Theme::new(&ThemeInputs::builtin(Mode::Dark), &ThemeOptions::default()).webview_fonts()

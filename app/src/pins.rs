@@ -11,10 +11,10 @@ use adw::prelude::*;
 use gtk4 as gtk;
 use gtk4::glib;
 use libadwaita as adw;
-use sealwax_domain::actions::ActionId;
 use sealwax_domain::model::MessageId;
 use sealwax_domain::senders::{GroupBy, domain_key, sender_key};
 use sealwax_infrastructure::store::{Pin, PinKind, PinMode, PinTarget};
+use sealwax_ui_model::actions::ActionId;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 

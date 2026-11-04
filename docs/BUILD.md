@@ -36,7 +36,8 @@ cargo run -p sealwax -- --version
 
 | Crate | Path | Role |
 | --- | --- | --- |
-| `sealwax-domain` | `domain/` | Pure logic |
+| `sealwax-domain` | `domain/` | Pure mail logic: no I/O, no GTK, no threads |
+| `sealwax-ui-model` | `ui-model/` | The pure UI model on top of it: the action registry, the keymap and `keys.toml`, the palette's matcher, the theme and its stylesheets, the window layout, the search field's suggestions (ADR-003 amendment of 2026-11-04) |
 | `sealwax-infrastructure` | `infrastructure/` | Local std I/O, logging; the store's suites are one test binary, `tests/store/`, with the `test-support` feature (the schema steps and internals they check, the loopback lookup) |
 | `sealwax-engine` | `engine/` | tokio: network, sync, op queue, secrets |
 | `sealwax` | `app/` | GTK app, binary `sealwax` (as released: no self-test code) |
@@ -124,7 +125,7 @@ git clone --depth 1 https://github.com/rustsec/advisory-db target/advisory-db
 python3 tools/advisories.py -v target/advisory-db Cargo.lock
 ```
 
-The fuzz targets live in `fuzz/`, a workspace of its own (excluded from the main one), so `cargo build` and CI never compile them. They link libFuzzer through the `libfuzzer-sys` crate on the stable toolchain, instrumented with SanitizerCoverage flags (`-C passes=sancov-module`); no nightly, no `cargo-fuzz` and no AddressSanitizer. Debug assertions and overflow checks are on (`fuzz/Cargo.toml`). Each target calls an entry point in the crates (`sealwax_domain::fuzz`, `sealwax_engine::fuzz`, built for tests and with the `fuzz` feature) that also checks what the parser promises, so a property that fails is a crash. Working corpora, crashes and logs go to `target/fuzz-corpus/`, `target/fuzz-artifacts/` and `target/fuzz-logs/`; the checked-in seeds and every crash found are in `fuzz/corpus/<target>/`, which `cargo test -p sealwax-domain -p sealwax-engine` runs through the same entry points. The advisory check reads the public RustSec database (cloned into `target/`, never committed) instead of installing `cargo audit`.
+The fuzz targets live in `fuzz/`, a workspace of its own (excluded from the main one), so `cargo build` and CI never compile them. They link libFuzzer through the `libfuzzer-sys` crate on the stable toolchain, instrumented with SanitizerCoverage flags (`-C passes=sancov-module`); no nightly, no `cargo-fuzz` and no AddressSanitizer. Debug assertions and overflow checks are on (`fuzz/Cargo.toml`). Each target calls an entry point in the crates (`sealwax_domain::fuzz`, `sealwax_ui_model::fuzz`, `sealwax_engine::fuzz`, built for tests and with the `fuzz` feature) that also checks what the parser promises, so a property that fails is a crash. Working corpora, crashes and logs go to `target/fuzz-corpus/`, `target/fuzz-artifacts/` and `target/fuzz-logs/`; the checked-in seeds and every crash found are in `fuzz/corpus/<target>/`, which `cargo test -p sealwax-domain -p sealwax-ui-model -p sealwax-engine` runs through the same entry points. The advisory check reads the public RustSec database (cloned into `target/`, never committed) instead of installing `cargo audit`.
 
 ## Headless GTK runs
 

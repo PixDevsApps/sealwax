@@ -8,11 +8,9 @@ use crate::account::{AccountKey, Identity};
 use crate::autoconfig::{clientconfig, dns, redirect};
 use crate::compose::{self, ReplyKind, address, clean, mime, quote, reply, stored, text};
 use crate::config::Config;
-use crate::keymap::{Binding, Keymap};
 use crate::model::{AccountId, Address, MessageId};
-use crate::search::{self, Date, hints};
+use crate::search;
 use crate::sieve::{self, Folders, MessageView, Outcome, RuleSet};
-use crate::theme::{Palette, resolve_colors};
 use crate::{
     accounts_file, attachment, flowed, html_scan, links, mailto, message, quotes, reading, snippet,
 };
@@ -20,7 +18,6 @@ use html5ever::tokenizer::{
     BufferQueue, TagKind, Token, TokenSink, TokenSinkResult, Tokenizer, TokenizerOpts,
 };
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 
 /// Parts read again per message, as the reader does for its bodies and inline images; capped so
 /// one input with thousands of parts stays fast enough to fuzz.
@@ -429,7 +426,7 @@ pub fn autoconfig(data: &[u8]) {
     }
 }
 
-/// A search query as typed, with the suggestions at every cursor position.
+/// A search query as typed (its suggestions are `sealwax_ui_model::fuzz::search_hints`).
 pub fn search(data: &[u8]) {
     let text = String::from_utf8_lossy(data);
     for query in [search::parse(&text), search::parse_typed(&text)] {
@@ -439,16 +436,6 @@ pub fn search(data: &[u8]) {
             "the query's Debug shows its text"
         );
         assert!(debug.len() < 1024);
-    }
-    let today = Date::new(2026, 10, 7).expect("a date");
-    let length = text.chars().count();
-    for cursor in (0..=length).take(64) {
-        if let Some(at) = hints::at(&text, cursor, today) {
-            assert!(at.word.start <= at.word.end && at.word.end <= length);
-            let (changed, cursor) = hints::accept(&text, at.word, "from:");
-            assert!(cursor <= changed.chars().count());
-        }
-        let _ = hints::operators_at(&text, cursor);
     }
 }
 
@@ -494,15 +481,11 @@ pub fn mailto(data: &[u8]) {
     );
 }
 
-/// `config.toml`, `keys.toml` and `accounts.toml` as a user may write them, and the assistant's
-/// edits of `accounts.toml`.
+/// `config.toml` and `accounts.toml` as a user may write them, and the assistant's edits of
+/// `accounts.toml` (`keys.toml` is `sealwax_ui_model::fuzz::keys`).
 pub fn config(data: &[u8]) {
     let text = String::from_utf8_lossy(data);
     let _ = Config::parse(&text);
-    let _ = Keymap::parse(&text);
-    for line in text.lines().take(16) {
-        let _ = Binding::parse(line);
-    }
     let Ok(accounts) = accounts_file::parse(&text) else {
         return;
     };
@@ -533,24 +516,6 @@ pub fn config(data: &[u8]) {
         accounts_file::remove(&text, &AccountKey("no-such-key-anywhere".to_owned())),
         Ok(None)
     ));
-}
-
-/// A theme's `colors.toml` values (`key = value` lines) through the palette Sealwax derives.
-pub fn theme(data: &[u8]) {
-    let text = String::from_utf8_lossy(data);
-    let raw: BTreeMap<String, String> = text
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .map(|(key, value)| {
-            (
-                key.trim().to_owned(),
-                value.trim().trim_matches('"').to_owned(),
-            )
-        })
-        .collect();
-    let resolved = resolve_colors(&raw);
-    let _ = Palette::from_resolved(&resolved);
-    let _ = Palette::from_colors(&raw);
 }
 
 /// A message for the Sieve target: `name: value` lines; an address header's addresses are each
@@ -748,11 +713,6 @@ mod tests {
     #[test]
     fn config_corpus() {
         corpus("config", super::config);
-    }
-
-    #[test]
-    fn theme_corpus() {
-        corpus("theme", super::theme);
     }
 
     #[test]

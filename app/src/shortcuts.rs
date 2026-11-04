@@ -5,8 +5,8 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::actions::{ActionId, Category, Scope};
-use sealwax_domain::keymap::{Binding, Keymap};
+use sealwax_ui_model::actions::{ActionId, Category, Scope};
+use sealwax_ui_model::keymap::{Binding, Keymap};
 
 /// The dialog. `available` says whether a command exists yet; one that doesn't is listed with
 /// "Not available yet", so the keymap is complete from the start.

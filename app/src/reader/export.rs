@@ -26,7 +26,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::attachment::eml_file_name;
 use sealwax_domain::model::{MessageDetail, MessageId};
-use sealwax_domain::theme::{BodyStyle, Rgb};
+use sealwax_ui_model::theme::{BodyStyle, Rgb};
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;

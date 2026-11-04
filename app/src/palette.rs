@@ -8,9 +8,9 @@ use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use sealwax_domain::actions::{ActionId, Scope};
-use sealwax_domain::keymap::Keymap;
-use sealwax_domain::palette;
+use sealwax_ui_model::actions::{ActionId, Scope};
+use sealwax_ui_model::keymap::Keymap;
+use sealwax_ui_model::palette;
 use std::cell::RefCell;
 use std::rc::Rc;
 

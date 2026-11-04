@@ -43,10 +43,10 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use libadwaita::subclass::prelude::*;
 use sealwax_domain::account::AccountKey;
-use sealwax_domain::actions::{ActionId, Scope};
+use sealwax_ui_model::actions::{ActionId, Scope};
 use sealwax_domain::compose::ReplyKind;
-use sealwax_domain::keymap::Keymap;
-use sealwax_domain::layout::Layout;
+use sealwax_ui_model::keymap::Keymap;
+use sealwax_ui_model::layout::Layout;
 #[cfg(feature = "test-hooks")]
 use sealwax_domain::mailto::Mailto;
 use sealwax_domain::mailto;

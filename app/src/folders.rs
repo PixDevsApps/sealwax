@@ -15,12 +15,12 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::Receive;
-use sealwax_domain::actions::ActionId;
 use sealwax_domain::folders::{self, NameProblem, Placement};
 use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole};
 use sealwax_engine::api::{Command, Event, FolderChange, FolderError};
 use sealwax_engine::imap::hidden;
 use sealwax_infrastructure::store::ViewScope;
+use sealwax_ui_model::actions::ActionId;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 

@@ -3,7 +3,7 @@
 //! `50-omarchy.conf` maps `sans-serif` (INTEGRATIONS.md "Fonts").
 
 use super::command;
-use sealwax_domain::theme::FontFamilies;
+use sealwax_ui_model::theme::FontFamilies;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Duration;

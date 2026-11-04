@@ -13,9 +13,9 @@ use crate::compose_actions::compose_account;
 use crate::mailbox::folder_key;
 use crate::window::{ALL_INBOXES, Pane};
 use gtk4::prelude::*;
-use sealwax_domain::actions::ActionId;
 use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole};
 use sealwax_infrastructure::store::{ViewFilter, ViewScope};
+use sealwax_ui_model::actions::ActionId;
 use std::rc::Rc;
 
 /// Where a go-to command leads.

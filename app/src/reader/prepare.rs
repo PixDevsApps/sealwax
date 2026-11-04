@@ -10,7 +10,7 @@ use sealwax_domain::html_scan;
 use sealwax_domain::message;
 use sealwax_domain::model::{Attachment, MessageDetail, MessageId};
 use sealwax_domain::reading::{self, Encryption, InlinePgp, Signature};
-use sealwax_domain::theme::BodyStyle;
+use sealwax_ui_model::theme::BodyStyle;
 use std::collections::HashSet;
 
 /// A message references at most this many inline parts; more are left out.

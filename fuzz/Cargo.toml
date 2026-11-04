@@ -1,6 +1,6 @@
 # Coverage-guided fuzz targets (ML-093): libFuzzer through libfuzzer-sys on the stable
 # toolchain, run by tools/fuzz.sh. A workspace of its own, so the normal build never compiles
-# it; the entry points live in the crates (`sealwax_domain::fuzz`, `sealwax_engine::fuzz`).
+# it; the entry points live in the crates (`sealwax_domain::fuzz`, `sealwax_ui_model::fuzz`, `sealwax_engine::fuzz`).
 [package]
 name = "sealwax-fuzz"
 version = "0.0.0"
@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 libfuzzer-sys = "0.4.13"
 sealwax-domain = { path = "../domain", features = ["fuzz"] }
+sealwax-ui-model = { path = "../ui-model", features = ["fuzz"] }
 sealwax-engine = { path = "../engine", features = ["fuzz"] }
 
 [workspace]

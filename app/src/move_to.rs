@@ -14,7 +14,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::folders;
 use sealwax_domain::model::{Folder, FolderId, FolderRole};
-use sealwax_domain::palette;
+use sealwax_ui_model::palette;
 use std::cell::RefCell;
 use std::rc::Rc;
 

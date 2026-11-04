@@ -30,7 +30,7 @@ use sealwax_app::reader::samples::{self, Draft};
 use sealwax_app::reader::{Reader, Shown, ShownBody};
 use sealwax_app::theme::{STARTUP_WAIT, ThemeController};
 use sealwax_domain::model::MessageId;
-use sealwax_domain::theme::ThemeOptions;
+use sealwax_ui_model::theme::ThemeOptions;
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;

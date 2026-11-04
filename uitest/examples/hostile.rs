@@ -45,7 +45,7 @@ use sealwax_app::reader::samples::{self, Draft, Part};
 use sealwax_app::reader::{CidOutcome, Reader, Refused, Shown, ShownBody, ViewEvent, links_in};
 use sealwax_app::theme::{STARTUP_WAIT, ThemeController};
 use sealwax_domain::model::MessageId;
-use sealwax_domain::theme::ThemeOptions;
+use sealwax_ui_model::theme::ThemeOptions;
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::PathBuf;

@@ -18,11 +18,11 @@ use sealwax_app::theme::ThemeController;
 use sealwax_app::window::{
     AccountStatus, FolderRole, Pane, SidebarAccount, SidebarFolder, SidebarModel, Window,
 };
-use sealwax_domain::keymap::Keymap;
-use sealwax_domain::theme::Rgb;
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{Store, StoreOptions};
 use sealwax_infrastructure::xdg::SealwaxDirs;
+use sealwax_ui_model::keymap::Keymap;
+use sealwax_ui_model::theme::Rgb;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU32, Ordering};

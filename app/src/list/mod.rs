@@ -42,14 +42,14 @@ use gtk4::{gdk, glib};
 use item::MessageItem;
 pub(crate) use row::Quick;
 use row::{MessageRow, RowContext, SectionHeader};
-use sealwax_domain::actions::{ActionId, Scope};
-use sealwax_domain::keymap::Keymap;
 use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use sealwax_domain::search::Date;
 use sealwax_domain::senders::GroupBy;
 use sealwax_infrastructure::store::{
     ChangeEvent, GroupMail, SenderGroup, ViewFilter, ViewScope, ViewSpec,
 };
+use sealwax_ui_model::actions::{ActionId, Scope};
+use sealwax_ui_model::keymap::Keymap;
 use sections::{Thresholds, until_next_day};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
@@ -2548,7 +2548,7 @@ impl MessageList {
         let key = keymap
             .shown(ActionId::Search)
             .first()
-            .map(sealwax_domain::keymap::Binding::display)
+            .map(sealwax_ui_model::keymap::Binding::display)
             .unwrap_or_default();
         self.inner.search_key.set_label(&key);
         self.show_search_key(self.inner.search.text().is_empty());
@@ -2755,7 +2755,7 @@ mod tests {
         );
         let rebound = Keymap::with_overrides([(
             ActionId::NextMessage,
-            vec![sealwax_domain::keymap::Binding::parse("n").unwrap()],
+            vec![sealwax_ui_model::keymap::Binding::parse("n").unwrap()],
         )]);
         assert_eq!(extend_keys(&rebound), [(gdk::Key::n, 1), (gdk::Key::k, -1)]);
     }

@@ -3,7 +3,7 @@
 //! `omarchy display text size` writes `[font] base-size`) merged over it.
 
 use super::paths::OmarchyPaths;
-use sealwax_domain::theme::ShellValues;
+use sealwax_ui_model::theme::ShellValues;
 use std::path::Path;
 
 /// omarchy-shell's line parser (`parseShell`): `[section]` headers and `key = value` lines

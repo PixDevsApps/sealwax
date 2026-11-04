@@ -3,7 +3,7 @@
 
 use super::command;
 use super::paths::{OmarchyPaths, theme_color_script};
-use sealwax_domain::theme::resolve_colors;
+use sealwax_ui_model::theme::resolve_colors;
 use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::io;

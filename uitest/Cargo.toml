@@ -19,6 +19,7 @@ sealwax = { path = "../app", features = ["test-hooks"] }
 
 [dev-dependencies]
 sealwax-domain.workspace = true
+sealwax-ui-model.workspace = true
 sealwax-infrastructure.workspace = true
 sealwax-engine.workspace = true
 gtk4.workspace = true

@@ -12,7 +12,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
-use sealwax_domain::theme::{
+use sealwax_ui_model::theme::{
     FontFamilies, Mode, Palette, ShellValues, Theme, ThemeInputs, ThemeOptions, ThemeSource,
 };
 use sealwax_infrastructure::omarchy::{self, OmarchyPaths, OmarchyTheme, Readout, Request};

@@ -14,13 +14,13 @@ use adw::prelude::*;
 use gtk4 as gtk;
 use gtk4::{gio, glib};
 use libadwaita as adw;
-use sealwax_domain::actions::ActionId;
 use sealwax_domain::compose;
 use sealwax_domain::links;
 use sealwax_domain::model::MessageId;
 use sealwax_domain::unsubscribe::{self, Method, Methods};
 use sealwax_engine::api::{Command, Event, UnsubscribeError};
 use sealwax_infrastructure::store::{DraftSaved, SaveDraft, SendQueued, UnsubscribeTarget};
+use sealwax_ui_model::actions::ActionId;
 use std::rc::Rc;
 
 const DIALOG: &str = "unsubscribe-dialog";

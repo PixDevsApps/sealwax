@@ -29,9 +29,9 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use panes::{PaneBar, ReaderColumn, classed, icon_button, menu_button, named, title_block};
-use sealwax_domain::actions::ActionId;
-use sealwax_domain::keymap::Keymap;
-use sealwax_domain::layout::{LIST_WIDTHS, SIDEBAR_WIDTHS};
+use sealwax_ui_model::actions::ActionId;
+use sealwax_ui_model::keymap::Keymap;
+use sealwax_ui_model::layout::{LIST_WIDTHS, SIDEBAR_WIDTHS};
 use sidebar::{Sidebar, compose_button};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -1220,7 +1220,7 @@ fn find_named(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::actions::ActionId;
+    use sealwax_ui_model::actions::ActionId;
 
     #[test]
     fn buttons_are_bound_to_the_registry_names() {

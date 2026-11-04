@@ -28,7 +28,7 @@ use gtk4::{gio, glib};
 use libadwaita as adw;
 use probe::{Paint, PaintProbe};
 use sealwax_app::composer::editor::{Editor, EditorEngine, WORLD};
-use sealwax_domain::theme::{Mode, Theme, ThemeInputs, ThemeOptions};
+use sealwax_ui_model::theme::{Mode, Theme, ThemeInputs, ThemeOptions};
 use std::cell::RefCell;
 use std::fmt::Write as _;
 use std::fs;

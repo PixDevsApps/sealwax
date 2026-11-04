@@ -12,7 +12,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use sealwax_domain::account::{Endpoint, HelpLink, Protocol, Security};
-use sealwax_domain::actions::ActionId;
+use sealwax_ui_model::actions::ActionId;
 use std::cell::RefCell;
 use std::rc::Rc;
 

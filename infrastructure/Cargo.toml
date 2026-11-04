@@ -16,6 +16,7 @@ test-support = []
 
 [dependencies]
 sealwax-domain.workspace = true
+sealwax-ui-model.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 async-channel.workspace = true

@@ -12,7 +12,7 @@ use gtk4::{gio, glib};
 use sealwax_domain::account::AccountSettings;
 use sealwax_domain::accounts_file::{self, ACCOUNTS_FILE, default_accounts_file};
 use sealwax_domain::config::{CONFIG_FILE, Config, FileError, KEYS_FILE, default_config_file};
-use sealwax_domain::keymap::{Keymap, default_keys_file};
+use sealwax_ui_model::keymap::{Keymap, default_keys_file};
 use sealwax_infrastructure::settings_files::{create_if_missing, read_optional};
 use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::cell::{Cell, RefCell};
@@ -342,7 +342,7 @@ pub(crate) async fn open_in_editor(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::actions::ActionId;
+    use sealwax_ui_model::actions::ActionId;
     use sealwax_domain::config::CornerRadius;
 
     fn read(text: &str) -> io::Result<Option<String>> {

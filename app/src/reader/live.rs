@@ -18,7 +18,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib, graphene};
 use sealwax_domain::model::MessageId;
-use sealwax_domain::theme::BodyStyle;
+use sealwax_ui_model::theme::BodyStyle;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
