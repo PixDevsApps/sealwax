@@ -644,6 +644,17 @@ M9's security review found STARTTLS response injection in submission: lettre 0.1
 
 The plain part is html2text's text of the HTML, rendered from a tree at most 1,024 levels deep; HTML whose tags nest deeper than 512 levels (WebKit's parser limit), counted in one pass with html5ever's tokenizer (`domain::html_depth`), gets mail-parser's one-pass text instead. html2text dropped an unfinished render tree recursively and overflowed a 2 MiB thread on 14,563 nested lists, which aborted Sealwax while it built a reply (found by M9's hardening, confirmed end to end by the depth branch's control run). The same rule gives the search text and the snippet (ADR-005), and the cleaner (ADR-014) leaves out start tags deeper than 512, keeping their content. Mail within the limit is converted and cleaned exactly as before (20,061 inputs compared).
 
+### ADR-007 amendment — accounts whose address can't be sent from (2026-11-04)
+
+**Status:** Accepted — the owner's word, 2026-11-04 ("I go with your recomendation").
+
+**Decision:** Sealwax sends without SMTPUTF8, so an address with letters such as ö before the @ can't be a sender (`domain::address::is_sendable`). Such an address is refused where Sealwax writes an account, and read where the user wrote it:
+- **The setup assistant** says so at the address step and in the manual settings ("Sealwax can't send from this address yet: before the @ it may hold only English letters, digits and symbols such as . _ + -") and goes no further; the assistant's write check (`accounts_file::check`, `AccountFault::NotSendable`) refuses the account and its identities too.
+- **`accounts.toml`** still reads such an account or identity: a file with a mistake isn't applied at all, so refusing it would hide every account, and the account still gets its mail.
+- **The composer** doesn't offer another account's unsendable address as From; the draft's own account's stay, so its From is always there, and Send says why the message can't go instead of failing at the server.
+
+**Reason:** before this, the assistant accepted such an address and the user learnt only at Send, after writing the message, from a "refused" that didn't say why.
+
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
 **Status:** OAuth2 sign-in for Google and Microsoft in 1.0 is accepted — user decision, 2026-10-04. The mechanism is proposed; S5 is the go/no-go.

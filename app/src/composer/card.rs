@@ -1958,6 +1958,13 @@ impl Inner {
         let Some(draft) = self.collect().await else {
             return;
         };
+        if !sealwax_domain::address::is_sendable(&draft.from.email) {
+            self.toast(
+                "Not sent: Sealwax can't send from this From address yet (before the @ it may hold \
+                 only English letters, digits and symbols such as . _ + -)",
+            );
+            return;
+        }
         let size = mime::estimate(&draft);
         if let Some(limit) = self.limit.get().filter(|limit| size > *limit) {
             self.update_size();

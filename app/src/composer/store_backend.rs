@@ -15,6 +15,7 @@ use crate::application::AppState;
 use crate::engine_link::EngineLink;
 use crate::mailbox;
 use gtk4::{gio, glib};
+use sealwax_domain::address::is_sendable;
 use sealwax_domain::account::{AccountSettings, Identity};
 use sealwax_domain::compose::reply::{self, Original};
 use sealwax_domain::compose::{self, Draft, DraftPart, ReplyKind, identity, ids, mime, stored};
@@ -76,6 +77,16 @@ pub(crate) fn senders(account: &Account, settings: &[AccountSettings]) -> Vec<Id
             signature: None,
         }],
     }
+}
+
+/// The senders the From chip offers: other accounts' addresses that Sealwax can't send from
+/// are left out (ADR-007, no SMTPUTF8); the draft's own account's stay, so its From is always
+/// there, and Send says why it can't go.
+fn offered(chips: Vec<Sender>, own: AccountId) -> Vec<Sender> {
+    chips
+        .into_iter()
+        .filter(|chip| chip.account == own || is_sendable(&chip.address.email))
+        .collect()
 }
 
 fn chips(account: AccountId, senders: &[Identity]) -> Vec<Sender> {
@@ -179,16 +190,18 @@ impl Context {
 
     /// Who a draft of `account` can be sent as: every account that sends, in the sidebar's
     /// order, each its own address then its identities (issue #7). An account no settings file
-    /// lists has no server, so it sends nothing, unless it is the draft's own.
+    /// lists has no server, so it sends nothing, unless it is the draft's own; see [`offered`]
+    /// for addresses Sealwax can't send from.
     fn all_senders(&self, account: &Account) -> Result<Vec<Sender>, String> {
-        Ok(self
+        let chips = self
             .state()?
             .mailbox()
             .accounts()
             .iter()
             .filter(|known| known.key.is_some() || known.id == account.id)
             .flat_map(|known| chips(known.id, &self.senders(known)))
-            .collect())
+            .collect();
+        Ok(offered(chips, account.id))
     }
 
     /// The account a stored message belongs to.
@@ -838,5 +851,37 @@ impl Backend for StoreBackend {
         self.state
             .upgrade()
             .and_then(|state| state.mailbox().blobs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sender(account: i64, email: &str) -> Sender {
+        Sender {
+            account: AccountId(account),
+            label: String::new(),
+            address: Address::new("", email),
+            signature: None,
+        }
+    }
+
+    #[test]
+    fn other_accounts_addresses_that_cant_be_sent_from_are_not_offered() {
+        let chips = vec![
+            sender(1, "jörg@example.test"),
+            sender(1, "kari@example.test"),
+            sender(2, "åse@example.test"),
+            sender(2, "ola@example.test"),
+        ];
+        let offered: Vec<String> = offered(chips, AccountId(1))
+            .into_iter()
+            .map(|chip| chip.address.email)
+            .collect();
+        assert_eq!(
+            offered,
+            ["jörg@example.test", "kari@example.test", "ola@example.test"]
+        );
     }
 }

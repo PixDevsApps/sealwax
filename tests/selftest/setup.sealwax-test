@@ -44,6 +44,15 @@ assert-setup step address
 assert-shown setup-validation true
 assert-label setup-validation "An email address looks like name@example.test."
 engine-expect none
+# An address Sealwax can't send from (letters such as ö before the @) says so, and goes no
+# further.
+setup-type setup-address jörg@example.test
+assert-sensitive setup-primary false
+setup-key enter
+assert-setup step address
+assert-shown setup-validation true
+assert-label setup-validation "Sealwax can't send from this address yet: before the @ it may hold only English letters, digits and symbols such as . _ + -"
+engine-expect none
 setup-type setup-address kari@example.test
 assert-shown setup-validation false
 assert-sensitive setup-primary true

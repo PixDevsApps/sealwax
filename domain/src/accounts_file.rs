@@ -9,7 +9,7 @@ use crate::account::{
     AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, Endpoint, Identity,
     OAuthProvider, Pop3Policy, Protocol, Receive, Security, is_loopback, is_valid_key,
 };
-use crate::address::{looks_like_address, same};
+use crate::address::{is_sendable, looks_like_address, same};
 use crate::settings_file::{FileError, article, did_you_mean, entries, parse_toml};
 use std::fmt;
 use std::net::Ipv6Addr;
@@ -127,6 +127,9 @@ pub enum AccountFault {
     Name,
     Label,
     Address,
+    /// The account's or an identity's address can't be sent from: Sealwax sends without
+    /// SMTPUTF8 (ADR-007).
+    NotSendable,
     Username,
     /// The incoming or the SMTP server's host, and why.
     Host(Protocol, &'static str),
@@ -144,6 +147,10 @@ impl fmt::Display for AccountFault {
             Self::Name => f.write_str("the name is empty or has control characters"),
             Self::Label => f.write_str("the label is empty or has control characters"),
             Self::Address => f.write_str("the address is not an email address"),
+            Self::NotSendable => f.write_str(
+                "Sealwax can't send from this address yet: before the @ it may hold only English \
+                 letters, digits and symbols such as . _ + -",
+            ),
             Self::Username => f.write_str("the username is empty or has control characters"),
             Self::Host(protocol, fault) => write!(f, "{}: {fault}", protocol_name(*protocol)),
             Self::Port(protocol) => write!(f, "{}: port 0 is not a port", protocol_name(*protocol)),
@@ -172,6 +179,14 @@ pub fn check(account: &AccountSettings) -> Result<(), AccountFault> {
     }
     if !looks_like_address(&account.address) {
         return Err(AccountFault::Address);
+    }
+    if !is_sendable(&account.address)
+        || account
+            .identities
+            .iter()
+            .any(|identity| !is_sendable(&identity.address))
+    {
+        return Err(AccountFault::NotSendable);
     }
     if !is_plain_text(&account.username) {
         return Err(AccountFault::Username);
@@ -2227,6 +2242,29 @@ mod tests {
         let unterminated = "# no newline at the end";
         let added = add(unterminated, &account("a", "a@example.test")).unwrap();
         assert!(added.starts_with("# no newline at the end\n\n[[account]]"));
+    }
+
+    /// An address Sealwax can't send from is refused when the assistant writes an account, and
+    /// read when the file holds one: the account still gets its mail.
+    #[test]
+    fn writes_refuse_an_address_that_cant_be_sent_from_and_reads_keep_it() {
+        let jorg = account("jorg", "jörg@example.test");
+        assert_eq!(check(&jorg), Err(AccountFault::NotSendable));
+        assert_eq!(
+            add("", &jorg),
+            Err(EditError::Account(AccountFault::NotSendable))
+        );
+        let mut alias = account("work", "ada@example.test");
+        alias.identities.push(Identity {
+            name: "Åse".to_owned(),
+            address: "åse@example.test".to_owned(),
+            signature: None,
+        });
+        assert_eq!(check(&alias), Err(AccountFault::NotSendable));
+        let written = entry(&account("jorg", "jorg@example.test"))
+            .replace("jorg@example.test", "jörg@example.test");
+        let read = parse(&written).expect("the file reads");
+        assert_eq!(read[0].address, "jörg@example.test");
     }
 
     #[test]

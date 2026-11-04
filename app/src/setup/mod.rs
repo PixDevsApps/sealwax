@@ -1771,16 +1771,7 @@ impl Assistant {
         let state = self.inner.state.borrow();
         let password_empty = w.password.text().is_empty();
         match state.step {
-            Step::Address => {
-                let text = w.address.text();
-                if text.trim().is_empty() {
-                    Some(Problem::Empty(Field::Address))
-                } else if form::parse_address(&text).is_none() {
-                    Some(Problem::Invalid(Field::Address))
-                } else {
-                    None
-                }
-            }
+            Step::Address => form::address_problem(&w.address.text()),
             Step::Password => {
                 if state.asks_username() && w.username.text().trim().is_empty() {
                     Some(Problem::Empty(Field::Username))

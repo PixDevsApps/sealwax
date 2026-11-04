@@ -16,8 +16,28 @@ pub(crate) struct Address {
     pub domain: String,
 }
 
-/// `name@domain`: one `@`, no spaces, a domain of two or more labels.
+/// `name@domain` that Sealwax can send from: one `@`, no spaces, a domain of two or more labels,
+/// and sendable (`sealwax_domain::address::is_sendable`).
 pub(crate) fn parse_address(text: &str) -> Option<Address> {
+    shaped(text).filter(|address| sealwax_domain::address::is_sendable(&address.text))
+}
+
+/// Why the address field can't be used, or nothing: empty, not an address, or an address
+/// Sealwax can't send from.
+pub(crate) fn address_problem(text: &str) -> Option<Problem> {
+    if text.trim().is_empty() {
+        Some(Problem::Empty(Field::Address))
+    } else if parse_address(text).is_some() {
+        None
+    } else if shaped(text).is_some() {
+        Some(Problem::NotSendable)
+    } else {
+        Some(Problem::Invalid(Field::Address))
+    }
+}
+
+/// `name@domain`: one `@`, no spaces, a domain of two or more labels.
+fn shaped(text: &str) -> Option<Address> {
     let text = text.trim();
     let (local, domain) = text.rsplit_once('@')?;
     let domain = domain.strip_suffix('.').unwrap_or(domain);
@@ -170,20 +190,30 @@ pub(crate) enum Problem {
     /// Nothing typed: the button waits without a message.
     Empty(Field),
     Invalid(Field),
+    /// An address that looks right but that Sealwax can't send from (ADR-007: no SMTPUTF8).
+    NotSendable,
 }
 
 impl Problem {
     pub(crate) fn field(self) -> Field {
         match self {
             Self::Empty(field) | Self::Invalid(field) => field,
+            Self::NotSendable => Field::Address,
         }
     }
 
     /// What to fix, for a field that holds something unusable; `incoming` is the incoming
     /// server's protocol, IMAP or POP3.
     pub(crate) fn message(self, incoming: Protocol) -> Option<&'static str> {
-        let Self::Invalid(field) = self else {
-            return None;
+        let field = match self {
+            Self::Empty(_) => return None,
+            Self::NotSendable => {
+                return Some(
+                    "Sealwax can't send from this address yet: before the @ it may hold only \
+                     English letters, digits and symbols such as . _ + -",
+                );
+            }
+            Self::Invalid(field) => field,
         };
         let pop3 = incoming == Protocol::Pop3;
         Some(match field {
@@ -236,6 +266,9 @@ pub(crate) struct Checked {
 
 /// Checks the fields in the order they are shown; the first problem wins.
 pub(crate) fn check_manual(fields: &Manual) -> Result<Checked, Problem> {
+    if let Some(problem) = address_problem(fields.address) {
+        return Err(problem);
+    }
     let address = required(fields.address, Field::Address, parse_address)?;
     let incoming_host = required(fields.incoming_host, Field::IncomingHost, parse_host)?;
     let incoming_port = required(fields.incoming_port, Field::IncomingPort, parse_port)?;
@@ -335,7 +368,37 @@ mod tests {
             "kari@@example.test",
         ] {
             assert_eq!(parse_address(bad), None, "{bad}");
+            assert_eq!(
+                address_problem(bad),
+                Some(if bad.is_empty() {
+                    Problem::Empty(Field::Address)
+                } else {
+                    Problem::Invalid(Field::Address)
+                }),
+                "{bad}"
+            );
         }
+        assert_eq!(address_problem("kari@example.test"), None);
+    }
+
+    #[test]
+    fn an_address_sealwax_cant_send_from_says_so() {
+        for unsendable in [
+            "jörg@example.test",
+            "kari..n@example.test",
+            "\"kari\"@example.test",
+        ] {
+            assert_eq!(parse_address(unsendable), None, "{unsendable}");
+            assert_eq!(address_problem(unsendable), Some(Problem::NotSendable));
+        }
+        let message = Problem::NotSendable.message(Protocol::Imap).unwrap();
+        assert!(message.starts_with("Sealwax can't send from this address yet"));
+        assert_eq!(Problem::NotSendable.field(), Field::Address);
+        let manual = Manual {
+            address: "jörg@example.test",
+            ..Manual::default()
+        };
+        assert_eq!(check_manual(&manual).err(), Some(Problem::NotSendable));
     }
 
     #[test]

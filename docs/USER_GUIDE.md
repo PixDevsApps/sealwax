@@ -45,6 +45,8 @@ With no account yet, the window shows **No accounts yet** and an **Add an accoun
 
 Enter goes to the next step; Escape goes back a step and closes the assistant on the first one. When a login fails, the assistant says why, what to do next and which settings it tried.
 
+Sealwax can't yet send from an address with letters such as ö or é before the @, so the assistant doesn't add one. An account written by hand in `accounts.toml` with such an address still gets its mail, but Sealwax can't send from that address.
+
 The account's settings go into `accounts.toml` ([Settings files](#settings-files)); the password or sign-in token goes into your keyring, never into a file.
 
 ### Outlook.com, Hotmail and Microsoft 365: Sign in with Microsoft
