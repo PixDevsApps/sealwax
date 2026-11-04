@@ -141,9 +141,17 @@ mod tests {
         Theme::new(&ThemeInputs::builtin(Mode::Dark), &ThemeOptions::default()).webview_fonts()
     }
 
+    /// WebKit takes the first thread that uses it as its main thread and aborts when another
+    /// does, and libtest runs each test on a thread of its own: so the checks that touch WebKit
+    /// run in this one test, one after the other.
+    #[test]
+    fn webkit_checks() {
+        the_hardening_reads_back_from_webkit();
+        every_network_feature_is_known_to_this_webkit();
+    }
+
     /// What the reader and the composer rely on, read back from WebKit: a setter WebKit stopped
     /// honouring, or a line lost in an edit, shows here.
-    #[test]
     fn the_hardening_reads_back_from_webkit() {
         let settings = hardened_settings(&fonts());
         let on = |name: &str| settings.property::<bool>(name);
@@ -200,7 +208,6 @@ mod tests {
 
     /// A feature WebKit renamed would silently stay on. One it dropped is known up to the
     /// version that dropped it and not after, so its return shows here too.
-    #[test]
     fn every_network_feature_is_known_to_this_webkit() {
         let features = webkit6::Settings::all_features().expect("WebKit lists its features");
         let known: Vec<String> = (0..features.length())
