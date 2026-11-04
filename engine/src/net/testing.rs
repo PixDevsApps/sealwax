@@ -114,9 +114,27 @@ impl Peer {
         }
     }
 
-    /// Accepts one connection and completes the TLS handshake as the server.
+    /// Accepts connections until one completes the TLS handshake as the server. One that
+    /// sends something else, such as another program on this computer probing local ports, is
+    /// closed and skipped, so the test's own client is still served.
     pub async fn accept_tls(listener: &TcpListener, config: Arc<ServerConfig>) -> Peer {
-        Peer::accept(listener).await.tls(config).await
+        loop {
+            let (socket, _) = listener.accept().await.unwrap();
+            match tokio_rustls::TlsAcceptor::from(config.clone())
+                .accept(socket)
+                .await
+            {
+                Ok(tls) => {
+                    return Peer {
+                        stream: BufReader::new(Box::new(tls)),
+                        received: String::new(),
+                    };
+                }
+                Err(error) => {
+                    tracing::debug!(%error, "test server: a connection without a TLS handshake");
+                }
+            }
+        }
     }
 
     /// Switches to TLS (after STARTTLS). Anything the client sent ahead is dropped.

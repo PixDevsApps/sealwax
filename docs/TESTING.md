@@ -76,6 +76,20 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Architecture cleanup, phases 0 and 1 — 2026-11-04
+
+This machine, the working tree on `b1e9d33` (ADR-025's workspace changes and ten defects from an architecture review), outside any network namespace while T3 Code probed local ports.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo tree --workspace -i aws-lc-rs -e normal` after the spikes left the workspace | Matches nothing (before: rustls built with `aws-lc-rs` through S5's reqwest features) | Pass |
+| `a_group_whose_address_has_non_ascii_capitals_pins_its_mail` before and after the fix | Failed before (`left: "åse@fjell.example"`, `right: "Åse@fjell.example"`), passes after; the other new tests were written before their fixes but not run on the old code (the engine link's need `subscribe_reply` to compile) | Pass |
+| `replies_quoting_deeply_nested_html_are_filed_and_sent` alone, before and after `Peer::accept_tls` skips connections without a TLS handshake | On untouched `b1e9d33`: 2 of about 15 runs failed (the test's SMTP server panicked on a non-TLS connection, `InvalidContentType`); after: 20 of 20 passed (5 `t3code` connections in `ss` at the time) | Pass |
+| `cargo test --manifest-path archive/spikes/Cargo.toml --workspace` | 184 passed, 0 failed, 8 ignored | Pass |
+| `SEALWAX_CI_DISPLAY=41 bash tools/ci.sh --ui` | Exit 0: formatting, Clippy `-D warnings` under the lint policy, the MSRV check (1.92, every target), rustdoc `-D warnings`, `cargo deny` (bans, licenses, sources ok); 1,443 tests passed, 0 failed, 92 ignored (1.1.7's 1,616 less the spikes' 184, plus 11 new); 87 self-test scripts, 8,504 steps passed; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+
+Not run: the testbed suites, the install test.
+
 ### 1.1.7 — 2026-11-03
 
 This machine. The changes since 1.1.6: `c8cb0ca` (Group by's stray "Loading older messages…" row), `8c9bfee` (INSTALL.md's community packages), `8540c5a` (connections from programs outside the test's process tree aren't counted, above), `f8fa5ee` (`triage-keys` waits for the reader), `15e279a` (ESEARCH read as SEARCH), `e1ba6ba` (ADR-013 amendment) and the version commit `35d6dc7` (Cargo.toml 1.1.7, both lock files, README, CHANGELOG "1.1.7 — 2026-11-03", a vendor/README.md wording fix).
