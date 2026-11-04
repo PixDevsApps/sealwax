@@ -7,7 +7,7 @@
 use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::prelude::*;
-use sealwax_domain::reading::{Encryption, Signature};
+use sealwax_domain::reading::{Encryption, SignatureKind};
 
 /// What the notice says in place of an encrypted body.
 pub const ENCRYPTED: &str = "This message is encrypted. Sealwax can't read encrypted mail yet.";
@@ -60,7 +60,7 @@ pub(super) fn notice(unreadable: Unreadable) -> gtk::Box {
 }
 
 /// The quiet line on a signed message.
-pub(super) fn signed_note(_signature: Signature) -> gtk::Box {
+pub(super) fn signed_note(_signature: SignatureKind) -> gtk::Box {
     let row = gtk::Box::builder()
         .spacing(6)
         .tooltip_text(SIGNED_TOOLTIP)

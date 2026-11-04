@@ -20,7 +20,7 @@ pub enum Encryption {
 
 /// How a message is signed. Signatures aren't checked in 1.0.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Signature {
+pub enum SignatureKind {
     /// `multipart/signed` with `application/pgp-signature` (RFC 3156).
     PgpMime,
     /// `multipart/signed` with `application/pkcs7-signature` (RFC 8551).
@@ -38,7 +38,7 @@ pub struct Inspection {
     /// The `format=flowed` text parts, by mail-parser part index.
     pub flowed: Vec<(u32, Flowed)>,
     pub encrypted: Option<Encryption>,
-    pub signed: Option<Signature>,
+    pub signed: Option<SignatureKind>,
     /// Parts the attachment cards leave out: signatures, and PGP/MIME's version part.
     pub hidden: Vec<u32>,
 }
@@ -82,9 +82,9 @@ pub fn inspect(raw: &[u8]) -> Inspection {
                     .unwrap_or_default()
                     .to_ascii_lowercase();
                 found.signed.get_or_insert(if protocol == PGP_SIGNATURE {
-                    Signature::PgpMime
+                    SignatureKind::PgpMime
                 } else {
-                    Signature::Smime
+                    SignatureKind::Smime
                 });
                 if let Some(signature) = children.get(1) {
                     found.hidden.push(*signature);
@@ -108,7 +108,7 @@ pub fn inspect(raw: &[u8]) -> Inspection {
                     .unwrap_or_default()
                     .to_ascii_lowercase();
                 if smime_type == "signed-data" {
-                    found.signed.get_or_insert(Signature::SmimeOpaque);
+                    found.signed.get_or_insert(SignatureKind::SmimeOpaque);
                 } else if smime_type != "certs-only" {
                     found.encrypted.get_or_insert(Encryption::Smime);
                 }
@@ -271,7 +271,7 @@ mod tests {
         let found = inspect(&opaque);
         assert_eq!(
             (found.encrypted, found.signed),
-            (None, Some(Signature::SmimeOpaque))
+            (None, Some(SignatureKind::SmimeOpaque))
         );
         let certs = raw_with_type("application/pkcs7-mime; smime-type=certs-only");
         assert_eq!(inspect(&certs), Inspection::default());
@@ -291,19 +291,19 @@ mod tests {
                 "application/pgp-signature",
                 "application/pgp-signature",
                 "signature.asc",
-                Signature::PgpMime,
+                SignatureKind::PgpMime,
             ),
             (
                 "application/pkcs7-signature",
                 "application/pkcs7-signature",
                 "smime.p7s",
-                Signature::Smime,
+                SignatureKind::Smime,
             ),
             (
                 "application/x-pkcs7-signature",
                 "application/x-pkcs7-signature",
                 "smime.p7s",
-                Signature::Smime,
+                SignatureKind::Smime,
             ),
         ] {
             let raw = raw(&format!(

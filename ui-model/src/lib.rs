@@ -10,8 +10,8 @@ pub mod actions;
 #[cfg(any(test, feature = "fuzz"))]
 #[doc(hidden)]
 pub mod fuzz;
+pub mod fuzzy;
 pub mod keymap;
 pub mod layout;
-pub mod palette;
 pub mod search_hints;
 pub mod theme;

@@ -21,12 +21,11 @@ use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
-use sealwax_domain::account::Identity;
 use sealwax_ui_model::actions::ActionId;
 use sealwax_domain::compose::ReplyKind;
 use sealwax_domain::compose::reply as compose_reply;
 use sealwax_ui_model::keymap::Keymap;
-use sealwax_domain::model::{Address, FolderRole, Headers, MessageId, MessageSummary};
+use sealwax_domain::model::{Address, FolderRole, MessageId, MessageSummary};
 use sealwax_infrastructure::store::ConversationMessage;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -78,21 +77,6 @@ fn button_label(action: ActionId, all: bool) -> &'static str {
         .map_or(action.title(), |(_, _, label)| label)
 }
 
-/// Whom Reply All answers of a message with `headers`, To then Cc, `mine` being the user's
-/// addresses: the compose rules' own choice (`compose::reply::recipients`).
-pub(super) fn everyone(headers: &Headers, mine: &[String]) -> Vec<Address> {
-    let senders: Vec<Identity> = mine
-        .iter()
-        .map(|address| Identity {
-            name: String::new(),
-            address: address.clone(),
-            signature: None,
-        })
-        .collect();
-    let (to, cc) = compose_reply::recipients(headers, ReplyKind::ReplyAll, &senders);
-    to.into_iter().chain(cc).collect()
-}
-
 /// The quick reply's label when it answers `everyone`: "Reply to Tomas Berg and 2 others";
 /// `None` for no one.
 pub(super) fn reply_all_label(everyone: &[Address]) -> Option<String> {
@@ -104,20 +88,16 @@ pub(super) fn reply_all_label(everyone: &[Address]) -> Option<String> {
     })
 }
 
-/// The message a quick reply answers, of `messages` oldest first: the latest that isn't the
-/// user's own (`mine`, lower case) and isn't in a Drafts folder; when every message is the
-/// user's own, the latest that isn't a draft; `None` when there is only drafts.
+/// The message a quick reply answers (`compose::reply::reply_target`), drafts being the
+/// messages in a Drafts folder.
 pub(super) fn reply_target(messages: &[ConversationMessage], mine: &[String]) -> Option<MessageId> {
-    let candidates: Vec<&ConversationMessage> = messages
-        .iter()
-        .filter(|message| message.role != FolderRole::Drafts)
-        .collect();
-    candidates
-        .iter()
-        .rev()
-        .find(|message| !is_mine(&message.summary, mine))
-        .or(candidates.last())
-        .map(|message| message.summary.id)
+    compose_reply::reply_target(
+        messages,
+        mine,
+        |message| &message.summary.sender_email,
+        |message| message.role == FolderRole::Drafts,
+    )
+    .map(|message| message.summary.id)
 }
 
 fn is_mine(summary: &MessageSummary, mine: &[String]) -> bool {
@@ -925,7 +905,7 @@ impl Inner {
                 return;
             }
             let mine = inner.mine.borrow().clone();
-            if let Some(label) = reply_all_label(&everyone(&detail.headers, &mine)) {
+            if let Some(label) = reply_all_label(&compose_reply::everyone(&detail.headers, &mine)) {
                 quick.set_label(&label);
             }
         });
@@ -1066,7 +1046,7 @@ impl Inner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sealwax_domain::model::{Flags, FolderId, ThreadId};
+    use sealwax_domain::model::{Flags, FolderId, Headers, ThreadId};
 
     fn message(id: i64, from: &str, role: FolderRole) -> ConversationMessage {
         ConversationMessage {
@@ -1105,7 +1085,7 @@ mod tests {
             ],
             ..Headers::default()
         };
-        let everyone = everyone(&headers, &mine);
+        let everyone = compose_reply::everyone(&headers, &mine);
         let emails: Vec<&str> = everyone.iter().map(|a| a.email.as_str()).collect();
         assert_eq!(
             emails,
@@ -1129,7 +1109,7 @@ mod tests {
             ..Headers::default()
         };
         assert_eq!(
-            reply_all_label(&super::everyone(&alone, &mine)).as_deref(),
+            reply_all_label(&compose_reply::everyone(&alone, &mine)).as_deref(),
             Some("Reply to Tomas Berg")
         );
         assert_eq!(reply_all_label(&[]), None);

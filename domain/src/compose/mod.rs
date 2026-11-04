@@ -18,7 +18,7 @@ pub mod text;
 
 use crate::account::Identity;
 use crate::model::{AccountId, Address, BlobKey, MessageId};
-use identity::Signature;
+use identity::SignatureBlock;
 use std::fmt;
 
 /// An empty line in the editor's HTML.
@@ -26,7 +26,7 @@ pub const EMPTY_LINE: &str = "<div><br></div>";
 
 /// A draft's HTML: what the user typed (an empty line to type in when nothing yet), then the
 /// signature and the quote, each after an empty line.
-pub fn body(typed_html: &str, signature: Option<&Signature>, quote: Option<&str>) -> String {
+pub fn body(typed_html: &str, signature: Option<&SignatureBlock>, quote: Option<&str>) -> String {
     let mut html = if typed_html.trim().is_empty() {
         EMPTY_LINE.to_owned()
     } else {

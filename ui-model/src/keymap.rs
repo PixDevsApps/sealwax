@@ -269,12 +269,12 @@ impl fmt::Display for Binding {
 
 /// The keyboard layouts every key must work on: the user's and the most common one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Layout {
+pub enum KeyboardLayout {
     Us,
     Norwegian,
 }
 
-impl Layout {
+impl KeyboardLayout {
     pub const ALL: [Self; 2] = [Self::Us, Self::Norwegian];
 
     pub const fn label(self) -> &'static str {
@@ -371,10 +371,10 @@ pub fn layout_key(name: &str) -> Option<&'static LayoutKey> {
 }
 
 /// How `key` is typed on `layout`, or `None` when it is the same on every layout.
-pub fn level(key: &str, layout: Layout) -> Option<Level> {
+pub fn level(key: &str, layout: KeyboardLayout) -> Option<Level> {
     layout_key(key).map(|key| match layout {
-        Layout::Us => key.us,
-        Layout::Norwegian => key.norwegian,
+        KeyboardLayout::Us => key.us,
+        KeyboardLayout::Norwegian => key.norwegian,
     })
 }
 
@@ -560,8 +560,8 @@ impl Keymap {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum KeyFault {
     Super,
-    AltGr(Layout),
-    Missing(Layout),
+    AltGr(KeyboardLayout),
+    Missing(KeyboardLayout),
     /// Shift with a digit or a symbol, which types another symbol.
     ShiftedSymbol,
     /// A one-key shortcut where text is typed.
@@ -591,7 +591,7 @@ pub enum Fault {
     /// Only F-keys, which many keyboards send as media keys unless Fn is held.
     OnlyFunctionKeys,
     /// Every key needs Shift for its symbol on these layouts, like `?`.
-    NoUnshifted(Vec<Layout>),
+    NoUnshifted(Vec<KeyboardLayout>),
 }
 
 /// A problem with one action's keys.
@@ -670,7 +670,10 @@ pub fn key_fault(id: ActionId, binding: &Binding) -> Option<KeyFault> {
             return Some(KeyFault::Super);
         }
         if let Some(key) = layout_key(&step.key) {
-            for (layout, level) in [(Layout::Us, key.us), (Layout::Norwegian, key.norwegian)] {
+            for (layout, level) in [
+                (KeyboardLayout::Us, key.us),
+                (KeyboardLayout::Norwegian, key.norwegian),
+            ] {
                 match level {
                     Level::AltGr => return Some(KeyFault::AltGr(layout)),
                     Level::Missing => return Some(KeyFault::Missing(layout)),
@@ -706,13 +709,13 @@ pub fn key_fault(id: ActionId, binding: &Binding) -> Option<KeyFault> {
     None
 }
 
-fn needs_symbol_shift(binding: &Binding, layout: Layout) -> bool {
+fn needs_symbol_shift(binding: &Binding, layout: KeyboardLayout) -> bool {
     binding
         .steps()
         .any(|step| level(&step.key, layout) == Some(Level::Shift))
 }
 
-fn unshifted(binding: &Binding, layout: Layout) -> bool {
+fn unshifted(binding: &Binding, layout: KeyboardLayout) -> bool {
     binding.steps().all(|step| {
         !step.shift && level(&step.key, layout).is_none_or(|level| level == Level::Base)
     })
@@ -726,7 +729,7 @@ fn action_faults(id: ActionId, keys: &[Binding]) -> Vec<Fault> {
     if all.iter().any(Binding::is_function_key) && all.iter().all(Binding::is_function_key) {
         faults.push(Fault::OnlyFunctionKeys);
     }
-    let shifted: Vec<Layout> = Layout::ALL
+    let shifted: Vec<KeyboardLayout> = KeyboardLayout::ALL
         .into_iter()
         .filter(|layout| {
             all.iter().any(|key| needs_symbol_shift(key, *layout))
@@ -740,7 +743,7 @@ fn action_faults(id: ActionId, keys: &[Binding]) -> Vec<Fault> {
 }
 
 /// `US layout`, `US and Norwegian layouts`.
-fn layouts_label(layouts: &[Layout]) -> String {
+fn layouts_label(layouts: &[KeyboardLayout]) -> String {
     let names: Vec<&str> = layouts.iter().map(|layout| layout.label()).collect();
     match names.as_slice() {
         [one] => format!("{one} layout"),
@@ -1318,18 +1321,29 @@ mod tests {
             "bracketright",
             "braceright",
         ] {
-            assert_eq!(level(name, Layout::Norwegian), Some(Level::AltGr), "{name}");
+            assert_eq!(
+                level(name, KeyboardLayout::Norwegian),
+                Some(Level::AltGr),
+                "{name}"
+            );
         }
         // `\` and `|` are unshifted on no(basic): `\` left of Backspace, `|` left of 1.
-        assert_eq!(level("backslash", Layout::Norwegian), Some(Level::Base));
-        assert_eq!(level("bar", Layout::Norwegian), Some(Level::Base));
+        assert_eq!(
+            level("backslash", KeyboardLayout::Norwegian),
+            Some(Level::Base)
+        );
+        assert_eq!(level("bar", KeyboardLayout::Norwegian), Some(Level::Base));
         // `#`, `/`, `!` and `?`: Shift+3, Shift+7, Shift+1 and Shift++ on Norwegian.
         for name in ["numbersign", "slash", "exclam", "question"] {
-            assert_eq!(level(name, Layout::Norwegian), Some(Level::Shift), "{name}");
+            assert_eq!(
+                level(name, KeyboardLayout::Norwegian),
+                Some(Level::Shift),
+                "{name}"
+            );
         }
-        assert_eq!(level("slash", Layout::Us), Some(Level::Base));
-        assert_eq!(level("plus", Layout::Norwegian), Some(Level::Base));
-        assert_eq!(level("e", Layout::Us), None);
+        assert_eq!(level("slash", KeyboardLayout::Us), Some(Level::Base));
+        assert_eq!(level("plus", KeyboardLayout::Norwegian), Some(Level::Base));
+        assert_eq!(level("e", KeyboardLayout::Us), None);
         let names: HashSet<_> = LAYOUT_KEYS.iter().map(|key| key.name).collect();
         assert_eq!(names.len(), LAYOUT_KEYS.len());
     }
@@ -1339,7 +1353,7 @@ mod tests {
         for id in ActionId::ALL {
             for key in Keymap::default().shown(id) {
                 for step in key.steps() {
-                    for layout in Layout::ALL {
+                    for layout in KeyboardLayout::ALL {
                         assert!(
                             !matches!(
                                 level(&step.key, layout),
@@ -1380,7 +1394,7 @@ mod tests {
         // Ctrl+? needs Shift too, on both layouts; `h` is the unshifted one.
         assert!(has(ActionId::KeyboardShortcuts, "h"));
         for id in ActionId::ALL {
-            for layout in Layout::ALL {
+            for layout in KeyboardLayout::ALL {
                 let shown = Keymap::default().shown(id);
                 if shown.iter().any(|key| needs_symbol_shift(key, layout)) {
                     assert!(
@@ -1397,13 +1411,13 @@ mod tests {
             [Problem {
                 action: ActionId::KeyboardShortcuts,
                 key: None,
-                fault: Fault::NoUnshifted(vec![Layout::Us, Layout::Norwegian]),
+                fault: Fault::NoUnshifted(vec![KeyboardLayout::Us, KeyboardLayout::Norwegian]),
             }]
         );
         let keymap = Keymap::with_overrides([(ActionId::Search, vec![binding("slash")])]);
         assert_eq!(
             audit(&keymap)[0].fault,
-            Fault::NoUnshifted(vec![Layout::Norwegian])
+            Fault::NoUnshifted(vec![KeyboardLayout::Norwegian])
         );
     }
 

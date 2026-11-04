@@ -9,7 +9,6 @@ use super::conversation::{Card, Entry, HtmlBody, Item, reveal};
 use super::page::{self, Header};
 use super::prepare::{self, Body, Prepared};
 use super::remote::Notice;
-use super::reply;
 use super::{
     Inner, Reader, ShownBody, ViewEvent, download_failure, now, plain, protection, rgba,
     stylesheet, widgets,
@@ -170,7 +169,7 @@ impl Inner {
             sender,
             remote_images,
             replies,
-            everyone: reply::everyone(&detail.headers, &mine),
+            everyone: sealwax_domain::compose::reply::everyone(&detail.headers, &mine),
         };
         let collapse_quotes = self
             .with_page(key, |page| page.has_earlier(id))

@@ -18,7 +18,7 @@
 //!   256 KiB), without its inline images (M9, F14).
 
 use super::clean;
-use super::identity::{self, Signature};
+use super::identity::{self, SignatureBlock};
 use super::quote::{self, QuotedDate};
 use super::text;
 use super::{Draft, DraftPart, DraftSource, ReplyKind, address, ids};
@@ -292,7 +292,7 @@ impl Reply {
     }
 
     /// The signature under the typed text, for a composer that shows it apart.
-    pub fn signature(&self) -> Option<Signature> {
+    pub fn signature(&self) -> Option<SignatureBlock> {
         self.sender
             .signature
             .as_deref()
@@ -445,6 +445,46 @@ fn prefixed(prefix: &str, rest: &str) -> String {
     } else {
         format!("{prefix} {rest}")
     }
+}
+
+/// Whom Reply All answers of a message with `headers`, To then Cc, `mine` being the user's
+/// addresses.
+pub fn everyone(headers: &Headers, mine: &[String]) -> Vec<Address> {
+    let senders: Vec<Identity> = mine
+        .iter()
+        .map(|address| Identity {
+            name: String::new(),
+            address: address.clone(),
+            signature: None,
+        })
+        .collect();
+    let (to, cc) = recipients(headers, ReplyKind::ReplyAll, &senders);
+    to.into_iter().chain(cc).collect()
+}
+
+/// The message a quick reply answers, of `messages` oldest first: the latest that isn't the
+/// user's own (`sender` among `mine`) and isn't a draft; when every message is the user's own,
+/// the latest that isn't a draft; `None` when there are only drafts.
+pub fn reply_target<'a, T>(
+    messages: &'a [T],
+    mine: &[String],
+    sender: impl Fn(&T) -> &str,
+    is_draft: impl Fn(&T) -> bool,
+) -> Option<&'a T> {
+    let candidates: Vec<&T> = messages
+        .iter()
+        .filter(|message| !is_draft(message))
+        .collect();
+    candidates
+        .iter()
+        .rev()
+        .find(|message| {
+            !mine
+                .iter()
+                .any(|own| crate::address::same(own, sender(message)))
+        })
+        .or(candidates.last())
+        .copied()
 }
 
 #[cfg(test)]

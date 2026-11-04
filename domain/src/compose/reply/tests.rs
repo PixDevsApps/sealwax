@@ -456,3 +456,45 @@ proptest! {
         prop_assert_eq!(reply.to.first().map(|a| a.email.as_str()), Some("marius@example.test"));
     }
 }
+
+#[test]
+fn the_quick_reply_answers_the_latest_message_from_someone_else() {
+    let mine = vec!["Me@Example.test".to_owned()];
+    let target = |messages: &[(u8, &'static str, bool)], mine: &[String]| {
+        reply_target(messages, mine, |m| m.1, |m| m.2).map(|m| m.0)
+    };
+    let conversation = [
+        (1, "kari@example.test", false),
+        (2, "ola@example.test", false),
+        (3, "me@example.test", false),
+    ];
+    assert_eq!(target(&conversation, &mine), Some(2));
+    assert_eq!(target(&conversation, &[]), Some(3));
+    let with_draft = [
+        (1, "kari@example.test", false),
+        (2, "kari@example.test", true),
+    ];
+    assert_eq!(target(&with_draft, &mine), Some(1));
+    let own = [(1, "me@example.test", false), (2, "ME@example.test", false)];
+    assert_eq!(target(&own, &mine), Some(2));
+    assert_eq!(target(&[(1, "kari@example.test", true)], &mine), None);
+    assert_eq!(target(&[], &mine), None);
+}
+
+#[test]
+fn everyone_is_reply_alls_to_then_cc_without_the_user() {
+    let headers = Headers {
+        from: vec![Address::new("Kari", "kari@example.test")],
+        to: vec![
+            Address::new("", "me@example.test"),
+            Address::new("Ola", "ola@example.test"),
+        ],
+        cc: vec![Address::new("Per", "per@example.test")],
+        ..Headers::default()
+    };
+    let all = everyone(&headers, &["me@example.test".to_owned()]);
+    assert_eq!(
+        emails(&all),
+        ["kari@example.test", "ola@example.test", "per@example.test"]
+    );
+}

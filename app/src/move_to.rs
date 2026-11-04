@@ -14,7 +14,7 @@ use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::folders;
 use sealwax_domain::model::{Folder, FolderId, FolderRole};
-use sealwax_ui_model::palette;
+use sealwax_ui_model::fuzzy;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -280,7 +280,7 @@ impl Inner {
         };
         let query = entry.text();
         let texts: Vec<String> = self.choices.iter().map(Choice::search_text).collect();
-        let shown: Vec<Choice> = palette::rank(&query, texts.iter().map(String::as_str))
+        let shown: Vec<Choice> = fuzzy::rank(&query, texts.iter().map(String::as_str))
             .into_iter()
             .map(|index| self.choices[index].clone())
             .collect();

@@ -59,16 +59,16 @@ pub fn from_address(identity: &Identity) -> Address {
 
 /// A signature as the composer inserts it below the body. Its `Debug` prints lengths only.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Signature {
+pub struct SignatureBlock {
     /// `<div class="sw-signature"><div>-- </div>…</div>`, one `div` per line.
     pub html: String,
     /// `-- ` on a line of its own, then the text.
     pub text: String,
 }
 
-impl fmt::Debug for Signature {
+impl fmt::Debug for SignatureBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Signature")
+        f.debug_struct("SignatureBlock")
             .field("html_len", &self.html.len())
             .field("text_len", &self.text.len())
             .finish()
@@ -81,13 +81,13 @@ pub const SEPARATOR_HTML: &str = "<div>--&nbsp;</div>";
 
 /// `text` as a signature; `None` when it is empty. Trailing white space and blank lines at the
 /// ends are dropped.
-pub fn signature(text: &str) -> Option<Signature> {
+pub fn signature(text: &str) -> Option<SignatureBlock> {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     let lines: Vec<&str> = text.lines().map(str::trim_end).collect();
     let first = lines.iter().position(|line| !line.is_empty())?;
     let last = lines.iter().rposition(|line| !line.is_empty())?;
     let body = lines[first..=last].join("\n");
-    Some(Signature {
+    Some(SignatureBlock {
         html: format!(
             "<div class=\"{SIGNATURE_CLASS}\">{SEPARATOR_HTML}{}</div>",
             text::to_html(&body)
