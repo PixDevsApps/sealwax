@@ -37,6 +37,7 @@ use crate::imap::write::{self, Append, Mark, OpFolder, WriteError, WriteFailure}
 use crate::secrets::{SecretKind, SecretStore};
 use crate::smtp::submit::{self, Envelope, SubmitError, SubmitFailure, Submitter};
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
+use sealwax_domain::autoconfig::presets;
 use sealwax_domain::compose::Draft;
 use sealwax_domain::compose::mime::{self, BuildError, Field};
 use sealwax_domain::model::{AccountId, DraftId, Flags, FolderRole};
@@ -56,19 +57,8 @@ pub(super) fn server_saves_sent(settings: &AccountSettings) -> bool {
     if matches!(settings.auth, AuthMethod::OAuth(_)) {
         return true;
     }
-    let host = settings
-        .smtp
-        .host
-        .trim_end_matches('.')
-        .to_ascii_lowercase();
-    [
-        "office365.com",
-        "outlook.com",
-        "gmail.com",
-        "googlemail.com",
-    ]
-    .iter()
-    .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
+    let host = &settings.smtp.host;
+    presets::microsoft_host(host) || presets::google_host(host)
 }
 
 /// The message as it goes out: what the store records at the start, and its bytes.

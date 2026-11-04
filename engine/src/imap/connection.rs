@@ -4,7 +4,6 @@
 //! plaintext but the STARTTLS command itself.
 
 use super::error::{ImapError, rejection};
-use super::hidden;
 use super::raw::{self, Session};
 use crate::net;
 use async_imap::imap_proto::{Capability, Response, ResponseCode, Status};
@@ -386,7 +385,7 @@ async fn connect_inner(
         caps,
         qresync,
         mechanism,
-        microsoft: hidden::microsoft_host(&endpoint.host),
+        microsoft: sealwax_domain::autoconfig::presets::microsoft_host(&endpoint.host),
         selected: None,
     })
 }

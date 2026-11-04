@@ -3,6 +3,9 @@
 //! name and a renamed folder's subfolders all come from these. A name the user types is checked
 //! here before anything is sent: [`check_name`] says why one is refused.
 
+pub mod hidden;
+pub mod roles;
+
 /// The last level of `name`: "Acme" of "Kunder/Acme".
 pub fn leaf(name: &str, delimiter: Option<char>) -> &str {
     match delimiter.and_then(|delimiter| name.rsplit_once(delimiter)) {

@@ -118,7 +118,7 @@ impl<S: SecretStore> Accounts<'_, S> {
             })?;
         }
         if let Err(reason) = accounts_file::check(&settings) {
-            tracing::warn!(reason, "the account to add is incomplete");
+            tracing::warn!(%reason, "the account to add is incomplete");
             return Err(AccountError::SettingsFile);
         }
         let key = settings.key.clone();

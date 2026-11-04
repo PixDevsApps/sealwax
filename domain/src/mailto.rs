@@ -114,7 +114,8 @@ pub fn parse(uri: &str) -> Result<Mailto, Error> {
             continue;
         }
         let (name, value) = field.split_once('=').unwrap_or((field, ""));
-        let name = String::from_utf8_lossy(&decode(name)).to_ascii_lowercase();
+        let name =
+            String::from_utf8_lossy(&crate::percent::decode_bytes(name)).to_ascii_lowercase();
         match name.as_str() {
             "to" => add_addresses(&mut out.to, value, &mut out.ignored),
             "cc" => add_addresses(&mut out.cc, value, &mut out.ignored),
@@ -137,31 +138,8 @@ fn ignore(ignored: &mut Vec<String>, name: String) {
     }
 }
 
-/// Percent-decodes to bytes. `+` stays `+` (RFC 6068 is not form encoding); a `%` that doesn't
-/// start a valid escape is kept as it is.
-fn decode(text: &str) -> Vec<u8> {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%'
-            && let Some(hex) = bytes.get(index + 1..index + 3)
-            && hex.iter().all(u8::is_ascii_hexdigit)
-            && let Ok(hex) = std::str::from_utf8(hex)
-            && let Ok(byte) = u8::from_str_radix(hex, 16)
-        {
-            out.push(byte);
-            index += 3;
-            continue;
-        }
-        out.push(bytes[index]);
-        index += 1;
-    }
-    out
-}
-
 fn header_value(raw: &str) -> String {
-    let text = String::from_utf8_lossy(&decode(raw)).into_owned();
+    let text = crate::percent::decode(raw);
     let cleaned: String = text
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
@@ -170,7 +148,7 @@ fn header_value(raw: &str) -> String {
 }
 
 fn body_value(raw: &str) -> String {
-    let text = String::from_utf8_lossy(&decode(raw)).replace("\r\n", "\n");
+    let text = String::from_utf8_lossy(&crate::percent::decode_bytes(raw)).replace("\r\n", "\n");
     let mut out: String = text
         .chars()
         .map(|c| if c == '\r' { '\n' } else { c })
@@ -187,7 +165,7 @@ fn body_value(raw: &str) -> String {
 }
 
 fn add_addresses(list: &mut Vec<String>, raw: &str, ignored: &mut Vec<String>) {
-    let text = String::from_utf8_lossy(&decode(raw)).into_owned();
+    let text = crate::percent::decode(raw);
     for part in text.split(',') {
         let part = part.trim();
         if part.is_empty() {

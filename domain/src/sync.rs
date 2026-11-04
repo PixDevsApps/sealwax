@@ -2,6 +2,7 @@
 //! a folder's first sync reaches, and the state a failure leaves an account in (ML-048). Pure
 //! functions; the engine applies them.
 
+use crate::account::LoginFailure;
 use crate::model::FolderRole;
 
 /// What the account pass does with a folder.
@@ -130,6 +131,55 @@ impl Default for Window {
 /// Older messages fetched per `LoadOlder` (the proposal).
 pub const OLDER_BATCH: u32 = 200;
 
+/// Where an account's sync stands (ML-048).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SyncStatus {
+    /// Logging in, or a pass is running.
+    Syncing,
+    /// The last pass finished: the account matches the server and waits for changes.
+    Synced,
+    /// The server can't be reached; the engine tries again by itself.
+    Offline(LoginFailure),
+    /// The server refused the account's password or token: the user types a password again or
+    /// signs in again.
+    NeedsSignIn(LoginFailure),
+    /// The server's certificate no longer verifies.
+    CertificateChanged,
+    /// The server says the mailbox is full.
+    QuotaFull,
+}
+
+impl SyncStatus {
+    /// The state a failed login or sync leaves an account in.
+    pub fn from_failure(failure: LoginFailure) -> Self {
+        match failure {
+            LoginFailure::WrongPassword
+            | LoginFailure::AppPasswordRequired
+            | LoginFailure::ImapDisabled
+            | LoginFailure::SmtpAuthDisabled
+            | LoginFailure::OAuthRequired
+            | LoginFailure::SignInDeclined
+            | LoginFailure::ServerNotMicrosoft => SyncStatus::NeedsSignIn(failure),
+            LoginFailure::Certificate => SyncStatus::CertificateChanged,
+            LoginFailure::NoTls
+            | LoginFailure::Unreachable
+            | LoginFailure::Timeout
+            | LoginFailure::NoUidl
+            | LoginFailure::Busy
+            | LoginFailure::Other => SyncStatus::Offline(failure),
+        }
+    }
+
+    /// The failure behind a failed state.
+    pub fn failure(self) -> Option<LoginFailure> {
+        match self {
+            SyncStatus::Offline(failure) | SyncStatus::NeedsSignIn(failure) => Some(failure),
+            SyncStatus::CertificateChanged => Some(LoginFailure::Certificate),
+            SyncStatus::Syncing | SyncStatus::Synced | SyncStatus::QuotaFull => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -212,5 +262,26 @@ mod tests {
         assert_eq!(Window::DEFAULT.floor(&uids, None, 10_001), 9_801);
         assert_eq!(Window::DEFAULT.since(90 * 86_400 + 5), 5);
         assert_eq!(Window::default(), Window::DEFAULT);
+    }
+
+    #[test]
+    fn a_failure_leaves_the_state_the_user_can_act_on() {
+        assert_eq!(
+            SyncStatus::from_failure(LoginFailure::WrongPassword),
+            SyncStatus::NeedsSignIn(LoginFailure::WrongPassword)
+        );
+        assert_eq!(
+            SyncStatus::from_failure(LoginFailure::Certificate),
+            SyncStatus::CertificateChanged
+        );
+        assert_eq!(
+            SyncStatus::from_failure(LoginFailure::Timeout),
+            SyncStatus::Offline(LoginFailure::Timeout)
+        );
+        assert_eq!(
+            SyncStatus::CertificateChanged.failure(),
+            Some(LoginFailure::Certificate)
+        );
+        assert_eq!(SyncStatus::QuotaFull.failure(), None);
     }
 }

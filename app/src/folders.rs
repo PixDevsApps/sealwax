@@ -15,10 +15,11 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::account::Receive;
+use sealwax_domain::autoconfig::presets;
+use sealwax_domain::folders::hidden;
 use sealwax_domain::folders::{self, NameProblem, Placement};
 use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole};
 use sealwax_engine::api::{Command, Event, FolderChange, FolderError};
-use sealwax_engine::imap::hidden;
 use sealwax_infrastructure::store::ViewScope;
 use sealwax_ui_model::actions::ActionId;
 use std::cell::{Cell, RefCell};
@@ -195,7 +196,7 @@ pub(crate) fn context(state: &AppState, account: AccountId) -> Option<Context> {
     let microsoft = !local
         && settings
             .as_ref()
-            .is_some_and(|settings| hidden::microsoft_host(&settings.incoming.host));
+            .is_some_and(|settings| presets::microsoft_host(&settings.incoming.host));
     let offline = !local
         && matches!(
             mailbox.status(account),

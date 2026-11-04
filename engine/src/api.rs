@@ -18,6 +18,7 @@ use sealwax_domain::account::{
 use sealwax_domain::config::Storage;
 use sealwax_domain::folders::NameProblem;
 use sealwax_domain::model::{AccountId, DraftId, FolderId, MessageId};
+pub use sealwax_domain::sync::SyncStatus;
 use sealwax_domain::updates::Version;
 use sealwax_infrastructure::store::BatchId;
 use std::fmt;
@@ -427,55 +428,6 @@ pub enum Refused {
     Copy,
     /// The mail a windowed folder holds below its sync window, when it was emptied.
     EmptyTrash,
-}
-
-/// Where an account's sync stands (ML-048).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SyncStatus {
-    /// Logging in, or a pass is running.
-    Syncing,
-    /// The last pass finished: the account matches the server and waits for changes.
-    Synced,
-    /// The server can't be reached; the engine tries again by itself.
-    Offline(LoginFailure),
-    /// The server refused the account's password or token: the user types a password again or
-    /// signs in again.
-    NeedsSignIn(LoginFailure),
-    /// The server's certificate no longer verifies.
-    CertificateChanged,
-    /// The server says the mailbox is full.
-    QuotaFull,
-}
-
-impl SyncStatus {
-    /// The state a failed login or sync leaves an account in.
-    pub fn from_failure(failure: LoginFailure) -> Self {
-        match failure {
-            LoginFailure::WrongPassword
-            | LoginFailure::AppPasswordRequired
-            | LoginFailure::ImapDisabled
-            | LoginFailure::SmtpAuthDisabled
-            | LoginFailure::OAuthRequired
-            | LoginFailure::SignInDeclined
-            | LoginFailure::ServerNotMicrosoft => SyncStatus::NeedsSignIn(failure),
-            LoginFailure::Certificate => SyncStatus::CertificateChanged,
-            LoginFailure::NoTls
-            | LoginFailure::Unreachable
-            | LoginFailure::Timeout
-            | LoginFailure::NoUidl
-            | LoginFailure::Busy
-            | LoginFailure::Other => SyncStatus::Offline(failure),
-        }
-    }
-
-    /// The failure behind a failed state.
-    pub fn failure(self) -> Option<LoginFailure> {
-        match self {
-            SyncStatus::Offline(failure) | SyncStatus::NeedsSignIn(failure) => Some(failure),
-            SyncStatus::CertificateChanged => Some(LoginFailure::Certificate),
-            SyncStatus::Syncing | SyncStatus::Synced | SyncStatus::QuotaFull => None,
-        }
-    }
 }
 
 /// Why a body download failed.

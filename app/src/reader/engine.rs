@@ -453,7 +453,7 @@ fn serve_cid(
     log: &Rc<Log<CidRequest>>,
 ) {
     let uri = request.uri().map(String::from).unwrap_or_default();
-    let content_id = percent_decode(uri.get(4..).unwrap_or_default());
+    let content_id = sealwax_domain::percent::decode(uri.get(4..).unwrap_or_default());
     let page = request.web_view().map_or(0, |view| view.page_id());
     let found = pages.borrow().lookup(page, &content_id);
     let (epoch, source, message) = found.unwrap_or((0, None, None));
@@ -508,39 +508,9 @@ fn serve_cid(
     });
 }
 
-/// `%xx` escapes decoded (RFC 2392 `cid:` URLs escape the Content-ID); invalid ones stay.
-pub(super) fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut at = 0;
-    while at < bytes.len() {
-        let hex = |byte: u8| char::from(byte).to_digit(16);
-        match (bytes[at], bytes.get(at + 1), bytes.get(at + 2)) {
-            (b'%', Some(&high), Some(&low)) if hex(high).is_some() && hex(low).is_some() => {
-                out.push((hex(high).unwrap_or(0) * 16 + hex(low).unwrap_or(0)) as u8);
-                at += 3;
-            }
-            (byte, _, _) => {
-                out.push(byte);
-                at += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn cid_urls_are_percent_decoded() {
-        assert_eq!(percent_decode("logo@example.test"), "logo@example.test");
-        assert_eq!(percent_decode("image001.png%4001D9"), "image001.png@01D9");
-        assert_eq!(percent_decode("a%2"), "a%2");
-        assert_eq!(percent_decode("%zz%41"), "%zzA");
-        assert_eq!(percent_decode("%C3%A6"), "æ");
-    }
 
     #[test]
     fn content_ids_match_exactly_then_ignoring_case() {

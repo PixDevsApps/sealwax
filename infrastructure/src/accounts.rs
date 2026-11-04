@@ -8,7 +8,7 @@
 use crate::settings_files::read_optional;
 use crate::xdg::{SealwaxDirs, ensure_private_dir};
 use sealwax_domain::account::{AccountColor, AccountKey, AccountSettings};
-use sealwax_domain::accounts_file::{self, EditError};
+use sealwax_domain::accounts_file::{self, AccountFault, EditError};
 use sealwax_domain::config::FileError;
 use std::fs::{self, File, OpenOptions, Permissions};
 use std::io::{self, Write};
@@ -60,7 +60,7 @@ pub enum AccountsFileError {
     #[error("accounts.toml has {} mistake(s); the first: {}", .0.len(), .0.first().map(ToString::to_string).unwrap_or_default())]
     Invalid(Vec<FileError>),
     #[error("the account can't be written: {0}")]
-    Account(String),
+    Account(AccountFault),
     #[error("accounts.toml already has an account with this key")]
     KeyExists,
     #[error("accounts.toml already has an account with this address")]

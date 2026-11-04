@@ -2,7 +2,7 @@
 //! its style, remote-image flag and inline parts, plain text with format=flowed joined, or why
 //! it can't be shown), the attachment cards, and whether it is signed (ML-064).
 
-use super::engine::{InlinePart, InlineParts, percent_decode};
+use super::engine::{InlinePart, InlineParts};
 use super::protection::Unreadable;
 use gtk4::glib;
 use sealwax_domain::flowed::{self, Flowed};
@@ -169,7 +169,7 @@ pub(super) fn cid_references(html: &str) -> HashSet<String> {
             let end = rest
                 .find(|c: char| c.is_whitespace() || "\"'()<>,;\\".contains(c))
                 .unwrap_or(rest.len());
-            percent_decode(&rest[..end]).to_ascii_lowercase()
+            sealwax_domain::percent::decode(&rest[..end]).to_ascii_lowercase()
         })
         .filter(|id| !id.is_empty())
         .collect()

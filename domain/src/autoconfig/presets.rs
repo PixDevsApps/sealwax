@@ -149,10 +149,15 @@ pub fn microsoft_host(host: &str) -> bool {
     super::dns::within(host, "outlook.com") || super::dns::within(host, "office365.com")
 }
 
+/// Google's mail hosts: `imap.gmail.com`, `smtp.googlemail.com`.
+pub fn google_host(host: &str) -> bool {
+    super::dns::within(host, "gmail.com") || super::dns::within(host, "googlemail.com")
+}
+
 /// Gmail's IMAP is always on (Google's help, read on 2026-10-05; INTEGRATIONS.md), so an "enable
 /// IMAP" link for its hosts, such as the ISPDB's for gmail.com, is out of date.
 pub fn imap_always_on(host: &str) -> bool {
-    super::dns::within(host, "gmail.com") || super::dns::within(host, "googlemail.com")
+    google_host(host)
 }
 
 const MICROSOFT: Option<OAuthProvider> = Some(OAuthProvider::Microsoft);
@@ -618,6 +623,24 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn microsofts_hosts_by_suffix() {
+        assert!(microsoft_host("outlook.office365.com"));
+        assert!(microsoft_host("imap-mail.outlook.com."));
+        assert!(microsoft_host("Outlook.Office365.com"));
+        assert!(!microsoft_host("imap.example.com"));
+        assert!(!microsoft_host("notoutlook.com"));
+        assert!(!microsoft_host("127.0.0.1"));
+    }
+
+    #[test]
+    fn googles_hosts_by_suffix() {
+        assert!(google_host("imap.gmail.com"));
+        assert!(google_host("SMTP.googlemail.com."));
+        assert!(!google_host("gmail.com.evil.test"));
+        assert!(!google_host("notgmail.com"));
     }
 
     #[test]

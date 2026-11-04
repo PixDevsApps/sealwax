@@ -1,7 +1,7 @@
 //! Special-folder detection (ADR-006): INBOX by name, then SPECIAL-USE attributes (RFC 6154),
 //! then a Norwegian (bokmål and nynorsk) and English name table for the roles still missing.
 
-use sealwax_domain::model::FolderRole;
+use crate::model::FolderRole;
 
 /// The role a SPECIAL-USE attribute names, case-insensitively. `\Flagged` has no folder role.
 pub fn from_attribute(attribute: &str) -> Option<FolderRole> {

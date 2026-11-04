@@ -11,6 +11,7 @@ use crate::account::{
 };
 use crate::address::{looks_like_address, same};
 use crate::settings_file::{FileError, article, did_you_mean, entries, parse_toml};
+use std::fmt;
 use std::net::Ipv6Addr;
 use std::ops::Range;
 use toml::Spanned;
@@ -119,40 +120,77 @@ fn auth_name(auth: AuthMethod) -> &'static str {
     }
 }
 
-/// Checks an account the assistant is about to write; the message never quotes a value.
-pub fn check(account: &AccountSettings) -> Result<(), String> {
+/// Why an account can't be written. Its message never quotes a value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountFault {
+    Key,
+    Name,
+    Label,
+    Address,
+    Username,
+    /// The incoming or the SMTP server's host, and why.
+    Host(Protocol, &'static str),
+    Port(Protocol),
+    /// The POP3 policy, and why.
+    Pop3(&'static str),
+    /// The file written didn't read back as the accounts it should hold.
+    NotReadBack,
+}
+
+impl fmt::Display for AccountFault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Key => f.write_str("the key takes a–z, 0–9, - and _ only, at most 40 characters"),
+            Self::Name => f.write_str("the name is empty or has control characters"),
+            Self::Label => f.write_str("the label is empty or has control characters"),
+            Self::Address => f.write_str("the address is not an email address"),
+            Self::Username => f.write_str("the username is empty or has control characters"),
+            Self::Host(protocol, fault) => write!(f, "{}: {fault}", protocol_name(*protocol)),
+            Self::Port(protocol) => write!(f, "{}: port 0 is not a port", protocol_name(*protocol)),
+            Self::Pop3(fault) => write!(f, "pop3: {fault}"),
+            Self::NotReadBack => f.write_str("the entry did not read back as written"),
+        }
+    }
+}
+
+impl std::error::Error for AccountFault {}
+
+/// Checks an account the assistant is about to write.
+pub fn check(account: &AccountSettings) -> Result<(), AccountFault> {
     if !is_valid_key(account.key.as_str()) {
-        return Err("the key takes a–z, 0–9, - and _ only, at most 40 characters".to_owned());
+        return Err(AccountFault::Key);
     }
     if !is_plain_text(&account.name) {
-        return Err("the name is empty or has control characters".to_owned());
+        return Err(AccountFault::Name);
     }
     if account
         .label
         .as_deref()
         .is_some_and(|label| !is_plain_text(label))
     {
-        return Err("the label is empty or has control characters".to_owned());
+        return Err(AccountFault::Label);
     }
     if !looks_like_address(&account.address) {
-        return Err("the address is not an email address".to_owned());
+        return Err(AccountFault::Address);
     }
     if !is_plain_text(&account.username) {
-        return Err("the username is empty or has control characters".to_owned());
+        return Err(AccountFault::Username);
     }
     for (protocol, endpoint) in [
         (account.receive.protocol(), &account.incoming),
         (Protocol::Smtp, &account.smtp),
     ] {
         if let Some(fault) = host_fault(&endpoint.host) {
-            return Err(format!("{}: {fault}", protocol_name(protocol)));
+            return Err(AccountFault::Host(protocol, fault));
         }
         if endpoint.port == 0 {
-            return Err(format!("{}: port 0 is not a port", protocol_name(protocol)));
+            return Err(AccountFault::Port(protocol));
         }
     }
-    if let Receive::Pop3(policy) = account.receive {
-        policy_fault(policy).map_or(Ok(()), |fault| Err(format!("pop3: {fault}")))?;
+    if let Receive::Pop3(policy) = account.receive
+        && let Some(fault) = policy_fault(policy)
+    {
+        return Err(AccountFault::Pop3(fault));
     }
     Ok(())
 }
@@ -941,11 +979,31 @@ pub fn parse(text: &str) -> Result<Vec<AccountSettings>, Vec<FileError>> {
 pub enum EditError {
     /// The file has mistakes; it is fixed by hand first, since a file with mistakes isn't applied.
     Invalid(Vec<FileError>),
-    /// The account to add is incomplete (the reason never quotes a value).
-    Account(String),
+    /// The account to add is incomplete.
+    Account(AccountFault),
     KeyExists,
     AddressExists,
 }
+
+impl fmt::Display for EditError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Invalid(errors) => write!(
+                f,
+                "accounts.toml has {} mistake(s); the first: {}",
+                errors.len(),
+                errors.first().map(ToString::to_string).unwrap_or_default()
+            ),
+            Self::Account(fault) => write!(f, "the account can't be written: {fault}"),
+            Self::KeyExists => f.write_str("accounts.toml already has an account with this key"),
+            Self::AddressExists => {
+                f.write_str("accounts.toml already has an account with this address")
+            }
+        }
+    }
+}
+
+impl std::error::Error for EditError {}
 
 /// The `[[account]]` entry the assistant writes, with every field spelled out.
 pub fn entry(account: &AccountSettings) -> String {
@@ -1014,9 +1072,7 @@ pub fn add(text: &str, account: &AccountSettings) -> Result<String, EditError> {
     let after = parse(&output).map_err(EditError::Invalid)?;
     let expected: Vec<_> = before.into_iter().chain([account.clone()]).collect();
     if after != expected {
-        return Err(EditError::Account(
-            "the new entry did not read back as written".to_owned(),
-        ));
+        return Err(EditError::Account(AccountFault::NotReadBack));
     }
     Ok(output)
 }
@@ -1124,9 +1180,7 @@ pub fn relabel(
     color: Option<AccountColor>,
 ) -> Result<Option<String>, EditError> {
     if label.is_some_and(|label| !is_plain_text(label)) {
-        return Err(EditError::Account(
-            "the label is empty or has control characters".to_owned(),
-        ));
+        return Err(EditError::Account(AccountFault::Label));
     }
     let before = parse(text).map_err(EditError::Invalid)?;
     if !before.iter().any(|account| &account.key == key) {
@@ -1165,9 +1219,7 @@ pub fn relabel(
         })
         .collect();
     if parse(&output).map_err(EditError::Invalid)? != expected {
-        return Err(EditError::Account(
-            "the entry did not read back as written".to_owned(),
-        ));
+        return Err(EditError::Account(AccountFault::NotReadBack));
     }
     Ok(Some(output))
 }
@@ -1451,12 +1503,7 @@ mod tests {
             "{written}"
         );
         new.label = Some("Work\n".to_owned());
-        assert_eq!(
-            add("", &new),
-            Err(EditError::Account(
-                "the label is empty or has control characters".to_owned()
-            ))
-        );
+        assert_eq!(add("", &new), Err(EditError::Account(AccountFault::Label)));
     }
 
     #[test]
@@ -1528,9 +1575,7 @@ mod tests {
         assert_eq!(relabel("", &work, Some("X"), None), Ok(None));
         assert_eq!(
             relabel(ONE, &work, Some(" "), None),
-            Err(EditError::Account(
-                "the label is empty or has control characters".to_owned()
-            ))
+            Err(EditError::Account(AccountFault::Label))
         );
         assert!(matches!(
             relabel(&format!("{ONE}oops = 1\n"), &work, Some("X"), None),
@@ -1878,7 +1923,10 @@ mod tests {
         bad_host.incoming.host = "pop.example.test:995".to_owned();
         assert_eq!(
             check(&bad_host),
-            Err("pop3: the port goes in port = …, not in host".to_owned())
+            Err(AccountFault::Host(
+                Protocol::Pop3,
+                "the port goes in port = …, not in host"
+            ))
         );
     }
 

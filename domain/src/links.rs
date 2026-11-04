@@ -56,7 +56,10 @@ pub fn target(url: &str) -> Option<Target> {
             let end = rest.find(['/', '?', '#', '\\']).unwrap_or(rest.len());
             let authority = &rest[..end];
             let (userinfo, hostport) = match authority.rfind('@') {
-                Some(at) => (Some(percent_decode(&authority[..at])), &authority[at + 1..]),
+                Some(at) => (
+                    Some(crate::percent::decode(&authority[..at])),
+                    &authority[at + 1..],
+                ),
                 None => (None, authority),
             };
             let host_end = if hostport.starts_with('[') {
@@ -75,7 +78,7 @@ pub fn target(url: &str) -> Option<Target> {
         }
         "mailto" => {
             let addresses = rest.split(['?', '#']).next().unwrap_or_default();
-            let address = percent_decode(addresses);
+            let address = crate::percent::decode(addresses);
             let address = address.split(',').next().unwrap_or_default().trim();
             let (_, domain) = address.rsplit_once('@')?;
             Some(Target {
@@ -398,7 +401,7 @@ fn address_around(text: &str, at: usize) -> Option<Found> {
 /// decoded, the trailing dot dropped, IPv4 in any of its numeric forms written as four
 /// numbers, IPv6 in brackets, names through UTS 46.
 fn normalize_host(host: &str) -> Option<String> {
-    let host = percent_decode(host);
+    let host = crate::percent::decode(host);
     let host = host.trim().trim_end_matches('.');
     if host.is_empty() {
         return None;
@@ -458,26 +461,6 @@ fn ipv4(host: &str) -> Option<Ipv4Addr> {
             value + number * 256u64.pow(3 - index as u32)
         });
     Some(Ipv4Addr::from(u32::try_from(value).ok()?))
-}
-
-fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut at = 0;
-    while at < bytes.len() {
-        let hex = |byte: u8| char::from(byte).to_digit(16);
-        match (bytes[at], bytes.get(at + 1), bytes.get(at + 2)) {
-            (b'%', Some(&high), Some(&low)) if hex(high).is_some() && hex(low).is_some() => {
-                out.push((hex(high).unwrap_or(0) * 16 + hex(low).unwrap_or(0)) as u8);
-                at += 3;
-            }
-            (byte, _, _) => {
-                out.push(byte);
-                at += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]

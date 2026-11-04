@@ -6,6 +6,7 @@
 use quick_xml::Reader;
 use quick_xml::escape::resolve_predefined_entity;
 use quick_xml::events::{BytesStart, Event};
+use std::fmt;
 
 use super::dns::acceptable_host;
 use super::{Finding, Hints, Server};
@@ -74,9 +75,37 @@ struct PendingServer {
     username: Option<String>,
 }
 
+/// Why a document isn't a clientConfig. Its message names elements and positions, never a
+/// value from the document.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ClientConfigError {
+    /// Not well-formed XML, at this byte.
+    Xml {
+        at: u64,
+        reason: String,
+    },
+    /// The root element, by its name, isn't `<clientConfig>`.
+    Root(String),
+    UnbalancedEnd,
+    Empty,
+}
+
+impl fmt::Display for ClientConfigError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Xml { at, reason } => write!(f, "xml error at {at}: {reason}"),
+            Self::Root(name) => write!(f, "root element is <{name}>, not <clientConfig>"),
+            Self::UnbalancedEnd => f.write_str("unbalanced end tag"),
+            Self::Empty => f.write_str("empty document"),
+        }
+    }
+}
+
+impl std::error::Error for ClientConfigError {}
+
 /// Parses a clientConfig document. `address` fills the username templates; it is never sent
 /// anywhere from here.
-pub fn parse(xml: &str, address: &str) -> Result<ClientConfig, String> {
+pub fn parse(xml: &str, address: &str) -> Result<ClientConfig, ClientConfigError> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
     let mut config = ClientConfig::default();
@@ -86,15 +115,16 @@ pub fn parse(xml: &str, address: &str) -> Result<ClientConfig, String> {
     let mut seen_root = false;
 
     loop {
-        let event = reader
-            .read_event()
-            .map_err(|e| format!("xml error at {}: {e}", reader.buffer_position()))?;
+        let event = reader.read_event().map_err(|e| ClientConfigError::Xml {
+            at: reader.buffer_position(),
+            reason: e.to_string(),
+        })?;
         match event {
             Event::Start(start) => {
                 let name = start.local_name().as_ref().to_string();
                 if !seen_root {
                     if name != "clientConfig" {
-                        return Err(format!("root element is <{name}>, not <clientConfig>"));
+                        return Err(ClientConfigError::Root(name));
                     }
                     seen_root = true;
                 }
@@ -105,7 +135,7 @@ pub fn parse(xml: &str, address: &str) -> Result<ClientConfig, String> {
             Event::Empty(start) => {
                 let name = start.local_name().as_ref().to_string();
                 if !seen_root {
-                    return Err(format!("root element is <{name}/>, not <clientConfig>"));
+                    return Err(ClientConfigError::Root(format!("{name}/")));
                 }
                 open(&start, &name, &mut config, &mut pending);
                 if name.ends_with("Server")
@@ -125,7 +155,7 @@ pub fn parse(xml: &str, address: &str) -> Result<ClientConfig, String> {
             }
             Event::End(_) => {
                 let Some(name) = path.pop() else {
-                    return Err("unbalanced end tag".into());
+                    return Err(ClientConfigError::UnbalancedEnd);
                 };
                 close(
                     &name,
@@ -142,7 +172,7 @@ pub fn parse(xml: &str, address: &str) -> Result<ClientConfig, String> {
         }
     }
     if !seen_root {
-        return Err("empty document".into());
+        return Err(ClientConfigError::Empty);
     }
     Ok(config)
 }

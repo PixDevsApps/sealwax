@@ -62,36 +62,12 @@ pub fn carries(url: &str, address: &str) -> bool {
         if found(&text) {
             return true;
         }
-        let decoded = percent_decode(&text);
+        let decoded = crate::percent::decode_form(&text);
         if decoded == text {
             return false;
         }
         text = decoded;
     }
-}
-
-fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        let hex = |b: u8| (b as char).to_digit(16);
-        match (bytes[i], bytes.get(i + 1), bytes.get(i + 2)) {
-            (b'%', Some(&h), Some(&l)) if hex(h).is_some() && hex(l).is_some() => {
-                out.push((hex(h).unwrap_or(0) * 16 + hex(l).unwrap_or(0)) as u8);
-                i += 3;
-            }
-            (b'+', ..) => {
-                out.push(b' ');
-                i += 1;
-            }
-            (b, ..) => {
-                out.push(b);
-                i += 1;
-            }
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 #[cfg(test)]

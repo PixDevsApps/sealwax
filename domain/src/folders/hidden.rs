@@ -18,14 +18,6 @@ const SYNC_ISSUES: &[&str] = &["sync issues", "synkroniseringsfeil"];
 const MICROSOFT: &[&str] = &["notes", "outbox"];
 const MAILSPRING: &str = "mailspring";
 
-/// Microsoft's servers, by host suffix: `outlook.office365.com`, `imap-mail.outlook.com`.
-pub fn microsoft_host(host: &str) -> bool {
-    let host = host.trim_end_matches('.').to_ascii_lowercase();
-    ["office365.com", "outlook.com"]
-        .iter()
-        .any(|domain| host == *domain || host.ends_with(&format!(".{domain}")))
-}
-
 /// One LIST entry as the rule needs it.
 #[derive(Clone, Debug)]
 pub struct Entry<'a> {
@@ -124,15 +116,5 @@ mod tests {
             false
         ));
         assert!(!hidden(&entry("Mailspring2", '/', Some(0)), false));
-    }
-
-    #[test]
-    fn microsofts_hosts_by_suffix() {
-        assert!(microsoft_host("outlook.office365.com"));
-        assert!(microsoft_host("imap-mail.outlook.com."));
-        assert!(microsoft_host("Outlook.Office365.com"));
-        assert!(!microsoft_host("imap.example.com"));
-        assert!(!microsoft_host("notoutlook.com"));
-        assert!(!microsoft_host("127.0.0.1"));
     }
 }

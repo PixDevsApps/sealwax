@@ -12,12 +12,10 @@ mod first_sync;
 mod folders;
 #[cfg(any(test, feature = "fuzz"))]
 pub(crate) mod fuzz;
-pub mod hidden;
 mod idle;
 pub mod manage;
 pub mod mutf7;
 mod raw;
-pub mod roles;
 mod stream;
 mod sync;
 pub mod write;
@@ -33,6 +31,7 @@ pub use first_sync::{BATCH, FirstSyncReport, Progress, first_sync, first_sync_wi
 pub use folders::{FolderStatus, ListedFolder, SyncedFolders, list, sync_folders};
 pub use idle::{IDLE_COMMAND_TIMEOUT, Idled, Stop, Wake};
 pub use raw::READ_TIMEOUT;
+pub use sealwax_domain::folders::{hidden, roles};
 pub use sync::{
     Arrived, Elsewhere, FolderLocks, Older, Stats, SyncOptions, SyncReport, Unreadable, load_older,
     sync_account, sync_folder,

@@ -198,7 +198,7 @@ fn clean_once(html: &str, keep_cid: &dyn Fn(&str) -> bool) -> Cleaned {
     let mut content_ids: Vec<String> = Vec::new();
     for source in &sources {
         if has_prefix(source, "cid:") {
-            let id = percent_decode(&source[4..]);
+            let id = crate::percent::decode(&source[4..]);
             if !content_ids.contains(&id) {
                 content_ids.push(id);
             }
@@ -240,28 +240,6 @@ fn image_sources(html: &str) -> Vec<String> {
     let _ = tokenizer.feed(&input);
     tokenizer.end();
     tokenizer.sink.0.take()
-}
-
-/// RFC 2392: a `cid:` URL is the Content-ID percent-encoded.
-fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut index = 0;
-    while index < bytes.len() {
-        if bytes[index] == b'%'
-            && let Some(hex) = bytes.get(index + 1..index + 3)
-            && hex.iter().all(u8::is_ascii_hexdigit)
-            && let Ok(hex) = std::str::from_utf8(hex)
-            && let Ok(byte) = u8::from_str_radix(hex, 16)
-        {
-            out.push(byte);
-            index += 3;
-        } else {
-            out.push(bytes[index]);
-            index += 1;
-        }
-    }
-    String::from_utf8_lossy(&out).into_owned()
 }
 
 static BUILDER: LazyLock<Builder<'static>> = LazyLock::new(|| {
@@ -587,7 +565,7 @@ impl Normalizer<'_> {
             return false;
         }
         let source = source.trim();
-        !has_prefix(source, "cid:") || (self.keep_cid)(&percent_decode(&source[4..]))
+        !has_prefix(source, "cid:") || (self.keep_cid)(&crate::percent::decode(&source[4..]))
     }
 
     /// Writes a start tag. A `kept` tag (outside dropped elements) loses its `style`, which the
