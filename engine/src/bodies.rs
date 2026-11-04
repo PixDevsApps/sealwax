@@ -117,7 +117,7 @@ mod tests {
     async fn inbox(store: &Store, sizes: &[u64]) -> Vec<MessageId> {
         let account = store
             .ensure_account(
-                AccountKey("work".into()),
+                AccountKey::parse("work").unwrap(),
                 NewAccount {
                     name: "Work".into(),
                     address: "work@example.test".into(),

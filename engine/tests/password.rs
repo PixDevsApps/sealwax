@@ -398,7 +398,7 @@ async fn a_new_password_is_checked_stored_and_the_account_syncs_again() {
     smtp.accept(OLD);
     let engine = start(&dirs, tls.trust.clone());
     let settings = AccountSettings {
-        key: AccountKey(String::new()),
+        key: AccountKey::unassigned(),
         name: "Password".into(),
         label: None,
         color: None,
@@ -504,7 +504,7 @@ async fn a_password_for_an_account_that_isnt_listed_is_refused() {
     let dirs = SealwaxDirs::under(root.path());
     let engine = start(&dirs, Trust::Platform);
     assert_eq!(
-        update(&engine, 1, &AccountKey("unknown".into()), NEW).await,
+        update(&engine, 1, &AccountKey::parse("unknown").unwrap(), NEW).await,
         refused(Protocol::Imap, LoginFailure::Other)
     );
     assert!(!dirs.accounts_file().exists(), "nothing was written");
@@ -524,7 +524,7 @@ fn a_new_password_on_the_testbed() {
             common::submission(Security::Tls),
             "bob",
         );
-        settings.key = AccountKey(String::new());
+        settings.key = AccountKey::unassigned();
         send(
             &engine,
             Command::AddAccount {

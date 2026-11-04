@@ -101,7 +101,7 @@ fn open_at(dir: tempfile::TempDir) -> Bodies {
     .unwrap();
     let account = store
         .ensure_account(
-            AccountKey("bodies".into()),
+            AccountKey::parse("bodies").unwrap(),
             NewAccount {
                 name: "Bodies".into(),
                 address: "bodies@example.test".into(),

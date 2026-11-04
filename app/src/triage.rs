@@ -1149,7 +1149,7 @@ mod tests {
                 id: AccountId(2),
                 name: "Work".into(),
                 address: "work@example.test".into(),
-                key: Some(AccountKey("work".into())),
+                key: Some(AccountKey::parse("work").unwrap()),
             },
         ]
     }

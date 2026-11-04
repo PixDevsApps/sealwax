@@ -103,7 +103,7 @@ async fn keyring_items() -> Result<usize, Error> {
 
 async fn refresh_token(key: &AccountKey) -> Result<Option<Secret>, Error> {
     let keyring = KeyringStore::open(APP_ID).await?;
-    Ok(keyring.read(&key.0, SecretKind::RefreshToken).await?)
+    Ok(keyring.read(key.as_str(), SecretKind::RefreshToken).await?)
 }
 
 struct Running {
@@ -309,7 +309,7 @@ async fn sign_in_and_add(
     first.send(Command::AddAccount {
         request: 2,
         settings: AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: "ML-032 live check".into(),
             label: None,
             color: None,

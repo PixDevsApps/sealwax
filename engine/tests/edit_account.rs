@@ -102,7 +102,7 @@ fn an_edited_label_and_color_reach_the_file_and_the_store() {
         security: Security::Tls,
         certificate: None,
     };
-    let key = AccountKey("edited".into());
+    let key = AccountKey::parse("edited").unwrap();
     files::add(
         &paths.settings,
         &AccountSettings {
@@ -173,7 +173,7 @@ fn an_edited_label_and_color_reach_the_file_and_the_store() {
     commands
         .send_blocking(Command::EditAccount {
             request: 9,
-            key: AccountKey("nobody".into()),
+            key: AccountKey::parse("nobody").unwrap(),
             label: Some("X".into()),
             color: None,
         })

@@ -373,7 +373,7 @@ mod tests {
         let update = loaded.apply([Ok(None), Ok(None), read(ACCOUNT)]);
         assert!(update.accounts_changed && update.problems.is_empty());
         assert!(update.config_before.is_none() && !update.keymap_changed);
-        assert_eq!(loaded.accounts[0].key.0, "work");
+        assert_eq!(loaded.accounts[0].key.as_str(), "work");
         assert!(
             loaded
                 .apply([Ok(None), Ok(None), read(&format!("# mine\n{ACCOUNT}"))])

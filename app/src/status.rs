@@ -190,7 +190,7 @@ mod tests {
             certificate: None,
         };
         AccountSettings {
-            key: AccountKey(key.to_owned()),
+            key: AccountKey::parse(key).unwrap(),
             name: key.to_owned(),
             label: None,
             color: None,

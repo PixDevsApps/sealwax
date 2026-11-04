@@ -6,7 +6,7 @@
 use crate::accounts;
 use crate::settings_files::read_optional;
 use sealwax_domain::account::AccountKey;
-use sealwax_domain::accounts_file::is_valid_key;
+use sealwax_domain::account::is_valid_key;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ pub const EXTENSION: &str = "sieve";
 /// The account's script in `dir` (`SealwaxDirs::rules_dir`), or `None` for a key that can't
 /// name a file (never one Sealwax made).
 pub fn path(dir: &Path, key: &AccountKey) -> Option<PathBuf> {
-    is_valid_key(&key.0).then(|| dir.join(format!("{}.{EXTENSION}", key.0)))
+    is_valid_key(key.as_str()).then(|| dir.join(format!("{key}.{EXTENSION}")))
 }
 
 /// The account's script; `None` when it has no file.
@@ -68,7 +68,7 @@ mod tests {
     use std::os::unix::fs::PermissionsExt;
 
     fn key(text: &str) -> AccountKey {
-        AccountKey(text.into())
+        AccountKey::parse(text).unwrap()
     }
 
     fn mode(path: &std::path::Path) -> u32 {
@@ -104,11 +104,13 @@ mod tests {
         let dirs = SealwaxDirs::under(root.path());
         let dir = dirs.rules_dir();
         for bad in ["../accounts", "a/b", "", "Work"] {
-            assert_eq!(path(&dir, &key(bad)), None, "{bad:?}");
-            assert_eq!(read(&dir, &key(bad)).unwrap(), None);
-            assert!(write(&dir, &key(bad), "keep;").is_err());
-            remove(&dir, &key(bad)).unwrap();
+            assert!(AccountKey::parse(bad).is_err(), "{bad:?}");
         }
+        let unassigned = AccountKey::unassigned();
+        assert_eq!(path(&dir, &unassigned), None);
+        assert_eq!(read(&dir, &unassigned).unwrap(), None);
+        assert!(write(&dir, &unassigned, "keep;").is_err());
+        remove(&dir, &unassigned).unwrap();
         assert!(!dirs.config.exists(), "nothing written");
     }
 

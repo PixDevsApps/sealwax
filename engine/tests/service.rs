@@ -121,7 +121,7 @@ fn a_send_left_being_built_fails_at_the_engines_start() {
     let store = Store::open(&dirs.store_file(), StoreOptions::default()).unwrap();
     let account = store
         .ensure_account(
-            AccountKey("built-before".into()),
+            AccountKey::parse("built-before").unwrap(),
             NewAccount {
                 name: "Service".into(),
                 address: "service@example.test".into(),
@@ -195,7 +195,7 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
         certificate: None,
     };
     let settings = AccountSettings {
-        key: AccountKey(String::new()),
+        key: AccountKey::unassigned(),
         name: "Service".into(),
         label: None,
         color: None,
@@ -233,7 +233,7 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
     let listed = accounts::read(&dirs.accounts_file()).unwrap();
     assert_eq!(listed.len(), 1);
     let key = listed[0].key.clone();
-    assert_eq!(key.0.len(), 12, "a generated key");
+    assert_eq!(key.as_str().len(), 12, "a generated key");
 
     commands
         .send_blocking(Command::RemoveAccount { request: 2, key })

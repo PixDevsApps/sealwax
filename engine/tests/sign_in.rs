@@ -82,7 +82,7 @@ impl Setup {
     /// What the assistant sends after a sign-in: the app's idea of the username doesn't count.
     fn settings(&self) -> AccountSettings {
         AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: "Microsoft".into(),
             label: None,
             color: None,
@@ -577,7 +577,7 @@ async fn sign_in_unknown(engine: &Engine, request: RequestId) -> Result<String, 
             request,
             provider: OAuthProvider::Microsoft,
             address: ADDRESS.into(),
-            account: Some(AccountKey("unknown".into())),
+            account: Some(AccountKey::parse("unknown").unwrap()),
         },
     );
     signed_in(engine, request).await

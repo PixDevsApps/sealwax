@@ -121,7 +121,7 @@ fn settings(address: &str) -> AccountSettings {
         certificate: None,
     };
     AccountSettings {
-        key: AccountKey(String::new()),
+        key: AccountKey::unassigned(),
         name: "No Secret".to_owned(),
         label: None,
         color: None,
@@ -197,12 +197,12 @@ fn no_secret_reaches_a_file_or_a_log() {
 
     // The test is not vacuous: the secret is in the keyring, the account in the file.
     let kept = runtime
-        .block_on(secrets.read(&key.0, SecretKind::Password))
+        .block_on(secrets.read(key.as_str(), SecretKind::Password))
         .unwrap()
         .unwrap();
     assert_eq!(kept.as_slice(), PASSWORD.as_bytes());
     let file = fs::read_to_string(&paths.settings).unwrap();
-    assert!(file.contains(ADDRESS) && file.contains(&key.0));
+    assert!(file.contains(ADDRESS) && file.contains(key.as_str()));
 
     let mut wal = dirs.store_file().into_os_string();
     wal.push("-wal");
@@ -350,7 +350,7 @@ async fn no_token_reaches_a_file_or_a_log() {
         .try_send(Command::AddAccount {
             request: 2,
             settings: AccountSettings {
-                key: AccountKey(String::new()),
+                key: AccountKey::unassigned(),
                 name: "Tokens".into(),
                 label: None,
                 color: None,

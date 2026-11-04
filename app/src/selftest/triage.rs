@@ -765,7 +765,7 @@ async fn add_account(harness: &Harness, name: &str, key: &str) -> StepResult {
         .store()
         .ok_or("the store is not open")?
         .ensure_account(
-            AccountKey(key.to_owned()),
+            AccountKey::parse(key).map_err(|_| format!("{key:?} is not an account key"))?,
             NewAccount {
                 name: name.to_owned(),
                 address: format!("{local}@example.test"),

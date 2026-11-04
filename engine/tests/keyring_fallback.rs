@@ -85,7 +85,7 @@ fn without_a_keyring_secrets_stay_in_memory_and_the_app_hears_it_once() {
         certificate: None,
     };
     let settings = AccountSettings {
-        key: AccountKey(String::new()),
+        key: AccountKey::unassigned(),
         name: "Memory".into(),
         label: None,
         color: None,

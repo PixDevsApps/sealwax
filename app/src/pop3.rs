@@ -55,7 +55,7 @@ mod tests {
             certificate: None,
         };
         AccountSettings {
-            key: AccountKey(key.to_owned()),
+            key: AccountKey::parse(key).unwrap(),
             name: key.to_owned(),
             label: None,
             color: None,
@@ -75,7 +75,7 @@ mod tests {
             id: AccountId(id),
             name: format!("Account {id}"),
             address: format!("a{id}@example.test"),
-            key: key.map(|key| AccountKey(key.to_owned())),
+            key: key.map(|key| AccountKey::parse(key).unwrap()),
         }
     }
 

@@ -171,7 +171,7 @@ impl TestEngine {
         smtp: Endpoint,
     ) -> AccountId {
         let settings = AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: user.into(),
             label: None,
             color: None,

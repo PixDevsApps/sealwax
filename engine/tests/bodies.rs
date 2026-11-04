@@ -265,7 +265,7 @@ fn running(server: &Arc<Mutex<Server>>) -> Running {
         certificate: None,
     };
     let settings = AccountSettings {
-        key: AccountKey(String::new()),
+        key: AccountKey::unassigned(),
         name: "Bodies".into(),
         label: None,
         color: None,

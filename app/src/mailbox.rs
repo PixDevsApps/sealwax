@@ -821,13 +821,13 @@ mod tests {
                 id: AccountId(1),
                 name: "Work".into(),
                 address: "work@example.test".into(),
-                key: Some(AccountKey("work".into())),
+                key: Some(AccountKey::parse("work").unwrap()),
             },
             Account {
                 id: AccountId(2),
                 name: "Home".into(),
                 address: "home@example.test".into(),
-                key: Some(AccountKey("home".into())),
+                key: Some(AccountKey::parse("home").unwrap()),
             },
         ];
         let folders = vec![
@@ -849,7 +849,7 @@ mod tests {
             model.default_selection()
         };
         let home = |name: &str| View::Folder {
-            account: AccountKey("home".into()),
+            account: AccountKey::parse("home").unwrap(),
             name: name.into(),
         };
         assert_eq!(opens_on(None), Some(folder_key(FolderId(1))));
@@ -867,7 +867,7 @@ mod tests {
             Some(folder_key(FolderId(1)))
         );
         let gone = View::Folder {
-            account: AccountKey("gone".into()),
+            account: AccountKey::parse("gone").unwrap(),
             name: "INBOX".into(),
         };
         assert_eq!(opens_on(Some(gone)), Some(folder_key(FolderId(1))));
@@ -886,7 +886,7 @@ mod tests {
                 id: AccountId(2),
                 name: "Work".into(),
                 address: "work@example.test".into(),
-                key: Some(AccountKey("work".into())),
+                key: Some(AccountKey::parse("work").unwrap()),
             },
         ];
         let folders = vec![
@@ -897,16 +897,16 @@ mod tests {
             folder(5, 2, "All Mail", StoreRole::All, 9),
         ];
         let colors = HashMap::from([
-            (AccountKey("work".into()), AccountColor::Sage),
-            (AccountKey("gone".into()), AccountColor::Rose),
+            (AccountKey::parse("work").unwrap(), AccountColor::Sage),
+            (AccountKey::parse("gone").unwrap(), AccountColor::Rose),
         ]);
         let model = sidebar_model(
             &accounts,
             &folders,
             &HashMap::new(),
             &colors,
-            &HashSet::from([AccountKey("work".into())]),
-            &HashSet::from([AccountKey("work".into())]),
+            &HashSet::from([AccountKey::parse("work").unwrap()]),
+            &HashSet::from([AccountKey::parse("work").unwrap()]),
             &HashMap::new(),
         );
         assert_eq!(model.accounts.len(), 2);
@@ -939,7 +939,7 @@ mod tests {
             id: AccountId(1),
             name: "Work".into(),
             address: "work@example.test".into(),
-            key: Some(AccountKey("work".into())),
+            key: Some(AccountKey::parse("work").unwrap()),
         }];
         let folders = vec![
             folder(1, 1, "INBOX", StoreRole::Inbox, 2),
@@ -955,7 +955,7 @@ mod tests {
             folder(11, 1, "INBOX/Søppel", StoreRole::Junk, 4),
         ];
         let folded = HashMap::from([(
-            AccountKey("work".into()),
+            AccountKey::parse("work").unwrap(),
             BTreeSet::from(["kunder".to_owned(), "Arkiv".to_owned()]),
         )]);
         let model = sidebar_model(

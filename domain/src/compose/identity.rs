@@ -109,7 +109,7 @@ mod tests {
             certificate: None,
         };
         AccountSettings {
-            key: AccountKey("work".into()),
+            key: AccountKey::parse("work").unwrap(),
             name: "Ada Lovelace".into(),
             label: None,
             color: None,

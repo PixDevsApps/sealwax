@@ -68,7 +68,7 @@ pub(super) fn server() -> Fx {
     let store = Store::open(&dir.path().join("store.sqlite"), StoreOptions::default()).unwrap();
     let account = store
         .ensure_account(
-            AccountKey("ops-test".into()),
+            AccountKey::parse("ops-test").unwrap(),
             NewAccount {
                 name: "Ops".into(),
                 address: "ops@example.test".into(),

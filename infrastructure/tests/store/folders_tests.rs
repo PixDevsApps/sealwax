@@ -276,7 +276,7 @@ fn a_pop3_accounts_local_folders_are_renamed_and_deleted_too() {
     let store = Store::open(&dir.path().join("store.sqlite"), StoreOptions::default()).unwrap();
     let account = store
         .ensure_account(
-            AccountKey("pop3-folders".into()),
+            AccountKey::parse("pop3-folders").unwrap(),
             NewAccount {
                 name: "Pop".into(),
                 address: "pop@example.test".into(),

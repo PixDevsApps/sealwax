@@ -54,7 +54,7 @@ fn pop() -> Pop {
     let store = Store::open(&dir.path().join("store.sqlite"), StoreOptions::default()).unwrap();
     let account = store
         .ensure_account(
-            AccountKey("pop3-test".into()),
+            AccountKey::parse("pop3-test").unwrap(),
             NewAccount {
                 name: "Pop".into(),
                 address: "pop@example.test".into(),
@@ -133,7 +133,7 @@ fn a_pop3_account_gets_its_local_folders_once() {
     let store = Store::open(&dir.path().join("store.sqlite"), StoreOptions::default()).unwrap();
     let account = store
         .ensure_account(
-            AccountKey("pop3-test".into()),
+            AccountKey::parse("pop3-test").unwrap(),
             NewAccount {
                 name: "Pop".into(),
                 address: "pop@example.test".into(),
@@ -870,7 +870,7 @@ fn the_disk_cap_never_evicts_a_blob_a_pop3_message_shares() {
     let imap = pop
         .store
         .ensure_account(
-            AccountKey("imap-test".into()),
+            AccountKey::parse("imap-test").unwrap(),
             NewAccount {
                 name: "Imap".into(),
                 address: "imap@example.test".into(),

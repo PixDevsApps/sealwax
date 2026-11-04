@@ -8,7 +8,7 @@ use sealwax_infrastructure::ingest::{RawMessage, ingest_raw};
 use std::collections::BTreeSet;
 
 fn key(text: &str) -> AccountKey {
-    AccountKey(text.to_owned())
+    AccountKey::parse(text).unwrap()
 }
 
 fn new_account(name: &str) -> NewAccount {
@@ -77,7 +77,7 @@ fn names(store: &Store) -> Vec<(String, Option<String>)> {
         .unwrap()
         .value
         .into_iter()
-        .map(|account| (account.name, account.key.map(|key| key.0)))
+        .map(|account| (account.name, account.key.map(|key| key.as_str().to_owned())))
         .collect()
 }
 

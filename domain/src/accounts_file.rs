@@ -7,7 +7,7 @@
 
 use crate::account::{
     AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, Endpoint, Identity,
-    OAuthProvider, Pop3Policy, Protocol, Receive, Security, is_loopback,
+    OAuthProvider, Pop3Policy, Protocol, Receive, Security, is_loopback, is_valid_key,
 };
 use crate::address::{looks_like_address, same};
 use crate::settings_file::{FileError, article, did_you_mean, entries, parse_toml};
@@ -18,8 +18,6 @@ use toml::de::{DeTable, DeValue};
 use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, Value, value};
 
 pub const ACCOUNTS_FILE: &str = "accounts.toml";
-/// The longest key a hand-written account may have.
-pub const MAX_KEY_LENGTH: usize = 40;
 
 const ACCOUNT_SETTINGS: [&str; 12] = [
     "key",
@@ -43,15 +41,6 @@ pub const MAX_DELETE_AFTER_DAYS: u32 = 3650;
 const IDENTITY_SETTINGS: [&str; 3] = ["name", "address", "signature"];
 /// The longest signature, in characters.
 pub const MAX_SIGNATURE_CHARS: usize = 10_000;
-
-/// Whether `key` can name an account: 1 to 40 of `a`–`z`, `0`–`9`, `-` and `_`. Generated keys
-/// are 12 characters of lowercase base32; hand-written ones may be words ("work").
-pub fn is_valid_key(key: &str) -> bool {
-    (1..=MAX_KEY_LENGTH).contains(&key.len())
-        && key
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"-_".contains(&byte))
-}
 
 /// The port a connection uses when `accounts.toml` names none.
 pub fn default_port(protocol: Protocol, security: Security) -> u16 {
@@ -132,7 +121,7 @@ fn auth_name(auth: AuthMethod) -> &'static str {
 
 /// Checks an account the assistant is about to write; the message never quotes a value.
 pub fn check(account: &AccountSettings) -> Result<(), String> {
-    if !is_valid_key(&account.key.0) {
+    if !is_valid_key(account.key.as_str()) {
         return Err("the key takes a–z, 0–9, - and _ only, at most 40 characters".to_owned());
     }
     if !is_plain_text(&account.name) {
@@ -415,8 +404,8 @@ impl Reader<'_> {
             match field_name {
                 "key" => {
                     if let Some(text) = self.string("key", value) {
-                        if is_valid_key(&text) {
-                            key = Some((AccountKey(text), span));
+                        if let Ok(parsed) = AccountKey::parse(&text) {
+                            key = Some((parsed, span));
                         } else {
                             self.error(
                                 span,
@@ -978,7 +967,7 @@ pub fn entry(account: &AccountSettings) -> String {
         }
     }
     let mut table = Table::new();
-    table["key"] = value(&account.key.0);
+    table["key"] = value(account.key.as_str());
     table["name"] = value(&account.name);
     table["address"] = value(&account.address);
     if let Some(label) = &account.label {
@@ -1075,7 +1064,7 @@ pub fn remove(text: &str, key: &AccountKey) -> Result<Option<String>, EditError>
     // The key as `parse` reads it: white space around it is no part of it (found by fuzzing,
     // ML-093: such an entry stayed while the account's data went).
     let Some(index) = tables.iter().position(|table| {
-        table.get("key").and_then(Item::as_str).map(str::trim) == Some(key.0.as_str())
+        table.get("key").and_then(Item::as_str).map(str::trim) == Some(key.as_str())
     }) else {
         return Ok(None);
     };
@@ -1151,7 +1140,7 @@ pub fn relabel(
         .and_then(Item::as_array_of_tables_mut)
         .and_then(|tables| {
             tables.iter_mut().find(|table| {
-                table.get("key").and_then(Item::as_str).map(str::trim) == Some(key.0.as_str())
+                table.get("key").and_then(Item::as_str).map(str::trim) == Some(key.as_str())
             })
         })
     else {
@@ -1268,7 +1257,7 @@ mod tests {
 
     fn account(key: &str, address: &str) -> AccountSettings {
         AccountSettings {
-            key: AccountKey(key.to_owned()),
+            key: AccountKey::parse(key).unwrap(),
             name: "Ada Lovelace".to_owned(),
             label: None,
             color: None,
@@ -1379,7 +1368,7 @@ mod tests {
                     [account.imap]\nhost = \"127.0.0.1\"\nport = 1993\nsecurity = \"starttls\"\n\
                     [account.smtp]\nhost = \"::1\"\nport = 0x24b\nsecurity = \"tls\"\n";
         let account = &parse(text).unwrap()[0];
-        assert_eq!(account.key.0, "k3j5x8m2q9wa");
+        assert_eq!(account.key.as_str(), "k3j5x8m2q9wa");
         assert_eq!(account.name, "Ada");
         assert_eq!(account.username, "ada");
         assert_eq!(account.auth, AuthMethod::OAuth(OAuthProvider::Microsoft));
@@ -1473,7 +1462,7 @@ mod tests {
     #[test]
     fn relabel_sets_the_label_and_the_color_after_the_address() {
         let text = format!("# my accounts\n\n{ONE}");
-        let work = AccountKey("work".to_owned());
+        let work = AccountKey::parse("work").unwrap();
         let named = relabel(&text, &work, Some("Work"), Some(AccountColor::Sage))
             .unwrap()
             .unwrap();
@@ -1508,8 +1497,8 @@ mod tests {
                     key = \"club\"\nname = \"Ada\"\naddress = \"club@example.test\"\n\n\
                     [account.imap]\nhost = \"imap.example.test\"\n\n[account.smtp]\n\
                     host = \"smtp.example.test\"\n";
-        let club = AccountKey("club".to_owned());
-        let changed = relabel(text, &AccountKey("work".to_owned()), Some("New"), None)
+        let club = AccountKey::parse("club").unwrap();
+        let changed = relabel(text, &AccountKey::parse("work").unwrap(), Some("New"), None)
             .unwrap()
             .unwrap();
         assert_eq!(
@@ -1531,9 +1520,9 @@ mod tests {
 
     #[test]
     fn relabel_refuses_what_it_cant_write() {
-        let work = AccountKey("work".to_owned());
+        let work = AccountKey::parse("work").unwrap();
         assert_eq!(
-            relabel(ONE, &AccountKey("nobody".to_owned()), Some("X"), None),
+            relabel(ONE, &AccountKey::parse("nobody").unwrap(), Some("X"), None),
             Ok(None)
         );
         assert_eq!(relabel("", &work, Some("X"), None), Ok(None));
@@ -1577,7 +1566,7 @@ mod tests {
         );
         let accounts = parse(&example).unwrap();
         assert_eq!(accounts.len(), 1);
-        assert_eq!(accounts[0].key.0, "work");
+        assert_eq!(accounts[0].key.as_str(), "work");
         assert_eq!(accounts[0].title(), "Work");
         assert_eq!(accounts[0].color, Some(AccountColor::Sage));
         assert_eq!(accounts[0].receive, Receive::Imap);
@@ -1853,9 +1842,13 @@ mod tests {
                 .collect::<Vec<_>>(),
             [Protocol::Imap, Protocol::Pop3]
         );
-        let back = remove(&both, &AccountKey("home".into())).unwrap().unwrap();
+        let back = remove(&both, &AccountKey::parse("home").unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(back, work);
-        let only_home = remove(&both, &AccountKey("work".into())).unwrap().unwrap();
+        let only_home = remove(&both, &AccountKey::parse("work").unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(parse(&only_home).unwrap(), [home]);
     }
 
@@ -2002,9 +1995,11 @@ mod tests {
         let accounts = parse(&text).unwrap();
         assert_eq!(accounts[0].identities.len(), 1);
         assert!(accounts[1].identities.is_empty());
-        let without = remove(&text, &AccountKey("work".into())).unwrap().unwrap();
+        let without = remove(&text, &AccountKey::parse("work").unwrap())
+            .unwrap()
+            .unwrap();
         assert!(!without.contains("alias@"), "{without}");
-        assert_eq!(parse(&without).unwrap()[0].key.0, "home");
+        assert_eq!(parse(&without).unwrap()[0].key.as_str(), "home");
         let added = add(&text, &account("third", "third@example.test")).unwrap();
         assert_eq!(parse(&added).unwrap()[0].identities.len(), 1);
         assert!(!entry(&account("third", "third@example.test")).contains("signature"));
@@ -2204,7 +2199,8 @@ mod tests {
         let mut bad = account("a", "a@example.test");
         bad.incoming.host = "imap.example.test:993".to_owned();
         assert!(matches!(add("", &bad), Err(EditError::Account(_))));
-        bad = account("Not A Key", "a@example.test");
+        bad = account("a", "a@example.test");
+        bad.key = AccountKey::unassigned();
         assert!(matches!(add("", &bad), Err(EditError::Account(_))));
     }
 
@@ -2221,19 +2217,23 @@ mod tests {
         let text = format!("{header}{work}{home}{tail}");
         assert_eq!(parse(&text).unwrap().len(), 2);
 
-        let without_work = remove(&text, &AccountKey("work".into())).unwrap().unwrap();
+        let without_work = remove(&text, &AccountKey::parse("work").unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(without_work, format!("{header}{home}{tail}"));
-        let without_home = remove(&text, &AccountKey("home".into())).unwrap().unwrap();
+        let without_home = remove(&text, &AccountKey::parse("home").unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(without_home, format!("{header}{work}{tail}"));
-        let neither = remove(&without_home, &AccountKey("work".into()))
+        let neither = remove(&without_home, &AccountKey::parse("work").unwrap())
             .unwrap()
             .unwrap();
         assert_eq!(neither, format!("{header}{tail}"));
         assert_eq!(parse(&neither), Ok(Vec::new()));
-        assert_eq!(remove(&text, &AccountKey("gone".into())), Ok(None));
-        assert_eq!(remove("", &AccountKey("gone".into())), Ok(None));
+        assert_eq!(remove(&text, &AccountKey::parse("gone").unwrap()), Ok(None));
+        assert_eq!(remove("", &AccountKey::parse("gone").unwrap()), Ok(None));
         assert!(matches!(
-            remove("[[account]\n", &AccountKey("x".into())),
+            remove("[[account]\n", &AccountKey::parse("x").unwrap()),
             Err(EditError::Invalid(_))
         ));
     }
@@ -2243,13 +2243,19 @@ mod tests {
         let header = default_accounts_file();
         let one = add(&header, &account("work", "ada@example.test")).unwrap();
         let two = add(&one, &account("home", "ada@home.example.test")).unwrap();
-        let back = remove(&two, &AccountKey("home".into())).unwrap().unwrap();
+        let back = remove(&two, &AccountKey::parse("home").unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(back, one);
-        let back = remove(&back, &AccountKey("work".into())).unwrap().unwrap();
+        let back = remove(&back, &AccountKey::parse("work").unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(back, header);
-        let only_home = remove(&two, &AccountKey("work".into())).unwrap().unwrap();
+        let only_home = remove(&two, &AccountKey::parse("work").unwrap())
+            .unwrap()
+            .unwrap();
         assert!(only_home.starts_with(&header));
-        assert_eq!(parse(&only_home).unwrap()[0].key.0, "home");
+        assert_eq!(parse(&only_home).unwrap()[0].key.as_str(), "home");
     }
 
     /// Found by fuzzing (ML-093): `parse` reads a key without the white space around it, and
@@ -2258,19 +2264,15 @@ mod tests {
     fn a_key_written_with_spaces_is_removed_by_its_key() {
         let text = "[[account]]\nkey = \" work \"\nname = \"W\"\naddress = \"w@example.test\"\n\
                     [account.imap]\nhost = \"i.example.test\"\n[account.smtp]\nhost = \"s.example.test\"\n";
-        assert_eq!(parse(text).unwrap()[0].key.0, "work");
-        let removed = remove(text, &AccountKey("work".into())).unwrap().unwrap();
+        assert_eq!(parse(text).unwrap()[0].key.as_str(), "work");
+        let removed = remove(text, &AccountKey::parse("work").unwrap())
+            .unwrap()
+            .unwrap();
         assert_eq!(parse(&removed), Ok(Vec::new()));
     }
 
     #[test]
     fn keys_and_hosts() {
-        for key in ["work", "k3j5x8m2q9wa", "a-b_c", "0"] {
-            assert!(is_valid_key(key), "{key}");
-        }
-        for key in ["", "Work", "a b", "æ", &"x".repeat(41)] {
-            assert!(!is_valid_key(key), "{key}");
-        }
         for host in [
             "imap.example.test",
             "127.0.0.1",

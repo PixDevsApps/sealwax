@@ -513,7 +513,10 @@ pub fn config(data: &[u8]) {
         }
     }
     assert!(matches!(
-        accounts_file::remove(&text, &AccountKey("no-such-key-anywhere".to_owned())),
+        accounts_file::remove(
+            &text,
+            &AccountKey::parse("no-such-key-anywhere").expect("a key")
+        ),
         Ok(None)
     ));
 }

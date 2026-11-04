@@ -132,7 +132,7 @@ pub(crate) fn settings(
     let label = naming.label.trim();
     AccountSettings {
         // The engine gives a new account its random key (ML-034).
-        key: AccountKey(String::new()),
+        key: AccountKey::unassigned(),
         name: if name.is_empty() {
             address.text.clone()
         } else {
@@ -440,7 +440,7 @@ mod tests {
         assert_eq!(settings.label, None, "the address typed as the label");
         assert_eq!(settings.title(), "Kari@Example.test");
         assert_eq!(settings.color, None);
-        assert_eq!(settings.key, AccountKey(String::new()));
+        assert_eq!(settings.key, AccountKey::unassigned());
         assert_eq!(settings.auth, AuthMethod::Password);
         assert_eq!(settings.receive, Receive::Imap);
         let pop3 = super::settings(

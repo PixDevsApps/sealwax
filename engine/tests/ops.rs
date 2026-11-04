@@ -141,7 +141,7 @@ impl Running {
 
     async fn add(&mut self, fake: &Fake) -> AccountId {
         let settings = AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: "ops".into(),
             label: None,
             color: None,

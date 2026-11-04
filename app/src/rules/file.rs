@@ -270,7 +270,7 @@ mod tests {
     fn place(root: &Path) -> Place {
         Place {
             dir: SealwaxDirs::under(root).rules_dir(),
-            key: AccountKey("work".to_owned()),
+            key: AccountKey::parse("work").unwrap(),
             folders: Folders::default(),
         }
     }

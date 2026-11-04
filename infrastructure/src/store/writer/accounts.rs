@@ -60,7 +60,7 @@ impl Writer {
             )?;
             for (key, account) in accounts {
                 let found = select
-                    .query_row([&key.0], |row| {
+                    .query_row([&key.as_str()], |row| {
                         Ok((
                             row.get::<_, i64>(0)?,
                             row.get::<_, String>(1)?,
@@ -79,16 +79,17 @@ impl Writer {
                     }
                     None => {
                         changed = true;
-                        insert.query_row(params![key.0, account.name, account.address], |row| {
-                            row.get(0)
-                        })?
+                        insert.query_row(
+                            params![key.as_str(), account.name, account.address],
+                            |row| row.get(0),
+                        )?
                     }
                 };
                 ids.push(AccountId(id));
             }
         }
         if detach_others {
-            let listed: HashSet<&str> = accounts.iter().map(|(key, _)| key.0.as_str()).collect();
+            let listed: HashSet<&str> = accounts.iter().map(|(key, _)| key.as_str()).collect();
             let attached: Vec<(i64, String)> = tx
                 .prepare_cached(
                     "SELECT id, key FROM accounts WHERE key IS NOT NULL AND detached = 0",

@@ -201,7 +201,7 @@ impl Running {
     /// Adds an account on `fake` and waits for its first "synced".
     async fn add(&mut self, fake: &Fake) -> AccountId {
         let settings = AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: "Ny post".into(),
             label: None,
             color: None,

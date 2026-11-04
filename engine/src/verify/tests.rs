@@ -114,7 +114,7 @@ fn settings(imap: u16, smtp: u16) -> AccountSettings {
         certificate: None,
     };
     AccountSettings {
-        key: AccountKey("test".into()),
+        key: AccountKey::parse("test").unwrap(),
         name: "Test".into(),
         label: None,
         color: None,

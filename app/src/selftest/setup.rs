@@ -1440,14 +1440,19 @@ fn protocol_named(name: &str) -> Result<Protocol, String> {
 /// The key the fake engine gives an added account: its address's local part, lower case, with
 /// `-` for each character a key can't hold (`kari.nordmann` → `kari-nordmann`).
 fn fake_key(settings: &AccountSettings) -> AccountKey {
-    AccountKey(
-        settings
-            .address
-            .split('@')
-            .next()
-            .unwrap_or("account")
-            .to_owned(),
-    )
+    let local: String = settings
+        .address
+        .split('@')
+        .next()
+        .unwrap_or_default()
+        .chars()
+        .map(|c| match c.to_ascii_lowercase() {
+            c @ ('a'..='z' | '0'..='9' | '-' | '_') => c,
+            _ => '-',
+        })
+        .take(sealwax_domain::account::MAX_KEY_LENGTH)
+        .collect();
+    AccountKey::parse(&local).unwrap_or_else(|_| AccountKey::generate([0; 8]))
 }
 
 /// What the engine does on `RemoveAccount`, for the store: the account and its rows go.

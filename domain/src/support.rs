@@ -254,6 +254,6 @@ mod tests {
         assert_eq!(SUPPORT_ADDRESS, "support@pixdevs.com");
         assert_eq!(GUIDE_URL, "https://pixdevs.com/guides/sealwax/");
         assert!(NEW_ISSUE_URL.starts_with("https://github.com/PixDevsApps/sealwax/"));
-        assert!(crate::compose::address::is_valid(SUPPORT_ADDRESS));
+        assert!(crate::address::is_sendable(SUPPORT_ADDRESS));
     }
 }

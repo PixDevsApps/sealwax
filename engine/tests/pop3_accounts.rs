@@ -84,7 +84,7 @@ fn a_listed_pop3_account_gets_its_local_folders_and_leaves_nothing_when_removed(
         security: Security::Tls,
         certificate: None,
     };
-    let key = AccountKey("pop3-service".into());
+    let key = AccountKey::parse("pop3-service").unwrap();
     let settings = AccountSettings {
         key: key.clone(),
         name: "Pop".into(),

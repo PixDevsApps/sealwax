@@ -346,7 +346,12 @@ fn account_with_key(harness: &Harness, key: &str) -> Result<AccountId, String> {
         .mailbox()
         .accounts()
         .into_iter()
-        .find(|account| account.key.as_ref().is_some_and(|known| known.0 == key))
+        .find(|account| {
+            account
+                .key
+                .as_ref()
+                .is_some_and(|known| known.as_str() == key)
+        })
         .map(|account| account.id)
         .ok_or_else(|| format!("no account with the key {key}"))
 }

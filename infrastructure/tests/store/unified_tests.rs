@@ -52,7 +52,10 @@ fn three(store: &Store) -> Vec<Mailbox> {
         .iter()
         .map(|name| {
             let id = store
-                .ensure_account(AccountKey(name.to_lowercase()), new_account(name))
+                .ensure_account(
+                    AccountKey::parse(&name.to_lowercase()).unwrap(),
+                    new_account(name),
+                )
                 .recv_blocking()
                 .unwrap()
                 .value;
@@ -340,7 +343,12 @@ fn a_detached_account_leaves_all_inboxes_and_comes_back() {
     let keyed = |names: &[&str]| -> Vec<(AccountKey, NewAccount)> {
         names
             .iter()
-            .map(|name| (AccountKey(name.to_lowercase()), new_account(name)))
+            .map(|name| {
+                (
+                    AccountKey::parse(&name.to_lowercase()).unwrap(),
+                    new_account(name),
+                )
+            })
             .collect()
     };
     let inboxes = |names: &[&str]| -> Vec<FolderId> {

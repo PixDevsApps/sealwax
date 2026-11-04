@@ -198,7 +198,7 @@ mod tests {
 
     fn account(label: Option<&str>) -> Editable {
         Editable {
-            key: AccountKey("work".to_owned()),
+            key: AccountKey::parse("work").unwrap(),
             address: "kari@example.test".to_owned(),
             label: label.map(str::to_owned),
             color: None,

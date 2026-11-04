@@ -473,7 +473,7 @@ impl Submission {
         match settings.auth {
             AuthMethod::Password => {
                 let password = secrets
-                    .read(&settings.key.0, SecretKind::Password)
+                    .read(settings.key.as_str(), SecretKind::Password)
                     .await
                     .map_err(|error| {
                         tracing::warn!(%error, "the account's password couldn't be read");
@@ -1211,7 +1211,7 @@ mod tests {
             certificate: None,
         };
         AccountSettings {
-            key: AccountKey("k".into()),
+            key: AccountKey::parse("k").unwrap(),
             name: "n".into(),
             label: None,
             color: None,

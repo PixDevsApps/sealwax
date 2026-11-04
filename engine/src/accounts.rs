@@ -109,7 +109,9 @@ impl<S: SecretStore> Accounts<'_, S> {
         {
             return Err(AccountError::Exists);
         }
-        while settings.key.0.is_empty() || listed.iter().any(|known| known.key == settings.key) {
+        while settings.key.as_str().is_empty()
+            || listed.iter().any(|known| known.key == settings.key)
+        {
             settings.key = files::new_key().map_err(|error| {
                 tracing::error!(%error, "no random key");
                 AccountError::SettingsFile
@@ -126,7 +128,7 @@ impl<S: SecretStore> Accounts<'_, S> {
         if let Err(error) = self
             .secrets
             .store(
-                &key.0,
+                key.as_str(),
                 secret_kind(settings.auth),
                 &label,
                 secret.expose().as_bytes(),
@@ -178,7 +180,7 @@ impl<S: SecretStore> Accounts<'_, S> {
     /// Deletes a secret stored by an add that failed later; when the keyring refuses, the add
     /// stays journalled so `recover` deletes it.
     async fn forget_secret(&self, key: &AccountKey) {
-        match self.secrets.delete_account(&key.0).await {
+        match self.secrets.delete_account(key.as_str()).await {
             Ok(()) => {
                 let _ = self.journal(None, key).await;
             }
@@ -296,10 +298,13 @@ impl<S: SecretStore> Accounts<'_, S> {
             tracing::warn!(%error, "the removed account's rules file stays");
         }
 
-        self.secrets.delete_account(&key.0).await.map_err(|error| {
-            tracing::warn!(%error, "the removed account's secrets stay until recovery");
-            AccountError::Keyring
-        })?;
+        self.secrets
+            .delete_account(key.as_str())
+            .await
+            .map_err(|error| {
+                tracing::warn!(%error, "the removed account's secrets stay until recovery");
+                AccountError::Keyring
+            })?;
         self.journal(None, key).await
     }
 
@@ -319,7 +324,7 @@ impl<S: SecretStore> Accounts<'_, S> {
                     Ok(listed) if listed.iter().any(|known| known.key == key) => {
                         self.journal(None, &key).await
                     }
-                    Ok(_) => match self.secrets.delete_account(&key.0).await {
+                    Ok(_) => match self.secrets.delete_account(key.as_str()).await {
                         Ok(()) => self.journal(None, &key).await,
                         Err(_) => Err(AccountError::Keyring),
                     },
@@ -399,7 +404,7 @@ mod tests {
 
         async fn has(&self, key: &AccountKey) -> bool {
             self.inner
-                .read(&key.0, SecretKind::Password)
+                .read(key.as_str(), SecretKind::Password)
                 .await
                 .unwrap()
                 .is_some()
@@ -509,7 +514,7 @@ mod tests {
             certificate: None,
         };
         AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: "Test Person".to_owned(),
             label: None,
             color: None,
@@ -537,7 +542,10 @@ mod tests {
         let bench = Bench::new();
         let accounts = bench.accounts();
         let (key, id) = run(accounts.add(settings("ada@example.test"), &password())).unwrap();
-        assert_eq!(key.0.len(), files::KEY_LENGTH);
+        assert_eq!(
+            key.as_str().len(),
+            sealwax_domain::account::GENERATED_KEY_LENGTH
+        );
         assert!(run(bench.secrets.has(&key)));
         assert!(bench.in_store(&key));
         assert_eq!(files::read(&bench.paths.settings).unwrap()[0].key, key);
@@ -620,7 +628,7 @@ mod tests {
         std::os::unix::fs::symlink(dir.join("missing/accounts.toml"), &bench.paths.settings)
             .unwrap();
         let mut wanted = settings("ada@example.test");
-        wanted.key = AccountKey("chosen".to_owned());
+        wanted.key = AccountKey::parse("chosen").unwrap();
         let result = run(bench.accounts().add(wanted.clone(), &password()));
         assert_eq!(result, Err(AccountError::SettingsFile));
         assert_eq!(bench.secrets.stored.load(Ordering::SeqCst), 1);
@@ -660,13 +668,13 @@ mod tests {
         let bench = Bench::new();
         let accounts = bench.accounts();
         // A crash after the secret was stored, before the entry was written.
-        let orphan = AccountKey("orphan".to_owned());
+        let orphan = AccountKey::parse("orphan").unwrap();
         Pending::new(bench.paths.pending.clone())
             .begin(PendingOp::Add, &orphan)
             .unwrap();
         run(bench
             .secrets
-            .store(&orphan.0, SecretKind::Password, "", b"x"))
+            .store(orphan.as_str(), SecretKind::Password, "", b"x"))
         .unwrap();
         // A crash after the entry was written, before the journal was cleared.
         let (kept, _) = run(accounts.add(settings("kept@example.test"), &password())).unwrap();
@@ -780,7 +788,7 @@ mod tests {
         let listed = files::read(&bench.paths.settings).unwrap();
         assert_eq!((listed[0].label.as_deref(), listed[0].color), (None, None));
         assert_eq!(
-            run(accounts.edit(&AccountKey("gone".into()), None, None)),
+            run(accounts.edit(&AccountKey::parse("gone").unwrap(), None, None)),
             Err(AccountError::Missing)
         );
     }

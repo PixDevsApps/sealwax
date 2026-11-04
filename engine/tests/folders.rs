@@ -132,7 +132,7 @@ impl Running {
     /// Adds an account on `fake` and waits for its first "synced".
     async fn add(&mut self, fake: &Fake) -> AccountId {
         let settings = AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: "Folders".into(),
             label: None,
             color: None,
@@ -648,7 +648,7 @@ async fn a_pop3_accounts_local_folders_change_at_once() {
     };
     run.send(Command::Accounts {
         accounts: vec![AccountSettings {
-            key: AccountKey("pop3-folders".into()),
+            key: AccountKey::parse("pop3-folders").unwrap(),
             name: "Pop".into(),
             label: None,
             color: None,

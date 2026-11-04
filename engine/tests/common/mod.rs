@@ -83,7 +83,7 @@ pub fn mailpit() -> Endpoint {
 
 pub fn settings(imap: Endpoint, smtp: Endpoint, username: &str) -> AccountSettings {
     AccountSettings {
-        key: AccountKey("testbed".into()),
+        key: AccountKey::parse("testbed").unwrap(),
         name: "Testbed".into(),
         label: None,
         color: None,

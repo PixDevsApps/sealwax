@@ -749,7 +749,7 @@ fn the_id_token_names_the_user_and_is_checked() {
 
 async fn stored(secrets: &MemoryStore, key: &AccountKey) -> String {
     let secret = secrets
-        .read(&key.0, SecretKind::RefreshToken)
+        .read(key.as_str(), SecretKind::RefreshToken)
         .await
         .unwrap()
         .unwrap();
@@ -761,7 +761,7 @@ async fn access_tokens_are_cached_refreshed_and_their_refresh_tokens_rotated() {
     let mock = Mock::start().await;
     let client = mock.client();
     let secrets = MemoryStore::default();
-    let key = AccountKey("account-1".into());
+    let key = AccountKey::parse("account-1").unwrap();
     let tokens = AccessTokens::default();
     let get = |renew| tokens.get(&key, "Sealwax: test", &secrets, Some(&client), renew);
 
@@ -778,7 +778,7 @@ async fn access_tokens_are_cached_refreshed_and_their_refresh_tokens_rotated() {
 
     let first = mock.grant_refresh_token();
     secrets
-        .store(&key.0, SecretKind::RefreshToken, "", first.as_bytes())
+        .store(key.as_str(), SecretKind::RefreshToken, "", first.as_bytes())
         .await
         .unwrap();
     let fetched = get(false).await.unwrap();

@@ -322,7 +322,7 @@ async fn harness(
         },
         sender,
     ));
-    let key = AccountKey("pop3-actor".into());
+    let key = AccountKey::parse("pop3-actor").unwrap();
     let account = shared
         .store
         .ensure_account(
@@ -340,7 +340,7 @@ async fn harness(
         .secrets()
         .await
         .store(
-            &key.0,
+            key.as_str(),
             SecretKind::Password,
             "Sealwax test",
             b"fictional-pop-password",

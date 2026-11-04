@@ -232,7 +232,7 @@ impl Running {
 
     async fn add(&mut self, request: u64, server: Pop3, policy: Pop3Policy) -> AccountId {
         let settings = AccountSettings {
-            key: AccountKey(String::new()),
+            key: AccountKey::unassigned(),
             name: "POP3 testbed".into(),
             label: None,
             color: None,

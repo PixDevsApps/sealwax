@@ -141,7 +141,7 @@ async fn imap_protos_panic_restarts_the_account() {
         .try_send(Command::AddAccount {
             request: 1,
             settings: AccountSettings {
-                key: AccountKey(String::new()),
+                key: AccountKey::unassigned(),
                 name: "Panic".into(),
                 label: None,
                 color: None,

@@ -95,7 +95,7 @@ impl AccessTokens {
         *held = None;
         let client = client.ok_or(LoginFailure::OAuthRequired)?;
         let stored = secrets
-            .read(&key.0, SecretKind::RefreshToken)
+            .read(key.as_str(), SecretKind::RefreshToken)
             .await
             .map_err(|error| {
                 tracing::warn!(%error, "the refresh token couldn't be read");
@@ -109,7 +109,12 @@ impl AccessTokens {
         })?;
         if let Some(rotated) = tokens.refresh.as_ref().filter(|new| new.as_str() != stored) {
             match secrets
-                .store(&key.0, SecretKind::RefreshToken, label, rotated.as_bytes())
+                .store(
+                    key.as_str(),
+                    SecretKind::RefreshToken,
+                    label,
+                    rotated.as_bytes(),
+                )
                 .await
             {
                 Ok(()) => tracing::debug!("the rotated refresh token replaced the stored one"),

@@ -361,7 +361,7 @@ fn parts_and_originals_are_fetched_on_demand_and_answered_once() {
         .send_blocking(Command::AddAccount {
             request: 1,
             settings: AccountSettings {
-                key: AccountKey(String::new()),
+                key: AccountKey::unassigned(),
                 name: "Parts".into(),
                 label: None,
                 color: None,

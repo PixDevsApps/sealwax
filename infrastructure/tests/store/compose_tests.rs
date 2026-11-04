@@ -33,7 +33,7 @@ pub(super) fn server() -> Cx {
     let store = Store::open(&dir.path().join("store.sqlite"), StoreOptions::default()).unwrap();
     let account = store
         .ensure_account(
-            AccountKey("compose-test".into()),
+            AccountKey::parse("compose-test").unwrap(),
             NewAccount {
                 name: "Compose".into(),
                 address: "me@example.test".into(),
@@ -291,7 +291,7 @@ fn removing_an_account_returns_its_drafts_blobs_unless_another_holds_them() {
     let other = cx
         .store
         .ensure_account(
-            AccountKey("other".into()),
+            AccountKey::parse("other").unwrap(),
             NewAccount {
                 name: "Other".into(),
                 address: "other@example.test".into(),

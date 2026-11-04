@@ -18,8 +18,6 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Characters of a generated key: 60 random bits as lowercase base32.
-pub const KEY_LENGTH: usize = 12;
-const BASE32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
 /// How often a write starts over when the file changed while it was being written.
 const ATTEMPTS: usize = 3;
 
@@ -31,15 +29,7 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub fn new_key() -> io::Result<AccountKey> {
     let mut bytes = [0; 8];
     getrandom::fill(&mut bytes).map_err(|error| io::Error::other(error.to_string()))?;
-    let mut bits = u64::from_le_bytes(bytes);
-    let key = (0..KEY_LENGTH)
-        .map(|_| {
-            let character = BASE32[(bits & 31) as usize];
-            bits >>= 5;
-            char::from(character)
-        })
-        .collect();
-    Ok(AccountKey(key))
+    Ok(AccountKey::generate(bytes))
 }
 
 /// Where the accounts live.
@@ -269,7 +259,7 @@ impl Pending {
                     "remove" => PendingOp::Remove,
                     _ => return None,
                 };
-                accounts_file::is_valid_key(key).then(|| (op, AccountKey(key.to_owned())))
+                AccountKey::parse(key).ok().map(|key| (op, key))
             })
             .collect())
     }
@@ -332,7 +322,7 @@ mod tests {
             certificate: None,
         };
         AccountSettings {
-            key: AccountKey(key.to_owned()),
+            key: AccountKey::parse(key).unwrap(),
             name: "Test Person".to_owned(),
             label: None,
             color: None,
@@ -349,11 +339,12 @@ mod tests {
 
     #[test]
     fn keys_are_random_base32() {
-        let keys: Vec<_> = (0..200).map(|_| new_key().unwrap().0).collect();
+        let keys: Vec<_> = (0..200).map(|_| new_key().unwrap()).collect();
         for key in &keys {
-            assert_eq!(key.len(), KEY_LENGTH);
-            assert!(accounts_file::is_valid_key(key), "{key}");
-            assert!(key.bytes().all(|byte| BASE32.contains(&byte)));
+            assert_eq!(
+                key.as_str().len(),
+                sealwax_domain::account::GENERATED_KEY_LENGTH
+            );
         }
         let mut unique = keys.clone();
         unique.sort();
@@ -378,16 +369,16 @@ mod tests {
             add(&path, &account("other", "HOME@example.test")),
             Err(AccountsFileError::AddressExists)
         ));
-        assert!(remove(&path, &AccountKey("work".into())).unwrap());
-        assert!(!remove(&path, &AccountKey("work".into())).unwrap());
-        assert_eq!(read(&path).unwrap()[0].key.0, "home");
+        assert!(remove(&path, &AccountKey::parse("work").unwrap()).unwrap());
+        assert!(!remove(&path, &AccountKey::parse("work").unwrap()).unwrap());
+        assert_eq!(read(&path).unwrap()[0].key.as_str(), "home");
         let leftovers: Vec<_> = fs::read_dir(&dirs.config)
             .unwrap()
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(leftovers, ["accounts.toml"], "no temporary file is left");
         let missing = dirs.config.join("none.toml");
-        assert!(!remove(&missing, &AccountKey("x".into())).unwrap());
+        assert!(!remove(&missing, &AccountKey::parse("x").unwrap()).unwrap());
         assert!(!missing.exists());
     }
 
@@ -395,7 +386,7 @@ mod tests {
     fn relabels_in_place_with_private_modes() {
         let root = scratch();
         let path = SealwaxDirs::under(root.path()).accounts_file();
-        let work = AccountKey("work".into());
+        let work = AccountKey::parse("work").unwrap();
         assert!(!relabel(&path, &work, Some("Work"), None).unwrap());
         assert!(
             !path.exists(),
@@ -416,7 +407,7 @@ mod tests {
         );
         assert!(relabel(&path, &work, None, None).unwrap());
         assert_eq!(read(&path).unwrap()[0].title(), "work@example.test");
-        assert!(!relabel(&path, &AccountKey("gone".into()), Some("X"), None).unwrap());
+        assert!(!relabel(&path, &AccountKey::parse("gone").unwrap(), Some("X"), None).unwrap());
     }
 
     #[test]
@@ -468,7 +459,10 @@ mod tests {
         let paths = AccountPaths::new(&SealwaxDirs::under(root.path()));
         let pending = Pending::new(paths.pending.clone());
         assert_eq!(pending.list().unwrap(), Vec::new());
-        let (a, b) = (AccountKey("aaaa".into()), AccountKey("bbbb".into()));
+        let (a, b) = (
+            AccountKey::parse("aaaa").unwrap(),
+            AccountKey::parse("bbbb").unwrap(),
+        );
         pending.begin(PendingOp::Add, &a).unwrap();
         pending.begin(PendingOp::Remove, &b).unwrap();
         assert_eq!(mode(&paths.pending), 0o600);

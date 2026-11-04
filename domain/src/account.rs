@@ -4,10 +4,75 @@
 
 use std::fmt;
 
-/// An account's stable name in `accounts.toml` and the keyring. Unlike the store's `AccountId`,
-/// it survives a deleted cache.
+/// The longest key a hand-written account may have.
+pub const MAX_KEY_LENGTH: usize = 40;
+/// The length of a generated key.
+pub const GENERATED_KEY_LENGTH: usize = 12;
+const BASE32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
+
+/// Whether `key` can name an account: 1 to 40 of `a`–`z`, `0`–`9`, `-` and `_`. Generated keys
+/// are 12 characters of lowercase base32; hand-written ones may be words ("work").
+pub fn is_valid_key(key: &str) -> bool {
+    (1..=MAX_KEY_LENGTH).contains(&key.len())
+        && key
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b"-_".contains(&byte))
+}
+
+/// An account's stable name in `accounts.toml`, the keyring and file names (a rules file, the
+/// layout). Unlike the store's `AccountId`, it survives a deleted cache. Always
+/// [`is_valid_key`], except [`AccountKey::unassigned`]: a new account's, until it is added.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct AccountKey(pub String);
+pub struct AccountKey(String);
+
+/// Text that isn't an account key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InvalidKey;
+
+impl fmt::Display for InvalidKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a key takes a–z, 0–9, - and _ only, at most 40 characters")
+    }
+}
+
+impl std::error::Error for InvalidKey {}
+
+impl AccountKey {
+    pub fn parse(text: &str) -> Result<Self, InvalidKey> {
+        if is_valid_key(text) {
+            Ok(Self(text.to_owned()))
+        } else {
+            Err(InvalidKey)
+        }
+    }
+
+    /// A key made from 60 random bits: 12 characters of lowercase base32 (`k3j5x8m2q9wa`).
+    pub fn generate(random: [u8; 8]) -> Self {
+        let mut bits = u64::from_le_bytes(random);
+        Self(
+            (0..GENERATED_KEY_LENGTH)
+                .map(|_| {
+                    let character = BASE32[(bits & 31) as usize];
+                    bits >>= 5;
+                    char::from(character)
+                })
+                .collect(),
+        )
+    }
+
+    /// The key of an account not added yet; adding gives it one.
+    pub fn unassigned() -> Self {
+        Self(String::new())
+    }
+
+    pub fn is_unassigned(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
 
 impl fmt::Display for AccountKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -435,6 +500,31 @@ pub struct LoginError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn keys_are_checked() {
+        for key in ["work", "k3j5x8m2q9wa", "a-b_c", "0"] {
+            assert_eq!(AccountKey::parse(key).map(|key| key.0), Ok(key.to_owned()));
+        }
+        for key in ["", "Work", "a b", "æ", &"x".repeat(41)] {
+            assert_eq!(AccountKey::parse(key), Err(InvalidKey), "{key}");
+        }
+        assert!(AccountKey::unassigned().is_unassigned());
+        assert!(!AccountKey::parse("work").unwrap().is_unassigned());
+    }
+
+    #[test]
+    fn generated_keys_are_base32() {
+        let zero = AccountKey::generate([0; 8]);
+        assert_eq!(zero.as_str(), "a".repeat(GENERATED_KEY_LENGTH));
+        let key = AccountKey::generate(*b"sealwax!");
+        assert_eq!(key.as_str().len(), GENERATED_KEY_LENGTH);
+        assert!(is_valid_key(key.as_str()));
+        assert!(key.as_str().bytes().all(|byte| BASE32.contains(&byte)));
+        assert_ne!(key, AccountKey::generate(*b"sealwax?"));
+    }
+
     use super::{AccountColor, CertificatePin, Endpoint, Security, UsernameForm};
 
     #[test]
