@@ -822,3 +822,21 @@ fn pinned_groups_match_a_model() {
         }
     }
 }
+
+#[test]
+fn a_group_whose_address_has_non_ascii_capitals_pins_its_mail() {
+    let fx = fixture();
+    let ids = ingest(
+        &fx.store,
+        vec![mail(fx.inbox, 1, "ÅSE@Fjell.example", false)],
+    );
+    let inbox = ViewSpec::folder(fx.inbox);
+    // Group by Sender's key is SQLite's `lower(trim(…))`, which folds ASCII letters only.
+    let (key, _) = groups(&fx.store, inbox, GroupBy::Sender).remove(0);
+    assert_eq!(key, "Åse@fjell.example");
+    let pinned = pin(&fx.store, PinTarget::Key(key.clone()), PinKind::Sender).unwrap();
+    assert_eq!(pinned.key, key);
+    let rows = whole(&fx.store, inbox).rows;
+    assert_eq!(self::ids(&rows), [ids[0]]);
+    assert!(rows[0].pinned, "the group's pin matches its mail");
+}

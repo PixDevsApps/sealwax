@@ -9,7 +9,6 @@ use super::{State, Writer};
 use crate::store::api::{ChangeEvent, StoreVersion};
 use crate::store::compose::{
     self, COPY_PENDING, COPY_STARTED, QUEUED, SENDING, SENT, UNCERTAIN, failure_code, kind_code,
-    state_from,
 };
 use crate::store::compose_api::{
     CLOSED_DRAFT_QUIET_MS, CopyFolder, DRAFT_QUIET_MS, DeletionId, DeletionTarget, Discarded,
@@ -164,7 +163,7 @@ struct DraftRow {
     pop3: bool,
     message_id: String,
     revision: u64,
-    state: Option<i64>,
+    state: Option<SendState>,
     copy: Option<ServerCopy>,
     /// An upload under way: its folder, UIDVALIDITY and mark.
     upload: Option<(FolderId, u32, u32)>,
@@ -492,11 +491,15 @@ pub(crate) fn has_deletions(tx: &Connection, folder: FolderId) -> rusqlite::Resu
         .query_row([folder.0], |row| row.get(0))
 }
 
-fn change(draft: &DraftRow, state: Option<i64>, failure: Option<SendFailure>) -> OutboxChange {
+fn change(
+    draft: &DraftRow,
+    state: Option<SendState>,
+    failure: Option<SendFailure>,
+) -> OutboxChange {
     OutboxChange {
         account: draft.account,
         draft: draft.id,
-        state: state.map(state_from),
+        state,
         failure,
     }
 }
@@ -559,10 +562,10 @@ fn leave_outbox(
     compose::unreferenced(tx, blobs)
 }
 
-fn not_applied(version: u64, state: Option<i64>) -> SendRecorded {
+fn not_applied(version: u64, state: Option<SendState>) -> SendRecorded {
     SendRecorded {
         version: StoreVersion(version),
-        state: state.map(state_from),
+        state,
         ..SendRecorded::default()
     }
 }
@@ -647,7 +650,11 @@ impl Writer {
                 let _ = reply.try_send(self.send_started(draft, &prepared, now));
             }
             ComposeJob::Done { draft, now, reply } => {
-                let _ = reply.try_send(self.send_done(draft, now, &[SENDING, UNCERTAIN]));
+                let _ = reply.try_send(self.send_done(
+                    draft,
+                    now,
+                    &[SendState::Sending, SendState::Uncertain],
+                ));
             }
             ComposeJob::Failed {
                 draft,
@@ -756,10 +763,7 @@ impl Writer {
                     return Ok(DraftSaved::Gone);
                 };
                 if let Some(state) = old.state {
-                    return Ok(DraftSaved::NotEditable {
-                        id,
-                        state: state_from(state),
-                    });
+                    return Ok(DraftSaved::NotEditable { id, state });
                 }
                 if old.account != draft.account {
                     // Its copies belong to the account it leaves.
@@ -888,11 +892,11 @@ impl Writer {
                 ..Discarded::default()
             });
         };
-        if let Some(state) = draft.state.filter(|state| *state != QUEUED) {
+        if let Some(state) = draft.state.filter(|state| *state != SendState::Queued) {
             return Ok(Discarded {
                 version: StoreVersion(self.state.version),
                 found: true,
-                refused: Some(state_from(state)),
+                refused: Some(state),
                 account: Some(draft.account),
                 ..Discarded::default()
             });
@@ -928,7 +932,7 @@ impl Writer {
             return Ok(SendQueued::Gone);
         };
         if let Some(state) = draft.state {
-            return Ok(SendQueued::NotEditable(state_from(state)));
+            return Ok(SendQueued::NotEditable(state));
         }
         if draft.local {
             return Ok(SendQueued::LocalAccount);
@@ -947,9 +951,11 @@ impl Writer {
         ])?;
         tx.prepare_cached("UPDATE drafts SET open = 0, failure = NULL WHERE id = ?1")?
             .execute([id.0])?;
-        let version =
-            self.state
-                .commit_compose(tx, vec![change(&draft, Some(QUEUED), None)], &[])?;
+        let version = self.state.commit_compose(
+            tx,
+            vec![change(&draft, Some(SendState::Queued), None)],
+            &[],
+        )?;
         Ok(SendQueued::Queued {
             account: draft.account,
             revision: draft.revision,
@@ -966,8 +972,8 @@ impl Writer {
         };
         match draft.state {
             None => return Ok(SendUndone::NotQueued),
-            Some(QUEUED) => {}
-            Some(state) => return Ok(SendUndone::TooLate(state_from(state))),
+            Some(SendState::Queued) => {}
+            Some(state) => return Ok(SendUndone::TooLate(state)),
         }
         let blobs = prepared_blobs(&tx, id)?;
         tx.prepare_cached("DELETE FROM outbox WHERE draft = ?1")?
@@ -1192,8 +1198,8 @@ impl Writer {
         let Some(draft) = draft_row(&tx, id)? else {
             return Ok(SendStarted::NotQueued(None));
         };
-        if draft.state != Some(QUEUED) {
-            return Ok(SendStarted::NotQueued(draft.state.map(state_from)));
+        if draft.state != Some(SendState::Queued) {
+            return Ok(SendStarted::NotQueued(draft.state));
         }
         if let Some(recorded) = read_prepared(&tx, id)?
             && recorded != *prepared
@@ -1215,8 +1221,11 @@ impl Writer {
             prepared.envelope_from,
             codec::encode_words(&prepared.envelope_to),
         ])?;
-        self.state
-            .commit_compose(tx, vec![change(&draft, Some(SENDING), None)], &[])?;
+        self.state.commit_compose(
+            tx,
+            vec![change(&draft, Some(SendState::Sending), None)],
+            &[],
+        )?;
         Ok(SendStarted::Started)
     }
 
@@ -1227,7 +1236,7 @@ impl Writer {
         &mut self,
         id: DraftId,
         now: i64,
-        from: &[i64],
+        from: &[SendState],
     ) -> Result<SendRecorded, StoreError> {
         let tx = self
             .conn
@@ -1277,9 +1286,11 @@ impl Writer {
         let copies_to_delete = deletions.queued;
         changes.extend(deletions.expunge);
         let (plans, accounts) = queue_in(&tx, BATCH_COMPOSE, changes)?;
-        let version =
-            self.state
-                .commit_compose(tx, vec![change(&draft, Some(SENT), None)], &plans)?;
+        let version = self.state.commit_compose(
+            tx,
+            vec![change(&draft, Some(SendState::Sent), None)],
+            &plans,
+        )?;
         Ok(SendRecorded {
             version,
             applied: true,
@@ -1301,7 +1312,7 @@ impl Writer {
         let Some(draft) = draft_row(&tx, id)? else {
             return Ok(not_applied(self.state.version, None));
         };
-        if !matches!(draft.state, Some(QUEUED | SENDING)) {
+        if !matches!(draft.state, Some(SendState::Queued | SendState::Sending)) {
             return Ok(not_applied(self.state.version, draft.state));
         }
         match failure {
@@ -1310,9 +1321,11 @@ impl Writer {
                     "UPDATE outbox SET state = ?2, not_before = ?3 WHERE draft = ?1",
                 )?
                 .execute(params![id.0, QUEUED, retry_at])?;
-                let version =
-                    self.state
-                        .commit_compose(tx, vec![change(&draft, Some(QUEUED), None)], &[])?;
+                let version = self.state.commit_compose(
+                    tx,
+                    vec![change(&draft, Some(SendState::Queued), None)],
+                    &[],
+                )?;
                 Ok(SendRecorded {
                     version,
                     applied: true,
@@ -1342,14 +1355,16 @@ impl Writer {
         let Some(draft) = draft_row(&tx, id)? else {
             return Ok(not_applied(self.state.version, None));
         };
-        if draft.state != Some(SENDING) {
+        if draft.state != Some(SendState::Sending) {
             return Ok(not_applied(self.state.version, draft.state));
         }
         tx.prepare_cached("UPDATE outbox SET state = ?2 WHERE draft = ?1")?
             .execute(params![id.0, UNCERTAIN])?;
-        let version =
-            self.state
-                .commit_compose(tx, vec![change(&draft, Some(UNCERTAIN), None)], &[])?;
+        let version = self.state.commit_compose(
+            tx,
+            vec![change(&draft, Some(SendState::Uncertain), None)],
+            &[],
+        )?;
         Ok(SendRecorded {
             version,
             applied: true,
@@ -1365,7 +1380,7 @@ impl Writer {
         now: i64,
     ) -> Result<SendRecorded, StoreError> {
         if resolution == Resolution::WasSent {
-            return self.send_done(id, now, &[UNCERTAIN]);
+            return self.send_done(id, now, &[SendState::Uncertain]);
         }
         let tx = self
             .conn
@@ -1373,7 +1388,7 @@ impl Writer {
         let Some(draft) = draft_row(&tx, id)? else {
             return Ok(not_applied(self.state.version, None));
         };
-        if draft.state != Some(UNCERTAIN) {
+        if draft.state != Some(SendState::Uncertain) {
             return Ok(not_applied(self.state.version, draft.state));
         }
         match resolution {
@@ -1382,9 +1397,11 @@ impl Writer {
                     "UPDATE outbox SET state = ?2, not_before = ?3 WHERE draft = ?1",
                 )?
                 .execute(params![id.0, QUEUED, not_before])?;
-                let version =
-                    self.state
-                        .commit_compose(tx, vec![change(&draft, Some(QUEUED), None)], &[])?;
+                let version = self.state.commit_compose(
+                    tx,
+                    vec![change(&draft, Some(SendState::Queued), None)],
+                    &[],
+                )?;
                 Ok(SendRecorded {
                     version,
                     applied: true,
@@ -1449,7 +1466,7 @@ impl Writer {
         let Some(draft) = draft_row(&tx, id)? else {
             return Ok(not_applied(self.state.version, None));
         };
-        if draft.state != Some(SENT) {
+        if draft.state != Some(SendState::Sent) {
             return Ok(not_applied(self.state.version, draft.state));
         }
         if done == SentCopyDone::GaveUp {
@@ -1646,7 +1663,7 @@ impl Writer {
             });
         };
         let mut deletions = Deletions::default();
-        if draft.state == Some(SENT) {
+        if draft.state == Some(SendState::Sent) {
             // Sent while it uploaded: the new copy goes too.
             let dead = DraftRow {
                 copy: Some(ServerCopy {

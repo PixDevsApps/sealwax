@@ -2,6 +2,11 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.1.8 — Not released yet
+
+- **Pinning a sender whose address has capitals beyond A–Z works:** pinning a group in Group by Sender for an address such as `ÅSE@example.no` never matched its mail, and the message's menu kept offering Pin Sender. Searching `sender:` for such an address, typed as it is written, found nothing either. Now both match.
+- **A quick reply's text isn't kept after it is sent:** for its own tests, Sealwax kept the text of every quick reply, and every `mailto:` link it was handed, in memory for as long as it ran (in the background, that's until you log out). Now nothing is kept unless a test asks for it.
+
 ## 1.1.7 — 2026-11-03
 
 Two fixes, and a pointer for NixOS.

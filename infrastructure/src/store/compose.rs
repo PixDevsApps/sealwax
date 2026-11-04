@@ -3,6 +3,7 @@
 
 use super::codec;
 use super::compose_api::{SendFailure, SendState, StoredDraft};
+use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::{Connection, OptionalExtension, params};
 use sealwax_domain::compose::{Draft, DraftPart, DraftSource, ReplyKind};
 use sealwax_domain::model::{AccountId, Address, BlobKey, DraftId, MessageId};
@@ -17,12 +18,16 @@ pub(crate) const SENT: i64 = 3;
 pub(crate) const COPY_PENDING: i64 = 0;
 pub(crate) const COPY_STARTED: i64 = 1;
 
-pub(crate) fn state_from(code: i64) -> SendState {
-    match code {
-        QUEUED => SendState::Queued,
-        SENDING => SendState::Sending,
-        UNCERTAIN => SendState::Uncertain,
-        _ => SendState::Sent,
+/// An outbox row's state; a code no Sealwax writes is an error, never taken for another state.
+impl FromSql for SendState {
+    fn column_result(value: ValueRef<'_>) -> FromSqlResult<Self> {
+        match value.as_i64()? {
+            QUEUED => Ok(SendState::Queued),
+            SENDING => Ok(SendState::Sending),
+            UNCERTAIN => Ok(SendState::Uncertain),
+            SENT => Ok(SendState::Sent),
+            code => Err(FromSqlError::OutOfRange(code)),
+        }
     }
 }
 
@@ -112,7 +117,7 @@ pub(crate) fn read(conn: &Connection, id: DraftId) -> rusqlite::Result<Option<St
                 saved: row.get(4)?,
                 open: row.get(5)?,
                 failure: row.get::<_, Option<i64>>(17)?.map(failure_from),
-                send: row.get::<_, Option<i64>>(18)?.map(state_from),
+                send: row.get(18)?,
             })
         })
         .optional()?;

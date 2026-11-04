@@ -244,6 +244,8 @@ impl BodyState {
         }
     }
 
+    /// A code no Sealwax writes reads as `Headers`: the body is fetched again, which repairs
+    /// the row instead of hiding a message whose body can't be shown.
     pub(crate) fn from_code(code: i64) -> BodyState {
         match code {
             1 => BodyState::Partial,

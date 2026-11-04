@@ -109,6 +109,11 @@ use writer::{WriteJob, Writer};
 pub enum StoreError {
     #[error("the database has schema version {found}; this build supports up to {supported}")]
     NewerSchema { found: i64, supported: i64 },
+    /// A read-only connection found a schema the writer hasn't migrated yet.
+    #[error(
+        "the database has schema version {found}, older than this build's {expected}, unmigrated"
+    )]
+    OlderSchema { found: i64, expected: i64 },
     #[error("SQLite {0} lacks FTS5 with contentless delete; Sealwax needs SQLite 3.43 or newer")]
     MissingFts5(String),
     #[error("database: {0}")]
@@ -280,7 +285,10 @@ impl Store {
             reader_threads.push(
                 std::thread::Builder::new()
                     .name(format!("sealwax-store-reader-{index}"))
-                    .spawn(move || reader.run(queue))?,
+                    .spawn(move || {
+                        let _watch = PanicWatch("reader");
+                        reader.run(queue);
+                    })?,
             );
         }
         let mut writers = Vec::new();
@@ -288,7 +296,10 @@ impl Store {
         writers.push(
             std::thread::Builder::new()
                 .name("sealwax-store-maintenance".into())
-                .spawn(move || maintenance::run(maintenance, checkpoint_queue))?,
+                .spawn(move || {
+                    let _watch = PanicWatch("maintenance");
+                    maintenance::run(maintenance, checkpoint_queue);
+                })?,
         );
         let writer = Writer::new(
             writer,
@@ -300,7 +311,10 @@ impl Store {
         writers.push(
             std::thread::Builder::new()
                 .name("sealwax-store-writer".into())
-                .spawn(move || writer.run(write_queue))?,
+                .spawn(move || {
+                    let _watch = PanicWatch("writer");
+                    writer.run(write_queue);
+                })?,
         );
         tracing::debug!(readers = options.readers, "store opened");
         Ok(Store {
@@ -628,6 +642,22 @@ impl Drop for Store {
 
 /// How the list of senders whose images load keeps an address: trimmed, in lower case; `None`
 /// for an empty one.
+/// Says so in the log when a store thread ends in a panic: the requests it would have served
+/// fail with [`StoreError::Closed`] from then on, until Sealwax starts again, and without this
+/// nothing after the panic's own report would say why.
+pub(crate) struct PanicWatch(pub(crate) &'static str);
+
+impl Drop for PanicWatch {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            tracing::error!(
+                thread = self.0,
+                "a store thread stopped after a panic; what it served fails until Sealwax starts again"
+            );
+        }
+    }
+}
+
 pub(crate) fn remote_sender_key(address: &str) -> Option<String> {
     let address = address.trim();
     (!address.is_empty()).then(|| address.to_lowercase())

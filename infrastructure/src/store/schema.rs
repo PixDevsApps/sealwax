@@ -625,10 +625,16 @@ pub fn open_reader(path: &Path) -> Result<Connection, StoreError> {
     )?;
     conn.set_prepared_statement_cache_capacity(64);
     let version = user_version(&conn)?;
-    if version != VERSION {
+    if version > VERSION {
         return Err(StoreError::NewerSchema {
             found: version,
             supported: VERSION,
+        });
+    }
+    if version < VERSION {
+        return Err(StoreError::OlderSchema {
+            found: version,
+            expected: VERSION,
         });
     }
     Ok(conn)

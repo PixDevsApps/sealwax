@@ -2,7 +2,7 @@
 //! Drafts-folder message is a copy of, the outbox, and recipient suggestions.
 
 use super::{Reader, Sender};
-use crate::store::compose::{self, state_from};
+use crate::store::compose;
 use crate::store::compose_api::{Contact, OutboxEntry, StoredDraft};
 use crate::store::{StoreError, contacts};
 use rusqlite::{OptionalExtension, params};
@@ -133,7 +133,7 @@ impl Reader {
                 Ok(OutboxEntry {
                     draft: DraftId(row.get(0)?),
                     account: AccountId(row.get(1)?),
-                    state: state_from(row.get(2)?),
+                    state: row.get(2)?,
                     not_before: row.get(3)?,
                     attempts: row.get(4)?,
                     subject: row.get(5)?,

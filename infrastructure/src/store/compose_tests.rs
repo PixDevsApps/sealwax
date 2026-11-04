@@ -1268,3 +1268,20 @@ fn a_quick_reply_finds_its_closed_reply_draft_again() {
     store.set_draft_open(newer, false).recv_blocking().unwrap();
     assert_eq!(found(store), Some(newer));
 }
+
+#[test]
+fn an_outbox_state_no_sealwax_writes_is_an_error_never_sent() {
+    let cx = server();
+    let store = &cx.store;
+    let id = save(store, None, draft(cx.account, 1), true);
+    store.queue_send(id, NOW).recv_blocking().unwrap();
+    let conn = Connection::open(cx.path()).unwrap();
+    conn.execute("UPDATE outbox SET state = 7 WHERE draft = ?1", [id.0])
+        .unwrap();
+    // Read back, it fails instead of passing for a state it isn't (it was read as Sent).
+    assert!(store.outbox(None).recv_blocking().is_err());
+    assert!(store.draft(id).recv_blocking().is_err());
+    assert!(store.undo_send(id).recv_blocking().is_err());
+    // And it is never due.
+    assert!(due(store, cx.account, NOW + 60_000).is_empty());
+}

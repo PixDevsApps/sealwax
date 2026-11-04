@@ -9,6 +9,7 @@ use super::writer::WriteJob;
 use super::{Reply, Store, StoreError, ViewFilter, ViewScope};
 use rusqlite::{Connection, OptionalExtension, params};
 use sealwax_domain::model::{FolderId, MessageId};
+use sealwax_domain::senders::sender_key;
 
 /// The most messages a view's Pinned section holds; a pinned sender's older mail stays in its
 /// date. Fewer than one screen of rows (14 at 1440 px), so the dates still show.
@@ -252,7 +253,8 @@ pub(crate) fn key(
 ) -> rusqlite::Result<Option<String>> {
     let key = match target {
         PinTarget::Key(key) => Some(match kind {
-            PinKind::Sender => key.trim().to_lowercase(),
+            // As `column`'s SQL folds it, so the key matches its mail.
+            PinKind::Sender => sender_key(key),
             PinKind::Domain => key.trim().to_owned(),
         }),
         PinTarget::Message(id) => conn

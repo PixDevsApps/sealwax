@@ -28,9 +28,11 @@ impl GroupBy {
     }
 }
 
-/// The key a sender's address is grouped under: the address, lower-cased.
+/// The key a sender's address is grouped, pinned and searched (`sender:`) under: the address
+/// trimmed, its ASCII letters lower-cased, as the store's SQL folds it (`lower(trim(from_addr))`:
+/// SQLite's `lower` leaves other letters as they are), so a key always matches its mail.
 pub fn sender_key(address: &str) -> String {
-    address.trim().to_lowercase()
+    address.trim().to_ascii_lowercase()
 }
 
 /// The key a sender's domain is grouped under: the registrable domain of the address's domain,
@@ -55,6 +57,7 @@ mod tests {
     #[test]
     fn keys() {
         assert_eq!(sender_key(" News@Shop.Example "), "news@shop.example");
+        assert_eq!(sender_key("ÅSE@Fjell.Example"), "Åse@fjell.example");
         assert_eq!(domain_key("news@mail.shop.example.co.uk"), "example.co.uk");
         assert_eq!(domain_key("a@Shop.COM."), "shop.com");
         assert_eq!(
