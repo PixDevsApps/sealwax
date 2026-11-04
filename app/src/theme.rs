@@ -73,6 +73,10 @@ pub struct ThemeController {
     installed: Cell<bool>,
     provider: gtk::CssProvider,
     style: gtk::CssProvider,
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests and the harnesses")
+    )]
     css_errors: Rc<Cell<u32>>,
     forced: Cell<Option<Mode>>,
     dark_handler: RefCell<Option<glib::SignalHandlerId>>,
@@ -182,10 +186,12 @@ impl ThemeController {
         self.theme.borrow().clone()
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn paths(&self) -> &OmarchyPaths {
         &self.paths
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn options(&self) -> ThemeOptions {
         self.options.get()
     }
@@ -214,16 +220,19 @@ impl ThemeController {
     }
 
     /// Reads everything again, as at startup, without waiting.
+    #[cfg(feature = "test-hooks")]
     pub fn reload(&self) {
         self.request(Request::ALL);
     }
 
     /// Completed applications, the first and unchanged reloads included (for self-tests).
+    #[cfg(feature = "test-hooks")]
     pub fn reloads(&self) -> u32 {
         self.reloads.get()
     }
 
     /// CSS parsing errors reported for `style.css` and the generated stylesheet.
+    #[cfg(feature = "test-hooks")]
     pub fn css_errors(&self) -> u32 {
         self.css_errors.get()
     }

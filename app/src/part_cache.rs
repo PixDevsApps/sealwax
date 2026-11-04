@@ -10,9 +10,9 @@ use std::collections::VecDeque;
 use std::rc::Rc;
 
 /// The most bytes kept.
-pub const CAP: usize = 32 * 1024 * 1024;
+pub(crate) const CAP: usize = 32 * 1024 * 1024;
 /// A part larger than this isn't kept.
-pub const LARGEST: usize = 8 * 1024 * 1024;
+pub(crate) const LARGEST: usize = 8 * 1024 * 1024;
 
 type Key = (MessageId, u32);
 
@@ -37,7 +37,7 @@ thread_local! {
 }
 
 /// The bytes of part `part` of `message`, when kept.
-pub fn get(message: MessageId, part: u32) -> Option<Vec<u8>> {
+pub(crate) fn get(message: MessageId, part: u32) -> Option<Vec<u8>> {
     CACHE.with_borrow_mut(|cache| {
         let entry = cache.take((message, part))?;
         let data = entry.1.to_vec();
@@ -48,13 +48,13 @@ pub fn get(message: MessageId, part: u32) -> Option<Vec<u8>> {
 }
 
 /// Whether part `part` of `message` is kept, without counting as a use.
-pub fn contains(message: MessageId, part: u32) -> bool {
+pub(crate) fn contains(message: MessageId, part: u32) -> bool {
     CACHE.with_borrow(|cache| cache.entries.iter().any(|(key, _)| *key == (message, part)))
 }
 
 /// Keeps `data` as part `part` of `message`, dropping the least recently used to stay in
 /// [`CAP`].
-pub fn put(message: MessageId, part: u32, data: &[u8]) {
+pub(crate) fn put(message: MessageId, part: u32, data: &[u8]) {
     if data.is_empty() || data.len() > LARGEST {
         return;
     }
@@ -72,7 +72,7 @@ pub fn put(message: MessageId, part: u32, data: &[u8]) {
 }
 
 /// Drops the parts of `messages` (gone from the store: their ids may be used again).
-pub fn forget(messages: &[MessageId]) {
+pub(crate) fn forget(messages: &[MessageId]) {
     if messages.is_empty() {
         return;
     }
@@ -85,7 +85,8 @@ pub fn forget(messages: &[MessageId]) {
 }
 
 /// How many bytes are kept.
-pub fn bytes() -> usize {
+#[cfg(test)]
+pub(crate) fn bytes() -> usize {
     CACHE.with_borrow(|cache| cache.bytes)
 }
 

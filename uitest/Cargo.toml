@@ -1,0 +1,29 @@
+[package]
+name = "sealwax-uitest"
+description = "sealwax-selftest, a whole Sealwax with the self-test runner, and the harnesses that drive the app's widgets"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "sealwax-selftest"
+path = "src/main.rs"
+
+[dependencies]
+sealwax = { path = "../app", features = ["test-hooks"] }
+
+[dev-dependencies]
+sealwax-domain.workspace = true
+sealwax-infrastructure.workspace = true
+sealwax-engine.workspace = true
+gtk4.workspace = true
+libadwaita.workspace = true
+gio.workspace = true
+async-channel.workspace = true
+tracing.workspace = true
+webkit6.workspace = true

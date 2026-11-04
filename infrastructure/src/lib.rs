@@ -8,6 +8,7 @@ pub mod blobs;
 pub mod ingest;
 pub mod layout;
 pub mod logging;
+#[cfg(feature = "test-support")]
 pub mod loopback;
 pub mod omarchy;
 pub mod rules;

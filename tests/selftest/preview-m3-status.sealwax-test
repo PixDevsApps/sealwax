@@ -2,7 +2,7 @@
 # typing a password again and the certificate's details, each in a dark and a light stock theme
 # (matte-black with square corners, catppuccin-latte rounded). On a scripted engine; every
 # address, name and host is fictional. Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/preview-m3-status.sealwax-test
+# Run: tools/headless.sh 34 target/debug/sealwax-selftest --self-test tests/selftest/preview-m3-status.sealwax-test
 
 desktop tiling
 resize 1440 900

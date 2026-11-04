@@ -17,11 +17,11 @@
 //!   a broken file shows as soon as it is saved, and a fixed one clears); `RulesApplied` is a
 //!   toast. Nothing of a rule, an address or a folder reaches the log.
 
-pub mod dialog;
-pub mod draft;
-pub mod editor;
-pub mod file;
-pub mod text;
+pub(crate) mod dialog;
+pub(crate) mod draft;
+pub(crate) mod editor;
+pub(crate) mod file;
+pub(crate) mod text;
 
 use crate::application::AppState;
 use crate::engine_link::Subscription;
@@ -50,7 +50,7 @@ use std::path::Path;
 use std::rc::{Rc, Weak};
 
 /// The commands this module runs.
-pub const COMMANDS: [ActionId; 5] = [
+pub(crate) const COMMANDS: [ActionId; 5] = [
     ActionId::EditRules,
     ActionId::NewRuleFromMessage,
     ActionId::JunkSender,
@@ -60,7 +60,7 @@ pub const COMMANDS: [ActionId; 5] = [
 
 /// An account whose rules the app shows: one with a key, which names its file.
 #[derive(Clone, Debug)]
-pub struct Account {
+pub(crate) struct Account {
     pub id: AccountId,
     pub key: AccountKey,
     /// What Sealwax calls it.
@@ -82,7 +82,7 @@ const ROLES: [FolderRole; 7] = [
 
 impl Account {
     /// The account `id`, when it has a key.
-    pub fn of(state: &AppState, id: AccountId) -> Option<Account> {
+    pub(crate) fn of(state: &AppState, id: AccountId) -> Option<Account> {
         let mailbox = state.mailbox();
         let account = mailbox
             .accounts()
@@ -107,7 +107,7 @@ impl Account {
     }
 
     /// Its Inbox's and Junk folder's full names, as the rules name them.
-    pub fn sieve_folders(&self) -> Folders {
+    pub(crate) fn sieve_folders(&self) -> Folders {
         let defaults = Folders::default();
         Folders {
             inbox: self
@@ -119,7 +119,7 @@ impl Account {
         }
     }
 
-    pub fn place(&self, state: &AppState) -> Place {
+    pub(crate) fn place(&self, state: &AppState) -> Place {
         Place {
             dir: state.config().dirs.rules_dir(),
             key: self.key.clone(),
@@ -129,7 +129,7 @@ impl Account {
 
     /// The folders a rule can file into: those that take messages, the role folders first in
     /// the sidebar's order, then the others by name.
-    pub fn targets(&self) -> Vec<editor::Target> {
+    pub(crate) fn targets(&self) -> Vec<editor::Target> {
         let mut folders: Vec<&Folder> = self
             .folders
             .iter()
@@ -153,7 +153,7 @@ impl Account {
             .collect()
     }
 
-    pub fn folder_id(&self, name: &str) -> Option<FolderId> {
+    pub(crate) fn folder_id(&self, name: &str) -> Option<FolderId> {
         self.folders
             .iter()
             .find(|folder| folder.name == name)
@@ -222,7 +222,7 @@ fn app_state() -> Option<Rc<AppState>> {
 }
 
 /// Listens to the engine's rules events and watches the rules folder, once at startup.
-pub fn install(state: &Rc<AppState>) {
+pub(crate) fn install(state: &Rc<AppState>) {
     let shared = shared();
     shared.state.replace(Rc::downgrade(state));
     let subscription = state.engine().subscribe(|event| match event {
@@ -247,7 +247,11 @@ pub fn install(state: &Rc<AppState>) {
 }
 
 /// Connects the commands on the main window's action set and in the sidebar's menus.
-pub fn install_window(state: &Rc<AppState>, window: &Window, actions: &crate::actions::ActionSet) {
+pub(crate) fn install_window(
+    state: &Rc<AppState>,
+    window: &Window,
+    actions: &crate::actions::ActionSet,
+) {
     let weak = Rc::downgrade(state);
     actions.connect(ActionId::EditRules, move || {
         if let Some(state) = weak.upgrade()
@@ -421,7 +425,7 @@ fn picked(state: &AppState) -> Result<Picked, &'static str> {
 }
 
 /// Whether `id`, one of [`COMMANDS`], applies now, or why not.
-pub fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
+pub(crate) fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
     applies_with(state, id, &picked(state))
 }
 
@@ -453,7 +457,7 @@ fn applies_with(
 }
 
 /// Whether each command applies to what the window shows and has selected.
-pub fn refresh(state: &AppState, actions: &crate::actions::ActionSet) {
+pub(crate) fn refresh(state: &AppState, actions: &crate::actions::ActionSet) {
     let picked = picked(state);
     for id in COMMANDS {
         actions.set_applies(id, applies_with(state, id, &picked).is_ok());
@@ -461,13 +465,13 @@ pub fn refresh(state: &AppState, actions: &crate::actions::ActionSet) {
 }
 
 /// The selected messages' sender, for the menus' and the palette's titles.
-pub fn sender(state: &AppState) -> Option<String> {
+pub(crate) fn sender(state: &AppState) -> Option<String> {
     picked(state).ok().map(|picked| picked.address)
 }
 
 /// The commands' titles where they differ from the registry's, for the palette: Always and
 /// Never Junk name the sender.
-pub fn titles(state: &AppState) -> Vec<(ActionId, String)> {
+pub(crate) fn titles(state: &AppState) -> Vec<(ActionId, String)> {
     let Some(address) = sender(state) else {
         return Vec::new();
     };
@@ -667,12 +671,12 @@ fn remember(state: &Rc<AppState>, revert: Revert, lead: String) {
 }
 
 /// Whether Undo would take back a list change: the last action is one.
-pub fn can_undo() -> bool {
+pub(crate) fn can_undo() -> bool {
     shared().last.borrow().is_some()
 }
 
 /// Another action became the last one: the list change's Undo no longer works.
-pub fn forget_last() {
+pub(crate) fn forget_last() {
     let shared = shared();
     shared.last.replace(None);
     if let Some(expiry) = shared.expiry.take() {
@@ -682,7 +686,7 @@ pub fn forget_last() {
 
 /// Undo (`z`, Ctrl+Z, the toast): takes back the last list change if the last action is one;
 /// `false` leaves Undo to the others.
-pub fn undo_last(state: &Rc<AppState>) -> bool {
+pub(crate) fn undo_last(state: &Rc<AppState>) -> bool {
     let shared = shared();
     let Some(revert) = shared.last.take() else {
         return false;
@@ -702,7 +706,7 @@ pub fn undo_last(state: &Rc<AppState>) -> bool {
 
 /// Apply Rules to This Folder: the account's rules on every message `folder` holds, by the
 /// engine; a toast says they run, then what they changed, with Undo.
-pub fn apply(state: &Rc<AppState>, folder: FolderId) {
+pub(crate) fn apply(state: &Rc<AppState>, folder: FolderId) {
     let title = state
         .mailbox()
         .folder(folder)
@@ -714,7 +718,7 @@ pub fn apply(state: &Rc<AppState>, folder: FolderId) {
 
 /// A rule just saved in the Rules dialog: it runs alone on the mail already in its account's
 /// Inbox, as if it had just arrived there; what it moves leaves the Inbox at once, with Undo.
-pub fn apply_rule(state: &Rc<AppState>, account: &Account, rule: &Rule) {
+pub(crate) fn apply_rule(state: &Rc<AppState>, account: &Account, rule: &Rule) {
     let Some(inbox) = account.role(FolderRole::Inbox) else {
         return;
     };
@@ -895,7 +899,7 @@ fn check_all() {
 }
 
 /// The banner's entries for accounts whose rules can't run, before the offline entry.
-pub fn add_waiting(state: &AppState, queue: &mut Vec<Waiting>) {
+pub(crate) fn add_waiting(state: &AppState, queue: &mut Vec<Waiting>) {
     let problems = shared().problems.borrow().clone();
     let at = queue
         .iter()
@@ -918,7 +922,7 @@ pub fn add_waiting(state: &AppState, queue: &mut Vec<Waiting>) {
 }
 
 /// The banner's Open File, for the account it shows.
-pub fn open_shown(state: &Rc<AppState>) {
+pub(crate) fn open_shown(state: &Rc<AppState>) {
     let shown = state.waiting().into_iter().next();
     let Some(Waiting {
         attention: Attention::RulesFailed { .. },
@@ -940,26 +944,29 @@ pub fn open_shown(state: &Rc<AppState>) {
 
 /// The self-test's stand-in for the desktop's file opener: it gets each path Open File would
 /// open.
-pub fn set_opener(opener: impl Fn(&Path) + 'static) {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn set_opener(opener: impl Fn(&Path) + 'static) {
     shared().opener.replace(Some(Rc::new(opener)));
 }
 
 /// The Apply Rules requests waiting for the engine's answer, oldest first, for the self-test.
-pub fn pending_applies() -> Vec<RequestId> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn pending_applies() -> Vec<RequestId> {
     let mut requests: Vec<RequestId> = shared().applying.borrow().keys().copied().collect();
     requests.sort_unstable();
     requests
 }
 
 /// The accounts the banner says can't run their rules, for the self-test.
-pub fn problems() -> Vec<(AccountId, String)> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn problems() -> Vec<(AccountId, String)> {
     shared().problems.borrow().clone()
 }
 
 /// Opens the account's rules file in the desktop's default application for it (`gtk::
 /// FileLauncher`, the portal's where there is one), as Preferences opens `config.toml`; never
 /// from a headless run.
-pub fn open_file(state: &AppState, place: &Place) {
+pub(crate) fn open_file(state: &AppState, place: &Place) {
     let Some(path) = place.path() else {
         return;
     };
@@ -1018,7 +1025,12 @@ pub(crate) fn rename_folders(
 /// under it follow): the account's rules that file into them follow too, off the GTK thread.
 /// A folder deleted leaves the rules as they are: a rule filing into a missing folder keeps
 /// the message where it is.
-pub fn folder_renamed(account: AccountId, old: String, new: String, delimiter: Option<char>) {
+pub(crate) fn folder_renamed(
+    account: AccountId,
+    old: String,
+    new: String,
+    delimiter: Option<char>,
+) {
     let Some(state) = app_state() else {
         return;
     };

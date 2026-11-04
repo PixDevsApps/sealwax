@@ -96,16 +96,17 @@ fn is_enabled(
 
 /// A command's title where it differs from the registry's: Move to Junk is Not Junk in a
 /// Junk folder.
-pub type Titles = dyn Fn(ActionId) -> Option<String>;
+pub(crate) type Titles = dyn Fn(ActionId) -> Option<String>;
 
 impl Palette {
+    #[cfg(feature = "test-hooks")]
     pub fn new(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Self {
         Self::titled(window, keymap, None, &|_| None)
     }
 
     /// A palette whose commands take their titles from `titles` where it has one, with the
     /// composer card's commands from `composer`.
-    pub fn titled(
+    pub(crate) fn titled(
         window: &impl IsA<gtk::ApplicationWindow>,
         keymap: &Keymap,
         composer: Option<gio::ActionGroup>,
@@ -166,7 +167,7 @@ impl Palette {
     }
 
     /// Opens over the window with the cursor in the search entry.
-    pub fn present(&self) {
+    pub(crate) fn present(&self) {
         let Some(window) = self.inner.window.upgrade() else {
             return;
         };
@@ -176,11 +177,13 @@ impl Palette {
         }
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn dialog(&self) -> &adw::Dialog {
         &self.dialog
     }
 
     /// Types `query` into the search entry, as a user would.
+    #[cfg(feature = "test-hooks")]
     pub fn set_query(&self, query: &str) {
         if let Some(entry) = self.inner.entry.upgrade() {
             entry.set_text(query);
@@ -189,6 +192,7 @@ impl Palette {
     }
 
     /// The commands shown, best match first.
+    #[cfg(feature = "test-hooks")]
     pub fn shown(&self) -> Vec<ActionId> {
         self.inner
             .shown
@@ -199,36 +203,33 @@ impl Palette {
     }
 
     /// The search entry: typing, Enter (`activate`) and Escape (`stop-search`) arrive there.
+    #[cfg(feature = "test-hooks")]
     pub fn search_entry(&self) -> Option<gtk::SearchEntry> {
         self.inner.entry.upgrade()
     }
 
     /// The command Enter would run.
+    #[cfg(feature = "test-hooks")]
     pub fn selected(&self) -> Option<ActionId> {
         self.inner.selected()
     }
 
-    /// Runs the selected command, as Enter does, and returns it.
-    pub fn activate_selected(&self) -> Option<ActionId> {
-        let id = self.inner.selected()?;
-        self.inner.run(id);
-        Some(id)
-    }
-
     /// Moves the selection as Down (positive) or Up (negative) does.
+    #[cfg(feature = "test-hooks")]
     pub fn move_selection(&self, step: i32) {
         self.inner.move_selection(step);
     }
 }
 
 /// Builds a palette for `window` and opens it.
+#[cfg(feature = "test-hooks")]
 pub fn present(window: &impl IsA<gtk::ApplicationWindow>, keymap: &Keymap) -> Palette {
     present_titled(window, keymap, None, &|_| None)
 }
 
 /// Builds a palette for `window` (with the composer card's commands from `composer`) whose
 /// commands take their titles from `titles`, and opens it.
-pub fn present_titled(
+pub(crate) fn present_titled(
     window: &impl IsA<gtk::ApplicationWindow>,
     keymap: &Keymap,
     composer: Option<gio::ActionGroup>,

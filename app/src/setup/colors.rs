@@ -163,6 +163,7 @@ impl ColorChoice {
     }
 
     /// Whether a swatch has the keyboard focus.
+    #[cfg(feature = "test-hooks")]
     pub(super) fn has_focus(&self) -> bool {
         self.root.focus_child().is_some()
     }

@@ -5,8 +5,8 @@
 # perf-list's store (target/perf-list/data, imported once) is reused.
 #
 # Not part of tools/ci.sh (perf-*): it needs a release build and the 100,000-message store:
-#   cargo build --release -p sealwax -p sealwax-fixtures
-#   tools/headless.sh 53 target/release/sealwax --self-test tests/selftest/perf-search.sealwax-test
+#   cargo build --release -p sealwax-uitest -p sealwax-fixtures
+#   tools/headless.sh 53 target/release/sealwax-selftest --self-test tests/selftest/perf-search.sealwax-test
 # Headless numbers are a dry run: Broadway paints in software, so painting costs more than on the
 # live session; the search's own time (search-changed → painted) is the store's plus one frame.
 

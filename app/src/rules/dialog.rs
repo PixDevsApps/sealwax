@@ -31,7 +31,7 @@ use std::rc::{Rc, Weak};
 use std::time::SystemTime;
 
 /// What the dialog shows first.
-pub enum Start {
+pub(crate) enum Start {
     /// The rules.
     List,
     /// The editor with a new rule, over the rules (Create Rule from Message).
@@ -40,7 +40,7 @@ pub enum Start {
 
 /// The open dialog, for the self-test and for changes made elsewhere.
 #[derive(Clone)]
-pub struct Shown {
+pub(crate) struct Shown {
     inner: Rc<Inner>,
 }
 
@@ -78,14 +78,14 @@ thread_local! {
 }
 
 /// The dialog open now, if any.
-pub fn current() -> Option<Shown> {
+pub(crate) fn current() -> Option<Shown> {
     OPEN.with(|open| open.borrow().upgrade())
         .filter(|inner| inner.dialog.is_mapped())
         .map(|inner| Shown { inner })
 }
 
 /// Shows `toast` in the dialog when it is open for `account`; `false` when it isn't.
-pub fn show_toast(account: AccountId, toast: &adw::Toast) -> bool {
+pub(crate) fn show_toast(account: AccountId, toast: &adw::Toast) -> bool {
     match current() {
         Some(shown) if shown.inner.account.id == account => {
             shown.inner.toasts.add_toast(toast.clone());
@@ -97,7 +97,7 @@ pub fn show_toast(account: AccountId, toast: &adw::Toast) -> bool {
 
 /// The account's rules file changed elsewhere (Always Junk, Never Junk, a renamed folder):
 /// the dialog showing it reads it again.
-pub fn reload_if_open(account: &Account) {
+pub(crate) fn reload_if_open(account: &Account) {
     if let Some(shown) = current()
         && shown.inner.account.key == account.key
     {
@@ -106,7 +106,7 @@ pub fn reload_if_open(account: &Account) {
 }
 
 /// Opens the Rules dialog for `account` over the main window.
-pub fn open(state: &Rc<AppState>, account: Account, start: Start) {
+pub(crate) fn open(state: &Rc<AppState>, account: Account, start: Start) {
     let Some(window) = state.window() else {
         return;
     };
@@ -217,22 +217,21 @@ pub fn open(state: &Rc<AppState>, account: Account, start: Start) {
 }
 
 impl Shown {
-    pub fn dialog(&self) -> &adw::Dialog {
-        &self.inner.dialog
-    }
-
     /// The rules as the dialog holds them.
-    pub fn rule_set(&self) -> Option<RuleSet> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn rule_set(&self) -> Option<RuleSet> {
         self.inner.set.borrow().clone()
     }
 
     /// Whether a save is waiting or running.
-    pub fn is_saving(&self) -> bool {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn is_saving(&self) -> bool {
         self.inner.saving.get() || self.inner.dirty.get()
     }
 
     /// The tag of the page on top: `rules`, `edit` or `apply`.
-    pub fn page(&self) -> String {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn page(&self) -> String {
         self.inner
             .nav
             .visible_page()
@@ -242,7 +241,8 @@ impl Shown {
     }
 
     /// Why the open editor can't save, if it can't.
-    pub fn editor_problem(&self) -> Option<&'static str> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn editor_problem(&self) -> Option<&'static str> {
         self.inner
             .editor
             .borrow()

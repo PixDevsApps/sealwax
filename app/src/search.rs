@@ -16,11 +16,11 @@ use std::rc::Rc;
 use std::time::Duration;
 
 /// The toast while the index is rebuilt.
-pub const REBUILDING_TEXT: &str = "Rebuilding the search index…";
+pub(crate) const REBUILDING_TEXT: &str = "Rebuilding the search index…";
 /// The toast when it failed.
-pub const FAILED_TEXT: &str = "The search index couldn't be rebuilt";
+pub(crate) const FAILED_TEXT: &str = "The search index couldn't be rebuilt";
 /// How long the result's toast shows.
-pub const RESULT_SHOWN: Duration = Duration::from_secs(5);
+pub(crate) const RESULT_SHOWN: Duration = Duration::from_secs(5);
 
 thread_local! {
     static RUNNING: Cell<bool> = const { Cell::new(false) };
@@ -29,7 +29,7 @@ thread_local! {
 }
 
 /// Installs the search commands, once at startup.
-pub fn install(state: &Rc<AppState>) {
+pub(crate) fn install(state: &Rc<AppState>) {
     let Some(actions) = state.app_actions() else {
         return;
     };
@@ -42,20 +42,22 @@ pub fn install(state: &Rc<AppState>) {
 }
 
 /// Whether a rebuild runs now.
-pub fn is_running() -> bool {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn is_running() -> bool {
     RUNNING.with(Cell::get)
 }
 
 /// The self-test's hold: the next rebuilds wait (with their toast shown) until the returned
 /// sender sends or is dropped.
-pub fn hold() -> async_channel::Sender<()> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn hold() -> async_channel::Sender<()> {
     let (sender, receiver) = async_channel::bounded(1);
     HOLD.with(|hold| hold.replace(Some(receiver)));
     sender
 }
 
 /// The result's toast: "Search index rebuilt: 1,234 messages in 2.5 s".
-pub fn result_text(rebuilt: &IndexRebuilt) -> String {
+pub(crate) fn result_text(rebuilt: &IndexRebuilt) -> String {
     let messages = match rebuilt.messages {
         1 => "1 message".to_owned(),
         count => format!("{} messages", thousands(count)),

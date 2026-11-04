@@ -4,7 +4,7 @@
 # Folder from the palette, the folder row's menu and the Rules dialog, with its toasts; Rules…
 # in the account heading's menu; the rules following a folder renamed in Sealwax, and staying
 # as they are when one is deleted. Every name and address is fictional.
-# Run: tools/headless.sh 85 target/debug/sealwax --self-test tests/selftest/rules-events.sealwax-test
+# Run: tools/headless.sh 85 target/debug/sealwax-selftest --self-test tests/selftest/rules-events.sealwax-test
 
 desktop tiling
 resize 1440 900

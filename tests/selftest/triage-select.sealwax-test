@@ -5,7 +5,7 @@
 # message alone; every action applies to every selected message, and after the selected
 # messages leave the list the next one is selected. Move to… doesn't move between accounts.
 # Every message is fictional.
-# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-select.sealwax-test
+# Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/triage-select.sealwax-test
 
 desktop tiling
 resize 1440 900

@@ -5,7 +5,7 @@
 # on this desktop). A scripted engine answers; every name, address and link is fictional, and
 # no page is opened. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from
 # the repository root:
-#   tools/headless.sh 61 target/debug/sealwax --self-test tests/selftest/preview-ml032.sealwax-test
+#   tools/headless.sh 61 target/debug/sealwax-selftest --self-test tests/selftest/preview-ml032.sealwax-test
 
 desktop tiling
 resize 1440 900

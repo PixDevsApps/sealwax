@@ -1,7 +1,7 @@
 # SIGTERM, SIGHUP and SIGINT end Sealwax cleanly (ML-020): uwsm stops apps with SIGTERM, a
 # closing terminal sends SIGHUP, Ctrl+C SIGINT. Each signal goes to a Sealwax of its own (its own
 # id and folders) once it has painted its first frame, and it must exit with status 0.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/signals.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/signals.sealwax-test
 
 desktop tiling
 

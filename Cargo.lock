@@ -2855,11 +2855,28 @@ dependencies = [
  "proptest",
  "rusqlite",
  "sealwax-domain",
+ "sealwax-infrastructure",
  "sha2",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sealwax-uitest"
+version = "1.1.7"
+dependencies = [
+ "async-channel 2.5.0",
+ "gio",
+ "gtk4",
+ "libadwaita",
+ "sealwax",
+ "sealwax-domain",
+ "sealwax-engine",
+ "sealwax-infrastructure",
+ "tracing",
+ "webkit6",
 ]
 
 [[package]]

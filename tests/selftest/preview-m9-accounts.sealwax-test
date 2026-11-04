@@ -4,7 +4,7 @@
 # (dark, square corners as on stock Omarchy) and catppuccin-latte (light, corners rounded 8 as
 # on this desktop). A scripted engine answers; every name, address and server is fictional.
 # Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the repository root:
-#   tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/preview-m9-accounts.sealwax-test
+#   tools/headless.sh 19 target/debug/sealwax-selftest --self-test tests/selftest/preview-m9-accounts.sealwax-test
 
 desktop tiling
 resize 1440 900

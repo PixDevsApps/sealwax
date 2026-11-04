@@ -11,13 +11,13 @@
 //! (opens or closes an account's "More" folders) and `nav.collapse` (folds an account's folders
 //! away under its heading, or opens them).
 
-pub mod banner;
-pub mod dock;
-pub mod empty;
-pub mod panes;
-pub mod resize;
-pub mod sidebar;
-pub mod tooltips;
+pub(crate) mod banner;
+pub(crate) mod dock;
+pub(crate) mod empty;
+pub(crate) mod panes;
+pub(crate) mod resize;
+pub(crate) mod sidebar;
+pub(crate) mod tooltips;
 
 use banner::Banner;
 use gtk4 as gtk;
@@ -35,31 +35,30 @@ use std::rc::Rc;
 use tooltips::Tooltips;
 
 pub use banner::{Attention, BannerAction};
-pub use panes::READER_COLUMN;
 pub use sidebar::{
     ALL_INBOXES, AccountStatus, FolderRole, SidebarAccount, SidebarFolder, SidebarModel,
 };
 
 /// Registry actions the window's buttons are bound to (ML-022). A button whose action is not
 /// installed stays insensitive: compose until the composer exists (M6).
-pub const COMPOSE_ACTION: &str = "win.compose";
-pub const OPEN_CONFIG_ACTION: &str = "app.preferences";
+pub(crate) const COMPOSE_ACTION: &str = "win.compose";
+pub(crate) const OPEN_CONFIG_ACTION: &str = "app.preferences";
 /// The welcome page's "Add an account": the setup assistant (ML-033).
-pub const ADD_ACCOUNT_ACTION: &str = "win.add-account";
+pub(crate) const ADD_ACCOUNT_ACTION: &str = "win.add-account";
 
 /// Pane widths in px (DESIGN.md "Layout").
-pub const SIDEBAR_WIDTH: f64 = 220.0;
-pub const RAIL_WIDTH: f64 = 56.0;
-pub const LIST_WIDTH: f64 = 380.0;
+pub(crate) const SIDEBAR_WIDTH: f64 = 220.0;
+pub(crate) const RAIL_WIDTH: f64 = 56.0;
+pub(crate) const LIST_WIDTH: f64 = 380.0;
 /// The least room a dragged border leaves the reader, in px; more when its toolbar needs it.
-pub const READER_MIN_WIDTH: f64 = 360.0;
+pub(crate) const READER_MIN_WIDTH: f64 = 360.0;
 /// Narrower windows show the rail instead of the sidebar…
-pub const WIDE_WIDTH: f64 = 1280.0;
+pub(crate) const WIDE_WIDTH: f64 = 1280.0;
 /// …and narrower still, one pane at a time.
-pub const RAIL_MIN_WIDTH: f64 = 900.0;
+pub(crate) const RAIL_MIN_WIDTH: f64 = 900.0;
 /// One pane still fits (GNOME's smallest window, 360×294).
-pub const MIN_SIZE: (i32, i32) = (360, 294);
-pub const DEFAULT_SIZE: (i32, i32) = (1280, 800);
+pub(crate) const MIN_SIZE: (i32, i32) = (360, 294);
+pub(crate) const DEFAULT_SIZE: (i32, i32) = (1280, 800);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Layout {
@@ -144,6 +143,10 @@ struct Inner {
     column: ReaderColumn,
     /// The reader while several messages are selected.
     batch: empty::BatchPage,
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests")
+    )]
     welcome: adw::ToolbarView,
     /// "or press Ctrl+Shift+P / F1 for every command", with the keys in use.
     welcome_hint: gtk::Label,
@@ -156,6 +159,10 @@ struct Inner {
     pane: gio::SimpleAction,
     tooltips: Rc<Tooltips>,
     /// Widgets the self-test finds by name.
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests")
+    )]
     named: Vec<gtk::Widget>,
     folder_handlers: RefCell<Vec<FolderHandler>>,
     /// The widths the sidebar and the message list were dragged to (DESIGN.md "Layout").
@@ -951,6 +958,7 @@ impl Window {
     /// Gives `widget`, an icon-only button, the tooltip `label (keys)` with the keys of `id`,
     /// kept in step with `keys.toml` (DESIGN.md "Accessibility"): for the reader's toolbar
     /// (ML-027) and the list's own buttons (ML-026).
+    #[cfg(feature = "test-hooks")]
     pub fn add_shortcut_tooltip(&self, widget: &impl IsA<gtk::Widget>, label: &str, id: ActionId) {
         self.inner.tooltips.add(widget, label, id);
     }
@@ -959,10 +967,6 @@ impl Window {
     /// `queue` is empty (ML-048).
     pub fn show_banner(&self, queue: &[Attention]) {
         self.inner.banner.show(queue);
-    }
-
-    pub fn shows_banner(&self) -> bool {
-        self.inner.banner.is_shown()
     }
 
     /// Runs `handler` with what each banner button clicked asks for.
@@ -984,6 +988,7 @@ impl Window {
     }
 
     /// A pane's root widget: `sidebar`, `list`, `reader` or `welcome`.
+    #[cfg(feature = "test-hooks")]
     pub fn pane_widget(&self, name: &str) -> Option<gtk::Widget> {
         let inner = &self.inner;
         Some(match name {
@@ -997,6 +1002,7 @@ impl Window {
 
     /// A widget by its name (`gtk::Widget::widget_name`): the window's named parts, then
     /// anything in the window's tree.
+    #[cfg(feature = "test-hooks")]
     pub fn widget(&self, name: &str) -> Option<gtk::Widget> {
         if let Some(widget) = self.pane_widget(name) {
             return Some(widget);
@@ -1034,6 +1040,7 @@ fn breakpoint(width: f64) -> adw::Breakpoint {
     ))
 }
 
+#[cfg(feature = "test-hooks")]
 fn find_named(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
     if widget.widget_name() == name {
         return Some(widget.clone());

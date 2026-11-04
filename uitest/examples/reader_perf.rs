@@ -8,7 +8,7 @@
 //! rendering under Broadway; the live measurement is separate.
 //!
 //! ```sh
-//! cargo build --release -p sealwax-fixtures -p sealwax --example reader_perf
+//! cargo build --release -p sealwax-fixtures -p sealwax-uitest --example reader_perf
 //! target/release/sealwax-fixtures import --count 2000 --seed 1 \
 //!     --store .local/reader-examples/perf/store.sqlite
 //! SEALWAX_HEADLESS_TIMEOUT=600 tools/headless.sh 37 target/release/examples/reader_perf \

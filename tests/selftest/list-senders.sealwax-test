@@ -3,7 +3,7 @@
 # to the groups, the chips on groups, `is:subscription`, and the Unsubscribe dialog sending a
 # one-click unsubscribe through the self-test's fake engine. Every message and address is
 # fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-senders.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-senders.sealwax-test
 
 desktop tiling
 resize 1440 900

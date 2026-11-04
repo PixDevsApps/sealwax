@@ -28,23 +28,23 @@ use std::rc::Rc;
 use std::time::Duration;
 
 /// The notice's notification id; new-mail notifications use their own.
-pub const NOTICE_ID: &str = "background-notice";
+pub(crate) const NOTICE_ID: &str = "background-notice";
 
 /// The marker in Sealwax's state folder that says the notice was shown.
-pub const NOTICE_MARKER: &str = "background-notice-shown";
+pub(crate) const NOTICE_MARKER: &str = "background-notice-shown";
 
 /// The application action a click on the notice runs: show the main window. Not a command of
 /// the registry: nothing but a notification runs it.
-pub const SHOW_WINDOW_ACTION: &str = "show-main-window";
+pub(crate) const SHOW_WINDOW_ACTION: &str = "show-main-window";
 
 /// Development builds only: closes the first main window this many milliseconds after its first
 /// frame, as a user would, so a self-test can watch a Sealwax of its own close into background
 /// mode.
-pub const CLOSE_AFTER_ENV: &str = "SEALWAX_CLOSE_WINDOW_AFTER_MS";
+pub(crate) const CLOSE_AFTER_ENV: &str = "SEALWAX_CLOSE_WINDOW_AFTER_MS";
 
 /// A notice as sent: its id and texts.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Notice {
+pub(crate) struct Notice {
     pub id: &'static str,
     pub title: String,
     pub body: String,
@@ -56,12 +56,13 @@ thread_local! {
 }
 
 /// The notices sent in this process, oldest first.
-pub fn sent() -> Vec<Notice> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn sent() -> Vec<Notice> {
     SENT.with(|sent| sent.borrow().clone())
 }
 
 /// The notice's texts, with the Quit key the user has (`keys.toml` can change it).
-pub fn notice(keymap: &Keymap) -> Notice {
+pub(crate) fn notice(keymap: &Keymap) -> Notice {
     let quit = match keymap.shown(ActionId::Quit).first() {
         Some(key) => format!("To quit, open Sealwax and press {}.", key.display()),
         None => "To quit, open Sealwax and choose Quit in its menu.".to_owned(),
@@ -99,7 +100,7 @@ pub fn remember_notice(state_dir: &Path) -> io::Result<bool> {
 }
 
 /// Follows `[background]`, installs the notice and Start Sealwax at Login, once at startup.
-pub fn install(app: &SealwaxApplication, state: &Rc<AppState>) {
+pub(crate) fn install(app: &SealwaxApplication, state: &Rc<AppState>) {
     follow_settings(app, state);
     install_notice(app, state);
     autostart::install(state);

@@ -4,7 +4,7 @@
 # read; with the window closed in background mode it builds a new window on that message. The
 # Archive and Mark Read buttons run the window's own triage, with its toast and Undo, and take the
 # notification away; a message that is gone says so. Every name and subject is fictional.
-# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/notify-click.sealwax-test
+# Run: tools/headless.sh 55 target/debug/sealwax-selftest --self-test tests/selftest/notify-click.sealwax-test
 
 desktop tiling
 resize 1440 900

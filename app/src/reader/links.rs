@@ -18,12 +18,10 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 /// How a vetted link opens: in the default browser or mail handler, or a recorder in tests.
-pub type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
-/// Decides whether a vetted link may open (`Reader::set_link_check`); the warning dialog when
-/// none is set.
-pub type LinkCheck = Rc<dyn Fn(&Link) -> bool>;
+pub(super) type Opener = Rc<dyn Fn(&gtk::Widget, &str)>;
 
 /// What the status strip and the warning show, for checks.
+#[cfg(feature = "test-hooks")]
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LinkState {
     /// The strip's text while it is shown.
@@ -42,13 +40,12 @@ struct Warning {
 }
 
 /// The reader's link handling, with the overlay that holds the reader's page and the strip.
-pub struct Links {
+pub(super) struct Links {
     overlay: gtk::Overlay,
     strip: gtk::Box,
     status: gtk::Label,
     warning: Warning,
     opener: RefCell<Opener>,
-    check: RefCell<Option<LinkCheck>>,
     dialogs: Cell<u32>,
     dialog: RefCell<Option<adw::AlertDialog>>,
     scrolling: RefCell<Option<(glib::WeakRef<gtk::Adjustment>, glib::SignalHandlerId)>>,
@@ -57,7 +54,7 @@ pub struct Links {
 
 impl Links {
     /// Links around `page`, the reader's root, opening through `opener`.
-    pub fn new(page: &impl IsA<gtk::Widget>, opener: Opener) -> Rc<Links> {
+    pub(super) fn new(page: &impl IsA<gtk::Widget>, opener: Opener) -> Rc<Links> {
         let overlay = gtk::Overlay::builder().child(page).build();
         overlay.set_widget_name("reader-overlay");
         let status = gtk::Label::builder()
@@ -84,7 +81,6 @@ impl Links {
             status,
             warning,
             opener: RefCell::new(opener),
-            check: RefCell::new(None),
             dialogs: Cell::new(0),
             dialog: RefCell::new(None),
             scrolling: RefCell::new(None),
@@ -103,19 +99,17 @@ impl Links {
     }
 
     /// The reader's root: its page with the strip over it.
-    pub fn root(&self) -> &gtk::Overlay {
+    pub(super) fn root(&self) -> &gtk::Overlay {
         &self.overlay
     }
 
-    pub fn set_opener(&self, opener: Opener) {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn set_opener(&self, opener: Opener) {
         self.opener.replace(opener);
     }
 
-    pub fn set_check(&self, check: Option<LinkCheck>) {
-        self.check.replace(check);
-    }
-
-    pub fn state(&self) -> LinkState {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn state(&self) -> LinkState {
         LinkState {
             status: self
                 .strip
@@ -132,13 +126,14 @@ impl Links {
     }
 
     /// The warning dialog on screen, if any (for checks: they answer it as a user would).
-    pub fn dialog(&self) -> Option<adw::AlertDialog> {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn dialog(&self) -> Option<adw::AlertDialog> {
         self.dialog.borrow().clone()
     }
 
     /// The pointer or the focus entered a link of `anchor` (`hover.x`, `hover.y` in its
     /// coordinates), or left the links (`None`).
-    pub fn hover(&self, anchor: Option<&gtk::Widget>, hover: Option<&Hover>) {
+    pub(super) fn hover(&self, anchor: Option<&gtk::Widget>, hover: Option<&Hover>) {
         let Some(hover) = hover.filter(|hover| super::openable(&hover.link.uri).is_some()) else {
             self.strip.set_visible(false);
             self.warning.popover.popdown();
@@ -207,21 +202,13 @@ impl Links {
         }
     }
 
-    /// Opens `link` if it may open: absolute http(s) with a host, or mailto, and not refused
-    /// by the check. Without a check of the caller's, a link whose text and target differ asks
-    /// first.
-    pub fn open(self: &Rc<Self>, link: &Link) {
+    /// Opens `link` if it may open: absolute http(s) with a host, or mailto; a link whose text
+    /// and target differ asks first.
+    pub(super) fn open(self: &Rc<Self>, link: &Link) {
         let Some(uri) = super::openable(&link.uri) else {
             tracing::debug!("reader: a link that isn't http(s) or mailto stays closed");
             return;
         };
-        let check = self.check.borrow().clone();
-        if let Some(check) = check {
-            if check(link) {
-                self.launch(&uri);
-            }
-            return;
-        }
         match links::check(&link.text, &link.uri) {
             Verdict::Fine => self.launch(&uri),
             verdict => self.ask(&verdict, uri),

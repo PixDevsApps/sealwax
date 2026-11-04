@@ -2,7 +2,7 @@
 # [reader] conversation_order = "newest-first" puts the latest on top and the quick reply over
 # it, Next and Previous Message in Conversation still go down and up the screen, and a change
 # applies to the shown conversation at once. Every message is fictional.
-# Run: tools/headless.sh 63 target/debug/sealwax --self-test tests/selftest/reader-conversation-order.sealwax-test
+# Run: tools/headless.sh 63 target/debug/sealwax-selftest --self-test tests/selftest/reader-conversation-order.sealwax-test
 
 desktop tiling
 resize 1440 900

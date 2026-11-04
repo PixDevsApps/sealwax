@@ -13,12 +13,12 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Instant;
 
 /// Room for the widest window the scripts make.
-pub const SCREEN: (i64, i64) = (2560, 1600);
+pub(super) const SCREEN: (i64, i64) = (2560, 1600);
 
 /// GDK's modifier bits, as `broadway.js` sends them.
-pub const SHIFT: u32 = 1 << 0;
-pub const CONTROL: u32 = 1 << 2;
-pub const ALT: u32 = 1 << 3;
+pub(super) const SHIFT: u32 = 1 << 0;
+pub(super) const CONTROL: u32 = 1 << 2;
+pub(super) const ALT: u32 = 1 << 3;
 const BUTTON1: u32 = 1 << 8;
 
 const OP_GRAB_POINTER: u8 = 0;
@@ -74,7 +74,7 @@ struct Shared {
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
 
 /// Connects to the Broadway daemon of `$BROADWAY_DISPLAY` and serves it from a thread.
-pub fn connect() -> io::Result<()> {
+pub(super) fn connect() -> io::Result<()> {
     let display = std::env::var("BROADWAY_DISPLAY").map_err(|_| invalid("no BROADWAY_DISPLAY"))?;
     let number: u16 = display
         .trim_start_matches(':')
@@ -120,7 +120,7 @@ pub fn connect() -> io::Result<()> {
 
 /// Presses and releases `keysym` with the modifiers in `state`, on the surface Broadway has
 /// focused (the window).
-pub fn key(keysym: u32, state: u32) -> io::Result<()> {
+pub(super) fn key(keysym: u32, state: u32) -> io::Result<()> {
     let shared = shared()?;
     for event in [EVENT_KEY_PRESS, EVENT_KEY_RELEASE] {
         shared.send(&[event, i64::from(keysym), i64::from(state)])?;
@@ -129,7 +129,7 @@ pub fn key(keysym: u32, state: u32) -> io::Result<()> {
 }
 
 /// Where the window's surface is on Broadway's screen.
-pub fn window_origin() -> io::Result<(f64, f64)> {
+pub(super) fn window_origin() -> io::Result<(f64, f64)> {
     let (_, [left, top, _, _]) = shared()?.window()?;
     Ok((left as f64, top as f64))
 }
@@ -137,7 +137,7 @@ pub fn window_origin() -> io::Result<(f64, f64)> {
 /// Moves the pointer to `(x, y)` on Broadway's screen and clicks `button` there (1 the
 /// primary, 3 the secondary), holding the modifiers in `state`: on the topmost surface shown
 /// there, a popover's over the window's.
-pub fn click(x: f64, y: f64, state: u32, button: u32) -> io::Result<()> {
+pub(super) fn click(x: f64, y: f64, state: u32, button: u32) -> io::Result<()> {
     let shared = shared()?;
     let at = shared.move_to(x, y, state)?;
     // As broadway.js: the press carries the button's mask, the release no longer does.
@@ -156,7 +156,7 @@ pub fn click(x: f64, y: f64, state: u32, button: u32) -> io::Result<()> {
 }
 
 /// Two primary clicks at `(x, y)` close together: a double click.
-pub fn double_click(x: f64, y: f64) -> io::Result<()> {
+pub(super) fn double_click(x: f64, y: f64) -> io::Result<()> {
     let shared = shared()?;
     let at = shared.move_to(x, y, 0)?;
     for _ in 0..2 {
@@ -172,7 +172,7 @@ pub fn double_click(x: f64, y: f64) -> io::Result<()> {
 }
 
 /// Moves the pointer to `(x, y)` on Broadway's screen, as hovering does.
-pub fn hover(x: f64, y: f64) -> io::Result<()> {
+pub(super) fn hover(x: f64, y: f64) -> io::Result<()> {
     shared()?.move_to(x, y, 0).map(|_| ())
 }
 
@@ -180,7 +180,7 @@ pub fn hover(x: f64, y: f64) -> io::Result<()> {
 /// the button held, and releases it there: a drag. While the button is held the events stay on
 /// the surface that took the press, as a compositor keeps them, even over a tooltip that shows
 /// meanwhile.
-pub fn drag(from: (f64, f64), to: (f64, f64), steps: u32) -> io::Result<()> {
+pub(super) fn drag(from: (f64, f64), to: (f64, f64), steps: u32) -> io::Result<()> {
     let shared = shared()?;
     let at = shared.move_to(from.0, from.1, 0)?;
     let mut press = vec![EVENT_BUTTON_PRESS];

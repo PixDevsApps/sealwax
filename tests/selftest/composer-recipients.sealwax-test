@@ -4,7 +4,7 @@
 # reason; the suggestions popover answers Up, Down, Enter, Escape and the pointer; Cc and Bcc
 # appear with "Cc · Bcc" or the command; the From chip switches the sender. The stand-in
 # backend's contacts and identities; every name and address is fictional.
-# Run: tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/composer-recipients.sealwax-test
+# Run: tools/headless.sh 41 target/debug/sealwax-selftest --self-test tests/selftest/composer-recipients.sealwax-test
 
 desktop tiling
 resize 1440 900

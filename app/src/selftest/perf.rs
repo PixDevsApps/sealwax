@@ -19,7 +19,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("perf-fullscreen", 0, 0),
     ("perf-phase", 1, 1),
     ("perf-scroll", 2, 2),

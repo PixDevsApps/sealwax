@@ -6,7 +6,7 @@
 # messages or to a draft. Compose writes from the account the list shows. `mailto:` links reach
 # the composer through the application's open path. Every name and message is fictional.
 # A composer that opens takes the focus, so each check closes it again (`composer-close`).
-# Run: tools/headless.sh 43 target/debug/sealwax --self-test tests/selftest/reply-commands.sealwax-test
+# Run: tools/headless.sh 43 target/debug/sealwax-selftest --self-test tests/selftest/reply-commands.sealwax-test
 
 desktop tiling
 resize 1440 900

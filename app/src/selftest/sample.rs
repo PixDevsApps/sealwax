@@ -12,7 +12,7 @@ use gtk4::prelude::*;
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::theme::{avatar_class, initials};
 
-pub fn model() -> SidebarModel {
+pub(super) fn model() -> SidebarModel {
     SidebarModel {
         preferred: None,
         accounts: vec![
@@ -216,7 +216,7 @@ fn label(text: &str, classes: &[&str]) -> gtk::Label {
 /// A stand-in for the message list: the search field, the filter chips and rows, nothing
 /// behind them. The field takes no focus, so screenshots show it at rest; the real list
 /// (ML-026) decides what has the focus first.
-pub fn list() -> gtk::Widget {
+pub(super) fn list() -> gtk::Widget {
     let search = classed(
         gtk::SearchEntry::builder()
             .placeholder_text("Search — from: has:attachment is:unread")
@@ -367,7 +367,7 @@ fn message_row(message: &Message) -> gtk::Box {
 
 /// A stand-in for the reader: one fictional message on a card, with its attachment. The
 /// reply buttons name their keys through the window.
-pub fn reader(window: &Window) -> gtk::Widget {
+pub(super) fn reader(window: &Window) -> gtk::Widget {
     let column = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(16)
@@ -472,7 +472,7 @@ pub fn reader(window: &Window) -> gtk::Widget {
 
 /// A stand-in for the reader's actions: buttons with nothing behind them, whose tooltips name
 /// the registry's keys.
-pub fn reader_toolbar(window: &Window) -> gtk::Widget {
+pub(super) fn reader_toolbar(window: &Window) -> gtk::Widget {
     let bar = gtk::Box::builder().spacing(2).build();
     let button = |icons: &[&str], text: &str, id: Option<ActionId>| {
         let button = icon_button(icons, text);

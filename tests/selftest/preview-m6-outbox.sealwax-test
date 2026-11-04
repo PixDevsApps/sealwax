@@ -4,7 +4,7 @@
 # corners, catppuccin-latte rounded). Sends are played on the app's store and the fake engine.
 # Every name, address and message is fictional.
 # Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/preview-m6-outbox.sealwax-test
+# Run: tools/headless.sh 44 target/debug/sealwax-selftest --self-test tests/selftest/preview-m6-outbox.sealwax-test
 
 desktop tiling
 resize 1440 900

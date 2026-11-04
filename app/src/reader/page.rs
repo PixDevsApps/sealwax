@@ -17,7 +17,7 @@ use sealwax_domain::model::{Attachment, MessageDetail};
 use sealwax_domain::theme::{avatar_class, initials};
 
 /// The widgets of one message's card that the reader changes after building it.
-pub struct CardWidgets {
+pub(super) struct CardWidgets {
     pub root: gtk::Box,
     /// The sender block: a click, Enter or Space collapses the card.
     pub header: gtk::Button,
@@ -31,14 +31,14 @@ pub struct CardWidgets {
     pub focus: Option<gtk::Widget>,
 }
 
-pub struct Header<'a> {
+pub(super) struct Header<'a> {
     pub detail: &'a MessageDetail,
     /// The user's own addresses, for "to me".
     pub mine: &'a [String],
     pub now: i64,
 }
 
-pub fn card(
+pub(super) fn card(
     reader: &Reader,
     header: &Header<'_>,
     attachments: &[Attachment],
@@ -234,7 +234,7 @@ fn details_grid(detail: &MessageDetail, date: i64, zone: &glib::TimeZone) -> gtk
 }
 
 /// A short line in place of a body: no text, not downloaded yet, or not readable.
-pub fn notice(text: &str) -> gtk::Label {
+pub(super) fn notice(text: &str) -> gtk::Label {
     let notice = gtk::Label::builder()
         .label(text)
         .xalign(0.0)

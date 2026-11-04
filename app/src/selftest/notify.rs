@@ -36,7 +36,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::Instant;
 
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("notify-server", 0, 1),
     ("notify-mail", 3, 7),
     ("notify-arrive", 1, usize::MAX),
@@ -63,7 +63,7 @@ thread_local! {
     static ARRIVED: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
@@ -116,7 +116,7 @@ fn target(received: &server::Received) -> Option<MessageId> {
     })
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "notify-server" => {

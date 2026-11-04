@@ -1,6 +1,6 @@
-//! `sealwax --self-test <script>`: runs the real app (window and all) in a scratch directory,
-//! executes a `.sealwax-test` script against it and prints a TAP report; exits non-zero when a
-//! step fails. Ported from Stet. It refuses to run on a live display unless
+//! `sealwax-selftest --self-test <script>` (a `test-hooks` build, the `uitest` crate): runs the
+//! real app (window and all) in a scratch directory, executes a `.sealwax-test` script against it
+//! and prints a TAP report; exits non-zero when a step fails. Ported from Stet. It refuses to run on a live display unless
 //! `SEALWAX_SELFTEST_ALLOW_LIVE=1`: run it through `tools/headless.sh`. The format and the
 //! commands are in docs/m1/shell.md and docs/m1/polish.md (and TESTING.md once merged). The
 //! theme follower reads a scratch Omarchy state, never the desktop's: the built-in palette
@@ -50,7 +50,7 @@ use std::process::{Child, Command};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-pub const ALLOW_LIVE_ENV: &str = "SEALWAX_SELFTEST_ALLOW_LIVE";
+pub(crate) const ALLOW_LIVE_ENV: &str = "SEALWAX_SELFTEST_ALLOW_LIVE";
 const WAIT_TIMEOUT: Duration = Duration::from_secs(15);
 /// A step that runs longer has hung: it fails and the rest of the script is not run.
 /// `SEALWAX_SELFTEST_STEP_TIMEOUT` overrides it, in seconds.
@@ -59,7 +59,7 @@ const STEP_TIMEOUT_ENV: &str = "SEALWAX_SELFTEST_STEP_TIMEOUT";
 /// Pixels a measured size may differ from the wanted one.
 const TOLERANCE: f32 = 1.0;
 
-pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
+pub(crate) fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
     if std::env::var_os("GTK_A11Y").is_some_and(|backend| backend == "none") {
         // SAFETY: nothing else runs yet; the first thread (the Broadway client) starts below.
         // GTK's "none" backend drops accessible labels, its "test" backend keeps them for
@@ -70,8 +70,8 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
     let allowed = std::env::var_os(ALLOW_LIVE_ENV).is_some_and(|value| value == "1");
     if !broadway && !allowed {
         eprintln!(
-            "sealwax: --self-test opens windows; run it headless with \
-             tools/headless.sh <display> sealwax --self-test <script> (or set {ALLOW_LIVE_ENV}=1)"
+            "sealwax: --self-test opens windows; run it headless with tools/headless.sh \
+             <display> sealwax-selftest --self-test <script> (or set {ALLOW_LIVE_ENV}=1)"
         );
         return glib::ExitCode::from(2);
     }
@@ -203,7 +203,7 @@ struct TempRoot {
 
 /// A scratch directory to use, and keep, instead of a fresh one: the kill -9 harness
 /// (`tools/kill9-compose.sh`) runs Sealwax twice on the same store.
-pub const ROOT_ENV: &str = "SEALWAX_SELFTEST_ROOT";
+pub(crate) const ROOT_ENV: &str = "SEALWAX_SELFTEST_ROOT";
 
 impl TempRoot {
     fn create() -> std::io::Result<Self> {

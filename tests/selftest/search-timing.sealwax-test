@@ -6,7 +6,7 @@
 # results, and how many searches ran. It prints the numbers and checks no bar: Broadway paints in
 # software and this is a debug build (perf-search.sealwax-test measures 100,000 messages in a
 # release build). Every message is fictional.
-# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/search-timing.sealwax-test
+# Run: tools/headless.sh 53 target/debug/sealwax-selftest --self-test tests/selftest/search-timing.sealwax-test
 
 desktop tiling
 fixtures --count 1500 --seed 3 --folders spread

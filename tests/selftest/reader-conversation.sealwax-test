@@ -6,7 +6,7 @@
 # column opens at the selected message; a reply arriving and a message moved away change the
 # conversation in place; a 150-message conversation folds its middle and reveals it in steps.
 # Every message is fictional (app/src/reader/samples.rs). Run:
-#   tools/headless.sh 31 target/debug/sealwax --self-test tests/selftest/reader-conversation.sealwax-test
+#   tools/headless.sh 31 target/debug/sealwax-selftest --self-test tests/selftest/reader-conversation.sealwax-test
 
 desktop tiling
 resize 1440 900

@@ -40,7 +40,7 @@ use std::process::{Command, Stdio};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("background-spawn", 1, usize::MAX),
     ("background-menu", 0, 1),
     ("background-measure", 1, 1),
@@ -71,11 +71,11 @@ const CLOSE_AFTER_MS: &str = "300";
 /// A spawned Sealwax quits by itself after this long, should a test lose track of it.
 const SAFETY_EXIT_MS: &str = "120000";
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "background-spawn" => spawn(harness, arg(0), &args[1..]),

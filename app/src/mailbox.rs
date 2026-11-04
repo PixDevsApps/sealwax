@@ -38,7 +38,7 @@ fn account_key(account: &Account) -> String {
 }
 
 /// The account a sidebar account key names.
-pub fn account_for_key(key: &str) -> Option<AccountId> {
+pub(crate) fn account_for_key(key: &str) -> Option<AccountId> {
     key.strip_prefix("account-")?.parse().ok().map(AccountId)
 }
 
@@ -136,7 +136,7 @@ fn folder_tree(
 /// subfolders, each account in its colour from `accounts.toml` and folded away when the
 /// remembered layout says so, as are folders' subfolders. An account the engine hasn't reported
 /// on shows as synced.
-pub fn sidebar_model(
+pub(crate) fn sidebar_model(
     accounts: &[Account],
     folders: &[Folder],
     statuses: &HashMap<AccountId, AccountStatus>,
@@ -183,7 +183,7 @@ pub fn sidebar_model(
 
 /// The sidebar key of `view` among `accounts` and `folders`: All Inboxes, or the selectable
 /// folder of that name in the account with that key.
-pub fn view_key(view: &View, accounts: &[Account], folders: &[Folder]) -> Option<String> {
+pub(crate) fn view_key(view: &View, accounts: &[Account], folders: &[Folder]) -> Option<String> {
     match view {
         View::AllInboxes => Some(ALL_INBOXES.to_owned()),
         View::Folder { account, name } => {
@@ -201,7 +201,7 @@ pub fn view_key(view: &View, accounts: &[Account], folders: &[Folder]) -> Option
 }
 
 /// What a sidebar key shows: a folder, or the unified inbox.
-pub fn scope_for_key(key: &str, folders: &[Folder]) -> Option<ViewScope> {
+pub(crate) fn scope_for_key(key: &str, folders: &[Folder]) -> Option<ViewScope> {
     if key == ALL_INBOXES {
         return Some(ViewScope::UnifiedInbox);
     }
@@ -264,7 +264,7 @@ impl Latch {
 }
 
 /// Resolves with `future`'s output, or `None` once `limit` has passed.
-pub async fn with_timeout<T>(future: impl Future<Output = T>, limit: Duration) -> Option<T> {
+pub(crate) async fn with_timeout<T>(future: impl Future<Output = T>, limit: Duration) -> Option<T> {
     let mut future = std::pin::pin!(future);
     let mut timeout = std::pin::pin!(glib::timeout_future(limit));
     std::future::poll_fn(|context| {
@@ -283,7 +283,7 @@ type EventListener = Rc<dyn Fn(&Arc<ChangeEvent>)>;
 type Listener = Rc<dyn Fn()>;
 
 /// The view the first window shows, read ahead.
-pub struct FirstView {
+pub(crate) struct FirstView {
     pub spec: ViewSpec,
     pub thresholds: Thresholds,
     pub opened: ViewOpened,
@@ -510,6 +510,7 @@ impl Mailbox {
     }
 
     /// Whether the store is open.
+    #[cfg(feature = "test-hooks")]
     pub fn is_open(&self) -> bool {
         matches!(*self.phase.borrow(), Phase::Open)
     }

@@ -5,7 +5,7 @@
 # take the text to a composer window, Escape gives the focus back to the conversation; the text
 # is kept per message across selection changes, and keeps its message when a reply arrives.
 # Keys and clicks go through Broadway as real presses. Every message is fictional.
-# Run: tools/headless.sh 43 target/debug/sealwax --self-test tests/selftest/reply-quick.sealwax-test
+# Run: tools/headless.sh 43 target/debug/sealwax-selftest --self-test tests/selftest/reply-quick.sealwax-test
 
 desktop tiling
 resize 1440 900

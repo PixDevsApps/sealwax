@@ -24,7 +24,7 @@ use std::ops::Range;
 use std::rc::Rc;
 
 /// People suggested at most, as the composer's suggestions.
-pub const MAX_PEOPLE: usize = 6;
+pub(crate) const MAX_PEOPLE: usize = 6;
 /// The popover's padding and border on each side (style.css), so it is as wide as the field.
 const POPOVER_INSET: i32 = 5;
 
@@ -34,7 +34,7 @@ type Context = Rc<dyn Fn() -> Option<(Date, Vec<AccountId>)>>;
 
 /// A row as the self-test sees it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Shown {
+pub(crate) struct Shown {
     pub title: String,
     pub detail: String,
     /// It can be taken (a day's format can't).
@@ -42,7 +42,7 @@ pub struct Shown {
 }
 
 #[derive(Clone)]
-pub struct Suggestions {
+pub(crate) struct Suggestions {
     inner: Rc<Inner>,
 }
 
@@ -70,7 +70,7 @@ impl Drop for Inner {
 }
 
 impl Suggestions {
-    pub fn new(entry: &gtk::SearchEntry, mailbox: Rc<Mailbox>) -> Self {
+    pub(crate) fn new(entry: &gtk::SearchEntry, mailbox: Rc<Mailbox>) -> Self {
         let list = named(
             classed(
                 gtk::ListBox::builder()
@@ -116,7 +116,10 @@ impl Suggestions {
     }
 
     /// Where today and the accounts come from.
-    pub fn set_context(&self, context: impl Fn() -> Option<(Date, Vec<AccountId>)> + 'static) {
+    pub(crate) fn set_context(
+        &self,
+        context: impl Fn() -> Option<(Date, Vec<AccountId>)> + 'static,
+    ) {
         self.inner.context.replace(Some(Rc::new(context)));
     }
 
@@ -169,16 +172,18 @@ impl Suggestions {
         });
     }
 
-    pub fn popover(&self) -> &gtk::Popover {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn popover(&self) -> &gtk::Popover {
         &self.inner.popover
     }
 
-    pub fn is_open(&self) -> bool {
+    pub(crate) fn is_open(&self) -> bool {
         self.inner.popover.is_visible()
     }
 
     /// The rows shown now (none while closed).
-    pub fn shown(&self) -> Vec<Shown> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn shown(&self) -> Vec<Shown> {
         if !self.is_open() {
             return Vec::new();
         }
@@ -191,14 +196,14 @@ impl Suggestions {
     }
 
     /// The row chosen with Down or Up.
-    pub fn selected(&self) -> Option<usize> {
+    pub(crate) fn selected(&self) -> Option<usize> {
         self.inner
             .list
             .selected_row()
             .and_then(|row| usize::try_from(row.index()).ok())
     }
 
-    pub fn close(&self) {
+    pub(crate) fn close(&self) {
         let inner = &self.inner;
         inner.serial.set(inner.serial.get() + 1);
         if inner.popover.is_visible() {
@@ -227,7 +232,7 @@ impl Suggestions {
     /// Looks again at the word at the field's cursor: `opening` (the text changed) shows the
     /// rows; otherwise (the cursor moved) only a list on screen follows. Nothing opens while
     /// the field hasn't got the keyboard focus (the list set its text).
-    pub fn update(&self, opening: bool) {
+    pub(crate) fn update(&self, opening: bool) {
         let inner = &self.inner;
         if (!opening && !self.is_open()) || !focused(&inner.entry) {
             self.close();
@@ -373,7 +378,7 @@ impl Suggestions {
     }
 
     /// Down, Up, Tab, Enter and Escape while the list is open; any other key goes to the field.
-    pub fn key(&self, key: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
+    pub(crate) fn key(&self, key: gdk::Key, state: gdk::ModifierType) -> glib::Propagation {
         let plain = !state.intersects(
             gdk::ModifierType::CONTROL_MASK
                 | gdk::ModifierType::ALT_MASK
@@ -471,7 +476,7 @@ impl Suggestions {
     }
 
     /// Takes row `index`: its text replaces the word, and the cursor goes after it.
-    pub fn take(&self, index: usize) {
+    pub(crate) fn take(&self, index: usize) {
         let inner = &self.inner;
         let Some(insert) = inner
             .rows

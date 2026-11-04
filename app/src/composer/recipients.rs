@@ -18,18 +18,18 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 /// The mock's label column and suggestions popover, in px.
-pub const LABEL_WIDTH: i32 = 56;
-pub const SUGGESTIONS_WIDTH: i32 = 380;
+pub(crate) const LABEL_WIDTH: i32 = 56;
+pub(crate) const SUGGESTIONS_WIDTH: i32 = 380;
 /// Suggestions shown at most.
 const MAX_SUGGESTIONS: usize = 6;
 
 /// One recipient as typed: its address and whether it is valid.
-pub type Parsed = (Address, bool);
+pub(crate) type Parsed = (Address, bool);
 
 /// Splits a typed or pasted list at commas, semicolons and line breaks outside quotes and
 /// angle brackets, and reads each item with the compose rules (`compose::address`): the
 /// addresses Sealwax can send to are valid chips, anything else is an error chip.
-pub fn parse_list(text: &str) -> Vec<Parsed> {
+pub(crate) fn parse_list(text: &str) -> Vec<Parsed> {
     let (mut items, rest) = split(text);
     items.push(rest);
     items
@@ -42,7 +42,7 @@ pub fn parse_list(text: &str) -> Vec<Parsed> {
 
 /// The complete items of `text` (each followed by a separator) and what follows the last
 /// separator.
-pub fn split(text: &str) -> (Vec<String>, String) {
+pub(crate) fn split(text: &str) -> (Vec<String>, String) {
     let mut items = Vec::new();
     let mut current = String::new();
     let mut quoted = false;
@@ -84,7 +84,7 @@ fn parse_item(item: &str) -> Vec<Parsed> {
 }
 
 /// An address Sealwax can send to (`compose::address::is_valid`).
-pub fn valid_address(email: &str) -> bool {
+pub(crate) fn valid_address(email: &str) -> bool {
     address::is_valid(email)
 }
 
@@ -98,7 +98,7 @@ struct Chip {
 }
 
 /// One row of recipients: its label, the chips and the entry.
-pub struct RecipientField {
+pub(crate) struct RecipientField {
     root: gtk::Box,
     wrap: adw::WrapBox,
     entry: gtk::Entry,
@@ -118,7 +118,7 @@ pub struct RecipientField {
 
 impl RecipientField {
     /// `label` ("To"), `name` the widget names' prefix (`composer-to`).
-    pub fn new(label: &str, name: &str) -> Rc<Self> {
+    pub(crate) fn new(label: &str, name: &str) -> Rc<Self> {
         let caption = classed(
             gtk::Label::builder()
                 .label(label)
@@ -205,31 +205,31 @@ impl RecipientField {
         field
     }
 
-    pub fn widget(&self) -> &gtk::Box {
+    pub(crate) fn widget(&self) -> &gtk::Box {
         &self.root
     }
 
-    pub fn entry(&self) -> &gtk::Entry {
+    pub(crate) fn entry(&self) -> &gtk::Entry {
         &self.entry
     }
 
     /// Something at the row's end, such as "Cc · Bcc".
-    pub fn append_end(&self, widget: &impl IsA<gtk::Widget>) {
+    pub(crate) fn append_end(&self, widget: &impl IsA<gtk::Widget>) {
         self.root.append(widget);
     }
 
     /// Runs `listener` whenever the recipients change.
-    pub fn connect_changed(&self, listener: impl Fn() + 'static) {
+    pub(crate) fn connect_changed(&self, listener: impl Fn() + 'static) {
         self.listener.replace(Some(Rc::new(listener)));
     }
 
     /// Where suggestions come from.
-    pub fn set_query(&self, query: impl Fn(String) -> Local<Vec<Suggestion>> + 'static) {
+    pub(crate) fn set_query(&self, query: impl Fn(String) -> Local<Vec<Suggestion>> + 'static) {
         self.query.replace(Some(Rc::new(query)));
     }
 
     /// Every recipient, valid or not, with the text still in the entry.
-    pub fn all(&self) -> Vec<Parsed> {
+    pub(crate) fn all(&self) -> Vec<Parsed> {
         let mut all: Vec<Parsed> = self
             .chips
             .borrow()
@@ -241,7 +241,7 @@ impl RecipientField {
     }
 
     /// The valid recipients, the entry's text included.
-    pub fn addresses(&self) -> Vec<Address> {
+    pub(crate) fn addresses(&self) -> Vec<Address> {
         self.all()
             .into_iter()
             .filter_map(|(address, valid)| valid.then_some(address))
@@ -249,7 +249,8 @@ impl RecipientField {
     }
 
     /// The valid chips' addresses, without the entry's text.
-    pub fn chip_addresses(&self) -> Vec<Address> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn chip_addresses(&self) -> Vec<Address> {
         self.chips
             .borrow()
             .iter()
@@ -258,16 +259,16 @@ impl RecipientField {
             .collect()
     }
 
-    pub fn invalid(&self) -> usize {
+    pub(crate) fn invalid(&self) -> usize {
         self.all().iter().filter(|(_, valid)| !valid).count()
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.chips.borrow().is_empty() && self.entry.text().trim().is_empty()
     }
 
     /// Replaces the chips with `addresses` (a draft being opened).
-    pub fn set_addresses(self: &Rc<Self>, addresses: &[Address]) {
+    pub(crate) fn set_addresses(self: &Rc<Self>, addresses: &[Address]) {
         for chip in self.chips.take() {
             self.wrap.remove(&chip.widget);
         }
@@ -278,7 +279,7 @@ impl RecipientField {
     }
 
     /// Turns the entry's text into chips.
-    pub fn commit(self: &Rc<Self>) {
+    pub(crate) fn commit(self: &Rc<Self>) {
         let text = self.entry.text().to_string();
         if text.trim().is_empty() {
             return;
@@ -296,7 +297,7 @@ impl RecipientField {
     }
 
     /// Removes the chip at `index`.
-    pub fn remove(self: &Rc<Self>, index: usize) {
+    pub(crate) fn remove(self: &Rc<Self>, index: usize) {
         let removed = {
             let mut chips = self.chips.borrow_mut();
             (index < chips.len()).then(|| chips.remove(index))
@@ -307,24 +308,16 @@ impl RecipientField {
         }
     }
 
-    /// The chips' widgets, for the self-tests.
-    pub fn chip_widgets(&self) -> Vec<gtk::Box> {
-        self.chips
-            .borrow()
-            .iter()
-            .map(|chip| chip.widget.clone())
-            .collect()
-    }
-
-    pub fn suggestions_open(&self) -> bool {
+    pub(crate) fn suggestions_open(&self) -> bool {
         self.popover.is_visible()
     }
 
-    pub fn suggestions(&self) -> Vec<Suggestion> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn suggestions(&self) -> Vec<Suggestion> {
         self.suggestions.borrow().clone()
     }
 
-    pub fn suggestion_rows(&self) -> Vec<gtk::ListBoxRow> {
+    pub(crate) fn suggestion_rows(&self) -> Vec<gtk::ListBoxRow> {
         let mut rows = Vec::new();
         let mut child = self.list.first_child();
         while let Some(widget) = child {
@@ -336,18 +329,14 @@ impl RecipientField {
         rows
     }
 
-    pub fn selected_suggestion(&self) -> Option<usize> {
+    pub(crate) fn selected_suggestion(&self) -> Option<usize> {
         self.list
             .selected_row()
             .and_then(|row| usize::try_from(row.index()).ok())
     }
 
-    pub fn popover(&self) -> &gtk::Popover {
-        &self.popover
-    }
-
     /// Takes suggestion `index` as a chip and clears the entry.
-    pub fn take_suggestion(self: &Rc<Self>, index: usize) {
+    pub(crate) fn take_suggestion(self: &Rc<Self>, index: usize) {
         let Some(suggestion) = self.suggestions.borrow().get(index).cloned() else {
             return;
         };
@@ -359,7 +348,7 @@ impl RecipientField {
     }
 
     /// Whether the keyboard focus is in the entry (its text widget has it).
-    pub fn focused(&self) -> bool {
+    pub(crate) fn focused(&self) -> bool {
         self.entry
             .root()
             .and_then(|root| root.focus())
@@ -549,13 +538,13 @@ impl RecipientField {
         }
     }
 
-    pub fn select(&self, index: usize) {
+    pub(crate) fn select(&self, index: usize) {
         if let Some(row) = self.list.row_at_index(index as i32) {
             self.list.select_row(Some(&row));
         }
     }
 
-    pub fn close_suggestions(&self) {
+    pub(crate) fn close_suggestions(&self) {
         self.serial.set(self.serial.get() + 1);
         self.suggestions.borrow_mut().clear();
         if self.popover.is_visible() {
@@ -767,7 +756,7 @@ fn suggestion_row(suggestion: &Suggestion, query: &str) -> gtk::Box {
 }
 
 /// `text` as Pango markup with the first case-insensitive match of `query` in bold.
-pub fn highlight(text: &str, query: &str) -> String {
+pub(crate) fn highlight(text: &str, query: &str) -> String {
     let lower = text.to_lowercase();
     let wanted = query.trim().to_lowercase();
     let found = (!wanted.is_empty())

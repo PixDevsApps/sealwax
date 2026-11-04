@@ -15,7 +15,7 @@ use std::time::{Duration, Instant};
 
 /// The scratch state directory under the run's root; it starts without `current/`, so the
 /// built-in palette shows until a script installs a theme.
-pub fn state_dir(root: &Path) -> PathBuf {
+pub(super) fn state_dir(root: &Path) -> PathBuf {
     root.join("omarchy")
 }
 
@@ -24,7 +24,7 @@ pub fn state_dir(root: &Path) -> PathBuf {
 static FIXTURES: OnceLock<PathBuf> = OnceLock::new();
 
 /// The script run is in `script_dir`.
-pub fn set_fixtures(script_dir: &Path) {
+pub(super) fn set_fixtures(script_dir: &Path) {
     let _ = FIXTURES.set(script_dir.join("../theme"));
 }
 

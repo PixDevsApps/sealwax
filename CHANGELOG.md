@@ -6,6 +6,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 
 - **Pinning a sender whose address has capitals beyond A–Z works:** pinning a group in Group by Sender for an address such as `ÅSE@example.no` never matched its mail, and the message's menu kept offering Pin Sender. Searching `sender:` for such an address, typed as it is written, found nothing either. Now both match.
 - **A quick reply's text isn't kept after it is sent:** for its own tests, Sealwax kept the text of every quick reply, and every `mailto:` link it was handed, in memory for as long as it ran (in the background, that's until you log out). Now nothing is kept unless a test asks for it.
+- **Tests out of the installed program:** Sealwax's own tests (the scripts that drive its window, their sample mail and a stand-in for the mail store) were built into the program you install. They're now in a separate test build, so the installed `sealwax` holds none of them, and `sealwax --help` no longer lists `--self-test`.
 
 ## 1.1.7 — 2026-11-03
 

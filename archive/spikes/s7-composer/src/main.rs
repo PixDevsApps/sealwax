@@ -9,7 +9,7 @@ mod js;
 mod manual;
 mod mime;
 mod png;
-#[path = "../../../../app/examples/composer_support/probe.rs"]
+#[path = "../../../../uitest/examples/composer_support/probe.rs"]
 mod probe;
 mod roundtrip;
 mod selftest;

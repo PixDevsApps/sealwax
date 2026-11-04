@@ -15,7 +15,7 @@ use sealwax_domain::actions::ActionId;
 use sealwax_domain::model::{Account, AccountId, Flags, Folder, FolderId, FolderRole, MessageId};
 use sealwax_domain::triage::{self, FolderInfo, Plan, Triage, Unavailable};
 use sealwax_engine::api::{Command, Refused};
-pub use sealwax_infrastructure::store::{BatchId, Lost, NotApplied, Queued, Undone};
+pub(crate) use sealwax_infrastructure::store::{BatchId, Lost, NotApplied, Queued, Undone};
 use sealwax_infrastructure::store::{QueueTriage, Reply};
 use std::cell::{Cell, RefCell};
 use std::collections::BTreeSet;
@@ -27,12 +27,12 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// How long archive, delete and move wait before they run, and the Undo toast shows (ADR-015:
 /// 5–10 s; a proposal for the user).
-pub const UNDO_WINDOW: Duration = Duration::from_secs(7);
+pub(crate) const UNDO_WINDOW: Duration = Duration::from_secs(7);
 
 /// Whether a message shown in the reader is marked read (a proposal for the user). In the
 /// Unread view it is marked when the selection leaves it, so the view doesn't take it away
 /// while it is read.
-pub const MARK_READ_ON_OPEN: bool = true;
+pub(crate) const MARK_READ_ON_OPEN: bool = true;
 
 /// A message an action applies to, as the list holds it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,7 +52,7 @@ impl fmt::Display for BackendError {
     }
 }
 
-pub type Pending<T> = Pin<Box<dyn Future<Output = Result<T, BackendError>>>>;
+pub(crate) type Pending<T> = Pin<Box<dyn Future<Output = Result<T, BackendError>>>>;
 
 /// Where actions are queued: the store's op queue (`queue_triage`, `mark_folder_read`, `undo`,
 /// `pending_ops`), or the unit tests' recording one. Each method sends its request before it
@@ -98,7 +98,8 @@ fn info(folder: &Folder) -> FolderInfo {
 }
 
 /// The accounts with a server (a key) that `folders` belong to, each once.
-pub fn server_accounts(
+#[cfg(test)]
+fn server_accounts(
     folders: impl IntoIterator<Item = FolderId>,
     known: &[Folder],
     accounts: &[Account],
@@ -117,7 +118,11 @@ pub fn server_accounts(
 }
 
 /// What `action` does to a message in `folder`, from the folders of its account.
-pub fn plan_for(action: Triage, folder: FolderId, folders: &[Folder]) -> Result<Plan, Unavailable> {
+pub(crate) fn plan_for(
+    action: Triage,
+    folder: FolderId,
+    folders: &[Folder],
+) -> Result<Plan, Unavailable> {
     let source = folders
         .iter()
         .find(|candidate| candidate.id == folder)
@@ -131,7 +136,7 @@ pub fn plan_for(action: Triage, folder: FolderId, folders: &[Folder]) -> Result<
 }
 
 /// The name a folder goes by in messages: its role's, else its own.
-pub fn folder_title(folder: &Folder) -> String {
+pub(crate) fn folder_title(folder: &Folder) -> String {
     match folder.role {
         FolderRole::Inbox => "Inbox",
         FolderRole::Drafts => "Drafts",
@@ -147,7 +152,7 @@ pub fn folder_title(folder: &Folder) -> String {
 /// Whether and how a command applies to the selected messages, for its sensitivity, its
 /// tooltip and its title.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Availability {
+pub(crate) struct Availability {
     /// Messages the command applies to.
     pub applies: usize,
     /// Why it applies to none, for the tooltip.
@@ -157,13 +162,13 @@ pub struct Availability {
 }
 
 impl Availability {
-    pub fn enabled(&self) -> bool {
+    pub(crate) fn enabled(&self) -> bool {
         self.applies > 0
     }
 }
 
 /// The triage commands, by their registry ids.
-pub const COMMANDS: [ActionId; 7] = [
+pub(crate) const COMMANDS: [ActionId; 7] = [
     ActionId::Archive,
     ActionId::Delete,
     ActionId::Junk,
@@ -174,7 +179,7 @@ pub const COMMANDS: [ActionId; 7] = [
 ];
 
 /// Whether all of `targets` are in a Junk folder, where Move to Junk means Not Junk.
-pub fn all_in_junk(targets: &[Target], folders: &[Folder]) -> bool {
+pub(crate) fn all_in_junk(targets: &[Target], folders: &[Folder]) -> bool {
     !targets.is_empty()
         && targets.iter().all(|target| {
             folders
@@ -184,7 +189,7 @@ pub fn all_in_junk(targets: &[Target], folders: &[Folder]) -> bool {
 }
 
 /// How `id`, one of [`COMMANDS`], applies to `targets`.
-pub fn availability(id: ActionId, targets: &[Target], folders: &[Folder]) -> Availability {
+pub(crate) fn availability(id: ActionId, targets: &[Target], folders: &[Folder]) -> Availability {
     let title = match id {
         ActionId::Junk if all_in_junk(targets, folders) => "Not Junk",
         ActionId::Star if star_action(targets) == Triage::Star(false) => "Unstar",
@@ -284,7 +289,7 @@ fn reason_for(
 }
 
 /// Stars every target unless all are starred, then unstars them.
-pub fn star_action(targets: &[Target]) -> Triage {
+pub(crate) fn star_action(targets: &[Target]) -> Triage {
     let all = !targets.is_empty() && targets.iter().all(|target| target.flags.is_flagged());
     Triage::Star(!all)
 }
@@ -292,7 +297,10 @@ pub fn star_action(targets: &[Target]) -> Triage {
 /// The folders Move to… offers for `targets`: their account's folders that take messages,
 /// except the one they are all in; role folders first in the sidebar's order, then the others
 /// by name. 1.0 doesn't move between accounts.
-pub fn move_choices(targets: &[Target], folders: &[Folder]) -> Result<Vec<Folder>, &'static str> {
+pub(crate) fn move_choices(
+    targets: &[Target],
+    folders: &[Folder],
+) -> Result<Vec<Folder>, &'static str> {
     let accounts: BTreeSet<AccountId> = targets
         .iter()
         .filter_map(|target| folders.iter().find(|folder| folder.id == target.folder))
@@ -341,7 +349,12 @@ fn were(count: u32) -> &'static str {
 }
 
 /// What a queued action did, in the toast's words.
-pub fn done_text(action: Triage, queued: &Queued, plans: &[Plan], folders: &[Folder]) -> String {
+pub(crate) fn done_text(
+    action: Triage,
+    queued: &Queued,
+    plans: &[Plan],
+    folders: &[Folder],
+) -> String {
     let n = messages(queued.applied);
     let to = |id: FolderId| folder_name(id, folders);
     let all_expunge = !plans.is_empty() && plans.iter().all(|plan| *plan == Plan::Expunge);
@@ -383,7 +396,7 @@ fn folder_name(id: FolderId, folders: &[Folder]) -> String {
 }
 
 /// What an action left alone, and why, in the toast's words; `None` when it left nothing.
-pub fn left_summary(action: Triage, queued: &Queued, folders: &[Folder]) -> Option<String> {
+pub(crate) fn left_summary(action: Triage, queued: &Queued, folders: &[Folder]) -> Option<String> {
     let parts: Vec<String> = queued
         .not_applied
         .iter()
@@ -419,7 +432,7 @@ pub fn left_summary(action: Triage, queued: &Queued, folders: &[Folder]) -> Opti
 }
 
 /// Marking a folder read, in the toast's words.
-pub fn folder_read_text(queued: u32, name: &str) -> String {
+pub(crate) fn folder_read_text(queued: u32, name: &str) -> String {
     match queued {
         0 => format!("Nothing in {name} was unread"),
         count => format!("Marked {} in {name} as read", messages(count)),
@@ -427,7 +440,7 @@ pub fn folder_read_text(queued: u32, name: &str) -> String {
 }
 
 /// What an Undo did, in the toast's words.
-pub fn undone_text(undone: &Undone) -> String {
+pub(crate) fn undone_text(undone: &Undone) -> String {
     let lost: Vec<String> = undone
         .lost
         .iter()
@@ -470,7 +483,7 @@ fn capitalised(text: &str) -> String {
 /// The server refused queued changes for good (`Event::OpsRefused`), and the store put the
 /// messages back: what didn't happen, in the toast's words. `account` names the account when
 /// there are several.
-pub fn refused_text(change: Refused, count: u32, account: Option<&str>) -> String {
+pub(crate) fn refused_text(change: Refused, count: u32, account: Option<&str>) -> String {
     let n = messages(count);
     let (they, were) = if count == 1 {
         ("it's", "it was")
@@ -582,6 +595,7 @@ impl Controller {
     }
 
     /// Changes the undo window (the self-test waits less).
+    #[cfg(feature = "test-hooks")]
     pub fn set_window(&self, window: Duration) {
         self.inner.window.set(window);
     }
@@ -597,6 +611,7 @@ impl Controller {
     }
 
     /// Actions waiting for the backend's answer.
+    #[cfg(feature = "test-hooks")]
     pub fn in_flight(&self) -> u32 {
         self.inner.in_flight.get()
     }
@@ -617,6 +632,7 @@ impl Controller {
     }
 
     /// Actions handed to the backend so far.
+    #[cfg(feature = "test-hooks")]
     pub fn queued(&self) -> u64 {
         self.inner.queued.get()
     }
@@ -627,6 +643,7 @@ impl Controller {
     }
 
     /// The batch Undo would undo.
+    #[cfg(any(test, feature = "test-hooks"))]
     pub fn last_batch(&self) -> Option<BatchId> {
         self.inner.last.get()
     }
@@ -696,6 +713,7 @@ impl Controller {
     }
 
     /// The same, for tests: the notice instead of the handlers.
+    #[cfg(any(test, feature = "test-hooks"))]
     pub async fn run(
         &self,
         action: Triage,
@@ -942,12 +960,12 @@ fn unix_ms(time: SystemTime) -> i64 {
 
 /// The store's op queue (ML-051): each request is one writer transaction with its overlay and
 /// one change event; the reply is awaited on the main loop, so the GTK thread runs no SQL.
-pub struct OpsBackend {
+pub(crate) struct OpsBackend {
     mailbox: Rc<Mailbox>,
 }
 
 impl OpsBackend {
-    pub fn new(mailbox: Rc<Mailbox>) -> Self {
+    pub(crate) fn new(mailbox: Rc<Mailbox>) -> Self {
         Self { mailbox }
     }
 }

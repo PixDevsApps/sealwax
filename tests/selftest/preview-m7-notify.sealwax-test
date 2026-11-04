@@ -7,7 +7,7 @@
 # on a message gone since says. Dark matte-black with square corners, light catppuccin-latte
 # rounded. Every name, subject and text is fictional.
 # Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/preview-m7-notify.sealwax-test
+# Run: tools/headless.sh 55 target/debug/sealwax-selftest --self-test tests/selftest/preview-m7-notify.sealwax-test
 
 desktop tiling
 resize 1440 900

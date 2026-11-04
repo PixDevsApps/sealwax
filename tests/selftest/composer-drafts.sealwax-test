@@ -4,7 +4,7 @@
 # closes, when Quit saves them all and when the main window closes with it, and Discard asking
 # first when there is something to lose. The stand-in backend's drafts; every name and address
 # is fictional.
-# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/composer-drafts.sealwax-test
+# Run: tools/headless.sh 42 target/debug/sealwax-selftest --self-test tests/selftest/composer-drafts.sealwax-test
 
 desktop tiling
 resize 1440 900

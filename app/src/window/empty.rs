@@ -4,6 +4,7 @@
 
 use super::panes::{classed, icon};
 use gtk4 as gtk;
+#[cfg(feature = "test-hooks")]
 use gtk4::glib;
 use gtk4::prelude::*;
 use sealwax_domain::actions::ActionId;
@@ -11,13 +12,13 @@ use sealwax_domain::keymap::{Binding, Keymap};
 
 /// "No accounts yet", with "Add an account" (the setup assistant, `win.add-account`) and a
 /// hint with the command palette's keys.
-pub struct NoAccount {
+pub(crate) struct NoAccount {
     pub page: gtk::Widget,
     pub add: gtk::Button,
     pub hint: gtk::Label,
 }
 
-pub fn no_account() -> NoAccount {
+pub(crate) fn no_account() -> NoAccount {
     let add = classed(
         gtk::Button::builder()
             .label("Add an account")
@@ -51,7 +52,7 @@ pub fn no_account() -> NoAccount {
 }
 
 /// `or press Ctrl+Shift+P / F1 for every command`, with the keys in use.
-pub fn palette_hint(keymap: &Keymap) -> String {
+pub(crate) fn palette_hint(keymap: &Keymap) -> String {
     let keys: Vec<String> = keymap
         .shown(ActionId::CommandPalette)
         .iter()
@@ -65,7 +66,7 @@ pub fn palette_hint(keymap: &Keymap) -> String {
 }
 
 /// The reader before a message is picked.
-pub fn no_message() -> gtk::Widget {
+pub(crate) fn no_message() -> gtk::Widget {
     centred(&empty_state(
         &["mail-read-symbolic"],
         "No message selected",
@@ -76,7 +77,7 @@ pub fn no_message() -> gtk::Widget {
 
 /// The batch actions the reader's page offers while several messages are selected (ML-054),
 /// in the toolbar's order.
-pub const BATCH_ACTIONS: [ActionId; 7] = [
+pub(crate) const BATCH_ACTIONS: [ActionId; 7] = [
     ActionId::Archive,
     ActionId::Delete,
     ActionId::Junk,
@@ -181,6 +182,7 @@ impl BatchPage {
     }
 
     /// The page's heading and text, for the self-test.
+    #[cfg(feature = "test-hooks")]
     pub fn text(&self) -> (glib::GString, glib::GString) {
         (self.title.label(), self.description.label())
     }
@@ -202,7 +204,7 @@ impl Default for BatchPage {
 
 /// A folder without messages, such as "Nothing archived yet"; the list changes its text for
 /// filters and searches.
-pub fn folder(title: &str, description: &str) -> EmptyState {
+pub(crate) fn folder(title: &str, description: &str) -> EmptyState {
     let (state, title, description) =
         empty_state_parts(&["folder-symbolic"], title, description, "sw-empty-folder");
     EmptyState {
@@ -214,31 +216,33 @@ pub fn folder(title: &str, description: &str) -> EmptyState {
 
 /// An empty state whose text can change.
 #[derive(Clone)]
-pub struct EmptyState {
+pub(crate) struct EmptyState {
     widget: gtk::Widget,
     title: gtk::Label,
     description: gtk::Label,
 }
 
 impl EmptyState {
-    pub fn widget(&self) -> &gtk::Widget {
+    pub(crate) fn widget(&self) -> &gtk::Widget {
         &self.widget
     }
 
-    pub fn title(&self) -> glib::GString {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn title(&self) -> glib::GString {
         self.title.label()
     }
 
-    pub fn description(&self) -> Option<glib::GString> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn description(&self) -> Option<glib::GString> {
         let text = self.description.label();
         (!text.is_empty()).then_some(text)
     }
 
-    pub fn set_title(&self, title: &str) {
+    pub(crate) fn set_title(&self, title: &str) {
         self.title.set_label(title);
     }
 
-    pub fn set_description(&self, description: Option<&str>) {
+    pub(crate) fn set_description(&self, description: Option<&str>) {
         self.description.set_label(description.unwrap_or_default());
         self.description.set_visible(description.is_some());
     }

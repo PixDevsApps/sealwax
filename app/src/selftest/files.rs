@@ -54,7 +54,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("files-add", 1, usize::MAX),
     ("files-add-text", 1, 1),
     ("files-show", 1, 1),
@@ -86,13 +86,13 @@ thread_local! {
     static HOOKS: RefCell<Option<Rc<Hooks>>> = const { RefCell::new(None) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     command.starts_with("files-") || command == "assert-files"
 }
 
 /// The bytes of part `part` of a message the script stored, for the fake engine's
 /// `part-fetched ok`.
-pub fn part_bytes(message: MessageId, part: u32) -> Option<Vec<u8>> {
+pub(super) fn part_bytes(message: MessageId, part: u32) -> Option<Vec<u8>> {
     ADDED.with(|added| {
         added
             .borrow()
@@ -104,7 +104,7 @@ pub fn part_bytes(message: MessageId, part: u32) -> Option<Vec<u8>> {
 }
 
 /// A message the script stored, whole, for the fake engine's `original-fetched ok`.
-pub fn original_bytes(message: MessageId) -> Option<Vec<u8>> {
+pub(super) fn original_bytes(message: MessageId) -> Option<Vec<u8>> {
     ADDED.with(|added| {
         added
             .borrow()
@@ -175,7 +175,7 @@ fn scratch(harness: &Harness, name: &str) -> PathBuf {
     harness.root.join(name)
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "files-add" => add(harness, args).await,

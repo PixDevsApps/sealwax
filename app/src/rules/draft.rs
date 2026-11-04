@@ -6,7 +6,7 @@ use sealwax_domain::sieve::{Action, Condition, Field, Match, Operator, Reason, R
 
 /// What a condition row reads: a header, or the message's size.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FieldChoice {
+pub(crate) enum FieldChoice {
     From,
     To,
     Cc,
@@ -21,7 +21,7 @@ pub enum FieldChoice {
 
 impl FieldChoice {
     /// In the order the field menu lists them.
-    pub const ALL: [FieldChoice; 9] = [
+    pub(crate) const ALL: [FieldChoice; 9] = [
         FieldChoice::From,
         FieldChoice::To,
         FieldChoice::Cc,
@@ -33,7 +33,7 @@ impl FieldChoice {
         FieldChoice::Size,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             FieldChoice::From => "From",
             FieldChoice::To => "To",
@@ -62,7 +62,7 @@ impl FieldChoice {
 }
 
 /// The operators of a text condition, in the order the operator menu lists them.
-pub const OPERATORS: [Operator; 7] = [
+pub(crate) const OPERATORS: [Operator; 7] = [
     Operator::Contains,
     Operator::NotContains,
     Operator::Is,
@@ -72,7 +72,7 @@ pub const OPERATORS: [Operator; 7] = [
     Operator::Matches,
 ];
 
-pub fn operator_label(operator: Operator) -> &'static str {
+pub(crate) fn operator_label(operator: Operator) -> &'static str {
     match operator {
         Operator::Contains => "contains",
         Operator::NotContains => "doesn't contain",
@@ -86,16 +86,17 @@ pub fn operator_label(operator: Operator) -> &'static str {
 
 /// The unit a size is typed in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SizeUnit {
+pub(crate) enum SizeUnit {
     Bytes,
     Kilobytes,
     Megabytes,
 }
 
 impl SizeUnit {
-    pub const ALL: [SizeUnit; 3] = [SizeUnit::Bytes, SizeUnit::Kilobytes, SizeUnit::Megabytes];
+    pub(crate) const ALL: [SizeUnit; 3] =
+        [SizeUnit::Bytes, SizeUnit::Kilobytes, SizeUnit::Megabytes];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             SizeUnit::Bytes => "bytes",
             SizeUnit::Kilobytes => "KB",
@@ -113,7 +114,7 @@ impl SizeUnit {
     }
 
     /// `bytes` in the largest unit that divides it.
-    pub fn split(bytes: u64) -> (u64, SizeUnit) {
+    pub(crate) fn split(bytes: u64) -> (u64, SizeUnit) {
         for unit in [SizeUnit::Megabytes, SizeUnit::Kilobytes] {
             if bytes != 0 && bytes.is_multiple_of(unit.bytes()) {
                 return (bytes / unit.bytes(), unit);
@@ -125,7 +126,7 @@ impl SizeUnit {
 
 /// What an action row does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ActionChoice {
+pub(crate) enum ActionChoice {
     MoveTo,
     CopyTo,
     MarkRead,
@@ -138,7 +139,7 @@ pub enum ActionChoice {
 
 impl ActionChoice {
     /// In the order the action menu lists them.
-    pub const ALL: [ActionChoice; 8] = [
+    pub(crate) const ALL: [ActionChoice; 8] = [
         ActionChoice::MoveTo,
         ActionChoice::CopyTo,
         ActionChoice::MarkRead,
@@ -149,7 +150,7 @@ impl ActionChoice {
         ActionChoice::Stop,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             ActionChoice::MoveTo => "Move to folder",
             ActionChoice::CopyTo => "Copy to folder",
@@ -163,7 +164,7 @@ impl ActionChoice {
     }
 
     /// Whether the row also chooses a folder.
-    pub fn takes_folder(self) -> bool {
+    pub(crate) fn takes_folder(self) -> bool {
         matches!(self, ActionChoice::MoveTo | ActionChoice::CopyTo)
     }
 
@@ -183,7 +184,7 @@ impl ActionChoice {
 
 /// A condition row as typed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DraftCondition {
+pub(crate) struct DraftCondition {
     pub field: FieldChoice,
     /// The header's name, for [`FieldChoice::Header`].
     pub header: String,
@@ -211,14 +212,14 @@ impl Default for DraftCondition {
 
 /// An action row as chosen; `folder` is a folder's full name, `None` until one is chosen.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DraftAction {
+pub(crate) struct DraftAction {
     pub choice: ActionChoice,
     pub folder: Option<String>,
 }
 
 /// The editor's rule, row by row.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Draft {
+pub(crate) struct Draft {
     pub name: String,
     pub enabled: bool,
     pub matching: Match,
@@ -228,7 +229,7 @@ pub struct Draft {
 
 /// Why the editor can't save yet, in its words.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Problem {
+pub(crate) enum Problem {
     NoAction,
     NoFolder,
     NoHeaderName,
@@ -238,7 +239,7 @@ pub enum Problem {
 }
 
 impl Problem {
-    pub fn text(self) -> &'static str {
+    pub(crate) fn text(self) -> &'static str {
         match self {
             Problem::NoAction => "Add an action",
             Problem::NoFolder => "Choose a folder for each move and copy",
@@ -268,7 +269,7 @@ impl Default for Draft {
 
 impl Draft {
     /// The rows of an existing rule.
-    pub fn from_rule(rule: &Rule) -> Draft {
+    pub(crate) fn from_rule(rule: &Rule) -> Draft {
         let conditions = rule
             .conditions
             .iter()
@@ -319,7 +320,7 @@ impl Draft {
     /// Create Rule from Message: From is the sender's address, or List-Id contains the list's
     /// identifier when the message came from a list; a move to a folder not chosen yet. The
     /// name is the list's identifier, else the sender's name, else the address.
-    pub fn from_message(sender: &str, sender_name: &str, list_id: Option<&str>) -> Draft {
+    pub(crate) fn from_message(sender: &str, sender_name: &str, list_id: Option<&str>) -> Draft {
         let list_id = list_id.map(str::trim).filter(|id| !id.is_empty());
         let (name, condition) = match list_id {
             Some(id) => (
@@ -352,7 +353,7 @@ impl Draft {
     }
 
     /// The rule, or the first thing that keeps it from being saved.
-    pub fn to_rule(&self) -> Result<Rule, Problem> {
+    pub(crate) fn to_rule(&self) -> Result<Rule, Problem> {
         if self.actions.is_empty() {
             return Err(Problem::NoAction);
         }

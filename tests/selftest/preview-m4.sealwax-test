@@ -5,7 +5,7 @@
 # (matte-black with square corners, catppuccin-latte rounded). Through the store's op queue on a
 # scripted engine that runs no ops, so they wait; every name, address and message is fictional.
 # Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 24 target/debug/sealwax --self-test tests/selftest/preview-m4.sealwax-test
+# Run: tools/headless.sh 24 target/debug/sealwax-selftest --self-test tests/selftest/preview-m4.sealwax-test
 
 desktop tiling
 resize 1440 900

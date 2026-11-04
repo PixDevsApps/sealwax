@@ -2,7 +2,7 @@
 # account's own address chosen from All Inboxes; picking another account's moves the draft to
 # that account in the store, and it stays there when reopened. Every name and address is
 # fictional.
-# Run: tools/headless.sh 65 target/debug/sealwax --self-test tests/selftest/composer-accounts.sealwax-test
+# Run: tools/headless.sh 65 target/debug/sealwax-selftest --self-test tests/selftest/composer-accounts.sealwax-test
 
 desktop tiling
 resize 1440 900

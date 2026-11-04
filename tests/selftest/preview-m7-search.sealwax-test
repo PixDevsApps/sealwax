@@ -6,7 +6,7 @@
 # The operator query's results need the search engine's parser (m7-search): run this again after
 # the merge for m7-search-operator-results-*.png.
 # Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/preview-m7-search.sealwax-test
+# Run: tools/headless.sh 53 target/debug/sealwax-selftest --self-test tests/selftest/preview-m7-search.sealwax-test
 
 desktop tiling
 resize 1440 900

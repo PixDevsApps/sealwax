@@ -11,7 +11,7 @@
 //! theme and scratch XDG folders, and ends by itself.
 //!
 //! ```sh
-//! cargo build --release -p sealwax --example composer_live
+//! cargo build --release -p sealwax-uitest --example composer_live
 //! tools/headless.sh 45 target/release/examples/composer_live            # dry run
 //! target/release/examples/composer_live --live                          # authorized live run
 //! ```

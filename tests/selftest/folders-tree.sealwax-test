@@ -7,7 +7,7 @@
 # a folder under a folded one opens it; a folded folder counts its subfolders' unread mail with
 # its own (2026-10-19). The folder row's menu offers New Subfolder, Rename and Delete Folder
 # where they apply, the account heading's New Folder. Every name is fictional.
-# Run: tools/headless.sh 81 target/debug/sealwax --self-test tests/selftest/folders-tree.sealwax-test
+# Run: tools/headless.sh 81 target/debug/sealwax-selftest --self-test tests/selftest/folders-tree.sealwax-test
 
 desktop tiling
 resize 1440 900

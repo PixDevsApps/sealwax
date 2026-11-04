@@ -6,7 +6,7 @@
 # actor as an IMAP account's do. The sidebar's words and the banners are the same, naming
 # POP3's server, and typing the password again names it too. Every address, name and server is
 # fictional. Screenshots go to .local/selftest/.
-# Run: tools/headless.sh 65 target/debug/sealwax --self-test tests/selftest/setup-pop3-folders.sealwax-test
+# Run: tools/headless.sh 65 target/debug/sealwax-selftest --self-test tests/selftest/setup-pop3-folders.sealwax-test
 
 desktop tiling
 resize 1440 900

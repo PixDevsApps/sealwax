@@ -25,7 +25,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 /// The commands this module runs.
-pub const COMMANDS: [ActionId; 3] = [
+pub(crate) const COMMANDS: [ActionId; 3] = [
     ActionId::NewFolder,
     ActionId::RenameFolder,
     ActionId::DeleteFolder,
@@ -36,7 +36,7 @@ const SERVER_TEXT: usize = 200;
 
 /// What a folder command works on: one account's folders.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Context {
+pub(crate) struct Context {
     pub account: AccountId,
     /// What Sealwax calls the account.
     pub account_name: String,
@@ -56,7 +56,7 @@ fn has_role(folder: &Folder) -> bool {
 }
 
 impl Context {
-    pub fn folder(&self, id: FolderId) -> Option<&Folder> {
+    pub(crate) fn folder(&self, id: FolderId) -> Option<&Folder> {
         self.folders.iter().find(|folder| folder.id == id)
     }
 
@@ -69,7 +69,7 @@ impl Context {
     }
 
     /// Whether `id` applies to the folder `folder`, or why not.
-    pub fn applies(&self, id: ActionId, folder: FolderId) -> Result<(), &'static str> {
+    pub(crate) fn applies(&self, id: ActionId, folder: FolderId) -> Result<(), &'static str> {
         let folder = self.folder(folder).ok_or("The folder is gone")?;
         match id {
             ActionId::NewFolder if !folder.inferiors || folder.delimiter.is_none() => {
@@ -175,7 +175,7 @@ impl Context {
 }
 
 /// The context of `account` from the app's store and `accounts.toml`.
-pub fn context(state: &AppState, account: AccountId) -> Option<Context> {
+pub(crate) fn context(state: &AppState, account: AccountId) -> Option<Context> {
     let mailbox = state.mailbox();
     let known = mailbox
         .accounts()
@@ -224,7 +224,7 @@ fn folder_of_key(state: &AppState, key: &str) -> Option<Folder> {
 }
 
 /// Whether `id` applies to the folder `key` names, or why not.
-pub fn applies(state: &AppState, id: ActionId, key: &str) -> Result<(), &'static str> {
+pub(crate) fn applies(state: &AppState, id: ActionId, key: &str) -> Result<(), &'static str> {
     let folder = folder_of_key(state, key).ok_or("Not a folder")?;
     context(state, folder.account)
         .ok_or("The account is gone")?
@@ -232,7 +232,7 @@ pub fn applies(state: &AppState, id: ActionId, key: &str) -> Result<(), &'static
 }
 
 /// Runs `id` on the folder `key` names.
-pub fn run(state: &Rc<AppState>, id: ActionId, key: &str) {
+pub(crate) fn run(state: &Rc<AppState>, id: ActionId, key: &str) {
     let (Some(window), Some(folder)) = (state.window(), folder_of_key(state, key)) else {
         return;
     };
@@ -256,7 +256,7 @@ pub fn run(state: &Rc<AppState>, id: ActionId, key: &str) {
 }
 
 /// New Folder at the top of the account `account`.
-pub fn new_at_top(state: &Rc<AppState>, account: AccountId) {
+pub(crate) fn new_at_top(state: &Rc<AppState>, account: AccountId) {
     let (Some(window), Some(context)) = (state.window(), context(state, account)) else {
         return;
     };
@@ -680,7 +680,7 @@ fn shown_folder(state: &AppState) -> Option<String> {
 
 /// Connects the three commands on the main window's action set (on the folder shown) and in
 /// the sidebar's menus.
-pub fn install(state: &Rc<AppState>, window: &Window, actions: &crate::actions::ActionSet) {
+pub(crate) fn install(state: &Rc<AppState>, window: &Window, actions: &crate::actions::ActionSet) {
     for id in COMMANDS {
         let weak = Rc::downgrade(state);
         actions.connect(id, move || {
@@ -713,7 +713,7 @@ pub fn install(state: &Rc<AppState>, window: &Window, actions: &crate::actions::
 }
 
 /// Whether each command applies to the folder shown.
-pub fn refresh(state: &AppState, actions: &crate::actions::ActionSet) {
+pub(crate) fn refresh(state: &AppState, actions: &crate::actions::ActionSet) {
     let key = shown_folder(state);
     for id in COMMANDS {
         let applies = key

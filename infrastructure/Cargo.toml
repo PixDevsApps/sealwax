@@ -10,8 +10,8 @@ publish.workspace = true
 workspace = true
 
 [features]
-# The store's schema steps and internals its suites (tests/store/) check: for tests only (ADR-025
-# amendment).
+# The store's schema steps and internals its suites (tests/store/) check, and the loopback socket
+# lookup the app's self-tests use: for tests only (ADR-025 amendment).
 test-support = []
 
 [dependencies]

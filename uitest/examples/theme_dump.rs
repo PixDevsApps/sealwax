@@ -1,5 +1,5 @@
 //! Prints what the theme follower reads on this machine and what it makes of it, without
-//! opening a window: `cargo run -p sealwax --example theme_dump [-- --css] [-- --webview]`.
+//! opening a window: `cargo run -p sealwax-uitest --example theme_dump [-- --css] [-- --webview]`.
 //! Only reads (Omarchy's state, fontconfig, `shell.toml`, `hyprctl getoption`). Without an
 //! Omarchy theme it shows the built-in dark palette (the app follows the system preference).
 

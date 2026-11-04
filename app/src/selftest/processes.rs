@@ -25,7 +25,7 @@ const SAFETY_EXIT_MS: &str = "120000";
 const APPLICATION: &str = "org.freedesktop.Application";
 
 /// A private session bus for D-Bus activation (`test-bus-start`).
-pub struct TestBus {
+pub(super) struct TestBus {
     daemon: Child,
     address: String,
     /// The id the activated Sealwax registers.

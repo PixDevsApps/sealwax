@@ -54,6 +54,7 @@ struct Card {
 }
 
 /// What the self-test sees of a card.
+#[cfg(feature = "test-hooks")]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardState {
     pub name: String,
@@ -67,7 +68,7 @@ pub struct CardState {
 }
 
 /// The section of `message`'s attachment cards, under "N attachments" with Download all.
-pub fn attachment_cards(
+pub(super) fn attachment_cards(
     reader: &Reader,
     message: MessageId,
     attachments: &[Attachment],
@@ -578,6 +579,7 @@ fn find(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
 impl Reader {
     /// The card of message `id` in the shown conversation, while it is expanded, for checks and
     /// real clicks.
+    #[cfg(feature = "test-hooks")]
     pub fn message_card(&self, id: MessageId) -> Option<gtk::Widget> {
         self.inner
             .shown
@@ -590,6 +592,7 @@ impl Reader {
     }
 
     /// The attachment cards of the selected message's card, in order, for checks.
+    #[cfg(feature = "test-hooks")]
     pub fn attachment_cards(&self) -> Vec<gtk::Widget> {
         self.message()
             .and_then(|id| self.message_card(id))
@@ -599,6 +602,7 @@ impl Reader {
 
     /// The button named `name` (`reader-attachment-open`, `-save`, `-cancel`, `-retry`) of the
     /// selected message's attachment card `index`, for checks and real clicks.
+    #[cfg(feature = "test-hooks")]
     pub fn attachment_button(&self, index: usize, name: &str) -> Option<gtk::Widget> {
         self.attachment_cards()
             .get(index)
@@ -606,6 +610,7 @@ impl Reader {
     }
 
     /// What attachment card `index` of the selected message shows, for checks.
+    #[cfg(feature = "test-hooks")]
     pub fn attachment_card(&self, index: usize) -> Option<CardState> {
         let card = self.attachment_cards().into_iter().nth(index)?;
         let label = |name: &str| {
@@ -649,6 +654,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "test-hooks")]
     #[test]
     fn the_danger_sample_is_dangerous_as_parsed() {
         let raw = crate::reader::samples::files_draft("files-danger", 1_791_115_200)

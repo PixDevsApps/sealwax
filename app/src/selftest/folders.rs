@@ -30,7 +30,7 @@ use sealwax_engine::api::FolderChange;
 use sealwax_infrastructure::store::{FolderRename, FolderSpec};
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("folder-add", 2, 4),
     ("folder-arrow", 1, 1),
     ("focus-folder", 1, 1),
@@ -42,7 +42,7 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-response", 3, 3),
 ];
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
@@ -63,7 +63,7 @@ fn row(harness: &Harness, spec: &str) -> Result<gtk4::Widget, String> {
     harness.widget(&format!("folder:{key}"))
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "folder-add" => {

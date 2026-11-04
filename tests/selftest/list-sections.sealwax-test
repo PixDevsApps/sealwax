@@ -2,7 +2,7 @@
 # week (from Monday), This month and Older, from local midnights, under GTK's section headers;
 # they regroup when the day changes. The list's clock is fixed to a Wednesday, so every section
 # exists whatever day the test runs. Every message is fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-sections.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-sections.sealwax-test
 
 desktop tiling
 resize 1440 1000

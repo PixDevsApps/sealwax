@@ -5,7 +5,7 @@
 
 /// The writes' state; the caller runs each write it is given and reports its end.
 #[derive(Debug)]
-pub struct LatestWrite<T> {
+pub(crate) struct LatestWrite<T> {
     writing: bool,
     waiting: Option<T>,
 }
@@ -22,7 +22,7 @@ impl<T> Default for LatestWrite<T> {
 impl<T> LatestWrite<T> {
     /// Hands in `value`: returned when the caller should write it now, kept for later while a
     /// write runs.
-    pub fn offer(&mut self, value: T) -> Option<T> {
+    pub(crate) fn offer(&mut self, value: T) -> Option<T> {
         if self.writing {
             self.waiting = Some(value);
             None
@@ -33,7 +33,7 @@ impl<T> LatestWrite<T> {
     }
 
     /// The running write ended: the value to write next, if one waited.
-    pub fn finished(&mut self) -> Option<T> {
+    pub(crate) fn finished(&mut self) -> Option<T> {
         let next = self.waiting.take();
         self.writing = next.is_some();
         next

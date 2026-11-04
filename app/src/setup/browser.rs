@@ -16,7 +16,8 @@ thread_local! {
 }
 
 /// Replaces how the sign-in page opens (`gtk::UriLauncher` by default), for tests.
-pub fn set_opener(opener: impl Fn(&gtk::Widget, &str) + 'static) {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn set_opener(opener: impl Fn(&gtk::Widget, &str) + 'static) {
     OPENER.with(|current| current.replace(Some(Rc::new(opener))));
 }
 

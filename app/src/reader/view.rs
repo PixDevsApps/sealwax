@@ -9,7 +9,8 @@
 //! (`hardware-acceleration-policy` NEVER), and the height comes from a ResizeObserver in the
 //! isolated world.
 
-use super::engine::{CONTENT_SECURITY_POLICY, Engine, NETWORK_FEATURES};
+use super::engine::{CONTENT_SECURITY_POLICY, Engine};
+use crate::webview::{apply_fonts, hardened_settings};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
@@ -707,7 +708,7 @@ impl State {
 }
 
 #[derive(Clone)]
-pub struct MessageView {
+pub(super) struct MessageView {
     view: webkit6::WebView,
     ucm: webkit6::UserContentManager,
     /// The engine's pings filter, on in every load.
@@ -756,25 +757,25 @@ impl MessageView {
         this
     }
 
-    pub fn web_view(&self) -> &webkit6::WebView {
+    pub(super) fn web_view(&self) -> &webkit6::WebView {
         &self.view
     }
 
-    pub fn page_id(&self) -> u64 {
+    pub(super) fn page_id(&self) -> u64 {
         self.view.page_id()
     }
 
     /// The last height applied, in px.
-    pub fn height(&self) -> i32 {
+    pub(super) fn height(&self) -> i32 {
         self.state.height.get()
     }
 
     /// Where this view's events go until [`MessageView::blank`].
-    pub fn set_handler(&self, handler: impl Fn(&ViewEvent) + 'static) {
+    pub(super) fn set_handler(&self, handler: impl Fn(&ViewEvent) + 'static) {
         self.state.handler.replace(Some(Rc::new(handler)));
     }
 
-    pub fn set_fonts(&self, fonts: &WebViewFonts) {
+    pub(super) fn set_fonts(&self, fonts: &WebViewFonts) {
         if let Some(settings) = WebViewExt::settings(&self.view) {
             apply_fonts(&settings, fonts);
         }
@@ -784,7 +785,7 @@ impl MessageView {
     /// without it (the user allowed images for this message) the CSP still admits only https
     /// images, and the pings filter still blocks pings, DNS prefetch and preconnects. The view
     /// keeps its height until the new body reports one.
-    pub fn load(
+    pub(super) fn load(
         &self,
         html: &str,
         css: &str,
@@ -799,13 +800,13 @@ impl MessageView {
 
     /// Whether the next loads collapse the quoted history behind "…": the page sets it for a
     /// message that repeats an earlier one of the shown conversation. Off for a blank view.
-    pub fn set_collapse_quotes(&self, collapse: bool) {
+    pub(super) fn set_collapse_quotes(&self, collapse: bool) {
         self.state.collapse_quotes.set(collapse);
     }
 
     /// Whether the next loads fit a styled body's margins to its column: the page sets it for
     /// paper bodies. Off for a blank view.
-    pub fn set_fit_margins(&self, fit: bool) {
+    pub(super) fn set_fit_margins(&self, fit: bool) {
         self.state.fit_margins.set(fit);
     }
 
@@ -842,7 +843,7 @@ impl MessageView {
 
     /// Replaces the user stylesheet and the background; WebKit restyles the loaded document
     /// in place.
-    pub fn set_style(&self, css: &str, background: &gdk::RGBA) {
+    pub(super) fn set_style(&self, css: &str, background: &gdk::RGBA) {
         self.ucm.remove_all_style_sheets();
         self.ucm.add_style_sheet(&webkit6::UserStyleSheet::new(
             css,
@@ -856,7 +857,7 @@ impl MessageView {
 
     /// After [`MessageView::set_style`]: a styled body's colours follow the new stylesheet,
     /// dark or as designed (`DARK_JS`), and its margins after them.
-    pub fn restyled(&self) {
+    pub(super) fn restyled(&self) {
         if !self.state.fit_margins.get() {
             return;
         }
@@ -906,7 +907,7 @@ impl MessageView {
     }
 
     /// Runs `body` (a function body) in Sealwax's isolated world.
-    pub async fn eval(&self, body: &str) -> Result<javascriptcore::Value, glib::Error> {
+    pub(super) async fn eval(&self, body: &str) -> Result<javascriptcore::Value, glib::Error> {
         self.view
             .call_async_javascript_function_future(body, None, Some(WORLD), None)
             .await
@@ -1248,90 +1249,9 @@ fn decide(decision: &webkit6::PolicyDecision, kind: PolicyDecisionType, state: &
     }
 }
 
-#[allow(
-    deprecated,
-    reason = "the hardening turns off features WebKitGTK deprecated but still has"
-)]
-fn hardened_settings(fonts: &WebViewFonts) -> webkit6::Settings {
-    let settings = webkit6::Settings::new();
-    // Script markup is off: no message script runs. JavaScript itself stays on only for
-    // Sealwax's isolated-world helpers.
-    settings.set_enable_javascript(true);
-    settings.set_enable_javascript_markup(false);
-    settings.set_auto_load_images(true);
-    settings.set_load_icons_ignoring_image_load_setting(false);
-    settings.set_hardware_acceleration_policy(webkit6::HardwareAccelerationPolicy::Never);
-    settings.set_enable_page_cache(false);
-    settings.set_enable_html5_local_storage(false);
-    settings.set_enable_html5_database(false);
-    settings.set_enable_webgl(false);
-    settings.set_enable_webaudio(false);
-    settings.set_enable_media(false);
-    settings.set_enable_media_stream(false);
-    settings.set_enable_mediasource(false);
-    settings.set_enable_encrypted_media(false);
-    settings.set_enable_media_capabilities(false);
-    settings.set_enable_webrtc(false);
-    settings.set_enable_developer_extras(cfg!(debug_assertions));
-    settings.set_enable_write_console_messages_to_stdout(false);
-    settings.set_enable_fullscreen(false);
-    settings.set_enable_back_forward_navigation_gestures(false);
-    settings.set_enable_site_specific_quirks(false);
-    settings.set_javascript_can_open_windows_automatically(false);
-    settings.set_javascript_can_access_clipboard(false);
-    settings.set_allow_file_access_from_file_urls(false);
-    settings.set_allow_universal_access_from_file_urls(false);
-    settings.set_allow_top_navigation_to_data_urls(false);
-    settings.set_allow_modal_dialogs(false);
-    settings.set_print_backgrounds(true);
-    // Does nothing since WebKitGTK 2.52 (S2); the feature switches below and the pings filter
-    // do the work. It stays off in case a future WebKit honours it again. Hyperlink auditing's
-    // setter is left out: it does nothing either and warns at every view.
-    settings.set_enable_dns_prefetching(false);
-    if let Some(features) = webkit6::Settings::all_features() {
-        for index in 0..features.length() {
-            if let Some(feature) = features.get(index)
-                && feature
-                    .identifier()
-                    .is_some_and(|id| NETWORK_FEATURES.contains(&id.as_str()))
-            {
-                settings.set_feature_enabled(&feature, false);
-            }
-        }
-    }
-    apply_fonts(&settings, fonts);
-    settings
-}
-
-/// WebKit's default fonts, set explicitly because it would otherwise pick its own.
-fn apply_fonts(settings: &webkit6::Settings, fonts: &WebViewFonts) {
-    settings.set_default_font_family(fonts.default_family);
-    settings.set_sans_serif_font_family(&fonts.sans_serif);
-    settings.set_monospace_font_family(&fonts.monospace);
-    settings.set_default_font_size(fonts.default_size);
-    settings.set_default_monospace_font_size(fonts.monospace_size);
-}
-
-/// The features `hardened_settings` switches off, as WebKit reports them, for checks.
-pub fn disabled_features(view: &webkit6::WebView) -> Vec<String> {
-    let (Some(settings), Some(features)) = (
-        WebViewExt::settings(view),
-        webkit6::Settings::all_features(),
-    ) else {
-        return Vec::new();
-    };
-    (0..features.length())
-        .filter_map(|index| features.get(index))
-        .filter(|feature| !settings.is_feature_enabled(feature))
-        .filter_map(|feature| feature.identifier().map(String::from))
-        .filter(|id| NETWORK_FEATURES.contains(&id.as_str()))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::reader::RETIRED_FEATURES;
 
     /// Isolated-world scripts aren't bound by the page's CSP, and a view whose images the user
     /// allowed loads without the content filter, so the reader's helpers load nothing at all
@@ -1376,33 +1296,5 @@ mod tests {
         assert!(DARK_JS.contains(&format!("getPropertyValue('{DARK_BACKGROUND}')")));
         assert!(DARK_JS.contains(&format!("getPropertyValue('{DARK_TEXT}')")));
         assert!(MARGINS_JS.contains(&format!("'var({DARK_BACKGROUND})'")));
-    }
-
-    /// A feature WebKit renamed would silently stay on. One it dropped is known up to the
-    /// version that dropped it and not after, so its return shows here too.
-    #[test]
-    fn every_network_feature_is_known_to_this_webkit() {
-        let features = webkit6::Settings::all_features().expect("WebKit lists its features");
-        let known: Vec<String> = (0..features.length())
-            .filter_map(|index| features.get(index))
-            .filter_map(|feature| feature.identifier().map(String::from))
-            .collect();
-        let version = (
-            webkit6::functions::major_version(),
-            webkit6::functions::minor_version(),
-        );
-        for name in NETWORK_FEATURES {
-            let expected = RETIRED_FEATURES
-                .iter()
-                .find(|(retired, _)| *retired == name)
-                .is_none_or(|(_, dropped)| version < *dropped);
-            assert_eq!(
-                known.iter().any(|id| id == name),
-                expected,
-                "{name} in WebKitGTK {}.{}",
-                version.0,
-                version.1
-            );
-        }
     }
 }

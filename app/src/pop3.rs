@@ -11,10 +11,10 @@
 
 use crate::application::AppState;
 use sealwax_domain::account::{AccountSettings, Receive};
-use sealwax_domain::model::{Account, AccountId, Folder, FolderId};
+use sealwax_domain::model::{Account, AccountId, FolderId};
 
 /// Whether the store's `account` receives its mail by POP3, as `listed` (`accounts.toml`) says.
-pub fn receives_by_pop3(
+pub(crate) fn receives_by_pop3(
     account: AccountId,
     accounts: &[Account],
     listed: &[AccountSettings],
@@ -27,21 +27,9 @@ pub fn receives_by_pop3(
         .is_some_and(|settings| matches!(settings.receive, Receive::Pop3(_)))
 }
 
-/// Whether `folder` is one of a POP3 account's local folders.
-pub fn is_local(
-    folder: FolderId,
-    folders: &[Folder],
-    accounts: &[Account],
-    listed: &[AccountSettings],
-) -> bool {
-    folders
-        .iter()
-        .find(|known| known.id == folder)
-        .is_some_and(|known| receives_by_pop3(known.account, accounts, listed))
-}
-
-/// [`is_local`] for the app's store and its `accounts.toml`.
-pub fn is_local_folder(state: &AppState, folder: FolderId) -> bool {
+/// Whether `folder` is one of a POP3 account's local folders, by the app's store and its
+/// `accounts.toml`.
+pub(crate) fn is_local_folder(state: &AppState, folder: FolderId) -> bool {
     let Some(prefs) = state.preferences() else {
         return false;
     };
@@ -58,7 +46,6 @@ mod tests {
     use sealwax_domain::account::{
         AccountKey, AuthMethod, Endpoint, Pop3Policy, Receive, Security,
     };
-    use sealwax_domain::model::FolderRole;
 
     fn settings(key: &str, receive: Receive) -> AccountSettings {
         let endpoint = |host: &str| Endpoint {
@@ -92,20 +79,6 @@ mod tests {
         }
     }
 
-    fn folder(id: i64, account: i64) -> Folder {
-        Folder {
-            id: FolderId(id),
-            account: AccountId(account),
-            name: "Inbox".to_owned(),
-            delimiter: Some('/'),
-            role: FolderRole::Inbox,
-            selectable: true,
-            inferiors: true,
-            total: 0,
-            unread: 0,
-        }
-    }
-
     #[test]
     fn only_a_pop3_accounts_folders_are_local() {
         let listed = [
@@ -118,17 +91,12 @@ mod tests {
             account(3, None),
             account(4, Some("gone")),
         ];
-        let folders = [folder(10, 1), folder(20, 2), folder(30, 3), folder(40, 4)];
-        let local: Vec<i64> = folders
-            .iter()
-            .filter(|known| is_local(known.id, &folders, &accounts, &listed))
-            .map(|known| known.id.0)
+        let local: Vec<i64> = (1..=5)
+            .filter(|&id| receives_by_pop3(AccountId(id), &accounts, &listed))
             .collect();
         // IMAP's, a keyless fixture account's and one the file doesn't list keep the server's
-        // behaviour; an unknown folder too.
-        assert_eq!(local, [20]);
-        assert!(!is_local(FolderId(99), &folders, &accounts, &listed));
-        assert!(receives_by_pop3(AccountId(2), &accounts, &listed));
+        // behaviour; an unknown account too.
+        assert_eq!(local, [2]);
         assert!(!receives_by_pop3(AccountId(2), &accounts, &[]));
     }
 }

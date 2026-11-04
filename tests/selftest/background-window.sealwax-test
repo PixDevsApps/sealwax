@@ -4,7 +4,7 @@
 # notice's click build a new main window on the same store; `--background` to a running Sealwax
 # shows nothing and `--compose` is the window's Compose (a card in it); `[background] enabled`
 # in config.toml applies live; Quit ends it all. Every name and address is fictional.
-# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/background-window.sealwax-test
+# Run: tools/headless.sh 57 target/debug/sealwax-selftest --self-test tests/selftest/background-window.sealwax-test
 
 desktop tiling
 resize 1440 900

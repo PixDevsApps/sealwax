@@ -14,12 +14,12 @@ use sealwax_domain::theme::BodyStyle;
 use std::collections::HashSet;
 
 /// A message references at most this many inline parts; more are left out.
-pub const MAX_INLINE_PARTS: usize = 64;
+pub(super) const MAX_INLINE_PARTS: usize = 64;
 /// And at most this many bytes of them.
-pub const MAX_INLINE_BYTES: usize = 64 * 1024 * 1024;
+pub(super) const MAX_INLINE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
-pub enum Body {
+pub(super) enum Body {
     Html {
         html: String,
         style: BodyStyle,
@@ -37,7 +37,7 @@ pub enum Body {
 }
 
 #[derive(Debug, Clone)]
-pub struct Prepared {
+pub(super) struct Prepared {
     pub body: Body,
     /// Attachments to show as cards: everything but the inline parts the HTML shows, the
     /// signatures and PGP/MIME's version part.
@@ -46,7 +46,7 @@ pub struct Prepared {
     pub signed: Option<Signature>,
 }
 
-pub fn prepare(detail: &MessageDetail, raw: Option<&[u8]>) -> Prepared {
+pub(super) fn prepare(detail: &MessageDetail, raw: Option<&[u8]>) -> Prepared {
     let Some(raw) = raw else {
         return Prepared {
             body: if detail.html_parts.is_empty() && detail.text_parts.is_empty() {
@@ -160,7 +160,7 @@ fn html_is_encrypted(html: &str) -> bool {
 }
 
 /// Every Content-ID the HTML names in a `cid:` URL, decoded and in lower case.
-pub fn cid_references(html: &str) -> HashSet<String> {
+pub(super) fn cid_references(html: &str) -> HashSet<String> {
     let lower = html.to_ascii_lowercase();
     lower
         .match_indices("cid:")
@@ -230,8 +230,11 @@ fn inline_parts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(feature = "test-hooks")]
     use crate::reader::samples;
-    use sealwax_domain::model::{BodyKind, Flags, FolderId, MessageId, MessageSummary, ThreadId};
+    #[cfg(feature = "test-hooks")]
+    use sealwax_domain::model::BodyKind;
+    use sealwax_domain::model::{Flags, FolderId, MessageId, MessageSummary, ThreadId};
 
     fn detail(raw: &[u8]) -> MessageDetail {
         let parsed = message::parse(raw);
@@ -262,6 +265,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "test-hooks")]
     fn sample(name: &str) -> Vec<u8> {
         samples::all(1_791_115_200)
             .into_iter()
@@ -401,6 +405,7 @@ mod tests {
         assert_eq!(prepared.signed, Some(Signature::InlinePgp));
     }
 
+    #[cfg(feature = "test-hooks")]
     #[test]
     fn html_with_an_inline_image_keeps_it_out_of_the_cards() {
         let raw = sample("cid");
@@ -424,6 +429,7 @@ mod tests {
         assert!(prepared.attachments.is_empty());
     }
 
+    #[cfg(feature = "test-hooks")]
     #[test]
     fn newsletters_go_on_paper_and_flag_remote_images() {
         let raw = sample("newsletter");
@@ -440,6 +446,7 @@ mod tests {
         assert!(remote_images);
     }
 
+    #[cfg(feature = "test-hooks")]
     #[test]
     fn plain_text_keeps_every_attachment() {
         let raw = sample("attachments");
@@ -450,6 +457,7 @@ mod tests {
         assert_eq!(prepared.attachments.len(), 3);
     }
 
+    #[cfg(feature = "test-hooks")]
     #[test]
     fn alternatives_show_the_html_and_latin1_is_decoded() {
         let raw = sample("simple");
@@ -460,6 +468,7 @@ mod tests {
         assert!(matches!(&prepared.body, Body::Html { html, .. } if html.contains("Kåre")));
     }
 
+    #[cfg(feature = "test-hooks")]
     #[test]
     fn without_the_raw_message_nothing_is_parsed() {
         let raw = sample("plain");

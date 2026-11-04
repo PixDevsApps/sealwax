@@ -39,7 +39,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-accessible", 0, 1),
     ("accessible-tree", 0, 1),
     ("assert-accessible-name", 2, 2),
@@ -72,11 +72,11 @@ thread_local! {
     static LINKS: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "assert-accessible" => {

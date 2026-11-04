@@ -2,7 +2,7 @@
 # through the bus (the private test bus whose only service is Sealwax's own), and the started
 # Sealwax shows its main window with a composer card in it (the user's UI tweak, 2026-10-08; a
 # composer window alone before). The address is never logged. The address is fictional.
-# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/reply-mailto-start.sealwax-test
+# Run: tools/headless.sh 44 target/debug/sealwax-selftest --self-test tests/selftest/reply-mailto-start.sealwax-test
 
 desktop tiling
 test-bus-start

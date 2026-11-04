@@ -1201,6 +1201,7 @@ fn show_link(link: &gtk::LinkButton, target: Option<&HelpLink>) {
     }
 }
 
+#[cfg(feature = "test-hooks")]
 pub(super) fn find_named(widget: &gtk::Widget, name: &str) -> Option<gtk::Widget> {
     if widget.widget_name() == name {
         return Some(widget.clone());

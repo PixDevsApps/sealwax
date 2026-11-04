@@ -4,7 +4,7 @@
 # flag changes and removals — and afterwards every loaded row and every section count equals the
 # store's own view at the version the list has applied. In a folder, with a chip, from the
 # unified inbox, and scrolled into the middle. Every message is fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-churn.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-churn.sealwax-test
 
 desktop tiling
 fixtures --count 600 --seed 21 --folders single

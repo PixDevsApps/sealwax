@@ -255,6 +255,7 @@ impl Preferences {
     }
 
     /// The mistakes `file` had at the last read; empty when it was applied.
+    #[cfg(feature = "test-hooks")]
     pub fn errors(&self, file: SettingsFile) -> Vec<FileError> {
         self.loaded.borrow().errors[file.index()].clone()
     }
@@ -318,7 +319,7 @@ pub async fn ensure_file(path: PathBuf, file: SettingsFile) -> io::Result<bool> 
 
 /// Preferences and Customize Shortcuts: `path`, created with its defaults when missing, opened
 /// in the default text editor. Resolves to a message for a toast.
-pub async fn open_in_editor(
+pub(crate) async fn open_in_editor(
     window: &(impl IsA<gtk::Window> + Clone + 'static),
     path: PathBuf,
     file: SettingsFile,

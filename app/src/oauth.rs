@@ -5,11 +5,12 @@
 use sealwax_domain::config::Config;
 
 /// `SEALWAX_MICROSOFT_CLIENT_ID` as it was when Sealwax was built, if it was set.
-pub const BUILD_MICROSOFT_CLIENT_ID: Option<&str> = option_env!("SEALWAX_MICROSOFT_CLIENT_ID");
+pub(crate) const BUILD_MICROSOFT_CLIENT_ID: Option<&str> =
+    option_env!("SEALWAX_MICROSOFT_CLIENT_ID");
 
 /// The Microsoft client ID in use: `config.toml`'s, else `built_in` (the build's). A blank one
 /// counts as none, so Microsoft sign-in is unavailable.
-pub fn microsoft_client_id(config: &Config, built_in: Option<&str>) -> Option<String> {
+pub(crate) fn microsoft_client_id(config: &Config, built_in: Option<&str>) -> Option<String> {
     let usable = |id: &str| {
         let id = id.trim();
         (!id.is_empty()).then(|| id.to_owned())

@@ -3,7 +3,7 @@
 # once the selection leaves it, so the view doesn't take the message away while it is read; in
 # one pane at a time only once the reader is on screen; Mark as Unread on the open message keeps
 # it unread. Every message is fictional.
-# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-read.sealwax-test
+# Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/triage-read.sealwax-test
 
 desktop tiling
 resize 1440 900

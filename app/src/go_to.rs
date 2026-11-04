@@ -18,28 +18,9 @@ use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole};
 use sealwax_infrastructure::store::{ViewFilter, ViewScope};
 use std::rc::Rc;
 
-/// The commands this module runs.
-pub const COMMANDS: [ActionId; 15] = [
-    ActionId::GoToInbox,
-    ActionId::GoToStarred,
-    ActionId::GoToSent,
-    ActionId::GoToDrafts,
-    ActionId::GoToAllInboxes,
-    ActionId::GoToAccount1,
-    ActionId::GoToAccount2,
-    ActionId::GoToAccount3,
-    ActionId::GoToAccount4,
-    ActionId::GoToAccount5,
-    ActionId::GoToAccount6,
-    ActionId::GoToAccount7,
-    ActionId::GoToAccount8,
-    ActionId::GoToAccount9,
-    ActionId::BackToList,
-];
-
 /// Where a go-to command leads.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Destination {
+pub(crate) enum Destination {
     AllInboxes,
     Folder(FolderId),
 }
@@ -47,7 +28,7 @@ pub enum Destination {
 /// The folder of `role` for the list showing `scope`, with `selected` the selected message's
 /// folder: the shown account's, else the selected message's, else the first account's that
 /// has one. Inbox from All Inboxes stays in All Inboxes.
-pub fn destination(
+pub(crate) fn destination(
     role: FolderRole,
     scope: Option<ViewScope>,
     selected: Option<FolderId>,
@@ -70,7 +51,7 @@ pub fn destination(
 }
 
 /// The Inbox of the sidebar's account in place `number` (from 1) of `accounts`, in their order.
-pub fn account_inbox(
+pub(crate) fn account_inbox(
     number: usize,
     accounts: &[AccountId],
     folders: &[Folder],
@@ -86,7 +67,7 @@ pub fn account_inbox(
 }
 
 /// Connects the commands on the main window's action set.
-pub fn install(state: &Rc<AppState>, actions: &crate::actions::ActionSet) {
+pub(crate) fn install(state: &Rc<AppState>, actions: &crate::actions::ActionSet) {
     for (id, role) in [
         (ActionId::GoToInbox, FolderRole::Inbox),
         (ActionId::GoToSent, FolderRole::Sent),

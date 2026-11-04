@@ -20,7 +20,7 @@ use sealwax_engine::api::UncertainReason;
 /// An account as the banner needs it: the store's name and the engine's state for it, and its
 /// `accounts.toml` entry.
 #[derive(Debug, Clone, Copy)]
-pub struct Account<'a> {
+pub(crate) struct Account<'a> {
     pub name: &'a str,
     pub status: AccountStatus,
     pub settings: &'a AccountSettings,
@@ -37,7 +37,7 @@ pub struct Waiting {
 /// and the banner wasn't dismissed; `network`: the desktop reports a network; `pending`: the
 /// changes and sends waiting for a server, which the offline entry counts; `uncertain`: what
 /// names each send that may have gone out, oldest first, with why when known.
-pub fn queue(
+pub(crate) fn queue(
     accounts: &[Account<'_>],
     keyring_missing: bool,
     network: bool,
@@ -110,7 +110,7 @@ pub fn queue(
 /// servers. Only a server on this computer can be trusted with its own certificate, which the
 /// assistant pins when the account is added (issue #9); a new one goes into `accounts.toml` by
 /// hand. Retry reconnects.
-pub fn certificate_details(window: &Window, again: &Again, retry: impl Fn() + 'static) {
+pub(crate) fn certificate_details(window: &Window, again: &Again, retry: impl Fn() + 'static) {
     let (heading, body) = details_text(again);
     let dialog = adw::AlertDialog::builder()
         .heading(heading)

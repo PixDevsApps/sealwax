@@ -12,11 +12,11 @@ use sealwax_domain::reading::{Encryption, Signature};
 /// What the notice says in place of an encrypted body.
 pub const ENCRYPTED: &str = "This message is encrypted. Sealwax can't read encrypted mail yet.";
 /// In place of an S/MIME message whose content is inside its signature.
-pub const SIGNED_OPAQUE: &str =
+pub(super) const SIGNED_OPAQUE: &str =
     "This message is signed in a way Sealwax can't open yet, so its text can't be shown.";
 /// The quiet line on a signed message, and its tooltip.
 pub const SIGNED: &str = "Signed · not checked";
-pub const SIGNED_TOOLTIP: &str = "Sealwax can't check PGP or S/MIME signatures yet";
+pub(super) const SIGNED_TOOLTIP: &str = "Sealwax can't check PGP or S/MIME signatures yet";
 
 /// A body that can't be shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub enum Unreadable {
 }
 
 /// What the notice says (printing uses it too).
-pub fn text(unreadable: Unreadable) -> &'static str {
+pub(super) fn text(unreadable: Unreadable) -> &'static str {
     match unreadable {
         Unreadable::Encrypted(_) => ENCRYPTED,
         Unreadable::SignedOpaque => SIGNED_OPAQUE,
@@ -35,7 +35,7 @@ pub fn text(unreadable: Unreadable) -> &'static str {
 }
 
 /// The notice in place of an unreadable body.
-pub fn notice(unreadable: Unreadable) -> gtk::Box {
+pub(super) fn notice(unreadable: Unreadable) -> gtk::Box {
     let row = gtk::Box::builder()
         .spacing(10)
         .css_classes(["sw-reader-notice", "sw-reader-protected"])
@@ -60,7 +60,7 @@ pub fn notice(unreadable: Unreadable) -> gtk::Box {
 }
 
 /// The quiet line on a signed message.
-pub fn signed_note(_signature: Signature) -> gtk::Box {
+pub(super) fn signed_note(_signature: Signature) -> gtk::Box {
     let row = gtk::Box::builder()
         .spacing(6)
         .tooltip_text(SIGNED_TOOLTIP)

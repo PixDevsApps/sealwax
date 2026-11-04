@@ -3,7 +3,7 @@
 # attachments, remote images blocked and then shown, and a Latin-1 body. Links are recorded,
 # never opened, and the remote images and the clicked link point at a closed port on 127.0.0.1.
 # The screenshots follow the session's theme. Run:
-#   tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/reader.sealwax-test
+#   tools/headless.sh 37 target/debug/sealwax-selftest --self-test tests/selftest/reader.sealwax-test
 
 desktop tiling
 resize 1440 900

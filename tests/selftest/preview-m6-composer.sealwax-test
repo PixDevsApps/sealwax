@@ -3,7 +3,7 @@
 # warning; in a dark and a light stock theme (matte-black with square corners, catppuccin-latte
 # rounded). The stand-in backend; every name, address and message is fictional.
 # Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/preview-m6-composer.sealwax-test
+# Run: tools/headless.sh 42 target/debug/sealwax-selftest --self-test tests/selftest/preview-m6-composer.sealwax-test
 
 desktop tiling
 resize 1440 900

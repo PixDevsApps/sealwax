@@ -31,21 +31,21 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// The undo window before a queued message goes (triage's 7 s; accepted at the M6 gate).
-pub const UNDO_SEND_MS: i64 = 7_000;
+pub(crate) const UNDO_SEND_MS: i64 = 7_000;
 /// How long a reply waits for the engine to download the message it answers.
-pub const DOWNLOAD_WAIT: Duration = Duration::from_secs(30);
+pub(crate) const DOWNLOAD_WAIT: Duration = Duration::from_secs(30);
 /// How long the size check waits for the engine's answer about the submission limit.
-pub const LIMIT_WAIT: Duration = Duration::from_secs(5);
+pub(crate) const LIMIT_WAIT: Duration = Duration::from_secs(5);
 /// Suggestions asked of the store.
 const SUGGESTIONS: u32 = 8;
 
 /// Unix milliseconds now.
-pub fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     glib::real_time() / 1_000
 }
 
 /// 16 bytes from the operating system, for Message-IDs and Content-IDs.
-pub fn random() -> [u8; 16] {
+pub(crate) fn random() -> [u8; 16] {
     let mut bytes = [0u8; 16];
     if getrandom::fill(&mut bytes).is_err() {
         // The kernel always answers on Linux; the clock and the process keep ids distinct.
@@ -56,14 +56,14 @@ pub fn random() -> [u8; 16] {
 }
 
 /// A fresh Message-ID on `sender`'s domain.
-pub fn message_id(sender: &str) -> String {
+pub(crate) fn message_id(sender: &str) -> String {
     ids::message_id(sender, random())
         .unwrap_or_else(|| format!("{}@sealwax.invalid", ids::token(random())))
 }
 
 /// The account's senders: its own address first, then its identities (`accounts.toml`); a
 /// local account that no file lists sends as its own address.
-pub fn senders(account: &Account, settings: &[AccountSettings]) -> Vec<Identity> {
+pub(crate) fn senders(account: &Account, settings: &[AccountSettings]) -> Vec<Identity> {
     match account
         .key
         .as_ref()
@@ -91,7 +91,7 @@ fn chips(account: AccountId, senders: &[Identity]) -> Vec<Sender> {
 }
 
 /// The composer's backend on the store and the engine.
-pub struct StoreBackend {
+pub(crate) struct StoreBackend {
     state: Weak<AppState>,
     /// Submission limits the engine reported, per account.
     limits: Rc<RefCell<HashMap<AccountId, Option<u64>>>>,
@@ -102,7 +102,7 @@ pub struct StoreBackend {
 }
 
 impl StoreBackend {
-    pub fn new(state: &Rc<AppState>) -> Rc<Self> {
+    pub(crate) fn new(state: &Rc<AppState>) -> Rc<Self> {
         Rc::new(Self {
             state: Rc::downgrade(state),
             limits: Rc::default(),
@@ -112,7 +112,8 @@ impl StoreBackend {
     }
 
     /// Self-tests: every account's limit is `limit` from now on.
-    pub fn set_limit(&self, limit: Option<u64>) {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn set_limit(&self, limit: Option<u64>) {
         self.limit_override.set(Some(limit));
     }
 
@@ -579,7 +580,7 @@ async fn server_draft(
 }
 
 /// Whether Message-ID `id` is on `sender`'s domain (the builder refuses one that isn't).
-pub fn same_domain(id: &str, sender: &str) -> bool {
+pub(crate) fn same_domain(id: &str, sender: &str) -> bool {
     match (
         id.rsplit_once('@')
             .map(|(_, domain)| domain.to_ascii_lowercase()),

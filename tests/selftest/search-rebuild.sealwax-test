@@ -4,7 +4,7 @@
 # read again afterwards. The self-test holds the rebuild to see it run; the counts in the result's
 # toast are the store's (the contract's stub answers 0 messages at once). Every message is
 # fictional.
-# Run: tools/headless.sh 54 target/debug/sealwax --self-test tests/selftest/search-rebuild.sealwax-test
+# Run: tools/headless.sh 54 target/debug/sealwax-selftest --self-test tests/selftest/search-rebuild.sealwax-test
 
 desktop tiling
 resize 1440 900

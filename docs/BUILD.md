@@ -28,7 +28,7 @@ cargo test --workspace
 bash tools/ci.sh                  # fmt, clippy -D warnings, the MSRV check, rustdoc -D warnings, cargo deny, tests, build
 SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run, the self-test scripts and the hostile suite
 bash tools/ci.sh --testbed        # plus every testbed suite (see Mail testbed)
-tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/window.sealwax-test
+tools/headless.sh 19 target/debug/sealwax-selftest --self-test tests/selftest/window.sealwax-test
 cargo run -p sealwax -- --version
 ```
 
@@ -37,9 +37,10 @@ cargo run -p sealwax -- --version
 | Crate | Path | Role |
 | --- | --- | --- |
 | `sealwax-domain` | `domain/` | Pure logic |
-| `sealwax-infrastructure` | `infrastructure/` | Local std I/O, logging |
+| `sealwax-infrastructure` | `infrastructure/` | Local std I/O, logging; the store's suites are one test binary, `tests/store/`, with the `test-support` feature (the schema steps and internals they check, the loopback lookup) |
 | `sealwax-engine` | `engine/` | tokio: network, sync, op queue, secrets |
-| `sealwax` | `app/` | GTK app, binary `sealwax` |
+| `sealwax` | `app/` | GTK app, binary `sealwax` (as released: no self-test code) |
+| `sealwax-uitest` | `uitest/` | `sealwax-selftest`, Sealwax with the app's `test-hooks` feature (the self-test runner, the sample mail, the stand-in composer backend), and the harnesses in `uitest/examples/` (hostile, reader_*, composer_live, notify_live, palette, theme_*); never packaged (ADR-025 amendment). Not a default member: `cargo build -p sealwax-uitest` |
 | `sealwax-fixtures` | `devtools/fixtures/` | Synthetic `.eml` corpora, import and store benchmarks, `bench-conversation` (workspace glob `devtools/*`, `publish = false`) |
 | `sealwax-dns-canary` | `devtools/dns-canary/` | A preloadable `getaddrinfo` that records and refuses every name looked up, for the hostile suite (M5) |
 | `email-spike-s1` … `email-spike-s7` | `archive/spikes/<id>-<topic>/` | M0 measurement code, one crate per spike: a workspace of its own with its own `Cargo.lock`, excluded from this one and not built by `tools/ci.sh` ([archive/spikes/README.md](../archive/spikes/README.md), ADR-025) |
@@ -69,7 +70,7 @@ Always give `--store` a scratch path; the app's own store is `SealwaxDirs::from_
 
 ```bash
 python3 tools/corpus/fetch.py                  # the real-world corpus into .local/corpus/real/ (open-licensed templates, checked by SHA-256)
-cargo build --release -p sealwax --example reader_corpus --example reader_memory
+cargo build --release -p sealwax-uitest --example reader_corpus --example reader_memory
 SEALWAX_OMARCHY_STATE=$PWD/.local/reader-examples/corpus-theme SEALWAX_HEADLESS_TIMEOUT=900 \
     tools/headless.sh 33 target/release/examples/reader_corpus [--previews]
 SEALWAX_HEADLESS_TIMEOUT=600 tools/headless.sh 31 target/release/examples/reader_memory
@@ -81,20 +82,20 @@ The fetch makes anonymous HTTPS GETs of public files with a generic User-Agent; 
 
 ```sh
 tools/kill9-compose.sh 46 10        # kill -9 while composing: seconds of typing lost per run (bar 5 s)
-cargo build --release -p sealwax --example composer_live
+cargo build --release -p sealwax-uitest --example composer_live
 tools/headless.sh 45 target/release/examples/composer_live          # dry run (Broadway)
 target/release/examples/composer_live --live                        # authorized live runs only
 ```
 
-`kill9-compose.sh` (debug build first: `cargo build`) runs Sealwax headless on a scratch store under `.local/kill9/`, types into a composer every 200 ms, kills it with SIGKILL at a random moment, starts it again on the same folders and reads the reopened draft; about 12 s a run, so it isn't in `tools/ci.sh`. `composer_live` times an edit to the painted frame in the real composer's editor (S7's method: WebKit's `InsertText`, a paint probe, no key events) in a small document and above a 199 KB quoted thread, then scrolls the quote; it makes no input, uses scratch XDG folders, writes its report under `.local/reader/`, and ends by itself. The testbed's sending suites (`send_testbed`, `append_testbed`, `outbox_testbed`) run under `tools/ci.sh --testbed`; `SEALWAX_OUTBOX_SEEDS` sets the outbox suite's seeds (2 by default).
+`kill9-compose.sh` (debug build first: `cargo build -p sealwax-uitest`) runs Sealwax headless on a scratch store under `.local/kill9/`, types into a composer every 200 ms, kills it with SIGKILL at a random moment, starts it again on the same folders and reads the reopened draft; about 12 s a run, so it isn't in `tools/ci.sh`. `composer_live` times an edit to the painted frame in the real composer's editor (S7's method: WebKit's `InsertText`, a paint probe, no key events) in a small document and above a 199 KB quoted thread, then scrolls the quote; it makes no input, uses scratch XDG folders, writes its report under `.local/reader/`, and ends by itself. The testbed's sending suites (`send_testbed`, `append_testbed`, `outbox_testbed`) run under `tools/ci.sh --testbed`; `SEALWAX_OUTBOX_SEEDS` sets the outbox suite's seeds (2 by default).
 
 ## Search, notification and background measurements (M7)
 
 ```sh
-cargo build --release -p sealwax
-SEALWAX_HEADLESS_TIMEOUT=900 tools/headless.sh 53 target/release/sealwax --self-test tests/selftest/perf-search.sealwax-test   # key → results at 100,000
-python3 tools/testbed/notify_e2e.py 21          # new mail in background mode, end to end on the testbed (debug build first)
-cargo build -p sealwax --example notify_live
+cargo build --release -p sealwax-uitest
+SEALWAX_HEADLESS_TIMEOUT=900 tools/headless.sh 53 target/release/sealwax-selftest --self-test tests/selftest/perf-search.sealwax-test   # key → results at 100,000
+python3 tools/testbed/notify_e2e.py 21          # new mail in background mode, end to end on the testbed (cargo build -p sealwax-uitest first)
+cargo build -p sealwax-uitest --example notify_live
 tools/headless.sh 56 target/debug/examples/notify_live            # dry run (the stand-in clicks)
 target/debug/examples/notify_live --live                          # authorized live runs only: the user clicks
 ```
@@ -106,7 +107,7 @@ target/debug/examples/notify_live --live                          # authorized l
 ```sh
 SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem cargo test -p sealwax-engine --release --test pop3_testbed -- --ignored --test-threads=1
 SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem cargo test -p sealwax-engine --release --test pop3_accounts_testbed -- --ignored --test-threads=1
-tools/headless.sh 21 target/debug/sealwax --self-test tests/selftest/testbed-pop3-setup.sealwax-test
+tools/headless.sh 21 target/debug/sealwax-selftest --self-test tests/selftest/testbed-pop3-setup.sealwax-test
 ```
 
 `pop3_testbed` (the client: Dovecot's and Stalwart's POP3 over both securities, alice read-only, `popclient`'s own INBOX for deletions, cuts through the fault proxy; `SEALWAX_POP3_SEEDS` sets its fault runs, 5 by default) and `pop3_accounts_testbed` (an account's actor end to end on `popclient`) also run under `tools/ci.sh --testbed`. `testbed-pop3-setup` adds a POP3 account through the assistant on Stalwart's POP3 (port 16995): never point it at Dovecot's alice, since Dovecot marks downloaded mail read when the POP3 session ends. `engine/tests/pop3.rs` (a scripted server), `pop3_log.rs` and `pop3_accounts.rs` (a fake maildrop) run in CI.
@@ -168,7 +169,7 @@ They read two overrides that release builds ignore ([SECURITY.md](SECURITY.md#cr
 The testbed end to end through the real engine and the setup assistant (not in CI; start and seed the testbed first, and stop it after):
 
 ```bash
-tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/testbed-setup.sealwax-test
+tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/testbed-setup.sealwax-test
 bash tools/ci.sh --testbed
 ```
 
@@ -176,7 +177,7 @@ Triage end to end (M4): prepare the user `triage` (every folder emptied, eight s
 
 ```bash
 SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_mailbox.py fill dovecot stalwart
-tools/headless.sh 25 target/debug/sealwax --self-test tests/selftest/testbed-triage.sealwax-test
+tools/headless.sh 25 target/debug/sealwax-selftest --self-test tests/selftest/testbed-triage.sealwax-test
 SEALWAX_TESTBED_CA=$PWD/tools/testbed/certs/ca.pem python3 tools/testbed/triage_mailbox.py show dovecot stalwart
 ```
 
@@ -210,7 +211,7 @@ Releases follow [ADR-021](DECISIONS.md#adr-021--a-public-repository-releases-on-
 
 1. **Version and notes:** set `version` in `Cargo.toml`'s `[workspace.package]` (then `cargo metadata --format-version 1 >/dev/null` and the same with `--manifest-path fuzz/Cargo.toml` update both lock files), add a `## X.Y.Z — date` section to `CHANGELOG.md` in plain words, and update the version in README, INSTALL and the user guide where they name it. Commit, run `bash tools/ci.sh --ui`, then tag: `git tag -a vX.Y.Z -m "Sealwax X.Y.Z"` and `git push origin main vX.Y.Z`.
 2. **Build:** `python3 tools/release.py build` runs `tools/package-source.py` and makepkg on the tagged commit (adding `--nodeps` where Rust isn't a pacman package), then writes to `.local/release/X.Y.Z/`: the package `sealwax-X.Y.Z-1-x86_64.pkg.tar.zst`, the same file as `sealwax-x86_64.pkg.tar.zst` (the name INSTALL.md's download command asks for through `releases/latest`), `sealwax-X.Y.Z-x86_64.tar.gz` (the package's `usr/` files, owned by root, in name order, for `sealwax-bin`), `THIRD-PARTY-LICENSES.txt` (the one in the package) and `SHA256SUMS`.
-   **Then the clean-container install test** (ML-095; for 1.0.0 and its release candidates, the owner's word on 2026-10-21): `bash tools/install-test.sh .local/release/X.Y.Z/sealwax-X.Y.Z-1-x86_64.pkg.tar.zst` installs the package with pacman in a fresh `archlinux:base` container, checks that every library the binary links is there and that the license files are installed, and runs the installed `/usr/bin/sealwax` headless over a fictional mailbox (`tests/selftest/install-smoke.sealwax-test`: the window, a message in the reader, its web process in WebKit's sandbox). The container runs with seccomp and Docker's masked `/proc` paths lifted, for that container only, so bubblewrap can make the sandbox; it is removed afterwards, and its log and screenshot go to `.local/install-test/<time>/`. Needs a running Docker daemon (`sudo systemctl start docker`, the owner's) and pacman's mirrors.
+   **Then the clean-container install test** (ML-095; for 1.0.0 and its release candidates, the owner's word on 2026-10-21): `bash tools/install-test.sh .local/release/X.Y.Z/sealwax-X.Y.Z-1-x86_64.pkg.tar.zst` installs the package with pacman in a fresh `archlinux:base` container, checks that every library the binary links is there, that the license files are installed and that `/usr/bin/sealwax` holds no self-test code, starts it headless to its first frame, and runs `sealwax-selftest` (mounted from `target/debug/`, or `SEALWAX_SELFTEST_BIN`; build it from the release's commit with `cargo build -p sealwax-uitest`) on the container's libraries over a fictional mailbox (`tests/selftest/install-smoke.sealwax-test`: the window, a message in the reader, its web process in WebKit's sandbox). The container runs with seccomp and Docker's masked `/proc` paths lifted, for that container only, so bubblewrap can make the sandbox; it is removed afterwards, and its log and screenshot go to `.local/install-test/<time>/`. Needs a running Docker daemon (`sudo systemctl start docker`, the owner's) and pacman's mirrors.
 3. **GitHub:** `python3 tools/release.py github` creates the release `vX.Y.Z` with those files and `CHANGELOG.md`'s section as its notes (`gh`, the tag already on GitHub).
 4. **AUR (not used since 2026-10-18):** `python3 tools/release.py aur` clones or pulls `ssh://aur@aur.archlinux.org/sealwax-bin.git` into `.local/aur/sealwax-bin/`, writes its PKGBUILD from the template with the version and the tarball's SHA-256 (checking that its `depends` and `optdepends` match `packaging/PKGBUILD.in`), downloads the release's tarball to verify the sum (`makepkg --verifysource`), writes `.SRCINFO` and pushes. It needs the owner's AUR account with their SSH key; `SEALWAX_AUR_SSH_KEY=<key file>` names the key when ssh doesn't find it. (Never run: the AUR closed new accounts on 2026-10-09, and the owner dropped the AUR package on 2026-10-18. The step and `packaging/aur/` are kept, unused.)
 

@@ -2,7 +2,7 @@
 # lists, then a confirmation that names the account and what goes; Cancel sends nothing, Remove
 # sends the account's key, and the sidebar lets the account go. With two accounts the dialog asks
 # which. Every address and name is fictional.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-remove.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/setup-remove.sealwax-test
 
 desktop tiling
 resize 1440 900

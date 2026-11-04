@@ -25,7 +25,7 @@ pub enum DesktopEvent {
 
 /// Keeps the subscriptions alive; dropping it ends them.
 #[derive(Default)]
-pub struct DesktopWatch {
+pub(crate) struct DesktopWatch {
     sleep: RefCell<Option<gio::SignalSubscription>>,
     network: RefCell<Option<(gio::NetworkMonitor, glib::SignalHandlerId)>>,
 }
@@ -40,7 +40,7 @@ impl Drop for DesktopWatch {
 
 /// Starts watching; `handler` runs on the GTK thread with every change, the network's state
 /// first of all.
-pub fn watch(handler: impl Fn(DesktopEvent) + 'static) -> Rc<DesktopWatch> {
+pub(crate) fn watch(handler: impl Fn(DesktopEvent) + 'static) -> Rc<DesktopWatch> {
     let handler: Rc<dyn Fn(DesktopEvent)> = Rc::new(handler);
     let watch = Rc::new(DesktopWatch::default());
     let weak = Rc::downgrade(&watch);

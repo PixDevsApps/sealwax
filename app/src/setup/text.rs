@@ -11,14 +11,14 @@ use sealwax_engine::api::AccountError;
 
 /// How a notice looks: a problem to fix, or information.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Tone {
+pub(crate) enum Tone {
     Problem,
     Info,
 }
 
 /// The assistant's alert: a heading, what to do next, and the provider's page when it helps.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Notice {
+pub(crate) struct Notice {
     pub tone: Tone,
     pub title: String,
     pub body: String,
@@ -43,7 +43,7 @@ impl Notice {
 
 /// What the failure message can name: the provider, the servers tried and its help pages.
 #[derive(Debug, Clone, Copy)]
-pub struct Context<'a> {
+pub(crate) struct Context<'a> {
     pub provider: Option<&'a str>,
     /// The incoming server tried: IMAP's, or POP3's (M8).
     pub incoming: &'a Endpoint,
@@ -61,7 +61,7 @@ fn server(protocol: Protocol) -> &'static str {
 }
 
 /// Why a login failed and what to do about it.
-pub fn login_failure(error: &LoginError, context: &Context) -> Notice {
+pub(crate) fn login_failure(error: &LoginError, context: &Context) -> Notice {
     let endpoint = match error.protocol {
         Protocol::Imap | Protocol::Pop3 => context.incoming,
         Protocol::Smtp => context.smtp,
@@ -213,7 +213,7 @@ fn not_microsoft(server: &str) -> Notice {
 /// Why a browser sign-in (ML-032) failed and what to do about it: each ends in signing in
 /// again, which the step's button does, except a server that isn't Microsoft's. `provider` names the account's provider
 /// ("Outlook.com") when detection knew it.
-pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
+pub(crate) fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
     let server = server(error.protocol);
     match error.failure {
         LoginFailure::SignInDeclined => Notice::problem(
@@ -287,9 +287,9 @@ pub fn sign_in_failure(error: &LoginError, provider: Option<&str>) -> Notice {
 }
 
 /// The Microsoft account signed in with isn't the address typed (issue #2): which to send from.
-pub const IDENTITY_TITLE: &str = "Not the address you typed";
+pub(crate) const IDENTITY_TITLE: &str = "Not the address you typed";
 
-pub fn identity_body(signed_in: &str, typed: &str) -> String {
+pub(crate) fn identity_body(signed_in: &str, typed: &str) -> String {
     format!(
         "You signed in to Microsoft as {signed_in}, but your mail would be sent from {typed}. \
          Microsoft refuses mail from an address your account isn't allowed to send from. Keep \
@@ -297,43 +297,43 @@ pub fn identity_body(signed_in: &str, typed: &str) -> String {
     )
 }
 
-pub fn send_from(address: &str) -> String {
+pub(crate) fn send_from(address: &str) -> String {
     format!("Send from {address}")
 }
 
-pub fn keep_address(address: &str) -> String {
+pub(crate) fn keep_address(address: &str) -> String {
     format!("Keep {address}")
 }
 
 /// The note under "Waiting for the browser…" once a Microsoft sign-in has waited a minute: an
 /// organization that doesn't let its users approve an unverified app leaves its own page open,
 /// and the browser never comes back.
-pub const STILL_WAITING: &str = "Still waiting for Microsoft. If the browser shows “Need admin \
+pub(crate) const STILL_WAITING: &str = "Still waiting for Microsoft. If the browser shows “Need admin \
      approval”, your organization must approve Sealwax first: see the user guide.";
 
 /// The note in the Microsoft step while no client ID is in use (ADR-008).
-pub const MICROSOFT_UNAVAILABLE: &str =
+pub(crate) const MICROSOFT_UNAVAILABLE: &str =
     "Microsoft sign-in isn't available in this build of Sealwax yet.";
 
 /// How to make it available.
-pub const MICROSOFT_CLIENT_ID_HINT: &str = "It needs a Microsoft client ID: set client_id under \
+pub(crate) const MICROSOFT_CLIENT_ID_HINT: &str = "It needs a Microsoft client ID: set client_id under \
      [oauth.microsoft] in config.toml (Preferences opens it). docs/OAUTH-SETUP.md shows how to \
      register one.";
 
 /// The note under the manual step's "Incoming mail" while POP3 is chosen (M8): where its mail
 /// goes, and that the server keeps it unless `accounts.toml` says otherwise.
-pub const POP3_NOTE: &str = "Sealwax downloads new mail to folders on this computer and \
+pub(crate) const POP3_NOTE: &str = "Sealwax downloads new mail to folders on this computer and \
      leaves it on the server. To delete it there after some days, set delete_after_days in \
      accounts.toml.";
 
 /// The toast after an account signed in again.
-pub fn signed_in_again(name: &str) -> String {
+pub(crate) fn signed_in_again(name: &str) -> String {
     format!("{name} is signed in again")
 }
 
 /// Why a password typed again (ML-048) was refused and what to do next. Only the password can
 /// be changed on this step, so nothing points at the server settings.
-pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
+pub(crate) fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
     let endpoint = match error.protocol {
         Protocol::Imap | Protocol::Pop3 => context.incoming,
         Protocol::Smtp => context.smtp,
@@ -406,12 +406,12 @@ pub fn password_again_failure(error: &LoginError, context: &Context) -> Notice {
 }
 
 /// The toast after a password typed again worked.
-pub fn password_accepted(name: &str) -> String {
+pub(crate) fn password_accepted(name: &str) -> String {
     format!("Password accepted for {name}")
 }
 
 /// What detection's dead ends say; `None` for settings that were found.
-pub fn detection(detection: &Detection, domain: &str) -> Option<Notice> {
+pub(crate) fn detection(detection: &Detection, domain: &str) -> Option<Notice> {
     Some(match detection {
         Detection::Found(_) => return None,
         Detection::Unsupported {
@@ -438,7 +438,7 @@ pub fn detection(detection: &Detection, domain: &str) -> Option<Notice> {
 }
 
 /// The engine isn't attached (or stopped).
-pub fn not_connected() -> Notice {
+pub(crate) fn not_connected() -> Notice {
     Notice::problem(
         "Not connected to the mail engine",
         "This build of Sealwax has no mail engine attached yet, so it can't look up or check an \
@@ -447,7 +447,7 @@ pub fn not_connected() -> Notice {
 }
 
 /// Why saving a checked account failed.
-pub fn account_error(error: &AccountError) -> Notice {
+pub(crate) fn account_error(error: &AccountError) -> Notice {
     match error {
         AccountError::Keyring => Notice::problem(
             "Couldn't save the password",
@@ -480,7 +480,7 @@ pub fn account_error(error: &AccountError) -> Notice {
 }
 
 /// A source in the list the assistant shows while it looks.
-pub fn source(source: DetectSource, domain: &str) -> String {
+pub(crate) fn source(source: DetectSource, domain: &str) -> String {
     match source {
         DetectSource::Preset => "Built-in providers".to_owned(),
         DetectSource::Autoconfig => format!("{domain} autoconfig"),
@@ -492,7 +492,7 @@ pub fn source(source: DetectSource, domain: &str) -> String {
 }
 
 /// `IMAP mail.example.test · 993 · TLS`, as the mock writes found settings.
-pub fn endpoint(protocol: Protocol, endpoint: &Endpoint) -> String {
+pub(crate) fn endpoint(protocol: Protocol, endpoint: &Endpoint) -> String {
     let name = match protocol {
         Protocol::Imap => "IMAP",
         Protocol::Smtp => "SMTP",
@@ -507,7 +507,7 @@ pub fn endpoint(protocol: Protocol, endpoint: &Endpoint) -> String {
 }
 
 /// The found settings card: the provider, both servers and the username's form.
-pub fn found(settings: &DetectedSettings, domain: &str) -> [String; 4] {
+pub(crate) fn found(settings: &DetectedSettings, domain: &str) -> [String; 4] {
     let username = match settings.username {
         UsernameForm::Address => "Username: your full address",
         UsernameForm::LocalPart => "Username: the part before the @",
@@ -526,7 +526,7 @@ pub fn found(settings: &DetectedSettings, domain: &str) -> [String; 4] {
 
 /// The note under found settings that only the domain's mail host gave (S4: show and
 /// confirm before sending the password).
-pub fn confirm_note(settings: &DetectedSettings) -> String {
+pub(crate) fn confirm_note(settings: &DetectedSettings) -> String {
     match &settings.provider {
         Some(provider) => format!(
             "Found through {provider}, which handles this domain's mail. Check the username \
@@ -538,7 +538,7 @@ pub fn confirm_note(settings: &DetectedSettings) -> String {
 }
 
 /// The password hint for a provider that wants an app password.
-pub fn app_password_hint(provider: Option<&str>) -> String {
+pub(crate) fn app_password_hint(provider: Option<&str>) -> String {
     format!(
         "{} needs an app password, not your account password.",
         provider.unwrap_or("This provider")
@@ -547,9 +547,9 @@ pub fn app_password_hint(provider: Option<&str>) -> String {
 
 /// The password label and hint for a provider reached through its Bridge on this computer
 /// (Proton Mail, issue #9).
-pub const BRIDGE_PASSWORD: &str = "Bridge password";
+pub(crate) const BRIDGE_PASSWORD: &str = "Bridge password";
 
-pub fn bridge_password_hint(provider: Option<&str>) -> String {
+pub(crate) fn bridge_password_hint(provider: Option<&str>) -> String {
     let provider = provider.unwrap_or("The provider");
     format!(
         "Start {provider} Bridge on this computer, then type the password it shows for this \
@@ -559,11 +559,11 @@ pub fn bridge_password_hint(provider: Option<&str>) -> String {
 
 /// The trust step (issue #9): a server on this computer whose certificate the system doesn't
 /// trust, such as Proton Mail Bridge's.
-pub const CERTIFICATE_TITLE: &str = "Trust this server's certificate?";
-pub const TRUST: &str = "Trust and Sign In";
-pub const DONT_TRUST: &str = "Don't Trust";
+pub(crate) const CERTIFICATE_TITLE: &str = "Trust this server's certificate?";
+pub(crate) const TRUST: &str = "Trust and Sign In";
+pub(crate) const DONT_TRUST: &str = "Don't Trust";
 
-pub fn certificate_body(protocol: Protocol, endpoint: &Endpoint) -> String {
+pub(crate) fn certificate_body(protocol: Protocol, endpoint: &Endpoint) -> String {
     let server = match protocol {
         Protocol::Imap => "incoming mail server (IMAP)",
         Protocol::Pop3 => "incoming mail server (POP3)",
@@ -580,13 +580,13 @@ pub fn certificate_body(protocol: Protocol, endpoint: &Endpoint) -> String {
 
 /// The fingerprint in two lines of 16 bytes, as `openssl x509 -fingerprint -sha256` prints it
 /// in one.
-pub fn fingerprint_lines(pin: &CertificatePin) -> String {
+pub(crate) fn fingerprint_lines(pin: &CertificatePin) -> String {
     let text = pin.to_string();
     format!("{}\n{}", &text[..47], &text[48..])
 }
 
 /// The hint for a provider whose IMAP must be turned on first.
-pub fn enable_imap_hint(provider: Option<&str>) -> String {
+pub(crate) fn enable_imap_hint(provider: Option<&str>) -> String {
     format!(
         "Turn on IMAP in {}'s settings first.",
         provider.unwrap_or("your provider")

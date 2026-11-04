@@ -36,29 +36,31 @@ use sealwax_domain::triage::Triage;
 use sealwax_engine::api::Event;
 use sealwax_infrastructure::store::{ChangeEvent, ViewFilter, ViewScope};
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+#[cfg(feature = "test-hooks")]
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// The actions a notification invokes, on the application, with a message id (`x`).
-pub const OPEN_ACTION: &str = "open-message";
-pub const ARCHIVE_ACTION: &str = "archive-message";
-pub const READ_ACTION: &str = "mark-message-read";
+pub(crate) const OPEN_ACTION: &str = "open-message";
+pub(crate) const ARCHIVE_ACTION: &str = "archive-message";
+pub(crate) const READ_ACTION: &str = "mark-message-read";
 /// The buttons' labels (shown where the server shows buttons; omarchy-shell shows none).
-pub const ARCHIVE_LABEL: &str = "Archive";
-pub const READ_LABEL: &str = "Mark Read";
+pub(crate) const ARCHIVE_LABEL: &str = "Archive";
+pub(crate) const READ_LABEL: &str = "Mark Read";
 /// The count's title.
-pub const COUNT_TITLE: &str = "New mail";
+pub(crate) const COUNT_TITLE: &str = "New mail";
 /// What a click says when its message is gone.
-pub const GONE_TEXT: &str = "The message was moved or deleted";
+pub(crate) const GONE_TEXT: &str = "The message was moved or deleted";
 /// Notifications of their own at most within [`LIVE`]; more become one that counts them.
-pub const SEPARATE: usize = 3;
+pub(crate) const SEPARATE: usize = 3;
 /// How long a notification counts as on screen for grouping: omarchy-shell shows none longer.
-pub const LIVE: Duration = Duration::from_secs(30);
+pub(crate) const LIVE: Duration = Duration::from_secs(30);
 /// Characters of the sender (the title) and the subject (the body) sent at most.
-pub const TITLE_CHARS: usize = 80;
-pub const BODY_CHARS: usize = 200;
+pub(crate) const TITLE_CHARS: usize = 80;
+pub(crate) const BODY_CHARS: usize = 200;
 /// How long a click waits for its message's row in the list, and for it on screen.
 const OPEN_WAIT: Duration = Duration::from_secs(5);
 const PAINT_WAIT: Duration = Duration::from_secs(10);
@@ -101,10 +103,18 @@ impl std::fmt::Debug for Notified {
 /// What a click on a notification did, for the self-tests and `notify_live`: ids and times.
 #[derive(Clone, Copy, Debug)]
 pub struct Click {
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests and notify_live")
+    )]
     pub message: MessageId,
     /// When the action ran (GLib runs it 0.05 ms after the server's `ActionInvoked`, S6).
     pub action: Instant,
     /// Whether the main window was on screen then.
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests and notify_live")
+    )]
     pub had_window: bool,
     /// The message was found in the store and its row selected in the list.
     pub selected: Option<Instant>,
@@ -114,7 +124,7 @@ pub struct Click {
 
 /// What one notification sent or withdrew, for the self-tests: no text.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Sent {
+pub(crate) enum Sent {
     Message(MessageId),
     Count(usize),
     Withdrawn(String),
@@ -149,7 +159,7 @@ fn app() -> Option<SealwaxApplication> {
 }
 
 /// Follows the engine's new mail and `[notifications]`, once at startup.
-pub fn install(state: &Rc<AppState>) {
+pub(crate) fn install(state: &Rc<AppState>) {
     let notifier = shared();
     if let Some(prefs) = state.preferences() {
         notifier.settings.set(prefs.config().notifications);
@@ -208,22 +218,24 @@ fn install_actions(app: &SealwaxApplication, state: &Rc<AppState>) {
 }
 
 /// The settings in use.
-pub fn settings() -> Notifications {
+pub(crate) fn settings() -> Notifications {
     shared().settings.get()
 }
 
 /// What was sent and withdrawn lately, oldest first (the self-tests).
-pub fn sent() -> Vec<Sent> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn sent() -> Vec<Sent> {
     shared().sent.borrow().clone()
 }
 
 /// The latest clicks, oldest first.
+#[cfg(feature = "test-hooks")]
 pub fn clicks() -> Vec<Click> {
     shared().clicks.borrow().clone()
 }
 
 /// The messages with a notification on screen or counted in one.
-pub fn notified() -> Vec<MessageId> {
+pub(crate) fn notified() -> Vec<MessageId> {
     shared().notified.borrow().iter().map(|n| n.id).collect()
 }
 
@@ -581,7 +593,7 @@ fn sender(message: &MessageSummary) -> String {
 }
 
 /// The subject, cleaned and capped, or "(no subject)" as the list says.
-pub fn subject_text(subject: &str) -> String {
+pub(crate) fn subject_text(subject: &str) -> String {
     let subject = clean(subject, BODY_CHARS);
     if subject.is_empty() {
         "(no subject)".to_owned()
@@ -591,7 +603,7 @@ pub fn subject_text(subject: &str) -> String {
 }
 
 /// "1 new message", "5 new messages".
-pub fn count_text(count: usize) -> String {
+pub(crate) fn count_text(count: usize) -> String {
     if count == 1 {
         "1 new message".to_owned()
     } else {
@@ -601,7 +613,7 @@ pub fn count_text(count: usize) -> String {
 
 /// The senders newest first, each once: "Kari", "Kari and Ola", "Kari, Ola and Leah",
 /// "Kari, Ola, Leah and 2 others"; at most [`BODY_CHARS`] characters.
-pub fn senders_text(names: &[String]) -> String {
+pub(crate) fn senders_text(names: &[String]) -> String {
     let mut distinct: Vec<&str> = Vec::new();
     for name in names {
         if !distinct.contains(&name.as_str()) {
@@ -628,7 +640,7 @@ pub fn senders_text(names: &[String]) -> String {
 /// Mail text made safe to show on one line: control characters become spaces, direction
 /// overrides and isolates go, runs of white space collapse, and past `max` characters it ends
 /// in an ellipsis.
-pub fn clean(text: &str, max: usize) -> String {
+pub(crate) fn clean(text: &str, max: usize) -> String {
     let mut out = String::new();
     let mut count = 0;
     let mut space = false;
@@ -664,7 +676,7 @@ pub fn clean(text: &str, max: usize) -> String {
 }
 
 /// The freedesktop body's markup made literal: `&`, `<` and `>`.
-pub fn escape_markup(text: &str) -> String {
+pub(crate) fn escape_markup(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {
         match c {
@@ -954,6 +966,7 @@ fn triage(state: &AppState) -> Controller {
 
 /// The messages notified about, for checks: whether each has a notification of its own (else
 /// the count counts it).
+#[cfg(feature = "test-hooks")]
 pub fn on_screen() -> HashMap<MessageId, bool> {
     shared()
         .notified

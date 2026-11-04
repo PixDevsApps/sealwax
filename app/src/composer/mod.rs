@@ -4,22 +4,28 @@
 //! Forward and Edit Draft, the quick reply's expansion, `mailto:` links, and drafts reopened
 //! after a restart or an Undo send. With no main window shown it shows one first.
 //!
-//! Everything a card needs from outside goes through [`backend::Backend`]: phase A's
-//! [`backend::StandIn`] until phase B sets the real one with [`set_backend`]. Quit, and the
+//! Everything a card needs from outside goes through [`backend::Backend`]: the store's
+//! ([`use_store`], at startup; a self-test build may pick its in-memory stand-in). Quit, and the
 //! main window closing, save every open draft first ([`save_all`], [`keep_drafts_on_close`]).
 
-pub mod attachments;
-pub mod backend;
-pub mod card;
+pub(crate) mod attachments;
+pub(crate) mod backend;
+pub(crate) mod card;
 pub mod editor;
 mod js;
-pub mod recipients;
-pub mod store_backend;
+pub(crate) mod recipients;
+#[cfg(feature = "test-hooks")]
+pub mod stand_in;
+pub(crate) mod store_backend;
 
 use crate::application::SealwaxApplication;
 use crate::test_hooks::{self, Log};
-use backend::{Backend, StandIn};
-pub use card::{Composer, Ending};
+use backend::Backend;
+#[cfg(feature = "test-hooks")]
+pub use card::Ending;
+pub(crate) use card::Composer;
+#[cfg(feature = "test-hooks")]
+use stand_in::StandIn;
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
@@ -75,21 +81,23 @@ impl fmt::Debug for ComposeRequest {
 }
 
 /// How long Quit waits for the open drafts to be saved before it goes anyway.
-pub const SAVE_ON_QUIT: Duration = Duration::from_secs(3);
+pub(crate) const SAVE_ON_QUIT: Duration = Duration::from_secs(3);
 
 thread_local! {
     static REQUESTS: Log<ComposeRequest> = const { Log::new() };
     static OPEN: RefCell<Vec<Composer>> = const { RefCell::new(Vec::new()) };
     static BACKEND: RefCell<Option<Rc<dyn Backend>>> = const { RefCell::new(None) };
+    #[cfg(feature = "test-hooks")]
     static STAND_IN: RefCell<Option<Rc<StandIn>>> = const { RefCell::new(None) };
     static STORE: RefCell<Option<Rc<StoreBackend>>> = const { RefCell::new(None) };
+    #[cfg(feature = "test-hooks")]
     static CHOOSER: RefCell<Option<Vec<PathBuf>>> = const { RefCell::new(None) };
     static KEYS_FOLLOWED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Opens a composer card for `request` in the main window, shown first if it isn't, and puts
 /// the keyboard focus in it. The card shows at once; the backend fills it.
-pub fn open(app: &SealwaxApplication, request: ComposeRequest) {
+pub(crate) fn open(app: &SealwaxApplication, request: ComposeRequest) {
     open_card(app, request, true);
 }
 
@@ -117,22 +125,23 @@ fn open_card(app: &SealwaxApplication, request: ComposeRequest, focus: bool) {
 }
 
 /// Every request [`open`] was given while a self-test records (`test_hooks`), oldest first.
-pub fn requests() -> Vec<ComposeRequest> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn requests() -> Vec<ComposeRequest> {
     REQUESTS.with(Log::entries)
 }
 
 /// The composers open now, oldest first.
-pub fn composers() -> Vec<Composer> {
+pub(crate) fn composers() -> Vec<Composer> {
     OPEN.with(|open| open.borrow().clone())
 }
 
 /// Whether a composer is open.
-pub fn is_open() -> bool {
+pub(crate) fn is_open() -> bool {
     OPEN.with(|open| !open.borrow().is_empty())
 }
 
 /// The composer holding the keyboard focus of `window`.
-pub fn focused(window: &impl IsA<gtk::Window>) -> Option<Composer> {
+pub(crate) fn focused(window: &impl IsA<gtk::Window>) -> Option<Composer> {
     let focus = gtk::prelude::GtkWindowExt::focus(window.as_ref())?;
     composers()
         .into_iter()
@@ -140,16 +149,18 @@ pub fn focused(window: &impl IsA<gtk::Window>) -> Option<Composer> {
 }
 
 /// Makes `backend` the one new composers use (phase B: the store and the engine).
-pub fn set_backend(backend: Rc<dyn Backend>) {
+pub(crate) fn set_backend(backend: Rc<dyn Backend>) {
     BACKEND.with(|current| current.replace(Some(backend)));
 }
 
-/// The phase A stand-in, when it is the backend in use.
+/// The in-memory stand-in, when it is the backend in use.
+#[cfg(feature = "test-hooks")]
 pub fn stand_in() -> Option<Rc<StandIn>> {
     STAND_IN.with(|stand_in| stand_in.borrow().clone())
 }
 
-/// Makes phase A's in-memory stand-in the backend (self-tests that check its records).
+/// Makes the in-memory stand-in the backend (self-tests that check its records).
+#[cfg(feature = "test-hooks")]
 pub fn use_stand_in(app: &SealwaxApplication) -> Rc<StandIn> {
     let stand_in = StandIn::new(&app.state());
     STAND_IN.with(|current| current.replace(Some(stand_in.clone())));
@@ -158,7 +169,7 @@ pub fn use_stand_in(app: &SealwaxApplication) -> Rc<StandIn> {
 }
 
 /// Makes the store's backend the one new composers use: the app does at startup.
-pub fn use_store(app: &SealwaxApplication) -> Rc<StoreBackend> {
+pub(crate) fn use_store(app: &SealwaxApplication) -> Rc<StoreBackend> {
     let store = StoreBackend::new(&app.state());
     STORE.with(|current| current.replace(Some(store.clone())));
     set_backend(store.clone());
@@ -166,14 +177,15 @@ pub fn use_store(app: &SealwaxApplication) -> Rc<StoreBackend> {
 }
 
 /// The store's backend, when the app set it.
-pub fn store_backend() -> Option<Rc<StoreBackend>> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn store_backend() -> Option<Rc<StoreBackend>> {
     STORE.with(|store| store.borrow().clone())
 }
 
 /// Reopens the drafts whose composers were open when Sealwax last stopped (a crash, a kill, a
 /// logout): after the first frame, once the store is ready, open in the dock but leaving the
 /// keyboard focus where it is. Drafts a composer shows already are left alone.
-pub fn reopen_drafts(app: &SealwaxApplication) {
+pub(crate) fn reopen_drafts(app: &SealwaxApplication) {
     let ready = app.state().mailbox().wait_ready();
     let app = app.downgrade();
     gtk4::glib::spawn_future_local(async move {
@@ -209,7 +221,7 @@ pub fn reopen_drafts(app: &SealwaxApplication) {
 /// (M6 phase B). Startup sets the store's ([`use_store`]); should anything ask first, it is
 /// made then, so a draft never goes anywhere but the store (only a self-test picks the
 /// in-memory stand-in, with [`use_stand_in`]).
-pub fn backend(app: &SealwaxApplication) -> Rc<dyn Backend> {
+pub(crate) fn backend(app: &SealwaxApplication) -> Rc<dyn Backend> {
     if let Some(backend) = BACKEND.with(|current| current.borrow().clone()) {
         return backend;
     }
@@ -218,12 +230,19 @@ pub fn backend(app: &SealwaxApplication) -> Rc<dyn Backend> {
 }
 
 /// Self-tests: the next Attach File… takes `paths` instead of asking the file chooser.
+#[cfg(feature = "test-hooks")]
 pub fn answer_chooser(paths: Vec<PathBuf>) {
     CHOOSER.with(|chooser| chooser.replace(Some(paths)));
 }
 
+#[cfg(feature = "test-hooks")]
 fn chooser_answer() -> Option<Vec<PathBuf>> {
     CHOOSER.with(|chooser| chooser.take())
+}
+
+#[cfg(not(feature = "test-hooks"))]
+fn chooser_answer() -> Option<Vec<PathBuf>> {
+    None
 }
 
 /// Forgets a card that went.
@@ -233,13 +252,13 @@ fn forget(root: &gtk::Box) {
 
 /// Saves every open draft and lets the cards go; Quit waits for it (at most [`SAVE_ON_QUIT`])
 /// before it destroys the windows.
-pub async fn save_all() {
+pub(crate) async fn save_all() {
     save(composers()).await;
 }
 
 /// The main window closing (into background mode, or for good) first saves the drafts its
 /// cards hold and lets them go, at most [`SAVE_ON_QUIT`]; Quit has saved them already.
-pub fn keep_drafts_on_close(window: &adw::ApplicationWindow) {
+pub(crate) fn keep_drafts_on_close(window: &adw::ApplicationWindow) {
     window.connect_close_request(|window| {
         let held: Vec<Composer> = composers()
             .into_iter()

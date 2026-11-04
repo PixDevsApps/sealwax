@@ -81,7 +81,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("engine-attach", 0, 0),
     ("engine-detach", 0, 0),
     ("engine-start", 1, 1),
@@ -107,13 +107,13 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
     ("desktop-resume", 0, 0),
 ];
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     command.starts_with("engine-")
         || command.starts_with("setup-")
         || command.starts_with("desktop-")
 }
 
-pub fn checks(assertion: &str) -> bool {
+pub(super) fn checks(assertion: &str) -> bool {
     matches!(
         assertion,
         "assert-setup"
@@ -182,7 +182,7 @@ fn assistant() -> Result<setup::Assistant, String> {
     setup::current().ok_or_else(|| "the setup assistant isn't open".to_owned())
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     match command {
         "engine-attach" => {
             let (commands, from_app) = async_channel::unbounded();
@@ -354,7 +354,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
     }
 }
 
-pub fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {
+pub(super) fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResult {
     match assertion {
         "assert-account-folders" => {
             let mailbox = harness.state.mailbox();

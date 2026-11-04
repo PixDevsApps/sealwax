@@ -120,8 +120,15 @@ def build(ver: str) -> None:
             (member for member in source.getmembers() if member.name.startswith("usr")),
             key=lambda member: member.name,
         )
-        if not any(member.name == "usr/bin/sealwax" for member in members):
+        binary = next((member for member in members if member.name == "usr/bin/sealwax"), None)
+        if binary is None:
             raise SystemExit(f"{package.name} has no usr/bin/sealwax")
+        # The released binary has no self-test runner or sample mail (ADR-025 amendment): not
+        # the runner's option or variable, not the samples' account.
+        data = source.extractfile(binary).read()
+        for marker in (b"--self-test", b"SEALWAX_SELFTEST_ALLOW_LIVE", b"alex.berg@example.test"):
+            if marker in data:
+                raise SystemExit(f"{package.name}'s usr/bin/sealwax holds self-test code ({marker.decode()})")
         for member in members:
             member.uid = member.gid = 0
             member.uname = member.gname = "root"

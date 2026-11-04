@@ -5,7 +5,7 @@
 # senders' lists with their field; a file edited by hand shows "Edited by hand" with Open File
 # and keeps its text; a file that can't be read says where; a save over a file changed meanwhile
 # is refused. Every name and address is fictional.
-# Run: tools/headless.sh 85 target/debug/sealwax --self-test tests/selftest/rules-dialog.sealwax-test
+# Run: tools/headless.sh 85 target/debug/sealwax-selftest --self-test tests/selftest/rules-dialog.sealwax-test
 
 desktop tiling
 resize 1440 900

@@ -4,7 +4,7 @@
 # [reader] reply = "all" makes Reply answer everyone, the card's buttons Reply all and Reply to
 # sender, the quick reply name everyone it answers, and Reply to Sender (the palette, the
 # message menu) the sender alone. A change applies at once. Every name and message is fictional.
-# Run: tools/headless.sh 45 target/debug/sealwax --self-test tests/selftest/reply-default.sealwax-test
+# Run: tools/headless.sh 45 target/debug/sealwax-selftest --self-test tests/selftest/reply-default.sealwax-test
 
 desktop tiling
 resize 1440 900

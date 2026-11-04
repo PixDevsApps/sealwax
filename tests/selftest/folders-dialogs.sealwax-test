@@ -7,7 +7,7 @@
 # answer comes as a toast, a server's refusal in its words; a deleted folder that was shown
 # leaves the list at its account's Inbox. A folded folder stays folded when it is renamed (the
 # user's word, 2026-10-09: the sidebar as they left it). Every name and message is fictional.
-# Run: tools/headless.sh 81 target/debug/sealwax --self-test tests/selftest/folders-dialogs.sealwax-test
+# Run: tools/headless.sh 81 target/debug/sealwax-selftest --self-test tests/selftest/folders-dialogs.sealwax-test
 
 desktop tiling
 resize 1440 900

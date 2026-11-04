@@ -113,6 +113,7 @@ impl ActionSet {
         }
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn is_enabled(&self, id: ActionId) -> bool {
         self.action(id).is_some_and(|action| action.is_enabled())
     }
@@ -162,7 +163,7 @@ pub fn install_window_actions(window: &impl IsA<gio::ActionMap>) -> ActionSet {
 
 /// Adds the composer's actions (`win.send`, `win.bold`, ...) to `group`, which a composer card
 /// inserts as its own `win` group: inside the card they hide the window's of the same names.
-pub fn install_composer_actions(group: &impl IsA<gio::ActionMap>) -> ActionSet {
+pub(crate) fn install_composer_actions(group: &impl IsA<gio::ActionMap>) -> ActionSet {
     ActionSet::install(
         group,
         ActionId::ALL
@@ -181,7 +182,7 @@ pub fn apply_accels(app: &impl IsA<gtk::Application>, keymap: &Keymap) {
 }
 
 /// How long the second key of a sequence (`g` then `i`) is waited for.
-pub const SEQUENCE_TIMEOUT: Duration = Duration::from_millis(1500);
+pub(crate) const SEQUENCE_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// What a key press does in a scope.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -273,6 +274,7 @@ impl Dispatch {
         }
     }
 
+    #[cfg(any(test, feature = "test-hooks"))]
     fn pending(&self, now: Instant) -> Option<&str> {
         self.pending
             .as_ref()
@@ -301,6 +303,7 @@ impl ScopedShortcuts {
         shortcuts
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn scope(&self) -> Scope {
         self.scope
     }
@@ -311,6 +314,7 @@ impl ScopedShortcuts {
     }
 
     /// The first key of a sequence waiting for its second, such as `g`.
+    #[cfg(any(test, feature = "test-hooks"))]
     pub fn pending(&self) -> Option<String> {
         self.dispatch
             .borrow()

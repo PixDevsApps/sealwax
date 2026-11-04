@@ -102,7 +102,7 @@ thread_local! {
 
 /// An open picker; [`present`] makes one.
 #[derive(Clone)]
-pub struct MoveTo {
+pub(crate) struct MoveTo {
     dialog: adw::Dialog,
     inner: Rc<Inner>,
 }
@@ -110,7 +110,7 @@ pub struct MoveTo {
 /// Opens the picker over `window` for `count` messages, offering `folders` in their order;
 /// `known` are every folder, which name the folders above a subfolder; `pick` gets the folder
 /// chosen.
-pub fn present(
+pub(crate) fn present(
     window: &impl IsA<gtk::Widget>,
     folders: &[Folder],
     known: &[Folder],
@@ -127,7 +127,8 @@ pub fn present(
 }
 
 /// The picker open now, if any.
-pub fn current() -> Option<MoveTo> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn current() -> Option<MoveTo> {
     OPEN.with(|open| open.borrow().clone())
         .filter(|picker| picker.dialog.is_mapped())
 }
@@ -194,16 +195,14 @@ impl MoveTo {
         Self { dialog, inner }
     }
 
-    pub fn dialog(&self) -> &adw::Dialog {
-        &self.dialog
-    }
-
-    pub fn search_entry(&self) -> Option<gtk::SearchEntry> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn search_entry(&self) -> Option<gtk::SearchEntry> {
         self.inner.entry.upgrade()
     }
 
     /// The folders shown, best match first, by their titles.
-    pub fn shown(&self) -> Vec<String> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn shown(&self) -> Vec<String> {
         self.inner
             .shown
             .borrow()
@@ -213,7 +212,8 @@ impl MoveTo {
     }
 
     /// The folder Enter would pick, by its title.
-    pub fn selected(&self) -> Option<String> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn selected(&self) -> Option<String> {
         self.inner.selected().map(|choice| choice.title)
     }
 }

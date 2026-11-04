@@ -86,6 +86,7 @@ impl EngineLink {
         drop_replies(&self.inner);
     }
 
+    #[cfg(any(test, feature = "test-hooks"))]
     pub fn is_connected(&self) -> bool {
         self.inner
             .commands

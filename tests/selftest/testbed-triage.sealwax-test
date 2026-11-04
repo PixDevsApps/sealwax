@@ -8,7 +8,7 @@
 #
 # Not in CI: it needs the testbed up and seeded, and the user's mailbox prepared first:
 #   SEALWAX_TESTBED_CA=…/tools/testbed/certs/ca.pem python3 tools/testbed/triage_mailbox.py fill dovecot stalwart
-#   tools/headless.sh 24 target/debug/sealwax --self-test tests/selftest/testbed-triage.sealwax-test
+#   tools/headless.sh 24 target/debug/sealwax-selftest --self-test tests/selftest/testbed-triage.sealwax-test
 #   SEALWAX_TESTBED_CA=… python3 tools/testbed/triage_mailbox.py show dovecot stalwart
 # The prepared INBOX holds "Triage 1" to "Triage 8" (the newest last; 1 to 5 unread), every other
 # folder empty, Prosjekter among them. Only the testbed CA is trusted, secrets stay in memory, and

@@ -20,7 +20,7 @@ use sealwax_infrastructure::store::{BodyState, BodyUpgrade, NewMessage};
 use std::cell::RefCell;
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("bodies-add", 1, usize::MAX),
     ("bodies-store", 1, 1),
     ("assert-bodies-requested", 1, usize::MAX),
@@ -36,7 +36,7 @@ thread_local! {
     static ADDED: RefCell<Vec<(String, MessageId)>> = const { RefCell::new(Vec::new()) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     command.starts_with("bodies-")
         || matches!(
             command,
@@ -64,7 +64,7 @@ fn sample(name: &str) -> Result<Vec<u8>, String> {
         .ok_or_else(|| format!("no sample {name}; there are {:?}", samples::NAMES))
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     match command {
         "bodies-add" => add(harness, args).await,
         "bodies-store" => store(harness, &args[0]).await,

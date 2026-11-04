@@ -1,7 +1,7 @@
 # The view a new window opens on (issue #5): the one the last window showed, which layout.toml
 # keeps by the account's key and the folder's name. Background mode keeps Sealwax running when
 # the window closes; a new window opens on that view. Every name and address is fictional.
-# Run: tools/headless.sh 62 target/debug/sealwax --self-test tests/selftest/window-view.sealwax-test
+# Run: tools/headless.sh 62 target/debug/sealwax-selftest --self-test tests/selftest/window-view.sealwax-test
 
 desktop tiling
 resize 1440 900

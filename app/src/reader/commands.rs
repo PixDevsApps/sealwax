@@ -13,7 +13,7 @@ use std::rc::Rc;
 type Command = fn(&Reader);
 
 /// Connects the reader's commands to the window's actions, once the reader exists.
-pub fn connect(actions: &ActionSet, reader: &Reader) {
+pub(crate) fn connect(actions: &ActionSet, reader: &Reader) {
     conversation(actions, reader);
     scrolling(actions, reader);
     files(actions, reader);

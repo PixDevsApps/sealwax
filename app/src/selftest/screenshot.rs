@@ -7,7 +7,7 @@ use gtk4::prelude::*;
 use gtk4::{gdk, graphene, gsk};
 use std::path::Path;
 
-pub fn capture(window: &impl IsA<gtk::Widget>, path: &Path) -> Result<(), String> {
+pub(super) fn capture(window: &impl IsA<gtk::Widget>, path: &Path) -> Result<(), String> {
     let window = window.as_ref();
     let (width, height) = (window.width(), window.height());
     if width <= 0 || height <= 0 {

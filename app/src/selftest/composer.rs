@@ -106,7 +106,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("composer-open", 1, 3),
     ("composer-backend", 1, 1),
     ("composer-store-message", 2, 2),
@@ -179,7 +179,7 @@ thread_local! {
     static RELEASES: RefCell<Option<Watched>> = const { RefCell::new(None) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
@@ -193,15 +193,15 @@ fn composer() -> Result<Composer, String> {
     found.ok_or_else(|| "there is no composer".to_owned())
 }
 
-fn stand_in() -> Result<Rc<composer::backend::StandIn>, String> {
+fn stand_in() -> Result<Rc<composer::stand_in::StandIn>, String> {
     composer::stand_in().ok_or_else(|| "the stand-in backend isn't in use".to_owned())
 }
 
-fn setup_stand_in() -> Result<Rc<composer::backend::StandIn>, String> {
+fn setup_stand_in() -> Result<Rc<composer::stand_in::StandIn>, String> {
     composer::stand_in().ok_or_else(|| "the stand-in backend isn't in use".to_owned())
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "composer-open" => {

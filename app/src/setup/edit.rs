@@ -20,7 +20,7 @@ use std::rc::Rc;
 
 /// An account whose name and colour can be changed: one `accounts.toml` lists.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Editable {
+pub(crate) struct Editable {
     pub key: AccountKey,
     pub address: String,
     pub label: Option<String>,
@@ -67,7 +67,7 @@ impl Fields {
 }
 
 /// Asks for the name and colour of one of `accounts`, `chosen` first, then sends the command.
-pub fn open(window: &Window, engine: &EngineLink, accounts: Vec<Editable>, chosen: usize) {
+pub(crate) fn open(window: &Window, engine: &EngineLink, accounts: Vec<Editable>, chosen: usize) {
     let chosen = chosen.min(accounts.len().saturating_sub(1));
     let Some(first) = accounts.get(chosen) else {
         return;

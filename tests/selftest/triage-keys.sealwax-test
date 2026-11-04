@@ -5,7 +5,7 @@
 # Ctrl+J for !, h for ?) work; the search field and the Move to… picker's entry keep every
 # letter, Delete and Ctrl+Z. The keysyms are chosen by the script, so which keys need Shift on
 # US and Norwegian keyboards is the audit's (domain/src/keymap.rs), not this script's.
-# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-keys.sealwax-test
+# Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/triage-keys.sealwax-test
 
 desktop tiling
 fixtures --count 60 --seed 9 --folders spread

@@ -5,7 +5,7 @@
 # catppuccin-latte rounded). Messages aren't marked read, so the unread marks stay. Every name,
 # address and message is fictional (app/src/reader/samples.rs).
 # Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 32 target/debug/sealwax --self-test tests/selftest/preview-m5-conversation.sealwax-test
+# Run: tools/headless.sh 32 target/debug/sealwax-selftest --self-test tests/selftest/preview-m5-conversation.sealwax-test
 
 desktop tiling
 resize 1440 900

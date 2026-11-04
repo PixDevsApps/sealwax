@@ -19,13 +19,15 @@
 //!   it covers every folder.
 
 mod groups;
-pub mod item;
-pub mod model;
-pub mod row;
-pub mod sections;
-pub mod suggestions;
+pub(crate) mod item;
+pub(crate) mod model;
+pub(crate) mod row;
+pub(crate) mod sections;
+pub(crate) mod suggestions;
 
-pub use model::{Change, Content, FIRST_ROWS, GROW_STEP, MessageModel, ModelStats, SEARCH_PAGE};
+#[cfg(feature = "test-hooks")]
+pub(crate) use model::GROW_STEP;
+pub(crate) use model::{Change, Content, MessageModel};
 
 use crate::actions::{self, ScopedShortcuts};
 use crate::mailbox::{Latch, Mailbox};
@@ -36,7 +38,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use item::MessageItem;
-pub use row::Quick;
+pub(crate) use row::Quick;
 use row::{MessageRow, RowContext, SectionHeader};
 use sealwax_domain::actions::{ActionId, Scope};
 use sealwax_domain::keymap::Keymap;
@@ -56,7 +58,7 @@ use suggestions::Suggestions;
 
 /// Faster than this (px/s), rows skip their text (S3: a scrollbar drag through 100k rows then
 /// holds 144 Hz).
-pub const SKELETON_SPEED: f64 = 30_000.0;
+pub(crate) const SKELETON_SPEED: f64 = 30_000.0;
 /// Frames slower than the skeleton speed before rows show their text again.
 const SLOW_FRAMES: u32 = 2;
 /// Frames without movement before the speed watch stops.
@@ -74,23 +76,16 @@ const TARGETS_WAIT: Duration = Duration::from_secs(3);
 /// `search-delay`; GTK's default and M1's was 150 ms). None: at 100,000 messages a key's
 /// results were painted within 63 ms p95 from a folder and 88 ms from All Inboxes (M7,
 /// docs/m7/search-ui.md).
-pub const SEARCH_DELAY: Duration = Duration::ZERO;
+pub(crate) const SEARCH_DELAY: Duration = Duration::ZERO;
 /// The search field's placeholder, the mock's.
-pub const SEARCH_PLACEHOLDER: &str = "Search — from: has:attachment is:unread";
+pub(crate) const SEARCH_PLACEHOLDER: &str = "Search — from: has:attachment is:unread";
 
-pub const FILTERS: [(ViewFilter, &str); 4] = [
+pub(crate) const FILTERS: [(ViewFilter, &str); 4] = [
     (ViewFilter::All, "All"),
     (ViewFilter::Unread, "Unread"),
     (ViewFilter::Starred, "Starred"),
     (ViewFilter::Attachments, "Attachments"),
 ];
-
-pub fn filter_name(filter: ViewFilter) -> &'static str {
-    FILTERS
-        .iter()
-        .find(|(candidate, _)| *candidate == filter)
-        .map_or("All", |(_, name)| name)
-}
 
 /// The list's title while it shows search results.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -123,6 +118,7 @@ impl SearchHeading {
 }
 
 /// A bound row as the self-test and the perf probe see it.
+#[cfg(feature = "test-hooks")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BoundRow {
     pub position: Option<u32>,
@@ -666,6 +662,7 @@ impl MessageList {
         });
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn search_entry(&self) -> &gtk::SearchEntry {
         &self.inner.search
     }
@@ -678,6 +675,7 @@ impl MessageList {
         &self.inner.model
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn selection(&self) -> &gtk::MultiSelection {
         &self.inner.selection
     }
@@ -690,6 +688,7 @@ impl MessageList {
             .map(|(_, chip)| chip)
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn empty_state(&self) -> Option<(String, String)> {
         (self.inner.stack.visible_child_name().as_deref() == Some("empty")).then(|| {
             (
@@ -780,21 +779,25 @@ impl MessageList {
     }
 
     /// The groups shown, while the list shows them (the self-test's view).
+    #[cfg(feature = "test-hooks")]
     pub fn shown_groups(&self) -> Option<Vec<sealwax_infrastructure::store::SenderGroup>> {
         (self.grouped() && self.inner.stack.visible_child_name().as_deref() == Some("groups"))
             .then(|| self.inner.groups.rows())
     }
 
     /// Whether the row of the group `key` shows its pin (the self-test's view).
+    #[cfg(feature = "test-hooks")]
     pub fn group_shows_pin(&self, key: &str) -> Option<bool> {
         self.inner.groups.shows_pin(key)
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn groups_view(&self) -> &gtk::ListView {
         self.inner.groups.view()
     }
 
     /// Opens the group at `position` (the self-test's Enter).
+    #[cfg(feature = "test-hooks")]
     pub fn activate_group(&self, position: u32) {
         self.inner.groups.activate(position);
     }
@@ -945,6 +948,7 @@ impl MessageList {
     }
 
     /// Selects the group at `position` (the self-test's click).
+    #[cfg(feature = "test-hooks")]
     pub fn select_group(&self, position: u32) {
         self.inner.groups.select(position);
     }
@@ -1044,18 +1048,21 @@ impl MessageList {
     }
 
     /// The search field's suggestions.
-    pub fn suggestions(&self) -> &Suggestions {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn suggestions(&self) -> &Suggestions {
         &self.inner.suggestions
     }
 
     /// How long after the last key the search runs ([`SEARCH_DELAY`]; the self-test measures
     /// others).
+    #[cfg(feature = "test-hooks")]
     pub fn set_search_delay(&self, delay: Duration) {
         self.inner
             .search
             .set_search_delay(u32::try_from(delay.as_millis()).unwrap_or(u32::MAX));
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn search_delay(&self) -> Duration {
         Duration::from_millis(u64::from(self.inner.search.search_delay()))
     }
@@ -1084,6 +1091,7 @@ impl MessageList {
     }
 
     /// The scope row: shown while a search runs from a folder, naming that folder.
+    #[cfg(feature = "test-hooks")]
     pub fn scope_row(&self) -> &gtk::Box {
         &self.inner.scope_row
     }
@@ -1363,6 +1371,7 @@ impl MessageList {
 
     /// Rows bound after each frame since the last reset, while the list grew: the first is what
     /// the first frame laid out.
+    #[cfg(feature = "test-hooks")]
     pub fn growth_frames(&self) -> Vec<u32> {
         self.inner.growth_frames.borrow().clone()
     }
@@ -1646,11 +1655,6 @@ impl MessageList {
         for row in rows {
             row.refresh();
         }
-    }
-
-    /// Whether rows skip their text now because the list moves fast.
-    pub fn is_skeleton(&self) -> bool {
-        self.inner.context.skeleton.get()
     }
 
     fn width_changed(&self, width: f64) {
@@ -2421,6 +2425,7 @@ impl MessageList {
         self.show_search_key(self.inner.search.text().is_empty());
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn keys(&self) -> Option<std::cell::Ref<'_, ScopedShortcuts>> {
         std::cell::Ref::filter_map(self.inner.keys.borrow(), Option::as_ref).ok()
     }
@@ -2435,6 +2440,7 @@ impl MessageList {
     }
 
     /// "Now" as the list sees it (Unix seconds).
+    #[cfg(feature = "test-hooks")]
     pub fn now_unix(&self) -> i64 {
         self.now().to_unix()
     }
@@ -2448,6 +2454,7 @@ impl MessageList {
 
     /// Fixes "now" (Unix seconds; `None`: the real clock) and regroups, as midnight does (the
     /// self-test).
+    #[cfg(feature = "test-hooks")]
     pub fn set_clock(&self, unix: Option<i64>) {
         self.inner.clock.set(unix);
         self.regroup_if_needed();
@@ -2477,6 +2484,7 @@ impl MessageList {
     }
 
     /// The rows GtkListView has bound now.
+    #[cfg(feature = "test-hooks")]
     pub fn bound_rows(&self) -> Vec<BoundRow> {
         self.inner
             .context
@@ -2503,6 +2511,7 @@ impl MessageList {
     }
 
     /// The section headers in view now, top to bottom.
+    #[cfg(feature = "test-hooks")]
     pub fn headers(&self) -> Vec<String> {
         let scroller = &self.inner.scroller;
         let height = scroller.height() as f32;
@@ -2524,20 +2533,15 @@ impl MessageList {
     }
 
     /// Rows bound so far.
+    #[cfg(feature = "test-hooks")]
     pub fn binds(&self) -> u64 {
         self.inner.context.binds.get()
     }
 
     /// Row widgets created so far.
+    #[cfg(feature = "test-hooks")]
     pub fn rows_created(&self) -> u64 {
         self.inner.context.rows_created.get()
-    }
-
-    pub fn folder_of(scope: ViewScope) -> Option<FolderId> {
-        match scope {
-            ViewScope::Folder(folder) => Some(folder),
-            ViewScope::UnifiedInbox => None,
-        }
     }
 }
 
@@ -2651,7 +2655,6 @@ mod tests {
 
     #[test]
     fn chips_name_the_store_filters() {
-        assert_eq!(filter_name(ViewFilter::Unread), "Unread");
         assert_eq!(FILTERS.len(), 4);
     }
 }

@@ -239,7 +239,7 @@ impl Attention {
 }
 
 /// The banner's text for `shown`, followed by the count of the states waiting behind it.
-pub fn body(shown: &Attention, rest: &[Attention]) -> String {
+pub(crate) fn body(shown: &Attention, rest: &[Attention]) -> String {
     let body = shown.body();
     let count = rest.len();
     if count == 0 {
@@ -414,10 +414,6 @@ impl Banner {
             .update_property(&[gtk::accessible::Property::Label(&title)]);
         self.root.set_visible(true);
         self.root.set_reveal_child(true);
-    }
-
-    pub(super) fn is_shown(&self) -> bool {
-        self.root.reveals_child()
     }
 
     /// Runs `handler` with the action of every button clicked.

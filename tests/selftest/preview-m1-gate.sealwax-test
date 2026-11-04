@@ -7,8 +7,8 @@
 # own theme is never read or changed. The sleeps give the reader's web view time to lay the
 # message out. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the
 # repository root:
-#   cargo build -p sealwax -p sealwax-fixtures
-#   tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/preview-m1-gate.sealwax-test
+#   cargo build -p sealwax-uitest -p sealwax-fixtures
+#   tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/preview-m1-gate.sealwax-test
 
 desktop tiling
 fixtures --count 1200 --seed 7 --now now --folders spread --account Personal

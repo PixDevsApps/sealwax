@@ -23,7 +23,7 @@ use std::rc::{Rc, Weak};
 
 /// A folder a move or a copy can name: its full name and how the editor shows it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Target {
+pub(crate) struct Target {
     pub name: String,
     pub label: String,
 }
@@ -49,14 +49,22 @@ struct Inner {
 
 /// An open editor: its page, and what its widgets' handlers share, which whoever shows the page
 /// keeps while it does.
-pub struct Editor {
+pub(crate) struct Editor {
     pub page: adw::NavigationPage,
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(
+            dead_code,
+            reason = "kept so the page's handlers share it while it shows; the self-tests read it"
+        )
+    )]
     inner: Rc<Inner>,
 }
 
 impl Editor {
     /// Whether Save can run, and why not.
-    pub fn problem(&self) -> Option<&'static str> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn problem(&self) -> Option<&'static str> {
         self.inner
             .draft()
             .to_rule()
@@ -66,7 +74,7 @@ impl Editor {
 }
 
 /// The editor's page; `on_save` gets the rule when Save is pressed.
-pub fn new(
+pub(crate) fn new(
     title: &str,
     draft: &Draft,
     targets: Vec<Target>,
@@ -539,7 +547,7 @@ struct ActionRow {
 }
 
 /// The folder menu's first item, while none is chosen.
-pub const NO_FOLDER: &str = "Choose a folder";
+pub(crate) const NO_FOLDER: &str = "Choose a folder";
 
 impl ActionRow {
     fn new(action: &DraftAction, targets: &[Target]) -> Self {

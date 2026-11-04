@@ -5,7 +5,7 @@
 # tests/theme/, swapped into the run's scratch Omarchy state; the desktop's own theme is never
 # read or changed. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the
 # repository root:
-#   tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/preview-m1-shell.sealwax-test
+#   tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/preview-m1-shell.sealwax-test
 
 desktop tiling
 theme matte-black

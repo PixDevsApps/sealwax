@@ -23,7 +23,7 @@ const START_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// How the command line reaches a primary instance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
+pub(crate) enum Outcome {
     /// A Sealwax with this id runs already; GApplication forwards the command line to it.
     Running,
     /// The bus started the service from its `.service` file.
@@ -33,7 +33,7 @@ pub enum Outcome {
 }
 
 /// Makes sure a primary instance owns `app_id` when that is possible; see the module docs.
-pub fn prepare(app_id: &str) -> Outcome {
+pub(crate) fn prepare(app_id: &str) -> Outcome {
     let connection = match gio::bus_get_sync(gio::BusType::Session, gio::Cancellable::NONE) {
         Ok(connection) => connection,
         Err(error) => {

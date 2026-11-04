@@ -15,7 +15,7 @@
 
 mod attachments;
 mod cards;
-pub mod commands;
+pub(crate) mod commands;
 mod conversation;
 mod engine;
 mod export;
@@ -29,6 +29,7 @@ mod prepare;
 mod protection;
 mod remote;
 mod reply;
+#[cfg(feature = "test-hooks")]
 pub mod samples;
 mod show;
 mod source;
@@ -36,24 +37,25 @@ mod toolbar;
 mod view;
 mod widgets;
 
-pub use attachments::CardState;
-pub use conversation::{COLLAPSE_OVER, GAP_STEP, KEEP_LATEST};
-pub use engine::{
-    CONTENT_SECURITY_POLICY, CidOutcome, CidRequest, InlinePart, MAX_LIVE_VIEWS, NETWORK_FEATURES,
-    PartLoader, RETIRED_FEATURES,
-};
-pub use export::{ORIGINAL_SHOWN, OriginalDialog, original_dialog};
-pub use files::FileChoice;
-pub use links::LinkState;
-pub use plain::{links_in, shown_text};
-pub use protection::{ENCRYPTED, SIGNED, Unreadable};
-pub use reply::{
-    Local, PLACEHOLDER, QuickReport, QuickState, expand_hint, reply_label, reply_target,
-};
-pub use sealwax_domain::html_scan::{Evidence, Scan, scan as scan_html};
-pub use source::{MessageSource, Reads};
+pub use engine::{MAX_LIVE_VIEWS, PartLoader};
+pub(crate) use protection::Unreadable;
+pub(crate) use reply::{Local, QuickState};
+pub(crate) use source::MessageSource;
 pub use toolbar::{Position, tooltip};
-pub use view::{Hover, Link, MAX_VIEW_HEIGHT, Refused, ViewEvent, WORLD, disabled_features};
+pub use view::ViewEvent;
+// What the self-tests and the harnesses read the reader with.
+#[cfg(feature = "test-hooks")]
+pub(crate) use export::original_dialog;
+#[cfg(feature = "test-hooks")]
+pub use {
+    engine::{CidOutcome, CidRequest},
+    links::LinkState,
+    files::FileChoice,
+    plain::{links_in, shown_text},
+    protection::{ENCRYPTED, SIGNED},
+    sealwax_domain::html_scan::scan as scan_html,
+    view::{MAX_VIEW_HEIGHT, Refused, WORLD},
+};
 
 use crate::actions::{self, ScopedShortcuts};
 use crate::engine_link::{EngineLink, Subscription};
@@ -84,7 +86,7 @@ const READY_TIMEOUT: Duration = Duration::from_secs(3);
 /// moves on (`j`/`k`, a click, Previous/Next) or its message left the list (archived, deleted,
 /// moved, gone in a sync): PRD's bar for opening cached HTML. Then the next one shows as far as
 /// it is laid out, its bodies filling in; one not read yet hides the left one until it is.
-pub const LEFT_SHOWN: Duration = Duration::from_millis(150);
+pub(crate) const LEFT_SHOWN: Duration = Duration::from_millis(150);
 /// A reader hidden this long gives its views back (ADR-011: views of hidden bodies are released
 /// and re-rendered on return).
 const RELEASE_HIDDEN_AFTER: Duration = Duration::from_secs(3);
@@ -190,6 +192,7 @@ pub struct ReaderState {
 
 /// An expanded HTML body of the shown conversation, for checks: where the column shows it (px
 /// from the top of its visible part), whether it holds a view, and its heights.
+#[cfg(feature = "test-hooks")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct BodyReport {
     pub id: MessageId,
@@ -511,14 +514,6 @@ impl Reader {
         self.inner.store_changed(event);
     }
 
-    /// Messages a store commit changed (M3's hook): [`Reader::store_changed`] for those alone.
-    pub fn messages_changed(&self, ids: &[MessageId]) {
-        self.inner.store_changed(&ChangeEvent {
-            changed: ids.to_vec(),
-            ..ChangeEvent::default()
-        });
-    }
-
     /// Shows nothing and gives every view back.
     pub fn clear(&self) {
         self.inner.target.set(None);
@@ -571,6 +566,7 @@ impl Reader {
 
     /// Holds the layout of the conversations to come unfinished while `held`, as a slow machine
     /// would: they show only when the shown one may stay no longer. For the self-tests.
+    #[cfg(feature = "test-hooks")]
     pub fn hold_layout(&self, held: bool) {
         self.inner.layout_held.set(held);
         if !held {
@@ -596,28 +592,25 @@ impl Reader {
 
     /// Every event of the views that show messages (links, refusals, resource loads): for the
     /// hostile suite and the self-test.
+    #[cfg(feature = "test-hooks")]
     pub fn connect_view_event(&self, listener: impl Fn(MessageId, &ViewEvent) + 'static) {
         self.inner.on_event.borrow_mut().push(Rc::new(listener));
     }
 
     /// Replaces how vetted links open (`gtk::UriLauncher` by default), for tests.
+    #[cfg(feature = "test-hooks")]
     pub fn set_link_opener(&self, opener: impl Fn(&gtk::Widget, &str) + 'static) {
         self.inner.links.set_opener(Rc::new(opener));
     }
 
-    /// Replaces the link-mismatch check (ML-062): called before a vetted link opens; `false`
-    /// keeps it closed. By default a link whose text names another domain than its target
-    /// asks first, in a dialog with Cancel as the default.
-    pub fn set_link_check(&self, check: impl Fn(&Link) -> bool + 'static) {
-        self.inner.links.set_check(Some(Rc::new(check)));
-    }
-
     /// The link status strip, the warning and the dialogs shown, for checks.
+    #[cfg(feature = "test-hooks")]
     pub fn link_state(&self) -> LinkState {
         self.inner.links.state()
     }
 
     /// The link warning dialog on screen, for checks that answer it.
+    #[cfg(feature = "test-hooks")]
     pub fn link_dialog(&self) -> Option<libadwaita::AlertDialog> {
         self.inner.links.dialog()
     }
@@ -628,11 +621,13 @@ impl Reader {
     }
 
     /// The WebView of the selected message's HTML body, while it holds one.
+    #[cfg(feature = "test-hooks")]
     pub fn web_view(&self) -> Option<webkit6::WebView> {
         self.view_of(self.message()?)
     }
 
     /// The WebView of message `id`'s HTML body in the shown conversation, while it holds one.
+    #[cfg(feature = "test-hooks")]
     pub fn view_of(&self, id: MessageId) -> Option<webkit6::WebView> {
         self.inner.shown.borrow().as_ref().and_then(|page| {
             page.item(id)
@@ -645,12 +640,14 @@ impl Reader {
 
     /// Runs `body` (a function body) in Sealwax's isolated world of the selected message's
     /// HTML body.
+    #[cfg(feature = "test-hooks")]
     pub async fn eval(&self, body: &str) -> Result<webkit6::javascriptcore::Value, String> {
         let id = self.message().ok_or("no message is shown")?;
         self.eval_in(id, body).await
     }
 
     /// [`Reader::eval`] in message `id`'s HTML body.
+    #[cfg(feature = "test-hooks")]
     pub async fn eval_in(
         &self,
         id: MessageId,
@@ -719,27 +716,32 @@ impl Reader {
     }
 
     /// The shown conversation's expanded HTML bodies, where the column shows them.
+    #[cfg(feature = "test-hooks")]
     pub fn bodies(&self) -> Vec<BodyReport> {
         self.inner.body_reports()
     }
 
     /// Where message `id`'s row or card starts in the column, px from the top of what the
     /// column shows; `None` when it isn't in the shown conversation (or folded).
+    #[cfg(feature = "test-hooks")]
     pub fn message_top(&self, id: MessageId) -> Option<f64> {
         self.inner.message_top(id)
     }
 
     /// Every `cid:` request the process's views made so far.
+    #[cfg(feature = "test-hooks")]
     pub fn cid_requests(&self) -> Vec<CidRequest> {
         self.inner.engine.cid_requests()
     }
 
     /// Downloads refused so far.
+    #[cfg(feature = "test-hooks")]
     pub fn refused_downloads(&self) -> u32 {
         self.inner.engine.refused_downloads()
     }
 
     /// What the reader reads through, for the commands on the shown message (M5).
+    #[cfg(feature = "test-hooks")]
     pub fn source(&self) -> Rc<dyn MessageSource> {
         self.inner.store.clone()
     }
@@ -781,17 +783,20 @@ impl Reader {
     }
 
     /// Expands message `id` of the shown conversation, as a click on its row does.
+    #[cfg(feature = "test-hooks")]
     pub fn expand(&self, id: MessageId) {
         self.inner.expand(id);
     }
 
     /// Collapses message `id` of the shown conversation, as a click on its header does; the
     /// only expanded message stays.
+    #[cfg(feature = "test-hooks")]
     pub fn collapse(&self, id: MessageId) {
         self.inner.collapse(id);
     }
 
     /// Reveals one step of the shown conversation's first "N earlier messages" row.
+    #[cfg(feature = "test-hooks")]
     pub fn unfold(&self) {
         self.inner.unfold_first();
     }
@@ -801,16 +806,10 @@ impl Reader {
     pub fn set_always_show_images(&self, on: bool) {
         remote::set_always(self, on);
     }
-
-    /// The shown conversation's bodies whose images the remote-content policy now allows load
-    /// them (ML-058: after a sender was allowed).
-    pub fn refresh_remote_images(&self) {
-        self.inner.refresh_remote();
-    }
 }
 
 /// Whether a link may open, and as what: absolute http(s) with a host, or mailto.
-pub fn openable(uri: &str) -> Option<String> {
+pub(crate) fn openable(uri: &str) -> Option<String> {
     let parsed = glib::Uri::parse(uri.trim(), glib::UriFlags::ENCODED).ok()?;
     match parsed.scheme().to_ascii_lowercase().as_str() {
         "http" | "https" if parsed.host().is_some_and(|host| !host.is_empty()) => {

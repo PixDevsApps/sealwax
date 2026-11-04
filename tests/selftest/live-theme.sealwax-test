@@ -2,7 +2,7 @@
 # themes are scratch copies of the stock palettes in tests/theme/, never the desktop's, and the
 # messages are the reader's synthetic samples. Not part of tools/ci.sh (live-*): it's meant for
 # the live session (M1's live-window authorization; short and self-closing):
-#   SEALWAX_SELFTEST_ALLOW_LIVE=1 target/release/sealwax --self-test tests/selftest/live-theme.sealwax-test
+#   SEALWAX_SELFTEST_ALLOW_LIVE=1 target/release/sealwax-selftest --self-test tests/selftest/live-theme.sealwax-test
 # A headless run (tools/headless.sh <display> …) is a dry run.
 
 desktop tiling

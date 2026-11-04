@@ -5,7 +5,7 @@
 # message in Junk, Sent or Archive and one already read stay quiet; markup and direction overrides
 # in a subject reach the server as text; the count mode shows "New mail" and a count; off sends
 # nothing; a change to config.toml applies at once. Every name and subject is fictional.
-# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/notify-content.sealwax-test
+# Run: tools/headless.sh 55 target/debug/sealwax-selftest --self-test tests/selftest/notify-content.sealwax-test
 
 desktop tiling
 resize 1440 900

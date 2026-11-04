@@ -4,7 +4,7 @@
 # the user didn't ask for (each check is one Verify, at most two logins). Then the ways saving
 # can fail, and an app-password failure (iCloud's) with the manual settings, as in the mock. Every
 # address and server is fictional. Screenshots go to .local/selftest/.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-failures.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/setup-failures.sealwax-test
 
 desktop tiling
 resize 1440 900

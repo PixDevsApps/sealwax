@@ -7,7 +7,7 @@
 # (OpsQueued) on the fake engine, which runs none: a moved message is hidden from both folders
 # until the server has it, and Undo before it runs puts it back where it was, counts included.
 # Every message is fictional.
-# Run: tools/headless.sh 23 target/debug/sealwax --self-test tests/selftest/triage-actions.sealwax-test
+# Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/triage-actions.sealwax-test
 
 desktop tiling
 resize 1440 900

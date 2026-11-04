@@ -10,7 +10,7 @@ use sealwax_domain::keymap::{Binding, Keymap};
 
 /// The dialog. `available` says whether a command exists yet; one that doesn't is listed with
 /// "Not available yet", so the keymap is complete from the start.
-pub fn dialog(keymap: &Keymap, available: &dyn Fn(ActionId) -> bool) -> adw::ShortcutsDialog {
+pub(crate) fn dialog(keymap: &Keymap, available: &dyn Fn(ActionId) -> bool) -> adw::ShortcutsDialog {
     let dialog = adw::ShortcutsDialog::new();
     dialog.add_css_class("sw-shortcuts");
     let mut titles = Vec::new();
@@ -96,7 +96,7 @@ fn keys(bindings: &[Binding]) -> String {
 /// Where the keys of `id` work when not anywhere in the window, and whether it exists yet:
 /// `In the message list and the reader`, or `c in the message list and the reader` when the
 /// command also has keys that work anywhere.
-pub fn subtitle(id: ActionId, keymap: &Keymap, available: bool) -> String {
+pub(crate) fn subtitle(id: ActionId, keymap: &Keymap, available: bool) -> String {
     let scoped = keymap.scoped(id);
     let list = Keymap::list_keys(id);
     let anywhere = !keymap.accels(id).is_empty();

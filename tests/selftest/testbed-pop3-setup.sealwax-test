@@ -9,7 +9,7 @@
 # Not in CI: it needs the testbed and the POP3 client (ML-087) and accounts (ML-088), which
 # phase B merges; on the setup branch alone the login check answers that it can't reach the
 # server (the contract's client answers NotBuilt).
-# Run: tools/headless.sh 65 target/debug/sealwax --self-test tests/selftest/testbed-pop3-setup.sealwax-test
+# Run: tools/headless.sh 65 target/debug/sealwax-selftest --self-test tests/selftest/testbed-pop3-setup.sealwax-test
 
 desktop tiling
 resize 1440 900

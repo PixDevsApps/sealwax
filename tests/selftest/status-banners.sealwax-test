@@ -3,7 +3,7 @@
 # buttons, the order the banner takes them in, and how it counts the rest. Kari signs in with
 # Microsoft (accounts.toml says so); Ola, Anne and Per with passwords. Every address, name and
 # host is fictional. Screenshots go to .local/selftest/.
-# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/status-banners.sealwax-test
+# Run: tools/headless.sh 34 target/debug/sealwax-selftest --self-test tests/selftest/status-banners.sealwax-test
 
 desktop tiling
 resize 1440 900

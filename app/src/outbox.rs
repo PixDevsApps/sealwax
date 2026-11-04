@@ -32,18 +32,19 @@ use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 /// How long a failed send's toast shows (as refused changes').
-pub const FAILED_SHOWN: Duration = Duration::from_secs(10);
+pub(crate) const FAILED_SHOWN: Duration = Duration::from_secs(10);
 /// How long "Message sent" shows.
-pub const SENT_SHOWN: Duration = Duration::from_secs(4);
+pub(crate) const SENT_SHOWN: Duration = Duration::from_secs(4);
 
 /// The queued toast's text (accepted at the M6 gate).
-pub const QUEUED_TEXT: &str = "Message queued";
-pub const SENT_TEXT: &str = "Message sent";
-pub const UNDONE_TEXT: &str = "Sending undone";
-pub const UNDONE_QUICK_TEXT: &str = "Sending undone: the reply is back under its conversation";
+pub(crate) const QUEUED_TEXT: &str = "Message queued";
+pub(crate) const SENT_TEXT: &str = "Message sent";
+pub(crate) const UNDONE_TEXT: &str = "Sending undone";
+pub(crate) const UNDONE_QUICK_TEXT: &str =
+    "Sending undone: the reply is back under its conversation";
 
 /// What the uncertain-send dialog's answers do, by response id.
-pub const ANSWERS: [(&str, &str); 3] = [
+pub(crate) const ANSWERS: [(&str, &str); 3] = [
     ("back-to-draft", "Back to Drafts"),
     ("was-sent", "It Was Sent"),
     ("send-again", "Send Again"),
@@ -84,7 +85,7 @@ fn app() -> Option<SealwaxApplication> {
 }
 
 /// Follows the engine's sends and the store's outbox, once at startup.
-pub fn install(state: &Rc<AppState>) {
+pub(crate) fn install(state: &Rc<AppState>) {
     let outbox = shared();
     outbox.state.replace(Rc::downgrade(state));
     let weak = Rc::downgrade(state);
@@ -161,7 +162,7 @@ fn read(state: &Rc<AppState>) {
 }
 
 /// Sends waiting for a server (queued or being sent), for the offline banner's count.
-pub fn waiting_sends() -> u32 {
+pub(crate) fn waiting_sends() -> u32 {
     shared()
         .entries
         .borrow()
@@ -173,7 +174,7 @@ pub fn waiting_sends() -> u32 {
 /// A send that may have gone out (issue #2): its draft and account, why when the engine said
 /// it this session, and what names it for the user.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Unconfirmed {
+pub(crate) struct Unconfirmed {
     pub draft: DraftId,
     pub account: AccountId,
     pub reason: Option<UncertainReason>,
@@ -183,7 +184,7 @@ pub struct Unconfirmed {
 }
 
 /// The sends that may have gone out, oldest first.
-pub fn uncertain() -> Vec<Unconfirmed> {
+pub(crate) fn uncertain() -> Vec<Unconfirmed> {
     let outbox = shared();
     let reasons = outbox.reasons.borrow();
     outbox
@@ -202,12 +203,13 @@ pub fn uncertain() -> Vec<Unconfirmed> {
 }
 
 /// The outbox as last read, for checks.
-pub fn entries() -> Vec<OutboxEntry> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn entries() -> Vec<OutboxEntry> {
     shared().entries.borrow().clone()
 }
 
 /// A send from the quick reply that answers `message` with `text`: Undo puts the text back.
-pub fn from_quick_reply(draft: DraftId, message: MessageId, text: String) {
+pub(crate) fn from_quick_reply(draft: DraftId, message: MessageId, text: String) {
     shared()
         .from_quick
         .borrow_mut()
@@ -226,14 +228,14 @@ fn settle(state: &AppState, draft: DraftId) {
 }
 
 /// A refused send of the quick reply: forget it.
-pub fn forget_quick(draft: DraftId) {
+pub(crate) fn forget_quick(draft: DraftId) {
     shared().from_quick.borrow_mut().remove(&draft);
 }
 
 /// `draft` was queued to send with the undo window (the backend's `send` calls it after the
 /// store's `queue_send` and `Command::OutboxQueued`): a toast with Undo for the window, and the
 /// send becomes the last action.
-pub fn queued(state: &AppState, draft: DraftId, account: AccountId) {
+pub(crate) fn queued(state: &AppState, draft: DraftId, account: AccountId) {
     tracing::info!(draft = draft.0, account = account.0, "send queued");
     let outbox = shared();
     if let Some(triage) = state.triage() {
@@ -278,18 +280,18 @@ fn toast(text: &str, shown: Duration) -> adw::Toast {
 }
 
 /// Whether Undo would take back a send: the last action is one still in its window.
-pub fn can_undo() -> bool {
+pub(crate) fn can_undo() -> bool {
     shared().last.get().is_some()
 }
 
 /// Another action became the last one: the send's Undo no longer works.
-pub fn forget_last() {
+pub(crate) fn forget_last() {
     shared().last.set(None);
 }
 
 /// Undo (`z`, Ctrl+Z, the palette): takes back the last send if the last action is one;
 /// `false` leaves Undo to triage.
-pub fn undo_last(state: &AppState) -> bool {
+pub(crate) fn undo_last(state: &AppState) -> bool {
     match shared().last.get() {
         Some(draft) => {
             undo(state, draft);
@@ -412,7 +414,7 @@ fn sent(state: &Rc<AppState>, draft: DraftId) {
 }
 
 /// What a failed send's toast says (never the recipients or the subject).
-pub fn failure_text(error: &SendError) -> String {
+pub(crate) fn failure_text(error: &SendError) -> String {
     let why = match error {
         SendError::RecipientsRefused(refused) if refused.len() == 1 => {
             "the server refused 1 recipient".to_owned()
@@ -455,7 +457,7 @@ fn failed(state: &Rc<AppState>, account: AccountId, draft: DraftId, error: &Send
 
 /// The banner's Choose… for the first send that may have gone out: send it again, file it as
 /// sent, or take it back to a draft.
-pub fn decide(state: &Rc<AppState>) {
+pub(crate) fn decide(state: &Rc<AppState>) {
     let Some(Unconfirmed {
         draft,
         account,
@@ -510,7 +512,7 @@ pub fn decide(state: &Rc<AppState>) {
 
 /// What names a send that may have gone out: its subject, the account (`account` empty:
 /// unnamed) and when it started, as "“Quarterly report” from Work (today at 14:32)".
-pub fn described(
+pub(crate) fn described(
     subject: &str,
     account: &str,
     started: Option<i64>,
@@ -556,13 +558,13 @@ fn when_text(secs: i64, now: &glib::DateTime) -> Option<String> {
 }
 
 /// The local time now, for [`described`].
-pub fn now() -> glib::DateTime {
+pub(crate) fn now() -> glib::DateTime {
     glib::DateTime::now_local().unwrap_or_else(|_| glib::DateTime::now_utc().expect("a clock"))
 }
 
 /// What happened to `what` ([`described`]), a send that may have gone out, by why its outcome
 /// is unknown; `None` when the engine said it in an earlier session (issue #2).
-pub fn uncertain_cause(what: &str, reason: Option<UncertainReason>) -> String {
+pub(crate) fn uncertain_cause(what: &str, reason: Option<UncertainReason>) -> String {
     match reason {
         Some(UncertainReason::Stopped) => {
             format!("Sealwax stopped while it was sending {what}, so the server may have it.")
@@ -579,7 +581,7 @@ pub fn uncertain_cause(what: &str, reason: Option<UncertainReason>) -> String {
 }
 
 /// The banner's text for `what`, a send that may have gone out.
-pub fn uncertain_banner(what: &str, reason: Option<UncertainReason>) -> String {
+pub(crate) fn uncertain_banner(what: &str, reason: Option<UncertainReason>) -> String {
     format!(
         "{} Look in your Sent folder, or ask a recipient, before you send it again.",
         uncertain_cause(what, reason)
@@ -587,7 +589,7 @@ pub fn uncertain_banner(what: &str, reason: Option<UncertainReason>) -> String {
 }
 
 /// The dialog's text: what happened, how to tell, and what each answer does.
-pub fn decide_text(what: &str, reason: Option<UncertainReason>) -> String {
+pub(crate) fn decide_text(what: &str, reason: Option<UncertainReason>) -> String {
     format!(
         "{} Look in your Sent folder, or ask a recipient.\n\nSend Again sends the same message, \
          which its recipients may then get twice. It Was Sent files it as sent. Back to Drafts \

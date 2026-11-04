@@ -3,7 +3,7 @@
 # does, corners set as config.toml's corner_radius, and the shell's surfaces, colours, corners,
 # fonts, contrast and tooltips checked against the theme the follower applied. Fictional sample
 # accounts, list and message. Screenshots go to .local/selftest/.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/theme.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/theme.sealwax-test
 
 desktop tiling
 resize 1440 900

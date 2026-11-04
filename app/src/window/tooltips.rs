@@ -54,7 +54,7 @@ impl Tooltips {
 }
 
 /// `New message (c, Ctrl+N)`, or just the label when the command has no keys.
-pub fn with_keys(label: &str, keys: &str) -> String {
+pub(crate) fn with_keys(label: &str, keys: &str) -> String {
     if keys.is_empty() {
         label.to_owned()
     } else {

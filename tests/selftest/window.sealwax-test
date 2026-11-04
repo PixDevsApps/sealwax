@@ -1,6 +1,6 @@
 # The adaptive three-pane window (ML-021, DESIGN.md "Layout") at the design mock's widths, with
 # the fictional sample accounts, list and message. Screenshots go to .local/selftest/.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/window.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/window.sealwax-test
 
 # As on Hyprland: no title bar and no window controls (window-controls.sealwax-test has the rest).
 desktop tiling

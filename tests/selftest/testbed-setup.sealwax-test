@@ -6,7 +6,7 @@
 # (ML-043) and shows the server's counts. Then Remove Account deletes alice. Only the testbed CA
 # is trusted, secrets stay in memory, and nothing leaves 127.0.0.1.
 # Not in CI: it needs the testbed. Gate previews go to tools/progress/public/.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/testbed-setup.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/testbed-setup.sealwax-test
 
 desktop tiling
 resize 1440 900

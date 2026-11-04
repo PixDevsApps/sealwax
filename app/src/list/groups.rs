@@ -12,7 +12,7 @@ use sealwax_infrastructure::store::SenderGroup;
 use std::cell::Cell;
 use std::rc::Rc;
 
-pub struct Groups {
+pub(super) struct Groups {
     scroller: gtk::ScrolledWindow,
     view: gtk::ListView,
     items: gio::ListStore,
@@ -22,7 +22,7 @@ pub struct Groups {
 }
 
 impl Groups {
-    pub fn new() -> Self {
+    pub(super) fn new() -> Self {
         let items = gio::ListStore::new::<glib::BoxedAnyObject>();
         let selection = gtk::SingleSelection::builder()
             .model(&items)
@@ -69,20 +69,20 @@ impl Groups {
         }
     }
 
-    pub fn widget(&self) -> &gtk::ScrolledWindow {
+    pub(super) fn widget(&self) -> &gtk::ScrolledWindow {
         &self.scroller
     }
 
-    pub fn view(&self) -> &gtk::ListView {
+    pub(super) fn view(&self) -> &gtk::ListView {
         &self.view
     }
 
-    pub fn len(&self) -> u32 {
+    pub(super) fn len(&self) -> u32 {
         self.items.n_items()
     }
 
     /// Shows `groups`, selecting the row of the first of `wanted` (groups' keys) that is there.
-    pub fn set(&self, groups: Vec<SenderGroup>, wanted: &[&str]) {
+    pub(super) fn set(&self, groups: Vec<SenderGroup>, wanted: &[&str]) {
         let keep = wanted
             .iter()
             .find_map(|key| groups.iter().position(|group| group.key == *key));
@@ -103,7 +103,7 @@ impl Groups {
     }
 
     /// The selected group.
-    pub fn selected(&self) -> Option<SenderGroup> {
+    pub(super) fn selected(&self) -> Option<SenderGroup> {
         self.selection
             .selected_item()
             .and_downcast::<glib::BoxedAnyObject>()
@@ -112,7 +112,7 @@ impl Groups {
 
     /// The key of the group a removed selected row hands the selection to: the next one, or
     /// the one before when it is the last.
-    pub fn neighbour(&self) -> Option<String> {
+    pub(super) fn neighbour(&self) -> Option<String> {
         let position = self.selection.selected();
         if position == gtk::INVALID_LIST_POSITION {
             return None;
@@ -125,12 +125,13 @@ impl Groups {
     }
 
     /// Selects the group at `position` (the self-test's click).
-    pub fn select(&self, position: u32) {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn select(&self, position: u32) {
         self.selection.set_selected(position);
     }
 
     /// Runs `handler` when the user's selection changes; `set` reports its own once.
-    pub fn connect_selected(&self, handler: impl Fn() + 'static) {
+    pub(super) fn connect_selected(&self, handler: impl Fn() + 'static) {
         let quiet = self.quiet.clone();
         self.selection.connect_selection_changed(move |_, _, _| {
             if !quiet.get() {
@@ -140,7 +141,8 @@ impl Groups {
     }
 
     /// The groups shown, for the self-test.
-    pub fn rows(&self) -> Vec<SenderGroup> {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn rows(&self) -> Vec<SenderGroup> {
         (0..self.items.n_items())
             .filter_map(|position| self.items.item(position))
             .filter_map(|item| item.downcast::<glib::BoxedAnyObject>().ok())
@@ -149,7 +151,8 @@ impl Groups {
     }
 
     /// Whether the shown row of the group `key` shows its pin; `None` when no row shows it.
-    pub fn shows_pin(&self, key: &str) -> Option<bool> {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn shows_pin(&self, key: &str) -> Option<bool> {
         let mut stack = vec![self.view.clone().upcast::<gtk::Widget>()];
         while let Some(widget) = stack.pop() {
             if let Some(row) = widget.downcast_ref::<gtk::Box>()
@@ -172,12 +175,13 @@ impl Groups {
     }
 
     /// Opens the group at `position`, as Enter on it does.
-    pub fn activate(&self, position: u32) {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn activate(&self, position: u32) {
         self.view.emit_by_name::<()>("activate", &[&position]);
     }
 
     /// Runs `handler` with a group's key when it is opened.
-    pub fn connect_open(&self, handler: impl Fn(String) + 'static) {
+    pub(super) fn connect_open(&self, handler: impl Fn(String) + 'static) {
         let items = self.items.clone();
         self.view.connect_activate(move |_, position| {
             if let Some(item) = items.item(position).and_downcast::<glib::BoxedAnyObject>() {
@@ -286,6 +290,7 @@ fn pin_of(row: &gtk::Box) -> Option<gtk::Image> {
 }
 
 /// The key a group's row shows, and whether its pin shows.
+#[cfg(feature = "test-hooks")]
 fn shown(row: &gtk::Box) -> Option<(String, bool)> {
     let detail = row
         .first_child()?
@@ -295,7 +300,7 @@ fn shown(row: &gtk::Box) -> Option<(String, bool)> {
 }
 
 /// "12 messages, 3 unread".
-pub fn count_text(count: u32, unread: u32) -> String {
+pub(super) fn count_text(count: u32, unread: u32) -> String {
     let messages = if count == 1 {
         "1 message".to_owned()
     } else {

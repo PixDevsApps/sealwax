@@ -41,7 +41,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("outbox-draft", 2, 2),
     ("outbox-queue", 1, 1),
     ("outbox-quick", 4, 4),
@@ -63,7 +63,7 @@ thread_local! {
     static MARK: std::cell::Cell<Option<Instant>> = const { std::cell::Cell::new(None) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
@@ -87,7 +87,7 @@ fn store(
         .ok_or_else(|| "the store is not open".to_owned())
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "outbox-draft" => save_draft(harness, arg(0), arg(1)).await,

@@ -7,11 +7,11 @@
 #
 # Not part of tools/ci.sh (perf-*): it needs a release build, a 100,000-message fixture store
 # and, for numbers that count, the live session (M1's live-window authorization):
-#   cargo build --release -p sealwax -p sealwax-fixtures
-#   SEALWAX_SELFTEST_ALLOW_LIVE=1 target/release/sealwax --self-test tests/selftest/perf-list.sealwax-test
+#   cargo build --release -p sealwax-uitest -p sealwax-fixtures
+#   SEALWAX_SELFTEST_ALLOW_LIVE=1 target/release/sealwax-selftest --self-test tests/selftest/perf-list.sealwax-test
 # The store is imported once into target/perf-list/data (about 40 s, 1.1 GB) and reused while
 # it is there; remove that folder to start over. A headless run
-# (tools/headless.sh 36 target/release/sealwax --self-test …) is only a dry run: Broadway paints
+# (tools/headless.sh 36 target/release/sealwax-selftest --self-test …) is only a dry run: Broadway paints
 # in software and isn't the bar.
 
 desktop tiling

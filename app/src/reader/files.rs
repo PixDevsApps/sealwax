@@ -45,7 +45,7 @@ pub enum FileChoice {
 
 /// Why the bytes of an attachment or a message aren't there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Failure {
+pub(super) enum Failure {
     /// The engine couldn't download them.
     Download(BodyError),
     /// The message's body isn't stored yet.
@@ -56,7 +56,7 @@ pub enum Failure {
 
 impl Failure {
     /// Why, in plain words, after "Couldn't open it: " and the like.
-    pub fn reason(self) -> &'static str {
+    pub(super) fn reason(self) -> &'static str {
         match self {
             Failure::Download(BodyError::Offline) => "the mail server can't be reached",
             Failure::Download(BodyError::NeedsSignIn) => "the account needs you to sign in again",
@@ -207,6 +207,7 @@ pub(super) fn connect_engine(reader: &Reader, engine: &EngineLink) {
 impl Reader {
     /// Opens attachments from folders under `root` and hands each file to `opener` instead of
     /// the desktop's application: for tests and headless runs.
+    #[cfg(feature = "test-hooks")]
     pub fn set_file_opener(&self, root: &Path, opener: impl Fn(&Path) + 'static) {
         self.inner.files.root.replace(root.to_owned());
         self.inner.files.opener.replace(Some(Rc::new(opener)));
@@ -214,17 +215,20 @@ impl Reader {
 
     /// Answers the Save and folder choosers instead of GTK's file dialog (`None` cancels): for
     /// tests and headless runs.
+    #[cfg(feature = "test-hooks")]
     pub fn set_file_chooser(&self, chooser: impl Fn(&FileChoice) -> Option<PathBuf> + 'static) {
         self.inner.files.chooser.replace(Some(Rc::new(chooser)));
     }
 
     /// Print writes a PDF to `path` instead of opening the print dialog: for tests and
     /// headless runs.
+    #[cfg(feature = "test-hooks")]
     pub fn set_print_target(&self, path: Option<PathBuf>) {
         self.inner.files.print_target.replace(path);
     }
 
     /// Whether a print is under way.
+    #[cfg(feature = "test-hooks")]
     pub fn printing(&self) -> bool {
         self.inner.files.printing.get()
     }

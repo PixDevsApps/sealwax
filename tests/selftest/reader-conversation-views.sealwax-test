@@ -4,7 +4,7 @@
 # nothing blank is left on screen once a scroll settles. A hidden reader gives every view back
 # after 3 s and takes them again when shown. Scrolling is programmatic (the column's
 # adjustment); no Gtk-CRITICAL. Every message is fictional (app/src/reader/samples.rs). Run:
-#   tools/headless.sh 31 target/debug/sealwax --self-test tests/selftest/reader-conversation-views.sealwax-test
+#   tools/headless.sh 31 target/debug/sealwax-selftest --self-test tests/selftest/reader-conversation-views.sealwax-test
 
 desktop tiling
 resize 1440 900

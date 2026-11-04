@@ -6,7 +6,7 @@
 # page loaded as a draft's body (a quote not cleaned upstream) runs no script and loads nothing
 # remote. The body follows a live theme switch. Every address is fictional; the canary listens
 # on 127.0.0.1 only.
-# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/composer-safety.sealwax-test
+# Run: tools/headless.sh 42 target/debug/sealwax-selftest --self-test tests/selftest/composer-safety.sealwax-test
 
 desktop tiling
 resize 1440 900

@@ -2,7 +2,7 @@
 # results and more as the list's end comes into view; in a folder it searches that folder, from
 # All Inboxes every folder; chips filter the results; Escape ends the search and the folder shows
 # again. Every message is fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-search.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-search.sealwax-test
 
 desktop tiling
 fixtures --count 1500 --seed 3 --folders spread

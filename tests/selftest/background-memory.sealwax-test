@@ -4,7 +4,7 @@
 # with a message shown, a few seconds after the window closed, and after 10 and 30 more closes
 # and activations. Printed, not asserted: the report's numbers come from a release build. Every
 # message is fictional.
-# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/background-memory.sealwax-test
+# Run: tools/headless.sh 57 target/debug/sealwax-selftest --self-test tests/selftest/background-memory.sealwax-test
 
 desktop tiling
 fixtures --count 2000 --seed 13 --folders single

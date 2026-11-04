@@ -8,11 +8,11 @@ use libadwaita as adw;
 
 /// The reader's column at its widest: it fills the reader pane up to this (the user's UI
 /// tweak, 2026-10-08; 760 px before).
-pub const READER_COLUMN: i32 = 1200;
+pub(crate) const READER_COLUMN: i32 = 1200;
 
 /// An icon-only button. `label` is its tooltip and its accessible label; `icons` are tried in
 /// order, so a name the icon theme lacks falls back to the next.
-pub fn icon_button(icons: &[&str], label: &str) -> gtk::Button {
+pub(crate) fn icon_button(icons: &[&str], label: &str) -> gtk::Button {
     let button = classed(
         gtk::Button::builder()
             .child(&icon(icons))
@@ -25,12 +25,12 @@ pub fn icon_button(icons: &[&str], label: &str) -> gtk::Button {
 }
 
 /// A themed icon with fallbacks: Yaru has `mail-inbox-symbolic`, Adwaita doesn't.
-pub fn icon(icons: &[&str]) -> gtk::Image {
+pub(crate) fn icon(icons: &[&str]) -> gtk::Image {
     gtk::Image::from_gicon(&gio::ThemedIcon::from_names(icons))
 }
 
 /// The main menu (ML-022), filled by `Window::set_menu_model`.
-pub fn menu_button() -> gtk::MenuButton {
+pub(crate) fn menu_button() -> gtk::MenuButton {
     let button = classed(
         gtk::MenuButton::builder()
             .icon_name("open-menu-symbolic")
@@ -131,7 +131,7 @@ impl PaneBar {
 /// The reader's column: one scrolled column, centred and at most [`READER_COLUMN`] px wide (a
 /// plain maximum, as the mock's `max-width`: the clamp doesn't ease toward it), while the
 /// reader's toolbar above it stretches. Its margins are `style.css`'s.
-pub struct ReaderColumn {
+pub(crate) struct ReaderColumn {
     /// What goes in the reader's stack: the scroller, which Tab goes through.
     pub root: gtk::Widget,
     pub scroller: gtk::ScrolledWindow,
@@ -140,7 +140,7 @@ pub struct ReaderColumn {
 }
 
 impl ReaderColumn {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let slot = classed(adw::Bin::new(), &["sw-reader-column"]);
         let clamp = classed(
             adw::Clamp::builder()
@@ -174,7 +174,7 @@ impl Default for ReaderColumn {
 
 /// A pane bar's title with a quieter subtitle after it on the same baseline, as the mock's
 /// list header ("Inbox  12 unread · Personal").
-pub fn title_block(title: &gtk::Label, subtitle: &gtk::Label) -> gtk::Box {
+pub(crate) fn title_block(title: &gtk::Label, subtitle: &gtk::Label) -> gtk::Box {
     title.add_css_class("sw-pane-title");
     subtitle.add_css_class("sw-pane-subtitle");
     subtitle.set_hexpand(true);
@@ -197,7 +197,7 @@ pub fn title_block(title: &gtk::Label, subtitle: &gtk::Label) -> gtk::Box {
 
 /// Adds style classes and keeps the ones GTK gave the widget, which a builder's `css_classes`
 /// would replace (a window's `background`, a toggle button's `toggle`).
-pub fn classed<W: IsA<gtk::Widget>>(widget: W, classes: &[&str]) -> W {
+pub(crate) fn classed<W: IsA<gtk::Widget>>(widget: W, classes: &[&str]) -> W {
     for class in classes {
         widget.add_css_class(class);
     }
@@ -205,7 +205,7 @@ pub fn classed<W: IsA<gtk::Widget>>(widget: W, classes: &[&str]) -> W {
 }
 
 /// Keeps `widget` named for the self-test (`Window::widget`).
-pub fn named<W: IsA<gtk::Widget>>(widget: W, name: &str) -> W {
+pub(crate) fn named<W: IsA<gtk::Widget>>(widget: W, name: &str) -> W {
     widget.set_widget_name(name);
     widget
 }

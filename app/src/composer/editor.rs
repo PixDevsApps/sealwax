@@ -13,7 +13,7 @@
 //! the blob store off the GTK thread; nothing is ever fetched from the network.
 
 use super::js;
-use crate::reader::NETWORK_FEATURES;
+use crate::webview;
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, gio, glib};
@@ -34,7 +34,7 @@ const HANDLER: &str = "composer";
 
 /// S7's composer policy: images only from `data:` (pasted, not yet adopted) and `cid:` (the
 /// draft's parts); never `https:`, unlike the reader's.
-pub const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; img-src data: cid:; \
+pub(crate) const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; img-src data: cid:; \
      style-src 'unsafe-inline'; font-src data:; form-action 'none'; base-uri 'none'; \
      frame-src 'none'";
 
@@ -53,11 +53,11 @@ const HELPER: &str = include_str!("helper.js");
 const EDITOR_HTML: &str = include_str!("editor.html");
 
 /// The body's line height (the approved mock's composer: 15 px at 1.6).
-pub const LINE_HEIGHT: f64 = 1.6;
+pub(crate) const LINE_HEIGHT: f64 = 1.6;
 
 /// An inline image of the draft: its Content-ID (without angle brackets) maps to it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InlineImage {
+pub(crate) struct InlineImage {
     pub mime_type: String,
     pub blob: BlobKey,
     pub size: u64,
@@ -67,7 +67,7 @@ pub struct InlineImage {
 /// The cursor's block and inline state, from the helper (lists, quotes, links, the paragraph
 /// style) and WebKit's typing attributes (bold, italic, underline, strikethrough).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct BlockState {
+pub(crate) struct BlockState {
     pub bulleted: bool,
     pub numbered: bool,
     pub quote: bool,
@@ -84,7 +84,7 @@ pub struct BlockState {
 
 /// What the cleaner removed from a paste or a drop.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct CleanStats {
+pub(crate) struct CleanStats {
     pub dropped: Vec<(String, u32)>,
     pub handlers: u32,
     pub styles: u32,
@@ -116,11 +116,11 @@ impl CleanStats {
 }
 
 #[derive(Clone, Debug)]
-pub enum EditorEvent {
+pub(crate) enum EditorEvent {
     /// The editor page is loaded and the helper runs.
     Ready,
     /// The user changed the body.
-    Input { composing: bool },
+    Input,
     /// The cursor's state changed.
     State(BlockState),
     /// Undo and Redo availability.
@@ -155,7 +155,7 @@ pub enum EditorEvent {
 /// The body serialised for the draft: cleaned HTML whose images are `cid:` references, and
 /// the Content-IDs it refers to.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Serialized {
+pub(crate) struct Serialized {
     pub html: String,
     pub cids: Vec<String>,
 }
@@ -186,6 +186,10 @@ pub struct EditorEngine {
     filter_done: async_channel::Receiver<()>,
     pages: Rc<RefCell<Pages>>,
     blobs: Rc<RefCell<Option<BlobStore>>>,
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests")
+    )]
     spell: RefCell<Vec<String>>,
 }
 
@@ -201,17 +205,8 @@ impl EditorEngine {
     }
 
     fn new(cache: &Path) -> Rc<EditorEngine> {
-        let context = webkit6::WebContext::new();
-        context.set_cache_model(webkit6::CacheModel::DocumentViewer);
-        let session = webkit6::NetworkSession::new_ephemeral();
-        session.set_tls_errors_policy(webkit6::TLSErrorsPolicy::Fail);
-        if let Some(cookies) = session.cookie_manager() {
-            cookies.set_accept_policy(webkit6::CookieAcceptPolicy::Never);
-        }
-        session.connect_download_started(|_, download| {
-            download.cancel();
-            tracing::debug!("composer: a download was refused");
-        });
+        let (context, session) =
+            webview::ephemeral_context(|| tracing::debug!("composer: a download was refused"));
         let pages: Rc<RefCell<Pages>> = Rc::default();
         let blobs: Rc<RefCell<Option<BlobStore>>> = Rc::default();
         context.register_uri_scheme(
@@ -239,7 +234,7 @@ impl EditorEngine {
         let directory = cache.join("content-filters");
         let weak = Rc::downgrade(&engine);
         glib::spawn_future_local(async move {
-            let compiled = compile_filter(&directory).await;
+            let compiled = webview::compile_filter(&directory, FILTER_ID, FILTER_JSON).await;
             if let Some(engine) = weak.upgrade() {
                 match compiled {
                     Ok(filter) => {
@@ -270,18 +265,20 @@ impl EditorEngine {
     }
 
     /// Where inline images are read from.
-    pub fn set_blobs(&self, blobs: Option<BlobStore>) {
+    pub(crate) fn set_blobs(&self, blobs: Option<BlobStore>) {
         if blobs.is_some() || self.blobs.borrow().is_none() {
             self.blobs.replace(blobs);
         }
     }
 
     /// The spell-checking languages WebKit accepted (none without dictionaries).
+    #[cfg(feature = "test-hooks")]
     pub fn spell_languages(&self) -> Vec<String> {
         self.spell.borrow().clone()
     }
 
     /// `cid:` requests served, and refused (no such part in the asking view's draft).
+    #[cfg(feature = "test-hooks")]
     pub fn cid_counts(&self) -> (u64, u64) {
         let pages = self.pages.borrow();
         (pages.served, pages.refused)
@@ -319,19 +316,6 @@ fn spell_check(context: &webkit6::WebContext) -> Vec<String> {
         }
     );
     accepted
-}
-
-async fn compile_filter(directory: &Path) -> Result<webkit6::UserContentFilter, String> {
-    let dir = directory.to_owned();
-    let made = gio::spawn_blocking(move || sealwax_infrastructure::xdg::ensure_private_dir(&dir))
-        .await
-        .map_err(|_| "the filter folder could not be made".to_owned())?;
-    made.map_err(|error| error.to_string())?;
-    let store = webkit6::UserContentFilterStore::new(&directory.to_string_lossy());
-    store
-        .save_future(FILTER_ID, &glib::Bytes::from_static(FILTER_JSON.as_bytes()))
-        .await
-        .map_err(|error| error.to_string())
 }
 
 /// Answers a `cid:` request from the asking view's own parts, read off the GTK thread.
@@ -383,67 +367,10 @@ fn serve_cid(
     });
 }
 
-#[allow(
-    deprecated,
-    reason = "the hardening turns off features WebKitGTK deprecated but still has"
-)]
-fn hardened_settings(theme: &Theme) -> webkit6::Settings {
-    let settings = webkit6::Settings::new();
-    settings.set_enable_javascript(true);
-    settings.set_enable_javascript_markup(false);
-    settings.set_auto_load_images(true);
-    settings.set_hardware_acceleration_policy(webkit6::HardwareAccelerationPolicy::Never);
-    settings.set_enable_page_cache(false);
-    settings.set_enable_html5_local_storage(false);
-    settings.set_enable_html5_database(false);
-    settings.set_enable_webgl(false);
-    settings.set_enable_webaudio(false);
-    settings.set_enable_media(false);
-    settings.set_enable_media_stream(false);
-    settings.set_enable_mediasource(false);
-    settings.set_enable_encrypted_media(false);
-    settings.set_enable_media_capabilities(false);
-    settings.set_enable_webrtc(false);
-    settings.set_enable_developer_extras(cfg!(debug_assertions));
-    settings.set_enable_write_console_messages_to_stdout(false);
-    settings.set_enable_fullscreen(false);
-    settings.set_enable_back_forward_navigation_gestures(false);
-    settings.set_enable_site_specific_quirks(false);
-    settings.set_javascript_can_open_windows_automatically(false);
-    settings.set_javascript_can_access_clipboard(false);
-    settings.set_allow_file_access_from_file_urls(false);
-    settings.set_allow_universal_access_from_file_urls(false);
-    settings.set_allow_top_navigation_to_data_urls(false);
-    settings.set_allow_modal_dialogs(false);
-    settings.set_enable_dns_prefetching(false);
-    if let Some(features) = webkit6::Settings::all_features() {
-        for index in 0..features.length() {
-            if let Some(feature) = features.get(index)
-                && feature
-                    .identifier()
-                    .is_some_and(|id| NETWORK_FEATURES.contains(&id.as_str()))
-            {
-                settings.set_feature_enabled(&feature, false);
-            }
-        }
-    }
-    apply_fonts(&settings, theme);
-    settings
-}
-
-fn apply_fonts(settings: &webkit6::Settings, theme: &Theme) {
-    let fonts = theme.webview_fonts();
-    settings.set_default_font_family(fonts.default_family);
-    settings.set_sans_serif_font_family(&fonts.sans_serif);
-    settings.set_monospace_font_family(&fonts.monospace);
-    settings.set_default_font_size(fonts.default_size);
-    settings.set_default_monospace_font_size(fonts.monospace_size);
-}
-
 /// The body in the live theme: its background, text and caret, accent links, the reading font
 /// at the mock's line height, quotes with a left border in the secondary colour and the line
 /// before a quote (its attribution) small and muted.
-pub fn editor_css(theme: &Theme) -> String {
+pub(crate) fn editor_css(theme: &Theme) -> String {
     let p = &theme.palette;
     let fonts = theme.webview_fonts();
     let scheme = match p.mode {
@@ -538,7 +465,7 @@ impl Editor {
             .web_context(&engine.context)
             .network_session(&engine.session)
             .user_content_manager(&ucm)
-            .settings(&hardened_settings(theme))
+            .settings(&webview::hardened_settings(&theme.webview_fonts()))
             .default_content_security_policy(CONTENT_SECURITY_POLICY)
             .editable(true)
             .hexpand(true)
@@ -579,7 +506,7 @@ impl Editor {
         &self.view
     }
 
-    pub fn set_handler(&self, handler: impl Fn(EditorEvent) + 'static) {
+    pub(crate) fn set_handler(&self, handler: impl Fn(EditorEvent) + 'static) {
         self.state.handler.replace(Some(Rc::new(handler)));
     }
 
@@ -595,7 +522,7 @@ impl Editor {
     }
 
     /// Restyles the body for `theme` in place.
-    pub fn set_theme(&self, theme: &Theme) {
+    pub(crate) fn set_theme(&self, theme: &Theme) {
         self.ucm.remove_all_style_sheets();
         self.ucm.add_style_sheet(&webkit6::UserStyleSheet::new(
             &editor_css(theme),
@@ -612,33 +539,34 @@ impl Editor {
             1.0,
         ));
         if let Some(settings) = WebViewExt::settings(&self.view) {
-            apply_fonts(&settings, theme);
+            webview::apply_fonts(&settings, &theme.webview_fonts());
         }
     }
 
     /// The draft's inline images, by Content-ID.
-    pub fn parts(&self) -> HashMap<String, InlineImage> {
+    pub(crate) fn parts(&self) -> HashMap<String, InlineImage> {
         self.parts.borrow().clone()
     }
 
-    pub fn add_part(&self, content_id: String, image: InlineImage) {
+    pub(crate) fn add_part(&self, content_id: String, image: InlineImage) {
         self.parts.borrow_mut().insert(content_id, image);
     }
 
-    pub fn block(&self) -> BlockState {
+    pub(crate) fn block(&self) -> BlockState {
         self.state.block.borrow().clone()
     }
 
-    pub fn history(&self) -> (bool, bool) {
+    pub(crate) fn history(&self) -> (bool, bool) {
         self.state.history.get()
     }
 
     /// Things the body tried that the view refused, and loads of anything but its own parts.
+    #[cfg(feature = "test-hooks")]
     pub fn refusals(&self) -> (u32, u32) {
         (self.state.refused.get(), self.state.remote.get())
     }
 
-    pub fn engine(&self) -> &Rc<EditorEngine> {
+    pub(crate) fn engine(&self) -> &Rc<EditorEngine> {
         &self.engine
     }
 
@@ -673,7 +601,7 @@ impl Editor {
             .await;
     }
 
-    pub async fn insert_text(&self, text: &str) {
+    pub(crate) async fn insert_text(&self, text: &str) {
         let _ = self
             .eval(&format!(
                 "sealwaxComposer.insertText({})",
@@ -683,7 +611,7 @@ impl Editor {
     }
 
     /// The body as the draft keeps it; `None` until the page is ready.
-    pub async fn serialize(&self, domain: &str) -> Option<Serialized> {
+    pub(crate) async fn serialize(&self, domain: &str) -> Option<Serialized> {
         if !self.is_ready() {
             return None;
         }
@@ -703,14 +631,14 @@ impl Editor {
         })
     }
 
-    pub async fn is_empty(&self) -> bool {
+    pub(crate) async fn is_empty(&self) -> bool {
         self.eval("sealwaxComposer.isEmpty()")
             .await
             .is_ok_and(|value| value.to_boolean())
     }
 
     /// Shows the stored image for the helper's `token` through `cid:`.
-    pub fn adopt(&self, token: &str, content_id: &str) {
+    pub(crate) fn adopt(&self, token: &str, content_id: &str) {
         self.eval_detached(&format!(
             "sealwaxComposer.adopt({}, {})",
             js::literal(token),
@@ -719,7 +647,7 @@ impl Editor {
     }
 
     /// Selects the whole link under the cursor, so Unlink takes all of it.
-    pub async fn select_link(&self) -> bool {
+    pub(crate) async fn select_link(&self) -> bool {
         self.eval("sealwaxComposer.selectLink()")
             .await
             .is_ok_and(|value| value.to_boolean())
@@ -877,7 +805,7 @@ impl Editor {
     }
 
     /// Forgets the view's parts; call when its window goes.
-    pub fn release(&self) {
+    pub(crate) fn release(&self) {
         self.state.handler.replace(None);
         self.engine
             .pages
@@ -912,9 +840,7 @@ fn parse_event(value: &Value, state: &State) -> Option<EditorEvent> {
             state.ready.set(true);
             EditorEvent::Ready
         }
-        "input" => EditorEvent::Input {
-            composing: js::boolean(value, "composing"),
-        },
+        "input" => EditorEvent::Input,
         "state" => {
             let typing = EditorTypingAttributes::from_bits_truncate(state.typing.get());
             let block = BlockState {

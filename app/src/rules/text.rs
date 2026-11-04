@@ -13,7 +13,7 @@ use sealwax_engine::api::RulesError;
 /// path, the folders above it first ("Inbox / Kunder", a role folder above by its role's
 /// name); a name the account doesn't have is marked missing (a rule filing into it keeps the
 /// message where it is).
-pub fn folder_label(name: &str, folders: &[Folder]) -> String {
+pub(crate) fn folder_label(name: &str, folders: &[Folder]) -> String {
     let Some(folder) = folders.iter().find(|folder| folder.name == name) else {
         return format!("{name} (missing)");
     };
@@ -40,7 +40,7 @@ pub fn folder_label(name: &str, folders: &[Folder]) -> String {
 }
 
 /// A size in the largest unit that divides it: "5 MB", "300 KB", "1500 bytes".
-pub fn size_text(bytes: u64) -> String {
+pub(crate) fn size_text(bytes: u64) -> String {
     let (amount, unit) = SizeUnit::split(bytes);
     format!("{amount} {}", unit.label())
 }
@@ -59,7 +59,7 @@ fn field_label(field: &Field) -> &str {
 }
 
 /// One condition: "From contains kari@example.test", "Size over 5 MB".
-pub fn condition_text(condition: &Condition) -> String {
+pub(crate) fn condition_text(condition: &Condition) -> String {
     match condition {
         Condition::Field {
             field,
@@ -76,7 +76,7 @@ pub fn condition_text(condition: &Condition) -> String {
 }
 
 /// One action: "Move to Kunder", "Mark as read", "Stop".
-pub fn action_text(action: &Action, folders: &[Folder]) -> String {
+pub(crate) fn action_text(action: &Action, folders: &[Folder]) -> String {
     match action {
         Action::MoveTo(folder) => format!("Move to {}", folder_label(folder, folders)),
         Action::CopyTo(folder) => format!("Copy to {}", folder_label(folder, folders)),
@@ -91,7 +91,7 @@ pub fn action_text(action: &Action, folders: &[Folder]) -> String {
 
 /// A rule in one line: its conditions, an arrow, its actions. "From contains kari@example.test
 /// → Move to Kunder"; "Every message → Star" for a rule without conditions.
-pub fn summary(rule: &Rule, folders: &[Folder]) -> String {
+pub(crate) fn summary(rule: &Rule, folders: &[Folder]) -> String {
     let joiner = match rule.matching {
         Match::All => " and ",
         Match::Any => " or ",
@@ -118,7 +118,7 @@ pub fn summary(rule: &Rule, folders: &[Folder]) -> String {
 }
 
 /// A rule's name in the dialog; an unnamed rule has none in the file.
-pub fn rule_title(rule: &Rule) -> &str {
+pub(crate) fn rule_title(rule: &Rule) -> &str {
     if rule.name.trim().is_empty() {
         "Unnamed rule"
     } else {
@@ -127,7 +127,7 @@ pub fn rule_title(rule: &Rule) -> &str {
 }
 
 /// Where a script is wrong, as the editor and the banner say it: "Line 3, column 7: …".
-pub fn script_error(error: &sieve::Error) -> String {
+pub(crate) fn script_error(error: &sieve::Error) -> String {
     format!(
         "Line {}, column {}: {}",
         error.line, error.column, error.message
@@ -135,7 +135,7 @@ pub fn script_error(error: &sieve::Error) -> String {
 }
 
 /// Why an account's rules can't run, after the account's name in the banner's title.
-pub fn problem_text(error: &RulesError) -> String {
+pub(crate) fn problem_text(error: &RulesError) -> String {
     match error {
         RulesError::Script(error) => script_error(error),
         RulesError::File => {
@@ -146,12 +146,12 @@ pub fn problem_text(error: &RulesError) -> String {
 }
 
 /// The banner's title for an account whose rules can't run.
-pub fn failed_title(account: &str) -> String {
+pub(crate) fn failed_title(account: &str) -> String {
     format!("Rules in {account} can't run")
 }
 
 /// The banner's text under it.
-pub fn failed_body(problem: &str) -> String {
+pub(crate) fn failed_body(problem: &str) -> String {
     format!("{problem}. No rule runs until the rules file is fixed.")
 }
 
@@ -163,12 +163,12 @@ fn messages(count: u32) -> String {
 }
 
 /// Apply Rules' toast while it runs.
-pub fn applying_text(folder: &str) -> String {
+pub(crate) fn applying_text(folder: &str) -> String {
     format!("Applying the rules to {folder}…")
 }
 
 /// Apply Rules' toast: what the rules changed in `folder`, or why they didn't run.
-pub fn applied_text(result: &Result<u32, RulesError>, folder: &str) -> String {
+pub(crate) fn applied_text(result: &Result<u32, RulesError>, folder: &str) -> String {
     match result {
         Ok(0) => format!("No rule matched in {folder}"),
         Ok(count) => format!("Rules changed {} in {folder}", messages(*count)),
@@ -179,7 +179,7 @@ pub fn applied_text(result: &Result<u32, RulesError>, folder: &str) -> String {
 /// Where a rule moves the messages it matches, as the sidebar names the folder, Junk or Trash
 /// (as the engine plans it: Move to Junk before Move to folder, before Delete); `None` for a
 /// rule that leaves them where they are.
-pub fn moved_to(rule: &Rule, folders: &[Folder]) -> Option<String> {
+pub(crate) fn moved_to(rule: &Rule, folders: &[Folder]) -> Option<String> {
     let has = |wanted: fn(&Action) -> bool| rule.actions.iter().any(wanted);
     if has(|action| matches!(action, Action::MoveToJunk)) {
         return Some("Junk".to_owned());
@@ -198,12 +198,12 @@ pub fn moved_to(rule: &Rule, folders: &[Folder]) -> Option<String> {
 }
 
 /// The toast while a rule just saved runs on the mail already in `folder`.
-pub fn rule_applying_text(name: &str, folder: &str) -> String {
+pub(crate) fn rule_applying_text(name: &str, folder: &str) -> String {
     format!("Applying “{name}” to {folder}…")
 }
 
 /// What a rule just saved did to the mail already in `folder`, or why it didn't run.
-pub fn rule_applied_text(
+pub(crate) fn rule_applied_text(
     result: &Result<u32, RulesError>,
     name: &str,
     moved_to: Option<&str>,
@@ -218,7 +218,7 @@ pub fn rule_applied_text(
 }
 
 /// What Always Junk or Never Junk did to the sender's list, as a sentence of its own.
-pub fn listed_text(always: bool, address: &str, changed: bool) -> String {
+pub(crate) fn listed_text(always: bool, address: &str, changed: bool) -> String {
     match (always, changed) {
         (true, true) => format!("Mail from {address} goes to Junk from now on"),
         (true, false) => format!("Mail from {address} already goes to Junk"),
@@ -228,7 +228,7 @@ pub fn listed_text(always: bool, address: &str, changed: bool) -> String {
 }
 
 /// A command's title in a menu and the palette: "Always Junk Messages from kari@example.test".
-pub fn sender_title(always: bool, address: Option<&str>) -> String {
+pub(crate) fn sender_title(always: bool, address: Option<&str>) -> String {
     let start = if always {
         "Always Junk Messages from"
     } else {
@@ -241,7 +241,7 @@ pub fn sender_title(always: bool, address: Option<&str>) -> String {
 }
 
 /// The Rules dialog's title for an account.
-pub fn dialog_title(account: &str) -> String {
+pub(crate) fn dialog_title(account: &str) -> String {
     format!("Rules for {account}")
 }
 

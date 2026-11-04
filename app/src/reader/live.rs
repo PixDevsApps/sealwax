@@ -32,11 +32,11 @@ const SCROLL_MARGIN: f64 = 12.0;
 /// How far beyond the visible part of the column a body keeps or gets its view, in column
 /// heights: one screen above and one below, so a body is rendered again before it scrolls into
 /// sight at reading speed.
-pub const MARGIN_SCREENS: f64 = 1.0;
+pub(super) const MARGIN_SCREENS: f64 = 1.0;
 
 /// One expanded HTML body of a page, in page coordinates (px from the page's top).
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Body {
+pub(super) struct Body {
     pub id: MessageId,
     pub top: f64,
     pub bottom: f64,
@@ -64,7 +64,7 @@ impl Body {
 /// The bodies that should hold a view: pinned ones, then the nearest to `window` within
 /// `margin` of it (visible ones first), at most `cap` in all. At the same distance a body that
 /// holds a view keeps it, so scrolling doesn't trade views back and forth.
-pub fn wanted(bodies: &[Body], window: (f64, f64), margin: f64, cap: usize) -> Vec<MessageId> {
+pub(super) fn wanted(bodies: &[Body], window: (f64, f64), margin: f64, cap: usize) -> Vec<MessageId> {
     let mut near: Vec<&Body> = bodies
         .iter()
         .filter(|body| body.pinned || body.distance(window) <= margin)
@@ -82,7 +82,7 @@ pub fn wanted(bodies: &[Body], window: (f64, f64), margin: f64, cap: usize) -> V
 /// The body to measure next with a spare view: the unmeasured one nearest to `window`, so
 /// heights above and below become exact (and placeholders right) before the reader scrolls
 /// there.
-pub fn next_to_measure(bodies: &[Body], window: (f64, f64)) -> Option<MessageId> {
+pub(super) fn next_to_measure(bodies: &[Body], window: (f64, f64)) -> Option<MessageId> {
     bodies
         .iter()
         .filter(|body| !body.measured && !body.live)
@@ -96,7 +96,7 @@ pub fn next_to_measure(bodies: &[Body], window: (f64, f64)) -> Option<MessageId>
 
 /// The reader's live-view and scroll state.
 #[derive(Default)]
-pub struct Scheduling {
+pub(super) struct Scheduling {
     /// A scheduling pass waits for the main loop.
     queued: Cell<bool>,
     /// What the column keeps in place while things above it change.
@@ -603,12 +603,14 @@ impl Inner {
     }
 
     /// Where message `id`'s row or card starts in the column, px from the top of what it shows.
+    #[cfg(feature = "test-hooks")]
     pub(super) fn message_top(&self, id: MessageId) -> Option<f64> {
         let shown = self.shown.borrow();
         top_in(&shown.as_ref()?.item(id)?.slot, &self.scroller()?)
     }
 
     /// The shown conversation's expanded HTML bodies, where the column shows them.
+    #[cfg(feature = "test-hooks")]
     pub(super) fn body_reports(&self) -> Vec<super::BodyReport> {
         let shown = self.shown.borrow();
         let (Some(page), Some(scroller)) = (shown.as_ref(), self.scroller()) else {

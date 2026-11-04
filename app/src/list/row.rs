@@ -21,7 +21,9 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{glib, pango};
 use sealwax_domain::actions::ActionId;
-use sealwax_domain::model::{MessageId, MessageSummary};
+#[cfg(any(test, feature = "test-hooks"))]
+use sealwax_domain::model::MessageId;
+use sealwax_domain::model::MessageSummary;
 use sealwax_domain::theme::{avatar_index, initials};
 use std::cell::{Cell, OnceCell, RefCell};
 use std::rc::Rc;
@@ -159,7 +161,7 @@ fn cut(text: &str, chars: usize) -> &str {
 }
 
 /// "10:32" today and yesterday, the weekday this week, "4 Oct" this year, else "04.10.2025".
-pub fn time_text(date: i64, section: usize, year: i32) -> String {
+pub(crate) fn time_text(date: i64, section: usize, year: i32) -> String {
     let Ok(time) = glib::DateTime::from_unix_local(date) else {
         return String::new();
     };
@@ -517,6 +519,7 @@ impl MessageRow {
     }
 
     /// Whether the row shows its quick actions now (for the self-test).
+    #[cfg(feature = "test-hooks")]
     pub fn shows_quick(&self) -> bool {
         self.imp()
             .quick
@@ -526,6 +529,7 @@ impl MessageRow {
     }
 
     /// The quick action button for `action`, once the row has been hovered.
+    #[cfg(feature = "test-hooks")]
     pub fn quick_button(&self, action: Quick) -> Option<gtk::Button> {
         self.imp().quick.borrow().as_ref().and_then(|(_, buttons)| {
             buttons
@@ -536,12 +540,14 @@ impl MessageRow {
     }
 
     /// The checkbox, while the row shows it (the self-test clicks it).
+    #[cfg(feature = "test-hooks")]
     pub fn check_button(&self) -> Option<gtk::CheckButton> {
         let parts = self.imp().parts.get()?;
         parts.check.is_visible().then(|| parts.check.clone())
     }
 
     /// Whether the row shows its checkbox, and whether it is ticked.
+    #[cfg(feature = "test-hooks")]
     pub fn check_state(&self) -> Option<bool> {
         let parts = self.imp().parts.get()?;
         parts.check.is_visible().then(|| parts.check.is_active())
@@ -615,6 +621,7 @@ impl MessageRow {
         Some(list_item.position()).filter(|position| *position != gtk::INVALID_LIST_POSITION)
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn id(&self) -> Option<MessageId> {
         self.item().and_then(|item| item.id())
     }
@@ -634,6 +641,7 @@ impl MessageRow {
     }
 
     /// The texts the row shows: sender, subject, snippet, time (for the self-test).
+    #[cfg(feature = "test-hooks")]
     pub fn texts(&self) -> [String; 4] {
         let Some(parts) = self.imp().parts.get() else {
             return Default::default();
@@ -647,6 +655,7 @@ impl MessageRow {
     }
 
     /// Whether the row shows the pin of a pinned sender (issue #26).
+    #[cfg(feature = "test-hooks")]
     pub fn shows_pin(&self) -> bool {
         self.imp()
             .parts
@@ -865,6 +874,7 @@ impl SectionHeader {
         }
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn text(&self) -> String {
         self.label()
             .map(|label| label.text().to_string())

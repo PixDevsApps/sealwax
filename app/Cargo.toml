@@ -17,6 +17,11 @@ path = "src/lib.rs"
 name = "sealwax"
 path = "src/main.rs"
 
+[features]
+# The self-test runner, the sample mail, the stand-in composer backend and the public modules the
+# harnesses drive: for `sealwax-selftest` (uitest/) only, never in the released binary (ADR-025).
+test-hooks = ["sealwax-infrastructure/test-support"]
+
 [dependencies]
 sealwax-domain.workspace = true
 sealwax-infrastructure.workspace = true

@@ -33,7 +33,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 /// The most of a message's source Show Original shows; Save as .eml has the rest.
-pub const ORIGINAL_SHOWN: usize = 512 * 1024;
+pub(super) const ORIGINAL_SHOWN: usize = 512 * 1024;
 
 /// How long the print document may take to load, its images included.
 const PRINT_LOAD_WAIT: Duration = Duration::from_secs(10);
@@ -320,7 +320,7 @@ async fn run_print(
 }
 
 /// The Show Original dialog open now, for checks.
-pub struct OriginalDialog {
+pub(crate) struct OriginalDialog {
     pub dialog: adw::Dialog,
     pub stack: gtk::Stack,
     pub text: gtk::TextView,
@@ -337,7 +337,8 @@ thread_local! {
 }
 
 /// The Show Original dialog open now, if any.
-pub fn original_dialog() -> Option<Rc<OriginalDialog>> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn original_dialog() -> Option<Rc<OriginalDialog>> {
     ORIGINAL
         .with(|open| open.borrow().clone())
         .filter(|open| open.dialog.is_mapped())

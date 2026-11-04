@@ -4,7 +4,7 @@
 # every folder and shows no scope row. People suggested after from: come from the folder's
 # account, or every account's once the search covers every folder. Every name, address and
 # message is fictional.
-# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/search-scope.sealwax-test
+# Run: tools/headless.sh 53 target/debug/sealwax-selftest --self-test tests/selftest/search-scope.sealwax-test
 
 desktop tiling
 resize 1440 900

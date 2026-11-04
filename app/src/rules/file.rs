@@ -16,7 +16,7 @@ use std::time::SystemTime;
 
 /// An account's rules file: where it is and the folders its rules name.
 #[derive(Clone, Debug)]
-pub struct Place {
+pub(crate) struct Place {
     pub dir: PathBuf,
     pub key: AccountKey,
     pub folders: Folders,
@@ -24,14 +24,14 @@ pub struct Place {
 
 impl Place {
     /// The file itself; `None` for a key that can't name one.
-    pub fn path(&self) -> Option<PathBuf> {
+    pub(crate) fn path(&self) -> Option<PathBuf> {
         rules::path(&self.dir, &self.key)
     }
 }
 
 /// Why the rules can't be shown or changed.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Unreadable {
+pub(crate) enum Unreadable {
     /// The script doesn't parse, or uses Sieve Sealwax doesn't run.
     Script(sieve::Error),
     /// Over 1 MiB, not UTF-8, or not readable.
@@ -40,7 +40,7 @@ pub enum Unreadable {
 
 /// The rules as read.
 #[derive(Clone)]
-pub struct Loaded {
+pub(crate) struct Loaded {
     pub set: Result<RuleSet, Unreadable>,
     /// The file's modification time before it was read; `None` without a file.
     pub modified: Option<SystemTime>,
@@ -48,7 +48,7 @@ pub struct Loaded {
 
 /// Why a save didn't happen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum SaveError {
+pub(crate) enum SaveError {
     /// The file changed since it was read (a text editor saved it): nothing was written.
     Changed,
     /// The rules can't be written as they are.
@@ -59,7 +59,7 @@ pub enum SaveError {
 
 /// Reads the account's rules. The time is taken before the text, so a change between them
 /// shows as a change at the next save, never as none.
-pub fn load(place: &Place) -> Loaded {
+pub(crate) fn load(place: &Place) -> Loaded {
     let modified = match rules::modified(&place.dir, &place.key) {
         Ok(modified) => modified,
         Err(_) => {
@@ -78,7 +78,7 @@ pub fn load(place: &Place) -> Loaded {
 }
 
 /// Writes `set` when the file is still as it was at `expected`; its new modification time.
-pub fn save(
+pub(crate) fn save(
     place: &Place,
     set: &RuleSet,
     expected: Option<SystemTime>,
@@ -98,7 +98,10 @@ fn write(place: &Place, set: &RuleSet) -> Result<Option<SystemTime>, SaveError> 
 
 /// Reads the account's rules, lets `edit` change them and writes them when it says it did:
 /// Always Junk and Never Junk from a message, and their Undo. Whether `edit` changed them.
-pub fn change(place: &Place, edit: impl FnOnce(&mut RuleSet) -> bool) -> Result<bool, ChangeError> {
+pub(crate) fn change(
+    place: &Place,
+    edit: impl FnOnce(&mut RuleSet) -> bool,
+) -> Result<bool, ChangeError> {
     let loaded = load(place);
     let mut set = loaded.set.map_err(ChangeError::Unreadable)?;
     if !edit(&mut set) {
@@ -111,7 +114,7 @@ pub fn change(place: &Place, edit: impl FnOnce(&mut RuleSet) -> bool) -> Result<
 /// What the lists held of a sender before Always Junk or Never Junk put it on one, so Undo
 /// puts them back as they were.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Listed {
+pub(crate) struct Listed {
     /// The file changed.
     pub changed: bool,
     pub was_blocked: bool,
@@ -124,7 +127,11 @@ fn holds(list: &[String], address: &str) -> bool {
 }
 
 /// Always Junk (`always`) or Never Junk for `address`: on that list, off the other.
-pub fn list_sender(place: &Place, address: &str, always: bool) -> Result<Listed, ChangeError> {
+pub(crate) fn list_sender(
+    place: &Place,
+    address: &str,
+    always: bool,
+) -> Result<Listed, ChangeError> {
     let (mut was_blocked, mut was_trusted) = (false, false);
     let changed = change(place, |set| {
         was_blocked = holds(&set.blocked.addresses, address);
@@ -143,7 +150,7 @@ pub fn list_sender(place: &Place, address: &str, always: bool) -> Result<Listed,
 }
 
 /// Undo of [`list_sender`]: the lists hold `address` again as `listed` says they did.
-pub fn unlist_sender(
+pub(crate) fn unlist_sender(
     place: &Place,
     address: &str,
     always: bool,
@@ -170,7 +177,7 @@ pub fn unlist_sender(
 /// The folder `old` (and every folder under it) is now `new`: the rules that file into them
 /// follow, and the spam sections are read with the names the Inbox and Junk had. Hand-written
 /// Sieve is left as written. Whether the file changed.
-pub fn follow_rename(
+pub(crate) fn follow_rename(
     place: &Place,
     old: &str,
     new: &str,
@@ -200,14 +207,14 @@ pub fn follow_rename(
 
 /// Why [`change`] didn't change the file.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ChangeError {
+pub(crate) enum ChangeError {
     Unreadable(Unreadable),
     Save(SaveError),
 }
 
 /// Whether the script at `path` can run, for the banner once the file changed on disk:
 /// `Ok(())` also without a file.
-pub fn check(dir: &Path, key: &AccountKey) -> Result<(), Unreadable> {
+pub(crate) fn check(dir: &Path, key: &AccountKey) -> Result<(), Unreadable> {
     match rules::read(dir, key) {
         Ok(None) => Ok(()),
         Ok(Some(text)) => sieve::compile(&text).map(drop).map_err(Unreadable::Script),
@@ -224,7 +231,7 @@ thread_local! {
 
 /// Runs `job` on a worker thread after every job handed in before it; resolves on the GTK
 /// thread with its result, `None` when the worker failed.
-pub async fn run<T: Send + 'static>(job: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+pub(crate) async fn run<T: Send + 'static>(job: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     let (answer, result) = async_channel::bounded(1);
     let job: Job = Box::new(move || {
         let _ = answer.send_blocking(job());

@@ -3,7 +3,7 @@
 # what it keeps (~205 rows); the rest follow in one step without new row widgets. The window
 # waited for the first rows at startup, so its first frame already had them. Every message is
 # fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-first-frame.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-first-frame.sealwax-test
 
 desktop tiling
 fixtures --count 2000 --seed 13 --folders single

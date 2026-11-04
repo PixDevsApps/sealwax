@@ -38,6 +38,8 @@ url.workspace = true
 idna.workspace = true
 
 [dev-dependencies]
+# The fake servers skip connections from other programs (loopback, test-support).
+sealwax-infrastructure = { workspace = true, features = ["test-support"] }
 rcgen.workspace = true
 tempfile.workspace = true
 tracing-subscriber.workspace = true

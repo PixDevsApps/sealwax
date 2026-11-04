@@ -5,7 +5,7 @@
 # they started: folders, then the list's bar and the list, then the reader's toolbar and the
 # conversation, also with no message open. The folder list and the message list are one Tab
 # stop each (Up and Down move inside them). Every message is fictional.
-# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-window.sealwax-test
+# Run: tools/headless.sh 71 target/debug/sealwax-selftest --self-test tests/selftest/a11y-window.sealwax-test
 
 desktop tiling
 fixtures --count 40 --seed 9 --folders spread

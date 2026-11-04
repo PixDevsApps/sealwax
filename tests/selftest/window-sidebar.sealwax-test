@@ -4,7 +4,7 @@
 # leaves a pane that hides; the choice is written to layout.toml and comes back with a new window;
 # while one pane fits, the keys go to the folders page and back to the list. Every name and
 # message is fictional.
-# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/window-sidebar.sealwax-test
+# Run: tools/headless.sh 34 target/debug/sealwax-selftest --self-test tests/selftest/window-sidebar.sealwax-test
 
 desktop tiling
 resize 1440 900

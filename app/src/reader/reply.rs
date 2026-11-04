@@ -30,11 +30,12 @@ use sealwax_domain::model::{Address, FolderRole, Headers, MessageId, MessageSumm
 use sealwax_infrastructure::store::ConversationMessage;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+#[cfg(any(test, feature = "test-hooks"))]
 use std::fmt;
 use std::rc::Rc;
 
 /// The text area's placeholder (the mock's).
-pub const PLACEHOLDER: &str = "Write a reply…";
+pub(super) const PLACEHOLDER: &str = "Write a reply…";
 
 /// A card button: the command it stands for, its icons and its accessible label.
 type Spec = (ActionId, &'static [&'static str], &'static str);
@@ -79,7 +80,7 @@ fn button_label(action: ActionId, all: bool) -> &'static str {
 
 /// Whom Reply All answers of a message with `headers`, To then Cc, `mine` being the user's
 /// addresses: the compose rules' own choice (`compose::reply::recipients`).
-pub fn everyone(headers: &Headers, mine: &[String]) -> Vec<Address> {
+pub(super) fn everyone(headers: &Headers, mine: &[String]) -> Vec<Address> {
     let senders: Vec<Identity> = mine
         .iter()
         .map(|address| Identity {
@@ -94,7 +95,7 @@ pub fn everyone(headers: &Headers, mine: &[String]) -> Vec<Address> {
 
 /// The quick reply's label when it answers `everyone`: "Reply to Tomas Berg and 2 others";
 /// `None` for no one.
-pub fn reply_all_label(everyone: &[Address]) -> Option<String> {
+pub(super) fn reply_all_label(everyone: &[Address]) -> Option<String> {
     let name = everyone.first()?.display_name();
     Some(match everyone.len() - 1 {
         0 => format!("Reply to {name}"),
@@ -106,7 +107,7 @@ pub fn reply_all_label(everyone: &[Address]) -> Option<String> {
 /// The message a quick reply answers, of `messages` oldest first: the latest that isn't the
 /// user's own (`mine`, lower case) and isn't in a Drafts folder; when every message is the
 /// user's own, the latest that isn't a draft; `None` when there is only drafts.
-pub fn reply_target(messages: &[ConversationMessage], mine: &[String]) -> Option<MessageId> {
+pub(super) fn reply_target(messages: &[ConversationMessage], mine: &[String]) -> Option<MessageId> {
     let candidates: Vec<&ConversationMessage> = messages
         .iter()
         .filter(|message| message.role != FolderRole::Drafts)
@@ -126,7 +127,7 @@ fn is_mine(summary: &MessageSummary, mine: &[String]) -> bool {
 
 /// "Reply to Tomas Berg" (the sender's name, else the address); just "Reply" for the user's own
 /// message, whose reply goes to its recipients.
-pub fn reply_label(summary: &MessageSummary, mine: &[String]) -> String {
+pub(super) fn reply_label(summary: &MessageSummary, mine: &[String]) -> String {
     if is_mine(summary, mine) {
         return "Reply".to_owned();
     }
@@ -144,7 +145,7 @@ pub fn reply_label(summary: &MessageSummary, mine: &[String]) -> String {
 }
 
 /// "Expand to the full composer with Ctrl+Shift+E", with the keys in use.
-pub fn expand_hint(keymap: &Keymap) -> String {
+pub(super) fn expand_hint(keymap: &Keymap) -> String {
     let keys = keymap.display(ActionId::ReplyInComposer);
     if keys.is_empty() {
         "Expand to the full composer".to_owned()
@@ -163,8 +164,9 @@ pub struct QuickState {
 }
 
 /// The quick reply on screen, for checks. `Debug` leaves the text out: it is the user's mail.
+#[cfg(any(test, feature = "test-hooks"))]
 #[derive(Clone, PartialEq, Eq)]
-pub struct QuickReport {
+pub(crate) struct QuickReport {
     pub target: MessageId,
     pub label: String,
     pub text: String,
@@ -172,6 +174,7 @@ pub struct QuickReport {
     pub send_sensitive: bool,
 }
 
+#[cfg(any(test, feature = "test-hooks"))]
 impl fmt::Debug for QuickReport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("QuickReport")
@@ -187,19 +190,19 @@ type ComposeListener = Rc<dyn Fn(ComposeRequest)>;
 type MessageListener = Rc<dyn Fn(MessageId)>;
 type StateListener = Rc<dyn Fn(QuickState)>;
 /// A future that resolves on the GTK thread.
-pub type Local<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T>>>;
+pub(crate) type Local<T> = std::pin::Pin<Box<dyn std::future::Future<Output = T>>>;
 /// Sends a quick reply's text as a reply to the message; `true` when it was taken (queued), so
 /// the box empties, `false` to keep the text (it was refused, and the app said why).
-pub type QuickSend = Rc<dyn Fn(MessageId, String) -> Local<bool>>;
+pub(super) type QuickSend = Rc<dyn Fn(MessageId, String) -> Local<bool>>;
 /// Hears every change of a quick reply's text, with the message it answers (to keep it as a
 /// draft).
 type TextListener = Rc<dyn Fn(MessageId, &str)>;
 /// Finds what a quick reply held for a message in an earlier session (its draft).
-pub type QuickFinder = Rc<dyn Fn(MessageId) -> Local<Option<String>>>;
+pub(super) type QuickFinder = Rc<dyn Fn(MessageId) -> Local<Option<String>>>;
 
 /// The reader's side of replying: the quick replies' texts, and where requests go.
 #[derive(Default)]
-pub struct Quick {
+pub(super) struct Quick {
     /// What each message's quick reply holds, while it holds anything.
     texts: RefCell<HashMap<MessageId, String>>,
     on_compose: RefCell<Vec<ComposeListener>>,
@@ -212,7 +215,7 @@ pub struct Quick {
 }
 
 /// One conversation's quick reply.
-pub struct QuickReply {
+pub(super) struct QuickReply {
     pub root: gtk::Box,
     label: gtk::Label,
     view: gtk::TextView,
@@ -323,11 +326,11 @@ impl QuickReply {
         quick
     }
 
-    pub fn target(&self) -> MessageId {
+    pub(super) fn target(&self) -> MessageId {
         self.target.get()
     }
 
-    pub fn text(&self) -> String {
+    pub(super) fn text(&self) -> String {
         let buffer = self.view.buffer();
         buffer
             .text(&buffer.start_iter(), &buffer.end_iter(), false)
@@ -465,7 +468,8 @@ impl Reader {
     }
 
     /// The quick reply on screen, for checks.
-    pub fn quick_reply(&self) -> Option<QuickReport> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn quick_reply(&self) -> Option<QuickReport> {
         let quick = self.inner.shown_quick()?;
         Some(QuickReport {
             target: quick.target(),

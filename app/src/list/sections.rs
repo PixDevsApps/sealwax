@@ -7,7 +7,7 @@
 use gtk4::glib;
 use std::time::Duration;
 
-pub const LABELS: [&str; SECTIONS] = [
+pub(crate) const LABELS: [&str; SECTIONS] = [
     "Pinned",
     "Today",
     "Yesterday",
@@ -15,9 +15,9 @@ pub const LABELS: [&str; SECTIONS] = [
     "This month",
     "Older",
 ];
-pub const SECTIONS: usize = 6;
-pub const PINNED: usize = 0;
-pub const OLDER: usize = SECTIONS - 1;
+pub(crate) const SECTIONS: usize = 6;
+pub(crate) const PINNED: usize = 0;
+pub(crate) const OLDER: usize = SECTIONS - 1;
 
 /// Start times of the first four sections (Unix seconds, local midnights), non-increasing, so a
 /// section that is empty on a given day (This week on a Monday) starts where the one before it
@@ -68,7 +68,7 @@ impl Thresholds {
 }
 
 /// How long until the sections change after `now`: the next local midnight.
-pub fn until_next_day(now: &glib::DateTime) -> Duration {
+pub(crate) fn until_next_day(now: &glib::DateTime) -> Duration {
     let (year, month, day) = now.ymd();
     let next = glib::DateTime::new(&now.timezone(), year, month, day, 0, 0, 0.0)
         .and_then(|today| today.add_days(1));
@@ -80,14 +80,14 @@ pub fn until_next_day(now: &glib::DateTime) -> Duration {
 
 /// Where each section ends in list positions: `ends[i]` is one past the last row of section `i`.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Bounds {
+pub(crate) struct Bounds {
     ends: [u32; SECTIONS],
 }
 
 impl Bounds {
     /// From the Pinned rows, the rows before the first one dated before each section start (the
     /// Pinned ones included), as the store counts them, and the row count.
-    pub fn from_counts(pinned: u32, counts: &[u32], total: u32) -> Self {
+    pub(crate) fn from_counts(pinned: u32, counts: &[u32], total: u32) -> Self {
         let mut ends = [0; SECTIONS];
         ends[PINNED] = pinned.min(total);
         ends[OLDER] = total;
@@ -101,7 +101,10 @@ impl Bounds {
     }
 
     /// From the dates of rows ordered newest first.
-    pub fn from_dates(dates: impl IntoIterator<Item = i64>, thresholds: &Thresholds) -> Self {
+    pub(crate) fn from_dates(
+        dates: impl IntoIterator<Item = i64>,
+        thresholds: &Thresholds,
+    ) -> Self {
         let mut counts = [0u32; SECTIONS];
         for date in dates {
             counts[thresholds.section_of(date)] += 1;
@@ -115,12 +118,13 @@ impl Bounds {
         Self { ends }
     }
 
-    pub fn total(&self) -> u32 {
+    pub(crate) fn total(&self) -> u32 {
         self.ends[OLDER]
     }
 
     /// Rows in each section.
-    pub fn counts(&self) -> [u32; SECTIONS] {
+    #[cfg(any(test, feature = "test-hooks"))]
+    pub(crate) fn counts(&self) -> [u32; SECTIONS] {
         let mut counts = [0; SECTIONS];
         let mut start = 0;
         for (count, end) in counts.iter_mut().zip(self.ends) {
@@ -132,7 +136,7 @@ impl Bounds {
 
     /// The section at `position` and its `[start, end)`; past the end, GTK's convention
     /// `(total, u32::MAX)`.
-    pub fn section_at(&self, position: u32) -> (usize, u32, u32) {
+    pub(crate) fn section_at(&self, position: u32) -> (usize, u32, u32) {
         if position >= self.total() {
             return (OLDER, self.total(), u32::MAX);
         }
@@ -146,14 +150,14 @@ impl Bounds {
     }
 
     /// A row was added to `section`.
-    pub fn insert(&mut self, section: usize) {
+    pub(crate) fn insert(&mut self, section: usize) {
         for end in &mut self.ends[section..] {
             *end += 1;
         }
     }
 
     /// A row was taken from `section`.
-    pub fn remove(&mut self, section: usize) {
+    pub(crate) fn remove(&mut self, section: usize) {
         for end in &mut self.ends[section..] {
             *end = end.saturating_sub(1);
         }

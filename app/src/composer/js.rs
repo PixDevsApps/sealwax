@@ -2,7 +2,7 @@
 
 use webkit6::javascriptcore::Value;
 
-pub fn get(value: &Value, name: &str) -> Option<Value> {
+pub(super) fn get(value: &Value, name: &str) -> Option<Value> {
     value
         .is_object()
         .then(|| value.object_get_property(name))
@@ -10,22 +10,22 @@ pub fn get(value: &Value, name: &str) -> Option<Value> {
         .filter(|property| !property.is_undefined() && !property.is_null())
 }
 
-pub fn string(value: &Value, name: &str) -> String {
+pub(super) fn string(value: &Value, name: &str) -> String {
     get(value, name)
         .filter(Value::is_string)
         .map(|property| property.to_str().to_string())
         .unwrap_or_default()
 }
 
-pub fn boolean(value: &Value, name: &str) -> bool {
+pub(super) fn boolean(value: &Value, name: &str) -> bool {
     get(value, name).is_some_and(|property| property.to_boolean())
 }
 
-pub fn number(value: &Value, name: &str) -> f64 {
+pub(super) fn number(value: &Value, name: &str) -> f64 {
     get(value, name).map_or(0.0, |property| property.to_double())
 }
 
-pub fn array(value: &Value, name: &str) -> Vec<Value> {
+pub(super) fn array(value: &Value, name: &str) -> Vec<Value> {
     let Some(list) = get(value, name).filter(Value::is_array) else {
         return Vec::new();
     };
@@ -35,7 +35,7 @@ pub fn array(value: &Value, name: &str) -> Vec<Value> {
         .collect()
 }
 
-pub fn keys(value: &Value) -> Vec<String> {
+pub(super) fn keys(value: &Value) -> Vec<String> {
     if !value.is_object() {
         return Vec::new();
     }
@@ -47,7 +47,7 @@ pub fn keys(value: &Value) -> Vec<String> {
 }
 
 /// A JavaScript string literal for `text`.
-pub fn literal(text: &str) -> String {
+pub(super) fn literal(text: &str) -> String {
     let mut out = String::with_capacity(text.len() + 2);
     out.push('"');
     for ch in text.chars() {

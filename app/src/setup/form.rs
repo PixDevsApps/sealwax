@@ -10,14 +10,14 @@ use std::net::{IpAddr, Ipv6Addr};
 
 /// An address as typed, trimmed, with its domain.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Address {
+pub(crate) struct Address {
     pub text: String,
     pub local: String,
     pub domain: String,
 }
 
 /// `name@domain`: one `@`, no spaces, a domain of two or more labels.
-pub fn parse_address(text: &str) -> Option<Address> {
+pub(crate) fn parse_address(text: &str) -> Option<Address> {
     let text = text.trim();
     let (local, domain) = text.rsplit_once('@')?;
     let domain = domain.strip_suffix('.').unwrap_or(domain);
@@ -38,7 +38,7 @@ pub fn parse_address(text: &str) -> Option<Address> {
 }
 
 /// A server name: a DNS name of letters, digits and hyphens, or an IP address.
-pub fn parse_host(text: &str) -> Option<String> {
+pub(crate) fn parse_host(text: &str) -> Option<String> {
     let host = text.trim();
     if let Some(inner) = host
         .strip_prefix('[')
@@ -60,7 +60,7 @@ pub fn parse_host(text: &str) -> Option<String> {
 }
 
 /// A port from 1 to 65535, in digits only.
-pub fn parse_port(text: &str) -> Option<u16> {
+pub(crate) fn parse_port(text: &str) -> Option<u16> {
     let text = text.trim();
     if text.is_empty() || !text.chars().all(|c| c.is_ascii_digit()) {
         return None;
@@ -69,7 +69,7 @@ pub fn parse_port(text: &str) -> Option<u16> {
 }
 
 /// The standard port for a protocol over a kind of TLS (RFC 8314, RFC 6409).
-pub fn default_port(protocol: Protocol, security: Security) -> u16 {
+pub(crate) fn default_port(protocol: Protocol, security: Security) -> u16 {
     match (protocol, security) {
         (Protocol::Imap, Security::Tls) => 993,
         (Protocol::Imap, Security::StartTls) => 143,
@@ -80,7 +80,7 @@ pub fn default_port(protocol: Protocol, security: Security) -> u16 {
     }
 }
 
-pub fn security_name(security: Security) -> &'static str {
+pub(crate) fn security_name(security: Security) -> &'static str {
     match security {
         Security::Tls => "TLS",
         Security::StartTls => "STARTTLS",
@@ -89,7 +89,7 @@ pub fn security_name(security: Security) -> &'static str {
 
 /// The username to log in with and the one more to try (S4b: at most two attempts). A
 /// username the user typed is tried alone, unless it is the one detection proposed.
-pub fn usernames(
+pub(crate) fn usernames(
     address: &Address,
     detected: Option<&DetectedSettings>,
     typed: Option<&str>,
@@ -112,7 +112,7 @@ pub fn usernames(
 
 /// What the first step names: the sender name, the account's name in Sealwax and its colour.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Naming {
+pub(crate) struct Naming {
     pub name: String,
     pub label: String,
     pub color: Option<AccountColor>,
@@ -120,7 +120,7 @@ pub struct Naming {
 
 /// The settings to check and save. Without a name the address is the sender name; without a
 /// label, or with the address typed as one, the address names the account.
-pub fn settings(
+pub(crate) fn settings(
     address: &Address,
     naming: &Naming,
     incoming: Endpoint,
@@ -154,7 +154,7 @@ pub fn settings(
 
 /// A manual field the assistant checks. The incoming server is IMAP's or POP3's, as chosen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Field {
+pub(crate) enum Field {
     Address,
     IncomingHost,
     IncomingPort,
@@ -166,14 +166,14 @@ pub enum Field {
 
 /// Why a field isn't usable yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Problem {
+pub(crate) enum Problem {
     /// Nothing typed: the button waits without a message.
     Empty(Field),
     Invalid(Field),
 }
 
 impl Problem {
-    pub fn field(self) -> Field {
+    pub(crate) fn field(self) -> Field {
         match self {
             Self::Empty(field) | Self::Invalid(field) => field,
         }
@@ -181,7 +181,7 @@ impl Problem {
 
     /// What to fix, for a field that holds something unusable; `incoming` is the incoming
     /// server's protocol, IMAP or POP3.
-    pub fn message(self, incoming: Protocol) -> Option<&'static str> {
+    pub(crate) fn message(self, incoming: Protocol) -> Option<&'static str> {
         let Self::Invalid(field) = self else {
             return None;
         };
@@ -211,7 +211,7 @@ impl Problem {
 
 /// The manual settings as typed.
 #[derive(Debug, Clone, Default)]
-pub struct Manual<'a> {
+pub(crate) struct Manual<'a> {
     pub address: &'a str,
     /// IMAP, or POP3 with what happens to downloaded mail on its server (M8).
     pub receive: Receive,
@@ -226,7 +226,7 @@ pub struct Manual<'a> {
 
 /// The checked manual settings.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Checked {
+pub(crate) struct Checked {
     pub address: Address,
     pub incoming: Endpoint,
     pub receive: Receive,
@@ -235,7 +235,7 @@ pub struct Checked {
 }
 
 /// Checks the fields in the order they are shown; the first problem wins.
-pub fn check_manual(fields: &Manual) -> Result<Checked, Problem> {
+pub(crate) fn check_manual(fields: &Manual) -> Result<Checked, Problem> {
     let address = required(fields.address, Field::Address, parse_address)?;
     let incoming_host = required(fields.incoming_host, Field::IncomingHost, parse_host)?;
     let incoming_port = required(fields.incoming_port, Field::IncomingPort, parse_port)?;
@@ -266,7 +266,12 @@ pub fn check_manual(fields: &Manual) -> Result<Checked, Problem> {
 
 /// The port to show after the incoming protocol changed from `from` to `to`: a standard
 /// port of `from` (or none) moves to `to`'s for `security`; a port the user typed stays.
-pub fn moved_port(port: &str, from: Protocol, to: Protocol, security: Security) -> Option<u16> {
+pub(crate) fn moved_port(
+    port: &str,
+    from: Protocol,
+    to: Protocol,
+    security: Security,
+) -> Option<u16> {
     let standard = [Security::Tls, Security::StartTls].map(|other| default_port(from, other));
     let typed = parse_port(port);
     (port.trim().is_empty() || typed.is_some_and(|typed| standard.contains(&typed)))

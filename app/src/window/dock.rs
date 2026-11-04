@@ -16,17 +16,17 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 /// An open card, in px, while the window has room for it.
-pub const CARD_SIZE: (i32, i32) = (640, 600);
+pub(crate) const CARD_SIZE: (i32, i32) = (640, 600);
 /// A minimized card's width.
-pub const MINIMIZED_WIDTH: i32 = 300;
+pub(crate) const MINIMIZED_WIDTH: i32 = 300;
 /// An expanded card at most, and the room it keeps from the panes' edges.
-pub const EXPANDED_SIZE: (i32, i32) = (1000, 820);
-pub const EXPANDED_MARGIN: i32 = 32;
+pub(crate) const EXPANDED_SIZE: (i32, i32) = (1000, 820);
+pub(crate) const EXPANDED_MARGIN: i32 = 32;
 /// The room right of the first card, and between cards.
-pub const EDGE: i32 = 16;
-pub const GAP: i32 = 12;
+pub(crate) const EDGE: i32 = 16;
+pub(crate) const GAP: i32 = 12;
 /// The room an open card leaves above it, so the panes' bars still show.
-pub const TOP_ROOM: i32 = 48;
+pub(crate) const TOP_ROOM: i32 = 48;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CardState {
@@ -36,6 +36,7 @@ pub enum CardState {
 }
 
 impl CardState {
+    #[cfg(feature = "test-hooks")]
     pub fn name(self) -> &'static str {
         match self {
             Self::Open => "open",
@@ -180,6 +181,7 @@ impl Dock {
         }
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn state(&self, widget: &impl IsA<gtk::Widget>) -> Option<CardState> {
         self.inner
             .card(widget.as_ref())
@@ -193,6 +195,7 @@ impl Dock {
     }
 
     /// The docked widgets, oldest first.
+    #[cfg(feature = "test-hooks")]
     pub fn cards(&self) -> Vec<gtk::Widget> {
         self.inner
             .cards
@@ -203,6 +206,7 @@ impl Dock {
     }
 
     /// Whether the backdrop of an expanded card shows.
+    #[cfg(feature = "test-hooks")]
     pub fn backdrop_shown(&self) -> bool {
         self.inner.backdrop.is_visible()
     }

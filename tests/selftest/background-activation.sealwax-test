@@ -2,7 +2,7 @@
 # background mode and D-Bus Activate, as a launcher calls it, builds a new one on the same store;
 # timed from the call to the new window's first frame, ten times, over 2,000 fictional
 # messages. CI runs it in a debug build; the report's numbers come from a release build.
-# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/background-activation.sealwax-test
+# Run: tools/headless.sh 57 target/debug/sealwax-selftest --self-test tests/selftest/background-activation.sealwax-test
 
 desktop tiling
 fixtures --count 2000 --seed 13 --folders single

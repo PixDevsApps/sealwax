@@ -63,7 +63,7 @@ pub struct Position {
 
 type Callbacks = Rc<RefCell<Vec<Box<dyn Fn()>>>>;
 
-pub struct Toolbar {
+pub(super) struct Toolbar {
     root: gtk::Box,
     buttons: Vec<(ActionId, gtk::Button)>,
     position: gtk::Label,
@@ -78,7 +78,7 @@ pub struct Toolbar {
 }
 
 impl Toolbar {
-    pub fn new(keymap: &Keymap) -> Rc<Self> {
+    pub(super) fn new(keymap: &Keymap) -> Rc<Self> {
         let root = gtk::Box::builder()
             .spacing(2)
             .hexpand(true)
@@ -150,13 +150,13 @@ impl Toolbar {
         toolbar
     }
 
-    pub fn widget(&self) -> &gtk::Box {
+    pub(super) fn widget(&self) -> &gtk::Box {
         &self.root
     }
 
     /// Tooltips name each command's keys (DESIGN.md "Accessibility"); call again when
     /// `keys.toml` changes.
-    pub fn update_keys(&self, keymap: &Keymap) {
+    pub(super) fn update_keys(&self, keymap: &Keymap) {
         self.keymap.replace(keymap.clone());
         for (id, _) in &self.buttons {
             self.refresh_command(*id);
@@ -176,7 +176,7 @@ impl Toolbar {
     }
 
     /// A command's title for the selected messages (Not Junk, Unstar) and why it doesn't apply.
-    pub fn set_command(&self, id: ActionId, title: &str, reason: Option<&str>) {
+    pub(super) fn set_command(&self, id: ActionId, title: &str, reason: Option<&str>) {
         let new = (title.to_owned(), reason.map(str::to_owned));
         let old = self.commands.borrow_mut().insert(id, new.clone());
         if old.as_ref() != Some(&new) {
@@ -214,7 +214,7 @@ impl Toolbar {
     }
 
     /// Shows "n of N", or nothing; previous and next follow it.
-    pub fn set_position(&self, position: Option<Position>) {
+    pub(super) fn set_position(&self, position: Option<Position>) {
         self.at.set(position);
         match position {
             Some(Position { index, total }) => {
@@ -226,12 +226,12 @@ impl Toolbar {
         self.refresh();
     }
 
-    pub fn connect_previous(&self, callback: impl Fn() + 'static) {
+    pub(super) fn connect_previous(&self, callback: impl Fn() + 'static) {
         self.on_previous.borrow_mut().push(Box::new(callback));
         self.refresh();
     }
 
-    pub fn connect_next(&self, callback: impl Fn() + 'static) {
+    pub(super) fn connect_next(&self, callback: impl Fn() + 'static) {
         self.on_next.borrow_mut().push(Box::new(callback));
         self.refresh();
     }

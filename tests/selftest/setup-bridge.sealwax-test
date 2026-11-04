@@ -5,7 +5,7 @@
 # asking again; the account is saved with both pins. Then Don't Trust and Escape show the
 # failure, a certificate that can't be read shows it too, and a server elsewhere never gets
 # the trust step. Every address is fictional. Screenshots go to .local/selftest/.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-bridge.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/setup-bridge.sealwax-test
 
 desktop tiling
 resize 1440 900

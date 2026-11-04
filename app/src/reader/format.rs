@@ -9,7 +9,7 @@ const HOUR: i64 = 60 * MINUTE;
 
 /// The header's date: `09:30 (2 h ago)` today, `Yesterday 18:44`, `Mon 21:10` within the week,
 /// `12 Sep, 09:30` this year, `12 Sep 2025` before; a date in the future gets the full form.
-pub fn date_line(date: i64, now: i64, zone: &glib::TimeZone) -> String {
+pub(super) fn date_line(date: i64, now: i64, zone: &glib::TimeZone) -> String {
     let (Some(then), Some(today)) = (local(date, zone), local(now, zone)) else {
         return String::new();
     };
@@ -34,7 +34,7 @@ pub fn date_line(date: i64, now: i64, zone: &glib::TimeZone) -> String {
 /// A collapsed message's time (the approved mock's rows): `09:30` today, `Yesterday`, `Mon`
 /// within the week, `4 Sep` this year, `30 Aug 2025` before; a date in the future gets the
 /// last form.
-pub fn short_date(date: i64, now: i64, zone: &glib::TimeZone) -> String {
+pub(super) fn short_date(date: i64, now: i64, zone: &glib::TimeZone) -> String {
     let (Some(then), Some(today)) = (local(date, zone), local(now, zone)) else {
         return String::new();
     };
@@ -56,7 +56,7 @@ pub fn short_date(date: i64, now: i64, zone: &glib::TimeZone) -> String {
 }
 
 /// The date in the expanded details: `Sunday 4 October 2026, 09:30 (+02:00)`.
-pub fn full_date(date: i64, zone: &glib::TimeZone) -> String {
+pub(super) fn full_date(date: i64, zone: &glib::TimeZone) -> String {
     local(date, zone)
         .and_then(|then| then.format("%A %-d %B %Y, %H:%M (%:z)").ok())
         .map(|text| text.to_string())
@@ -94,7 +94,7 @@ fn ago(seconds: i64) -> String {
 /// Whom the message went to, each address once, To before Cc (Bcc isn't known): the user first
 /// as "me" when one of their addresses is among them, then the others, three names at most:
 /// `to me`, `to me, Leah Kim and 2 others`, `to Leah Kim, Marius Dahl`.
-pub fn recipients_line(to: &[Address], cc: &[Address], mine: &[String]) -> String {
+pub(super) fn recipients_line(to: &[Address], cc: &[Address], mine: &[String]) -> String {
     let mut recipients: Vec<&Address> = Vec::new();
     for address in to.iter().chain(cc) {
         let email = address.email.trim();
@@ -130,7 +130,7 @@ pub fn recipients_line(to: &[Address], cc: &[Address], mine: &[String]) -> Strin
 }
 
 /// Whether `email` is one of the user's own addresses (case doesn't matter).
-pub fn is_mine(email: &str, mine: &[String]) -> bool {
+pub(super) fn is_mine(email: &str, mine: &[String]) -> bool {
     let email = email.trim();
     !email.is_empty()
         && mine
@@ -139,7 +139,7 @@ pub fn is_mine(email: &str, mine: &[String]) -> bool {
 }
 
 /// A list of addresses as the details show it: `Leah Kim <leah@example.test>, …`.
-pub fn address_list(addresses: &[Address]) -> String {
+pub(super) fn address_list(addresses: &[Address]) -> String {
     addresses
         .iter()
         .map(
@@ -155,7 +155,7 @@ pub fn address_list(addresses: &[Address]) -> String {
 
 /// The attachment card's type badge: the file name's extension, else the MIME subtype, in at
 /// most four capitals; `FILE` when neither says anything short.
-pub fn type_label(name: Option<&str>, mime_type: &str) -> String {
+pub(super) fn type_label(name: Option<&str>, mime_type: &str) -> String {
     let short = |text: &str| {
         let text = text.trim();
         (!text.is_empty() && text.len() <= 4 && text.chars().all(|c| c.is_ascii_alphanumeric()))
@@ -179,12 +179,12 @@ pub fn type_label(name: Option<&str>, mime_type: &str) -> String {
 }
 
 /// `1.4 MB`, `212 kB`, `84 bytes` (GLib's SI sizes, as Files shows them).
-pub fn size(bytes: u64) -> String {
+pub(super) fn size(bytes: u64) -> String {
     glib::format_size(bytes).to_string()
 }
 
 /// `2 attachments`.
-pub fn attachment_count(count: usize) -> String {
+pub(super) fn attachment_count(count: usize) -> String {
     match count {
         1 => "1 attachment".to_owned(),
         _ => format!("{count} attachments"),

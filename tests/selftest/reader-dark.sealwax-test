@@ -3,7 +3,7 @@
 # text readable against what is behind it (WCAG 4.5:1), the layout and its height unchanged. A
 # message with a dark design of its own keeps it, a light theme keeps the paper card, and
 # turning the setting off or switching the theme recolours the open message in place. Run:
-#   tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/reader-dark.sealwax-test
+#   tools/headless.sh 37 target/debug/sealwax-selftest --self-test tests/selftest/reader-dark.sealwax-test
 
 desktop tiling
 resize 1440 900

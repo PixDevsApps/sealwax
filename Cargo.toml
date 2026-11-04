@@ -1,5 +1,5 @@
 [workspace]
-members = ["app", "domain", "infrastructure", "engine", "devtools/*"]
+members = ["app", "domain", "infrastructure", "engine", "uitest", "devtools/*"]
 exclude = ["fuzz", "archive/spikes", "vendor/lettre", "vendor/imap-proto", "vendor/async-imap"]
 default-members = ["app", "domain", "infrastructure", "engine"]
 resolver = "3"

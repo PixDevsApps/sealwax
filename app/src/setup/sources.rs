@@ -6,7 +6,7 @@ use sealwax_domain::account::{DetectSource, Detection};
 
 /// What came of asking a source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum State {
+pub(crate) enum State {
     Checking,
     /// The settings came from here.
     Found,
@@ -20,7 +20,7 @@ pub enum State {
 }
 
 impl State {
-    pub fn word(self) -> &'static str {
+    pub(crate) fn word(self) -> &'static str {
         match self {
             Self::Checking => "checking…",
             Self::Found => "found",
@@ -47,7 +47,7 @@ fn rank(source: DetectSource) -> usize {
         .unwrap_or(ORDER.len())
 }
 
-pub fn name(source: DetectSource) -> &'static str {
+pub(crate) fn name(source: DetectSource) -> &'static str {
     match source {
         DetectSource::Preset => "preset",
         DetectSource::Autoconfig => "autoconfig",
@@ -58,22 +58,23 @@ pub fn name(source: DetectSource) -> &'static str {
     }
 }
 
-pub fn from_name(name: &str) -> Option<DetectSource> {
+#[cfg(any(test, feature = "test-hooks"))]
+pub(crate) fn from_name(name: &str) -> Option<DetectSource> {
     ORDER.into_iter().find(|source| self::name(*source) == name)
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Sources {
+pub(crate) struct Sources {
     rows: Vec<(DetectSource, State)>,
 }
 
 impl Sources {
-    pub fn rows(&self) -> &[(DetectSource, State)] {
+    pub(crate) fn rows(&self) -> &[(DetectSource, State)] {
         &self.rows
     }
 
     /// Autodetect started asking `source`.
-    pub fn started(&mut self, source: DetectSource) {
+    pub(crate) fn started(&mut self, source: DetectSource) {
         if self.rows.iter().any(|(listed, _)| *listed == source) {
             return;
         }
@@ -87,7 +88,7 @@ impl Sources {
 
     /// The result is in. A preset match is final at once, so a listed preset that didn't
     /// give the settings had none; of the other sources only the one used is certain.
-    pub fn finished(&mut self, detection: &Detection) {
+    pub(crate) fn finished(&mut self, detection: &Detection) {
         let found = match detection {
             Detection::Found(settings) => Some(settings.source),
             _ => None,
@@ -107,7 +108,8 @@ impl Sources {
     }
 
     /// `preset:no match,autoconfig:found`, for the self-test.
-    pub fn summary(&self) -> String {
+    #[cfg(any(test, feature = "test-hooks"))]
+    pub(crate) fn summary(&self) -> String {
         self.rows
             .iter()
             .map(|(source, state)| format!("{}:{}", name(*source), state.word()))

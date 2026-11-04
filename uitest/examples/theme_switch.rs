@@ -3,7 +3,7 @@
 //!
 //! ```sh
 //! SEALWAX_OMARCHY_STATE=$PWD/.local/theme-switch/omarchy SEALWAX_HEADLESS_TIMEOUT=120 \
-//!     tools/headless.sh 30 cargo run -p sealwax --example theme_switch
+//!     tools/headless.sh 30 cargo run -p sealwax-uitest --example theme_switch
 //! ```
 //!
 //! It fills the scratch state with matte-black (dark), opens a window of themed sample

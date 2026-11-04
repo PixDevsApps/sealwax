@@ -4,7 +4,7 @@
 # to the results), a click takes a row; Escape closes the list first and ends the search the
 # second time; the field keeps the focus and every key typed. Keys and clicks are real
 # (Broadway). Every name, address and message is fictional.
-# Run: tools/headless.sh 53 target/debug/sealwax --self-test tests/selftest/search-suggestions.sealwax-test
+# Run: tools/headless.sh 53 target/debug/sealwax-selftest --self-test tests/selftest/search-suggestions.sealwax-test
 
 desktop tiling
 resize 1440 900

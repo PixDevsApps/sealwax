@@ -13,12 +13,12 @@
 //! test app-id, and ends by itself.
 //!
 //! ```sh
-//! cargo build -p sealwax --example notify_live
+//! cargo build -p sealwax-uitest --example notify_live
 //! tools/headless.sh 56 target/debug/examples/notify_live          # dry run
 //! target/debug/examples/notify_live --live                        # authorized live run only
 //! ```
 
-#[path = "../src/selftest/notify/server.rs"]
+#[path = "../../app/src/selftest/notify/server.rs"]
 #[allow(dead_code, reason = "shared with other examples, each using a part")]
 mod server;
 #[path = "reader_support/mod.rs"]

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: tools/ci.sh [--ui] [--testbed]. --ui adds a headless smoke run of the app, the
-# self-test scripts in tests/selftest/ (except preview*, perf-*, live-* and testbed-*) and the
-# hostile-HTML suite with the DNS canary (app/examples/hostile.rs), on
+# self-test scripts in tests/selftest/ (except preview*, perf-*, live-* and testbed-*, run by
+# sealwax-selftest) and the hostile-HTML suite with the DNS canary (uitest/examples/hostile.rs), on
 # Broadway display $SEALWAX_CI_DISPLAY (default 19). --testbed adds every testbed suite: each
 # test file with tests ignored as "needs the testbed", in release, one test at a time. When no
 # testbed container is running it starts and seeds the testbed first and stops it at the end
@@ -37,6 +37,9 @@ trap cleanup EXIT
 
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+# The app alone, as it is released: without uitest's test-hooks feature, so rustc reports what
+# only the self-tests use (ADR-025 amendment).
+cargo clippy -p sealwax --all-targets -- -D warnings
 # The MSRV, Cargo.toml's rust-version, checks every target in a target folder of its own.
 msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
 if ! rustup run "$msrv" rustc --version >/dev/null 2>&1; then
@@ -49,6 +52,15 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 cargo deny --offline check bans licenses sources
 cargo test --workspace
 cargo build --workspace
+# The workspace build turns uitest's test-hooks on for every crate it builds, the app's binary
+# too; this one is the app alone, as packaged, and it holds no self-test runner (its option and
+# SEALWAX_SELFTEST_ALLOW_LIVE) or sample mail (its account's address).
+cargo build -p sealwax
+if grep -qaF -e '--self-test' -e 'SEALWAX_SELFTEST_ALLOW_LIVE' -e 'alex.berg@example.test' \
+    target/debug/sealwax; then
+    echo "target/debug/sealwax holds self-test code" >&2
+    exit 1
+fi
 python3 tools/test_licenses.py
 
 if $ui; then
@@ -80,7 +92,7 @@ if $ui; then
         # testbed; run them by hand.
         [[ $name == preview* || $name == perf-* || $name == live-* || $name == testbed-* ]] && continue
         log=.local/selftest-$name.log
-        if ! tools/headless.sh "$display" env "$sandbox_off" target/debug/sealwax \
+        if ! tools/headless.sh "$display" env "$sandbox_off" target/debug/sealwax-selftest \
             --self-test "$script" >"$log" 2>&1; then
             grep -v '^ok ' "$log" >&2 || true
             echo "self-test $name failed; see $log" >&2
@@ -91,7 +103,7 @@ if $ui; then
     # The hostile-HTML suite (ML-065) against the real reader, with the DNS canary
     # (devtools/dns-canary) preloaded: every name the app or WebKit looks up is recorded and
     # refused. It fails when a pass that must be clean isn't, or when a control sees nothing.
-    cargo build -p sealwax --example hostile
+    cargo build -p sealwax-uitest --example hostile
     log=.local/ci-hostile.log
     started=$SECONDS
     if ! SEALWAX_HEADLESS_TIMEOUT=900 tools/headless.sh "$display" env \

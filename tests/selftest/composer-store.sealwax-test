@@ -4,7 +4,7 @@
 # original's attachment and inline image, Edit Draft of a message another client left in the
 # Drafts folder, and Send refused for the size and for an account without a server. The
 # messages are fictional, stored whole; the account is local (no server).
-# Run: tools/headless.sh 42 target/debug/sealwax --self-test tests/selftest/composer-store.sealwax-test
+# Run: tools/headless.sh 42 target/debug/sealwax-selftest --self-test tests/selftest/composer-store.sealwax-test
 
 desktop tiling
 resize 1440 900

@@ -5,7 +5,7 @@
 # window's mail Undo), Ctrl+Shift+V pastes plain text, Ctrl+Enter sends. One-key shortcuts
 # never fire while typing. Norwegian text round-trips. The stand-in backend; every address is
 # fictional.
-# Run: tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/composer-editing.sealwax-test
+# Run: tools/headless.sh 41 target/debug/sealwax-selftest --self-test tests/selftest/composer-editing.sealwax-test
 
 desktop tiling
 resize 1440 900

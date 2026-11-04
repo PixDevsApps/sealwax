@@ -19,33 +19,37 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 /// The dialog's widget name, for the self-tests.
-pub const DIALOG: &str = "check-for-updates";
+pub(crate) const DIALOG: &str = "check-for-updates";
 /// The command's label.
-pub const COMMAND: &str = "update-command";
+pub(crate) const COMMAND: &str = "update-command";
 /// The button that copies the command.
-pub const COPY: &str = "update-copy";
+pub(crate) const COPY: &str = "update-copy";
 
-pub const CHECKING: &str = "Checking for updates…";
+pub(crate) const CHECKING: &str = "Checking for updates…";
 
 thread_local! {
     static OPEN: Cell<bool> = const { Cell::new(false) };
 }
 
 /// The running Sealwax's version.
-pub fn running() -> Version {
+pub(crate) fn running() -> Version {
     Version::parse(env!("CARGO_PKG_VERSION")).unwrap_or_default()
 }
 
 /// What the dialog says once the engine answers.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Answer {
+pub(crate) struct Answer {
     pub heading: String,
     pub body: String,
     /// The command that installs the newer release.
     pub command: Option<String>,
 }
 
-pub fn answer(running: Version, result: Result<Version, UpdateError>, keymap: &Keymap) -> Answer {
+pub(crate) fn answer(
+    running: Version,
+    result: Result<Version, UpdateError>,
+    keymap: &Keymap,
+) -> Answer {
     let latest = match result {
         Ok(latest) => latest,
         Err(error) => {
@@ -105,7 +109,7 @@ fn failure(error: UpdateError) -> &'static str {
 }
 
 /// Installs Check for Updates, once at startup.
-pub fn install(state: &Rc<AppState>) {
+pub(crate) fn install(state: &Rc<AppState>) {
     let Some(actions) = state.app_actions() else {
         return;
     };

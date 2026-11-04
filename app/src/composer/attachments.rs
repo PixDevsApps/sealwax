@@ -18,7 +18,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 /// What a file became: a part of the draft, or why it couldn't be added.
-pub type Added = Result<DraftPart, String>;
+pub(crate) type Added = Result<DraftPart, String>;
 
 /// Reads `path`, finds its type and stores it; runs off the GTK thread.
 fn store_file(blobs: &BlobStore, path: &std::path::Path) -> Added {
@@ -55,7 +55,7 @@ fn store_bytes(blobs: &BlobStore, name: &str, mime_type: Option<&str>, bytes: Ve
 }
 
 /// Stores `path` off the GTK thread.
-pub fn add_path(blobs: BlobStore, path: PathBuf) -> Local<Added> {
+pub(crate) fn add_path(blobs: BlobStore, path: PathBuf) -> Local<Added> {
     Box::pin(async move {
         gio::spawn_blocking(move || store_file(&blobs, &path))
             .await
@@ -64,7 +64,7 @@ pub fn add_path(blobs: BlobStore, path: PathBuf) -> Local<Added> {
 }
 
 /// Stores base64 `data` (a file dropped on the body) off the GTK thread.
-pub fn add_base64(blobs: BlobStore, name: String, mime_type: String, data: String) -> Local<Added> {
+pub(crate) fn add_base64(blobs: BlobStore, name: String, mime_type: String, data: String) -> Local<Added> {
     Box::pin(async move {
         gio::spawn_blocking(move || {
             let bytes = glib::base64_decode(&data);
@@ -76,7 +76,7 @@ pub fn add_base64(blobs: BlobStore, name: String, mime_type: String, data: Strin
 }
 
 /// The badge's text: the extension, or the type's subtype, in capitals.
-pub fn badge(name: &str, mime_type: &str) -> String {
+pub(crate) fn badge(name: &str, mime_type: &str) -> String {
     let from_name = attachment::extension(name)
         .filter(|extension| extension.len() <= 4 && extension.chars().all(char::is_alphanumeric));
     let text = from_name.unwrap_or_else(|| {
@@ -98,7 +98,7 @@ struct Item {
 type Listener = Rc<dyn Fn()>;
 
 /// The attachments of one draft, as cards in the footer.
-pub struct Tray {
+pub(crate) struct Tray {
     root: adw::WrapBox,
     items: RefCell<Vec<Item>>,
     serial: Cell<u64>,
@@ -106,7 +106,7 @@ pub struct Tray {
 }
 
 impl Tray {
-    pub fn new() -> Rc<Self> {
+    pub(crate) fn new() -> Rc<Self> {
         let root = named(
             adw::WrapBox::builder()
                 .child_spacing(8)
@@ -124,11 +124,11 @@ impl Tray {
         })
     }
 
-    pub fn widget(&self) -> &adw::WrapBox {
+    pub(crate) fn widget(&self) -> &adw::WrapBox {
         &self.root
     }
 
-    pub fn connect_changed(&self, listener: impl Fn() + 'static) {
+    pub(crate) fn connect_changed(&self, listener: impl Fn() + 'static) {
         self.listener.replace(Some(Rc::new(listener)));
     }
 
@@ -140,7 +140,7 @@ impl Tray {
     }
 
     /// The parts added so far, in order.
-    pub fn parts(&self) -> Vec<DraftPart> {
+    pub(crate) fn parts(&self) -> Vec<DraftPart> {
         self.items
             .borrow()
             .iter()
@@ -149,7 +149,7 @@ impl Tray {
     }
 
     /// Files still being added.
-    pub fn busy(&self) -> usize {
+    pub(crate) fn busy(&self) -> usize {
         self.items
             .borrow()
             .iter()
@@ -157,7 +157,8 @@ impl Tray {
             .count()
     }
 
-    pub fn cards(&self) -> Vec<gtk::Box> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn cards(&self) -> Vec<gtk::Box> {
         self.items
             .borrow()
             .iter()
@@ -166,7 +167,7 @@ impl Tray {
     }
 
     /// Cards for parts a draft already has.
-    pub fn set_parts(self: &Rc<Self>, parts: &[DraftPart]) {
+    pub(crate) fn set_parts(self: &Rc<Self>, parts: &[DraftPart]) {
         for item in self.items.take() {
             self.root.remove(&item.card);
         }
@@ -190,7 +191,7 @@ impl Tray {
 
     /// Shows a busy card for `name` while `adding` stores it; `failed` hears why it couldn't
     /// be added (the card goes).
-    pub fn add(
+    pub(crate) fn add(
         self: &Rc<Self>,
         name: &str,
         adding: Local<Added>,
@@ -240,7 +241,7 @@ impl Tray {
     }
 
     /// Removes card `index` (a busy one too: its part, when it arrives, is dropped).
-    pub fn remove(&self, index: usize) {
+    pub(crate) fn remove(&self, index: usize) {
         let removed = {
             let mut items = self.items.borrow_mut();
             (index < items.len()).then(|| items.remove(index))

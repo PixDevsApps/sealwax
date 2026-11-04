@@ -4,7 +4,7 @@
 # the sender listed, both taken back); a list change alone with Undo from z; Create Rule from
 # Message from a sender, the rule then run on the Inbox's mail and taken back with z, and from a
 # list. Every name and address is fictional.
-# Run: tools/headless.sh 85 target/debug/sealwax --self-test tests/selftest/rules-menu.sealwax-test
+# Run: tools/headless.sh 85 target/debug/sealwax-selftest --self-test tests/selftest/rules-menu.sealwax-test
 
 desktop tiling
 resize 1440 900

@@ -3,7 +3,7 @@
 # turning it on says what it writes and asks, Cancel writes nothing, Start at Login writes the
 # entry (`--background`); turning it off deletes that entry and nothing else; an entry hidden
 # with Hidden=true counts as off. Every name is fictional.
-# Run: tools/headless.sh 58 target/debug/sealwax --self-test tests/selftest/background-login.sealwax-test
+# Run: tools/headless.sh 58 target/debug/sealwax-selftest --self-test tests/selftest/background-login.sealwax-test
 
 desktop tiling
 reply-sandbox

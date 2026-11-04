@@ -16,7 +16,9 @@
 //!   the end; the filter chip applies to them here.
 
 use super::item::MessageItem;
-use super::sections::{Bounds, LABELS, Thresholds};
+#[cfg(feature = "test-hooks")]
+use super::sections::LABELS;
+use super::sections::{Bounds, Thresholds};
 use crate::mailbox::Mailbox;
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -34,11 +36,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Rows per page request.
-pub const PAGE: u32 = 100;
+pub(crate) const PAGE: u32 = 100;
 /// Rows the first frame after a reset shows: more than fit on any screen (14 at 1440 px, S6).
-pub const FIRST_ROWS: u32 = 40;
+pub(crate) const FIRST_ROWS: u32 = 40;
 /// Rows the list grows by each frame after that.
-pub const GROW_STEP: u32 = 40;
+pub(crate) const GROW_STEP: u32 = 40;
 /// GtkListView keeps about 205 rows realized whatever the window (S3); once the list is past
 /// this, the rest arrive in one step without creating row widgets.
 const GROW_UNTIL: u32 = 240;
@@ -46,7 +48,7 @@ const GROW_UNTIL: u32 = 240;
 const MAX_LOADED: u32 = 4_000;
 const KEEP_AROUND: u32 = 1_000;
 /// Search results per request, and more each time the list nears their end.
-pub const SEARCH_PAGE: u32 = 50;
+pub(crate) const SEARCH_PAGE: u32 = 50;
 const SEARCH_MAX: u32 = 10_000;
 /// Change events that arrive while search results are shown run the search again after this.
 const SEARCH_REFRESH: Duration = Duration::from_millis(200);
@@ -307,7 +309,7 @@ fn insertion_runs(inserted: Vec<Positioned>) -> Vec<(u32, Vec<MessageSummary>)> 
     runs
 }
 
-pub fn passes(filter: ViewFilter, row: &MessageSummary) -> bool {
+pub(crate) fn passes(filter: ViewFilter, row: &MessageSummary) -> bool {
     match filter {
         ViewFilter::All => true,
         ViewFilter::Unread => !row.flags.is_seen(),
@@ -433,12 +435,14 @@ impl MessageModel {
         matches!(&self.imp().state.borrow().source, Source::Search(search) if !search.exhausted)
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn is_growing(&self) -> bool {
         let state = self.imp().state.borrow();
         state.shown < state.total
     }
 
     /// The version the view's rows are at.
+    #[cfg(feature = "test-hooks")]
     pub fn version(&self) -> Option<StoreVersion> {
         match &self.imp().state.borrow().source {
             Source::View(view) if view.handle.is_some() => Some(view.version),
@@ -450,15 +454,18 @@ impl MessageModel {
         self.imp().state.borrow().thresholds
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn stats(&self) -> ModelStats {
         self.imp().state.borrow().stats
     }
 
     /// Rows in each section (Pinned, Today, Yesterday, This week, This month, Older).
+    #[cfg(feature = "test-hooks")]
     pub fn section_counts(&self) -> [u32; super::sections::SECTIONS] {
         self.imp().state.borrow().bounds.counts()
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn section_label(&self, position: u32) -> &'static str {
         LABELS[self.imp().state.borrow().section_at(position)]
     }
@@ -1449,6 +1456,7 @@ impl MessageModel {
 
     /// Forgets the loaded rows, so the next ones come from the store's readers (the perf
     /// script's cold jumps).
+    #[cfg(feature = "test-hooks")]
     pub fn drop_cache(&self) {
         let mut state = self.imp().state.borrow_mut();
         if !matches!(state.source, Source::View(_)) {

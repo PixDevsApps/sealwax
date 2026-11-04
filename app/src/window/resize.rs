@@ -13,7 +13,7 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 /// A handle named `name`, its pointer the column-resize one.
-pub fn handle(name: &str) -> gtk::Box {
+pub(crate) fn handle(name: &str) -> gtk::Box {
     let handle = named(
         classed(
             gtk::Box::builder()
@@ -31,7 +31,7 @@ pub fn handle(name: &str) -> gtk::Box {
 
 /// What a handle does: `start` gives the width the drag starts from, `drag` takes the width the
 /// pointer asks for, `done` follows the release, and `reset` a double click.
-pub struct Moves {
+pub(crate) struct Moves {
     pub start: Box<dyn Fn() -> f64>,
     pub drag: Box<dyn Fn(f64)>,
     pub done: Box<dyn Fn()>,
@@ -49,7 +49,7 @@ struct Press {
 /// Makes `handles`, all inside `parent`, drag. A press on the same handle within the desktop's
 /// double-click time of the last one is a double click: the drag gesture claims every press on
 /// a handle, so a click gesture beside it would never count two.
-pub fn connect(parent: &impl IsA<gtk::Widget>, handles: Vec<(gtk::Box, Moves)>) {
+pub(crate) fn connect(parent: &impl IsA<gtk::Widget>, handles: Vec<(gtk::Box, Moves)>) {
     let parent = parent.as_ref();
     let handles = Rc::new(handles);
     // The drag under way, and the press before it.

@@ -25,7 +25,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// The commands and their argument counts, for the script parser.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("reader-open", 0, 0),
     ("reader-show", 1, 1),
     ("reader-show-images", 0, 0),
@@ -48,7 +48,7 @@ thread_local! {
     static OPENED: RefCell<Option<Rc<Opened>>> = const { RefCell::new(None) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     command.starts_with("reader-")
 }
 
@@ -58,7 +58,7 @@ fn opened() -> Result<Rc<Opened>, String> {
         .ok_or_else(|| "run reader-open first".to_owned())
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     match command {
         "reader-open" => open(harness).await,
         "reader-show" => show(&args[0]).await,
@@ -239,7 +239,7 @@ fn js_string(text: &str) -> String {
 }
 
 /// `assert-reader FIELD VALUE`.
-pub async fn check(harness: &Harness, args: &[String]) -> StepResult {
+pub(super) async fn check(harness: &Harness, args: &[String]) -> StepResult {
     let opened = opened()?;
     let state: ReaderState = opened.reader.state();
     let (field, value) = (args[0].as_str(), args[1].as_str());

@@ -4,7 +4,7 @@
 # the backend's send, and the box empties; Open Reply in Composer on an empty box opens a plain
 # reply; an earlier session's draft fills the box again; Undo send puts a quick reply's text back
 # in its box. Every name, address and text is fictional.
-# Run: tools/headless.sh 44 target/debug/sealwax --self-test tests/selftest/reply-quick-drafts.sealwax-test
+# Run: tools/headless.sh 44 target/debug/sealwax-selftest --self-test tests/selftest/reply-quick-drafts.sealwax-test
 
 desktop tiling
 resize 1440 900

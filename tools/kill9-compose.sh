@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The kill -9 exit criterion (PRD C5: a crash while composing loses at most 5 s of typing).
-# Usage: tools/kill9-compose.sh <display> [runs] (default 10). Build first: cargo build.
+# Usage: tools/kill9-compose.sh <display> [runs] (default 10). Build first: cargo build -p sealwax-uitest.
 # Each run starts Sealwax headless on a scratch store (.local/kill9/run-N), opens a composer
 # on the real store backend with a local, server-less account (drafts save; nothing can be
 # sent), types a character every 200 ms through the editor's helper, kills the process with
@@ -21,7 +21,7 @@ for run in $(seq 1 "$runs"); do
     root=$PWD/$dir/root
     mkdir -p "$root"
     SEALWAX_SELFTEST_ROOT=$root SEALWAX_HEADLESS_TIMEOUT=240 \
-        tools/headless.sh "$display" target/debug/sealwax --self-test tests/kill9/type.sealwax-test \
+        tools/headless.sh "$display" target/debug/sealwax-selftest --self-test tests/kill9/type.sealwax-test \
         >"$dir/type.log" 2>&1 &
     wrapper=$!
     log=$root/typed.log
@@ -45,7 +45,7 @@ for run in $(seq 1 "$runs"); do
     kill -9 "$pid"
     wait "$wrapper" 2>/dev/null || true
     if ! SEALWAX_SELFTEST_ROOT=$root SEALWAX_HEADLESS_TIMEOUT=120 \
-        tools/headless.sh "$display" target/debug/sealwax --self-test tests/kill9/check.sealwax-test \
+        tools/headless.sh "$display" target/debug/sealwax-selftest --self-test tests/kill9/check.sealwax-test \
         >"$dir/check.log" 2>&1; then
         echo "run $run: the draft didn't reopen; see $dir/check.log" >&2
         exit 1

@@ -11,14 +11,14 @@ use std::path::{Path, PathBuf};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-pub const DEBOUNCE: Duration = Duration::from_millis(150);
-pub const POLL_INTERVAL: Duration = Duration::from_secs(2);
+pub(crate) const DEBOUNCE: Duration = Duration::from_millis(150);
+pub(crate) const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Decides whether an event inside the watched directory is a trigger: the event, the file's
 /// name and, for renames, the new name.
-pub type TriggerRule = Box<dyn Fn(gio::FileMonitorEvent, &str, Option<&str>) -> bool>;
+pub(crate) type TriggerRule = Box<dyn Fn(gio::FileMonitorEvent, &str, Option<&str>) -> bool>;
 
-pub struct DirWatch {
+pub(crate) struct DirWatch {
     dir: PathBuf,
     name: String,
     rule: TriggerRule,
@@ -30,7 +30,11 @@ pub struct DirWatch {
 }
 
 impl DirWatch {
-    pub fn start(dir: PathBuf, rule: TriggerRule, on_trigger: impl Fn() + 'static) -> Rc<Self> {
+    pub(crate) fn start(
+        dir: PathBuf,
+        rule: TriggerRule,
+        on_trigger: impl Fn() + 'static,
+    ) -> Rc<Self> {
         let name = dir
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
@@ -109,7 +113,7 @@ impl DirWatch {
     }
 
     /// Restarts the debounce; the owner's callback runs 150 ms after the last trigger.
-    pub fn trigger(self: &Rc<Self>) {
+    pub(crate) fn trigger(self: &Rc<Self>) {
         if let Some(pending) = self.debounce.take() {
             pending.remove();
         }

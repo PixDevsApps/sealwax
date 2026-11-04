@@ -4,7 +4,7 @@
 # rounded 8 as on this desktop). A scripted engine answers; every name, address and server is
 # fictional. Not part of tools/ci.sh; it writes into tools/progress/public/. Run from the
 # repository root:
-#   tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/preview-m2-setup.sealwax-test
+#   tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/preview-m2-setup.sealwax-test
 
 desktop tiling
 engine-attach

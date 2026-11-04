@@ -2,7 +2,7 @@
 # (j, k; GtkListView's own Down and Up) and open it (Enter, o), through the registry's
 # win.next-message, win.previous-message and win.open-message; the reader's "n of N" comes from
 # the list's position. Every message is fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-select.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-select.sealwax-test
 
 desktop tiling
 fixtures --count 300 --seed 5 --folders single

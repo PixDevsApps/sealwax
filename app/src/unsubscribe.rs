@@ -25,7 +25,7 @@ use std::rc::Rc;
 
 const DIALOG: &str = "unsubscribe-dialog";
 
-pub fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
+pub(crate) fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
     let weak = Rc::downgrade(state);
     actions.connect(ActionId::Unsubscribe, move || {
         if let Some(state) = weak.upgrade() {
@@ -38,7 +38,7 @@ pub fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
 }
 
 /// A card's Unsubscribe link in the reader acts on that card's message.
-pub fn connect_reader(state: &Rc<AppState>, reader: &crate::reader::Reader) {
+pub(crate) fn connect_reader(state: &Rc<AppState>, reader: &crate::reader::Reader) {
     let weak = Rc::downgrade(state);
     reader.connect_unsubscribe(move |id| {
         if let Some(state) = weak.upgrade() {
@@ -48,7 +48,7 @@ pub fn connect_reader(state: &Rc<AppState>, reader: &crate::reader::Reader) {
 }
 
 /// Whether Unsubscribe applies to the selected messages, or why not.
-pub fn applies(state: &AppState) -> Result<(), &'static str> {
+pub(crate) fn applies(state: &AppState) -> Result<(), &'static str> {
     let list = state.list().ok_or("Select a message")?;
     if list.selected_group().is_some() {
         return match (list.group_targets(), list.group_subscription()) {

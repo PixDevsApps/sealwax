@@ -5,7 +5,7 @@
 # keeps turning. Images pasted, dropped in the page or dropped over the body become inline
 # parts served to the editor through its cid: scheme from the blob store. The stand-in backend;
 # every file is made here.
-# Run: tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/composer-attachments.sealwax-test
+# Run: tools/headless.sh 41 target/debug/sealwax-selftest --self-test tests/selftest/composer-attachments.sealwax-test
 
 desktop tiling
 resize 1440 900

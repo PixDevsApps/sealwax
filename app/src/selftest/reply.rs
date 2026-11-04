@@ -35,7 +35,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 /// The commands and their argument counts, for the script parser.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("reply-sandbox", 0, 0),
     ("reply-install-entry", 0, 0),
     ("reply-click-card", 2, 2),
@@ -50,14 +50,14 @@ pub const COMMANDS: &[(&str, usize, usize)] = &[
 
 const WAIT: Duration = Duration::from_secs(10);
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     COMMANDS.iter().any(|(name, _, _)| *name == command)
 }
 
 /// `reply-sandbox`, before GTK or any thread starts: the home folder and GIO's per-user
 /// configuration and data (`mimeapps.list`, `applications/`) are the run's own, under
 /// `root/home`.
-pub fn before_start(steps: &[Step], root: &Path) -> Result<(), String> {
+pub(super) fn before_start(steps: &[Step], root: &Path) -> Result<(), String> {
     if !steps.iter().any(|step| step.command == "reply-sandbox") {
         return Ok(());
     }
@@ -138,7 +138,7 @@ fn kind_name(kind: ReplyKind) -> &'static str {
     }
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     let arg = |index: usize| args[index].as_str();
     match command {
         "reply-sandbox" => {

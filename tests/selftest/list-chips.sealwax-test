@@ -2,7 +2,7 @@
 # store's view of the folder with that filter; change events move rows in and out of a filtered
 # view. A fixture corpus gives a folder of 1,200 messages to page through; a few fictional
 # messages make the exact counts. Every message is fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-chips.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-chips.sealwax-test
 
 desktop tiling
 fixtures --count 1200 --seed 11 --folders single

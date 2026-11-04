@@ -5,7 +5,7 @@
 # slower machine, 2026-10-12). Here the next layout can't finish (hold-reader-layout, as on a
 # slow machine), so without the rule the shown message would stay the full 3 s
 # (READY_TIMEOUT). Every message is fictional. Run:
-#   tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/reader-leave.sealwax-test
+#   tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/reader-leave.sealwax-test
 
 desktop tiling
 resize 1440 900

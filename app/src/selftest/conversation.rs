@@ -33,7 +33,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// The commands and their argument counts, for the script parser.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("conversation-account", 2, 2),
     ("conversation-add", 1, 2),
     ("conversation-show", 1, 1),
@@ -64,7 +64,7 @@ thread_local! {
     static REMEMBERED: Cell<Option<(MessageId, f64)>> = const { Cell::new(None) };
 }
 
-pub fn handles(command: &str) -> bool {
+pub(super) fn handles(command: &str) -> bool {
     command.starts_with("conversation-") || command == "assert-conversation"
 }
 
@@ -122,7 +122,7 @@ fn name_of(id: MessageId) -> String {
     })
 }
 
-pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
+pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
     count_criticals();
     let arg = |index: usize| args[index].as_str();
     match command {

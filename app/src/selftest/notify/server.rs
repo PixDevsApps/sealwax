@@ -14,11 +14,11 @@ use gtk4::{gio, glib};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
-pub const BUS_NAME: &str = "org.freedesktop.Notifications";
-pub const PATH: &str = "/org/freedesktop/Notifications";
+pub(super) const BUS_NAME: &str = "org.freedesktop.Notifications";
+pub(super) const PATH: &str = "/org/freedesktop/Notifications";
 
 /// What omarchy-shell 0.3.1 advertises (S6).
-pub const CAPABILITIES: [&str; 6] = [
+pub(super) const CAPABILITIES: [&str; 6] = [
     "persistence",
     "body",
     "body-markup",
@@ -49,7 +49,7 @@ const XML: &str = r#"<node>
 
 /// One `Notify` call. It holds the notification's text, so its `Debug` prints lengths.
 #[derive(Clone)]
-pub struct Received {
+pub(super) struct Received {
     pub id: u32,
     pub at: Instant,
     /// The caller's unique bus name, where the signals go.
@@ -82,7 +82,7 @@ impl std::fmt::Debug for Received {
 }
 
 impl Received {
-    pub fn hint(&self, key: &str) -> Option<&str> {
+    pub(super) fn hint(&self, key: &str) -> Option<&str> {
         self.hints
             .iter()
             .find(|(name, _)| name == key)
@@ -93,7 +93,7 @@ impl Received {
 type Record = Arc<Mutex<Vec<Received>>>;
 
 /// The running stand-in; dropping it releases the name and ends its thread.
-pub struct StandIn {
+pub(super) struct StandIn {
     record: Record,
     connection: gio::DBusConnection,
     main_loop: glib::MainLoop,
@@ -101,7 +101,7 @@ pub struct StandIn {
 }
 
 /// Whether this process runs under `tools/headless.sh`: Broadway, and no Wayland display.
-pub fn headless() -> bool {
+pub(super) fn headless() -> bool {
     std::env::var("GDK_BACKEND").is_ok_and(|backend| backend == "broadway")
         && std::env::var_os("WAYLAND_DISPLAY").is_none()
 }
@@ -280,7 +280,7 @@ fn close(record: &Record, id: u32, reason: u32) -> bool {
 impl StandIn {
     /// Starts the stand-in on its own thread with `capabilities`; returns once it owns the
     /// name, or why it refused.
-    pub fn start(capabilities: &[&str]) -> Result<StandIn, String> {
+    pub(super) fn start(capabilities: &[&str]) -> Result<StandIn, String> {
         if !headless() {
             return Err(
                 "the stand-in notification server only runs under tools/headless.sh".into(),
@@ -325,7 +325,7 @@ impl StandIn {
     }
 
     /// Every `Notify` call so far, oldest first.
-    pub fn received(&self) -> Vec<Received> {
+    pub(super) fn received(&self) -> Vec<Received> {
         lock(&self.record).clone()
     }
 
@@ -338,7 +338,7 @@ impl StandIn {
     /// A click on the open notification `id`: an activation token, `ActionInvoked` with `key`
     /// (`default`, or a button's action key), then `NotificationClosed` (dismissed). Returns when
     /// `ActionInvoked` went out.
-    pub fn click(&self, id: u32, key: &str) -> Result<Instant, String> {
+    pub(super) fn click(&self, id: u32, key: &str) -> Result<Instant, String> {
         let sender = lock(&self.record)
             .iter()
             .rev()
@@ -359,7 +359,7 @@ impl StandIn {
     }
 
     /// The open notification `id` expires on screen (`NotificationClosed`, reason 1).
-    pub fn expire(&self, id: u32) -> Result<(), String> {
+    pub(super) fn expire(&self, id: u32) -> Result<(), String> {
         let sender = lock(&self.record)
             .iter()
             .rev()

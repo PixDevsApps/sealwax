@@ -5,7 +5,7 @@
 # reach with the network up; a single unreachable account shows only in the sidebar. The
 # network coming back and a resume send Reconnect. The no-keyring banner's tint is checked in a
 # light theme too. Every address, name and host is fictional.
-# Run: tools/headless.sh 34 target/debug/sealwax --self-test tests/selftest/status-offline.sealwax-test
+# Run: tools/headless.sh 34 target/debug/sealwax-selftest --self-test tests/selftest/status-offline.sealwax-test
 
 desktop tiling
 resize 1440 900

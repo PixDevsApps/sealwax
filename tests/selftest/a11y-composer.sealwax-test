@@ -9,7 +9,7 @@
 # instead of typing a tab. The chosen suggestion is announced, as the entry keeps the focus.
 # Minimizing gives the focus back to the mail, restoring takes it again. Every name, address and
 # file is fictional.
-# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-composer.sealwax-test
+# Run: tools/headless.sh 71 target/debug/sealwax-selftest --self-test tests/selftest/a11y-composer.sealwax-test
 
 desktop tiling
 fixtures --count 40 --seed 9 --folders spread

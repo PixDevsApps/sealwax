@@ -4,7 +4,7 @@
 # leaves the count, and the count is withdrawn with the last; a message read, or deleted, takes
 # its own notification with it. The focused window showing the message's folder (or All Inboxes)
 # keeps new mail quiet; another folder doesn't. Every name and subject is fictional.
-# Run: tools/headless.sh 55 target/debug/sealwax --self-test tests/selftest/notify-group.sealwax-test
+# Run: tools/headless.sh 55 target/debug/sealwax-selftest --self-test tests/selftest/notify-group.sealwax-test
 
 desktop tiling
 resize 1440 900

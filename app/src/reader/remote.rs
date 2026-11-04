@@ -33,7 +33,7 @@ type Listener = Rc<dyn Fn()>;
 /// Whose remote images load: the messages the user allowed this session (nothing is stored),
 /// and the senders on the store's list (lower case).
 #[derive(Default)]
-pub struct Policy {
+pub(super) struct Policy {
     messages: RefCell<HashSet<MessageId>>,
     senders: RefCell<HashSet<String>>,
     /// The store's list has been read.
@@ -43,7 +43,7 @@ pub struct Policy {
 
 /// What a message shows about its remote images.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Notice {
+pub(super) enum Notice {
     /// No remote images, or the user allowed them for this message this session.
     None,
     /// They are hidden: the banner, from this sender (lower case; empty without one).
@@ -54,22 +54,22 @@ pub enum Notice {
 
 impl Policy {
     /// Whether `message`, from `sender` (its From address, lower case), may load remote images.
-    pub fn allows(&self, message: MessageId, sender: &str) -> bool {
+    pub(super) fn allows(&self, message: MessageId, sender: &str) -> bool {
         self.messages.borrow().contains(&message) || self.sender_allowed(sender)
     }
 
     /// The user allowed `message`'s remote images until Sealwax quits.
-    pub fn allow_message(&self, message: MessageId) {
+    pub(super) fn allow_message(&self, message: MessageId) {
         self.messages.borrow_mut().insert(message);
     }
 
     /// Whether `sender` is on the list of senders whose images load.
-    pub fn sender_allowed(&self, sender: &str) -> bool {
+    pub(super) fn sender_allowed(&self, sender: &str) -> bool {
         !sender.is_empty() && self.senders.borrow().contains(sender)
     }
 
     /// What `message` from `sender` shows, when it has remote images (`remote_images`).
-    pub fn notice(&self, message: MessageId, sender: &str, remote_images: bool) -> Notice {
+    pub(super) fn notice(&self, message: MessageId, sender: &str, remote_images: bool) -> Notice {
         if !remote_images {
             Notice::None
         } else if self.sender_allowed(sender) {
@@ -82,12 +82,13 @@ impl Policy {
     }
 
     /// The images `message` was allowed this session are hidden again.
-    pub fn forget_message(&self, message: MessageId) {
+    pub(super) fn forget_message(&self, message: MessageId) {
         self.messages.borrow_mut().remove(&message);
     }
 
     /// Whether the store's list has been read.
-    pub fn is_loaded(&self) -> bool {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn is_loaded(&self) -> bool {
         self.loaded.get()
     }
 
@@ -100,7 +101,7 @@ impl Policy {
     }
 
     /// Calls `listener` whenever what the shown message's images do may have changed.
-    pub fn connect_changed(&self, listener: impl Fn() + 'static) {
+    pub(super) fn connect_changed(&self, listener: impl Fn() + 'static) {
         self.listeners.borrow_mut().push(Rc::new(listener));
     }
 
@@ -231,12 +232,12 @@ fn messages_from(inner: &Inner, sender: &str) -> Vec<MessageId> {
 
 /// The banner of one message whose images are hidden: "Images are hidden so the sender can't
 /// tell you opened this.", Show images (the reader connects it) and Always for this sender.
-pub struct Banner {
+pub(super) struct Banner {
     pub root: gtk::Box,
     pub show_images: gtk::Button,
 }
 
-pub fn banner(reader: &Reader, sender: &str) -> Banner {
+pub(super) fn banner(reader: &Reader, sender: &str) -> Banner {
     let root = gtk::Box::builder()
         .spacing(12)
         .css_classes(["sw-banner", "sw-reader-banner"])
@@ -296,7 +297,7 @@ pub fn banner(reader: &Reader, sender: &str) -> Banner {
 
 /// The quiet line of a message whose images load because its sender is on the list, with Hide,
 /// which takes the sender off it.
-pub fn sender_note(reader: &Reader, sender: &str) -> gtk::Box {
+pub(super) fn sender_note(reader: &Reader, sender: &str) -> gtk::Box {
     let root = gtk::Box::builder()
         .spacing(10)
         .css_classes(["sw-reader-sender-note"])
@@ -335,23 +336,26 @@ pub fn sender_note(reader: &Reader, sender: &str) -> gtk::Box {
 /// Calls `listener` whenever what the selected message's images do may have changed: the list
 /// was read, a sender was allowed or forgotten, Show images was clicked, the selected message's
 /// card was built.
-pub fn connect_changed(reader: &Reader, listener: impl Fn() + 'static) {
+pub(super) fn connect_changed(reader: &Reader, listener: impl Fn() + 'static) {
     reader.inner.remote.connect_changed(listener);
 }
 
 impl Reader {
     /// Whether the list of senders whose images load has been read from the store.
+    #[cfg(feature = "test-hooks")]
     pub fn remote_senders_loaded(&self) -> bool {
         self.inner.remote.is_loaded()
     }
 
     /// Whether `sender` (lower case) is on the list of senders whose images load.
+    #[cfg(feature = "test-hooks")]
     pub fn remote_sender_allowed(&self, sender: &str) -> bool {
         self.inner.remote.sender_allowed(sender)
     }
 
     /// Whether message `id`'s HTML body, expanded in the shown conversation, loads its remote
     /// images, for checks.
+    #[cfg(feature = "test-hooks")]
     pub fn remote_allowed(&self, id: MessageId) -> bool {
         self.inner
             .shown

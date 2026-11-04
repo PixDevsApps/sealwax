@@ -21,13 +21,13 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 /// The command an installed Sealwax runs as.
-pub const PROGRAM: &str = "sealwax";
+pub(crate) const PROGRAM: &str = "sealwax";
 
 /// The option the entry starts Sealwax with.
-pub const BACKGROUND_OPTION: &str = "--background";
+pub(crate) const BACKGROUND_OPTION: &str = "--background";
 
 /// The entry for `app_id` under the configuration home `config_home`.
-pub fn entry_path(config_home: &Path, app_id: &str) -> PathBuf {
+pub(crate) fn entry_path(config_home: &Path, app_id: &str) -> PathBuf {
     config_home
         .join("autostart")
         .join(format!("{app_id}.desktop"))
@@ -36,14 +36,14 @@ pub fn entry_path(config_home: &Path, app_id: &str) -> PathBuf {
 /// What the entry starts: `sealwax` when the running executable is the one on `PATH`, else its
 /// own path.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Program {
+pub(crate) enum Program {
     Installed,
     Path(PathBuf),
 }
 
 impl Program {
     /// From the running executable and the `sealwax` found on `PATH`, both canonical.
-    pub fn choose(current: &Path, on_path: Option<&Path>) -> Self {
+    pub(crate) fn choose(current: &Path, on_path: Option<&Path>) -> Self {
         if on_path == Some(current) {
             Self::Installed
         } else {
@@ -62,7 +62,7 @@ impl Program {
 /// One argument of an `Exec` line (the Desktop Entry Specification): quoted when it holds a
 /// reserved character, `%` doubled, then escaped as a string value. `None` for a line break,
 /// which no entry can hold.
-pub fn exec_argument(argument: &str) -> Option<String> {
+pub(crate) fn exec_argument(argument: &str) -> Option<String> {
     if argument.contains(['\n', '\r']) {
         return None;
     }
@@ -85,7 +85,7 @@ pub fn exec_argument(argument: &str) -> Option<String> {
 }
 
 /// The entry's text, or `None` when the program's path can't be written into one.
-pub fn entry_text(program: &Program, development: bool) -> Option<String> {
+pub(crate) fn entry_text(program: &Program, development: bool) -> Option<String> {
     let text = program.text();
     let exec = exec_argument(&text)?;
     let try_exec = text.replace('\\', "\\\\");
@@ -110,7 +110,7 @@ pub fn entry_text(program: &Program, development: bool) -> Option<String> {
 
 /// Whether an entry's text starts Sealwax: not `Hidden=true`, not
 /// `X-GNOME-Autostart-enabled=false`, in its `[Desktop Entry]` group.
-pub fn starts(text: &str) -> bool {
+pub(crate) fn starts(text: &str) -> bool {
     let mut in_entry = false;
     for line in text.lines().map(str::trim) {
         if line.starts_with('[') {
@@ -133,7 +133,7 @@ pub fn starts(text: &str) -> bool {
 
 /// What the desktop has now, and what turning the toggle on would write.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Probe {
+pub(crate) struct Probe {
     pub path: PathBuf,
     /// The entry exists and starts Sealwax.
     pub on: bool,
@@ -143,7 +143,7 @@ pub struct Probe {
 }
 
 /// Looks at the entry and the executable; blocking.
-pub fn probe(config_home: &Path, app_id: &str) -> Probe {
+pub(crate) fn probe(config_home: &Path, app_id: &str) -> Probe {
     let path = entry_path(config_home, app_id);
     let on = match fs::read_to_string(&path) {
         Ok(text) => starts(&text),
@@ -168,7 +168,7 @@ pub fn probe(config_home: &Path, app_id: &str) -> Probe {
 }
 
 /// Writes the entry (its folder made when missing; the file replaced whole); blocking.
-pub fn enable(path: &Path, text: &str) -> io::Result<()> {
+pub(crate) fn enable(path: &Path, text: &str) -> io::Result<()> {
     let folder = path
         .parent()
         .ok_or_else(|| io::Error::other("the entry has no folder"))?;
@@ -186,7 +186,7 @@ pub fn enable(path: &Path, text: &str) -> io::Result<()> {
 }
 
 /// Deletes the entry; `Ok(false)` when there was none. Blocking.
-pub fn disable(path: &Path) -> io::Result<bool> {
+pub(crate) fn disable(path: &Path) -> io::Result<bool> {
     match fs::remove_file(path) {
         Ok(()) => Ok(true),
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(false),
@@ -204,7 +204,7 @@ fn shown(path: &Path) -> String {
 
 /// The question before the entry is written: what changes, where, and how to undo it.
 /// A build not on `PATH` is named, not shown by its path: the path is in the entry.
-pub fn question(probe: &Probe) -> (String, String) {
+pub(crate) fn question(probe: &Probe) -> (String, String) {
     let runs = match probe.program {
         Program::Installed => format!("runs “{PROGRAM} {BACKGROUND_OPTION}”"),
         Program::Path(_) => format!("runs this build with {BACKGROUND_OPTION}"),
@@ -230,7 +230,7 @@ pub fn question(probe: &Probe) -> (String, String) {
 }
 
 /// Installs the toggle, with its state read from the entry.
-pub fn install(state: &Rc<AppState>) {
+pub(crate) fn install(state: &Rc<AppState>) {
     let Some(actions) = state.app_actions() else {
         return;
     };

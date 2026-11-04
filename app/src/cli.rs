@@ -9,16 +9,21 @@
 //! `--background` (ML-084) starts Sealwax without a window, as an autostart entry does; given to a
 //! running Sealwax it shows nothing. `--compose` opens a new message; with `mailto:` links, those
 //! messages are opened instead. Both are forwarded to a running Sealwax like the links.
+//!
+//! `--self-test` exists only in a build with the `test-hooks` feature (`sealwax-selftest`); the
+//! released binary has no such option.
 
-use clap::{Arg, ArgAction, Command, value_parser};
+use clap::{Arg, ArgAction, Command};
 use sealwax_domain::mailto;
 use std::ffi::OsString;
+#[cfg(feature = "test-hooks")]
 use std::path::PathBuf;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Cli {
+pub(crate) struct Cli {
     /// `mailto:` URIs (RFC 6068), each a message to write.
     pub uris: Vec<String>,
+    #[cfg(feature = "test-hooks")]
     pub self_test: Option<PathBuf>,
     /// Run as the D-Bus-activated service.
     pub service: bool,
@@ -28,8 +33,8 @@ pub struct Cli {
     pub compose: bool,
 }
 
-pub fn command() -> Command {
-    Command::new("sealwax")
+pub(crate) fn command() -> Command {
+    let command = Command::new("sealwax")
         .about("A fast, minimal email client for Omarchy")
         .version(env!("CARGO_PKG_VERSION"))
         .arg(
@@ -50,7 +55,7 @@ pub fn command() -> Command {
             Arg::new("background")
                 .long("background")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["uris", "compose", "self-test"])
+                .conflicts_with_all(["uris", "compose"])
                 .help("Start without a window, as at login; mail keeps syncing in the background"),
         )
         .arg(
@@ -58,16 +63,17 @@ pub fn command() -> Command {
                 .long("gapplication-service")
                 .action(ArgAction::SetTrue)
                 .hide(true),
-        )
-        .arg(
-            Arg::new("self-test")
-                .long("self-test")
-                .value_name("SCRIPT")
-                .value_parser(value_parser!(PathBuf))
-                .help(
-                    "Run a self-test script in a window of its own and exit (see docs/TESTING.md)",
-                ),
-        )
+        );
+    #[cfg(feature = "test-hooks")]
+    let command = command.arg(
+        Arg::new("self-test")
+            .long("self-test")
+            .value_name("SCRIPT")
+            .value_parser(clap::value_parser!(PathBuf))
+            .conflicts_with("background")
+            .help("Run a self-test script in a window of its own and exit (see docs/TESTING.md)"),
+    );
+    command
 }
 
 fn mailto_uri(value: &str) -> Result<String, String> {
@@ -80,7 +86,7 @@ fn mailto_uri(value: &str) -> Result<String, String> {
 
 /// Parses `args`, including the program name. Help and version requests come back as errors
 /// whose `exit_code()` is 0, as clap reports them.
-pub fn parse<I, T>(args: I) -> Result<Cli, clap::Error>
+pub(crate) fn parse<I, T>(args: I) -> Result<Cli, clap::Error>
 where
     I: IntoIterator<Item = T>,
     T: Into<OsString> + Clone,
@@ -91,6 +97,7 @@ where
             .get_many::<String>("uris")
             .map(|uris| uris.cloned().collect())
             .unwrap_or_default(),
+        #[cfg(feature = "test-hooks")]
         self_test: matches.get_one::<PathBuf>("self-test").cloned(),
         service: matches.get_flag("gapplication-service"),
         background: matches.get_flag("background"),
@@ -115,7 +122,6 @@ mod tests {
             cli.uris,
             ["mailto:a@example.com?subject=Hi", "MAILTO:b@example.com"]
         );
-        assert_eq!(cli.self_test, None);
         assert!(!cli.service);
         assert_eq!(parse(["sealwax"]).unwrap(), Cli::default());
     }
@@ -142,8 +148,10 @@ mod tests {
         assert_eq!(help.kind(), ErrorKind::DisplayHelp);
         assert_eq!(help.exit_code(), 0);
         let text = help.to_string();
-        assert!(
-            text.contains("MAILTO") && text.contains("--self-test"),
+        assert!(text.contains("MAILTO"), "{text}");
+        assert_eq!(
+            text.contains("--self-test"),
+            cfg!(feature = "test-hooks"),
             "{text}"
         );
         assert!(!text.contains("gapplication-service"), "{text}");
@@ -157,12 +165,17 @@ mod tests {
     }
 
     #[test]
-    fn service_and_self_test() {
+    fn service() {
         assert!(
             parse(["sealwax", "--gapplication-service"])
                 .unwrap()
                 .service
         );
+    }
+
+    #[cfg(feature = "test-hooks")]
+    #[test]
+    fn self_test() {
         let cli = parse([
             "sealwax",
             "--self-test",
@@ -192,6 +205,7 @@ mod tests {
         for args in [
             &["sealwax", "--background", "--compose"][..],
             &["sealwax", "--background", "mailto:a@example.com"],
+            #[cfg(feature = "test-hooks")]
             &["sealwax", "--background", "--self-test", "a.sealwax-test"],
         ] {
             let error = parse(args).unwrap_err();

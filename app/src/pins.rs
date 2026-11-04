@@ -18,7 +18,7 @@ use sealwax_infrastructure::store::{Pin, PinKind, PinMode, PinTarget};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-pub const COMMANDS: [ActionId; 3] = [
+pub(crate) const COMMANDS: [ActionId; 3] = [
     ActionId::PinSender,
     ActionId::PinDomain,
     ActionId::UnpinSender,
@@ -30,7 +30,6 @@ const TOAST_SECONDS: u32 = 8;
 thread_local! {
     /// Every pin, as last read from the store.
     static PINS: RefCell<Vec<Pin>> = const { RefCell::new(Vec::new()) };
-    static LOADED: Cell<bool> = const { Cell::new(false) };
     /// The last read asked for: an older one that answers later is dropped (the store has two
     /// readers).
     static READS: Cell<u64> = const { Cell::new(0) };
@@ -40,21 +39,16 @@ thread_local! {
 }
 
 /// Every pin, as last read.
-pub fn pins() -> Vec<Pin> {
+pub(crate) fn pins() -> Vec<Pin> {
     PINS.with(|pins| pins.borrow().clone())
 }
 
-/// Whether the pins have been read since Sealwax started.
-pub fn loaded() -> bool {
-    LOADED.with(Cell::get)
-}
-
 /// Runs `listener` each time the pins were read again, until it gives `false`.
-pub fn connect_changed(listener: impl Fn() -> bool + 'static) {
+pub(crate) fn connect_changed(listener: impl Fn() -> bool + 'static) {
     LISTENERS.with(|listeners| listeners.borrow_mut().push(Rc::new(listener)));
 }
 
-pub fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
+pub(crate) fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
     let weak = Rc::downgrade(state);
     actions.connect(ActionId::PinnedSenders, move || {
         if let Some(state) = weak.upgrade() {
@@ -81,7 +75,7 @@ pub fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
 }
 
 /// Reads the pins again, then tells the listeners and refreshes the commands.
-pub fn reload(state: &Rc<AppState>) {
+pub(crate) fn reload(state: &Rc<AppState>) {
     let Some(reply) = state.mailbox().store().map(|store| store.pins()) else {
         return;
     };
@@ -98,7 +92,6 @@ pub fn reload(state: &Rc<AppState>) {
             return;
         }
         PINS.with(|pins| pins.replace(read));
-        LOADED.with(|loaded| loaded.set(true));
         let listeners = LISTENERS.with(|listeners| listeners.borrow().clone());
         let gone: Vec<Rc<dyn Fn() -> bool>> = listeners
             .into_iter()
@@ -180,7 +173,7 @@ fn names(address: &str) -> bool {
 }
 
 /// Whether `id`, one of [`COMMANDS`], applies to the selection, or why not.
-pub fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
+pub(crate) fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
     match (id, picked(state)?) {
         (ActionId::PinSender, Picked::Group(kind, key)) => match kind {
             PinKind::Sender if pinned(kind, &key) => Err("This sender is pinned"),
@@ -232,7 +225,7 @@ pub fn applies(state: &AppState, id: ActionId) -> Result<(), &'static str> {
 }
 
 /// Whether each command applies to the selection.
-pub fn refresh(state: &AppState, actions: &ActionSet) {
+pub(crate) fn refresh(state: &AppState, actions: &ActionSet) {
     for id in COMMANDS {
         actions.set_applies(id, applies(state, id).is_ok());
     }
@@ -418,7 +411,7 @@ fn unpinned(state: &Rc<AppState>, removed: Vec<Pin>) {
 }
 
 /// Puts `pins` back as they are given, or sets their mode.
-pub fn restore(state: &Rc<AppState>, pins: Vec<Pin>) {
+pub(crate) fn restore(state: &Rc<AppState>, pins: Vec<Pin>) {
     let Some(reply) = state
         .mailbox()
         .store()
@@ -436,7 +429,7 @@ pub fn restore(state: &Rc<AppState>, pins: Vec<Pin>) {
 }
 
 /// Takes the pin `(kind, key)` off (Preferences' remove button).
-pub fn remove(state: &Rc<AppState>, kind: PinKind, key: String) {
+pub(crate) fn remove(state: &Rc<AppState>, kind: PinKind, key: String) {
     let Some(reply) = state
         .mailbox()
         .store()
@@ -454,10 +447,10 @@ pub fn remove(state: &Rc<AppState>, kind: PinKind, key: String) {
 }
 
 /// The Pinned Senders dialog's name, for the self-test.
-pub const DIALOG: &str = "pinned-senders";
+pub(crate) const DIALOG: &str = "pinned-senders";
 
 /// Pinned Senders…: every pin, with how long its mail stays first and a button that unpins it.
-pub fn present(state: &Rc<AppState>) {
+pub(crate) fn present(state: &Rc<AppState>) {
     let Some(window) = state.window() else {
         return;
     };

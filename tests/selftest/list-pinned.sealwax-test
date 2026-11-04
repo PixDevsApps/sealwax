@@ -6,7 +6,7 @@
 # (the reporter's cases: a domain kept pinned, its mail all read; a sender kept pinned lifts its
 # domain's group, and Unpin on that group takes it off); All Inboxes. Every message and
 # address is fictional.
-# Run: tools/headless.sh 37 target/debug/sealwax --self-test tests/selftest/list-pinned.sealwax-test
+# Run: tools/headless.sh 37 target/debug/sealwax-selftest --self-test tests/selftest/list-pinned.sealwax-test
 
 desktop tiling
 resize 1440 900

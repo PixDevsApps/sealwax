@@ -25,16 +25,16 @@ use std::ops::Range;
 use std::rc::Rc;
 
 /// Conversations longer than this fold their middle into "N earlier messages" (ADR-016).
-pub const COLLAPSE_OVER: usize = 100;
+pub(super) const COLLAPSE_OVER: usize = 100;
 /// The latest messages a folded conversation keeps in sight (a proposal).
-pub const KEEP_LATEST: usize = 10;
+pub(super) const KEEP_LATEST: usize = 10;
 /// Messages one click on "N earlier messages" reveals, the newest of them first (a proposal); a
 /// fold with at most half a step more is revealed whole.
-pub const GAP_STEP: usize = 50;
+pub(super) const GAP_STEP: usize = 50;
 
 /// Which messages expand when the conversation is shown: the selected one (the user picked
 /// it), every unread one and the latest.
-pub fn initially_expanded(messages: &[ConversationMessage], selected: MessageId) -> Vec<bool> {
+pub(super) fn initially_expanded(messages: &[ConversationMessage], selected: MessageId) -> Vec<bool> {
     let last = messages.len().saturating_sub(1);
     messages
         .iter()
@@ -47,7 +47,7 @@ pub fn initially_expanded(messages: &[ConversationMessage], selected: MessageId)
 
 /// Which messages show as rows or cards rather than inside a fold: all of them up to
 /// [`COLLAPSE_OVER`]; beyond it the first, the latest [`KEEP_LATEST`] and every expanded one.
-pub fn initially_shown(expanded: &[bool]) -> Vec<bool> {
+pub(super) fn initially_shown(expanded: &[bool]) -> Vec<bool> {
     let count = expanded.len();
     if count <= COLLAPSE_OVER {
         return vec![true; count];
@@ -60,7 +60,7 @@ pub fn initially_shown(expanded: &[bool]) -> Vec<bool> {
 }
 
 /// The runs of messages that aren't shown, as ranges of positions.
-pub fn folds(shown: &[bool]) -> Vec<Range<usize>> {
+pub(super) fn folds(shown: &[bool]) -> Vec<Range<usize>> {
     let mut folds = Vec::new();
     let mut start = None;
     for (index, shown) in shown.iter().enumerate() {
@@ -81,7 +81,7 @@ pub fn folds(shown: &[bool]) -> Vec<Range<usize>> {
 
 /// What one click on a fold of `fold` reveals: its newest [`GAP_STEP`] messages, the ones next
 /// to what follows it, or all of it when little more is left.
-pub fn reveal(fold: Range<usize>) -> Range<usize> {
+pub(super) fn reveal(fold: Range<usize>) -> Range<usize> {
     if fold.len() <= GAP_STEP + GAP_STEP / 2 {
         fold
     } else {
@@ -90,7 +90,7 @@ pub fn reveal(fold: Range<usize>) -> Range<usize> {
 }
 
 /// "1 earlier message", "138 earlier messages".
-pub fn fold_text(count: usize) -> String {
+pub(super) fn fold_text(count: usize) -> String {
     if count == 1 {
         "1 earlier message".to_owned()
     } else {
@@ -99,7 +99,7 @@ pub fn fold_text(count: usize) -> String {
 }
 
 /// "Conversation, 12 messages", for screen readers.
-pub fn size_text(count: usize) -> String {
+pub(super) fn size_text(count: usize) -> String {
     if count == 1 {
         "1 message".to_owned()
     } else {
@@ -109,7 +109,7 @@ pub fn size_text(count: usize) -> String {
 
 /// An expanded HTML body: its frame on the page, the box that keeps its height, and the view it
 /// holds while it is near the visible part of the column ([`super::live`]).
-pub struct HtmlBody {
+pub(super) struct HtmlBody {
     pub frame: gtk::Box,
     pub holder: BodyBox,
     pub view: Option<MessageView>,
@@ -134,14 +134,14 @@ pub struct HtmlBody {
 
 impl HtmlBody {
     /// Measured at `width` (within a pixel), as the reader shows it now.
-    pub fn measured_at(&self, width: i32) -> bool {
+    pub(super) fn measured_at(&self, width: i32) -> bool {
         self.measured
             .is_some_and(|(_, measured)| width > 1 && (measured - width).abs() <= 1)
     }
 }
 
 /// An expanded message's card once its message is read.
-pub struct Card {
+pub(super) struct Card {
     pub widgets: CardWidgets,
     pub body: ShownBody,
     pub html: Option<HtmlBody>,
@@ -160,7 +160,7 @@ pub struct Card {
 impl Card {
     /// What takes the focus when the reader moves it into this card: its body once it has one,
     /// else its header.
-    pub fn focus_target(&self) -> Option<gtk::Widget> {
+    pub(super) fn focus_target(&self) -> Option<gtk::Widget> {
         match self.html.as_ref().and_then(|html| html.view.as_ref()) {
             Some(view) => Some(view.web_view().clone().upcast()),
             None => self
@@ -173,7 +173,7 @@ impl Card {
 }
 
 /// One message of the page: its row, and its card while expanded.
-pub struct Item {
+pub(super) struct Item {
     pub message: ConversationMessage,
     /// Holds the row or the card, in the page's list.
     pub slot: gtk::Box,
@@ -187,24 +187,24 @@ pub struct Item {
 }
 
 impl Item {
-    pub fn id(&self) -> MessageId {
+    pub(super) fn id(&self) -> MessageId {
         self.message.summary.id
     }
 }
 
 /// Messages folded into one "N earlier messages" row.
-pub struct Fold {
+pub(super) struct Fold {
     pub row: gtk::Button,
     pub messages: Vec<ConversationMessage>,
 }
 
-pub enum Entry {
+pub(super) enum Entry {
     Message(Box<Item>),
     Fold(Fold),
 }
 
 /// The conversation on screen, or being laid out unseen.
-pub struct Page {
+pub(super) struct Page {
     /// The `show` it came from: card loads and view events of another page are dropped.
     pub key: u64,
     pub selected: MessageId,
@@ -230,7 +230,7 @@ pub struct Page {
 impl Page {
     /// Puts `widget` after `after` in the conversation's order (`None`: before every other),
     /// which newest first shows above it.
-    pub fn place(&self, widget: &impl IsA<gtk::Widget>, after: Option<&gtk::Widget>) {
+    pub(super) fn place(&self, widget: &impl IsA<gtk::Widget>, after: Option<&gtk::Widget>) {
         match (self.newest_first, after) {
             (false, after) => self.list.insert_child_after(widget, after),
             (true, Some(after)) => widget.insert_before(&self.list, Some(after)),
@@ -238,35 +238,35 @@ impl Page {
         }
     }
 
-    pub fn items(&self) -> impl Iterator<Item = &Item> {
+    pub(super) fn items(&self) -> impl Iterator<Item = &Item> {
         self.entries.iter().filter_map(|entry| match entry {
             Entry::Message(item) => Some(&**item),
             Entry::Fold(_) => None,
         })
     }
 
-    pub fn items_mut(&mut self) -> impl Iterator<Item = &mut Item> {
+    pub(super) fn items_mut(&mut self) -> impl Iterator<Item = &mut Item> {
         self.entries.iter_mut().filter_map(|entry| match entry {
             Entry::Message(item) => Some(&mut **item),
             Entry::Fold(_) => None,
         })
     }
 
-    pub fn item(&self, id: MessageId) -> Option<&Item> {
+    pub(super) fn item(&self, id: MessageId) -> Option<&Item> {
         self.items().find(|item| item.id() == id)
     }
 
-    pub fn item_mut(&mut self, id: MessageId) -> Option<&mut Item> {
+    pub(super) fn item_mut(&mut self, id: MessageId) -> Option<&mut Item> {
         self.items_mut().find(|item| item.id() == id)
     }
 
     /// The selected message's card, once loaded.
-    pub fn selected_card(&self) -> Option<&Card> {
+    pub(super) fn selected_card(&self) -> Option<&Card> {
         self.item(self.selected).and_then(|item| item.card.as_ref())
     }
 
     /// The messages of the conversation, folded ones included.
-    pub fn message_count(&self) -> usize {
+    pub(super) fn message_count(&self) -> usize {
         self.entries
             .iter()
             .map(|entry| match entry {
@@ -278,7 +278,7 @@ impl Page {
 
     /// Whether an earlier message of the conversation (a row, a card or a fold) comes before
     /// message `id`: its quoted history then repeats what the page shows, so it collapses.
-    pub fn has_earlier(&self, id: MessageId) -> bool {
+    pub(super) fn has_earlier(&self, id: MessageId) -> bool {
         self.entries
             .iter()
             .position(|entry| matches!(entry, Entry::Message(item) if item.id() == id))
@@ -286,7 +286,7 @@ impl Page {
     }
 
     /// Expanded items whose card is in the page.
-    pub fn expanded(&self) -> Vec<MessageId> {
+    pub(super) fn expanded(&self) -> Vec<MessageId> {
         self.items()
             .filter(|item| item.expanded)
             .map(Item::id)
@@ -294,7 +294,7 @@ impl Page {
     }
 
     /// Every HTML body that holds a view.
-    pub fn live_bodies(&self) -> Vec<MessageId> {
+    pub(super) fn live_bodies(&self) -> Vec<MessageId> {
         self.items()
             .filter(|item| {
                 item.card
@@ -308,7 +308,7 @@ impl Page {
 }
 
 /// The page's top: the subject as the conversation's heading (the selected message's subject).
-pub fn heading(subject: &str) -> gtk::Label {
+pub(super) fn heading(subject: &str) -> gtk::Label {
     let subject = subject.trim();
     let heading = gtk::Label::builder()
         .label(if subject.is_empty() {
@@ -336,7 +336,7 @@ fn sender_name(summary: &MessageSummary) -> &str {
 
 /// A collapsed message: one line with the sender's initials, name, the snippet and the time, a
 /// button that expands it (click, Enter or Space).
-pub fn collapsed_row(summary: &MessageSummary, now: i64) -> gtk::Button {
+pub(super) fn collapsed_row(summary: &MessageSummary, now: i64) -> gtk::Button {
     let row = gtk::Button::builder()
         .css_classes(["flat", "sw-collapsed-message"])
         .build();
@@ -347,7 +347,7 @@ pub fn collapsed_row(summary: &MessageSummary, now: i64) -> gtk::Button {
 }
 
 /// Puts `summary`'s line in `row`, again when its flags change.
-pub fn fill_row(row: &gtk::Button, summary: &MessageSummary, now: i64) {
+pub(super) fn fill_row(row: &gtk::Button, summary: &MessageSummary, now: i64) {
     let zone = glib::TimeZone::local();
     let name = sender_name(summary);
     let unread = !summary.flags.is_seen();
@@ -407,13 +407,13 @@ pub fn fill_row(row: &gtk::Button, summary: &MessageSummary, now: i64) {
 }
 
 /// What a screen reader says for a collapsed row: the sender, the time, unread, collapsed.
-pub fn row_label(sender: &str, time: &str, unread: bool) -> String {
+pub(super) fn row_label(sender: &str, time: &str, unread: bool) -> String {
     let unread = if unread { ", unread" } else { "" };
     format!("{sender}, {time}{unread}, collapsed")
 }
 
 /// The row that stands for folded messages.
-pub fn fold_row(count: usize) -> gtk::Button {
+pub(super) fn fold_row(count: usize) -> gtk::Button {
     let label = gtk::Label::builder()
         .label(fold_text(count))
         .css_classes(["sw-small", "sw-reader-fold-count"])

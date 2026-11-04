@@ -17,9 +17,9 @@ use sealwax_infrastructure::xdg::SealwaxDirs;
 use std::sync::Arc;
 
 /// Development builds only: a CA file trusted instead of the system's (the mail testbed's).
-pub const TEST_CA_ENV: &str = "SEALWAX_TEST_CA";
+pub(crate) const TEST_CA_ENV: &str = "SEALWAX_TEST_CA";
 /// Development builds only: `memory` keeps secrets out of the keyring.
-pub const SECRETS_ENV: &str = "SEALWAX_SECRETS";
+pub(crate) const SECRETS_ENV: &str = "SEALWAX_SECRETS";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EngineOptions {
@@ -47,7 +47,7 @@ impl EngineOptions {
     }
 }
 
-pub fn start(
+pub(crate) fn start(
     app_id: &str,
     dirs: &SealwaxDirs,
     store: Arc<Store>,
@@ -70,7 +70,7 @@ pub fn start(
 }
 
 /// What the sidebar shows for an account after `event`.
-pub fn account_status(event: &Event) -> Option<(AccountId, AccountStatus)> {
+pub(crate) fn account_status(event: &Event) -> Option<(AccountId, AccountStatus)> {
     match *event {
         Event::SyncProgress { account, .. } => Some((account, AccountStatus::Syncing)),
         Event::AccountStatus { account, status } => Some((account, sidebar_status(status))),

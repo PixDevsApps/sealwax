@@ -7,7 +7,7 @@
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Step {
+pub(super) struct Step {
     /// 1-based line in the script.
     pub line: usize,
     /// The line as written, for the report.
@@ -17,7 +17,7 @@ pub struct Step {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParseError {
+pub(super) struct ParseError {
     pub line: usize,
     pub message: String,
 }
@@ -31,7 +31,7 @@ impl fmt::Display for ParseError {
 /// Commands and their argument counts (minimum, maximum). Assertions (`assert-*`) may also
 /// follow `wait-until`, which polls them, and `wait-within MS`, which polls them for at most MS
 /// milliseconds.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     // Before the app starts: `tiling` (no window controls, as on Hyprland) or `other`.
     ("desktop", 1, 1),
     // The window.
@@ -133,7 +133,7 @@ fn arity(command: &str) -> Option<(usize, usize)> {
 }
 
 /// Parses a script. `vars` are the `$NAME` expansions.
-pub fn parse(text: &str, vars: &[(&str, &str)]) -> Result<Vec<Step>, ParseError> {
+pub(super) fn parse(text: &str, vars: &[(&str, &str)]) -> Result<Vec<Step>, ParseError> {
     let mut steps = Vec::new();
     for (index, raw) in text.lines().enumerate() {
         let line = index + 1;
@@ -282,7 +282,7 @@ fn expand(word: &str, vars: &[(&str, &str)]) -> Result<String, String> {
 }
 
 /// `true`/`false`.
-pub fn boolean(word: &str) -> Result<bool, String> {
+pub(super) fn boolean(word: &str) -> Result<bool, String> {
     match word {
         "true" => Ok(true),
         "false" => Ok(false),

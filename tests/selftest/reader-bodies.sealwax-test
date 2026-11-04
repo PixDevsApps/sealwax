@@ -3,7 +3,7 @@
 # engine for its body and shows the snippet under "Downloading…"; the store's change event, or
 # the engine's answer, shows the message in place, the list's selection kept. A failure says why
 # with Retry, and a message being downloaded isn't asked for twice. Every message is fictional.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/reader-bodies.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/reader-bodies.sealwax-test
 
 desktop tiling
 resize 1440 900

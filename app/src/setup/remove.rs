@@ -16,7 +16,7 @@ use std::rc::Rc;
 
 /// An account that can be removed: one `accounts.toml` lists.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Removable {
+pub(crate) struct Removable {
     pub key: AccountKey,
     pub name: String,
     pub address: String,
@@ -50,7 +50,7 @@ const POP3_BODY: &str = "Sealwax deletes the account's mail stored on this compu
                          and mail the server no longer has are gone for good.";
 
 /// Asks which account to remove, and whether, then sends the command.
-pub fn confirm(window: &Window, engine: &EngineLink, accounts: Vec<Removable>) {
+pub(crate) fn confirm(window: &Window, engine: &EngineLink, accounts: Vec<Removable>) {
     let Some(first) = accounts.first() else {
         return;
     };

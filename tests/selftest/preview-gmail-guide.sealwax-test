@@ -4,7 +4,7 @@
 # corners rounded 8. A scripted engine answers and connects nowhere; the address, the name, the
 # password and the mail are fictional. Not part of tools/ci.sh; it writes into .local/guide/
 # for review before the pictures are copied to docs/images/gmail/. Run from the repository root:
-#   tools/headless.sh 41 target/debug/sealwax --self-test tests/selftest/preview-gmail-guide.sealwax-test
+#   tools/headless.sh 41 target/debug/sealwax-selftest --self-test tests/selftest/preview-gmail-guide.sealwax-test
 
 desktop tiling
 resize 1440 860

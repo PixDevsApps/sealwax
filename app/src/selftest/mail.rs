@@ -24,7 +24,7 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The commands this module adds to the script format, with their argument counts.
-pub const COMMANDS: &[(&str, usize, usize)] = &[
+pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     // Before the app starts; only before every other step but `desktop`.
     ("store-dir", 1, 1),
     ("fixtures", 1, usize::MAX),
@@ -93,7 +93,7 @@ thread_local! {
 /// `store-dir PATH` makes PATH the data folder (store and blobs) instead of the scratch one;
 /// `fixtures ARGS…` runs `sealwax-fixtures import --store … --blobs … ARGS…` into it (skipped when
 /// `store-dir` names a folder that already holds a store).
-pub fn before_start(steps: &[Step], dirs: &mut SealwaxDirs) -> Result<(), String> {
+pub(super) fn before_start(steps: &[Step], dirs: &mut SealwaxDirs) -> Result<(), String> {
     let mut leading = true;
     let mut chosen = false;
     for step in steps {

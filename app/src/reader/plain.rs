@@ -22,7 +22,7 @@ const QUOTED_TAG: &str = "sw-quoted";
 const HIDDEN_TAG: &str = "sw-quote-hidden";
 
 /// A plain-text body in the reading font, selectable, wrapped, with no WebView.
-pub fn plain_text(text: &str) -> gtk::TextView {
+pub(super) fn plain_text(text: &str) -> gtk::TextView {
     let view = gtk::TextView::builder()
         .editable(false)
         .cursor_visible(false)
@@ -48,7 +48,7 @@ pub fn plain_text(text: &str) -> gtk::TextView {
 
 /// A message's plain-text body: [`plain_text`] with its links live, its quoted lines muted
 /// in `theme`'s colours, and, with `collapse_quotes`, its trailing quoted history behind "…".
-pub fn message_text(
+pub(super) fn message_text(
     text: &str,
     links: &Rc<Links>,
     theme: &Rc<ThemeController>,
@@ -111,6 +111,7 @@ pub fn message_text(
 /// The text a reader shows of the first plain-text body under `widget`, without what is
 /// collapsed or the toggle, for checks. WebKit keeps a text view of its own inside each web
 /// view, so only the reader's text views count.
+#[cfg(feature = "test-hooks")]
 pub fn shown_text(widget: &gtk::Widget) -> String {
     let mut stack = vec![widget.clone()];
     while let Some(widget) = stack.pop() {
@@ -129,6 +130,7 @@ pub fn shown_text(widget: &gtk::Widget) -> String {
     String::new()
 }
 
+#[cfg(feature = "test-hooks")]
 fn reader_text(widget: &gtk::Widget) -> Option<&gtk::TextView> {
     widget
         .downcast_ref::<gtk::TextView>()
@@ -136,6 +138,7 @@ fn reader_text(widget: &gtk::Widget) -> Option<&gtk::TextView> {
 }
 
 /// The targets of the links in the plain-text bodies under `widget`, in order, for checks.
+#[cfg(feature = "test-hooks")]
 pub fn links_in(widget: &gtk::Widget) -> Vec<String> {
     let mut found = Vec::new();
     let mut stack = vec![widget.clone()];

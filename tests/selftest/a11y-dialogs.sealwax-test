@@ -7,7 +7,7 @@
 # field, so the row Up and Down choose is announced. Every name, address and message is
 # fictional; nothing reaches the desktop (the sandboxed handlers of reply-default-app and
 # background-login).
-# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-dialogs.sealwax-test
+# Run: tools/headless.sh 71 target/debug/sealwax-selftest --self-test tests/selftest/a11y-dialogs.sealwax-test
 
 desktop tiling
 reply-sandbox

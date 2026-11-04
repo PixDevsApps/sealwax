@@ -3,7 +3,7 @@
 # (whose only service is Sealwax's own `--gapplication-service`) log to $TMP/testbus/daemon.err.
 # Every name and address is fictional; the account's servers are a closed port on 127.0.0.1.
 # They are debug builds, so their folders are `sealwax-devel` (ADR-010 amendment, 2026-10-26).
-# Run: tools/headless.sh 58 target/debug/sealwax --self-test tests/selftest/background-start.sealwax-test
+# Run: tools/headless.sh 58 target/debug/sealwax-selftest --self-test tests/selftest/background-start.sealwax-test
 
 desktop tiling
 

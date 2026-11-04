@@ -6,7 +6,7 @@
 # its recipients) and Open opens its draft; a send that may have gone out puts the banner up,
 # after the sign-ins and before the full mailboxes, and each of its three answers is recorded;
 # the offline banner counts the sends waiting. Every name, address and text is fictional.
-# Run: tools/headless.sh 43 target/debug/sealwax --self-test tests/selftest/reply-outbox.sealwax-test
+# Run: tools/headless.sh 43 target/debug/sealwax-selftest --self-test tests/selftest/reply-outbox.sealwax-test
 
 desktop tiling
 resize 1440 900

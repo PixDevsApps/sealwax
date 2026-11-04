@@ -559,6 +559,7 @@ impl Inner {
     }
 
     /// Reveals a step of the shown conversation's first fold.
+    #[cfg(feature = "test-hooks")]
     pub(super) fn unfold_first(self: &Rc<Self>) {
         let first = self.shown.borrow().as_ref().and_then(|page| {
             page.entries.iter().find_map(|entry| match entry {

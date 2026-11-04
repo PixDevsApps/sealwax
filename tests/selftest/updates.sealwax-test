@@ -4,7 +4,7 @@
 # answer. A newer release comes with the command that installs it and a button that copies the
 # command. Cancel while it checks leaves a late answer unused. The engine is the script's: nothing
 # reaches the network.
-# Run: tools/headless.sh 57 target/debug/sealwax --self-test tests/selftest/updates.sealwax-test
+# Run: tools/headless.sh 57 target/debug/sealwax-selftest --self-test tests/selftest/updates.sealwax-test
 
 desktop tiling
 resize 1440 900

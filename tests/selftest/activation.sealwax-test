@@ -2,7 +2,7 @@
 # instance's id, as a terminal or `xdg-open mailto:…` would: it hands its command line here and
 # exits. `bus-open` and `bus-activate` are the calls a launcher makes for DBusActivatable=true.
 # Every address here is fictional.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/activation.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/activation.sealwax-test
 
 desktop tiling
 assert-activations 1

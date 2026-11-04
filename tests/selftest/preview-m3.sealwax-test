@@ -3,7 +3,7 @@
 # a light stock theme (matte-black with square corners, catppuccin-latte rounded). On a scripted
 # engine; every message is fictional. ML-048's previews are preview-m3-status.sealwax-test's.
 # Not run by CI: it writes into tools/progress/public/.
-# Run: tools/headless.sh 35 target/debug/sealwax --self-test tests/selftest/preview-m3.sealwax-test
+# Run: tools/headless.sh 35 target/debug/sealwax-selftest --self-test tests/selftest/preview-m3.sealwax-test
 
 desktop tiling
 resize 1440 900

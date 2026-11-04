@@ -3,7 +3,7 @@
 # that says what it is and the states its role needs (assert-accessible), Tab and Shift+Tab
 # (real key presses) go round each step's fields and buttons and stay in the dialog, and Escape
 # goes back a step and closes on the first. Every address, name and server is fictional.
-# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-setup.sealwax-test
+# Run: tools/headless.sh 71 target/debug/sealwax-selftest --self-test tests/selftest/a11y-setup.sealwax-test
 
 desktop tiling
 resize 1440 900

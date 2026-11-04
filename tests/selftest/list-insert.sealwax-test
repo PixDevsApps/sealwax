@@ -3,7 +3,7 @@
 # first row in view the list stays at its top, so the new row shows (S3); scrolled down, the rows
 # in view stay where they are. Flag changes and removals from elsewhere update rows in place.
 # Every message is fictional.
-# Run: tools/headless.sh 36 target/debug/sealwax --self-test tests/selftest/list-insert.sealwax-test
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/list-insert.sealwax-test
 
 desktop tiling
 fixtures --count 400 --seed 9 --folders single

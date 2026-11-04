@@ -34,13 +34,13 @@
 //! password on IMAP and SMTP before it keeps it, and a refusal says why as the login check's
 //! failures do.
 
-pub mod browser;
+pub(crate) mod browser;
 mod colors;
-pub mod edit;
-pub mod form;
-pub mod remove;
-pub mod sources;
-pub mod text;
+pub(crate) mod edit;
+pub(crate) mod form;
+pub(crate) mod remove;
+pub(crate) mod sources;
+pub(crate) mod text;
 mod view;
 
 use crate::engine_link::{EngineLink, Subscription};
@@ -79,13 +79,14 @@ thread_local! {
 }
 
 /// Changes how long a sign-in waits before the note on admin approval shows, for tests.
-pub fn set_still_waiting_after(wait: Duration) {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn set_still_waiting_after(wait: Duration) {
     STILL_WAITING_WAIT.with(|current| current.set(wait));
 }
 
 /// Where the assistant is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Step {
+pub(crate) enum Step {
     /// The address and the sender name.
     #[default]
     Address,
@@ -120,7 +121,7 @@ pub enum Step {
 }
 
 impl Step {
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Address => "address",
             Self::Detecting => "detecting",
@@ -176,7 +177,7 @@ enum Pending {
 /// An account that must sign in again (the window's banner): what `SignIn` and
 /// `UpdatePassword` name, and what the assistant shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Again {
+pub(crate) struct Again {
     pub key: AccountKey,
     pub name: String,
     pub address: String,
@@ -203,7 +204,7 @@ struct Untrusted {
 /// Whether Microsoft sign-in can start: a client ID is in use
 /// ([`crate::oauth::microsoft_client_id`]). Asked whenever the assistant draws, so a client ID
 /// added to `config.toml` meanwhile counts.
-pub type MicrosoftAvailable = Rc<dyn Fn() -> bool>;
+pub(crate) type MicrosoftAvailable = Rc<dyn Fn() -> bool>;
 
 #[derive(Default)]
 struct State {
@@ -420,7 +421,7 @@ impl Drop for Inner {
 
 /// An open assistant. At most one is open; [`open`] brings it back to the front.
 #[derive(Clone)]
-pub struct Assistant {
+pub(crate) struct Assistant {
     inner: Rc<Inner>,
 }
 
@@ -430,13 +431,13 @@ thread_local! {
 }
 
 /// The open assistant, if any.
-pub fn current() -> Option<Assistant> {
+pub(crate) fn current() -> Option<Assistant> {
     CURRENT.with(|current| current.borrow().clone())
 }
 
 /// Add Account: opens the assistant over `window`, or shows the one already open there. A new
 /// one offers the first colour none of the accounts has (`used`).
-pub fn open(
+pub(crate) fn open(
     window: &Window,
     engine: &EngineLink,
     microsoft: MicrosoftAvailable,
@@ -465,7 +466,7 @@ pub fn open(
 
 /// The banner's Sign in (ML-032): opens the assistant over `window` at Microsoft sign-in for
 /// `again` and starts it, or shows the one already open for it (or saving an account).
-pub fn sign_in_again(
+pub(crate) fn sign_in_again(
     window: &Window,
     engine: &EngineLink,
     microsoft: MicrosoftAvailable,
@@ -504,7 +505,7 @@ pub fn sign_in_again(
 /// The banner's "Type the password again" (ML-048): opens the assistant over `window` at the
 /// password for `again`, a password account the server refused, or shows the one already open
 /// for it (or saving an account). The password goes to the engine with `UpdatePassword`.
-pub fn type_password_again(
+pub(crate) fn type_password_again(
     window: &Window,
     engine: &EngineLink,
     microsoft: MicrosoftAvailable,
@@ -550,7 +551,7 @@ fn known_provider(address: &str) -> Option<Hints> {
 }
 
 /// Draws the open assistant again, as after a change to `config.toml`'s client ID.
-pub fn refresh() {
+pub(crate) fn refresh() {
     if let Some(open) = current() {
         open.render();
     }
@@ -714,26 +715,30 @@ impl Assistant {
         self.inner.subscription.replace(Some(subscription));
     }
 
-    pub fn step(&self) -> Step {
+    pub(crate) fn step(&self) -> Step {
         self.inner.state.borrow().step
     }
 
-    pub fn dialog(&self) -> &adw::Dialog {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn dialog(&self) -> &adw::Dialog {
         &self.inner.dialog
     }
 
     /// The sources listed, as `preset:no match,autoconfig:found`.
-    pub fn sources(&self) -> String {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn sources(&self) -> String {
         self.inner.state.borrow().sources.summary()
     }
 
     /// A widget of the assistant by its name (`setup-primary`, `setup-password`, …).
-    pub fn widget(&self, name: &str) -> Option<gtk::Widget> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn widget(&self, name: &str) -> Option<gtk::Widget> {
         view::find_named(self.inner.dialog.upcast_ref(), name)
     }
 
     /// The name of the field or button that has the focus, such as `setup-address`.
-    pub fn focused(&self) -> Option<String> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn focused(&self) -> Option<String> {
         let mut widget = self.inner.dialog.focus()?;
         loop {
             if widget.widget_name().starts_with("setup-") {
@@ -744,7 +749,8 @@ impl Assistant {
     }
 
     /// What Enter does in the focused field or colour.
-    pub fn press_enter(&self) -> Result<(), String> {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn press_enter(&self) -> Result<(), String> {
         let focus = self
             .inner
             .dialog
@@ -765,7 +771,8 @@ impl Assistant {
     }
 
     /// What Escape does: back a step, or close.
-    pub fn press_escape(&self) {
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn press_escape(&self) {
         self.inner.dialog.close();
     }
 

@@ -7,7 +7,7 @@
 # comes next, a button with its expanded state. A link whose text names another address shows
 # the warning and announces it when the keyboard reaches it, and Enter asks first. Links are
 # recorded, never opened. Every name, address and link is fictional.
-# Run: tools/headless.sh 71 target/debug/sealwax --self-test tests/selftest/a11y-reader.sealwax-test
+# Run: tools/headless.sh 71 target/debug/sealwax-selftest --self-test tests/selftest/a11y-reader.sealwax-test
 
 desktop tiling
 resize 1440 900

@@ -44,7 +44,7 @@ def main() -> int:
     display = sys.argv[1] if len(sys.argv) > 1 else "19"
     script = ROOT / "tests/selftest/testbed-notify.sealwax-test"
     run = subprocess.Popen(
-        [str(ROOT / "tools/headless.sh"), display, str(ROOT / "target/debug/sealwax"),
+        [str(ROOT / "tools/headless.sh"), display, str(ROOT / "target/debug/sealwax-selftest"),
          "--self-test", str(script)],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1,
     )

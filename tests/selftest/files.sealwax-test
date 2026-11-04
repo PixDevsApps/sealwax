@@ -5,7 +5,7 @@
 # it; Print to a PDF; Show Original; Save as .eml. Opened files and the choosers go to the
 # reader's hooks under $TMP: nothing reaches the desktop. Buttons take real clicks through
 # Broadway. Every name, address and message is fictional.
-# Run: tools/headless.sh 35 target/debug/sealwax --self-test tests/selftest/files.sealwax-test
+# Run: tools/headless.sh 35 target/debug/sealwax-selftest --self-test tests/selftest/files.sealwax-test
 
 desktop tiling
 resize 1440 900

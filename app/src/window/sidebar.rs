@@ -848,6 +848,7 @@ impl Sidebar {
         }
     }
 
+    #[cfg(feature = "test-hooks")]
     pub fn is_expanded(&self, account: &str) -> bool {
         self.expanded.borrow().contains(account)
     }
@@ -943,6 +944,7 @@ impl Sidebar {
     }
 
     /// Opens the context menu of the folder row `key`, as a right click does.
+    #[cfg(feature = "test-hooks")]
     pub fn open_menu(&self, key: &str) -> bool {
         let row = self
             .rows
@@ -960,6 +962,7 @@ impl Sidebar {
     }
 
     /// Opens the context menu of the account `key`'s heading, as a right click does.
+    #[cfg(feature = "test-hooks")]
     pub fn open_account_menu(&self, key: &str) -> bool {
         let row = self
             .rows
@@ -977,6 +980,7 @@ impl Sidebar {
     }
 
     /// The open context menu, if any.
+    #[cfg(feature = "test-hooks")]
     pub fn menu(&self) -> Option<gtk::Popover> {
         self.menu
             .borrow()
@@ -1148,6 +1152,7 @@ impl Sidebar {
     }
 
     /// The open menu's items, in order.
+    #[cfg(feature = "test-hooks")]
     pub fn menu_items(&self) -> Vec<gtk::Button> {
         let mut buttons = Vec::new();
         let mut child = self
@@ -1319,6 +1324,7 @@ impl Sidebar {
     }
 
     /// The key of the folder row marked as the one shown.
+    #[cfg(feature = "test-hooks")]
     pub fn marked_folder(&self) -> Option<String> {
         self.rows
             .borrow()
@@ -1332,6 +1338,7 @@ impl Sidebar {
 
     /// The folder rows of the account `account` the user can see, in order, by the names they
     /// show and their levels in the tree.
+    #[cfg(feature = "test-hooks")]
     pub fn shown_tree(&self, account: &str) -> Vec<(String, usize)> {
         let model = self.model.borrow();
         let mut within = false;
@@ -1351,6 +1358,7 @@ impl Sidebar {
     }
 
     /// The keys of the folder rows the user can see in the full sidebar, in order.
+    #[cfg(feature = "test-hooks")]
     pub fn visible_keys(&self) -> Vec<String> {
         self.rows
             .borrow()

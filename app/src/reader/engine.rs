@@ -15,7 +15,7 @@ use crate::test_hooks::Log;
 use gtk4::{gio, glib};
 use sealwax_domain::model::MessageId;
 use sealwax_domain::theme::WebViewFonts;
-use sealwax_infrastructure::xdg::ensure_private_dir;
+use crate::webview;
 use std::cell::{OnceCell, RefCell};
 use std::collections::HashMap;
 use std::future::Future;
@@ -27,26 +27,9 @@ use webkit6::prelude::*;
 /// The construction-time policy (ADR-011, S2 amendment 4): nothing but `cid:`, `data:` and,
 /// once the user allows them, `https:` images; inline styles; `cid:` and `data:` fonts. Plain
 /// http image URLs are upgraded, so allowed images never travel in clear text.
-pub const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; img-src cid: data: https:; \
+pub(super) const CONTENT_SECURITY_POLICY: &str = "default-src 'none'; img-src cid: data: https:; \
      style-src 'unsafe-inline'; font-src cid: data:; form-action 'none'; base-uri 'none'; \
      frame-src 'none'; upgrade-insecure-requests";
-
-/// Runtime features that make requests without any script and that the old settings no
-/// longer control in WebKitGTK 2.52 (S2): DNS prefetch, a clicked link's preconnect,
-/// `<link rel=prefetch|preload>` and speculation rules. Each is turned off where this WebKit
-/// still has it.
-pub const NETWORK_FEATURES: [&str; 5] = [
-    "LinkDNSPrefetch",
-    "LinkPreconnect",
-    "LinkPrefetch",
-    "LinkPreload",
-    "SpeculationRulesPrefetch",
-];
-
-/// The [`NETWORK_FEATURES`] WebKit dropped, with the first WebKitGTK (major, minor) without
-/// each. 2.54 has no switch for `<link rel=dns-prefetch>` any more (310198@main): it always
-/// runs there, and only the pings filter stops it.
-pub const RETIRED_FEATURES: [(&str, (u32, u32)); 1] = [("LinkDNSPrefetch", (2, 54))];
 
 /// The most views that exist at once (ADR-011 amendment, memory bar decided; M5 sets the final
 /// number from its measurement).
@@ -75,7 +58,7 @@ const PINGS_ID: &str = "sealwax-block-pings";
 
 /// One inline part a view's message may load through `cid:`.
 #[derive(Debug, Clone)]
-pub struct InlinePart {
+pub(super) struct InlinePart {
     pub mime_type: String,
     pub data: glib::Bytes,
 }
@@ -93,36 +76,36 @@ enum Source {
 
 /// A message's inline parts by Content-ID (without angle brackets).
 #[derive(Debug, Clone, Default)]
-pub struct InlineParts {
+pub(super) struct InlineParts {
     message: Option<MessageId>,
     parts: HashMap<String, Source>,
 }
 
 impl InlineParts {
-    pub fn new(message: MessageId) -> Self {
+    pub(super) fn new(message: MessageId) -> Self {
         Self {
             message: Some(message),
             parts: HashMap::new(),
         }
     }
 
-    pub fn insert(&mut self, content_id: String, part: InlinePart) {
+    pub(super) fn insert(&mut self, content_id: String, part: InlinePart) {
         self.parts.insert(content_id, Source::Ready(part));
     }
 
     /// A part the store doesn't hold, fetched by the [`PartLoader`] when the body asks for it.
-    pub fn insert_missing(&mut self, content_id: String, part: u32, mime_type: String) {
+    pub(super) fn insert_missing(&mut self, content_id: String, part: u32, mime_type: String) {
         self.parts
             .insert(content_id, Source::Fetch { part, mime_type });
     }
 
-    pub fn len(&self) -> usize {
+    pub(super) fn len(&self) -> usize {
         self.parts.len()
     }
 
     /// Some part must come from the server: not stored, and not kept in [`part_cache`] since
     /// it was last downloaded.
-    pub fn waits_for_server(&self) -> bool {
+    pub(super) fn waits_for_server(&self) -> bool {
         let Some(message) = self.message else {
             return false;
         };
@@ -133,7 +116,7 @@ impl InlineParts {
 
     /// Parts left to the [`PartLoader`].
     #[cfg(test)]
-    pub fn missing(&self) -> usize {
+    pub(super) fn missing(&self) -> usize {
         self.parts
             .values()
             .filter(|source| matches!(source, Source::Fetch { .. }))
@@ -153,7 +136,7 @@ impl InlineParts {
 
     /// A decoded part by Content-ID, for checks.
     #[cfg(test)]
-    pub fn ready(&self, content_id: &str) -> Option<&InlinePart> {
+    pub(super) fn ready(&self, content_id: &str) -> Option<&InlinePart> {
         match self.find(content_id)? {
             Source::Ready(part) => Some(part),
             Source::Fetch { .. } => None,
@@ -233,7 +216,7 @@ struct Pool {
     live: usize,
 }
 
-pub struct Engine {
+pub(super) struct Engine {
     context: webkit6::WebContext,
     session: webkit6::NetworkSession,
     filter: RefCell<Option<webkit6::UserContentFilter>>,
@@ -245,7 +228,15 @@ pub struct Engine {
     pages: Rc<RefCell<Pages>>,
     loader: Rc<RefCell<Option<PartLoader>>>,
     /// The `cid:` requests, kept only while a test records (`test_hooks`).
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests and the harnesses")
+    )]
     cid_log: Rc<Log<CidRequest>>,
+    #[cfg_attr(
+        not(feature = "test-hooks"),
+        expect(dead_code, reason = "read by the self-tests and the harnesses")
+    )]
     downloads: Rc<RefCell<u32>>,
     /// The first view: every later view is built with it as `related-view`, so all of them
     /// share its web process. Kept for the life of the process.
@@ -260,24 +251,16 @@ thread_local! {
 impl Engine {
     /// The process's engine, created on first use. The content filters compile into
     /// `cache/content-filters` (Sealwax's cache folder) in the background.
-    pub fn shared(cache: &Path) -> Rc<Engine> {
+    pub(super) fn shared(cache: &Path) -> Rc<Engine> {
         ENGINE.with(|engine| engine.get_or_init(|| Engine::new(cache)).clone())
     }
 
     fn new(cache: &Path) -> Rc<Engine> {
-        let context = webkit6::WebContext::new();
-        context.set_cache_model(webkit6::CacheModel::DocumentViewer);
-        let session = webkit6::NetworkSession::new_ephemeral();
-        session.set_tls_errors_policy(webkit6::TLSErrorsPolicy::Fail);
-        if let Some(cookies) = session.cookie_manager() {
-            cookies.set_accept_policy(webkit6::CookieAcceptPolicy::Never);
-        }
         let downloads: Rc<RefCell<u32>> = Rc::default();
-        session.connect_download_started(glib::clone!(
+        let (context, session) = webview::ephemeral_context(glib::clone!(
             #[strong]
             downloads,
-            move |_, download| {
-                download.cancel();
+            move || {
                 *downloads.borrow_mut() += 1;
                 tracing::debug!("reader: a download was refused");
             }
@@ -319,8 +302,8 @@ impl Engine {
         let weak = Rc::downgrade(&engine);
         glib::spawn_future_local(async move {
             let compiled = async {
-                let filter = compile_filter(&directory, FILTER_ID, FILTER_JSON).await?;
-                let pings = compile_filter(&directory, PINGS_ID, PINGS_JSON).await?;
+                let filter = webview::compile_filter(&directory, FILTER_ID, FILTER_JSON).await?;
+                let pings = webview::compile_filter(&directory, PINGS_ID, PINGS_JSON).await?;
                 Ok::<_, String>((filter, pings))
             }
             .await;
@@ -347,56 +330,58 @@ impl Engine {
 
     /// The compiled content filter, once ready; `None` when it or the pings filter couldn't be
     /// compiled, in which case no HTML may be shown in a WebView.
-    pub async fn filter(&self) -> Option<webkit6::UserContentFilter> {
+    pub(super) async fn filter(&self) -> Option<webkit6::UserContentFilter> {
         if *self.filter_state.borrow() == Filter::Compiling {
             let _ = self.filter_done.recv().await;
         }
         self.filter.borrow().clone()
     }
 
-    pub fn context(&self) -> &webkit6::WebContext {
+    pub(super) fn context(&self) -> &webkit6::WebContext {
         &self.context
     }
 
-    pub fn session(&self) -> &webkit6::NetworkSession {
+    pub(super) fn session(&self) -> &webkit6::NetworkSession {
         &self.session
     }
 
     /// The inline parts `page` (a view's `page_id`) may load from now on; any other `cid:` it
     /// asks for fails, and requests of its earlier loads end unanswered.
-    pub fn set_parts(&self, page: u64, parts: Rc<InlineParts>) {
+    pub(super) fn set_parts(&self, page: u64, parts: Rc<InlineParts>) {
         self.pages.borrow_mut().set(page, parts);
     }
 
-    pub fn clear_parts(&self, page: u64) {
+    pub(super) fn clear_parts(&self, page: u64) {
         self.pages.borrow_mut().clear(page);
     }
 
     /// Where parts the store doesn't hold come from (phase B: `Command::FetchPart`). Without
     /// one, they don't load.
-    pub fn set_part_loader(&self, loader: Option<PartLoader>) {
+    pub(super) fn set_part_loader(&self, loader: Option<PartLoader>) {
         self.loader.replace(loader);
     }
 
     /// Every `cid:` request so far while a test records (page and whether it was served), for
     /// the hostile suite.
-    pub fn cid_requests(&self) -> Vec<CidRequest> {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn cid_requests(&self) -> Vec<CidRequest> {
         self.cid_log.entries()
     }
 
     /// Downloads refused so far.
-    pub fn refused_downloads(&self) -> u32 {
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn refused_downloads(&self) -> u32 {
         *self.downloads.borrow()
     }
 
     /// Views alive now, idle ones included.
-    pub fn live_views(&self) -> usize {
+    pub(super) fn live_views(&self) -> usize {
         self.pool.borrow().live
     }
 
     /// A blank view for a message: an idle one, or a new one while fewer than
     /// [`MAX_LIVE_VIEWS`] exist. `None` at the cap, and before the content filters compiled.
-    pub fn acquire(self: &Rc<Self>, fonts: &WebViewFonts) -> Option<MessageView> {
+    pub(super) fn acquire(self: &Rc<Self>, fonts: &WebViewFonts) -> Option<MessageView> {
         let idle = self.pool.borrow_mut().idle.pop();
         if let Some(view) = idle {
             view.set_fonts(fonts);
@@ -423,7 +408,7 @@ impl Engine {
     /// Takes a view back: its page is blanked (the message's DOM and surfaces go), its parts
     /// forgotten, and it waits idle, or is destroyed when enough views already wait. The root
     /// view is never destroyed: later views share its web process.
-    pub fn release(&self, view: MessageView) {
+    pub(super) fn release(&self, view: MessageView) {
         self.clear_parts(view.page_id());
         let filter = self.filter.borrow().clone();
         view.blank(filter.as_ref());
@@ -444,7 +429,7 @@ impl Engine {
     }
 
     /// Starts the web process ahead of the first message: one idle view with a blank page.
-    pub async fn prewarm(self: &Rc<Self>, fonts: &WebViewFonts) {
+    pub(super) async fn prewarm(self: &Rc<Self>, fonts: &WebViewFonts) {
         let filter = self.filter().await;
         if !self.pool.borrow().idle.is_empty() {
             return;
@@ -454,19 +439,6 @@ impl Engine {
             self.pool.borrow_mut().idle.push(view);
         }
     }
-}
-
-async fn compile_filter(
-    directory: &Path,
-    id: &str,
-    json: &'static str,
-) -> Result<webkit6::UserContentFilter, String> {
-    ensure_private_dir(directory).map_err(|error| error.to_string())?;
-    let store = webkit6::UserContentFilterStore::new(&directory.to_string_lossy());
-    store
-        .save_future(id, &glib::Bytes::from_static(json.as_bytes()))
-        .await
-        .map_err(|error| error.to_string())
 }
 
 /// Serves `cid:<content-id>` from the parts of the message loaded in the requesting view, and
@@ -537,7 +509,7 @@ fn serve_cid(
 }
 
 /// `%xx` escapes decoded (RFC 2392 `cid:` URLs escape the Content-ID); invalid ones stay.
-pub fn percent_decode(text: &str) -> String {
+pub(super) fn percent_decode(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut at = 0;
@@ -676,11 +648,5 @@ mod tests {
         assert!(PINGS_JSON.contains(
             r#"{"trigger": {"url-filter": ".*", "resource-type": ["ping"]}, "action": {"type": "block"}}"#
         ));
-        assert!(
-            RETIRED_FEATURES
-                .iter()
-                .all(|(name, _)| NETWORK_FEATURES.contains(name)),
-            "a retired feature is still turned off where WebKit has it"
-        );
     }
 }

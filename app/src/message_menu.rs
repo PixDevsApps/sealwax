@@ -29,13 +29,15 @@ thread_local! {
 }
 
 /// The menu open now, if any.
-pub fn current() -> Option<gtk::Popover> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn current() -> Option<gtk::Popover> {
     OPEN.with(|open| open.borrow().clone())
         .filter(|menu| menu.parent().is_some() && menu.is_visible())
 }
 
 /// The open menu's items, in order.
-pub fn items() -> Vec<gtk::Button> {
+#[cfg(feature = "test-hooks")]
+pub(crate) fn items() -> Vec<gtk::Button> {
     let mut buttons = Vec::new();
     let mut child = current()
         .and_then(|menu| menu.child())
@@ -50,7 +52,7 @@ pub fn items() -> Vec<gtk::Button> {
 }
 
 /// Opens the menu wherever `list` asks for it.
-pub fn install(state: &Rc<AppState>, list: &MessageList) {
+pub(crate) fn install(state: &Rc<AppState>, list: &MessageList) {
     let weak = Rc::downgrade(state);
     let view = list.list_view().clone();
     list.connect_context_menu(move |at| {
@@ -275,7 +277,7 @@ fn show(state: &Rc<AppState>, view: &gtk::ListView, at: gdk::Rectangle) {
 }
 
 /// Closes the menu, if one is open.
-pub fn close() {
+pub(crate) fn close() {
     if let Some(menu) = OPEN.with(|open| open.take())
         && menu.parent().is_some()
     {

@@ -22,7 +22,7 @@
 //! M5 measurement):
 //!
 //! ```sh
-//! cargo build --release -p sealwax --example reader_memory
+//! cargo build --release -p sealwax-uitest --example reader_memory
 //! SEALWAX_HEADLESS_TIMEOUT=600 tools/headless.sh 31 target/release/examples/reader_memory
 //! target/release/examples/reader_memory --live --judge   # live session, authorized runs only
 //! ```

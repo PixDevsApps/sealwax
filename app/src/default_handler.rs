@@ -14,16 +14,16 @@ use libadwaita::prelude::*;
 use std::path::{Path, PathBuf};
 
 /// The content type of `mailto:` links.
-pub const MAILTO_TYPE: &str = "x-scheme-handler/mailto";
+pub(crate) const MAILTO_TYPE: &str = "x-scheme-handler/mailto";
 
 /// The desktop entry an app-id is installed as (`DBusActivatable` needs the two to match).
-pub fn desktop_id(app_id: &str) -> String {
+pub(crate) fn desktop_id(app_id: &str) -> String {
     format!("{app_id}.desktop")
 }
 
 /// An application that handles `mailto:` links.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Handler {
+pub(crate) struct Handler {
     /// Its desktop entry, `bluemail.desktop`.
     pub id: String,
     pub name: String,
@@ -41,7 +41,7 @@ impl Handler {
 
 /// What the desktop looks like before the change.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Probe {
+pub(crate) struct Probe {
     /// Sealwax's desktop entry for this build's app-id.
     pub ours: String,
     /// Whether the desktop knows that entry (it is installed).
@@ -56,7 +56,7 @@ pub struct Probe {
 
 /// What the command does with a [`Probe`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Decision {
+pub(crate) enum Decision {
     /// Sealwax already handles `mailto:` links: nothing to change.
     Already,
     /// No desktop entry to point the handler at.
@@ -65,7 +65,7 @@ pub enum Decision {
     Ask,
 }
 
-pub fn decide(probe: &Probe) -> Decision {
+pub(crate) fn decide(probe: &Probe) -> Decision {
     if probe
         .current
         .as_ref()
@@ -80,7 +80,7 @@ pub fn decide(probe: &Probe) -> Decision {
 }
 
 /// Looks the desktop up; blocking (GIO reads the desktop entries and the mimeapps lists).
-pub fn probe(app_id: &str) -> Probe {
+pub(crate) fn probe(app_id: &str) -> Probe {
     let ours = desktop_id(app_id);
     Probe {
         installed: installed(&ours).is_some(),
@@ -92,7 +92,7 @@ pub fn probe(app_id: &str) -> Probe {
 }
 
 /// The handler of `mailto:` links now; blocking.
-pub fn current() -> Option<Handler> {
+pub(crate) fn current() -> Option<Handler> {
     let info = gio::AppInfo::default_for_type(MAILTO_TYPE, false)?;
     Some(Handler {
         id: info.id()?.to_string(),
@@ -110,7 +110,7 @@ fn installed(id: &str) -> Option<gio::AppInfo> {
 
 /// Makes desktop entry `ours` the handler of `mailto:` links and returns the handler GIO
 /// reports afterwards; blocking.
-pub fn apply(ours: &str) -> Result<Option<Handler>, String> {
+pub(crate) fn apply(ours: &str) -> Result<Option<Handler>, String> {
     let info = installed(ours).ok_or_else(|| format!("{ours} isn't installed any more"))?;
     info.set_as_default_for_type(MAILTO_TYPE)
         .map_err(|error| error.to_string())?;
@@ -126,7 +126,7 @@ fn shown(path: &Path) -> String {
 }
 
 /// The question: what changes, where, and how to undo it.
-pub fn question(probe: &Probe) -> (String, String) {
+pub(crate) fn question(probe: &Probe) -> (String, String) {
     let now = probe
         .current
         .as_ref()
@@ -151,7 +151,7 @@ pub fn question(probe: &Probe) -> (String, String) {
 }
 
 /// What the dialog says when the command can't or needn't change anything.
-pub fn explanation(probe: &Probe) -> (String, String) {
+pub(crate) fn explanation(probe: &Probe) -> (String, String) {
     match decide(probe) {
         Decision::Already => (
             "Sealwax is already the default mail app".to_owned(),
@@ -181,7 +181,7 @@ pub fn explanation(probe: &Probe) -> (String, String) {
 }
 
 /// The command: looks the desktop up, asks, changes, and says how it went.
-pub fn run(window: &Window, app_id: &str) {
+pub(crate) fn run(window: &Window, app_id: &str) {
     let window = window.clone();
     let app_id = app_id.to_owned();
     glib::spawn_future_local(async move {

@@ -2,7 +2,7 @@
 //! shortcuts, the primary menu, the keyboard shortcuts dialog and the live settings files.
 //! Run it under the wrapper; it exits by itself and prints one line per check:
 //!
-//!     cargo build -p sealwax --example palette
+//!     cargo build -p sealwax-uitest --example palette
 //!     tools/headless.sh 32 target/debug/examples/palette
 //!
 //! It keeps its settings in `.local/palette-check/`, never the user's.

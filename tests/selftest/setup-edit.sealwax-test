@@ -4,7 +4,7 @@
 # sidebar's heading follows; Cancel, or Save with nothing changed, sends nothing. With two
 # accounts it asks which, starting at the one the list shows, or at the one whose heading was
 # right-clicked. Every address and name is fictional.
-# Run: tools/headless.sh 33 target/debug/sealwax --self-test tests/selftest/setup-edit.sealwax-test
+# Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/setup-edit.sealwax-test
 
 desktop tiling
 resize 1440 900
