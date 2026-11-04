@@ -30,14 +30,7 @@ pub const CAPPED: [&str; 15] = [
 /// Sealwax's own sources, as cargo names them to rustc: relative to the workspace. A panic
 /// anywhere else (a dependency, the standard library) happened in code that may have been
 /// parsing a server's reply or a message.
-const OWN_SOURCES: [&str; 6] = [
-    "app/",
-    "domain/",
-    "engine/",
-    "infrastructure/",
-    "devtools/",
-    "spikes/",
-];
+const OWN_SOURCES: [&str; 5] = ["app/", "domain/", "engine/", "infrastructure/", "devtools/"];
 
 /// Plain-text diagnostics on stderr, filtered by `RUST_LOG` (default `info`), and panics
 /// reported without what a dependency was parsing ([`redact_dependency_panics`]).

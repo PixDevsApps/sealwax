@@ -40,7 +40,7 @@ seed() {
     local target=$1 corpus=$2 file
     case $target in
         message)
-            for file in spikes/s7-composer/fixtures/*.eml; do
+            for file in tests/outgoing/*.eml; do
                 cp -- "$file" "$corpus/"
             done
             for file in "$real"/*.html; do

@@ -271,7 +271,10 @@ async fn incremental(
 /// unreadable) must equal the server's EXISTS, kept current through the pass. Too few first fetches new UIDs again;
 /// anything else falls back to the UID diff, which also counts the messages below the floor
 /// again.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the folder's sync state, to become one context struct"
+)]
 async fn count_check(
     conn: &mut Connection,
     store: &Store,

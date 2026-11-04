@@ -3,7 +3,7 @@
 //! Apply Rules to This Folder, and what the engine reports about an account's rules.
 //!
 //! - **Files:** each account's Sieve script, `rules/<key>.sieve` in the config folder, is read
-//!   and written by the app off the GTK thread ([`file`]); the engine reads it again when its
+//!   and written by the app off the GTK thread ([`file`](mod@file)); the engine reads it again when its
 //!   modification time changes, so no command tells it: what is saved runs at the next new mail.
 //! - **Always / Never Junk** put the sender's address on a list, save the file, and act on the
 //!   selected messages at once (to Junk, or from Junk to the Inbox, with the junk keywords, as

@@ -1,6 +1,9 @@
 //! Network, sync, the op queue and secrets, on a private tokio runtime.
 //! The app talks to it only through plain `Send` messages; no tokio type leaves this crate.
 
+#![forbid(unsafe_code)]
+#![warn(clippy::unwrap_used)]
+
 pub mod accounts;
 pub mod api;
 pub mod autoconfig;

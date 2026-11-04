@@ -2,10 +2,10 @@
 //! theme"): the conversation of the selected message, its subject as the heading and its
 //! messages oldest first, the selected one, the unread ones and the latest expanded as cards
 //! (header, banner and attachment cards drawn by GTK, a plain-text body in a text view, an HTML
-//! body in a pooled, hardened WebView, see [`view`], styled from the live theme), the others as
-//! one-line rows ([`conversation`]). Everything is read from the store off the GTK thread; the
+//! body in a pooled, hardened WebView, see `view`, styled from the live theme), the others as
+//! one-line rows (`conversation`). Everything is read from the store off the GTK thread; the
 //! conversation appears once the bodies the first screen needs have their heights, scrolled to
-//! the selected message. At most [`MAX_LIVE_VIEWS`] bodies hold a view ([`live`]).
+//! the selected message. At most [`MAX_LIVE_VIEWS`] bodies hold a view (`live`).
 //!
 //! The lead wires it: `Reader::new` with the store and the theme, `widget()` into
 //! `Window::set_reader`, `toolbar()` into `Window::set_reader_toolbar`, the list's selection

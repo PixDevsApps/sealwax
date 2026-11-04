@@ -1868,7 +1868,7 @@ impl MessageList {
     }
 
     /// The selected messages, once the rows of those far down a range are loaded too; `None`
-    /// when they don't come within [`TARGETS_WAIT`].
+    /// when they don't come within `TARGETS_WAIT`.
     pub async fn wait_targets(&self) -> Option<Vec<Target>> {
         let started = Instant::now();
         loop {

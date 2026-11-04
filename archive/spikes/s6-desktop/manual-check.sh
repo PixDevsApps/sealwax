@@ -4,11 +4,11 @@
 # low-urgency fictional notifications and records what a click does: whether the default action
 # arrives, whether the window comes to the front with keyboard focus, and how long it takes until
 # the message is painted. It injects nothing and ends by itself.
-# Usage: bash spikes/s6-desktop/manual-check.sh
+# Usage: bash archive/spikes/s6-desktop/manual-check.sh
 set -euo pipefail
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
 export CARGO_TARGET_DIR="$root/target/s6"
-cargo build --release -p email-spike-s6 --manifest-path "$root/Cargo.toml"
+cargo build --release -p email-spike-s6 --manifest-path "$root/archive/spikes/Cargo.toml"
 [[ -f $root/target/s6/data/s6-inbox.sqlite ]] || "$root/target/s6/release/s6-bench" build-store
 if gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus \
     --method org.freedesktop.DBus.NameHasOwner io.github.pixdevsapps.Mail.SpikeS6 | grep -q true; then

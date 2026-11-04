@@ -1253,7 +1253,10 @@ impl Poller {
 
 /// The IDLE connection: INBOX current within a moment of every change the server announces.
 /// `up` is false while it waits to try again, and the command connection polls INBOX then.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "the IDLE loop's state, to become its `Idling` context"
+)]
 async fn idle(
     shared: Arc<Shared>,
     settings: Arc<AccountSettings>,

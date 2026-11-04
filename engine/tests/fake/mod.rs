@@ -25,7 +25,10 @@
 //! then the connection cut ([`World::cut_with`]).
 //! Synthetic data only.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use rcgen::{
     BasicConstraints, CertificateParams, CertifiedIssuer, ExtendedKeyUsagePurpose, IsCa, KeyPair,

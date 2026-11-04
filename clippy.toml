@@ -1,0 +1,4 @@
+# Clippy's settings for the lint policy in Cargo.toml (ADR-025).
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-dbg-in-tests = false

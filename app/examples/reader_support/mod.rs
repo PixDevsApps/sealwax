@@ -2,7 +2,10 @@
 //! filled through `ingest_raw`, the real window around a reader, and waiting helpers. Run the
 //! examples through `tools/headless.sh`.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 pub mod broadway;
 

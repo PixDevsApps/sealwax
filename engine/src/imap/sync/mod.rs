@@ -223,7 +223,7 @@ struct Folder {
 
 /// An account's folders whose header FETCH broke the connection with a reply async-imap
 /// couldn't parse, kept by the account across reconnects so the next pass asks for less: each
-/// failure goes one step down from [`Careful::Full`], a FETCH that gets through goes back to
+/// failure goes one step down from `Careful::Full`, a FETCH that gets through goes back to
 /// it, and a message that fails on its own is left out until Sealwax starts again. Nothing of
 /// the reply is kept. Clones share it.
 #[derive(Clone, Debug, Default)]

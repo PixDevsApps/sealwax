@@ -1,3 +1,5 @@
+#![warn(clippy::unwrap_used)]
+
 use gtk4::glib;
 use sealwax_app::application::{self, AppConfig};
 use sealwax_app::{activation, cli, config, selftest};

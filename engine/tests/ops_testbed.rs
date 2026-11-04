@@ -966,7 +966,7 @@ async fn other_change(
             .unwrap();
         return "flag-storm";
     }
-    let from = wire(rng.pick(&OTHER));
+    let from = wire(rng.pick::<&str>(&OTHER));
     let to = wire(OTHER.iter().find(|name| wire(name) != from).unwrap());
     if roll < 70 {
         let id = format!("other.{seed}.{n}@example.test");

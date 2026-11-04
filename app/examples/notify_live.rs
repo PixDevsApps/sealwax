@@ -19,7 +19,7 @@
 //! ```
 
 #[path = "../src/selftest/notify/server.rs"]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "shared with other examples, each using a part")]
 mod server;
 #[path = "reader_support/mod.rs"]
 mod support;

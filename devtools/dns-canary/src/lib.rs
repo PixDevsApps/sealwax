@@ -31,17 +31,21 @@ pub unsafe extern "C" fn getaddrinfo(
     res: *mut *mut libc::addrinfo,
 ) -> c_int {
     if !node.is_null() {
+        // SAFETY: a non-null `node` is NUL-terminated, per this function's contract.
         let name = unsafe { CStr::from_ptr(node) }.to_string_lossy();
         if !numeric(&name) {
             record(&name);
             return libc::EAI_NONAME;
         }
     }
+    // SAFETY: `dlsym` with `RTLD_NEXT` and a NUL-terminated name has no other precondition.
     let real: *mut c_void = unsafe { libc::dlsym(libc::RTLD_NEXT, c"getaddrinfo".as_ptr()) };
     if real.is_null() {
         return libc::EAI_FAIL;
     }
+    // SAFETY: the next `getaddrinfo` in the lookup order has libc's signature, `GetAddrInfo`.
     let real = unsafe { std::mem::transmute::<*mut c_void, GetAddrInfo>(real) };
+    // SAFETY: the arguments are passed on unchanged, under the contract this function's caller kept.
     unsafe { real(node, service, hints, res) }
 }
 

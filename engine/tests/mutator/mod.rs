@@ -2,7 +2,10 @@
 //! and changes it at random through the testbed client. Test data only; every message is at
 //! `example.test`.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use crate::common;
 use crate::snapshot::Rng;

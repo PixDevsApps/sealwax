@@ -30,7 +30,7 @@ diff -r target/lettre-check/lettre-0.11.23 vendor/lettre
 
 The only differences should be the three changes: `src/transport/smtp/client/mod.rs`'s constant and its comment, the two `read_response`s with their imports, and the two functions after `parse_response`.
 
-To drop it once lettre releases fixes for all three: remove both `[patch.crates-io]` entries and this folder, raise `lettre` in `engine/Cargo.toml` (and `spikes/s5-oauth/Cargo.toml`), update the lock files, and keep `engine/src/smtp/submit/tests.rs`'s cases for long replies, a line that never ends and a reply of many lines passing. To move it to a newer lettre, copy the new published crate here and make the same changes.
+To drop it once lettre releases fixes for all three: remove both `[patch.crates-io]` entries and this folder, raise `lettre` in the workspace `Cargo.toml` (and `archive/spikes/s5-oauth/Cargo.toml`), update the lock files, and keep `engine/src/smtp/submit/tests.rs`'s cases for long replies, a line that never ends and a reply of many lines passing. To move it to a newer lettre, copy the new published crate here and make the same changes.
 
 ## imap-proto 0.17.0, with upstream's nesting limit, Proton Mail Bridge's replies and ESEARCH
 

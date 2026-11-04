@@ -3,7 +3,7 @@ use proptest::prelude::*;
 
 const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
-/// S7's hostile clipboard (`spikes/s7-composer/src/canary.rs`), the canary at a closed port.
+/// S7's hostile clipboard (`archive/spikes/s7-composer/src/canary.rs`), the canary at a closed port.
 fn hostile() -> String {
     let url = |path: &str| format!("http://127.0.0.1:2/paste/{path}");
     format!(

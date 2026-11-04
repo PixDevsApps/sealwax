@@ -10,7 +10,7 @@ mod presets;
 mod probe;
 mod rank;
 mod score;
-#[path = "../../s4-autodetect/src/truth.rs"]
+#[path = "../../../../devtools/autodetect-measure/src/truth.rs"]
 mod truth;
 
 use std::collections::{BTreeMap, HashSet};

@@ -1,5 +1,5 @@
 //! Round trips through mail-parser on every copy, with S7's fixture cases
-//! (`spikes/s7-composer/src/fixtures.rs` and `roundtrip.rs`).
+//! (`archive/spikes/s7-composer/src/fixtures.rs` and `roundtrip.rs`).
 
 use super::*;
 use crate::compose::{DraftSource, ReplyKind, reply, stored};

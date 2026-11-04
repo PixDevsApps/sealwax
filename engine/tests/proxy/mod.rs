@@ -8,7 +8,10 @@
 //! the connection left silent) after the server acted on it, or the connection cut as the
 //! command goes out (S1); and a record of every line the clients sent.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use rustls::{ClientConfig, ServerConfig};
 use rustls_pki_types::pem::PemObject;

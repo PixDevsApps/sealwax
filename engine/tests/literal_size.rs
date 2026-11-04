@@ -14,8 +14,10 @@ static PEAK: AtomicUsize = AtomicUsize::new(0);
 
 struct Counting;
 
+// SAFETY: every call goes to `System` unchanged; the counters only add and subtract sizes.
 unsafe impl GlobalAlloc for Counting {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        // SAFETY: the caller's `layout` is passed on, under `GlobalAlloc::alloc`'s contract.
         let ptr = unsafe { System.alloc(layout) };
         if !ptr.is_null() {
             let live = LIVE.fetch_add(layout.size(), Relaxed) + layout.size();
@@ -25,6 +27,7 @@ unsafe impl GlobalAlloc for Counting {
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+        // SAFETY: `ptr` came from `System.alloc` with this `layout`, via `alloc` above.
         unsafe { System.dealloc(ptr, layout) };
         LIVE.fetch_sub(layout.size(), Relaxed);
     }

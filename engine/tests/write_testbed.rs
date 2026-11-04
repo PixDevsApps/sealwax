@@ -754,7 +754,10 @@ fn seeds() -> u64 {
 
 /// A lost or cut command, retried: `needle` with `lose` (the reply lost after the server acted)
 /// or not (the connection cut as the command goes out).
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one check's inputs, spelled out for the test"
+)]
 async fn fault_run(
     server: Server,
     proxy: &Proxy,

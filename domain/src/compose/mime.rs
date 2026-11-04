@@ -1,5 +1,5 @@
 //! The MIME builder (ADR-007 and its S7 amendment, ML-073), ported from S7
-//! (`spikes/s7-composer/src/mime.rs`). mail-builder 1.0 without `gethostname`, the tree built
+//! (`archive/spikes/s7-composer/src/mime.rs`). mail-builder 1.0 without `gethostname`, the tree built
 //! by hand as `mixed{alternative{text, related{html, inline…}}, attachments…}`, `related` left
 //! out without inline images and `mixed` without attachments. Three copies of a draft:
 //!

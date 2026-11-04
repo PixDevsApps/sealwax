@@ -1248,7 +1248,10 @@ fn decide(decision: &webkit6::PolicyDecision, kind: PolicyDecisionType, state: &
     }
 }
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "the hardening turns off features WebKitGTK deprecated but still has"
+)]
 fn hardened_settings(fonts: &WebViewFonts) -> webkit6::Settings {
     let settings = webkit6::Settings::new();
     // Script markup is off: no message script runs. JavaScript itself stays on only for
@@ -1309,7 +1312,7 @@ fn apply_fonts(settings: &webkit6::Settings, fonts: &WebViewFonts) {
     settings.set_default_monospace_font_size(fonts.monospace_size);
 }
 
-/// The features [`hardened_settings`] switches off, as WebKit reports them, for checks.
+/// The features `hardened_settings` switches off, as WebKit reports them, for checks.
 pub fn disabled_features(view: &webkit6::WebView) -> Vec<String> {
     let (Some(settings), Some(features)) = (
         WebViewExt::settings(view),

@@ -1,7 +1,7 @@
 //! The main window's compose commands (M6: ML-068, ML-069, ML-074): Compose, Reply, Reply All,
 //! Forward and Edit Draft from the list, the reader, the palette and their keys, and what the
 //! reader asks for itself (the cards' buttons, the quick reply's expansion). Every one opens a
-//! window through `composer::open`. The quick reply's Send goes through [`quick_send`], the seam
+//! window through `composer::open`. The quick reply's Send goes through `send_quick`, the seam
 //! phase B wires to the outbox.
 //!
 //! - **Compose** writes from the account the list shows; in All Inboxes from the selected

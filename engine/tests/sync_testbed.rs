@@ -140,7 +140,10 @@ async fn inbox_of(store: &Store, account: AccountId) -> Option<FolderId> {
 /// Account passes in a loop on one connection, reconnecting after errors. After every pass the
 /// "user" opens the test folders the policy leaves alone, and every fifth pass loads older INBOX
 /// mail. Publishes the start time of every completed round.
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one check's inputs, spelled out for the test"
+)]
 async fn drive(
     variant: Variant,
     store: Arc<Store>,

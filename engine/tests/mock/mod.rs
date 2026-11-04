@@ -3,7 +3,10 @@
 //! IMAP and SMTP servers over TLS with a throwaway CA. The servers take XOAUTH2 with the access
 //! tokens the token endpoint issued; SMTP, like Outlook's (S5), only as the token's identity.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use base64::Engine;
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};

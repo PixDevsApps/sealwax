@@ -1,7 +1,7 @@
 //! Background mode (ML-084, PRD D6, ADR-013 and its M7 amendment): on by default, closing the
 //! window keeps Sealwax running so sync and notifications go on, with a one-time notice the
 //! first time; Quit stops it. Also Start Sealwax at Login (opt-in, asks first:
-//! [`autostart`](crate::autostart)) and the engine started without a window
+//! [`autostart`]) and the engine started without a window
 //! (`AppState::start_engine_without_window`).
 //!
 //! - **The hold** follows `[background] enabled` in `config.toml`, applied live: on, the

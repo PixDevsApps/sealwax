@@ -5,7 +5,6 @@
 
 mod lists;
 mod score;
-#[path = "../../../spikes/s4-autodetect/src/truth.rs"]
 mod truth;
 
 /// S4's truth table names its `Security` through `crate::model`.

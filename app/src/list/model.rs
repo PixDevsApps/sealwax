@@ -789,7 +789,7 @@ impl MessageModel {
         self.notify(Change::Reset);
     }
 
-    /// Shows [`GROW_STEP`] more rows, or every row once past [`GROW_UNTIL`]; false when every
+    /// Shows [`GROW_STEP`] more rows, or every row once past `GROW_UNTIL`; false when every
     /// row is shown.
     pub fn grow(&self) -> bool {
         let (start, added, more) = {

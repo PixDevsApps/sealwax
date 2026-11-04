@@ -6,13 +6,14 @@ Synced: 2026-10-09
 
 | Item | Version on the development machine (2026-10-04) |
 | --- | --- |
-| Rust (rustup, stable) | 1.98.1; MSRV 1.92 |
+| Rust (rustup, stable) | 1.98.1; MSRV 1.92 (`rustup toolchain install 1.92`: `tools/ci.sh` checks it) |
 | GTK 4 | 4.22.4 |
 | libadwaita | 1.9.3 |
 | WebKitGTK 6.0 | 2.52.6 |
 | SQLite | 3.53.4 |
 | GLib / GIO | 2.88.3 |
 | libsecret | 0.21.7 (gnome-keyring 50 provides the Secret Service) |
+| cargo-deny | 0.20.2 (`cargo install --locked cargo-deny`; `tools/ci.sh` runs it offline, `deny.toml`) |
 
 Arch packages needed to build: `gtk4`, `libadwaita`, `webkitgtk-6.0`, `sqlite`, `pkgconf`, `rust` (or rustup). Optional at runtime: `gnome-keyring` (or another Secret Service provider), `hunspell` with a hunspell dictionary (such as `hunspell-en_us`) for spell check: a dictionary alone isn't enough.
 
@@ -24,7 +25,7 @@ Not installed here (no action needed for M0): mold/lld, rust-analyzer, blueprint
 cargo build                       # the app (default member)
 cargo build --workspace           # every crate
 cargo test --workspace
-bash tools/ci.sh                  # fmt, clippy -D warnings, tests, build
+bash tools/ci.sh                  # fmt, clippy -D warnings, the MSRV check, rustdoc -D warnings, cargo deny, tests, build
 SEALWAX_CI_DISPLAY=19 bash tools/ci.sh --ui   # plus a headless smoke run, the self-test scripts and the hostile suite
 bash tools/ci.sh --testbed        # plus every testbed suite (see Mail testbed)
 tools/headless.sh 19 target/debug/sealwax --self-test tests/selftest/window.sealwax-test
@@ -41,7 +42,7 @@ cargo run -p sealwax -- --version
 | `sealwax` | `app/` | GTK app, binary `sealwax` |
 | `sealwax-fixtures` | `devtools/fixtures/` | Synthetic `.eml` corpora, import and store benchmarks, `bench-conversation` (workspace glob `devtools/*`, `publish = false`) |
 | `sealwax-dns-canary` | `devtools/dns-canary/` | A preloadable `getaddrinfo` that records and refuses every name looked up, for the hostile suite (M5) |
-| `email-spike-s1` … `email-spike-s7` | `spikes/<id>-<topic>/` | M0 measurement code, one crate per spike (workspace glob `spikes/*`) |
+| `email-spike-s1` … `email-spike-s7` | `archive/spikes/<id>-<topic>/` | M0 measurement code, one crate per spike: a workspace of its own with its own `Cargo.lock`, excluded from this one and not built by `tools/ci.sh` ([archive/spikes/README.md](../archive/spikes/README.md), ADR-025) |
 | `sealwax-fuzz` | `fuzz/` | libFuzzer targets (M9, ML-093); a workspace of its own, excluded from this one, built by `tools/fuzz.sh` |
 | `lettre` (patched) | `vendor/lettre/` | lettre 0.11.23 with a 16 KiB reply-line limit, used through `[patch.crates-io]` here and in `fuzz/`; excluded from the workspace ([vendor/README.md](../vendor/README.md), ADR-015 amendment of 2026-10-13) |
 | `imap-proto` (patched) | `vendor/imap-proto/` | imap-proto 0.17.0 with upstream's nesting limit for BODYSTRUCTURE and body extensions and Sealwax's three changes for Proton Mail Bridge's replies (ADR-006 amendment of 2026-11-03), used through `[patch.crates-io]` here and in `fuzz/`; excluded from the workspace ([vendor/README.md](../vendor/README.md), ADR-006 amendment of 2026-10-25) |

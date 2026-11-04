@@ -72,7 +72,7 @@ fn steps(html: &str) -> Vec<(&'static str, Duration)> {
         std::thread::Builder::new()
             .stack_size(STACK)
             .spawn(move || work(html))
-            .unwrap()
+            .expect("the step's thread starts")
             .join()
             .unwrap_or_else(|_| panic!("{name} panicked"));
         (name, started.elapsed())
@@ -99,7 +99,7 @@ fn steps(html: &str) -> Vec<(&'static str, Duration)> {
                 signature: Some("Ada".into()),
             }];
             let planned = reply::plan(&original, ReplyKind::Reply, &senders);
-            let message_id = ids::message_id("ada@example.test", [9; 16]).unwrap();
+            let message_id = ids::message_id("ada@example.test", [9; 16]).expect("a Message-ID");
             let draft = planned.draft(
                 AccountId(1),
                 MessageId(1),
@@ -107,8 +107,8 @@ fn steps(html: &str) -> Vec<(&'static str, Duration)> {
                 "<div>Svar</div>",
                 Vec::new(),
             );
-            let built = mime::build(&draft, 1_791_360_000, &[]).unwrap();
-            let _ = mime::drafts_copy(&draft, 1_791_360_000, &[]).unwrap();
+            let built = mime::build(&draft, 1_791_360_000, &[]).expect("the draft builds");
+            let _ = mime::drafts_copy(&draft, 1_791_360_000, &[]).expect("the copy builds");
             assert!(!built.transmitted.is_empty());
         }),
         on_thread("draft read back", html.to_owned(), |html| {

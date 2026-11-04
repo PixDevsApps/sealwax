@@ -1,5 +1,8 @@
 //! Pure mail logic: no I/O, no GTK, no threads.
 
+#![forbid(unsafe_code)]
+#![warn(clippy::unwrap_used)]
+
 pub mod account;
 pub mod accounts_file;
 pub mod actions;

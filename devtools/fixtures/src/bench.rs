@@ -48,6 +48,7 @@ pub(crate) fn evict(store: &std::path::Path) -> Result<()> {
             continue;
         };
         handle.sync_all()?;
+        // SAFETY: the descriptor is open for the duration of the call; the advice reads no memory.
         let status =
             unsafe { libc::posix_fadvise(handle.as_raw_fd(), 0, 0, libc::POSIX_FADV_DONTNEED) };
         if status != 0 {

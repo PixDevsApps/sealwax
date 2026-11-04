@@ -14,3 +14,4 @@ __pycache__/
 /docs/m[1-9]/
 /docs/1.[0-9]*/
 /docs/spikes/
+/archive/spikes/target/

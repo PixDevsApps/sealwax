@@ -5,7 +5,10 @@
 //! included, less the `\Deleted` messages it holds. Names are the testbed's and the fake
 //! server's synthetic ones.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use sealwax_domain::model::{AccountId, Flags};
 use sealwax_infrastructure::store::{Store, SyncState};

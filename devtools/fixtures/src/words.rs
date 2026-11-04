@@ -1,4 +1,4 @@
-//! Vocabulary for the synthetic corpus, from the S3 spike's generator (`spikes/s3-store`):
+//! Vocabulary for the synthetic corpus, from the S3 spike's generator (`archive/spikes/s3-store`):
 //! fictional Norwegian, English, Chinese and Japanese names, a Zipf word list per language,
 //! topics and CJK phrases. Nothing here comes from real mail.
 

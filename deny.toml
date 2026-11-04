@@ -1,0 +1,39 @@
+# cargo-deny's checks for the workspace (ADR-025), run by tools/ci.sh as
+# `cargo deny --offline check bans licenses sources`. Advisories are checked by
+# tools/advisories.py against a RustSec copy, so CI makes no network request.
+
+[graph]
+all-features = false
+
+[licenses]
+# Every licence the dependency graph holds today (each crate's expression must be satisfiable
+# with these). The shipped crates' licence texts go into the package via tools/licenses.py.
+allow = [
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "CDLA-Permissive-2.0",
+    "ISC",
+    "MIT",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+# The workspace's own crates are `publish = false`; their licence is the repository's MIT.
+ignore = true
+
+[bans]
+# Two versions of a crate are reported, not refused: most come from upstream crates moving at
+# different speeds. A wildcard version requirement is refused.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+# crates.io only; the vendored crates are path dependencies (vendor/README.md).
+unknown-registry = "deny"
+unknown-git = "deny"

@@ -1,4 +1,4 @@
-//! The hostile-HTML suite, ported from S2 (`spikes/s2-webkit/src/hostile.rs`): 47 cases whose
+//! The hostile-HTML suite, ported from S2 (`archive/spikes/s2-webkit/src/hostile.rs`): 47 cases whose
 //! network vectors point at the canary under `/h/<case>/` and whose script payload would leave
 //! four traces if it ran: the title becomes `pwned-<case>`, the root gets `data-pwned`, `alert()`
 //! raises a script dialog, and an image beacon hits the canary. Cases with `click` are

@@ -3,7 +3,10 @@
 //! back over IMAP, mail-parser's round trip and synthetic messages of a given size. Test data
 //! and dummy addresses only.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use super::testbed_client::Client;
 use async_imap::imap_proto::{AttributeValue, Response, SectionPath};
@@ -37,9 +40,9 @@ fn addresses(address: Option<&mail_parser::Address<'_>>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// S7's fixtures (`spikes/s7-composer/fixtures/*.transmitted.eml`), by name.
+/// S7's fixtures (`tests/outgoing/*.transmitted.eml`), by name.
 pub fn fixtures() -> Vec<Fixture> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../spikes/s7-composer/fixtures");
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/outgoing");
     let mut names: Vec<String> = std::fs::read_dir(&dir)
         .unwrap()
         .filter_map(|entry| {

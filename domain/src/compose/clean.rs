@@ -1,7 +1,7 @@
 //! The allowlist cleaner for HTML that goes into a draft without passing through the composer's
 //! paste cleaner: the original's body in a reply or forward (the quick reply sends without any
 //! WebView), and a draft read back from the Drafts folder. The rules are S7's paste cleaner's
-//! (`spikes/s7-composer/src/helper.js`), with remote (`https:`) and `cid:` images kept: a quote
+//! (`archive/spikes/s7-composer/src/helper.js`), with remote (`https:`) and `cid:` images kept: a quote
 //! shows the original as it was (SECURITY.md "Composer"; the composer's CSP never loads them).
 //!
 //! Two passes. The first maps presentational markup to the tags S7 keeps: `strong` and `em`

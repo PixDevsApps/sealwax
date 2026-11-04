@@ -1,7 +1,7 @@
 //! TCP and TLS for the engine's connections. Certificates are verified with rustls and the
 //! platform verifier; a testbed CA is trusted through its own constructor that trusts exactly
 //! that CA, never by weakening verification (SECURITY.md, Transport). A server on this computer
-//! can instead be trusted with one pinned certificate ([`pinned`]; issue #9, Proton Mail Bridge).
+//! can instead be trusted with one pinned certificate (`pinned`; issue #9, Proton Mail Bridge).
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 use rustls::{ClientConfig, RootCertStore};

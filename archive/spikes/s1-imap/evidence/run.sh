@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # The S1 evidence run behind docs/spikes/S1-imap.md (output: 2026-10-04.log). It recreates the
 # testbed (down.sh removes the volumes), seeds it and runs every measurement and suite.
-# Build first: CARGO_TARGET_DIR=target/s1 cargo build --release -p email-spike-s1
-# Run: spikes/s1-imap/evidence/run.sh > evidence.log 2>&1
+# Build first: CARGO_TARGET_DIR=target/s1 cargo build --release -p email-spike-s1 --manifest-path archive/spikes/Cargo.toml
+# Run: archive/spikes/s1-imap/evidence/run.sh > evidence.log 2>&1
 set -uo pipefail
-cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.."
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../../.."
 B=target/s1/release
 run() { echo; echo "\$ $*"; echo "# $(date -Is)"; "$@" 2>&1; echo "# exit $?"; }
 echo "# S1 evidence run $(date -Is) on $(uname -r), $(nproc) CPUs, $(rustc --version)"

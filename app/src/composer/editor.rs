@@ -383,7 +383,10 @@ fn serve_cid(
     });
 }
 
-#[allow(deprecated)]
+#[allow(
+    deprecated,
+    reason = "the hardening turns off features WebKitGTK deprecated but still has"
+)]
 fn hardened_settings(theme: &Theme) -> webkit6::Settings {
     let settings = webkit6::Settings::new();
     settings.set_enable_javascript(true);

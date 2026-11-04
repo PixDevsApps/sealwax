@@ -2,7 +2,10 @@
 //! connection per server answered by a script, implicit TLS or plaintext switched to TLS after
 //! STLS, and the usual greeting, CAPA and login. Synthetic data only.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;

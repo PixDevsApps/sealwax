@@ -39,7 +39,7 @@ fn fixtures_dir() -> PathBuf {
 
 fn theme_names() -> Vec<String> {
     let mut names: Vec<String> = std::fs::read_dir(fixtures_dir())
-        .unwrap()
+        .expect("the theme fixtures")
         .flatten()
         .filter(|entry| entry.path().is_dir())
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
@@ -49,7 +49,8 @@ fn theme_names() -> Vec<String> {
 }
 
 fn resolved(name: &str) -> BTreeMap<String, String> {
-    let text = std::fs::read_to_string(fixtures_dir().join(name).join("resolved.tsv")).unwrap();
+    let text = std::fs::read_to_string(fixtures_dir().join(name).join("resolved.tsv"))
+        .expect("the fixture's resolved.tsv");
     text.lines()
         .filter(|line| !line.starts_with('#'))
         .filter_map(|line| line.split_once('\t'))

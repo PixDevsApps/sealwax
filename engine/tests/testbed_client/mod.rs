@@ -3,7 +3,10 @@
 //! server read the cache is compared with. Every completion is checked. Test users and synthetic
 //! messages only.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use super::snapshot::{Folder, Rng};
 use async_imap::imap_proto::{
@@ -393,7 +396,7 @@ pub fn message(message_id: &str, rng: &mut Rng) -> Vec<u8> {
     let words = 20 + rng.below(200);
     let mut body = String::new();
     for i in 0..words {
-        body.push_str(rng.pick(WORDS));
+        body.push_str(rng.pick::<&str>(WORDS));
         body.push_str(if i % 12 == 11 { "\r\n" } else { " " });
     }
     let reply = if rng.chance(25) {

@@ -297,7 +297,10 @@ mod tests {
     use super::*;
 
     #[test]
-    #[allow(clippy::single_range_in_vec_init)]
+    #[allow(
+        clippy::single_range_in_vec_init,
+        reason = "a one-range set is the case under test"
+    )]
     fn the_view_follows_exists_expunge_and_vanished() {
         let mut view = View {
             exists: 10,

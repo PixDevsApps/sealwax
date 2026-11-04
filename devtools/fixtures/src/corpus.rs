@@ -441,9 +441,9 @@ fn cjk_sentence(rng: &mut Rng, phrases: &[&str], topics: &[&str], comma: &str, o
             out.push_str(comma);
         }
         if rng.chance(0.2) {
-            out.push_str(rng.pick(topics));
+            out.push_str(rng.pick::<&str>(topics));
         }
-        out.push_str(rng.pick(phrases));
+        out.push_str(rng.pick::<&str>(phrases));
     }
     out.push('。');
 }
@@ -851,7 +851,7 @@ impl Builder<'_> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments, reason = "one fixture message's fields")]
     fn push(
         &mut self,
         kind: Kind,

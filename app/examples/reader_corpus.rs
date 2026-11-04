@@ -30,13 +30,13 @@
 //! judged.
 
 #[path = "hostile_support/canary.rs"]
-#[allow(dead_code)]
+#[allow(dead_code, reason = "shared with other examples, each using a part")]
 mod canary;
-#[path = "../../spikes/s2-webkit/src/corpus.rs"]
-#[allow(dead_code)]
+#[path = "reader_support/corpus.rs"]
+#[allow(dead_code, reason = "shared with other examples, each using a part")]
 mod corpus;
-#[path = "../../spikes/s2-webkit/src/png.rs"]
-#[allow(dead_code)]
+#[path = "reader_support/png.rs"]
+#[allow(dead_code, reason = "shared with other examples, each using a part")]
 mod png;
 #[path = "reader_support/mod.rs"]
 mod support;
@@ -512,7 +512,10 @@ fn main() -> glib::ExitCode {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one check's inputs, spelled out for the test"
+)]
 async fn run(
     theme: &Rc<ThemeController>,
     reader: &Reader,

@@ -8,7 +8,7 @@ use std::process::ExitCode;
 pub const FIXTURE_DATE: i64 = 1_791_115_200;
 
 pub fn dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/outgoing")
 }
 
 pub fn sender() -> Mailbox {

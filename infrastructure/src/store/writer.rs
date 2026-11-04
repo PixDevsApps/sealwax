@@ -784,7 +784,10 @@ impl Writer {
         Ok(())
     }
 
-    #[allow(clippy::type_complexity)]
+    #[allow(
+        clippy::type_complexity,
+        reason = "one batch's rows and their parts, read once"
+    )]
     fn insert_batch(
         &mut self,
         batch: &[NewMessage],

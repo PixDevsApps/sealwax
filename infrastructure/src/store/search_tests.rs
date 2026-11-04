@@ -783,6 +783,7 @@ fn civil(seconds: i64) -> (i32, u8, u8) {
     // SAFETY: as in `local_midnight`: plain C structs, and `localtime_r` writes only `tm`.
     let mut tm: libc::tm = unsafe { std::mem::zeroed() };
     let time: libc::time_t = seconds;
+    // SAFETY: both pointers are to live locals; `localtime_r` writes only `tm`.
     unsafe { libc::localtime_r(&time, &mut tm) };
     (tm.tm_year + 1900, (tm.tm_mon + 1) as u8, tm.tm_mday as u8)
 }

@@ -37,6 +37,16 @@ trap cleanup EXIT
 
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
+# The MSRV, Cargo.toml's rust-version, checks every target in a target folder of its own.
+msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+if ! rustup run "$msrv" rustc --version >/dev/null 2>&1; then
+    echo "MSRV check: install the toolchain with rustup toolchain install $msrv" >&2
+    exit 1
+fi
+CARGO_TARGET_DIR=target/msrv cargo "+$msrv" check --workspace --all-targets
+RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
+# Licences, bans and sources (deny.toml); advisories are tools/advisories.py's.
+cargo deny --offline check bans licenses sources
 cargo test --workspace
 cargo build --workspace
 python3 tools/test_licenses.py
@@ -119,7 +129,7 @@ if $testbed; then
     # The suites share test users, so they run one file and one test at a time. The soak
     # (ML-049) and the tests that need a Secret Service or the network are ignored for other
     # reasons and stay out.
-    mapfile -t suites < <(grep -l 'ignore = "needs the testbed' -- */tests/*.rs spikes/*/tests/*.rs | sort -u)
+    mapfile -t suites < <(grep -l 'ignore = "needs the testbed' -- */tests/*.rs | sort -u)
     for file in "${suites[@]}"; do
         crate=${file%%/tests/*}
         package=$(sed -n 's/^name = "\(.*\)"$/\1/p' "$crate/Cargo.toml" | head -n 1)

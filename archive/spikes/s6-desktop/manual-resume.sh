@@ -4,11 +4,11 @@
 # background mode with an IDLE connection to the testbed's Stalwart, and prints logind's
 # PrepareForSleep signals, network changes and the time from resume until INBOX is synced and
 # idling again (bar: 10 s). You suspend and wake the machine yourself; Ctrl+C ends the check.
-# Usage: bash spikes/s6-desktop/manual-resume.sh
+# Usage: bash archive/spikes/s6-desktop/manual-resume.sh
 set -euo pipefail
-root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
 export CARGO_TARGET_DIR="$root/target/s6"
-cargo build --release -p email-spike-s6 --manifest-path "$root/Cargo.toml"
+cargo build --release -p email-spike-s6 --manifest-path "$root/archive/spikes/Cargo.toml"
 [[ -f $root/target/s6/data/s6-inbox.sqlite ]] || "$root/target/s6/release/s6-bench" build-store
 started_testbed=false
 if ! (exec 3<>/dev/tcp/127.0.0.1/16993) 2>/dev/null; then

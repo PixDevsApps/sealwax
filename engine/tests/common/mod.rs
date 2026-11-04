@@ -1,7 +1,10 @@
 //! The Docker testbed (tools/testbed): endpoints, the test users and the testbed CA. Test data
 //! only; every port is on 127.0.0.1.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use sealwax_domain::account::{AccountKey, AccountSettings, AuthMethod, Endpoint, Security};
 use sealwax_domain::model::AccountId;

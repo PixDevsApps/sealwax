@@ -16,8 +16,8 @@
 //! target/release/examples/composer_live --live                          # authorized live run
 //! ```
 
-#[path = "../../spikes/s7-composer/src/probe.rs"]
-#[allow(dead_code)]
+#[path = "composer_support/probe.rs"]
+#[allow(dead_code, reason = "shared with other examples, each using a part")]
 mod probe;
 #[path = "reader_support/mod.rs"]
 mod support;

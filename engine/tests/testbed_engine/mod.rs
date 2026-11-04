@@ -2,7 +2,10 @@
 //! scratch store and blob store under `target/`, secrets in memory, only the testbed CA trusted.
 //! Test users only; every address is at `example.test`.
 
-#![allow(dead_code)]
+#![allow(
+    dead_code,
+    reason = "shared by several test binaries, each using a part"
+)]
 
 use crate::common::{self, PASSWORD};
 use crate::snapshot::{self, Folder};
