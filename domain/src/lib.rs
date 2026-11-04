@@ -5,6 +5,7 @@
 
 pub mod account;
 pub mod accounts_file;
+pub mod address;
 pub mod appearance;
 pub mod attachment;
 pub mod autoconfig;

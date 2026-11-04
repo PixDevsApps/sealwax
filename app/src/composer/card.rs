@@ -1315,7 +1315,7 @@ impl Inner {
         let index = senders
             .iter()
             .position(|sender| {
-                own(sender) && sender.address.email.eq_ignore_ascii_case(&draft.from.email)
+                own(sender) && sealwax_domain::address::same(&sender.address.email, &draft.from.email)
             })
             .or_else(|| senders.iter().position(own))
             .unwrap_or(0);
@@ -2191,13 +2191,13 @@ pub(crate) fn link_target(text: &str) -> Option<String> {
         return (text.len() > lower.find("://")? + 3).then(|| text.to_owned());
     }
     if let Some(address) = lower.strip_prefix("mailto:") {
-        return super::recipients::valid_address(address.split('?').next()?)
+        return sealwax_domain::address::is_sendable(address.split('?').next()?)
             .then(|| text.to_owned());
     }
     if lower.contains(':') {
         return None;
     }
-    if super::recipients::valid_address(text) {
+    if sealwax_domain::address::is_sendable(text) {
         return Some(format!("mailto:{text}"));
     }
     let host = text.split('/').next()?;

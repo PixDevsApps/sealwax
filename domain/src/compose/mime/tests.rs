@@ -263,7 +263,12 @@ fn mailboxes(value: Option<&mail_parser::Address<'_>>) -> Vec<(String, String)> 
 
 fn expected(list: &[Address]) -> Vec<(String, String)> {
     list.iter()
-        .map(|a| (header_text(&a.name), address::ascii(&a.email).unwrap()))
+        .map(|a| {
+            (
+                header_text(&a.name),
+                crate::address::wire(&a.email).unwrap(),
+            )
+        })
         .collect()
 }
 

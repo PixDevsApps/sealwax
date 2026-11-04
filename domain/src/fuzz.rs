@@ -457,7 +457,7 @@ pub fn mailto(data: &[u8]) {
         link.fill(&mut draft);
         assert!(!draft.subject.chars().any(char::is_control));
         for recipient in draft.to.iter().chain(&draft.cc).chain(&draft.bcc) {
-            assert!(address::is_valid(&recipient.email));
+            assert!(crate::address::is_sendable(&recipient.email));
         }
         let _ = format!("{link:?}");
     }
@@ -470,7 +470,7 @@ pub fn mailto(data: &[u8]) {
             Some(&parsed.email),
             "a formatted address reads back as another"
         );
-        let _ = address::ascii(&parsed.email);
+        let _ = crate::address::wire(&parsed.email);
     }
     let _ = address::format_list(&list.addresses);
     let _ = address::dedupe(

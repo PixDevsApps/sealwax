@@ -122,7 +122,7 @@ pub(super) fn reply_target(messages: &[ConversationMessage], mine: &[String]) ->
 
 fn is_mine(summary: &MessageSummary, mine: &[String]) -> bool {
     mine.iter()
-        .any(|address| address.eq_ignore_ascii_case(summary.sender_email.trim()))
+        .any(|address| sealwax_domain::address::same(address, &summary.sender_email))
 }
 
 /// "Reply to Tomas Berg" (the sender's name, else the address); just "Reply" for the user's own

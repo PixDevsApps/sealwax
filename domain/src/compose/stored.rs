@@ -5,7 +5,7 @@
 use super::clean;
 use super::ids;
 use super::text;
-use super::{Draft, DraftPart, address};
+use super::{Draft, DraftPart};
 use crate::attachment::safe_file_name;
 use crate::flowed::{self, Flowed};
 use crate::message;
@@ -119,7 +119,7 @@ pub fn parse(raw: &[u8]) -> Option<StoredDraft> {
                     .iter()
                     .filter_map(|addr| {
                         let email = addr.address()?.trim().to_owned();
-                        address::is_valid(&email).then(|| {
+                        crate::address::is_sendable(&email).then(|| {
                             Address::new(text::header_text(addr.name().unwrap_or_default()), email)
                         })
                     })

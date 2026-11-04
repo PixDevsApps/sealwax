@@ -13,7 +13,6 @@
 //! X-Mailer field (accepted at the M6 gate). Everything is 7-bit with CRLF line ends. Part bytes come from
 //! the caller (the blob store); nothing here does I/O.
 
-use super::address;
 use super::ids;
 use super::text::header_text;
 use super::{Draft, DraftPart};
@@ -126,7 +125,8 @@ pub fn drafts_copy(draft: &Draft, date: i64, parts: &[&[u8]]) -> Result<Vec<u8>,
 
 /// MAIL FROM and RCPT TO for `draft`: To, Cc and Bcc, each mailbox once.
 pub fn envelope(draft: &Draft) -> Result<Envelope, BuildError> {
-    let mail_from = address::ascii(&draft.from.email).ok_or(BuildError::Address(Field::From))?;
+    let mail_from =
+        crate::address::wire(&draft.from.email).ok_or(BuildError::Address(Field::From))?;
     let mut recipients: Vec<String> = Vec::new();
     for (field, list) in [
         (Field::To, &draft.to),
@@ -134,8 +134,11 @@ pub fn envelope(draft: &Draft) -> Result<Envelope, BuildError> {
         (Field::Bcc, &draft.bcc),
     ] {
         for recipient in list {
-            let ascii = address::ascii(&recipient.email).ok_or(BuildError::Address(field))?;
-            if !recipients.iter().any(|known| address::same(known, &ascii)) {
+            let ascii = crate::address::wire(&recipient.email).ok_or(BuildError::Address(field))?;
+            if !recipients
+                .iter()
+                .any(|known| crate::address::same(known, &ascii))
+            {
                 recipients.push(ascii);
             }
         }
@@ -391,7 +394,7 @@ fn rfc2047_parameter(value: &str) -> String {
 }
 
 fn mailbox(address: &Address, field: Field) -> Result<Mailbox<'static>, BuildError> {
-    let email = address::ascii(&address.email).ok_or(BuildError::Address(field))?;
+    let email = crate::address::wire(&address.email).ok_or(BuildError::Address(field))?;
     let name = header_text(&address.name);
     Ok(Mailbox::new_address(
         (!name.is_empty()).then_some(name),

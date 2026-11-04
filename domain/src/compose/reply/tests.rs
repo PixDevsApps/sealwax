@@ -448,7 +448,7 @@ proptest! {
         for address in &all {
             prop_assert!(!identity::is_own(&senders(), &address.email));
         }
-        let keys: Vec<String> = all.iter().map(|a| address::key(&a.email)).collect();
+        let keys: Vec<_> = all.iter().map(|a| crate::address::AddressKey::of(&a.email)).collect();
         let mut unique = keys.clone();
         unique.sort();
         unique.dedup();

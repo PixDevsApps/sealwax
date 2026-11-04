@@ -1,11 +1,10 @@
 //! Addresses as the recipient chips take them: what a user types or pastes ("Ada Lovelace
 //! <ada@example.test>, bob@example.test; \"Last, First\" <x@example.org>") split into
 //! addresses and the parts that aren't addresses, and an address formatted for a chip and for
-//! text. Local parts must be ASCII: 1.0 sends without SMTPUTF8 (ADR-007). Domains may be
-//! international; they go on the wire in ASCII.
+//! text. Which addresses can be sent to, and when two are the same, is [`crate::address`].
 
-use super::ids;
 use super::text::header_text;
+use crate::address::AddressKey;
 use crate::model::Address;
 use std::fmt;
 
@@ -32,57 +31,13 @@ const SPECIALS: &[char] = &[
     '(', ')', '<', '>', '[', ']', ':', ';', '@', '\\', ',', '.', '"',
 ];
 
-/// Whether `email` is an address Sealwax can send to: an ASCII local part of at most 64 bytes
-/// without spaces or specials, and a domain that is a host name (international names allowed).
-pub fn is_valid(email: &str) -> bool {
-    let Some((local, domain)) = email.rsplit_once('@') else {
-        return false;
-    };
-    !local.is_empty()
-        && local.len() <= 64
-        && email.len() <= 254
-        && !local.starts_with('.')
-        && !local.ends_with('.')
-        && !local.contains("..")
-        && local
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || b"!#$%&'*+-/=?^_`{|}~.".contains(&byte))
-        && !domain.starts_with('[')
-        && ids::ascii_domain(email).is_some()
-}
-
-/// The address as it goes on the wire: the local part as written, the domain in ASCII and lower
-/// case; `None` when it isn't [`is_valid`].
-pub fn ascii(email: &str) -> Option<String> {
-    let email = email.trim();
-    if !is_valid(email) {
-        return None;
-    }
-    let (local, _) = email.rsplit_once('@')?;
-    Some(format!("{local}@{}", ids::ascii_domain(email)?))
-}
-
-/// The form two addresses are compared in: case-insensitive, domains in ASCII.
-pub fn key(email: &str) -> String {
-    let email = email.trim();
-    match (email.rsplit_once('@'), ids::ascii_domain(email)) {
-        (Some((local, _)), Some(domain)) => format!("{}@{domain}", local.to_lowercase()),
-        _ => email.to_lowercase(),
-    }
-}
-
-/// Whether two addresses are the same mailbox (case-insensitive, IDN-aware).
-pub fn same(a: &str, b: &str) -> bool {
-    key(a) == key(b)
-}
-
 /// `list` with each mailbox once, first occurrence first; a name from a later occurrence fills
 /// an empty one.
 pub fn dedupe(list: impl IntoIterator<Item = Address>) -> Vec<Address> {
     let mut out: Vec<Address> = Vec::new();
-    let mut keys: Vec<String> = Vec::new();
+    let mut keys: Vec<AddressKey> = Vec::new();
     for address in list {
-        let address_key = key(&address.email);
+        let address_key = AddressKey::of(&address.email);
         match keys.iter().position(|known| *known == address_key) {
             Some(index) => {
                 if out[index].name.is_empty() && !address.name.is_empty() {
@@ -238,7 +193,7 @@ fn bare(text: &str) -> Option<String> {
         Some(scheme) if scheme.eq_ignore_ascii_case("mailto:") => &text[7..],
         _ => text,
     };
-    is_valid(text).then(|| text.to_owned())
+    crate::address::is_sendable(text).then(|| text.to_owned())
 }
 
 fn display_name(text: &str) -> String {
@@ -332,40 +287,10 @@ mod tests {
             emails(&list),
             [("Bob", "bob@Example.test"), ("Ola", "ola@blåbær.example")]
         );
-        assert!(same("A@Blåbær.Example", "a@xn--blbr-roah.example"));
-    }
-
-    #[test]
-    fn validity() {
-        for good in [
-            "a@example.test",
-            "a.b+c@example.org",
-            "x@blåbær.example",
-            "o'neil@example.com",
-            "a@localhost",
-        ] {
-            assert!(is_valid(good), "{good}");
-        }
-        for bad in [
-            "",
-            "a",
-            "@example.org",
-            "a@",
-            "a b@example.org",
-            "æ@example.org",
-            ".a@example.org",
-            "a..b@example.org",
-            "a@[127.0.0.1]",
-            "a@exa mple.org",
-            "a<b@example.org",
-        ] {
-            assert!(!is_valid(bad), "{bad}");
-        }
-        assert_eq!(
-            ascii("Ola@Blåbær.Example").as_deref(),
-            Some("Ola@xn--blbr-roah.example")
-        );
-        assert_eq!(ascii("æ@example.org"), None);
+        assert!(crate::address::same(
+            "A@Blåbær.Example",
+            "a@xn--blbr-roah.example"
+        ));
     }
 
     #[test]
@@ -399,7 +324,7 @@ mod tests {
             "(test|org|example)",
         )
             .prop_map(|(local, host, tld)| format!("{local}@{host}.{tld}"))
-            .prop_filter("valid", |email| is_valid(email))
+            .prop_filter("valid", |email| crate::address::is_sendable(email))
     }
 
     proptest! {
@@ -415,7 +340,7 @@ mod tests {
         fn never_panics(text in "\\PC{0,80}") {
             let list = parse_list(&text);
             for address in list.addresses {
-                prop_assert!(is_valid(&address.email));
+                prop_assert!(crate::address::is_sendable(&address.email));
             }
         }
     }

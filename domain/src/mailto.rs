@@ -48,7 +48,7 @@ impl Mailto {
         let add = |list: &mut Vec<Address>, emails: &[String]| {
             let added = emails
                 .iter()
-                .filter(|email| address::is_valid(email))
+                .filter(|email| crate::address::is_sendable(email))
                 .map(|email| Address::new("", email.clone()));
             *list = address::dedupe(list.drain(..).chain(added));
         };

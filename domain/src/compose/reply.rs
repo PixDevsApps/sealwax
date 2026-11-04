@@ -332,7 +332,7 @@ pub fn recipients(
 ) -> (Vec<Address>, Vec<Address>) {
     let valid = |list: &[Address]| -> Vec<Address> {
         list.iter()
-            .filter(|address| address::is_valid(&address.email))
+            .filter(|address| crate::address::is_sendable(&address.email))
             .cloned()
             .collect()
     };
@@ -362,7 +362,7 @@ pub fn recipients(
                     !own(address)
                         && !to
                             .iter()
-                            .any(|known| address::same(&known.email, &address.email))
+                            .any(|known| crate::address::same(&known.email, &address.email))
                 })
                 .collect();
             if to.is_empty() && cc.is_empty() {

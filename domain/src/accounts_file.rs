@@ -9,6 +9,7 @@ use crate::account::{
     AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, Endpoint, Identity,
     OAuthProvider, Pop3Policy, Protocol, Receive, Security, is_loopback,
 };
+use crate::address::{looks_like_address, same};
 use crate::settings_file::{FileError, article, did_you_mean, entries, parse_toml};
 use std::net::Ipv6Addr;
 use std::ops::Range;
@@ -79,20 +80,6 @@ fn secret_message(name: &str) -> String {
     )
 }
 
-/// Whether `address` looks like an email address: one `@` with text on both sides, no spaces.
-pub fn is_valid_address(address: &str) -> bool {
-    match address.rsplit_once('@') {
-        Some((local, domain)) => {
-            !local.is_empty()
-                && !domain.is_empty()
-                && address.len() <= 254
-                && !domain.contains('@')
-                && !address.chars().any(|c| c.is_whitespace() || c.is_control())
-        }
-        None => false,
-    }
-}
-
 /// Why `host` can't be a server name, or nothing.
 fn host_fault(host: &str) -> Option<&'static str> {
     if host.is_empty() {
@@ -158,7 +145,7 @@ pub fn check(account: &AccountSettings) -> Result<(), String> {
     {
         return Err("the label is empty or has control characters".to_owned());
     }
-    if !is_valid_address(&account.address) {
+    if !looks_like_address(&account.address) {
         return Err("the address is not an email address".to_owned());
     }
     if !is_plain_text(&account.username) {
@@ -361,7 +348,7 @@ impl Reader<'_> {
                 }
                 "address" => {
                     if let Some(text) = self.string("address", value) {
-                        if is_valid_address(&text) {
+                        if looks_like_address(&text) {
                             address = Some((text, span));
                         } else {
                             self.error(
@@ -471,7 +458,7 @@ impl Reader<'_> {
                 }
                 "address" => {
                     if let Some(text) = self.string("address", value) {
-                        if is_valid_address(&text) {
+                        if looks_like_address(&text) {
                             address = Some((text, span));
                         } else {
                             self.error(span, "address is an email address, like ada@example.test");
@@ -843,7 +830,7 @@ impl Reader<'_> {
                 let elsewhere = earlier.iter().find_map(|account| {
                     account
                         .addresses()
-                        .position(|(known, _)| known.eq_ignore_ascii_case(address))
+                        .position(|(known, _)| same(known, address))
                         .map(|position| (account.line, position == 0))
                 });
                 if let Some((line, its_own)) = elsewhere {
@@ -856,7 +843,7 @@ impl Reader<'_> {
                         span.clone(),
                         format!("this address is also {what} of the account on line {line}"),
                     );
-                } else if own.iter().any(|known| known.eq_ignore_ascii_case(address)) {
+                } else if own.iter().any(|known| same(known, address)) {
                     self.error(
                         span.clone(),
                         "this address is already one of this account's; every identity needs \
@@ -1021,7 +1008,7 @@ pub fn add(text: &str, account: &AccountSettings) -> Result<String, EditError> {
     }
     if before
         .iter()
-        .any(|known| known.address.eq_ignore_ascii_case(&account.address))
+        .any(|known| same(&known.address, &account.address))
     {
         return Err(EditError::AddressExists);
     }

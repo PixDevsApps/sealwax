@@ -101,7 +101,7 @@ pub(super) fn recipients_line(to: &[Address], cc: &[Address], mine: &[String]) -
         let known = !email.is_empty()
             && recipients
                 .iter()
-                .any(|seen| seen.email.trim().eq_ignore_ascii_case(email));
+                .any(|seen| sealwax_domain::address::same(&seen.email, email));
         if !known {
             recipients.push(address);
         }
@@ -129,13 +129,13 @@ pub(super) fn recipients_line(to: &[Address], cc: &[Address], mine: &[String]) -
     }
 }
 
-/// Whether `email` is one of the user's own addresses (case doesn't matter).
+/// Whether `email` is one of the user's own addresses (`sealwax_domain::address::same`).
 pub(super) fn is_mine(email: &str, mine: &[String]) -> bool {
     let email = email.trim();
     !email.is_empty()
         && mine
             .iter()
-            .any(|own| own.trim().eq_ignore_ascii_case(email))
+            .any(|own| sealwax_domain::address::same(own, email))
 }
 
 /// A list of addresses as the details show it: `Leah Kim <leah@example.test>, …`.

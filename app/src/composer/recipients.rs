@@ -11,6 +11,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::{gdk, glib};
 use libadwaita as adw;
+use sealwax_domain::address::AddressKey;
 use sealwax_domain::compose::address;
 use sealwax_domain::model::Address;
 use sealwax_ui_model::theme::{avatar_class, initials};
@@ -73,7 +74,7 @@ pub(crate) fn split(text: &str) -> (Vec<String>, String) {
 fn parse_item(item: &str) -> Vec<Parsed> {
     let list = address::parse_list(item);
     let valid = list.addresses.into_iter().map(|address| {
-        let ok = address::is_valid(&address.email);
+        let ok = sealwax_domain::address::is_sendable(&address.email);
         (address, ok)
     });
     let invalid = list
@@ -81,11 +82,6 @@ fn parse_item(item: &str) -> Vec<Parsed> {
         .into_iter()
         .map(|rest| (Address::new("", rest.trim()), false));
     valid.chain(invalid).collect()
-}
-
-/// An address Sealwax can send to (`compose::address::is_valid`).
-pub(crate) fn valid_address(email: &str) -> bool {
-    address::is_valid(email)
 }
 
 type Query = Rc<dyn Fn(String) -> Local<Vec<Suggestion>>>;
@@ -273,7 +269,7 @@ impl RecipientField {
             self.wrap.remove(&chip.widget);
         }
         for address in addresses {
-            let valid = valid_address(&address.email);
+            let valid = sealwax_domain::address::is_sendable(&address.email);
             self.add_chip(address.clone(), valid);
         }
     }
@@ -571,15 +567,15 @@ impl RecipientField {
             if field.serial.get() != serial || !field.focused() {
                 return;
             }
-            let taken: Vec<String> = field
+            let taken: Vec<AddressKey> = field
                 .chips
                 .borrow()
                 .iter()
-                .map(|chip| chip.address.email.to_lowercase())
+                .map(|chip| AddressKey::of(&chip.address.email))
                 .collect();
             let found: Vec<Suggestion> = found
                 .into_iter()
-                .filter(|suggestion| !taken.contains(&suggestion.address.email.to_lowercase()))
+                .filter(|suggestion| !taken.contains(&AddressKey::of(&suggestion.address.email)))
                 .take(MAX_SUGGESTIONS)
                 .collect();
             field.show_suggestions(&query, found);
@@ -799,14 +795,14 @@ mod tests {
     #[test]
     fn invalid_addresses_are_kept_and_marked() {
         for bad in ["bob", "bob@", "@example.com", "a b@example.com", "x@-a.com"] {
-            assert!(!valid_address(bad), "{bad}");
+            assert!(!sealwax_domain::address::is_sendable(bad), "{bad}");
         }
         for good in [
             "bob@example.com",
             "o.ly+tag@sub.example.test",
             "ola@blåbær.example",
         ] {
-            assert!(valid_address(good), "{good}");
+            assert!(sealwax_domain::address::is_sendable(good), "{good}");
         }
         assert_eq!(
             parse_list("not an address"),

@@ -37,8 +37,8 @@ use crate::imap::write::{self, Append, Mark, OpFolder, WriteError, WriteFailure}
 use crate::secrets::{SecretKind, SecretStore};
 use crate::smtp::submit::{self, Envelope, SubmitError, SubmitFailure, Submitter};
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
+use sealwax_domain::compose::Draft;
 use sealwax_domain::compose::mime::{self, BuildError, Field};
-use sealwax_domain::compose::{Draft, address};
 use sealwax_domain::model::{AccountId, DraftId, Flags, FolderRole};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::store::{
@@ -188,7 +188,7 @@ fn build_failure(draft: &Draft, error: BuildError) -> (SendFailure, SendError) {
             SendFailure::RecipientsRefused,
             SendError::RecipientsRefused(
                 list.iter()
-                    .filter(|recipient| address::ascii(&recipient.email).is_none())
+                    .filter(|recipient| sealwax_domain::address::wire(&recipient.email).is_none())
                     .map(|recipient| recipient.email.clone())
                     .collect(),
             ),

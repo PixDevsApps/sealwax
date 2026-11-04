@@ -1748,6 +1748,17 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 **Consequences:** a self-test needs `cargo build -p sealwax-uitest` (or a workspace build) first; `cargo build` alone builds only the app. A `--workspace` build's `target/debug/sealwax` carries `test-hooks`, so `ci.sh` builds the app alone again before its smoke run. New test-only accessors go behind `test-hooks`, or `cargo clippy -p sealwax` fails on them as dead code.
 
+## ADR-026 — Domain value types: one rule in one place (2026-11-04)
+
+**Status:** Accepted — the owner's word, 2026-11-04 ("Start phase 3"), the architecture review's phase 3; built on its own branch.
+
+**Decision:**
+- **Addresses** (`domain::address`): `EmailAddress` (an address Sealwax can send to, checked once: an ASCII local part, ADR-007, and a host name; its wire form with the domain in ASCII), `AddressKey` (two addresses are the same mailbox: case-insensitive, the domain in ASCII), and `looks_like_address` (what `accounts.toml` accepts). The composer, the MIME builder, `mailto:`, reply-all, identities, the setup assistant, the outbox and the account checks all ask these; the hand-written `eq_ignore_ascii_case` comparisons of addresses are gone (except the rules', which compare as their Sieve scripts match, with `i;ascii-casemap`), so a `Kari@Blåbær.example` and a `kari@xn--blbr-roah.example` are one person wherever Sealwax compares them. The store's saved keys (pins, groups, `sender:`, remote-content senders) keep their own fold, as saved (a change there is a schema change, decision 6 of the review). The two validation levels stay as they were: making `accounts.toml` refuse an account whose address can't be sent from would change which accounts load, which is the owner's call.
+
+**Reason:** the review found two validation rules and four equality rules for addresses.
+
+**Consequences:** new address comparisons use `address::same` or `AddressKey`.
+
 ## ADR-027 — A Flatpak from Sealwax's own repository (2026-11-11)
 
 **Status:** Accepted — the owner, 2026-11-06 (the Flatpak's decisions D1–D8) and 2026-11-11: "Own Flatpak repo", hosted on "New repo + GitHub Pages", signed with a "New dedicated key", first in 1.3.0. (ADR-026 is taken by the domain types on their own branch.)

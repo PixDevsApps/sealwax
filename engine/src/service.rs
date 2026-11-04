@@ -182,7 +182,7 @@ impl Kept {
     fn fits(&self, address: &str) -> bool {
         [&self.address, &self.username]
             .iter()
-            .any(|own| own.trim().eq_ignore_ascii_case(address.trim()))
+            .any(|own| sealwax_domain::address::same(own, address))
     }
 }
 

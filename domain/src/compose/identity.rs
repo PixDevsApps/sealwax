@@ -2,7 +2,6 @@
 //! plain text in 1.0 (accepted at the M6 gate): the composer shows them below the body after a `-- ` line,
 //! inside a `div` of class [`SIGNATURE_CLASS`] so it can swap them when the sender changes.
 
-use super::address;
 use super::clean::SIGNATURE_CLASS;
 use super::text;
 use crate::account::{AccountSettings, Identity};
@@ -21,7 +20,7 @@ pub fn senders(account: &AccountSettings) -> Vec<Identity> {
     for identity in &account.identities {
         if !out
             .iter()
-            .any(|known| address::same(&known.address, &identity.address))
+            .any(|known| crate::address::same(&known.address, &identity.address))
         {
             out.push(identity.clone());
         }
@@ -33,7 +32,7 @@ pub fn senders(account: &AccountSettings) -> Vec<Identity> {
 pub fn is_own(senders: &[Identity], email: &str) -> bool {
     senders
         .iter()
-        .any(|sender| address::same(&sender.address, email))
+        .any(|sender| crate::address::same(&sender.address, email))
 }
 
 /// The identity a reply to a message with `headers` goes out from: the one that sent it when
@@ -44,7 +43,7 @@ pub fn reply_sender<'s>(senders: &'s [Identity], headers: &Headers) -> Option<&'
         list.iter().find_map(|recipient| {
             senders
                 .iter()
-                .find(|sender| address::same(&sender.address, &recipient.email))
+                .find(|sender| crate::address::same(&sender.address, &recipient.email))
         })
     };
     find(&headers.from)

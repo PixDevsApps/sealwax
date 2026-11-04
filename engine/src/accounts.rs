@@ -105,7 +105,7 @@ impl<S: SecretStore> Accounts<'_, S> {
         let listed = self.listed().await.map_err(file_error)?;
         if listed
             .iter()
-            .any(|known| known.address.eq_ignore_ascii_case(&settings.address))
+            .any(|known| sealwax_domain::address::same(&known.address, &settings.address))
         {
             return Err(AccountError::Exists);
         }
