@@ -17,6 +17,7 @@ pub mod recipients;
 pub mod store_backend;
 
 use crate::application::SealwaxApplication;
+use crate::test_hooks::{self, Log};
 use backend::{Backend, StandIn};
 pub use card::{Composer, Ending};
 use gtk4 as gtk;
@@ -77,7 +78,7 @@ impl fmt::Debug for ComposeRequest {
 pub const SAVE_ON_QUIT: Duration = Duration::from_secs(3);
 
 thread_local! {
-    static REQUESTS: RefCell<Vec<ComposeRequest>> = const { RefCell::new(Vec::new()) };
+    static REQUESTS: Log<ComposeRequest> = const { Log::new() };
     static OPEN: RefCell<Vec<Composer>> = const { RefCell::new(Vec::new()) };
     static BACKEND: RefCell<Option<Rc<dyn Backend>>> = const { RefCell::new(None) };
     static STAND_IN: RefCell<Option<Rc<StandIn>>> = const { RefCell::new(None) };
@@ -94,7 +95,9 @@ pub fn open(app: &SealwaxApplication, request: ComposeRequest) {
 
 fn open_card(app: &SealwaxApplication, request: ComposeRequest, focus: bool) {
     tracing::info!(kind = ?request, "compose requested");
-    REQUESTS.with(|requests| requests.borrow_mut().push(request.clone()));
+    if test_hooks::recording() {
+        REQUESTS.with(|requests| requests.push(request.clone()));
+    }
     follow_keys(app);
     let state = app.state();
     let window = match state.window() {
@@ -113,9 +116,9 @@ fn open_card(app: &SealwaxApplication, request: ComposeRequest, focus: bool) {
     OPEN.with(|open| open.borrow_mut().push(composer));
 }
 
-/// Every request [`open`] was given in this process, oldest first; the self-tests read it.
+/// Every request [`open`] was given while a self-test records (`test_hooks`), oldest first.
 pub fn requests() -> Vec<ComposeRequest> {
-    REQUESTS.with(|requests| requests.borrow().clone())
+    REQUESTS.with(Log::entries)
 }
 
 /// The composers open now, oldest first.
@@ -144,13 +147,6 @@ pub fn set_backend(backend: Rc<dyn Backend>) {
 /// The phase A stand-in, when it is the backend in use.
 pub fn stand_in() -> Option<Rc<StandIn>> {
     STAND_IN.with(|stand_in| stand_in.borrow().clone())
-}
-
-/// The stand-in, made the backend now if no backend is set yet (self-tests set it up before
-/// the first composer opens).
-pub fn ensure_stand_in(app: &SealwaxApplication) -> Option<Rc<StandIn>> {
-    backend(app);
-    stand_in()
 }
 
 /// Makes phase A's in-memory stand-in the backend (self-tests that check its records).
@@ -209,17 +205,16 @@ pub fn reopen_drafts(app: &SealwaxApplication) {
     });
 }
 
-/// The backend in use, made the stand-in when none is set yet. The quick reply prepares, saves
-/// and queues its replies through it too (M6 phase B).
+/// The backend in use. The quick reply prepares, saves and queues its replies through it too
+/// (M6 phase B). Startup sets the store's ([`use_store`]); should anything ask first, it is
+/// made then, so a draft never goes anywhere but the store (only a self-test picks the
+/// in-memory stand-in, with [`use_stand_in`]).
 pub fn backend(app: &SealwaxApplication) -> Rc<dyn Backend> {
     if let Some(backend) = BACKEND.with(|current| current.borrow().clone()) {
         return backend;
     }
-    let stand_in = StandIn::new(&app.state());
-    STAND_IN.with(|current| current.replace(Some(stand_in.clone())));
-    let backend: Rc<dyn Backend> = stand_in;
-    BACKEND.with(|current| current.replace(Some(backend.clone())));
-    backend
+    tracing::warn!("composer: a backend was asked for before startup set one; using the store");
+    use_store(app)
 }
 
 /// Self-tests: the next Attach File… takes `paths` instead of asking the file chooser.

@@ -128,7 +128,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
         "assert-outbox-entries" => {
             equal("outbox entries", outbox::entries().len(), number(arg(0))?)
         }
-        "assert-stand-in" => stand_in(harness, args),
+        "assert-stand-in" => stand_in(args),
         "stand-in-mark" => {
             MARK.with(|mark| mark.set(Some(Instant::now())));
             Ok(())
@@ -408,9 +408,8 @@ async fn store_quick_draft(harness: &Harness, message: &str, text: &str) -> Step
     Ok(())
 }
 
-fn stand_in(harness: &Harness, args: &[String]) -> StepResult {
-    let stand_in =
-        composer::ensure_stand_in(&harness.app).ok_or("the backend isn't the stand-in")?;
+fn stand_in(args: &[String]) -> StepResult {
+    let stand_in = composer::stand_in().ok_or("the backend isn't the stand-in")?;
     let arg = |index: usize| args.get(index).map(String::as_str).unwrap_or_default();
     match arg(0) {
         "sent" => equal("sent", stand_in.sent().len(), number(arg(1))?),

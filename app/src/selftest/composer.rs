@@ -197,9 +197,8 @@ fn stand_in() -> Result<Rc<composer::backend::StandIn>, String> {
     composer::stand_in().ok_or_else(|| "the stand-in backend isn't in use".to_owned())
 }
 
-fn setup_stand_in(harness: &Harness) -> Result<Rc<composer::backend::StandIn>, String> {
-    composer::ensure_stand_in(&harness.app)
-        .ok_or_else(|| "the stand-in backend isn't in use".to_owned())
+fn setup_stand_in() -> Result<Rc<composer::backend::StandIn>, String> {
+    composer::stand_in().ok_or_else(|| "the stand-in backend isn't in use".to_owned())
 }
 
 pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResult {
@@ -489,7 +488,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
                 bytes => Some(number(bytes)? as u64),
             };
             if STAND_IN_ACTIVE.with(Cell::get) {
-                setup_stand_in(harness)?.set_limit(limit);
+                setup_stand_in()?.set_limit(limit);
             } else {
                 composer::store_backend()
                     .ok_or("the store backend isn't set")?
@@ -539,7 +538,7 @@ pub async fn step(harness: &Harness, command: &str, args: &[String]) -> StepResu
             Ok(())
         }
         "composer-identity" => {
-            setup_stand_in(harness)?.add_identity(arg(0), arg(1), arg(2));
+            setup_stand_in()?.add_identity(arg(0), arg(1), arg(2));
             Ok(())
         }
         "composer-from" => {

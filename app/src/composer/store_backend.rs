@@ -353,7 +353,7 @@ async fn ask<T: 'static>(
     limit: Duration,
 ) -> Option<T> {
     let (sender, receiver) = async_channel::bounded(1);
-    let _subscription = engine.subscribe(move |event| {
+    let _subscription = engine.subscribe_reply(move |event| {
         if let Some(value) = pick(event) {
             let _ = sender.try_send(value);
         }

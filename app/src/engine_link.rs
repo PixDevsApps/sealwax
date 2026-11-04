@@ -23,11 +23,18 @@ impl std::error::Error for NotConnected {}
 
 type Handler = Rc<dyn Fn(&Event)>;
 
+struct Subscriber {
+    id: u64,
+    handler: Handler,
+    /// Waits for one engine's answer: dropped when that engine can no longer give it.
+    reply: bool,
+}
+
 #[derive(Default)]
 struct Inner {
     commands: RefCell<Option<async_channel::Sender<Command>>>,
     listener: RefCell<Option<glib::JoinHandle<()>>>,
-    subscribers: RefCell<Vec<(u64, Handler)>>,
+    subscribers: RefCell<Vec<Subscriber>>,
     next_subscriber: Cell<u64>,
     last_request: Cell<RequestId>,
 }
@@ -62,16 +69,21 @@ impl EngineLink {
                 };
                 dispatch(&inner, &event);
             }
+            if let Some(inner) = weak.upgrade() {
+                drop_replies(&inner);
+            }
         });
         self.inner.listener.replace(Some(listener));
     }
 
-    /// Forgets the engine; later commands fail with [`NotConnected`].
+    /// Forgets the engine; later commands fail with [`NotConnected`], and the replies waited
+    /// for from it end ([`EngineLink::subscribe_reply`]).
     pub fn detach(&self) {
         self.inner.commands.take();
         if let Some(listener) = self.inner.listener.take() {
             listener.abort();
         }
+        drop_replies(&self.inner);
     }
 
     pub fn is_connected(&self) -> bool {
@@ -109,17 +121,43 @@ impl EngineLink {
 
     /// Calls `handler` with every event until the returned subscription is dropped.
     pub fn subscribe(&self, handler: impl Fn(&Event) + 'static) -> Subscription {
+        self.add(Rc::new(handler), false)
+    }
+
+    /// Like [`EngineLink::subscribe`], for the answer to one request: the handler is also
+    /// dropped when the link detaches or the engine's events end, since that engine can no
+    /// longer answer. A caller waiting on a channel whose sender the handler holds sees it close
+    /// instead of waiting forever.
+    pub fn subscribe_reply(&self, handler: impl Fn(&Event) + 'static) -> Subscription {
+        self.add(Rc::new(handler), true)
+    }
+
+    fn add(&self, handler: Handler, reply: bool) -> Subscription {
         let id = self.inner.next_subscriber.get();
         self.inner.next_subscriber.set(id + 1);
         self.inner
             .subscribers
             .borrow_mut()
-            .push((id, Rc::new(handler)));
+            .push(Subscriber { id, handler, reply });
         Subscription {
             link: Rc::downgrade(&self.inner),
             id,
         }
     }
+}
+
+/// Drops the reply subscribers' handlers, after the list is released: a handler may hold the
+/// [`Subscription`] that removes it.
+fn drop_replies(inner: &Inner) {
+    let dropped: Vec<Subscriber> = {
+        let mut subscribers = inner.subscribers.borrow_mut();
+        let (replies, kept) = std::mem::take(&mut *subscribers)
+            .into_iter()
+            .partition(|subscriber| subscriber.reply);
+        *subscribers = kept;
+        replies
+    };
+    drop(dropped);
 }
 
 /// Every subscriber sees the event; one that unsubscribes meanwhile still sees this one.
@@ -128,7 +166,7 @@ fn dispatch(inner: &Inner, event: &Event) {
         .subscribers
         .borrow()
         .iter()
-        .map(|(_, handler)| handler.clone())
+        .map(|subscriber| subscriber.handler.clone())
         .collect();
     for handler in handlers {
         handler(event);
@@ -147,7 +185,7 @@ impl Drop for Subscription {
             inner
                 .subscribers
                 .borrow_mut()
-                .retain(|(id, _)| *id != self.id);
+                .retain(|subscriber| subscriber.id != self.id);
         }
     }
 }
@@ -220,5 +258,59 @@ mod tests {
                 link.detach();
             })
             .unwrap();
+    }
+
+    /// A reply subscription whose sender sits in its handler, as the request sites hold one.
+    fn waiting(link: &EngineLink) -> (Subscription, async_channel::Receiver<()>) {
+        let (sender, answers) = async_channel::bounded(1);
+        let subscription = link.subscribe_reply(move |_| {
+            let _ = sender.try_send(());
+        });
+        (subscription, answers)
+    }
+
+    #[test]
+    fn a_waiting_reply_ends_when_the_link_detaches() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let link = EngineLink::new();
+                let (commands, _engine) = async_channel::unbounded();
+                let (_events, receiver) = async_channel::unbounded();
+                link.attach(commands, receiver);
+                let kept = link.subscribe(|_| {});
+                let (_subscription, answers) = waiting(&link);
+                link.detach();
+                assert!(answers.is_closed(), "the waiter would wait forever");
+                assert_eq!(link.inner.subscribers.borrow().len(), 1);
+                drop(kept);
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn a_waiting_reply_ends_when_the_engines_events_end() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let link = EngineLink::new();
+                let (commands, _engine) = async_channel::unbounded();
+                let (events, receiver) = async_channel::unbounded();
+                link.attach(commands, receiver);
+                let (_subscription, answers) = waiting(&link);
+                drop(events);
+                drain(&context);
+                assert!(answers.is_closed(), "the waiter would wait forever");
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn a_reply_subscription_dropped_after_detach_is_harmless() {
+        let link = EngineLink::new();
+        let (subscription, _answers) = waiting(&link);
+        link.detach();
+        drop(subscription);
+        assert!(link.inner.subscribers.borrow().is_empty());
     }
 }

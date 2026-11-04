@@ -20,6 +20,7 @@ use crate::composer::{self, ComposeRequest};
 use crate::list::{MessageList, Selected};
 use crate::outbox;
 use crate::reader::Reader;
+use crate::test_hooks::{self, Log};
 use crate::triage::Target;
 use crate::window::Window;
 use gtk4::glib;
@@ -210,13 +211,13 @@ pub fn compose_account(
 }
 
 thread_local! {
-    /// Every quick reply Send was asked for in this process, oldest first.
-    static QUICK_SENDS: RefCell<Vec<(MessageId, String)>> = const { RefCell::new(Vec::new()) };
+    /// Every quick reply Send was asked for while a self-test records, oldest first.
+    static QUICK_SENDS: Log<(MessageId, String)> = const { Log::new() };
 }
 
-/// Every quick reply Send was asked for in this process, oldest first; the self-tests read it.
+/// Every quick reply Send was asked for while a self-test records (`test_hooks`), oldest first.
 pub fn quick_sends() -> Vec<(MessageId, String)> {
-    QUICK_SENDS.with(|sends| sends.borrow().clone())
+    QUICK_SENDS.with(Log::entries)
 }
 
 /// The quick reply's Send (M6 phase B): the reply prepared by the compose rules
@@ -225,7 +226,9 @@ pub fn quick_sends() -> Vec<(MessageId, String)> {
 /// message's id is logged, never the text.
 async fn send_quick(app: &SealwaxApplication, message: MessageId, text: String) -> bool {
     tracing::info!(id = message.0, "quick reply send requested");
-    QUICK_SENDS.with(|sends| sends.borrow_mut().push((message, text.clone())));
+    if test_hooks::recording() {
+        QUICK_SENDS.with(|sends| sends.push((message, text.clone())));
+    }
     let backend = composer::backend(app);
     let refuse = |why: &str| {
         let toast = adw::Toast::builder()

@@ -15,6 +15,7 @@ use crate::default_handler;
 use crate::desktop::{self, DesktopEvent, DesktopWatch};
 use crate::engine::{self, EngineOptions};
 use crate::engine_link::{EngineLink, Subscription};
+use crate::latest_write::LatestWrite;
 use crate::list::{MessageList, Quick, Selected};
 use crate::mailbox::{self, Latch, Mailbox};
 use crate::menu;
@@ -230,6 +231,7 @@ impl SealwaxApplication {
             reader_listening: Cell::new(false),
             accounts_read: Cell::new(false),
             layout: RefCell::new(None),
+            layout_writes: Rc::default(),
             keyring_missing: Cell::new(false),
             keyring_dismissed: Cell::new(false),
             network: Cell::new(true),
@@ -314,6 +316,8 @@ pub struct AppState {
     accounts_read: Cell<bool>,
     /// The window's remembered layout (`layout.toml`), once read.
     layout: RefCell<Option<Layout>>,
+    /// `layout.toml`'s writes, one at a time, of the latest layout.
+    layout_writes: Rc<RefCell<LatestWrite<Layout>>>,
     /// The engine keeps secrets in memory: no Secret Service answered (ML-048).
     keyring_missing: Cell<bool>,
     /// The no-keyring banner was dismissed for this session.
@@ -2076,13 +2080,23 @@ impl AppState {
             .set_folded(layout.folded.clone().into_iter().collect());
         self.mailbox.set_view(layout.view.clone());
         self.layout.replace(Some(layout.clone()));
+        let Some(first) = self.layout_writes.borrow_mut().offer(layout) else {
+            return;
+        };
+        let writes = self.layout_writes.clone();
         let path = self.config.dirs.layout_file();
         glib::spawn_future_local(async move {
-            let written =
-                gio::spawn_blocking(move || sealwax_infrastructure::layout::write(&path, &layout))
-                    .await;
-            if let Ok(Err(error)) = written {
-                tracing::warn!(%error, "the window's layout can't be saved");
+            let mut next = Some(first);
+            while let Some(layout) = next {
+                let path = path.clone();
+                let written = gio::spawn_blocking(move || {
+                    sealwax_infrastructure::layout::write(&path, &layout)
+                })
+                .await;
+                if let Ok(Err(error)) = written {
+                    tracing::warn!(%error, "the window's layout can't be saved");
+                }
+                next = writes.borrow_mut().finished();
             }
         });
     }

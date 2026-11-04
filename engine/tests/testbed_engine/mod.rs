@@ -366,7 +366,6 @@ pub fn tally(events: &[Event]) -> BTreeMap<&'static str, usize> {
         let kind = match event {
             Event::AccountStatus { status, .. } => status_name(*status),
             Event::SyncProgress { .. } => "progress",
-            Event::FoldersSynced { .. } => "folders-synced",
             Event::OlderLoaded { .. } => "older-loaded",
             Event::BodyFetched { result: Ok(()), .. } => "body-ok",
             Event::BodyFetched { result: Err(_), .. } => "body-failed",

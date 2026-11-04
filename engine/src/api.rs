@@ -261,8 +261,6 @@ pub enum Event {
         request: RequestId,
         result: Result<(), AccountError>,
     },
-    /// The folder list of an account was read and stored.
-    FoldersSynced { account: AccountId, folders: u32 },
     /// Headers of `folder` arrived: `fetched` of `total` so far, newest first.
     SyncProgress {
         account: AccountId,

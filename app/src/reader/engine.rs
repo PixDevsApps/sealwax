@@ -11,6 +11,7 @@
 
 use super::view::MessageView;
 use crate::part_cache;
+use crate::test_hooks::Log;
 use gtk4::{gio, glib};
 use sealwax_domain::model::MessageId;
 use sealwax_domain::theme::WebViewFonts;
@@ -243,7 +244,8 @@ pub struct Engine {
     filter_done: async_channel::Receiver<()>,
     pages: Rc<RefCell<Pages>>,
     loader: Rc<RefCell<Option<PartLoader>>>,
-    cid_log: Rc<RefCell<Vec<CidRequest>>>,
+    /// The `cid:` requests, kept only while a test records (`test_hooks`).
+    cid_log: Rc<Log<CidRequest>>,
     downloads: Rc<RefCell<u32>>,
     /// The first view: every later view is built with it as `related-view`, so all of them
     /// share its web process. Kept for the life of the process.
@@ -282,7 +284,7 @@ impl Engine {
         ));
         let pages: Rc<RefCell<Pages>> = Rc::default();
         let loader: Rc<RefCell<Option<PartLoader>>> = Rc::default();
-        let cid_log: Rc<RefCell<Vec<CidRequest>>> = Rc::default();
+        let cid_log: Rc<Log<CidRequest>> = Rc::default();
         context.register_uri_scheme(
             "cid",
             glib::clone!(
@@ -376,9 +378,10 @@ impl Engine {
         self.loader.replace(loader);
     }
 
-    /// Every `cid:` request so far (page and whether it was served), for the hostile suite.
+    /// Every `cid:` request so far while a test records (page and whether it was served), for
+    /// the hostile suite.
     pub fn cid_requests(&self) -> Vec<CidRequest> {
-        self.cid_log.borrow().clone()
+        self.cid_log.entries()
     }
 
     /// Downloads refused so far.
@@ -475,22 +478,18 @@ fn serve_cid(
     request: &webkit6::URISchemeRequest,
     pages: &Rc<RefCell<Pages>>,
     loader: &Rc<RefCell<Option<PartLoader>>>,
-    log: &Rc<RefCell<Vec<CidRequest>>>,
+    log: &Rc<Log<CidRequest>>,
 ) {
     let uri = request.uri().map(String::from).unwrap_or_default();
     let content_id = percent_decode(uri.get(4..).unwrap_or_default());
     let page = request.web_view().map_or(0, |view| view.page_id());
     let found = pages.borrow().lookup(page, &content_id);
     let (epoch, source, message) = found.unwrap_or((0, None, None));
-    let entry = {
-        let mut log = log.borrow_mut();
-        log.push(CidRequest {
-            page,
-            found: source.is_some(),
-            outcome: CidOutcome::Pending,
-        });
-        log.len() - 1
-    };
+    let entry = log.push(CidRequest {
+        page,
+        found: source.is_some(),
+        outcome: CidOutcome::Pending,
+    });
     let loader = loader.borrow().clone();
     let fetch = match (&source, message, loader) {
         (Some(Source::Fetch { part, mime_type }), Some(message), Some(loader)) => {
@@ -531,8 +530,8 @@ fn serve_cid(
             ));
             CidOutcome::NotFound
         };
-        if let Some(entry) = log.borrow_mut().get_mut(entry) {
-            entry.outcome = outcome;
+        if let Some(entry) = entry {
+            log.update(entry, |request| request.outcome = outcome);
         }
     });
 }

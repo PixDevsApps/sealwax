@@ -640,11 +640,11 @@ fn send(
         toast(toasts, "Not connected to the mail engine");
         return;
     }
-    // The subscription lives until the engine answers this request.
+    // The subscription lives until the engine answers this request, or can no longer.
     let held: Rc<RefCell<Option<Subscription>>> = Rc::default();
     let toasts = toasts.clone();
     let release = held.clone();
-    let subscription = engine.subscribe(move |event| {
+    let subscription = engine.subscribe_reply(move |event| {
         let Event::FolderChanged {
             request: answered,
             result,

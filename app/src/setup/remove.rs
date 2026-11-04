@@ -117,7 +117,7 @@ fn send(engine: &EngineLink, toasts: &adw::ToastOverlay, account: Removable) {
     let held: Rc<RefCell<Option<Subscription>>> = Rc::default();
     let toasts = toasts.clone();
     let release = held.clone();
-    let subscription = engine.subscribe(move |event| {
+    let subscription = engine.subscribe_reply(move |event| {
         let Event::AccountRemoved {
             request: answered,
             result,

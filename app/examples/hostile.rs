@@ -266,6 +266,8 @@ fn messages(cases: &[Case], now: i64) -> Vec<(&'static str, Vec<u8>)> {
 
 fn main() -> glib::ExitCode {
     support::count_criticals();
+    // The cid: checks read the reader's request log, kept only while recording.
+    sealwax_app::test_hooks::record();
     let _ = sealwax_infrastructure::logging::init();
     let wanted: Option<Vec<String>> = std::env::args()
         .skip(1)

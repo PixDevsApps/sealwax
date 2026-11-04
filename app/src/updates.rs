@@ -130,7 +130,7 @@ fn check(state: &AppState, window: &Window) {
     let engine = state.engine();
     let request = engine.next_request();
     let (sender, answers) = async_channel::bounded(1);
-    let subscription = engine.subscribe(move |event| {
+    let subscription = engine.subscribe_reply(move |event| {
         if let Event::UpdateChecked {
             request: answered,
             result,
@@ -164,7 +164,10 @@ fn check(state: &AppState, window: &Window) {
         let result = match sent {
             Ok(()) => match answers.recv().await {
                 Ok(result) => result,
-                Err(_) => return,
+                Err(_) => {
+                    tracing::warn!("the engine stopped before it answered Check for Updates");
+                    Err(UpdateError::Offline)
+                }
             },
             Err(_) => {
                 tracing::warn!("Check for Updates has no engine to ask");

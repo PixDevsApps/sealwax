@@ -217,17 +217,9 @@ impl Running {
     /// the folders and stores no headers: the INBOX's first sync is done (M2 has no re-sync).
     async fn synced(&self, account: AccountId, what: &str) -> Result<(), Error> {
         let started = Instant::now();
-        let mut folders = 0;
         let mut headers = 0;
         let outcome = self
             .next(SYNC_WAIT, |event| match event {
-                Event::FoldersSynced {
-                    account: id,
-                    folders: count,
-                } if id == account => {
-                    folders = count;
-                    None
-                }
                 Event::SyncProgress {
                     account: id,
                     fetched,
@@ -250,9 +242,7 @@ impl Running {
         let seconds = started.elapsed().as_secs_f64();
         match outcome {
             Ok(()) => {
-                println!(
-                    "{what}: sync finished in {seconds:.1} s; {folders} folders listed; {headers} INBOX headers stored"
-                );
+                println!("{what}: sync finished in {seconds:.1} s; {headers} INBOX headers stored");
                 Ok(())
             }
             Err(failure) => {

@@ -72,9 +72,7 @@ pub fn start(
 /// What the sidebar shows for an account after `event`.
 pub fn account_status(event: &Event) -> Option<(AccountId, AccountStatus)> {
     match *event {
-        Event::FoldersSynced { account, .. } | Event::SyncProgress { account, .. } => {
-            Some((account, AccountStatus::Syncing))
-        }
+        Event::SyncProgress { account, .. } => Some((account, AccountStatus::Syncing)),
         Event::AccountStatus { account, status } => Some((account, sidebar_status(status))),
         _ => None,
     }

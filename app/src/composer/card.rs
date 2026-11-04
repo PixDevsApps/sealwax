@@ -21,6 +21,7 @@ use super::recipients::{LABEL_WIDTH, RecipientField};
 use super::{ComposeRequest, chooser_answer};
 use crate::actions::{self, ActionSet, ScopedShortcuts};
 use crate::application::SealwaxApplication;
+use crate::test_hooks::Log;
 use crate::theme::ListenerId;
 use crate::window::dock::{CardState, Dock, WeakDock};
 use crate::window::panes::{classed, icon, icon_button, named};
@@ -212,8 +213,10 @@ struct Inner {
     loaded: Cell<bool>,
     dirty: Cell<bool>,
     first_dirty: Cell<Option<Instant>>,
+    /// When the body or a field last changed; `None` while the draft is untouched.
     last_edit: Cell<Option<Instant>>,
-    edits: RefCell<Vec<Instant>>,
+    /// When each edit happened, kept only while a self-test records (`test_hooks`).
+    edits: Log<Instant>,
     saving: Cell<bool>,
     timer: RefCell<Option<glib::SourceId>>,
     ending: Cell<Ending>,
@@ -300,7 +303,7 @@ impl Composer {
             dirty: Cell::new(false),
             first_dirty: Cell::new(None),
             last_edit: Cell::new(None),
-            edits: RefCell::new(Vec::new()),
+            edits: Log::new(),
             saving: Cell::new(false),
             timer: RefCell::new(None),
             ending: Cell::new(Ending::Open),
@@ -436,9 +439,9 @@ impl Composer {
         saved.is_visible().then(|| saved.label().to_string())
     }
 
-    /// When each edit (of the body or a field) happened.
+    /// When each edit (of the body or a field) happened, while a self-test records.
     pub fn edits(&self) -> Vec<Instant> {
-        self.inner.edits.borrow().clone()
+        self.inner.edits.entries()
     }
 
     /// The commands this window ran, oldest first.
@@ -1601,7 +1604,7 @@ impl Inner {
             return;
         }
         let now = Instant::now();
-        self.edits.borrow_mut().push(now);
+        self.edits.push(now);
         self.last_edit.set(Some(now));
         if self.first_dirty.get().is_none() {
             self.first_dirty.set(Some(now));
@@ -2103,7 +2106,7 @@ impl Inner {
         let hold = self.app.upgrade().map(|app| app.hold());
         let inner = self.clone();
         glib::spawn_future_local(async move {
-            let untouched = inner.fresh.get() && inner.edits.borrow().is_empty();
+            let untouched = inner.fresh.get() && inner.last_edit.get().is_none();
             match inner.id.get() {
                 Some(id) if untouched => {
                     if inner.backend.discard(id).await.is_err() {

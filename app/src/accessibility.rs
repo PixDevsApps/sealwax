@@ -3,25 +3,20 @@
 //! keyboard focus kept out of WebKit's hidden key-binding widget, and scrolled panes Tab goes
 //! through.
 
+use crate::test_hooks::{self, Log};
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use libadwaita as adw;
 use libadwaita::prelude::*;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 thread_local! {
-    /// Whether announcements are kept for the self-tests (`assert-announced`).
-    static RECORDING: Cell<bool> = const { Cell::new(false) };
-    /// The announcements kept since the last [`take_announcements`].
-    static SPOKEN: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
-}
-
-/// Keeps every announcement from now on, for a self-test to read back.
-pub fn record_announcements() {
-    RECORDING.with(|recording| recording.set(true));
+    /// The announcements kept for the self-tests (`assert-announced`) since the last
+    /// [`take_announcements`].
+    static SPOKEN: Log<String> = const { Log::new() };
 }
 
 /// Has a screen reader say `text` about `widget`, as when a list's chosen row moves while the
@@ -30,8 +25,8 @@ pub fn announce(widget: &impl IsA<gtk::Accessible>, text: &str) {
     if text.is_empty() {
         return;
     }
-    if RECORDING.with(Cell::get) {
-        SPOKEN.with(|spoken| spoken.borrow_mut().push(text.to_owned()));
+    if test_hooks::recording() {
+        SPOKEN.with(|spoken| spoken.push(text.to_owned()));
     }
     if speaks(widget.upcast_ref()) {
         widget.announce(text, gtk::AccessibleAnnouncementPriority::Medium);
@@ -93,9 +88,9 @@ pub fn shown_text(widget: &impl IsA<gtk::Widget>) -> String {
     parts.join(", ")
 }
 
-/// The announcements made since the last call, oldest first.
+/// The announcements made since the last call while a self-test records, oldest first.
 pub fn take_announcements() -> Vec<String> {
-    SPOKEN.with(|spoken| spoken.take())
+    SPOKEN.with(Log::take)
 }
 
 /// WebKitGTK parents a zero-sized GtkTextView to each web view only to translate key bindings

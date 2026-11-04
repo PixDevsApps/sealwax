@@ -296,7 +296,6 @@ async fn events(events: async_channel::Receiver<Event>, counters: Shared) {
         let kind = match &event {
             Event::AccountStatus { status, .. } => status_name(*status),
             Event::SyncProgress { .. } => "progress",
-            Event::FoldersSynced { .. } => "folders-synced",
             Event::OlderLoaded { .. } => "older-loaded",
             Event::BodyFetched { result: Ok(()), .. } => "body-ok",
             Event::BodyFetched { result: Err(_), .. } => "body-failed",

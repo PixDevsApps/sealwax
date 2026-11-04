@@ -383,7 +383,7 @@ async fn one_click(state: &AppState, uri: String) -> Result<(), &'static str> {
     let engine = state.engine();
     let request = engine.next_request();
     let (sender, answers) = async_channel::bounded(1);
-    let _subscription = engine.subscribe(move |event| {
+    let _subscription = engine.subscribe_reply(move |event| {
         if let Event::OneClickUnsubscribed {
             request: answered,
             result,

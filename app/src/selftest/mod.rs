@@ -152,7 +152,7 @@ pub fn run(script_path: &Path, started: Instant) -> glib::ExitCode {
         engine: None,
         microsoft_client_id: None,
     };
-    crate::accessibility::record_announcements();
+    crate::test_hooks::record();
     let app = SealwaxApplication::new(config, started);
     let outcome: Rc<Cell<Option<bool>>> = Rc::new(Cell::new(None));
     let harness_root = root.path.clone();
