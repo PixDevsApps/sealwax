@@ -2,12 +2,11 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.1.8 — 2026-11-05
+
+Dates in Group by, a fix for pinning senders with capitals beyond A–Z, and Sealwax's own tests out of the installed program.
 
 - **Dates in Group by** ([issue #26](https://github.com/PixDevsApps/sealwax/issues/26)): in Group by Sender and Group by Domain each group's row now shows when its newest message came, the way the plain list shows a message's time, next to its counts. And the groups are under the plain list's date headings (Today, Yesterday, This week, This month, Older) by their newest message, with the pinned groups that come first under Pinned above them.
-
-## 1.1.8 — Not released yet
-
 - **Pinning a sender whose address has capitals beyond A–Z works:** pinning a group in Group by Sender for an address such as `ÅSE@example.no` never matched its mail, and the message's menu kept offering Pin Sender. Searching `sender:` for such an address, typed as it is written, found nothing either. Now both match.
 - **A quick reply's text isn't kept after it is sent:** for its own tests, Sealwax kept the text of every quick reply, and every `mailto:` link it was handed, in memory for as long as it ran (in the background, that's until you log out). Now nothing is kept unless a test asks for it.
 - **Tests out of the installed program:** Sealwax's own tests (the scripts that drive its window, their sample mail and a stand-in for the mail store) were built into the program you install. They're now in a separate test build, so the installed `sealwax` holds none of them, and `sealwax --help` no longer lists `--self-test`.
