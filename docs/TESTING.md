@@ -76,6 +76,22 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.8 — 2026-11-05
+
+This machine. The changes since 1.1.7: phases 0–2 of the architecture cleanup (`cda1074`..`29e4b47`, their results below), `6e8b5ea` (WebKit's checks as one test), `1b88269` (the engine's mock servers skip connections from outside the test), `262e769` (dates in Group by, issue #26) and the version commit `fddb8c1` (Cargo.toml 1.1.8, both lock files, README, CHANGELOG "1.1.8 — 2026-11-05", DESIGN.md's #26 line).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `list-group-dates` (new: Group by's sections, headers and times by sender and by domain, a pin until read, midnight; `tools/headless.sh 38`) | 61 of 61 steps in 3 runs in a row; `list-senders` 130 of 130, `list-pinned` 169 of 169, `list-sections` 57 of 57 | Pass |
+| The store's pinned groups with `leads` (`pinned_groups_match_a_model`, 60 random mailboxes; `pinned_groups_come_first_in_the_inboxes`) | The 8 pin tests passed | Pass |
+| The group query before and after `leads` (an outer query around the grouping), on a copy of the 100,000-message INBOX of `target/perf-list/data` migrated to v14, two sender pins, Group by Sender, `sqlite3` 3.50.6 | The same rows in the same order; 0.143–0.150 s before, 0.141–0.144 s after (wall time, 5 runs each, a CI run alongside) | Pass |
+| `SEALWAX_CI_DISPLAY=41 bash tools/ci.sh --ui` on the version commit, outside any network namespace | Exit 0: fmt, both Clippy runs, MSRV, rustdoc, deny; the binary holds no self-test code; 1,448 tests passed, 0 failed, 92 ignored; 88 self-test scripts, 8,565 of 8,565 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`1b88269..fddb8c1`, 2 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname | Pass |
+| `v1.1.8` on `fddb8c1`, `main` and the tag pushed | GitHub's `main` is `fddb8c1`, `v1.1.8` the tag object `6f8673e` | Pass |
+| `python3 tools/release.py build` on `v1.1.8` (no namespace) | Finished 11:28 CET: `check()` 1,179 passed, 0 failed; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.1.8`, has no home path, user name, hostname or `--self-test`, and carries the Microsoft client ID; package SHA-256 `9e049e401a0f992085d3dc3d043bb2ca3c34fdb58074d115ba9fd719a8d537e9` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package, `sealwax-selftest` from CI's build of `fddb8c1`) | `/usr/bin/sealwax` reaches its first frame; `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261105-112859`) | Pass |
+| The release [v1.1.8](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.8) (`tools/release.py github`, 10:29:37 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+
 ### Architecture cleanup, phase 2 — 2026-11-04
 
 Test code out of the released binary (`test-hooks`, `uitest/`, `sealwax-selftest`), the app's modules private, `app/src/webview.rs`, the store's suites in `infrastructure/tests/store/` (ADR-025 amendment). This machine, debug builds.
