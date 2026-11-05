@@ -30,8 +30,10 @@ pub const MAX_VIEW_HEIGHT: i32 = 16_000;
 /// What a reader view loads between messages.
 const BLANK: &str = "<!DOCTYPE html><html><head></head><body></body></html>";
 
-/// Reports the body's height and the width it was measured at, the first frame and the end of
-/// the load (images included), each tagged with the load's number (S2). The
+/// Reports the body's height and the width it was measured at, a frame painted at the
+/// viewport's height (after the first paint and after each resize, so the reader knows the
+/// view has a frame at the height it was given), and the end of the load (images included),
+/// each tagged with the load's number (S2). The
 /// root's height follows its content (the reader stylesheet's measuring rule), so shrinking
 /// content shrinks it too. Content sized in viewport units grows each time the view is resized
 /// to fit it: growth that directly follows a height-only resize (the `resize` event runs before
@@ -46,6 +48,13 @@ const HEIGHT_JS: &str = r#"(() => {
   let steps = 0;
   let previousStep = Infinity;
   let frozen = false;
+  let ticket = 0;
+  const frame = () => {
+    const mine = ++ticket;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (mine === ticket) post('frame', {load, height: window.innerHeight});
+    }));
+  };
   const measure = () => {
     const root = document.documentElement;
     if (!root) return -1;
@@ -64,6 +73,7 @@ const HEIGHT_JS: &str = r#"(() => {
   };
   let width = window.innerWidth;
   window.addEventListener('resize', () => {
+    frame();
     if (window.innerWidth !== width) {
       width = window.innerWidth;
       steps = 0;
@@ -79,7 +89,7 @@ const HEIGHT_JS: &str = r#"(() => {
   });
   new ResizeObserver(report).observe(document.documentElement);
   report();
-  requestAnimationFrame(() => requestAnimationFrame(() => post('frame', {load})));
+  frame();
   const loaded = () => post('loaded', {load});
   if (document.readyState === 'complete') loaded();
   else window.addEventListener('load', loaded, {once: true});
@@ -654,8 +664,9 @@ pub enum ViewEvent {
         height: i32,
         width: i32,
     },
-    /// WebKit rendered the first frame of the document.
-    Frame,
+    /// WebKit rendered a frame of the document with a viewport this tall (px): after its
+    /// first paint, and after each resize.
+    Frame { height: i32 },
     /// The document's `load` event: its images, `cid:` parts included, are in.
     Loaded,
     Finished,
@@ -940,19 +951,28 @@ impl MessageView {
                 }
             ),
         );
-        for (name, event) in [("frame", ViewEvent::Frame), ("loaded", ViewEvent::Loaded)] {
+        for name in ["frame", "loaded"] {
             self.ucm.connect_script_message_received(
                 Some(name),
                 glib::clone!(
                     #[strong]
                     state,
                     move |_, value| {
-                        let load = value
-                            .object_get_property("load")
-                            .map_or(-1.0, |value| value.to_double());
-                        if load == state.load.get() as f64 {
-                            state.emit(event.clone());
+                        let number = |name: &str| {
+                            value
+                                .object_get_property(name)
+                                .map_or(-1.0, |value| value.to_double())
+                        };
+                        if number("load") != state.load.get() as f64 {
+                            return;
                         }
+                        state.emit(if name == "frame" {
+                            ViewEvent::Frame {
+                                height: number("height") as i32,
+                            }
+                        } else {
+                            ViewEvent::Loaded
+                        });
                     }
                 ),
             );

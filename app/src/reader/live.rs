@@ -199,7 +199,10 @@ fn first_screen(page: &Page, height: f64) -> Option<FirstScreen> {
         if index > selected && top >= window.1 {
             continue;
         }
-        if html.measured_at(html.holder.width()) && (html.loaded || html.parts.waits_for_server()) {
+        if html.measured_at(html.holder.width())
+            && (html.loaded || html.parts.waits_for_server())
+            && html.painted_at_height()
+        {
             if bottom > window.0 && top < window.1 {
                 done.push(item.id());
             }
@@ -445,7 +448,7 @@ impl Inner {
                 };
                 html.token = token;
                 html.loaded = false;
-                html.painted = false;
+                html.painted = None;
                 let height = html.measured.map_or(1, |(height, _)| height);
                 view.web_view().set_size_request(-1, height);
                 html.holder.set_child(Some(view.web_view()));
@@ -626,7 +629,7 @@ impl Inner {
                     bottom: top + f64::from(html.frame.height()),
                     live: html.view.is_some(),
                     loaded: html.loaded,
-                    painted: html.painted,
+                    painted: html.painted.is_some(),
                     measured: html.measured.map(|(height, _)| height),
                     height: html.holder.height(),
                 })

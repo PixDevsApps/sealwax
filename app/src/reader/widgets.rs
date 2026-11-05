@@ -162,6 +162,15 @@ mod stage {
             if let Some(child) = self.shown.borrow().as_ref() {
                 self.obj().snapshot_child(child, snapshot);
             }
+            // A web view takes the frames its web process rendered only when it is drawn: a
+            // page laid out unseen would come on screen with a stale frame (a blank white page,
+            // or the message its view showed before), one frame long. Drawn here at no
+            // opacity, its views keep up while it waits.
+            if let Some(child) = self.staged.borrow().as_ref() {
+                snapshot.push_opacity(0.0);
+                self.obj().snapshot_child(child, snapshot);
+                snapshot.pop();
+            }
         }
     }
 }

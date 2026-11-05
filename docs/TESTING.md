@@ -76,6 +76,19 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The reader's white flash between messages — 2026-11-05
+
+This machine, headless on Broadway (software rendering), uncommitted on `main` at `eb5a6b3`. The new harness `uitest/examples/reader_flash.rs` opens the samples one after another through `Reader::show_next` (as the list does) under the live theme (stormy-waters, dark) and reads back every frame GTK paints for 600 ms after each open; a frame brighter than both the message left and the one it settles on is a flash.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Cause, from the saved frames (debug build, before the change) | The first frame after the swap showed a staged web view's stale frame: a blank white page at the body's new height (receipt), or the body of an earlier message its pooled view had shown (dark-promo) | Found |
+| `reader_flash`, release, before the change (2 runs) | 3 flash frames per run (receipt, each time); dark-promo also passed through a frame of another message | Fail |
+| `reader_flash`, release, after the change (2 runs) | 0 flash frames; every open goes straight from the old message to the new one. Show → on screen for styled bodies 58–83 ms before, 72–91 ms after (about one frame more) | Pass |
+| `reader_flash`, debug build, after the change | 1 flash frame in one run: debug opens take 150–170 ms, past `LEFT_SHOWN` (150 ms), so a body shows before it is laid out, as designed | Not judged (debug speed) |
+| `SEALWAX_CI_DISPLAY=47 bash tools/ci.sh --ui` after the change | Exit 0: 1,448 tests passed, 0 failed, 92 ignored; 88 self-test scripts, 8,565 of 8,565 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| On the live session | Not verified | — |
+
 ### 1.1.8 — 2026-11-05
 
 This machine. The changes since 1.1.7: phases 0–2 of the architecture cleanup (`cda1074`..`29e4b47`, their results below), `6e8b5ea` (WebKit's checks as one test), `1b88269` (the engine's mock servers skip connections from outside the test), `262e769` (dates in Group by, issue #26) and the version commit `fddb8c1` (Cargo.toml 1.1.8, both lock files, README, CHANGELOG "1.1.8 — 2026-11-05", DESIGN.md's #26 line).

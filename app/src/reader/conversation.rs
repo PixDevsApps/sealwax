@@ -124,8 +124,8 @@ pub(super) struct HtmlBody {
     pub measured: Option<(i32, i32)>,
     /// The view's current load has fired its `load` event.
     pub loaded: bool,
-    /// The view's current load has painted a frame.
-    pub painted: bool,
+    /// The viewport height of the last frame the view's current load painted.
+    pub painted: Option<i32>,
     /// The view went back to the pool while the reader was hidden.
     pub released: bool,
     /// Tags the events of the view's current load.
@@ -137,6 +137,14 @@ impl HtmlBody {
     pub(super) fn measured_at(&self, width: i32) -> bool {
         self.measured
             .is_some_and(|(_, measured)| width > 1 && (measured - width).abs() <= 1)
+    }
+
+    /// The view has painted a frame at the height it has now: shown, it draws the body, not a
+    /// blank page in the body's background while WebKit renders it at that height.
+    pub(super) fn painted_at_height(&self) -> bool {
+        self.view.as_ref().is_none_or(|view| {
+            self.painted == Some(view.web_view().size_request().1.max(1))
+        })
     }
 }
 
