@@ -28,6 +28,9 @@ pub struct SenderGroup {
     /// A pin names the group: its address or its domain; in Group by Domain its domain, or a
     /// pinned sender has mail in it.
     pub pinned: bool,
+    /// The store put the group first, among the pinned ones (issue #26): in an Inbox or All
+    /// Inboxes, an *always* pin's group, or an *until read* pin's while it has unread mail.
+    pub leads: bool,
 }
 
 impl std::fmt::Debug for SenderGroup {
@@ -37,6 +40,7 @@ impl std::fmt::Debug for SenderGroup {
             .field("unread", &self.unread)
             .field("latest", &self.latest)
             .field("pinned", &self.pinned)
+            .field("leads", &self.leads)
             .finish_non_exhaustive()
     }
 }
@@ -68,8 +72,8 @@ impl std::fmt::Debug for GroupMail {
 
 impl Store {
     /// The view's messages grouped `by` sender or domain, newest group first, at most
-    /// [`MAX_GROUPS`]. In an Inbox and in All Inboxes the pinned groups come first, newest
-    /// first: an *always* pin's group, and an *until read* pin's while it has unread mail (a
+    /// [`MAX_GROUPS`]. In an Inbox and in All Inboxes the pinned groups come first
+    /// ([`SenderGroup::leads`]), newest first: an *always* pin's group, and an *until read* pin's while it has unread mail (a
     /// pinned sender's own unread mail, for its domain's group). `GroupBy::None` gives none.
     pub fn sender_groups(&self, spec: ViewSpec, by: GroupBy) -> Reply<Vec<SenderGroup>> {
         self.read(|reply| ReadJob::Groups { spec, by, reply })
@@ -229,13 +233,15 @@ pub(super) fn groups(
     let leading = list(2, senders.leading.len());
     // SQLite takes the bare columns of an aggregate with max() from the row holding the max.
     let sql = format!(
-        "SELECT {key} AS k, count(*), sum(flags & 1 = 0) AS unread, max(date), from_name, \
-           from_addr, subject, coalesce({pin}, -1) AS pin \
-         FROM messages INDEXED BY {index} \
-         WHERE folder_id IN ({ids}){condition} AND {key} <> '' \
-         GROUP BY k \
-         ORDER BY ?1 AND (pin = 1 OR (pin = 0 AND unread > 0) OR k IN ({leading})) DESC, \
-           max(date) DESC, k \
+        "SELECT k, n, unread, latest, from_name, from_addr, subject, pin, \
+           ?1 AND (pin = 1 OR (pin = 0 AND unread > 0) OR k IN ({leading})) AS leads \
+         FROM (SELECT {key} AS k, count(*) AS n, sum(flags & 1 = 0) AS unread, \
+                 max(date) AS latest, from_name, from_addr, subject, \
+                 coalesce({pin}, -1) AS pin \
+               FROM messages INDEXED BY {index} \
+               WHERE folder_id IN ({ids}){condition} AND {key} <> '' \
+               GROUP BY k) \
+         ORDER BY leads DESC, latest DESC, k \
          LIMIT {MAX_GROUPS}"
     );
     let values: Vec<Value> = std::iter::once(Value::from(pinnable))
@@ -249,6 +255,7 @@ pub(super) fn groups(
             let address: String = row.get(5)?;
             Ok(SenderGroup {
                 pinned: row.get::<_, i64>(7)? >= 0 || senders.pinned.contains(&key),
+                leads: row.get(8)?,
                 key,
                 count: row.get(1)?,
                 unread: row.get(2)?,

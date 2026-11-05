@@ -788,7 +788,25 @@ impl MessageList {
     /// Whether the row of the group `key` shows its pin (the self-test's view).
     #[cfg(feature = "test-hooks")]
     pub fn group_shows_pin(&self, key: &str) -> Option<bool> {
-        self.inner.groups.shows_pin(key)
+        self.inner.groups.shown(key).map(|(pin, _)| pin)
+    }
+
+    /// The time the row of the group `key` shows (the self-test's view).
+    #[cfg(feature = "test-hooks")]
+    pub fn group_time(&self, key: &str) -> Option<String> {
+        self.inner.groups.shown(key).map(|(_, time)| time)
+    }
+
+    /// Groups in each section (the self-test's view).
+    #[cfg(feature = "test-hooks")]
+    pub fn group_section_counts(&self) -> [u32; sections::SECTIONS] {
+        self.inner.groups.section_counts()
+    }
+
+    /// The groups' section headers on screen, top to bottom (the self-test's view).
+    #[cfg(feature = "test-hooks")]
+    pub fn group_headers(&self) -> Vec<String> {
+        self.inner.groups.headers()
     }
 
     #[cfg(feature = "test-hooks")]
@@ -888,7 +906,7 @@ impl MessageList {
                     .into_iter()
                     .filter_map(|key| key.as_deref())
                     .collect();
-                inner.groups.set(groups, &wanted);
+                inner.groups.set(groups, &wanted, list.day());
                 if inner.groups.len() == 0 {
                     let title = match spec.filter {
                         ViewFilter::Unread => "No unread messages",
@@ -2465,6 +2483,15 @@ impl MessageList {
         if wanted != self.inner.model.thresholds() {
             tracing::debug!("the day changed; regrouping the list");
             self.inner.model.regroup(wanted);
+        }
+        self.inner.groups.set_day(self.day());
+    }
+
+    /// Today's sections and year, for the groups.
+    fn day(&self) -> groups::Day {
+        groups::Day {
+            thresholds: self.thresholds_now(),
+            year: self.inner.context.year.get(),
         }
     }
 

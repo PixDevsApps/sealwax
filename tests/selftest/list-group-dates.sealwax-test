@@ -1,0 +1,83 @@
+# Group by's date sections and times (issue #26, biddster's request): each group's row shows its
+# newest message's time as the plain list's rows do; the groups are in the plain list's sections
+# (Today, Yesterday, This week, This month, Older) by that message; the groups the store puts first
+# are in a Pinned section above them; the sections and times follow the day. The list's clock is
+# fixed to a Wednesday, so every section exists whatever day the test runs. Every message and
+# address is fictional.
+# Run: tools/headless.sh 38 target/debug/sealwax-selftest --self-test tests/selftest/list-group-dates.sealwax-test
+
+desktop tiling
+resize 1440 1000
+list-wait
+engine-attach
+triage-mark-read-on-open false
+mail-account Personal
+folder inbox Personal
+list-clock 2026-10-07T12:00:00
+mail-add Personal:inbox older "Hyttebooking i fjor" from=Hytteutleie address=post@hytte.example read
+mail-add Personal:inbox older "Gammel ordre" from=Butikken address=ordre@butikk.example read
+mail-add Personal:inbox this-month "Kvittering for september" from=Butikken address=ordre@butikk.example read
+mail-add Personal:inbox this-week "Planlegging for uka" "from=Ola Nordmann" address=ola@example.test read
+mail-add Personal:inbox yesterday "Middag på fredag?" "from=Anna Berg" address=anna@example.test
+mail-add Personal:inbox today "Saturday ride" from=Fjord-Cycling-Club address=ride@sykkel.example read
+wait-until assert-list-count 6
+assert-list-sections "Today:1,Yesterday:1,This week:1,This month:1,Older:2"
+
+# By sender: one group per section, each with its newest message's time as the plain list's row
+# would show it; the shop's two messages are one group, under its newer one's section.
+action win.group-by-sender
+wait-until assert-list-groups 5
+assert-list-group 0 ride@sykkel.example 1 0
+assert-list-group 3 ordre@butikk.example 2 0
+assert-list-group-sections "Today:1,Yesterday:1,This week:1,This month:1,Older:1"
+assert-list-group-headers "TODAY,YESTERDAY,THIS WEEK,THIS MONTH,OLDER"
+assert-list-group-time 0 06:00
+assert-list-group-time 1 12:00
+assert-list-group-time 2 Mon
+assert-list-group-time 3 "3 Oct"
+assert-list-group-time 4 "21 Sep"
+screenshot $DIR/../../.local/selftest/list-group-dates.png
+
+# Anna pinned until read: her group goes to a Pinned section on top, keeping its time.
+list-select-group 1
+wait-until assert-action-enabled win.pin-sender true
+action win.pin-sender
+wait-until assert-toast "anna@example.test pinned until read"
+wait-until assert-list-group-sections "Pinned:1,Today:1,This week:1,This month:1,Older:1"
+assert-list-group-headers "PINNED,TODAY,THIS WEEK,THIS MONTH,OLDER"
+assert-list-group 0 anna@example.test 1 1 pinned
+assert-list-group-time 0 12:00
+screenshot $DIR/../../.local/selftest/list-group-dates-pinned.png
+
+# Read, her group goes back to Yesterday with its pin, as in the plain list.
+list-select-group 0
+action win.mark-read
+wait-until assert-list-group-sections "Today:1,Yesterday:1,This week:1,This month:1,Older:1"
+assert-list-group 1 anna@example.test 1 0 pinned
+assert-list-group-headers "TODAY,YESTERDAY,THIS WEEK,THIS MONTH,OLDER"
+
+# By domain: Anna and Ola write from the same domain, whose group goes under Anna's newer
+# message; the shop's under its newer one.
+action win.group-by-domain
+wait-until assert-list-groups 4
+assert-list-group-sections "Today:1,Yesterday:1,This month:1,Older:1"
+assert-list-group-headers "TODAY,YESTERDAY,THIS MONTH,OLDER"
+assert-list-group 1 example.test 2 0 pinned
+assert-list-group 2 butikk.example 2 0
+assert-list-group-time 1 12:00
+assert-list-group-time 2 "3 Oct"
+
+# Midnight: on Thursday the same groups regroup and their times follow the day.
+list-clock 2026-10-08T09:00:00
+wait-until assert-list-group-sections "Yesterday:1,This week:1,This month:1,Older:1"
+assert-list-group-headers "YESTERDAY,THIS WEEK,THIS MONTH,OLDER"
+assert-list-group-time 0 06:00
+assert-list-group-time 1 Tue
+assert-list-group-time 2 "3 Oct"
+assert-list-group 1 example.test 2 0 pinned
+
+# Back to the plain list.
+action win.dont-group
+wait-until assert-list-count 6
+list-clock real
+assert-labelled

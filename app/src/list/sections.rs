@@ -105,9 +105,14 @@ impl Bounds {
         dates: impl IntoIterator<Item = i64>,
         thresholds: &Thresholds,
     ) -> Self {
+        Self::from_sections(dates.into_iter().map(|date| thresholds.section_of(date)))
+    }
+
+    /// From the sections of rows in order, each section's rows together.
+    pub(crate) fn from_sections(sections: impl IntoIterator<Item = usize>) -> Self {
         let mut counts = [0u32; SECTIONS];
-        for date in dates {
-            counts[thresholds.section_of(date)] += 1;
+        for section in sections {
+            counts[section.min(OLDER)] += 1;
         }
         let mut ends = [0; SECTIONS];
         let mut sum = 0;
@@ -249,6 +254,15 @@ mod tests {
         let bounds = Bounds::from_counts(0, &[5, 3, 9, 12], 10);
         assert_eq!(bounds.counts(), [0, 5, 0, 4, 1, 0]);
         assert_eq!(Bounds::from_counts(0, &[], 4).counts(), [0, 0, 0, 0, 0, 4]);
+    }
+
+    #[test]
+    fn bounds_from_sections() {
+        let bounds = Bounds::from_sections([PINNED, PINNED, 1, 3, 3, OLDER]);
+        assert_eq!(bounds.counts(), [2, 1, 0, 2, 0, 1]);
+        assert_eq!(bounds.section_at(2), (1, 2, 3));
+        assert_eq!(bounds.section_at(3), (3, 3, 5));
+        assert_eq!(Bounds::from_sections([]).total(), 0);
     }
 
     #[test]

@@ -1,29 +1,137 @@
 //! The message list grouped by sender or by domain (issue #24, ADR-023): one row per sender, or
-//! per domain, newest first, with its name, how many messages and how many unread, and the
-//! newest subject. Opening a row (Enter or a click) shows its mail; the list does that with a
-//! `sender:` or `domain:` search, so Escape comes back here. A selected row takes the mail
-//! commands, which act on all of its mail in the view (issue #25). A pinned group shows a pin,
-//! and in the Inboxes the store puts it first (issue #26).
+//! per domain, newest first, with its name, how many messages and how many unread, the newest
+//! message's time and its subject. Opening a row (Enter or a click) shows its mail; the list does
+//! that with a `sender:` or `domain:` search, so Escape comes back here. A selected row takes the
+//! mail commands, which act on all of its mail in the view (issue #25). A pinned group shows a
+//! pin, and in the Inboxes the store puts it first (issue #26). The rows are in the plain list's
+//! sections (issue #26): Pinned for the groups the store put first, then Today, Yesterday, This
+//! week, This month and Older by each group's newest message; they regroup when the day changes.
 
+use super::row::time_text;
+use super::sections::{Bounds, LABELS, PINNED, Thresholds};
 use gtk4 as gtk;
 use gtk4::prelude::*;
+use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib, pango};
 use sealwax_infrastructure::store::SenderGroup;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+
+/// The day the sections and times are for: its section starts, and its year.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct Day {
+    pub thresholds: Thresholds,
+    pub year: i32,
+}
+
+impl Day {
+    fn unknown() -> Self {
+        Self {
+            thresholds: Thresholds::new(0, 0, 0, 0),
+            year: 0,
+        }
+    }
+}
+
+/// The section of `group` on `day`: Pinned when the store put it first, else its newest
+/// message's date section.
+fn section_of(group: &SenderGroup, thresholds: &Thresholds) -> usize {
+    if group.leads {
+        PINNED
+    } else {
+        thresholds.section_of(group.latest)
+    }
+}
+
+mod imp {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct GroupModel {
+        pub(super) items: RefCell<Vec<glib::BoxedAnyObject>>,
+        pub(super) bounds: Cell<Bounds>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for GroupModel {
+        const NAME: &'static str = "SealwaxGroupModel";
+        type Type = super::GroupModel;
+        type Interfaces = (gio::ListModel, gtk::SectionModel);
+    }
+
+    impl ObjectImpl for GroupModel {}
+
+    impl ListModelImpl for GroupModel {
+        fn item_type(&self) -> glib::Type {
+            glib::BoxedAnyObject::static_type()
+        }
+
+        fn n_items(&self) -> u32 {
+            self.items.borrow().len() as u32
+        }
+
+        fn item(&self, position: u32) -> Option<glib::Object> {
+            self.items
+                .borrow()
+                .get(position as usize)
+                .map(|item| item.clone().upcast())
+        }
+    }
+
+    impl SectionModelImpl for GroupModel {
+        fn section(&self, position: u32) -> (u32, u32) {
+            let (_, start, end) = self.bounds.get().section_at(position);
+            (start, end)
+        }
+    }
+}
+
+glib::wrapper! {
+    /// The groups in their sections.
+    pub struct GroupModel(ObjectSubclass<imp::GroupModel>)
+        @implements gio::ListModel, gtk::SectionModel;
+}
+
+impl GroupModel {
+    fn new() -> Self {
+        glib::Object::new()
+    }
+
+    /// Shows `items`, in `bounds`' sections.
+    fn replace(&self, items: Vec<glib::BoxedAnyObject>, bounds: Bounds) {
+        let imp = self.imp();
+        let removed = imp.items.borrow().len() as u32;
+        let added = items.len() as u32;
+        imp.items.replace(items);
+        imp.bounds.set(bounds);
+        self.items_changed(0, removed, added);
+    }
+
+    /// The section of the row at `position`.
+    fn section_at(&self, position: u32) -> usize {
+        self.imp().bounds.get().section_at(position).0
+    }
+
+    #[cfg(feature = "test-hooks")]
+    fn bounds(&self) -> Bounds {
+        self.imp().bounds.get()
+    }
+}
 
 pub(super) struct Groups {
     scroller: gtk::ScrolledWindow,
     view: gtk::ListView,
-    items: gio::ListStore,
+    items: GroupModel,
     selection: gtk::SingleSelection,
     /// Set while `set` replaces the rows, whose passing selections aren't the user's.
     quiet: Rc<Cell<bool>>,
+    day: Rc<Cell<Day>>,
 }
 
 impl Groups {
     pub(super) fn new() -> Self {
-        let items = gio::ListStore::new::<glib::BoxedAnyObject>();
+        let items = GroupModel::new();
+        let day = Rc::new(Cell::new(Day::unknown()));
         let selection = gtk::SingleSelection::builder()
             .model(&items)
             .autoselect(false)
@@ -35,7 +143,8 @@ impl Groups {
                 list_item.set_child(Some(&row()));
             }
         });
-        factory.connect_bind(|_, object| {
+        let bind_day = day.clone();
+        factory.connect_bind(move |_, object| {
             let Some(list_item) = object.downcast_ref::<gtk::ListItem>() else {
                 return;
             };
@@ -43,12 +152,38 @@ impl Groups {
                 list_item.child().and_downcast::<gtk::Box>(),
                 list_item.item().and_downcast::<glib::BoxedAnyObject>(),
             ) {
-                bind(list_item, &row, &item.borrow::<SenderGroup>());
+                bind(
+                    list_item,
+                    &row,
+                    &item.borrow::<SenderGroup>(),
+                    bind_day.get(),
+                );
+            }
+        });
+        let headers = gtk::SignalListItemFactory::new();
+        headers.connect_setup(|_, object| {
+            if let Some(header) = object.downcast_ref::<gtk::ListHeader>() {
+                let label = gtk::Label::builder().xalign(0.0).hexpand(true).build();
+                label.add_css_class("sw-section-header");
+                header.set_child(Some(&label));
+            }
+        });
+        let header_items = items.downgrade();
+        headers.connect_bind(move |_, object| {
+            let Some(header) = object.downcast_ref::<gtk::ListHeader>() else {
+                return;
+            };
+            if let (Some(label), Some(items)) = (
+                header.child().and_downcast::<gtk::Label>(),
+                header_items.upgrade(),
+            ) {
+                label.set_text(&LABELS[items.section_at(header.start())].to_uppercase());
             }
         });
         let view = gtk::ListView::builder()
             .model(&selection)
             .factory(&factory)
+            .header_factory(&headers)
             .single_click_activate(false)
             .tab_behavior(gtk::ListTabBehavior::Item)
             .build();
@@ -66,6 +201,7 @@ impl Groups {
             items,
             selection,
             quiet: Rc::default(),
+            day,
         }
     }
 
@@ -81,15 +217,22 @@ impl Groups {
         self.items.n_items()
     }
 
-    /// Shows `groups`, selecting the row of the first of `wanted` (groups' keys) that is there.
-    pub(super) fn set(&self, groups: Vec<SenderGroup>, wanted: &[&str]) {
+    /// Shows `groups` in their sections on `day`, selecting the row of the first of `wanted`
+    /// (groups' keys) that is there.
+    pub(super) fn set(&self, groups: Vec<SenderGroup>, wanted: &[&str], day: Day) {
+        self.day.set(day);
         let keep = wanted
             .iter()
             .find_map(|key| groups.iter().position(|group| group.key == *key));
+        let bounds = Bounds::from_sections(
+            groups
+                .iter()
+                .map(|group| section_of(group, &day.thresholds)),
+        );
         let objects: Vec<glib::BoxedAnyObject> =
             groups.into_iter().map(glib::BoxedAnyObject::new).collect();
         self.quiet.set(true);
-        self.items.splice(0, self.items.n_items(), &objects);
+        self.items.replace(objects, bounds);
         match keep {
             Some(position) => {
                 let position = position as u32;
@@ -100,6 +243,16 @@ impl Groups {
             None => self.selection.set_selected(gtk::INVALID_LIST_POSITION),
         }
         self.quiet.set(false);
+    }
+
+    /// The day changed: the same groups in that day's sections, with its times.
+    pub(super) fn set_day(&self, day: Day) {
+        if self.day.get() == day {
+            return;
+        }
+        let selected = self.selected().map(|group| group.key);
+        let wanted: Vec<&str> = selected.as_deref().into_iter().collect();
+        self.set(self.groups(), &wanted, day);
     }
 
     /// The selected group.
@@ -140,9 +293,8 @@ impl Groups {
         });
     }
 
-    /// The groups shown, for the self-test.
-    #[cfg(feature = "test-hooks")]
-    pub(super) fn rows(&self) -> Vec<SenderGroup> {
+    /// The groups shown.
+    fn groups(&self) -> Vec<SenderGroup> {
         (0..self.items.n_items())
             .filter_map(|position| self.items.item(position))
             .filter_map(|item| item.downcast::<glib::BoxedAnyObject>().ok())
@@ -150,28 +302,64 @@ impl Groups {
             .collect()
     }
 
-    /// Whether the shown row of the group `key` shows its pin; `None` when no row shows it.
+    /// The groups shown, for the self-test.
     #[cfg(feature = "test-hooks")]
-    pub(super) fn shows_pin(&self, key: &str) -> Option<bool> {
+    pub(super) fn rows(&self) -> Vec<SenderGroup> {
+        self.groups()
+    }
+
+    /// Groups in each section (an index into `sections::LABELS`), for the self-test.
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn section_counts(&self) -> [u32; super::sections::SECTIONS] {
+        self.items.bounds().counts()
+    }
+
+    /// The section headers on screen, top to bottom (the self-test).
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn headers(&self) -> Vec<String> {
+        let height = self.scroller.height() as f32;
+        let mut headers: Vec<(f32, String)> = self
+            .widgets()
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
+            .filter(|label| label.has_css_class("sw-section-header") && label.is_mapped())
+            .filter_map(|label| {
+                let bounds = label.compute_bounds(&self.scroller)?;
+                let visible = bounds.y() >= 0.0 && bounds.y() + bounds.height() <= height;
+                visible.then(|| (bounds.y(), label.text().to_string()))
+            })
+            .collect();
+        headers.sort_by(|a, b| a.0.total_cmp(&b.0));
+        headers.into_iter().map(|(_, text)| text).collect()
+    }
+
+    /// What the shown row of the group `key` shows: whether its pin shows, and its time; `None`
+    /// when no row shows it.
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn shown(&self, key: &str) -> Option<(bool, String)> {
+        self.widgets()
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Box>().ok())
+            .filter(|row| row.has_css_class("sw-sender-group"))
+            .filter_map(|row| parts(&row))
+            .find(|parts| parts.detail.text() == key)
+            .map(|parts| (parts.pin.is_visible(), parts.time.text().to_string()))
+    }
+
+    /// Every widget under the list.
+    #[cfg(feature = "test-hooks")]
+    fn widgets(&self) -> Vec<gtk::Widget> {
+        let mut found = Vec::new();
         let mut stack = vec![self.view.clone().upcast::<gtk::Widget>()];
         while let Some(widget) = stack.pop() {
-            if let Some(row) = widget.downcast_ref::<gtk::Box>()
-                && row.has_css_class("sw-sender-group")
-            {
-                if let Some((shown, pin)) = shown(row)
-                    && shown == key
-                {
-                    return Some(pin);
-                }
-                continue;
-            }
             let mut child = widget.first_child();
             while let Some(next) = child {
                 child = next.next_sibling();
                 stack.push(next);
             }
+            found.push(widget);
         }
-        None
+        found
     }
 
     /// Opens the group at `position`, as Enter on it does.
@@ -203,6 +391,10 @@ fn row() -> gtk::Box {
         .xalign(1.0)
         .css_classes(["sw-small", "sw-secondary"])
         .build();
+    let time = gtk::Label::builder()
+        .xalign(1.0)
+        .css_classes(["sw-time"])
+        .build();
     let pin = gtk::Image::builder()
         .icon_name("view-pin-symbolic")
         .tooltip_text("Pinned")
@@ -214,6 +406,7 @@ fn row() -> gtk::Box {
     top.append(&name);
     top.append(&pin);
     top.append(&count);
+    top.append(&time);
     let detail = gtk::Label::builder()
         .xalign(0.0)
         .ellipsize(pango::EllipsizeMode::End)
@@ -239,64 +432,69 @@ fn row() -> gtk::Box {
     row
 }
 
-fn bind(list_item: &gtk::ListItem, row: &gtk::Box, group: &SenderGroup) {
-    let labels: Vec<gtk::Label> = {
-        let top = row.first_child().and_downcast::<gtk::Box>();
-        let mut labels: Vec<gtk::Label> = top
-            .iter()
-            .flat_map(|top| [top.first_child(), top.last_child()])
-            .flatten()
-            .filter_map(|widget| widget.downcast::<gtk::Label>().ok())
-            .collect();
-        let mut next = row.first_child().and_then(|top| top.next_sibling());
-        while let Some(widget) = next {
-            next = widget.next_sibling();
-            if let Ok(label) = widget.downcast::<gtk::Label>() {
-                labels.push(label);
-            }
-        }
-        labels
-    };
-    let [name, count, detail, subject] = labels.as_slice() else {
+/// A group row's widgets, as `row` makes them.
+struct Parts {
+    name: gtk::Label,
+    pin: gtk::Image,
+    count: gtk::Label,
+    time: gtk::Label,
+    detail: gtk::Label,
+    subject: gtk::Label,
+}
+
+fn parts(row: &gtk::Box) -> Option<Parts> {
+    let top = row.first_child()?;
+    let name = top.first_child()?;
+    let pin = name.next_sibling()?;
+    let count = pin.next_sibling()?;
+    let time = count.next_sibling()?;
+    let detail = top.next_sibling()?;
+    let subject = detail.next_sibling()?;
+    Some(Parts {
+        name: name.downcast().ok()?,
+        pin: pin.downcast().ok()?,
+        count: count.downcast().ok()?,
+        time: time.downcast().ok()?,
+        detail: detail.downcast().ok()?,
+        subject: subject.downcast().ok()?,
+    })
+}
+
+fn bind(list_item: &gtk::ListItem, row: &gtk::Box, group: &SenderGroup, day: Day) {
+    let Some(parts) = parts(row) else {
         return;
     };
-    if let Some(pin) = pin_of(row) {
-        pin.set_visible(group.pinned);
-    }
+    parts.pin.set_visible(group.pinned);
     let count_text = count_text(group.count, group.unread);
-    name.set_text(&group.name);
+    parts.name.set_text(&group.name);
     let attributes = pango::AttrList::new();
     if group.unread > 0 {
         attributes.insert(pango::AttrInt::new_weight(pango::Weight::Bold));
     }
-    name.set_attributes(Some(&attributes));
-    count.set_text(&count_text);
-    detail.set_text(&group.key);
-    detail.set_visible(!group.key.eq_ignore_ascii_case(&group.name));
-    subject.set_text(&group.subject);
+    parts.name.set_attributes(Some(&attributes));
+    parts.count.set_text(&count_text);
+    // As the plain list's Pinned rows: the time as the message's date section shows it.
+    let time = time_text(
+        group.latest,
+        day.thresholds.section_of(group.latest),
+        day.year,
+    );
+    parts.time.set_text(&time);
+    parts.detail.set_text(&group.key);
+    parts
+        .detail
+        .set_visible(!group.key.eq_ignore_ascii_case(&group.name));
+    parts.subject.set_text(&group.subject);
+    list_item.set_accessible_label(&accessible_text(group, &count_text, &time));
+}
+
+/// "Anna Berg, anna@example.test, 2 messages, 1 unread, newest 10:32, pinned".
+fn accessible_text(group: &SenderGroup, count_text: &str, time: &str) -> String {
     let pinned = if group.pinned { ", pinned" } else { "" };
-    list_item.set_accessible_label(&format!(
-        "{}, {}, {}{pinned}",
-        group.name, group.key, count_text
-    ));
-}
-
-/// The pin of a group's row.
-fn pin_of(row: &gtk::Box) -> Option<gtk::Image> {
-    row.first_child()?
-        .first_child()?
-        .next_sibling()
-        .and_downcast::<gtk::Image>()
-}
-
-/// The key a group's row shows, and whether its pin shows.
-#[cfg(feature = "test-hooks")]
-fn shown(row: &gtk::Box) -> Option<(String, bool)> {
-    let detail = row
-        .first_child()?
-        .next_sibling()
-        .and_downcast::<gtk::Label>()?;
-    Some((detail.text().to_string(), pin_of(row)?.is_visible()))
+    format!(
+        "{}, {}, {count_text}, newest {time}{pinned}",
+        group.name, group.key
+    )
 }
 
 /// "12 messages, 3 unread".
@@ -321,5 +519,43 @@ mod tests {
     fn counts() {
         assert_eq!(count_text(1, 0), "1 message");
         assert_eq!(count_text(12, 3), "12 messages, 3 unread");
+    }
+
+    fn group(latest: i64, leads: bool) -> SenderGroup {
+        SenderGroup {
+            key: "anna@example.test".into(),
+            name: "Anna Berg".into(),
+            count: 2,
+            unread: 1,
+            latest,
+            subject: "Middag på fredag?".into(),
+            pinned: leads,
+            leads,
+        }
+    }
+
+    #[test]
+    fn a_group_goes_under_its_newest_messages_section_or_pinned_when_it_leads() {
+        const DAY: i64 = 86_400;
+        let today = 100 * DAY;
+        let thresholds = Thresholds::new(today, today - DAY, today - 2 * DAY, today - 9 * DAY);
+        assert_eq!(section_of(&group(today + 60, false), &thresholds), 1);
+        assert_eq!(section_of(&group(today - 60, false), &thresholds), 2);
+        assert_eq!(
+            section_of(&group(today - 40 * DAY, false), &thresholds),
+            super::super::sections::OLDER
+        );
+        assert_eq!(
+            section_of(&group(today - 40 * DAY, true), &thresholds),
+            PINNED
+        );
+    }
+
+    #[test]
+    fn a_group_row_says_its_newest_time() {
+        assert_eq!(
+            accessible_text(&group(0, true), "2 messages, 1 unread", "10:32"),
+            "Anna Berg, anna@example.test, 2 messages, 1 unread, newest 10:32, pinned"
+        );
     }
 }

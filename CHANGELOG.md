@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Dates in Group by** ([issue #26](https://github.com/PixDevsApps/sealwax/issues/26)): in Group by Sender and Group by Domain each group's row now shows when its newest message came, the way the plain list shows a message's time, next to its counts. And the groups are under the plain list's date headings (Today, Yesterday, This week, This month, Older) by their newest message, with the pinned groups that come first under Pinned above them.
+
 ## 1.1.8 — Not released yet
 
 - **Pinning a sender whose address has capitals beyond A–Z works:** pinning a group in Group by Sender for an address such as `ÅSE@example.no` never matched its mail, and the message's menu kept offering Pin Sender. Searching `sender:` for such an address, typed as it is written, found nothing either. Now both match.

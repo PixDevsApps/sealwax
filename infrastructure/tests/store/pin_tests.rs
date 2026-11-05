@@ -250,6 +250,17 @@ fn groups(store: &Store, spec: ViewSpec, by: GroupBy) -> Vec<(String, bool)> {
         .collect()
 }
 
+/// Which groups of `spec` the store put first (its Pinned section), in their order.
+fn leading(store: &Store, spec: ViewSpec, by: GroupBy) -> Vec<bool> {
+    store
+        .sender_groups(spec, by)
+        .recv_blocking()
+        .unwrap()
+        .into_iter()
+        .map(|group| group.leads)
+        .collect()
+}
+
 fn keys(list: &[(&str, bool)]) -> Vec<(String, bool)> {
     list.iter()
         .map(|(key, pinned)| ((*key).to_owned(), *pinned))
@@ -297,6 +308,10 @@ fn pinned_groups_come_first_in_the_inboxes() {
             ("klatring.example", true),
         ])
     );
+    assert_eq!(
+        leading(&fx.store, inbox, GroupBy::Domain),
+        [false, false, false, false]
+    );
     // Always: it comes first, read or not, in either grouping, its senders newest first.
     keep(&fx.store, club);
     assert_eq!(
@@ -307,6 +322,10 @@ fn pinned_groups_come_first_in_the_inboxes() {
             ("example.test", false),
             ("kraft.example", false),
         ])
+    );
+    assert_eq!(
+        leading(&fx.store, inbox, GroupBy::Domain),
+        [true, false, false, false]
     );
     assert_eq!(
         groups(&fx.store, inbox, GroupBy::Sender),
@@ -410,6 +429,10 @@ fn pinned_groups_come_first_in_the_inboxes() {
     assert_eq!(
         groups(&fx.store, ViewSpec::folder(fx.archive), GroupBy::Domain),
         keys(&[("example.test", false), ("klatring.example", true)])
+    );
+    assert_eq!(
+        leading(&fx.store, ViewSpec::folder(fx.archive), GroupBy::Domain),
+        [false, false]
     );
     assert_eq!(
         groups(&fx.store, ViewSpec::folder(fx.archive), GroupBy::Sender),
@@ -809,6 +832,7 @@ fn pinned_groups_match_a_model() {
                     model.push((group, latest, pinned, leads));
                 }
                 model.sort_by(|a, b| b.3.cmp(&a.3).then(b.1.cmp(&a.1)).then(a.0.cmp(&b.0)));
+                let wanted_leads: Vec<bool> = model.iter().map(|group| group.3).collect();
                 let wanted: Vec<(String, bool)> = model
                     .into_iter()
                     .map(|(key, _, pinned, _)| (key, pinned))
@@ -816,6 +840,11 @@ fn pinned_groups_match_a_model() {
                 assert_eq!(
                     groups(&fx.store, spec, by),
                     wanted,
+                    "seed {seed}, {by:?}, {spec:?}, {pins:?}"
+                );
+                assert_eq!(
+                    leading(&fx.store, spec, by),
+                    wanted_leads,
                     "seed {seed}, {by:?}, {spec:?}, {pins:?}"
                 );
             }
