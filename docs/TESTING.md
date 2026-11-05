@@ -76,9 +76,22 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.1.9 — 2026-11-05
+
+This machine. The changes since 1.1.8: `5057733` (the reader's white flash, below) and the version commit `103a652` (Cargo.toml 1.1.9, both lock files, README, CHANGELOG "1.1.9 — 2026-11-05").
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `SEALWAX_CI_DISPLAY=47 bash tools/ci.sh --ui` on the version commit | Exit 0: fmt, both Clippy runs, MSRV, rustdoc, deny; 1,448 tests passed, 0 failed, 92 ignored; 88 self-test scripts, 8,565 of 8,565 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`eb5a6b3..103a652`, 2 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname | Pass |
+| `v1.1.9` on `103a652`, `main` and the tag pushed | GitHub's `main` is `103a652`, `v1.1.9` the tag object `aba2f0b` | Pass |
+| `python3 tools/release.py build` on `v1.1.9` | Finished 16:28 CET: `check()` 1,179 passed, 0 failed; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.1.9`, has no home path, user name, hostname or `--self-test`, and carries the Microsoft client ID; package SHA-256 `63fbd5e4abbd62a630c627306aec1a01f0dc8ec8647ca710b1ec55ed0efc6803` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package, `sealwax-selftest` from CI's build of `103a652`) | `/usr/bin/sealwax` reaches its first frame; `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261105-162822`) | Pass |
+| The release [v1.1.9](https://github.com/PixDevsApps/sealwax/releases/tag/v1.1.9) (`tools/release.py github`, 15:29:02 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+
 ### The reader's white flash between messages — 2026-11-05
 
-This machine, headless on Broadway (software rendering), uncommitted on `main` at `eb5a6b3`. The new harness `uitest/examples/reader_flash.rs` opens the samples one after another through `Reader::show_next` (as the list does) under the live theme (stormy-waters, dark) and reads back every frame GTK paints for 600 ms after each open; a frame brighter than both the message left and the one it settles on is a flash.
+This machine, headless on Broadway (software rendering), the change on `main` at `eb5a6b3` (committed as `5057733`, released in 1.1.9). The new harness `uitest/examples/reader_flash.rs` opens the samples one after another through `Reader::show_next` (as the list does) under a dark Omarchy theme and reads back every frame GTK paints for 600 ms after each open; a frame brighter than both the message left and the one it settles on is a flash.
 
 | Check | Result | Verdict |
 | --- | --- | --- |
