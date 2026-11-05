@@ -2,6 +2,12 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.1.9 — 2026-11-05
+
+A smoother switch between messages.
+
+- **No white flash when moving to the next message:** going from one message to the next, a newsletter, receipt or other styled message showed a blank white page for a moment, and now and then a glimpse of a message read earlier, before its content came. Now the next message comes on screen as it looks.
+
 ## 1.1.8 — 2026-11-05
 
 Dates in Group by, a fix for pinning senders with capitals beyond A–Z, and Sealwax's own tests out of the installed program.
