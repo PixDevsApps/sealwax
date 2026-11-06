@@ -1,12 +1,15 @@
 //! Prints what the theme follower reads on this machine and what it makes of it, without
 //! opening a window: `cargo run -p sealwax-uitest --example theme_dump [-- --css] [-- --webview]`.
-//! Only reads (Omarchy's state, fontconfig, `shell.toml`, `hyprctl getoption`). Without an
+//! Only reads (Omarchy's state, fontconfig, `shell.toml`, `hyprctl getoption`, Hyprland's Lua
+//! files as a Flatpak reads them). Without an
 //! Omarchy theme it shows the built-in dark palette (the app follows the system preference).
 
 use sealwax_domain::theme::{
     BodyStyle, Mode, Palette, Theme, ThemeInputs, ThemeOptions, ThemeSource,
 };
-use sealwax_infrastructure::omarchy::{self, OmarchyPaths, Request, colors, font, hyprland, shell};
+use sealwax_infrastructure::omarchy::{
+    self, OmarchyPaths, Request, colors, font, hypr_lua, hyprland, shell,
+};
 use std::time::{Duration, Instant};
 
 fn timed<T>(read: impl FnOnce() -> T) -> (T, Duration) {
@@ -27,7 +30,8 @@ fn main() {
     let (_, palette) = timed(|| colors::read_theme(&paths));
     let (_, mono) = timed(|| font::family_with("fc-match".as_ref(), font::MONOSPACE));
     let (_, sans) = timed(|| font::family_with("fc-match".as_ref(), font::SANS_SERIF));
-    let (_, rounding) = timed(hyprland::rounding);
+    let (_, rounding) = timed(|| hyprland::rounding(&paths));
+    let (lua_rounding, lua) = timed(|| hypr_lua::rounding(&paths));
     let (_, shell_toml) = timed(|| shell::read_shell(&paths));
     println!(
         "read everything in parallel: {}; alone: palette {}, fc-match monospace {}, \
@@ -38,6 +42,10 @@ fn main() {
         ms(sans),
         ms(rounding),
         ms(shell_toml)
+    );
+    println!(
+        "Hyprland's Lua files, as a Flatpak reads them: rounding {lua_rounding:?} in {}",
+        ms(lua)
     );
 
     let omarchy = readout.palette.flatten();

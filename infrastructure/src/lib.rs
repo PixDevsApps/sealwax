@@ -12,6 +12,7 @@ pub mod logging;
 pub mod loopback;
 pub mod omarchy;
 pub mod rules;
+pub mod sandbox;
 pub mod settings_files;
 pub mod store;
 pub mod xdg;

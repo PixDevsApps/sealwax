@@ -1,7 +1,9 @@
 //! Hyprland's corner rounding, which `corner_radius = "auto"` follows (ADR-019), read as
-//! omarchy-shell reads it: `hyprctl -j getoption decoration:rounding`.
+//! omarchy-shell reads it: `hyprctl -j getoption decoration:rounding`. In a Flatpak, which has
+//! no `hyprctl`, from Hyprland's Lua configuration instead ([`super::hypr_lua`]).
 
-use super::command;
+use super::{OmarchyPaths, command, hypr_lua};
+use crate::sandbox;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::time::Duration;
@@ -14,8 +16,11 @@ pub const INSTANCE_ENV: &str = "HYPRLAND_INSTANCE_SIGNATURE";
 
 /// `decoration:rounding` in px, or `None` when Hyprland isn't running or `hyprctl` is
 /// missing, fails, answers something else or takes longer than [`TIMEOUT`].
-pub fn rounding() -> Option<u32> {
+pub fn rounding(paths: &OmarchyPaths) -> Option<u32> {
     std::env::var_os(INSTANCE_ENV)?;
+    if sandbox::is_flatpak() {
+        return hypr_lua::rounding(paths);
+    }
     rounding_with(Path::new("hyprctl"), TIMEOUT)
 }
 

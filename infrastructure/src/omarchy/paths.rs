@@ -1,4 +1,4 @@
-use crate::xdg;
+use crate::sandbox;
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
@@ -18,14 +18,17 @@ pub struct OmarchyPaths {
     pub config: PathBuf,
     /// `$XDG_CONFIG_HOME/fontconfig`, where `omarchy font set` writes `fonts.conf`.
     pub fontconfig: PathBuf,
+    /// `$XDG_CONFIG_HOME/hypr`, the user's Hyprland configuration (`hyprland.lua`).
+    pub hypr: PathBuf,
 }
 
 impl OmarchyPaths {
-    /// The live paths, or [`STATE_DIR_ENV`]'s directory for the state.
+    /// The live paths, or [`STATE_DIR_ENV`]'s directory for the state. In a Flatpak the
+    /// configuration folders are the host's ([`sandbox::desktop_config_home`]).
     pub fn from_env() -> Self {
         let home = std::env::home_dir().unwrap_or_default();
         let state = state_dir(std::env::var_os(STATE_DIR_ENV).as_deref(), &home);
-        Self::new(state, &xdg::config_home())
+        Self::new(state, &sandbox::desktop_config_home())
     }
 
     pub fn new(state: PathBuf, config_home: &Path) -> Self {
@@ -33,6 +36,7 @@ impl OmarchyPaths {
             state,
             config: config_home.join("omarchy"),
             fontconfig: config_home.join("fontconfig"),
+            hypr: config_home.join("hypr"),
         }
     }
 
@@ -57,6 +61,16 @@ impl OmarchyPaths {
     /// The user's machine-level `shell.toml`, merged over the theme's.
     pub fn user_shell_file(&self) -> PathBuf {
         self.config.join("shell.toml")
+    }
+
+    /// The theme's Hyprland overrides, which Omarchy's `omarchy.lua` loads after its defaults.
+    pub fn theme_hyprland_file(&self) -> PathBuf {
+        self.current().join("theme").join("hyprland.lua")
+    }
+
+    /// Omarchy's Hyprland toggles (`omarchy hyprland corners` copies one here), loaded last.
+    pub fn hyprland_toggles(&self) -> PathBuf {
+        self.state.join("toggles").join("hypr")
     }
 }
 
@@ -122,6 +136,15 @@ mod tests {
         );
         assert_eq!(paths.user_shell_file(), Path::new("/c/omarchy/shell.toml"));
         assert_eq!(paths.fontconfig, Path::new("/c/fontconfig"));
+        assert_eq!(paths.hypr, Path::new("/c/hypr"));
+        assert_eq!(
+            paths.theme_hyprland_file(),
+            Path::new("/s/omarchy/current/theme/hyprland.lua")
+        );
+        assert_eq!(
+            paths.hyprland_toggles(),
+            Path::new("/s/omarchy/toggles/hypr")
+        );
         assert!(OmarchyPaths::from_env().current().ends_with("current"));
     }
 

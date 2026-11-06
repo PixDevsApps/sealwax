@@ -5,6 +5,7 @@
 pub mod colors;
 mod command;
 pub mod font;
+pub mod hypr_lua;
 pub mod hyprland;
 pub mod paths;
 pub mod shell;
@@ -85,7 +86,9 @@ pub fn read(paths: &OmarchyPaths, request: Request) -> Readout {
         let shell = request
             .shell
             .then(|| scope.spawn(|| shell::read_shell(paths)));
-        let rounding = request.rounding.then(|| scope.spawn(hyprland::rounding));
+        let rounding = request
+            .rounding
+            .then(|| scope.spawn(|| hyprland::rounding(paths)));
         let monospace = request
             .fonts
             .then(|| scope.spawn(|| font::family_with("fc-match".as_ref(), font::MONOSPACE)));
