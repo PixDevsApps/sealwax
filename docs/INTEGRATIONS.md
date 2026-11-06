@@ -24,7 +24,7 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
 ## Hyprland
 
 - Configured in Lua (`~/.config/hypr/hyprland.lua` loads Omarchy's defaults, then the user's modules); `hyprctl reload` applies, `hyprctl configerrors` checks.
-- **Corner radius:** `hyprctl -j getoption decoration:rounding` (8 here, 0 on stock Omarchy), read at start and after theme changes, as omarchy-shell does ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)).
+- **Corner radius:** `hyprctl -j getoption decoration:rounding` (8 here, 0 on stock Omarchy), read at start and after theme changes, as omarchy-shell does ([ADR-019](DECISIONS.md#adr-019--corner-radius-follows-hyprland-2026-10-04)). In a Flatpak it is read from the Lua files instead ([Flatpak](#flatpak)).
 - **Window class:** GTK4 apps use the app-id as their Wayland app_id, so rules match `^io\.github\.pixdevsapps\.Sealwax$` (`.Devel` for development builds). Every Sealwax window has that class; the main window's title is always `Sealwax`, and a composer window opens titled `New message` and then takes its subject (M6).
 - **Focus and scale (S6):** Omarchy sets `misc.focus_on_activate = true`, so `present()` focuses the window (2–4 ms). `GDK_SCALE=2` in the session environment has no effect on GTK 4 Wayland apps; it still applies to X11 and XWayland programs.
 - **No title bar:** Sealwax shows no title bar and no window controls when `HYPRLAND_INSTANCE_SIGNATURE` is set or `XDG_CURRENT_DESKTOP` contains `Hyprland`; elsewhere the pane bars carry the window controls at the window's edges and drag the window (M1).
@@ -47,6 +47,19 @@ How Sealwax fits Omarchy 4, Hyprland and the mail providers. Facts about this ma
   o.window("^io\\.github\\.pixdevsapps\\.Sealwax$", { tag = "+floating-window" })
   o.window({ class = "^io\\.github\\.pixdevsapps\\.Sealwax$", title = "^Sealwax$" }, { tag = "-floating-window" })
   ```
+
+## Flatpak
+
+A Flatpak build (`packaging/flatpak/`) runs the same code in a sandbox; `infrastructure::sandbox` tells by `/.flatpak-info`, and outside a Flatpak none of this applies.
+
+- **Omarchy's files** are read through read-only permissions: `~/.local/state/omarchy` (the theme, the toggles), `xdg-config/omarchy` (`shell.toml`) and `xdg-config/hypr` (Hyprland's Lua files). `XDG_CONFIG_HOME` points into `~/.var/app/<app-id>/config` there, so Omarchy's and Hyprland's folders are taken from `HOST_XDG_CONFIG_HOME`, else `~/.config`.
+- **Corner radius:** no `hyprctl`, and Hyprland's socket is never given to the sandbox (it takes any command). Sealwax reads `decoration.rounding` from the files Hyprland loads, in its order, without running them: `~/.config/hypr/hyprland.lua` and the `hypr.<name>` modules it requires, Omarchy's defaults (0, not readable from the sandbox) and the theme's `hyprland.lua` where it requires `default.hypr.omarchy`, and Omarchy's toggles (`omarchy hyprland corners`) where it requires `default.hypr.toggles`. The last `rounding = <number>` written in a `decoration = { … }` table wins. A condition around a setting isn't seen; a value that isn't a plain number gives square corners. `corner_radius = <px>` in `config.toml` overrides it as everywhere.
+- **Fonts:** the runtime's fontconfig sees the host's font files but not `/etc/fonts/conf.d/50-omarchy.conf` nor `omarchy font set`'s `~/.config/fontconfig/fonts.conf`, so the Flatpak shows the runtime's default families (the owner's decision, 2026-11-06).
+- **Background mode and Start at Login** go through the Background portal (`org.freedesktop.portal.Background`): the first time Sealwax runs without a window it asks for leave, and quits when the desktop says no; the toggle asks it to start `sealwax --background` at login, or stop, and a marker in Sealwax's state folder keeps the answer. Omarchy's portals (hyprland, gtk) have no Background portal: there nothing is asked, and Start at Login says it isn't available.
+- **Make Sealwax the Default Mail App…** changes nothing in a Flatpak (it would write the sandbox's own `mimeapps.list`); it says to choose Sealwax in the system's settings or with `xdg-mime default <app-id>.desktop x-scheme-handler/mailto`.
+- **Check for Updates…** isn't there: Flathub updates the app.
+- **Secrets** go through the Secret portal; oo7 switches to it by itself in a sandbox.
+- **WebKit** gives each web process a sandbox of its own through the Flatpak portal (`flatpak-spawn --sandbox`); see [SECURITY.md](SECURITY.md#message-rendering), layer 8.
 
 ## omarchy-shell (notifications, launcher)
 

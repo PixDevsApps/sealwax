@@ -1,0 +1,57 @@
+# Sealwax as a Flatpak: the release manifest. It builds this checkout (type: dir) with the
+# release profile, so the app-id is the release one. The crates come from cargo-sources.json
+# (tools/flatpak-cargo-sources.py); the build has no network. No Microsoft client ID is built
+# in.
+app-id: io.github.pixdevsapps.Sealwax
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: sealwax
+finish-args:
+  # IMAP, POP3, SMTP, OAuth's loopback redirect, Proton Mail Bridge on 127.0.0.1.
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # The read-only PrepareForSleep subscription (app/src/desktop.rs).
+  - --system-talk-name=org.freedesktop.login1
+  # Omarchy's theme, shell.toml and Hyprland toggles, read only; absent on other distributions.
+  - --filesystem=~/.local/state/omarchy:ro
+  - --filesystem=xdg-config/omarchy:ro
+  # Hyprland's Lua configuration, read only, for its corner rounding (hyprctl and Hyprland's
+  # socket stay out of the sandbox).
+  - --filesystem=xdg-config/hypr:ro
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/sealwax/cargo
+    CARGO_NET_OFFLINE: 'true'
+    RUSTFLAGS: --remap-path-prefix=/run/build/sealwax=/usr/src/sealwax
+modules:
+  - name: sealwax
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked --offline -p sealwax
+      - python3 tools/licenses.py --offline --output target/THIRD-PARTY-LICENSES.txt
+      - install -Dm755 target/release/sealwax /app/bin/sealwax
+      - install -Dm644 packaging/io.github.pixdevsapps.Sealwax.desktop /app/share/applications/io.github.pixdevsapps.Sealwax.desktop
+      - sed 's|^Exec=/usr/bin/|Exec=/app/bin/|' packaging/io.github.pixdevsapps.Sealwax.service > io.github.pixdevsapps.Sealwax.service
+      - install -Dm644 io.github.pixdevsapps.Sealwax.service /app/share/dbus-1/services/io.github.pixdevsapps.Sealwax.service
+      - for size in 16 24 32 48 64 128 256 512; do install -Dm644 packaging/icons/hicolor/${size}x${size}/apps/io.github.pixdevsapps.Sealwax.png /app/share/icons/hicolor/${size}x${size}/apps/io.github.pixdevsapps.Sealwax.png; done
+      - install -Dm644 packaging/icons/hicolor/scalable/apps/io.github.pixdevsapps.Sealwax.svg /app/share/icons/hicolor/scalable/apps/io.github.pixdevsapps.Sealwax.svg
+      - install -Dm644 LICENSE /app/share/licenses/io.github.pixdevsapps.Sealwax/LICENSE
+      - install -Dm644 target/THIRD-PARTY-LICENSES.txt /app/share/licenses/io.github.pixdevsapps.Sealwax/THIRD-PARTY-LICENSES.txt
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - .local
+          - .git
+          - .claude
+          - fuzz/target
+          - archive/spikes/target
+      - cargo-sources.json
