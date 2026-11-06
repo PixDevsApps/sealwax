@@ -4,13 +4,16 @@
 //! handler for `x-scheme-handler/mailto`, writing `$XDG_CONFIG_HOME/mimeapps.list` as
 //! `xdg-mime default` does. When Sealwax already is the default it says so and changes nothing;
 //! a build whose desktop entry isn't installed (a development build) says why it can't. GIO's
-//! reads and the write run off the GTK thread.
+//! reads and the write run off the GTK thread. In a Flatpak GIO would write the sandbox's own
+//! `mimeapps.list`, which the desktop never reads, and there is no portal for it, so the dialog
+//! says where to choose Sealwax instead and changes nothing.
 
 use crate::window::Window;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use sealwax_infrastructure::sandbox;
 use std::path::{Path, PathBuf};
 
 /// The content type of `mailto:` links.
@@ -180,10 +183,31 @@ pub(crate) fn explanation(probe: &Probe) -> (String, String) {
     }
 }
 
+/// In a Flatpak: where the user makes Sealwax the default instead.
+pub(crate) fn flatpak_explanation(app_id: &str) -> (String, String) {
+    (
+        "Choose Sealwax in your system's settings".to_owned(),
+        format!(
+            "Sealwax runs as a Flatpak, which can't change the desktop's default apps itself. \
+             Choose Sealwax as the mail app in your system's settings (GNOME: Settings, Apps, \
+             Default Apps; KDE: System Settings, Default Applications), or run this in a \
+             terminal:\n\nxdg-mime default {} {MAILTO_TYPE}\n\nNothing was changed.",
+            desktop_id(app_id)
+        ),
+    )
+}
+
 /// The command: looks the desktop up, asks, changes, and says how it went.
 pub(crate) fn run(window: &Window, app_id: &str) {
     let window = window.clone();
     let app_id = app_id.to_owned();
+    if sandbox::is_flatpak() {
+        glib::spawn_future_local(async move {
+            let (heading, body) = flatpak_explanation(&app_id);
+            tell(&window, &heading, &body).await;
+        });
+        return;
+    }
     glib::spawn_future_local(async move {
         let Ok(probe) = gio::spawn_blocking(move || probe(&app_id)).await else {
             window.add_toast(adw::Toast::new("Couldn't look up the default mail app"));
@@ -324,5 +348,17 @@ mod tests {
             explanation(&missing).0,
             "Sealwax can't be the default mail app yet"
         );
+    }
+
+    #[test]
+    fn a_flatpak_says_where_to_choose_sealwax() {
+        let (_, body) = flatpak_explanation("io.github.pixdevsapps.Sealwax");
+        assert!(
+            body.contains(
+                "xdg-mime default io.github.pixdevsapps.Sealwax.desktop x-scheme-handler/mailto"
+            ),
+            "{body}"
+        );
+        assert!(body.contains("Nothing was changed"), "{body}");
     }
 }

@@ -108,8 +108,14 @@ fn failure(error: UpdateError) -> &'static str {
     }
 }
 
-/// Installs Check for Updates, once at startup.
+/// Installs Check for Updates, once at startup. Not in a Flatpak (the owner's decision,
+/// 2026-11-06): Flatpak updates it, and the command it shows is pacman's. The action stays
+/// disabled, so the menu and the palette leave it out.
 pub(crate) fn install(state: &Rc<AppState>) {
+    if sealwax_infrastructure::sandbox::is_flatpak() {
+        tracing::debug!("in a Flatpak: no Check for Updates");
+        return;
+    }
     let Some(actions) = state.app_actions() else {
         return;
     };

@@ -12,13 +12,18 @@
 //!   notification says that Sealwax keeps running and how to quit it. Once per user: a marker in
 //!   Sealwax's state folder remembers it across restarts. Clicking it shows the main window; a
 //!   window opening withdraws it. The texts are proposals for the M7 gate.
+//! - **In a Flatpak** the first time Sealwax runs without a window (the window closed into
+//!   background mode, or a `--background` start), it asks the desktop's Background portal
+//!   ([`ask_desktop`]), so GNOME and KDE know it runs in the background with leave, and quits
+//!   when the desktop says no. A desktop without the portal (Omarchy) isn't asked.
 
 use crate::application::{AppState, ICON_NAME, SealwaxApplication};
-use crate::autostart;
+use crate::{autostart, portal};
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use sealwax_domain::actions::ActionId;
 use sealwax_domain::keymap::Keymap;
+use sealwax_infrastructure::sandbox;
 use sealwax_infrastructure::xdg::ensure_private_dir;
 use std::cell::{Cell, RefCell};
 use std::fs::OpenOptions;
@@ -53,6 +58,8 @@ pub(crate) struct Notice {
 thread_local! {
     /// Every notice sent in this process, oldest first; the self-tests read it.
     static SENT: RefCell<Vec<Notice>> = const { RefCell::new(Vec::new()) };
+    /// In a Flatpak: whether this process asked the Background portal yet.
+    static ASKED: Cell<bool> = const { Cell::new(false) };
 }
 
 /// The notices sent in this process, oldest first.
@@ -181,6 +188,7 @@ fn closed_into_background(app: &SealwaxApplication, state: &Rc<AppState>, sent: 
         return;
     }
     tracing::info!("the last window closed; running in the background");
+    ask_desktop(app, state);
     if sent.get() {
         return;
     }
@@ -205,6 +213,58 @@ fn closed_into_background(app: &SealwaxApplication, state: &Rc<AppState>, sent: 
             .map(|prefs| prefs.keymap())
             .unwrap_or_default();
         send(&app, notice(&keymap));
+    });
+}
+
+/// In a Flatpak, once per process: asks the desktop's Background portal for leave to run
+/// without a window, saying whether to start at login as the toggle has it. A no is obeyed:
+/// Sealwax quits unless a window opened meanwhile. A login start the desktop turned off turns
+/// the toggle off.
+pub(crate) fn ask_desktop(app: &SealwaxApplication, state: &Rc<AppState>) {
+    if !sandbox::is_flatpak() || ASKED.with(|asked| asked.replace(true)) {
+        return;
+    }
+    let state_dir = state.config().dirs.state.clone();
+    let (app, weak) = (app.downgrade(), Rc::downgrade(state));
+    glib::spawn_future_local(async move {
+        let dir = state_dir.clone();
+        let autostart = gio::spawn_blocking(move || autostart::flatpak_on(&dir))
+            .await
+            .unwrap_or(false);
+        let outcome = portal::request_background(autostart::BACKGROUND_REASON, autostart).await;
+        let allowed = match outcome {
+            portal::Outcome::Answered(allowed) => allowed,
+            portal::Outcome::Unavailable => {
+                tracing::debug!("no Background portal to ask");
+                return;
+            }
+            portal::Outcome::Cancelled => {
+                tracing::info!("the desktop's background question was dismissed");
+                return;
+            }
+            portal::Outcome::Failed(error) => {
+                tracing::warn!(%error, "the Background portal failed");
+                return;
+            }
+        };
+        let (Some(app), Some(state)) = (app.upgrade(), weak.upgrade()) else {
+            return;
+        };
+        if autostart && !allowed.autostart {
+            tracing::info!("the desktop doesn't start Sealwax at login any more");
+            let _ = gio::spawn_blocking(move || autostart::remember_flatpak(&state_dir, false)).await;
+            if let Some(actions) = state.app_actions() {
+                actions.set_toggle_state(ActionId::StartAtLogin, false);
+            }
+        }
+        if allowed.background {
+            tracing::info!("the desktop allows Sealwax in the background");
+        } else if app.windows().is_empty() && !state.is_quitting() {
+            tracing::info!("the desktop doesn't allow Sealwax in the background; quitting");
+            state.quit(&app);
+        } else {
+            tracing::info!("the desktop doesn't allow Sealwax in the background");
+        }
     });
 }
 

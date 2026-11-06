@@ -932,6 +932,7 @@ impl AppState {
         if app.windows().is_empty() && self.hidden.borrow().is_none() {
             self.hidden.replace(Some(app.hold()));
             tracing::info!("started without a window");
+            background::ask_desktop(app, self);
         }
         if self.window().is_none() {
             self.start_engine_without_window();

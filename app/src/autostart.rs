@@ -7,14 +7,21 @@
 //! file and nothing else. Development builds and builds not on `PATH` write their own
 //! executable's path, with `TryExec`, so the entry does nothing once that file is gone. The
 //! file I/O runs off the GTK thread.
+//!
+//! In a Flatpak the sandbox's `autostart` folder is one no session reads, so Sealwax asks the
+//! desktop's Background portal instead ([`portal`]), which writes the entry itself, and keeps a
+//! marker in its own state folder for the toggle, since the sandbox can't see that entry. A
+//! desktop without the portal (Omarchy's Hyprland) gets an explanation and no change.
 
 use crate::application::{AppState, ICON_NAME};
+use crate::portal;
 use crate::window::Window;
 use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_domain::actions::ActionId;
+use sealwax_infrastructure::sandbox;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -25,6 +32,57 @@ pub(crate) const PROGRAM: &str = "sealwax";
 
 /// The option the entry starts Sealwax with.
 pub(crate) const BACKGROUND_OPTION: &str = "--background";
+
+/// In a Flatpak: the marker in Sealwax's state folder that says the desktop agreed to start
+/// Sealwax at login.
+pub(crate) const FLATPAK_MARKER: &str = "start-at-login";
+
+/// What Sealwax tells the Background portal it runs in the background for.
+pub(crate) const BACKGROUND_REASON: &str =
+    "Sealwax keeps syncing mail and notifying new mail while its window is closed.";
+
+/// In a Flatpak: whether the desktop was asked to start Sealwax at login and agreed; blocking.
+pub(crate) fn flatpak_on(state_dir: &Path) -> bool {
+    state_dir.join(FLATPAK_MARKER).is_file()
+}
+
+/// In a Flatpak: notes the desktop's answer in `state_dir`; blocking.
+pub(crate) fn remember_flatpak(state_dir: &Path, on: bool) -> io::Result<()> {
+    let marker = state_dir.join(FLATPAK_MARKER);
+    if on {
+        sealwax_infrastructure::xdg::ensure_private_dir(state_dir)?;
+        fs::write(
+            marker,
+            "The desktop starts Sealwax at login (its Background portal). Turn Start Sealwax at \
+             Login off in Sealwax to stop it.\n",
+        )
+    } else {
+        disable(&marker).map(|_| ())
+    }
+}
+
+/// In a Flatpak: the question before the desktop is asked.
+pub(crate) fn flatpak_question() -> (String, String) {
+    (
+        "Start Sealwax at login?".to_owned(),
+        "Sealwax will start without a window when you log in, so mail syncs and new mail is \
+         notified from the start. Open Sealwax as usual to see its window.\n\nSealwax asks your \
+         desktop to start it at login, and the desktop may ask you as well.\n\nTo undo: turn \
+         Start Sealwax at Login off."
+            .to_owned(),
+    )
+}
+
+/// In a Flatpak on a desktop without the Background portal.
+pub(crate) fn flatpak_unavailable() -> (String, String) {
+    (
+        "Start at Login isn't available here".to_owned(),
+        "Sealwax runs as a Flatpak, which can start at login only through the desktop's \
+         Background portal, and this desktop doesn't have one (Hyprland's portals don't offer \
+         it). On Omarchy, Sealwax's own package can start at login. Nothing was changed."
+            .to_owned(),
+    )
+}
 
 /// The entry for `app_id` under the configuration home `config_home`.
 pub(crate) fn entry_path(config_home: &Path, app_id: &str) -> PathBuf {
@@ -242,12 +300,21 @@ pub(crate) fn install(state: &Rc<AppState>) {
     });
     let weak = Rc::downgrade(state);
     let app_id = state.config().app_id.clone();
+    let state_dir = state.config().dirs.state.clone();
     glib::spawn_future_local(async move {
         let config = glib::user_config_dir();
-        if let Ok(probe) = gio::spawn_blocking(move || probe(&config, &app_id)).await
+        let on = gio::spawn_blocking(move || {
+            if sandbox::is_flatpak() {
+                flatpak_on(&state_dir)
+            } else {
+                probe(&config, &app_id).on
+            }
+        })
+        .await;
+        if let Ok(on) = on
             && let Some(state) = weak.upgrade()
         {
-            show_state(&state, probe.on);
+            show_state(&state, on);
         }
     });
 }
@@ -279,6 +346,10 @@ fn toast(window: Option<&Window>, text: &str) {
 /// change is done; on asks first.
 fn toggled(state: &Rc<AppState>, on: bool) {
     show_state(state, !on);
+    if sandbox::is_flatpak() {
+        toggled_in_flatpak(state, on);
+        return;
+    }
     let weak = Rc::downgrade(state);
     let app_id = state.config().app_id.clone();
     glib::spawn_future_local(async move {
@@ -326,7 +397,7 @@ fn toggled(state: &Rc<AppState>, on: bool) {
             );
             return;
         };
-        if !ask(&window, &probe).await {
+        if !ask(&window, question(&probe)).await {
             return;
         }
         let path = probe.path.clone();
@@ -352,9 +423,83 @@ fn toggled(state: &Rc<AppState>, on: bool) {
     });
 }
 
+/// In a Flatpak: the toggle asks the Background portal, which answers for the desktop.
+fn toggled_in_flatpak(state: &Rc<AppState>, on: bool) {
+    let weak = Rc::downgrade(state);
+    let state_dir = state.config().dirs.state.clone();
+    glib::spawn_future_local(async move {
+        let Some(window) = weak.upgrade().and_then(|state| state.window()) else {
+            tracing::warn!("Start at Login needs the window to ask");
+            return;
+        };
+        if on && !ask(&window, flatpak_question()).await {
+            return;
+        }
+        let outcome = portal::request_background(BACKGROUND_REASON, on).await;
+        let remembered = match &outcome {
+            portal::Outcome::Answered(allowed) => Some(on && allowed.autostart),
+            portal::Outcome::Unavailable => Some(false),
+            portal::Outcome::Cancelled | portal::Outcome::Failed(_) => None,
+        };
+        if let Some(remembered) = remembered {
+            let dir = state_dir.clone();
+            if let Ok(Err(error)) =
+                gio::spawn_blocking(move || remember_flatpak(&dir, remembered)).await
+            {
+                tracing::warn!(%error, "the Start at Login marker can't be written");
+            }
+        }
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        let shown = remembered.unwrap_or(!on);
+        show_state(&state, shown);
+        match outcome {
+            portal::Outcome::Answered(_) if on && shown => {
+                tracing::info!("start at login turned on through the portal");
+                toast(Some(&window), "Sealwax will start at login");
+            }
+            portal::Outcome::Answered(_) if on => {
+                tracing::info!("the desktop didn't allow a start at login");
+                toast(
+                    Some(&window),
+                    "The desktop didn't allow Sealwax to start at login",
+                );
+            }
+            portal::Outcome::Answered(_) => {
+                tracing::info!("start at login turned off through the portal");
+                toast(Some(&window), "Sealwax won't start at login");
+            }
+            portal::Outcome::Unavailable if on => {
+                let (heading, body) = flatpak_unavailable();
+                tell(&window, &heading, &body).await;
+            }
+            portal::Outcome::Unavailable => {
+                toast(Some(&window), "Sealwax won't start at login");
+            }
+            portal::Outcome::Cancelled => {}
+            portal::Outcome::Failed(error) => {
+                tracing::warn!(%error, "the Background portal failed");
+                toast(Some(&window), "The desktop couldn't change Start at Login");
+            }
+        }
+    });
+}
+
+async fn tell(window: &Window, heading: &str, body: &str) {
+    let dialog = adw::AlertDialog::builder()
+        .heading(heading)
+        .body(body)
+        .close_response("close")
+        .default_response("close")
+        .build();
+    dialog.set_widget_name("start-at-login");
+    dialog.add_response("close", "Close");
+    dialog.choose_future(Some(window.window())).await;
+}
+
 /// The question, over the main window; true on yes.
-async fn ask(window: &Window, probe: &Probe) -> bool {
-    let (heading, body) = question(probe);
+async fn ask(window: &Window, (heading, body): (String, String)) -> bool {
     let dialog = adw::AlertDialog::builder()
         .heading(heading)
         .body(body)
@@ -535,5 +680,22 @@ mod tests {
         assert!(!probe_now().on);
         assert!(neighbour.exists());
         fs::remove_dir_all(config.parent().unwrap()).unwrap();
+    }
+
+    #[test]
+    fn in_a_flatpak_the_toggle_follows_the_desktops_answer() {
+        let state = scratch("flatpak").join("state");
+        assert!(!flatpak_on(&state));
+        remember_flatpak(&state, true).unwrap();
+        assert!(flatpak_on(&state));
+        remember_flatpak(&state, true).unwrap();
+        remember_flatpak(&state, false).unwrap();
+        assert!(!flatpak_on(&state));
+        remember_flatpak(&state, false).unwrap();
+        let (_, question) = flatpak_question();
+        assert!(question.contains("asks your desktop"), "{question}");
+        let (_, unavailable) = flatpak_unavailable();
+        assert!(unavailable.contains("Nothing was changed"), "{unavailable}");
+        fs::remove_dir_all(state.parent().unwrap()).unwrap();
     }
 }

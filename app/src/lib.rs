@@ -67,6 +67,7 @@ mod outbox;
 mod part_cache;
 mod pins;
 mod pop3;
+mod portal;
 mod rules;
 mod search;
 #[cfg(feature = "test-hooks")]
