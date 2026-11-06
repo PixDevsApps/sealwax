@@ -527,7 +527,10 @@ fn proc_status(pid: u32) -> Option<Proc> {
 /// `assert-web-sandbox`: `WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS` is gone from Sealwax's
 /// environment, and every WebKit web process Sealwax started runs in WebKit's sandbox: started
 /// by bubblewrap, in a PID namespace of its own (M9). Without the sandbox a web process is
-/// Sealwax's own child, in Sealwax's namespaces.
+/// Sealwax's own child, in Sealwax's namespaces. In a Flatpak the web processes the Flatpak
+/// portal starts run in sandboxes of their own outside this one, where `/proc` doesn't show
+/// them, so none being seen passes there when `flatpak-spawn --sandbox` works; any that is seen
+/// must still be under bubblewrap.
 pub(super) fn web_sandbox() -> StepResult {
     let mut problems = Vec::new();
     if std::env::var_os(crate::config::SANDBOX_OFF_ENV).is_some() {
@@ -556,8 +559,14 @@ pub(super) fn web_sandbox() -> StepResult {
         .filter(|(pid, process)| process.name.starts_with("WebKitWebProces") && descends(**pid))
         .map(|(pid, process)| (*pid, process))
         .collect();
-    if web.is_empty() {
+    let flatpak = sealwax_infrastructure::sandbox::is_flatpak();
+    if web.is_empty() && !flatpak {
         problems.push("no web process runs".to_owned());
+    }
+    if flatpak && let Err(problem) = crate::webview::flatpak_web_sandbox() {
+        problems.push(format!(
+            "the Flatpak portal can't sandbox web processes: {problem}"
+        ));
     }
     let outside: Vec<String> = web
         .iter()

@@ -22,6 +22,13 @@ use sealwax_domain::theme::BodyStyle;
 use sealwax_engine::api::BodyError;
 use std::rc::Rc;
 
+/// Above a body shown as text after its view crashed twice, or without a content filter.
+const TEXT_FALLBACK: &str = "This message is shown as text: its formatted view isn't available.";
+
+/// Above a body shown as text because WebKit can't sandbox its views in this Flatpak.
+const NO_WEB_SANDBOX: &str = "This message is shown as text: in this Flatpak WebKit can't keep \
+     its formatted view in a sandbox of its own, so Sealwax doesn't use it.";
+
 impl Inner {
     /// Whether load `token` of message `id` is still wanted on page `key`.
     fn wanted_load(&self, key: u64, id: MessageId, token: u64) -> bool {
@@ -260,7 +267,11 @@ impl Inner {
             } => {
                 let crashes = self.crashed.borrow().get(&id).copied().unwrap_or(0);
                 if crashes >= 2 || self.filter.borrow().is_none() {
-                    self.text_fallback(card, &html).await;
+                    self.text_fallback(card, &html, TEXT_FALLBACK).await;
+                    return;
+                }
+                if !crate::webview::web_views_allowed().await {
+                    self.text_fallback(card, &html, NO_WEB_SANDBOX).await;
                     return;
                 }
                 let frame = gtk::Box::builder()
@@ -325,15 +336,13 @@ impl Inner {
         }
     }
 
-    /// The HTML as text, when no WebView may show it.
-    async fn text_fallback(&self, card: &mut Card, html: &str) {
+    /// The HTML as text, when no WebView may show it, under `notice`.
+    async fn text_fallback(&self, card: &mut Card, html: &str, notice: &str) {
         let html = html.to_owned();
         let text = gio::spawn_blocking(move || sealwax_domain::message::html_to_text(&html))
             .await
             .unwrap_or_default();
-        card.widgets.body.append(&page::notice(
-            "This message is shown as text: its formatted view isn't available.",
-        ));
+        card.widgets.body.append(&page::notice(notice));
         let text = plain::plain_text(&text);
         card.widgets.body.append(&text);
         card.widgets.focus = Some(text.upcast());

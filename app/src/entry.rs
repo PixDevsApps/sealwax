@@ -2,7 +2,7 @@
 //! second instance (`current_exe()`) is a whole Sealwax too.
 
 use crate::application::{self, AppConfig};
-use crate::{activation, cli, config};
+use crate::{activation, cli, config, webview};
 use gtk4::glib;
 use std::time::Instant;
 
@@ -43,6 +43,10 @@ pub fn main() -> glib::ExitCode {
             return glib::ExitCode::FAILURE;
         }
     };
+    // In a Flatpak WebKit gives each web process a sandbox of its own through the Flatpak
+    // portal, and starts them without one when it can't. Its check runs beside the start; mail
+    // waits for it (SECURITY.md, layer 8).
+    webview::start_flatpak_check();
     #[cfg(feature = "test-hooks")]
     if let Some(script) = parsed.self_test {
         return crate::selftest::run(&script, started);

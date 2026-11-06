@@ -8,6 +8,130 @@
 use gtk4::{gio, glib};
 use sealwax_domain::theme::WebViewFonts;
 use std::path::Path;
+use std::process::{Command, Stdio};
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
+
+/// What WebKitGTK runs in a Flatpak to see whether its web processes can get a sandbox of their
+/// own (`flatpak-spawn --sandbox`, through the Flatpak portal). When it fails, WebKit starts
+/// them without one, inside the app's sandbox (SECURITY.md, layer 8).
+pub(crate) const FLATPAK_SANDBOX_CHECK: [&str; 5] = [
+    "flatpak-spawn",
+    "--sandbox",
+    "--sandbox-expose-path-ro-try=/this_path_will_not_exist",
+    "--",
+    "true",
+];
+
+/// How long [`FLATPAK_SANDBOX_CHECK`] may take.
+const SANDBOX_CHECK_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// In a Flatpak: whether WebKit's web processes get their own sandbox, asked as WebKit asks;
+/// blocking.
+pub(crate) fn flatpak_web_sandbox() -> Result<(), String> {
+    sandbox_check(&FLATPAK_SANDBOX_CHECK, SANDBOX_CHECK_TIMEOUT)
+}
+
+/// The Flatpak check, run once on a thread of its own: its outcome, and a channel that closes
+/// when it is known.
+struct SandboxCheck {
+    outcome: OnceLock<Result<(), String>>,
+    done: async_channel::Receiver<()>,
+}
+
+fn sandbox_check_once() -> &'static SandboxCheck {
+    static CHECK: OnceLock<SandboxCheck> = OnceLock::new();
+    CHECK.get_or_init(|| {
+        let (finished, done) = async_channel::bounded::<()>(1);
+        let spawned = std::thread::Builder::new()
+            .name("sealwax-web-sandbox".into())
+            .spawn(move || {
+                let started = Instant::now();
+                let outcome = flatpak_web_sandbox();
+                match &outcome {
+                    Ok(()) => tracing::debug!(
+                        elapsed = ?started.elapsed(),
+                        "WebKit's Flatpak sandbox is usable"
+                    ),
+                    Err(problem) if cfg!(debug_assertions) => tracing::warn!(
+                        %problem,
+                        "WebKit can't sandbox its web processes in this Flatpak; a development \
+                         build shows mail anyway"
+                    ),
+                    Err(problem) => tracing::error!(
+                        %problem,
+                        "WebKit can't sandbox its web processes in this Flatpak, so mail is \
+                         shown as text and the composer doesn't open. The Flatpak portal \
+                         (flatpak-portal) gives the sandbox; check that it runs"
+                    ),
+                }
+                let _ = sandbox_check_once().outcome.set(outcome);
+                drop(finished);
+            });
+        if let Err(error) = spawned {
+            tracing::error!(%error, "WebKit's Flatpak sandbox can't be checked");
+        }
+        SandboxCheck {
+            outcome: OnceLock::new(),
+            done,
+        }
+    })
+}
+
+/// In a Flatpak, as early as possible: starts the check [`web_views_allowed`] waits for, so it
+/// runs beside the start instead of before it.
+pub(crate) fn start_flatpak_check() {
+    if sealwax_infrastructure::sandbox::is_flatpak() {
+        sandbox_check_once();
+    }
+}
+
+/// Whether mail may go into a web view: always outside a Flatpak; in one when WebKit's own
+/// sandbox check passed, and in a development build whatever it said. Waits for the check
+/// without blocking (SECURITY.md, layer 8).
+pub(crate) async fn web_views_allowed() -> bool {
+    if !sealwax_infrastructure::sandbox::is_flatpak() {
+        return true;
+    }
+    let check = sandbox_check_once();
+    let _ = check.done.recv().await;
+    allowed(check.outcome.get(), cfg!(debug_assertions))
+}
+
+/// The check's outcome as an answer: unknown (the check didn't run) counts as failed.
+fn allowed(outcome: Option<&Result<(), String>>, development: bool) -> bool {
+    match outcome {
+        Some(Ok(())) => true,
+        Some(Err(_)) | None => development,
+    }
+}
+
+fn sandbox_check(command: &[&str], timeout: Duration) -> Result<(), String> {
+    let (program, args) = command.split_first().ok_or("no command")?;
+    let mut child = Command::new(program)
+        .args(args)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("{program} didn't start: {error}"))?;
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) if status.success() => return Ok(()),
+            Ok(Some(status)) => return Err(format!("{program} --sandbox failed ({status})")),
+            Ok(None) if started.elapsed() < timeout => {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(format!("{program} --sandbox didn't finish"));
+            }
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+}
 
 /// Runtime features that make requests without any script and that the old settings no
 /// longer control in WebKitGTK 2.52 (S2): DNS prefetch, a clicked link's preconnect,
@@ -237,5 +361,33 @@ mod tests {
                 .all(|(name, _)| NETWORK_FEATURES.contains(name)),
             "a retired feature is still turned off where WebKit has it"
         );
+    }
+
+    #[test]
+    fn the_flatpak_sandbox_check_reads_the_exit_status() {
+        assert_eq!(sandbox_check(&["true"], Duration::from_secs(5)), Ok(()));
+        assert!(sandbox_check(&["false"], Duration::from_secs(5)).is_err());
+        assert!(sandbox_check(&["/nonexistent/flatpak-spawn"], Duration::from_secs(5)).is_err());
+        let started = Instant::now();
+        assert!(sandbox_check(&["sleep", "5"], Duration::from_millis(100)).is_err());
+        assert!(started.elapsed() < Duration::from_secs(3));
+        assert_eq!(FLATPAK_SANDBOX_CHECK[..2], ["flatpak-spawn", "--sandbox"]);
+    }
+
+    #[test]
+    fn mail_goes_into_a_web_view_only_after_a_passed_check() {
+        let failed = Err("flatpak-spawn --sandbox failed".to_owned());
+        assert!(allowed(Some(&Ok(())), false));
+        assert!(!allowed(Some(&failed), false));
+        assert!(!allowed(None, false));
+        assert!(allowed(Some(&failed), true), "a development build goes on");
+    }
+
+    #[test]
+    fn outside_a_flatpak_web_views_are_allowed_at_once() {
+        if !sealwax_infrastructure::sandbox::is_flatpak() {
+            start_flatpak_check();
+            assert!(glib::MainContext::default().block_on(web_views_allowed()));
+        }
     }
 }

@@ -1275,6 +1275,13 @@ impl Inner {
                 );
                 return;
             }
+            (Ok(_), Some(_)) if !crate::webview::web_views_allowed().await => {
+                self.show_problem(
+                    "The composer can't open safely: in this Flatpak WebKit can't keep it in a \
+                     sandbox of its own.",
+                );
+                return;
+            }
             (Ok(prepared), Some(filter)) => {
                 self.editor.engine().set_blobs(self.backend.blobs());
                 self.editor.load(&filter);
