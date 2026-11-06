@@ -425,13 +425,13 @@ fn faults_on_stalwart() {
                     assert_eq!(tally.delivered_at_end, tally.runs);
                 }
                 "cut while the data goes out" => {
-                    assert_eq!(tally.first, ["Uncertain"]);
+                    assert_eq!(tally.first, ["Uncertain(NoReply)"]);
                     assert_eq!(
                         tally.delivered_at_end, 0,
                         "a partial message isn't delivered"
                     );
                 }
-                _ => assert_eq!(tally.first, ["Uncertain"]),
+                _ => assert_eq!(tally.first, ["Uncertain(NoReply)"]),
             }
         }
 
