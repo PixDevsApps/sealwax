@@ -76,6 +76,31 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.2.0 — 2026-11-07
+
+This machine. The changes since 1.1.9: `c3bfc5a` (the send fault suite's expected reason), `43aeefe` (the list keeps its place, issue #29, below) and the version commit `d455a27` (Cargo.toml 1.2.0, both lock files, README, CHANGELOG "1.2.0 — 2026-11-07").
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `SEALWAX_CI_DISPLAY=39 bash tools/ci.sh --ui` on the version commit | Exit 0: fmt, both Clippy runs, MSRV, rustdoc, deny; 1,455 tests passed, 0 failed, 92 ignored; 89 self-test scripts, 8,620 of 8,620 steps (`list-steady` 55 of 55); hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`a334c8d..d455a27`, 3 commits) scanned before pushing | No working doc or link to one, no home path, user name or hostname, nothing of the unreleased IMAP fix | Pass |
+| `v1.2.0` on `d455a27`, `main` and the tag pushed | GitHub's `main` is `d455a27`, `v1.2.0` the tag object `32ca1dd` | Pass |
+| `python3 tools/release.py build` on `v1.2.0` | Finished 14:14 CET: `check()` 1,179 passed, 0 failed; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.2.0`, has no home path, user name, hostname or `--self-test`, and carries the Microsoft client ID; package SHA-256 `1496c934df79f86b5158b9f6a681e4ed0977ff1813d05d0e3ad5e34f9516a6cc` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package, `sealwax-selftest` from CI's build of `d455a27`) | `/usr/bin/sealwax` reaches its first frame; `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261107-141425`) | Pass |
+| The release [v1.2.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.2.0) (`tools/release.py github`, 13:15:03 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+
+### The list keeps its place (issue #29) — 2026-11-07
+
+This machine, headless on Broadway, then on the live session. The new self-test `tests/selftest/list-steady.sealwax-test` (600 fixtures, 1440×900) selects the row nearest the middle of the view, notes where it is, and checks after each change that the view and the selected row stayed (`assert-list-scroll-kept`, `assert-list-place-kept`, within 1 px).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `list-steady` before the change (4 runs) | 45 of 55 steps, the same 10 failures each run: in Group by Sender new mail below or above the view and Delete put the selected group 8 px from the top (331 → 8 px, 387 → 8 px); Down after such a refresh left the screen and the next refresh scrolled near the start of the list (3447 → 56 px); in the plain list Delete moved the view up one row (8000 → 7908 px) | Fail (the bug) |
+| `list-steady` after the change | 55 of 55: the selected row stays put on new mail; Down moves the selection one row without scrolling; after Delete the next row is where the deleted one was, in both lists | Pass |
+| `splice` unit tests | 7 passed: the same rows change nothing, one row on top or at the bottom is one insertion, a removal is one removal, a moved row moves alone, a row that may not stay moves even in place, mixed changes and empty lists, runs | Pass |
+| The list, triage, Group by and related self-tests (26 scripts) | All passed | Pass |
+| On the live session (`tools/live/try.sh`, release build, the fictional mailbox, All Inboxes in Group by Sender; keys with `wtype`, screenshots with `grim`) | Down ×12 to the 13th group: no scroll. `s` (Starred 27 messages, a groups refresh): the selected row stayed, the view unscrolled. Down ×2 after it: on from that row. Delete: the next group took its place, no scroll. `z`: the group came back above, the selection kept its place. Modifier keys sent by `wtype` didn't reach GTK, so Mark as Unread wasn't used; the plain list's Delete wasn't tried live | Pass |
+
 ### 1.1.9 — 2026-11-05
 
 This machine. The changes since 1.1.8: `5057733` (the reader's white flash, below) and the version commit `103a652` (Cargo.toml 1.1.9, both lock files, README, CHANGELOG "1.1.9 — 2026-11-05").
