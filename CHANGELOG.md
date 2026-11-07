@@ -2,6 +2,12 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.2.0 — 2026-11-07
+
+The message list keeps its place.
+
+- **The list no longer jumps** ([issue #29](https://github.com/PixDevsApps/sealwax/issues/29)): in Group by Sender and Group by Domain, new mail, a message read or anything else that changed the groups could throw the selected group to the top of the window, and the arrow keys then went on from near the top of the list. Deleting or archiving a group put the next one at the top as well, and in the plain list the message after a deleted one showed a row lower than the one that went. Now the selected row stays where it is on screen, the arrow keys go on from it, and the row that comes after one you delete takes its place. The list scrolls only to show a row that is out of view.
+
 ## 1.1.9 — 2026-11-05
 
 A smoother switch between messages.
