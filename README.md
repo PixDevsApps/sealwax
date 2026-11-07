@@ -2,7 +2,7 @@
 
 Mail, sealed. A fast, minimal email client for [Omarchy](https://omarchy.org): native GTK 4 and libadwaita, written in Rust, following your live Omarchy theme and font, quick to drive from the keyboard, and careful with every message: no script in one ever runs, and nothing from the internet loads until you allow it.
 
-![Sealwax in the matte-black theme, showing a conversation of fictional mail](tools/progress/public/m6-reply-conversation-matte-black-square-2026-10-06.png)
+![Sealwax: a fast, keyboard-first email client for Omarchy, shown in the Tokyo Night, Gruvbox and Catppuccin Latte themes with a conversation of fictional mail](docs/images/sealwax-banner.png)
 
 ## Install
 
