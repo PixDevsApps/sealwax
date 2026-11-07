@@ -21,8 +21,10 @@
 mod groups;
 pub(crate) mod item;
 pub(crate) mod model;
+mod place;
 pub(crate) mod row;
 pub(crate) mod sections;
+mod splice;
 pub(crate) mod suggestions;
 
 #[cfg(feature = "test-hooks")]
@@ -165,6 +167,9 @@ pub enum Selected {
 struct Leaving {
     ids: HashSet<MessageId>,
     position: u32,
+    /// How far down the view the first leaving row was, when it was on screen: the row taking
+    /// its place goes there (issue #29).
+    top: Option<f32>,
     since: Instant,
 }
 
@@ -812,6 +817,56 @@ impl MessageList {
     #[cfg(feature = "test-hooks")]
     pub fn groups_view(&self) -> &gtk::ListView {
         self.inner.groups.view()
+    }
+
+    /// The scroller of what the list shows: its groups, or its messages (the self-test's view).
+    #[cfg(feature = "test-hooks")]
+    pub fn shown_scroller(&self) -> &gtk::ScrolledWindow {
+        if self.shown_groups().is_some() {
+            self.inner.groups.widget()
+        } else {
+            &self.inner.scroller
+        }
+    }
+
+    /// How far below the top of the view the selected group's or message's row is, in pixels;
+    /// `None` when nothing is selected or its row isn't on screen (the self-test's view).
+    #[cfg(feature = "test-hooks")]
+    pub fn selected_row_top(&self) -> Option<f32> {
+        if self.shown_groups().is_some() {
+            return self.inner.groups.selected_top();
+        }
+        let row = self.row_widget(self.selected_position()?)?;
+        row.is_mapped()
+            .then(|| row.compute_bounds(&self.inner.scroller))
+            .flatten()
+            .map(|bounds| bounds.y())
+    }
+
+    /// The position of the group or message whose row is nearest the middle of the view (the
+    /// self-test's view).
+    #[cfg(feature = "test-hooks")]
+    pub fn middle_position(&self) -> Option<u32> {
+        if self.shown_groups().is_some() {
+            return self.inner.groups.middle_position();
+        }
+        let scroller = &self.inner.scroller;
+        let middle = scroller.height() as f32 / 2.0;
+        self.inner
+            .context
+            .bound
+            .borrow()
+            .iter()
+            .filter(|row| row.is_mapped() && !row.is_placeholder())
+            .filter_map(|row| {
+                let bounds = row.compute_bounds(scroller)?;
+                Some((
+                    (bounds.y() + bounds.height() / 2.0 - middle).abs(),
+                    row.position()?,
+                ))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, position)| position)
     }
 
     /// Opens the group at `position` (the self-test's Enter).
@@ -2044,9 +2099,11 @@ impl MessageList {
         else {
             return;
         };
+        let top = self.row_top(position);
         self.inner.leaving.replace(Some(Leaving {
             ids: ids.iter().copied().collect(),
             position,
+            top,
             since: Instant::now(),
         }));
     }
@@ -2064,17 +2121,63 @@ impl MessageList {
             {
                 return;
             } else {
-                Some(leaving.position)
+                Some((leaving.position, leaving.top))
             }
         };
         self.inner.leaving.take();
         let total = self.inner.model.total();
-        if let Some(position) = ready
+        if let Some((position, top)) = ready
             && total > 0
         {
             self.set_select_mode(false);
-            self.select_position(position.min(total - 1));
+            match top.filter(|_| position < total) {
+                Some(top) => self.select_in_place(position, top),
+                None => self.select_position(position.min(total - 1)),
+            }
         }
+    }
+
+    /// How far down the view the row at `position` is, when it is on screen.
+    fn row_top(&self, position: u32) -> Option<f32> {
+        let row = self.row_widget(position)?;
+        row.is_mapped()
+            .then(|| row.compute_bounds(&self.inner.scroller))
+            .flatten()
+            .map(|bounds| bounds.y())
+    }
+
+    /// Selects the message at `position` alone, its row `top` pixels down the view: the row
+    /// taking the place of one that left (issue #29).
+    fn select_in_place(&self, position: u32, top: f32) {
+        let inner = &self.inner;
+        if position >= inner.model.n_items() {
+            inner.model.complete_growth();
+        }
+        inner.wanted.borrow_mut().clear();
+        self.select_item(position, false, false);
+        if let Some(row) = inner.model.row_at(position) {
+            inner.cursor.set(Some(row.id));
+        }
+        let (measure, check) = (self.downgrade(), self.downgrade());
+        place::hold(
+            place::Hold {
+                view: inner.view.clone(),
+                scroller: inner.scroller.clone(),
+                position,
+                top: Some(top),
+                reveal: true,
+            },
+            move || {
+                measure
+                    .upgrade()
+                    .and_then(|inner| MessageList { inner }.row_top(position))
+            },
+            move || {
+                check.upgrade().is_some_and(|inner| {
+                    MessageList { inner }.selected_position() == Some(position)
+                })
+            },
+        );
     }
 
     /// Selects the message at `position` alone and scrolls it into view; the keyboard focus

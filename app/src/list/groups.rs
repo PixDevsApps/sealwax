@@ -7,8 +7,10 @@
 //! sections (issue #26): Pinned for the groups the store put first, then Today, Yesterday, This
 //! week, This month and Older by each group's newest message; they regroup when the day changes.
 
+use super::place;
 use super::row::time_text;
 use super::sections::{Bounds, LABELS, PINNED, Thresholds};
+use super::splice::{runs, splice};
 use gtk4 as gtk;
 use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
@@ -97,14 +99,88 @@ impl GroupModel {
         glib::Object::new()
     }
 
-    /// Shows `items`, in `bounds`' sections.
-    fn replace(&self, items: Vec<glib::BoxedAnyObject>, bounds: Bounds) {
+    /// Shows `groups` in the sections of `thresholds`, changing only the rows that changed
+    /// (issue #29): a group that stays in its section keeps its row, so the view keeps its
+    /// place, its selection and its keyboard focus. Returns the rows that stayed with new
+    /// contents, to bind again.
+    fn update(
+        &self,
+        groups: Vec<SenderGroup>,
+        thresholds: &Thresholds,
+    ) -> Vec<glib::BoxedAnyObject> {
         let imp = self.imp();
-        let removed = imp.items.borrow().len() as u32;
-        let added = items.len() as u32;
-        imp.items.replace(items);
-        imp.bounds.set(bounds);
-        self.items_changed(0, removed, added);
+        let (old_keys, old_sections): (Vec<String>, Vec<usize>) = {
+            let items = imp.items.borrow();
+            let bounds = imp.bounds.get();
+            items
+                .iter()
+                .enumerate()
+                .map(|(position, item)| {
+                    (
+                        item.borrow::<SenderGroup>().key.clone(),
+                        bounds.section_at(position as u32).0,
+                    )
+                })
+                .unzip()
+        };
+        let new_sections: Vec<usize> = groups
+            .iter()
+            .map(|group| section_of(group, thresholds))
+            .collect();
+        let new_keys: Vec<&str> = groups.iter().map(|group| group.key.as_str()).collect();
+        let old_keys: Vec<&str> = old_keys.iter().map(String::as_str).collect();
+        let plan = splice(&old_keys, &new_keys, |from, to| {
+            old_sections[from] == new_sections[to]
+        });
+        let mut changed = Vec::new();
+        {
+            let items = imp.items.borrow();
+            for &(from, to) in &plan.kept {
+                let item = &items[from as usize];
+                let group = &groups[to as usize];
+                if *item.borrow::<SenderGroup>() != *group {
+                    *item.borrow_mut::<SenderGroup>() = group.clone();
+                    changed.push(item.clone());
+                }
+            }
+        }
+        for (first, count) in runs(&plan.removed) {
+            {
+                let mut items = imp.items.borrow_mut();
+                let mut bounds = imp.bounds.get();
+                for position in (first..first + count).rev() {
+                    bounds.remove(bounds.section_at(position).0);
+                    items.remove(position as usize);
+                }
+                imp.bounds.set(bounds);
+            }
+            self.items_changed(first, count, 0);
+        }
+        let mut fresh: Vec<Option<SenderGroup>> = groups.into_iter().map(Some).collect();
+        for (first, count) in runs(&plan.inserted) {
+            let added = {
+                let mut items = imp.items.borrow_mut();
+                let mut bounds = imp.bounds.get();
+                let mut added = 0;
+                for position in first..first + count {
+                    if let Some(group) = fresh[position as usize].take() {
+                        bounds.insert(new_sections[position as usize]);
+                        items.insert(position as usize, glib::BoxedAnyObject::new(group));
+                        added += 1;
+                    }
+                }
+                imp.bounds.set(bounds);
+                added
+            };
+            self.items_changed(first, 0, added);
+        }
+        let wanted = Bounds::from_sections(new_sections);
+        if imp.bounds.get() != wanted {
+            tracing::warn!("the groups' sections differ after an update; setting them again");
+            imp.bounds.set(wanted);
+            self.sections_changed(0, self.n_items());
+        }
+        changed
     }
 
     /// The section of the row at `position`.
@@ -123,9 +199,11 @@ pub(super) struct Groups {
     view: gtk::ListView,
     items: GroupModel,
     selection: gtk::SingleSelection,
-    /// Set while `set` replaces the rows, whose passing selections aren't the user's.
+    /// Set while `set` changes the rows, whose passing selections aren't the user's.
     quiet: Rc<Cell<bool>>,
     day: Rc<Cell<Day>>,
+    /// The list items bound to a group now, to bind again when a group's contents change.
+    bound: Rc<RefCell<Vec<gtk::ListItem>>>,
 }
 
 impl Groups {
@@ -144,10 +222,13 @@ impl Groups {
             }
         });
         let bind_day = day.clone();
+        let bound: Rc<RefCell<Vec<gtk::ListItem>>> = Rc::default();
+        let bind_bound = bound.clone();
         factory.connect_bind(move |_, object| {
             let Some(list_item) = object.downcast_ref::<gtk::ListItem>() else {
                 return;
             };
+            bind_bound.borrow_mut().push(list_item.clone());
             if let (Some(row), Some(item)) = (
                 list_item.child().and_downcast::<gtk::Box>(),
                 list_item.item().and_downcast::<glib::BoxedAnyObject>(),
@@ -159,6 +240,12 @@ impl Groups {
                     bind_day.get(),
                 );
             }
+        });
+        let unbind_bound = bound.clone();
+        factory.connect_unbind(move |_, object| {
+            unbind_bound
+                .borrow_mut()
+                .retain(|list_item| list_item.upcast_ref::<glib::Object>() != object);
         });
         let headers = gtk::SignalListItemFactory::new();
         headers.connect_setup(|_, object| {
@@ -202,6 +289,7 @@ impl Groups {
             selection,
             quiet: Rc::default(),
             day,
+            bound,
         }
     }
 
@@ -218,31 +306,76 @@ impl Groups {
     }
 
     /// Shows `groups` in their sections on `day`, selecting the row of the first of `wanted`
-    /// (groups' keys) that is there.
+    /// (groups' keys) that is there. Only the rows that changed change, and the selected row
+    /// keeps its place in the view, or a row taking the place of a selected one that left takes
+    /// its place too (issue #29).
     pub(super) fn set(&self, groups: Vec<SenderGroup>, wanted: &[&str], day: Day) {
-        self.day.set(day);
+        let new_day = self.day.replace(day) != day;
         let keep = wanted
             .iter()
             .find_map(|key| groups.iter().position(|group| group.key == *key));
-        let bounds = Bounds::from_sections(
-            groups
-                .iter()
-                .map(|group| section_of(group, &day.thresholds)),
-        );
-        let objects: Vec<glib::BoxedAnyObject> =
-            groups.into_iter().map(glib::BoxedAnyObject::new).collect();
+        let before = self.selected().map(|group| group.key);
+        let top = before
+            .as_deref()
+            .and_then(|key| top_of(&self.bound, &self.scroller, key));
         self.quiet.set(true);
-        self.items.replace(objects, bounds);
+        let changed = self.items.update(groups, &day.thresholds);
+        self.bind_again(|item| new_day || changed.contains(item));
         match keep {
             Some(position) => {
                 let position = position as u32;
-                self.selection.set_selected(position);
-                self.view
-                    .scroll_to(position, gtk::ListScrollFlags::NONE, None);
+                if self.selection.selected() != position {
+                    self.selection.set_selected(position);
+                }
+                self.hold(position, top, before.as_deref());
             }
             None => self.selection.set_selected(gtk::INVALID_LIST_POSITION),
         }
         self.quiet.set(false);
+    }
+
+    /// Binds again the rows showing a group that `again` names, after its contents changed.
+    fn bind_again(&self, again: impl Fn(&glib::BoxedAnyObject) -> bool) {
+        let day = self.day.get();
+        let bound = self.bound.borrow().clone();
+        for list_item in bound {
+            if let (Some(row), Some(item)) = (
+                list_item.child().and_downcast::<gtk::Box>(),
+                list_item.item().and_downcast::<glib::BoxedAnyObject>(),
+            ) && again(&item)
+            {
+                bind(&list_item, &row, &item.borrow::<SenderGroup>(), day);
+            }
+        }
+    }
+
+    /// Holds the selected row at `position` at `top` through the change; scrolls to it only
+    /// when it is another group than `before`, the one selected before.
+    fn hold(&self, position: u32, top: Option<f32>, before: Option<&str>) {
+        let Some(key) = self.selected().map(|group| group.key) else {
+            return;
+        };
+        let reveal = before != Some(key.as_str());
+        let (bound, scroller) = (self.bound.clone(), self.scroller.clone());
+        let row_key = key.clone();
+        let selection = self.selection.clone();
+        place::hold(
+            place::Hold {
+                view: self.view.clone(),
+                scroller: self.scroller.clone(),
+                position,
+                top,
+                reveal,
+            },
+            move || top_of(&bound, &scroller, &row_key),
+            move || {
+                selection.selected() == position
+                    && selection
+                        .selected_item()
+                        .and_downcast::<glib::BoxedAnyObject>()
+                        .is_some_and(|item| item.borrow::<SenderGroup>().key == key)
+            },
+        );
     }
 
     /// The day changed: the same groups in that day's sections, with its times.
@@ -346,6 +479,34 @@ impl Groups {
             .map(|parts| (parts.pin.is_visible(), parts.time.text().to_string()))
     }
 
+    /// How far below the top of the view the selected group's row is, for the self-test.
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn selected_top(&self) -> Option<f32> {
+        top_of(&self.bound, &self.scroller, &self.selected()?.key)
+    }
+
+    /// The position of the group whose row is nearest the middle of the view, for the self-test.
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn middle_position(&self) -> Option<u32> {
+        let middle = self.scroller.height() as f32 / 2.0;
+        let keys: Vec<String> = self.groups().into_iter().map(|group| group.key).collect();
+        self.widgets()
+            .into_iter()
+            .filter_map(|widget| widget.downcast::<gtk::Box>().ok())
+            .filter(|row| row.has_css_class("sw-sender-group") && row.is_mapped())
+            .filter_map(|row| {
+                let bounds = row.compute_bounds(&self.scroller)?;
+                let key = parts(&row)?.detail.text();
+                let position = keys.iter().position(|shown| *shown == key)?;
+                Some((
+                    (bounds.y() + bounds.height() / 2.0 - middle).abs(),
+                    position,
+                ))
+            })
+            .min_by(|a, b| a.0.total_cmp(&b.0))
+            .map(|(_, position)| position as u32)
+    }
+
     /// Every widget under the list.
     #[cfg(feature = "test-hooks")]
     fn widgets(&self) -> Vec<gtk::Widget> {
@@ -430,6 +591,28 @@ fn row() -> gtk::Box {
     row.append(&detail);
     row.append(&subject);
     row
+}
+
+/// How far down `scroller`'s view the row of the group `key` is, among the `bound` rows; `None`
+/// when no row on screen shows it.
+fn top_of(
+    bound: &RefCell<Vec<gtk::ListItem>>,
+    scroller: &gtk::ScrolledWindow,
+    key: &str,
+) -> Option<f32> {
+    bound
+        .borrow()
+        .iter()
+        .filter(|list_item| {
+            list_item
+                .item()
+                .and_downcast::<glib::BoxedAnyObject>()
+                .is_some_and(|item| item.borrow::<SenderGroup>().key == key)
+        })
+        .filter_map(|list_item| list_item.child())
+        .filter(|row| row.is_mapped())
+        .find_map(|row| row.compute_bounds(scroller))
+        .map(|bounds| bounds.y())
 }
 
 /// A group row's widgets, as `row` makes them.

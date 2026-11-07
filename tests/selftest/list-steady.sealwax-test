@@ -1,0 +1,80 @@
+# The list keeps its place (issue #29, biddster's report): with a row selected halfway down the
+# view, new mail arriving, the arrow keys and Delete leave the view where it was, in Group by
+# Sender and in the plain list. The selected row is never thrown to the top of the view. Every
+# message and address is fictional.
+# Run: tools/headless.sh 39 target/debug/sealwax-selftest --self-test tests/selftest/list-steady.sealwax-test
+
+desktop tiling
+fixtures --count 600 --seed 29 --folders spread
+resize 1440 900
+list-wait
+folder inbox
+
+# Group by Sender, scrolled into the middle, the group nearest the middle selected.
+action win.group-by-sender
+list-wait
+list-scroll 3000
+list-select-middle
+assert-list-focus groups
+list-note-place
+
+# New mail from a new sender, older than everything here: its group goes in at the bottom, and
+# nothing on screen should move.
+mail-add inbox 20000d "Gammelt brev" "from=Tove Arkiv" address=tove.arkiv@example.test read
+sleep 600
+assert-list-scroll-kept
+assert-list-place-kept
+
+# New mail from another new sender, newer than everything: its group goes in at the top, above
+# the view; the selected group should stay where the eye is.
+mail-add inbox now "Nytt brev" "from=Per Ferskvare" address=per.ferskvare@example.test
+sleep 600
+assert-list-place-kept
+
+# Down with a group below in view: the selection moves one row, the view stays; mail arriving
+# between the keys leaves it there.
+list-note-place
+key Down
+assert-list-scroll-kept
+mail-add inbox 20001d "Enda eldre" "from=Ola Arkiv" address=ola.arkiv@example.test read
+sleep 600
+assert-list-scroll-kept
+key Down
+assert-list-scroll-kept
+mail-add inbox 20002d "Eldst" "from=Kari Arkiv" address=kari.arkiv@example.test read
+sleep 600
+assert-list-scroll-kept
+screenshot $DIR/../../.local/selftest/list-steady-groups.png
+
+# Delete on a group: the next group takes its place, and the view stays.
+list-scroll 3000
+list-select-middle
+list-note-place
+key Delete
+sleep 600
+assert-list-scroll-kept
+assert-list-place-kept
+
+# The plain list, scrolled into the middle, the message nearest the middle selected.
+action win.dont-group
+list-wait
+list-scroll 8000
+list-select-middle
+assert-list-focus list
+list-note-place
+
+# Down, and mail arriving above and below: the view stays.
+key Down
+assert-list-scroll-kept
+mail-add inbox 20003d "Bunnen" "from=Nils Arkiv" address=nils.arkiv@example.test read
+sleep 600
+assert-list-scroll-kept
+
+# Delete: the next message takes the deleted one's place, and the view stays.
+list-select-middle
+list-note-place
+key Delete
+sleep 600
+assert-list-scroll-kept
+assert-list-place-kept
+screenshot $DIR/../../.local/selftest/list-steady-plain.png
