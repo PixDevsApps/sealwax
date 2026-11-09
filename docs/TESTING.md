@@ -76,6 +76,24 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.2.1 — 2026-11-09
+
+This machine. The changes since 1.2.0: `0b0fdf1` (`rustls-webpki` 0.103.16), `2fca700` (`aarch64` in `arch=`, issue #30), `ee3aa8f` (quoted mailbox names decoded once, issue #31, PR #33 by @mlamoure) and the version commit `0e6f6dd` (Cargo.toml 1.2.1, both lock files, README, CHANGELOG "1.2.1 — 2026-11-09").
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `vendor/imap-proto`'s own tests at `ee3aa8f`, from a copy outside the repository | 105 passed | Pass |
+| `folder_names_with_backslashes_and_quotes_sync_on_every_flavour` with and without the change in `vendor/imap-proto/src/rfc3501/mod.rs` | Passes with it; without it fails with `Labels\Archive not stored` | Pass |
+| `SEALWAX_CI_DISPLAY=39 bash tools/ci.sh --ui --testbed` on the version commit | Exit 0: fmt, both Clippy runs, MSRV, rustdoc, deny; 1,456 tests passed, 0 failed, 92 ignored; 89 self-test scripts, 8,620 of 8,620 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; 16 testbed suites, 82 tests passed, 0 failed | Pass |
+| Names with `\` and `"` on real servers (a temporary test, not kept: CREATE `Sealwax tmp31 back\slash`, `Sealwax tmp31 say "hi"` and `Sealwax tmp31 both\"and\\`, then `imap::sync_folders`, on the version commit) | Dovecot, Dovecot IMAP4rev1 and Stalwart: 3 of 3 names created, each discovered under its exact name with its STATUS | Pass |
+| Proton Mail Bridge, the server of issue #31 | Not run here. The reporter's account: 37 folders listed and synced with the patched build (their report on #31) | Not verified here |
+| ARM (`arch=`) | Nothing built or run on ARM | Not verified |
+| The push range (`2fca700..0e6f6dd`, 2 commits) scanned before pushing | No working doc or link to one, no home path, hostname or personal data beyond the usual commit author, nothing of the unreleased IMAP fix | Pass |
+| `v1.2.1` on `0e6f6dd`, `main` and the tag pushed | GitHub's `main` is `0e6f6dd`, `v1.2.1` the tag object `49f0b3d`; PR #33 merged, #31 closed by it | Pass |
+| `python3 tools/release.py build` on `v1.2.1` | Finished 23:13 CET: `check()` 1,180 passed, 0 failed; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.2.1`, has no home path, email address, hostname or `--self-test`; package SHA-256 `c7655e0e5d9e84bf0c48dac326dadbb0a1807014da406754972fcd566aaa301d` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package, `sealwax-selftest` from the version commit) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261109-231333`) | Pass |
+| The release [v1.2.1](https://github.com/PixDevsApps/sealwax/releases/tag/v1.2.1) (`tools/release.py github`, 22:14:26 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+
 ### 1.2.0 — 2026-11-07
 
 This machine. The changes since 1.1.9: `c3bfc5a` (the send fault suite's expected reason), `43aeefe` (the list keeps its place, issue #29, below) and the version commit `d455a27` (Cargo.toml 1.2.0, both lock files, README, CHANGELOG "1.2.0 — 2026-11-07").
