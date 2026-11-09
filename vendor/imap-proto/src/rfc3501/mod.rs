@@ -64,7 +64,17 @@ impl Status {
 }
 
 pub(crate) fn mailbox(i: &[u8]) -> IResult<&[u8], Cow<'_, str>> {
-    map(astring_utf8, |s| {
+    // A quoted name keeps its escapes through `quoted`, so it is decoded here, once, before
+    // anyone quotes it again for STATUS or SELECT. Only `\\` and `\"` are decoded; any other
+    // escape `quoted` tolerates is kept as it is. A literal or an atom has no escapes and is
+    // left alone (Sealwax's change, vendor/README.md).
+    let is_quoted = i.first() == Some(&b'"');
+    map(astring_utf8, move |s| {
+        let s = if is_quoted {
+            unescape_quoted_mailbox(s)
+        } else {
+            s
+        };
         if s.eq_ignore_ascii_case("INBOX") {
             Cow::Borrowed("INBOX")
         } else {
@@ -72,6 +82,26 @@ pub(crate) fn mailbox(i: &[u8]) -> IResult<&[u8], Cow<'_, str>> {
         }
     })
     .parse(i)
+}
+
+/// Decodes `\\` and `\"` in a quoted mailbox name (Sealwax's change, vendor/README.md).
+fn unescape_quoted_mailbox(s: Cow<'_, str>) -> Cow<'_, str> {
+    if !s.contains('\\') {
+        return s;
+    }
+    let mut decoded = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            if let Some(&escaped @ ('\\' | '"')) = chars.peek() {
+                decoded.push(escaped);
+                chars.next();
+                continue;
+            }
+        }
+        decoded.push(c);
+    }
+    Cow::Owned(decoded)
 }
 
 fn flag_extension(i: &[u8]) -> IResult<&[u8], &str> {
@@ -1382,6 +1412,103 @@ mod tests {
             }
             rsp => panic!("unexpected response {rsp:?}"),
         }
+    }
+
+    fn list_name(wire: &[u8]) -> String {
+        use crate::{MailboxDatum, Response};
+        match Response::parse(wire) {
+            Ok((_, Response::MailboxData(MailboxDatum::List(list)))) => list.name.into_owned(),
+            rsp => panic!("unexpected response {rsp:?}"),
+        }
+    }
+
+    fn status_name(wire: &[u8]) -> String {
+        use crate::{MailboxDatum, Response};
+        match Response::parse(wire) {
+            Ok((_, Response::MailboxData(MailboxDatum::Status { mailbox, .. }))) => {
+                mailbox.into_owned()
+            }
+            rsp => panic!("unexpected response {rsp:?}"),
+        }
+    }
+
+    /// Sealwax's change: a quoted mailbox name is decoded once, in LIST.
+    #[test]
+    fn test_quoted_mailbox_name_in_list() {
+        assert_eq!(
+            list_name(b"* LIST () \"/\" \"Labels/[Example]\\\\/Archive\"\r\n"),
+            r"Labels/[Example]\/Archive"
+        );
+        assert_eq!(
+            list_name(b"* LIST () \"/\" \"Say \\\"hi\\\"\"\r\n"),
+            r#"Say "hi""#
+        );
+        // Quotes and backslashes together, and an escaped backslash before an escaped quote.
+        assert_eq!(
+            list_name(b"* LIST () \"/\" \"a\\\\\\\"b\\\\\"\r\n"),
+            r#"a\"b\"#
+        );
+        // A server whose delimiter is `\`.
+        assert_eq!(
+            list_name(b"* LIST () \"\\\\\" \"Parent\\\\Child\"\r\n"),
+            r"Parent\Child"
+        );
+        // No escapes: unchanged.
+        assert_eq!(
+            list_name(b"* LIST () \"/\" \"Sent Items\"\r\n"),
+            "Sent Items"
+        );
+    }
+
+    /// Sealwax's change: a quoted mailbox name is decoded once, in STATUS.
+    #[test]
+    fn test_quoted_mailbox_name_in_status() {
+        assert_eq!(
+            status_name(b"* STATUS \"Labels/[Example]\\\\/Archive\" (MESSAGES 3)\r\n"),
+            r"Labels/[Example]\/Archive"
+        );
+        assert_eq!(
+            status_name(b"* STATUS \"Say \\\"hi\\\"\" (MESSAGES 3)\r\n"),
+            r#"Say "hi""#
+        );
+    }
+
+    /// Sealwax's change: literals and atoms carry no escapes, so they are left as they are.
+    #[test]
+    fn test_literal_and_atom_mailbox_names_are_verbatim() {
+        assert_eq!(
+            list_name(b"* LIST () \"/\" {8}\r\na\\\\b\\\"c\\\r\n"),
+            r#"a\\b\"c\"#
+        );
+        assert_eq!(
+            status_name(b"* STATUS {4}\r\na\\\\b (MESSAGES 3)\r\n"),
+            r"a\\b"
+        );
+        assert_eq!(list_name(b"* LIST () \"/\" Archive\r\n"), "Archive");
+    }
+
+    /// Sealwax's change: an escape `quoted` tolerates but the grammar doesn't allow is kept
+    /// as it is, as for BODYSTRUCTURE.
+    #[test]
+    fn test_tolerated_escapes_in_mailbox_names_are_kept() {
+        assert_eq!(
+            list_name(b"* LIST () \"/\" \"Bildschirm\\u00adfoto\"\r\n"),
+            r"Bildschirm\u00adfoto"
+        );
+        assert_eq!(list_name(b"* LIST () \"/\" \"a\\b\"\r\n"), r"a\b");
+    }
+
+    /// Sealwax's change: INBOX is still recognised in any case, quoted or not.
+    #[test]
+    fn test_inbox_is_normalized_after_decoding() {
+        assert_eq!(list_name(b"* LIST () \"/\" \"iNbOx\"\r\n"), "INBOX");
+        assert_eq!(list_name(b"* LIST () \"/\" inbox\r\n"), "INBOX");
+        assert_eq!(status_name(b"* STATUS \"Inbox\" (MESSAGES 3)\r\n"), "INBOX");
+        // A literal INBOX too.
+        assert_eq!(
+            status_name(b"* STATUS {5}\r\nINBOX (MESSAGES 3)\r\n"),
+            "INBOX"
+        );
     }
 
     #[test]

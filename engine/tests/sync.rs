@@ -192,6 +192,43 @@ fn esearch_replies_sync_on_every_flavour() {
     });
 }
 
+/// Folder names with a `\` or a `"` (issue #31): LIST and STATUS quote them, the vendored
+/// imap-proto decodes them once (vendor/README.md), and STATUS asks for the name the server
+/// listed. Escaped twice, the server refused it and the whole account's discovery stopped.
+#[test]
+fn folder_names_with_backslashes_and_quotes_sync_on_every_flavour() {
+    const NAMES: [&str; 3] = [r"Labels\Archive", r#"Say "hi""#, r#"Both\"and\\"#];
+    runtime().block_on(async {
+        for flavor in Flavor::ALL {
+            let fake = Fake::start(flavor).await;
+            seed(&fake);
+            {
+                let mut world = fake.world();
+                for name in NAMES {
+                    world.create(name, &[]);
+                    world.append(name, 2, &[]);
+                    world.append(name, 2, &["\\Seen"]);
+                }
+            }
+            let (_dir, store, account) = store();
+            let mut conn = fake.connect().await;
+            let first = account_pass(&mut conn, &store, account, &options()).await;
+            assert_eq!(first.stats.stored, 35, "{flavor:?}");
+            for name in NAMES {
+                let id = folder(&store, account, name).await;
+                assert_eq!(shown(&store, id).await, (2, 1), "{flavor:?}: {name}");
+            }
+            assert_eq!(
+                counts_diverged(&fake, &store, account).await,
+                Vec::<String>::new(),
+                "{flavor:?}"
+            );
+            conn.logout().await;
+            store.close().unwrap();
+        }
+    });
+}
+
 #[test]
 fn new_mail_flag_changes_and_expunges_reach_the_store_on_every_flavour() {
     runtime().block_on(async {
