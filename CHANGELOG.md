@@ -2,6 +2,14 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.2.1 — 2026-11-09
+
+Folders with a backslash or a quote in their name.
+
+- **A folder with `\` or `"` in its name no longer stops the account syncing** ([issue #31](https://github.com/PixDevsApps/sealwax/issues/31), [PR #33](https://github.com/PixDevsApps/sealwax/pull/33), thanks @mlamoure): Sealwax read such a name from the server with its escapes still in it and escaped it again when asking about the folder, so the server didn't know the name. One such folder was enough to leave the whole account empty, as on a Proton Mail Bridge account with a backslash in a folder name. Sealwax now reads the name as the server meant it, and the folder syncs.
+- **Certificate checks refuse the distrusted emSign intermediates:** the library that checks mail servers' certificates is updated to `rustls-webpki` 0.103.16 (RUSTSEC-2026-0382).
+- **Building from source on ARM needs no edit** ([issue #30](https://github.com/PixDevsApps/sealwax/issues/30)): the package recipe now lists `aarch64`. There's no ARM package to download, and the project hasn't built or run Sealwax on ARM itself.
+
 ## 1.2.0 — 2026-11-07
 
 The message list keeps its place.
