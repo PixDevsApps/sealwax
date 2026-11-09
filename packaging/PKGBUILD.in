@@ -7,7 +7,7 @@ pkgname=sealwax
 pkgver=@PKGVER@
 pkgrel=1
 pkgdesc='Fast, minimal email client for Omarchy'
-arch=('x86_64')
+arch=('x86_64' 'aarch64')
 license=('MIT')
 depends=('gtk4' 'libadwaita' 'webkitgtk-6.0' 'sqlite>=3.43' 'glib2' 'gcc-libs' 'glibc')
 optdepends=(
