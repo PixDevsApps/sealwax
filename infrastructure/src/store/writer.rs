@@ -49,7 +49,7 @@ thread_local! {
     static WAL_FRAMES: Cell<c_int> = const { Cell::new(0) };
 }
 
-fn record_wal_frames(_wal: &Wal, frames: c_int) -> rusqlite::Result<()> {
+fn record_wal_frames(_wal: &mut Wal, frames: c_int) -> rusqlite::Result<()> {
     WAL_FRAMES.set(frames);
     Ok(())
 }
@@ -250,12 +250,12 @@ impl State {
 
 impl Writer {
     pub(crate) fn new(
-        conn: Connection,
+        mut conn: Connection,
         shared: Arc<Shared>,
         maintenance: async_channel::Sender<Maintenance>,
         checkpoint_frames: u32,
     ) -> Result<Self, StoreError> {
-        conn.wal_hook(Some(record_wal_frames));
+        conn.wal_hook(Some(record_wal_frames))?;
         let accounts = conn
             .prepare("SELECT id, account_id FROM folders")?
             .query_map([], |row| {

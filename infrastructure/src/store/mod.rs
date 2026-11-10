@@ -69,7 +69,7 @@ pub enum StoreError {
         "the database has schema version {found}, older than this build's {expected}, unmigrated"
     )]
     OlderSchema { found: i64, expected: i64 },
-    #[error("SQLite {0} lacks FTS5 with contentless delete; Sealwax needs SQLite 3.43 or newer")]
+    #[error("SQLite {0} lacks FTS5 with contentless delete; Sealwax needs SQLite 3.45.3 or newer")]
     MissingFts5(String),
     #[error("database: {0}")]
     Sqlite(#[from] rusqlite::Error),

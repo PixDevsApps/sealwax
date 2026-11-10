@@ -64,7 +64,7 @@ target/release/sealwax-fixtures bench-search --store COPY/store.sqlite --blobs C
 
 `bench-search` (M7) times the first 50 results of 38 query shapes cold and warm, a word typed a key at a time, the index's size, schema v10's pass when the store comes from an earlier build, Rebuild Search Index with flag changes and searches beside it, and optionally (`--date-keyed yes`) S3's date-keyed table to compare; run it on a copy, since it migrates and rebuilds.
 
-Always give `--store` a scratch path; the app's own store is `SealwaxDirs::from_env().store_file()`. The store links the system SQLite and refuses one without FTS5 or `contentless_delete` (≥ 3.43).
+Always give `--store` a scratch path; the app's own store is `SealwaxDirs::from_env().store_file()`. The store links the system SQLite and refuses one older than 3.45.3 (the oldest rusqlite 0.43 builds against) or without FTS5 and `contentless_delete`.
 
 ## Reader measurements (M5)
 

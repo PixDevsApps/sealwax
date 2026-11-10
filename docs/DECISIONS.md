@@ -331,6 +331,10 @@ Built on the user's "HTML size cap". The search text and snippet of an HTML-only
 
 `outbox.building` and `drafts.upload_building` record that a send's message or a draft's Drafts-folder copy is being built, until the build returns ([ADR-015 amendment](#adr-015-amendment--a-build-that-stops-sealwax-isnt-run-again-m9-2026-10-07)); v11 stores migrate with both clear, and a newer store is refused as before.
 
+### ADR-005 amendment — rusqlite 0.43, SQLite 3.45.3 or later (2026-11-15)
+
+rusqlite 0.43.0 with libsqlite3-sys 0.40.0, which clears RUSTSEC-2026-0459 (CVE-2026-119375, the SQLite that libsqlite3-sys 0.38 bundles) and brings rusqlite's own fixes since 0.40 (use-after-free fixes in APIs Sealwax doesn't call: sessions, column metadata, virtual-table filters). Sealwax was never exposed to the advisory: it links the system SQLite, not the bundled one, and opens only its own store. Since 0.43 rusqlite refuses to prepare empty or comment-only SQL; Sealwax prepares none. libsqlite3-sys 0.39 and later refuse to build against a system SQLite older than 3.45.3, so the store's check (`schema::check_sqlite`), the package's `depends=` and the docs move from 3.43 to 3.45.3; FTS5 with `contentless_delete` is still checked as before.
+
 ## ADR-006 — IMAP library and state-driven sync (2026-10-04)
 
 **Status:** Proposed. S1 picks the library after a written comparison.

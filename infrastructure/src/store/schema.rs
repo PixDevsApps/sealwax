@@ -494,8 +494,8 @@ CREATE INDEX messages_domain
     WHERE flags & 264 = 0;
 ";
 
-/// SQLite 3.43 brought `contentless_delete`.
-const MIN_SQLITE: i32 = 3_043_000;
+/// The oldest SQLite rusqlite 0.43 builds against; `contentless_delete` came in 3.43.
+const MIN_SQLITE: i32 = 3_045_003;
 
 /// Refuses an SQLite without FTS5 or `contentless_delete` (ADR-005: the system library, no
 /// `bundled`).

@@ -49,7 +49,7 @@ It updates with `flatpak update` or your software centre. On Omarchy, the packag
 
 ## Requirements
 
-The package: Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally `hunspell` and a hunspell dictionary for spell checking. Omarchy 4 is the desktop it is made for. The Flatpak: any x86_64 Linux system with Flatpak; it brings GNOME's runtime and needs the desktop's secret portal (GNOME and KDE have one) for passwords. Building needs Rust 1.92+.
+The package: Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.45.3+ and a Secret Service such as gnome-keyring; optionally `hunspell` and a hunspell dictionary for spell checking. Omarchy 4 is the desktop it is made for. The Flatpak: any x86_64 Linux system with Flatpak; it brings GNOME's runtime and needs the desktop's secret portal (GNOME and KDE have one) for passwords. Building needs Rust 1.92+.
 
 ## Documentation
 

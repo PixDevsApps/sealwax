@@ -9,7 +9,7 @@ pkgrel=1
 pkgdesc='Fast, minimal email client for Omarchy'
 arch=('x86_64' 'aarch64')
 license=('MIT')
-depends=('gtk4' 'libadwaita' 'webkitgtk-6.0' 'sqlite>=3.43' 'glib2' 'gcc-libs' 'glibc')
+depends=('gtk4' 'libadwaita' 'webkitgtk-6.0' 'sqlite>=3.45.3' 'glib2' 'gcc-libs' 'glibc')
 optdepends=(
   'gnome-keyring: a Secret Service that keeps passwords and sign-in tokens'
   'hunspell: spell checking in the composer, with a dictionary such as hunspell-en_us'
