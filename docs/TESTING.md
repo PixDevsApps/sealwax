@@ -76,6 +76,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.2.2 — 2026-11-11
+
+This machine. The changes since 1.2.1: `518fa6a` (async-imap reads a response once, and its parse errors hold no response; [GHSA-p76c-f9r4-p56x](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-p76c-f9r4-p56x); its own checks in the section below) and the version commit `6768d6f` (Cargo.toml 1.2.2, both lock files, README, CHANGELOG "1.2.2 — 2026-11-11" with the advisory's link).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `SEALWAX_CI_DISPLAY=39 bash tools/ci.sh --ui --testbed` on the version commit before the advisory's link was added (`90ecd4a`; `6768d6f` differs from it by that one CHANGELOG line) | Exit 0: fmt, both Clippy runs, MSRV, rustdoc, deny; 1,457 tests passed, 0 failed, 92 ignored; 89 self-test scripts, 8,620 of 8,620 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; 16 testbed suites, 82 tests passed, 0 failed | Pass |
+| The push range (`0565324..6768d6f`, 2 commits) scanned before pushing | No working doc or link to one, no home path, hostname or personal data beyond the usual commit author, no co-author line; the only address a test fixture | Pass |
+| `v1.2.2` on `6768d6f`, `main` and the tag pushed | GitHub's `main` is `6768d6f`, `v1.2.2` the tag object `7953ddf` | Pass |
+| `python3 tools/release.py build` on `v1.2.2` | Finished 09:52 CET: `check()` 1,181 passed, 0 failed; `SHA256SUMS` checks for all four files; the package's binary says `sealwax 1.2.2`, has no home path, email address beyond the provider lists, hostname or `--self-test`; package SHA-256 `ddf751f6686a9ca31287dc990de0376144f2bea384935647089827753a23cb79` | Pass |
+| The clean-container install test (`bash tools/install-test.sh` on the package, `sealwax-selftest` from the version commit) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container, the message's web process in WebKit's sandbox | Pass |
+| The release [v1.2.2](https://github.com/PixDevsApps/sealwax/releases/tag/v1.2.2) (`tools/release.py github`, 08:53:11 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build | Pass |
+| The advisory [GHSA-p76c-f9r4-p56x](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-p76c-f9r4-p56x) | Published 08:53:27 UTC: Medium, CVSS 3.1 5.9, CWE-407 and CWE-770, `sealwax` `<= 1.2.1`, patched `1.2.2`; a CVE requested, none assigned yet; the page opens without signing in | Pass |
+| ARM | Nothing built or run on ARM here | Not verified |
+
 ### 1.2.2: async-imap reads a response once — 2026-11-03
 
 This machine (AMD Ryzen 9 5900X), on a local branch. The change and its tests: [vendor/README.md](../vendor/README.md), [ADR-006 amendment](DECISIONS.md#adr-006-amendment--async-imap-frames-a-response-before-parsing-it-and-its-parse-errors-hold-no-response-2026-11-03).
