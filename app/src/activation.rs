@@ -6,7 +6,8 @@
 //! closing the terminal or the browser that ran the command doesn't end it.
 //!
 //! Without a service file for the id (a development build: the `.Devel` id has none), without a
-//! session bus, or when activation fails, the command line becomes the primary itself.
+//! session bus, in a Flatpak (`entry.rs` doesn't ask), or when activation fails, the command line
+//! becomes the primary itself.
 //!
 //! Everything here runs before GTK starts, on the main thread, and blocks only this process.
 

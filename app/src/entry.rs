@@ -52,7 +52,9 @@ pub fn main() -> glib::ExitCode {
         return crate::selftest::run(&script, started);
     }
     let config = AppConfig::from_env(exit_after);
-    if !parsed.service {
+    // In a Flatpak the bus could start another Sealwax with the same id outside the sandbox
+    // (an installed package's service file), so the command line becomes the primary itself.
+    if !parsed.service && !sealwax_infrastructure::sandbox::is_flatpak() {
         let outcome = activation::prepare(&config.app_id);
         tracing::debug!(?outcome, "command line");
     }
