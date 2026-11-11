@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Sealwax's Flatpak: build it from the commit tagged v<version>, check it, and make the signed
-Flatpak repository people install it from (ADR-027). Three steps, in order:
+Flatpak repository people install it from (ADR-027). The steps, in order:
 
   python3 tools/flatpak.py build    flatpak-builder on `git archive HEAD` with the release manifest
                                     (packaging/flatpak/io.github.pixdevsapps.Sealwax.yml), the
@@ -11,12 +11,16 @@ Flatpak repository people install it from (ADR-027). Three steps, in order:
                                     .local/flatpak/site/repo, with static deltas and the AppStream
                                     data, plus sealwax.flatpakrepo, the app's .flatpakref and an
                                     index.html beside it
-  python3 tools/flatpak.py keygen   the repository's signing key, once, in .local/flatpak/gpg
-                                    (never committed; back it up, a lost key means a new remote)
+  python3 tools/flatpak.py publish  the site pushed to PixDevsApps/sealwax-flatpak, whose GitHub
+                                    Pages serve it: one new commit with no history (the repository
+                                    keeps the last commits itself), force-pushed to main
+  python3 tools/flatpak.py keygen   the repository's signing key, once, in .local/flatpak/gpg or
+                                    SEALWAX_FLATPAK_GPG_HOME (never committed; back it up: a lost
+                                    key means everyone adds the repository again)
 
 build needs HEAD to be the commit tagged v<version> and the working tree clean (--untagged builds
 HEAD anyway, for a test). site needs SEALWAX_FLATPAK_URL, the address the site is served from,
-ending in "/". Publishing the site is the owner's act.
+ending in "/". publish publishes: an agent runs it only on the owner's word.
 """
 import base64
 import hashlib
@@ -33,10 +37,11 @@ APP_ID = "io.github.pixdevsapps.Sealwax"
 BRANCH = "stable"
 MANIFEST = root / "packaging" / "flatpak" / f"{APP_ID}.yml"
 WORK = root / ".local" / "flatpak"
-GPG_HOME = WORK / "gpg"
+GPG_HOME = pathlib.Path(os.environ.get("SEALWAX_FLATPAK_GPG_HOME") or WORK / "gpg")
 SITE = WORK / "site"
 KEY_NAME = "Sealwax Flatpak repository"
 RUNTIME_REPO = "https://dl.flathub.org/repo/flathub.flatpakrepo"
+PAGES_REPO = "https://github.com/PixDevsApps/sealwax-flatpak.git"
 
 
 def run(*args: str, cwd: pathlib.Path = root, env: dict | None = None) -> None:
@@ -170,6 +175,7 @@ def site(ver: str) -> None:
     signing = [f"--gpg-sign={fingerprint}", f"--gpg-homedir={GPG_HOME}"]
     repo = SITE / "repo"
     if not repo.exists():
+        repo.mkdir(parents=True)
         run("ostree", "init", "--mode=archive-z2", f"--repo={repo}")
     ref = f"app/{APP_ID}/x86_64/{BRANCH}"
     run("flatpak", "build-commit-from", *signing, f"--src-repo={source}", str(repo), ref)
@@ -227,8 +233,22 @@ The repository on its own: <a href="sealwax.flatpakrepo">sealwax.flatpakrepo</a>
 """
 
 
+def publish(ver: str) -> None:
+    index = SITE / "index.html"
+    if not index.exists() or f"Sealwax {ver}," not in index.read_text():
+        raise SystemExit(f"run site first: {SITE} isn't {ver}'s")
+    pages = WORK / "pages"
+    if pages.exists():
+        shutil.rmtree(pages)
+    shutil.copytree(SITE, pages)
+    run("git", "init", "--quiet", "--initial-branch=main", cwd=pages)
+    run("git", "add", "--all", cwd=pages)
+    run("git", "commit", "--quiet", "--message", f"Sealwax {ver}", cwd=pages)
+    run("git", "push", "--force", PAGES_REPO, "main", cwd=pages)
+
+
 def main() -> int:
-    commands = {"build": build, "check": check, "site": site, "keygen": keygen}
+    commands = {"build": build, "check": check, "site": site, "publish": publish, "keygen": keygen}
     if len(sys.argv) < 2 or sys.argv[1] not in commands:
         print(__doc__, file=sys.stderr)
         return 2

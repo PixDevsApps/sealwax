@@ -14,6 +14,14 @@ curl -L -o /tmp/sealwax.pkg.tar.zst https://github.com/PixDevsApps/sealwax/relea
 
 Run the same line again to update; **Check for Updates…** in Sealwax's main menu says when there is a new version and gives you the line. To uninstall: `sudo pacman -R sealwax`.
 
+**On other Linux systems** (Fedora, Ubuntu, Mint and others), install the Flatpak from Sealwax's own Flatpak repository:
+
+```sh
+flatpak install --user https://pixdevsapps.github.io/sealwax-flatpak/io.github.pixdevsapps.Sealwax.flatpakref
+```
+
+It updates with `flatpak update` or your software centre. On Omarchy, the package above is the better fit.
+
 [INSTALL.md](INSTALL.md) explains every step in plain words: installing, starting, updating and uninstalling, and what to do if something goes wrong. [What's new](CHANGELOG.md) lists each release.
 
 ## Status
@@ -39,7 +47,7 @@ Run the same line again to update; **Check for Updates…** in Sealwax's main me
 
 ## Requirements
 
-Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally `hunspell` and a hunspell dictionary for spell checking. Omarchy 4 is the desktop it is made for. Building needs Rust 1.92+.
+The package: Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+, WebKitGTK 6.0 2.52+, SQLite 3.43+ and a Secret Service such as gnome-keyring; optionally `hunspell` and a hunspell dictionary for spell checking. Omarchy 4 is the desktop it is made for. The Flatpak: any x86_64 Linux system with Flatpak; it brings GNOME's runtime and needs the desktop's secret portal (GNOME and KDE have one) for passwords. Building needs Rust 1.92+.
 
 ## Documentation
 

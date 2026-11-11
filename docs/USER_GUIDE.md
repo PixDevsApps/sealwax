@@ -24,7 +24,7 @@ This guide is for people who use Sealwax every day. It describes Sealwax 1.0. Ev
 
 [INSTALL.md](../INSTALL.md) explains every step in plain words: installing Sealwax with one command, updating and uninstalling it, and building it from source.
 
-Sealwax is made for Omarchy 4 (Arch Linux, Hyprland), and also runs on other Linux desktops with GTK 4 and a Secret Service such as gnome-keyring.
+Sealwax is made for Omarchy 4 (Arch Linux, Hyprland), and also runs on other Linux desktops with GTK 4 and a Secret Service such as gnome-keyring. On other Linux systems the Flatpak is the easy way ([INSTALL.md](../INSTALL.md#on-other-linux-systems-flatpak)); it updates with `flatpak update` or your software centre, so its menu has no Check for Updates….
 
 **Updating.** **Check for Updates…** in the main menu (or the palette) asks GitHub which Sealwax release is the latest and says whether you have it. When a newer one is out, it shows the command that installs it, with a **Copy Command** button: paste the command into a terminal, press Enter and type your computer's password when asked, then quit Sealwax (Ctrl+Q) and start it again. Sealwax never checks by itself and never installs anything itself.
 
@@ -673,6 +673,8 @@ Sealwax writes a plain-text log of what it does, never with message content, add
 | The default mail app, when chosen | The `x-scheme-handler/mailto` line in `~/.config/mimeapps.list` |
 
 The folders follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG_CACHE_HOME` when they are set.
+
+**In the Flatpak** the same folders are inside `~/.var/app/io.github.pixdevsapps.Sealwax/`: `config/sealwax/`, `data/sealwax/`, `.local/state/sealwax/` and `cache/sealwax/`. Passwords and tokens are kept in an encrypted keyring file in `data/keyrings/`, locked with a key from your desktop's secret portal, Start at Login is asked of the desktop (GNOME and KDE offer it, Omarchy doesn't), and Sealwax doesn't make itself the default mail app: choose it in your system's settings.
 
 ### Common problems
 

@@ -33,6 +33,9 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 021 | A public repository, releases on GitHub and the AUR | Accepted (user decisions, 2026-10-09): 0.4.0; a fresh public repository; GitHub Releases and `sealwax-bin` on the AUR (waiting: the AUR closed new accounts the same day); no update check in Sealwax. Amended 2026-10-18 (user decision): no AUR package; GitHub Releases only. Amended 2026-10-20 (user request): Check for Updates…, run only by the user |
 | 022 | The headless checks run GTK's Broadway daemon with a patch of Sealwax's | Accepted (2026-10-19) as a stopgap: GTK 4.24.1's daemon aborts in about 30 of the 81 CI scripts; dropped once a GTK release fixes it |
 | 023 | Group by sender and List-Unsubscribe | Accepted (user decisions, 2026-10-29), for 1.1; being built |
+| 024 | Pinned senders | Accepted (user decisions, 2026-10-31); built in 1.1.2, amended for 1.1.3 and 1.1.4 |
+| 025 | Workspace hygiene: a lint policy, the MSRV and dependency checks in CI, the spikes archived | Accepted (owner, 2026-11-04); built in 1.1.8 |
+| 027 | A Flatpak from Sealwax's own repository | Accepted (owner, 2026-11-11), for 1.3.0; not on Flathub |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1706,3 +1709,20 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Alternatives:** a cargo feature without a second crate (the CI and install-test binary would then be `sealwax` built differently from the package under the same name); moving the self-test's source into `uitest/` (needs most of the app public); keeping the self-test in the release binary with an ADR saying why.
 
 **Consequences:** a self-test needs `cargo build -p sealwax-uitest` (or a workspace build) first; `cargo build` alone builds only the app. A `--workspace` build's `target/debug/sealwax` carries `test-hooks`, so `ci.sh` builds the app alone again before its smoke run. New test-only accessors go behind `test-hooks`, or `cargo clippy -p sealwax` fails on them as dead code.
+
+## ADR-027 — A Flatpak from Sealwax's own repository (2026-11-11)
+
+**Status:** Accepted — the owner, 2026-11-06 (the Flatpak's decisions D1–D8) and 2026-11-11: "Own Flatpak repo", hosted on "New repo + GitHub Pages", signed with a "New dedicated key", first in 1.3.0. (ADR-026 is taken by the domain types on their own branch.)
+
+**Decision:**
+- Sealwax is also built as a Flatpak (`io.github.pixdevsapps.Sealwax`, GNOME runtime 51, x86_64) for Linux distributions other than Omarchy and Arch. The Arch package stays the way to install it on Omarchy and Arch. One source tree: `packaging/flatpak/` holds the release manifest and a `.Devel` one, and `packaging/io.github.pixdevsapps.Sealwax.metainfo.xml` (AppStream) is installed by both packages.
+- It is published in **Sealwax's own Flatpak repository**, not on Flathub: an OSTree repository served by GitHub Pages from `PixDevsApps/sealwax-flatpak` (https://pixdevsapps.github.io/sealwax-flatpak/), with `sealwax.flatpakrepo`, the app's `.flatpakref` and the GNOME runtime from Flathub (`RuntimeRepo`). People install it with `flatpak install --user https://pixdevsapps.github.io/sealwax-flatpak/io.github.pixdevsapps.Sealwax.flatpakref` and update with `flatpak update` or their software centre.
+- The repository is signed with a key of its own ("Sealwax Flatpak repository", RSA 4096, no address), kept in `.local/flatpak/gpg` on the machine that makes releases and backed up by the owner; it is never committed. Only the last three commits are kept; static deltas make updates small.
+- `tools/flatpak.py` builds the Flatpak from `git archive` of the tagged commit, checks it, and signs it into the site; publishing the site is a release step (BUILD.md "Making a release"), on the owner's word like the GitHub release. The Microsoft client ID is added to a copy of the manifest at build time, as the PKGBUILD's is (ADR-008 amendment, 2026-10-09), never committed, so D5's "client ID in a public manifest" no longer arises.
+- What differs in the sandbox is in INTEGRATIONS.md "Flatpak": Omarchy's folders read only through `HOST_XDG_CONFIG_HOME`, Hyprland's corners from its Lua files, the Background portal, no Check for Updates, WebKit's sub-sandbox checked before any mail is shown.
+
+**Reason:** Flathub's requirements (read 2026-11-11, "Generative AI policy") say that "Flathub manifests must not contain AI-generated or AI-assisted content", that "AI tools or agents must not open or automate Flathub submission pull requests", and that reviewers may reject a submission "based on the extent or role of generated material". Sealwax's code, docs and packaging are largely written with an AI assistant, so a Flathub submission would have to be written and run by the owner alone and could still be refused. An own repository ships now, gives users updates through Flatpak itself, and keeps every step in the project's hands.
+
+**Alternatives:** Flathub (the store most people look in; see the reason); a `.flatpak` bundle on each GitHub release (simplest, but no updates); a `gh-pages` branch of the main repository (every clone would download the Flatpak's history); the owner's own GPG key (would publish their name and address in the repository's key).
+
+**Consequences:** each release has a Flatpak step and one push to `sealwax-flatpak`. Users of the Flatpak trust this repository's key; a lost key means everyone adds the repository again, a leaked one means a new key and a note to every user. Sealwax isn't in GNOME Software's or KDE Discover's catalogue unless the repository is added. The Flatpak and the Arch package keep separate settings, mail and keyrings (`~/.var/app/io.github.pixdevsapps.Sealwax/`), and share the app-id, so only one should be installed. Flathub stays open for later, written and submitted by the owner, with the disclosure its policy asks for.
