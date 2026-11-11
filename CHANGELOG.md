@@ -2,6 +2,14 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.3.0 — 2026-11-11
+
+Sealwax as a Flatpak, for Linux systems other than Omarchy.
+
+- **Install Sealwax on Fedora, Ubuntu, Mint and other Linux systems** with one command, from Sealwax's own Flatpak repository, and get its updates with `flatpak update` or your software centre ([INSTALL.md](INSTALL.md#on-other-linux-systems-flatpak)). The Flatpak follows your system's light or dark style. On Omarchy the package stays the better way: the Flatpak reads Omarchy's theme and Hyprland's corners, but not Omarchy's font, and Start at Login can't work there. Sealwax isn't on Flathub ([why](docs/DECISIONS.md#adr-027--a-flatpak-from-sealwaxs-own-repository-2026-11-11)).
+- **Software centres can describe Sealwax:** both packages now carry its AppStream information, with a summary, screenshots and these release notes.
+- **No needless reconnect at start:** when the system first says there's no network and corrects itself a moment later, as Flatpak's network monitor does, Sealwax no longer reconnects every account.
+
 ## 1.2.2 — 2026-11-11
 
 A security update. Please update.
