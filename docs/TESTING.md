@@ -76,6 +76,16 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.2.2: async-imap reads a response once — 2026-11-03
+
+This machine (AMD Ryzen 9 5900X), on a local branch. The change and its tests: [vendor/README.md](../vendor/README.md), [ADR-006 amendment](DECISIONS.md#adr-006-amendment--async-imap-frames-a-response-before-parsing-it-and-its-parse-errors-hold-no-response-2026-11-03).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The vendored async-imap's own tests (a copy with the vendored imap-proto outside the repository, `cargo test`) | 84 passed with `runtime-tokio`, 78 with `runtime-async-std`, 0 failed; among them a 1 MB FLAGS response in 1 KiB pieces parsed once (and test-parsed 13 times before its end), five responses with literals in pieces of 1 to 4,096 bytes, 200 random mixes the same as imap-proto reading them whole | Pass |
+| The report's cases, release builds, one run each, load average about 1.4: 1.1.6's vendored copy, then the change (one write / 16 KiB writes / 1 KiB writes) | FLAGS 1 MB 0.73 s / 0.73 s / 0.73 s → 18 ms / 13 ms / 12 ms; FLAGS 4 MB 12.25 s / 12.13 s / 12.18 s → 57 ms / 55 ms / 52 ms; SEARCH 4 MB 8.30 s / 8.10 s / 8.09 s → 37 ms / 37 ms / 37 ms; a 4 MB quoted string 0.82 s → 5 ms; the error after a 10 MB literal and one wrong byte 80,000,234 bytes (0x01) and 50,000,234 bytes (`a`) → 63 bytes | Pass |
+| `a_long_reply_without_literals_is_read_at_once` (`engine/tests/long_reply.rs`, a 2 MB FLAGS reply through the fake server, test build) | 0.70 s with the change; with 1.1.6's `imap_stream.rs` put back, 67 s and the test fails | Pass |
+
 ### 1.2.1 — 2026-11-09
 
 This machine. The changes since 1.2.0: `0b0fdf1` (`rustls-webpki` 0.103.16), `2fca700` (`aarch64` in `arch=`, issue #30), `ee3aa8f` (quoted mailbox names decoded once, issue #31, PR #33 by @mlamoure) and the version commit `0e6f6dd` (Cargo.toml 1.2.1, both lock files, README, CHANGELOG "1.2.1 — 2026-11-09").
@@ -188,16 +198,6 @@ This machine, the working tree on `b1e9d33` (ADR-025's workspace changes and ten
 | `SEALWAX_CI_DISPLAY=41 bash tools/ci.sh --ui` | Exit 0: formatting, Clippy `-D warnings` under the lint policy, the MSRV check (1.92, every target), rustdoc `-D warnings`, `cargo deny` (bans, licenses, sources ok); 1,443 tests passed, 0 failed, 92 ignored (1.1.7's 1,616 less the spikes' 184, plus 11 new); 87 self-test scripts, 8,504 steps passed; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
 
 Not run: the testbed suites, the install test.
-
-### 1.2.2: async-imap reads a response once — 2026-11-03
-
-This machine (AMD Ryzen 9 5900X), on a local branch. The change and its tests: [vendor/README.md](../vendor/README.md), [ADR-006 amendment](DECISIONS.md#adr-006-amendment--async-imap-frames-a-response-before-parsing-it-and-its-parse-errors-hold-no-response-2026-11-03).
-
-| Check | Result | Verdict |
-| --- | --- | --- |
-| The vendored async-imap's own tests (a copy with the vendored imap-proto outside the repository, `cargo test`) | 84 passed with `runtime-tokio`, 78 with `runtime-async-std`, 0 failed; among them a 1 MB FLAGS response in 1 KiB pieces parsed once (and test-parsed 13 times before its end), five responses with literals in pieces of 1 to 4,096 bytes, 200 random mixes the same as imap-proto reading them whole | Pass |
-| The report's cases, release builds, one run each, load average about 1.4: 1.1.6's vendored copy, then the change (one write / 16 KiB writes / 1 KiB writes) | FLAGS 1 MB 0.73 s / 0.73 s / 0.73 s → 18 ms / 13 ms / 12 ms; FLAGS 4 MB 12.25 s / 12.13 s / 12.18 s → 57 ms / 55 ms / 52 ms; SEARCH 4 MB 8.30 s / 8.10 s / 8.09 s → 37 ms / 37 ms / 37 ms; a 4 MB quoted string 0.82 s → 5 ms; the error after a 10 MB literal and one wrong byte 80,000,234 bytes (0x01) and 50,000,234 bytes (`a`) → 63 bytes | Pass |
-| `a_long_reply_without_literals_is_read_at_once` (`engine/tests/long_reply.rs`, a 2 MB FLAGS reply through the fake server, test build) | 0.70 s with the change; with 1.1.6's `imap_stream.rs` put back, 67 s and the test fails | Pass |
 
 ### 1.1.7 — 2026-11-03
 
