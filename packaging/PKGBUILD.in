@@ -60,6 +60,9 @@ package() {
   install -Dm755 target/release/sealwax "$pkgdir/usr/bin/sealwax"
   install -Dm644 packaging/io.github.pixdevsapps.Sealwax.desktop \
     "$pkgdir/usr/share/applications/io.github.pixdevsapps.Sealwax.desktop"
+  # AppStream: what software centres show about Sealwax.
+  install -Dm644 packaging/io.github.pixdevsapps.Sealwax.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/io.github.pixdevsapps.Sealwax.metainfo.xml"
   # D-Bus activation: launchers activate Sealwax over D-Bus (DBusActivatable=true), and a
   # command line with no Sealwax running asks the bus to start it.
   install -Dm644 packaging/io.github.pixdevsapps.Sealwax.service \

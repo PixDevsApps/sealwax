@@ -40,6 +40,8 @@ modules:
       - install -Dm755 target/debug/sealwax /app/bin/sealwax
       - sed -e 's|^Name=Sealwax$|Name=Sealwax (Development)|' -e 's|io\.github\.pixdevsapps\.Sealwax|io.github.pixdevsapps.Sealwax.Devel|' packaging/io.github.pixdevsapps.Sealwax.desktop > io.github.pixdevsapps.Sealwax.Devel.desktop
       - install -Dm644 io.github.pixdevsapps.Sealwax.Devel.desktop /app/share/applications/io.github.pixdevsapps.Sealwax.Devel.desktop
+      - sed -e 's|<name>Sealwax</name>|<name>Sealwax (Development)</name>|' -e 's|io\.github\.pixdevsapps\.Sealwax\([.<]\)|io.github.pixdevsapps.Sealwax.Devel\1|g' packaging/io.github.pixdevsapps.Sealwax.metainfo.xml > io.github.pixdevsapps.Sealwax.Devel.metainfo.xml
+      - install -Dm644 io.github.pixdevsapps.Sealwax.Devel.metainfo.xml /app/share/metainfo/io.github.pixdevsapps.Sealwax.Devel.metainfo.xml
       - sed -e 's|^Exec=/usr/bin/|Exec=/app/bin/|' -e 's|io\.github\.pixdevsapps\.Sealwax|io.github.pixdevsapps.Sealwax.Devel|' packaging/io.github.pixdevsapps.Sealwax.service > io.github.pixdevsapps.Sealwax.Devel.service
       - install -Dm644 io.github.pixdevsapps.Sealwax.Devel.service /app/share/dbus-1/services/io.github.pixdevsapps.Sealwax.Devel.service
       - for size in 16 24 32 48 64 128 256 512; do install -Dm644 packaging/icons/hicolor/${size}x${size}/apps/io.github.pixdevsapps.Sealwax.png /app/share/icons/hicolor/${size}x${size}/apps/io.github.pixdevsapps.Sealwax.Devel.png; done

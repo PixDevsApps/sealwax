@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.pixdevsapps.Sealwax</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Sealwax</name>
+  <summary>Fast, keyboard-first email client</summary>
+  <developer id="io.github.pixdevsapps">
+    <name>PixDevs</name>
+  </developer>
+
+  <description>
+    <p>
+      Sealwax is a fast, minimal email client, quick to drive from the keyboard and careful with
+      every message: no script in a message ever runs, and nothing from the internet loads until
+      you allow it.
+    </p>
+    <ul>
+      <li>Accounts without server settings: type your address and Sealwax finds the servers; Sign in with Microsoft for Outlook.com and Microsoft 365, app passwords for others</li>
+      <li>IMAP with push and an offline copy of your mail, and POP3 into local folders</li>
+      <li>Whole conversations, safe HTML, attachments that open safely and link warnings</li>
+      <li>Archive, delete, move, star and mark many messages at once, with Undo, also offline</li>
+      <li>Folders, and rules in Sieve, the standard mail-filter language, made in a dialog</li>
+      <li>A rich-text composer, drafts kept on the server and an outbox with Undo send</li>
+      <li>Search with from:, to:, subject:, has:attachment and more, with suggestions as you type</li>
+      <li>Unsubscribe in one click, group mail by sender or domain, and pin the senders you mustn't miss</li>
+      <li>One-key shortcuts, a command palette and your own keys</li>
+      <li>Passwords only in your keyring, no telemetry, and logs without mail content</li>
+    </ul>
+    <p>
+      Sealwax follows the system's light or dark style. On Omarchy it also follows the live theme
+      and Hyprland's rounded corners.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.pixdevsapps.Sealwax.desktop</launchable>
+  <provides>
+    <binary>sealwax</binary>
+    <dbus type="user">io.github.pixdevsapps.Sealwax</dbus>
+    <mediatype>x-scheme-handler/mailto</mediatype>
+  </provides>
+
+  <url type="homepage">https://github.com/PixDevsApps/sealwax</url>
+  <url type="bugtracker">https://github.com/PixDevsApps/sealwax/issues</url>
+  <url type="vcs-browser">https://github.com/PixDevsApps/sealwax</url>
+  <url type="help">https://github.com/PixDevsApps/sealwax/blob/main/docs/USER_GUIDE.md</url>
+
+  <categories>
+    <category>Network</category>
+    <category>Email</category>
+  </categories>
+  <keywords>
+    <keyword>mail</keyword>
+    <keyword>email</keyword>
+    <keyword>inbox</keyword>
+    <keyword>imap</keyword>
+    <keyword>pop3</keyword>
+    <keyword>smtp</keyword>
+  </keywords>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#e9e2d6</color>
+    <color type="primary" scheme_preference="dark">#5c2a24</color>
+  </branding>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <content_rating type="oars-1.1" />
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>A conversation in the light style</caption>
+      <image type="source" width="1000" height="700">https://raw.githubusercontent.com/PixDevsApps/sealwax/v1.3.0/docs/images/screenshots/light.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The same conversation in the dark style</caption>
+      <image type="source" width="1000" height="700">https://raw.githubusercontent.com/PixDevsApps/sealwax/v1.3.0/docs/images/screenshots/dark.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>On Omarchy, following the live theme</caption>
+      <image type="source" width="1440" height="900">https://raw.githubusercontent.com/PixDevsApps/sealwax/v1.3.0/docs/images/screenshots/omarchy.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="1.2.2" date="2026-11-11" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.2.2</url>
+      <description>
+        <p>A security update: a mail server can no longer keep Sealwax busy with one long reply.</p>
+      </description>
+    </release>
+    <release version="1.2.1" date="2026-11-09" type="stable">
+      <description>
+        <p>Folders with a backslash or a quote in their name sync.</p>
+      </description>
+    </release>
+    <release version="1.2.0" date="2026-11-07" type="stable">
+      <description>
+        <p>The message list keeps its place when rows change under the selection.</p>
+      </description>
+    </release>
+  </releases>
+</component>
