@@ -76,6 +76,26 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.3.0 — 2026-11-11
+
+This machine. The changes since 1.2.2: the Flatpak ([ADR-027](DECISIONS.md#adr-027--a-flatpak-from-sealwaxs-own-repository-2026-11-11)): the sandbox changes reviewed on 2026-11-06 (Omarchy's folders through `HOST_XDG_CONFIG_HOME`, Hyprland's corners from its Lua files, the Background portal, WebKit's sandbox check beside the start, the network monitor's first second), the AppStream metainfo and screenshots, `tools/flatpak.py`, a command line in a Flatpak that no longer asks the bus to start Sealwax, the docs, and the version commit `9e4bc08`.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `SEALWAX_CI_DISPLAY=47 bash tools/ci.sh --ui` on the version commit before three comments were reworded (`18bc8a4`; `9e4bc08` differs from it only in comments in the `.Devel` manifest, `hypr_lua.rs` and `updates.rs`) | Exit 0: fmt, both Clippy runs, MSRV, rustdoc, deny; 1,480 tests passed, 0 failed, 92 ignored; 89 self-test scripts, 8,620 of 8,620 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`. Every commit of the range compiles (`git rebase --exec 'cargo check --workspace --all-targets'`) | Pass |
+| The testbed suites | Not run for 1.3.0 (no engine change since 1.2.2's run) | Not verified |
+| The push range (`353f3c3..9e4bc08`, 11 commits) scanned, every commit's diff | No working doc or reference to one, no home path, hostname, signing key or personal data beyond the usual commit author, no co-author line; `/home/kari` is test data | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `desktop-file-validate` | Valid (one pedantic note); valid | Pass |
+| `python3 tools/release.py build` on `v1.3.0` | `check()` 1,195 passed, 0 failed, 92 ignored; the package installs `usr/share/metainfo/io.github.pixdevsapps.Sealwax.metainfo.xml`; the binary holds no home path, address, hostname or self-test code; package SHA-256 `2aa53328b6ad55c2da28d5e15c296f9ac3b00da018fb62f41752cc42f1652ffc` | Pass |
+| The clean-container install test (`sealwax-selftest` from `9e4bc08`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container | Pass |
+| `python3 tools/flatpak.py build` on `v1.3.0` (flatpak-builder 1.4.12, GNOME 51) | Exit 0; metainfo and desktop file valid, the 1.3.0 release present; `/app/bin/sealwax` 23,907,000 bytes without self-test code or home path; the Microsoft client ID built in from a copy of the manifest, not from git | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `f036c72b…` signed by the repository key (`C3A84406A8A78141`), static deltas, `appstream` and `appstream2` branches; 13 MB | Pass |
+| The signed 1.3.0 installed by `file://` into a separate Flatpak installation (`gpg-verify=true`), then `flatpak run` for 10 s on the live desktop, no accounts, the installed Sealwax closed | Exit 0, 11.0 s; in the sandbox (its own store, the portal's network monitor); theme `catppuccin` dark, corner radius 8 from Hyprland's Lua files; first frame 760.6 ms; no host Sealwax started. (The first try, before `bb4156d`, started the host's Sealwax through D-Bus activation instead: fixed.) WebKit's sandbox check not seen in this run (no mail opened; it passed in 80–122 ms on 2026-11-06) | Pass |
+| The release [v1.3.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.3.0) (`tools/release.py github`, 12:30:15 UTC) | GitHub's latest; its five files; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` downloads the same bytes as the build; the metainfo's screenshot URLs at `v1.3.0` answer 200 | Pass |
+| The Flatpak repository (`tools/flatpak.py publish` to `PixDevsApps/sealwax-flatpak`, GitHub Pages) | Served about 40 s after the push; `flatpak install --user https://pixdevsapps.github.io/sealwax-flatpak/io.github.pixdevsapps.Sealwax.flatpakref` into the separate installation: 1.3.0, commit `f036c72b…`, remote `sealwax` with `gpg-verify=true`; `flatpak update`: "Nothing to update"; `flatpak search sealwax` finds 1.3.0 | Pass |
+| The Flatpak on another distribution, GNOME or KDE (the Background and Secret portals, a real account) | Not run: only Omarchy here | Not verified |
+| ARM | Nothing built or run on ARM here | Not verified |
+
 ### 1.2.2 — 2026-11-11
 
 This machine. The changes since 1.2.1: `518fa6a` (async-imap reads a response once, and its parse errors hold no response; [GHSA-p76c-f9r4-p56x](https://github.com/PixDevsApps/sealwax/security/advisories/GHSA-p76c-f9r4-p56x); its own checks in the section below) and the version commit `6768d6f` (Cargo.toml 1.2.2, both lock files, README, CHANGELOG "1.2.2 — 2026-11-11" with the advisory's link).
