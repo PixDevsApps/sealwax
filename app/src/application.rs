@@ -50,7 +50,7 @@ use sealwax_domain::layout::Layout;
 #[cfg(feature = "test-hooks")]
 use sealwax_domain::mailto::Mailto;
 use sealwax_domain::mailto;
-use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
+use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole, MessageId};
 use sealwax_domain::senders::GroupBy;
 use sealwax_domain::triage::Triage;
 use sealwax_engine::api::{Command, Event};
@@ -1534,6 +1534,19 @@ impl AppState {
                 }
             },
         );
+        let (applies, activate) = (Rc::downgrade(self), Rc::downgrade(self));
+        window.sidebar().connect_empty_trash(
+            move |key| {
+                applies
+                    .upgrade()
+                    .is_some_and(|state| state.trash_folder(key).is_some())
+            },
+            move |key| {
+                if let Some(state) = activate.upgrade() {
+                    state.empty_trash(key);
+                }
+            },
+        );
         // Once per process: a window built again from background mode uses the same listener,
         // as the store has no way to drop one.
         if !self.triage_listening.replace(true) {
@@ -1807,6 +1820,43 @@ impl AppState {
             self.mark_started();
             triage.mark_folders_read(folders, name);
         }
+    }
+
+    /// The `\Trash` folder of the sidebar row `key`, `None` for every other row — All Inboxes,
+    /// an account's heading, and any folder that isn't one. Each account's own Trash has its own
+    /// row and its own id, so this is always one account's folder, never several.
+    fn trash_folder(&self, key: &str) -> Option<Folder> {
+        let ViewScope::Folder(id) = self.mailbox.scope_for_key(key)? else {
+            return None;
+        };
+        self.mailbox
+            .folder(id)
+            .filter(|folder| folder.role == FolderRole::Trash)
+    }
+
+    /// Empty Trash: deletes for good every message of the account's `\Trash`, including the mail
+    /// of it the store never downloaded, so the folder stays empty when it is opened again, and
+    /// one account's folder only — every account has a Trash of its own.
+    ///
+    /// The store's side isn't built yet: until it queues the change (`Store::empty_trash`), this
+    /// names what the command would delete, from the counts the sidebar already shows, and
+    /// queues nothing.
+    fn empty_trash(self: &Rc<Self>, key: &str) {
+        let Some(folder) = self.trash_folder(key) else {
+            return;
+        };
+        let account = self
+            .mailbox
+            .accounts()
+            .into_iter()
+            .find(|account| account.id == folder.account)
+            .map(|account| account.name)
+            .unwrap_or_else(|| "the account".to_owned());
+        let text = triage::emptied_text(&account, folder.total);
+        self.show_notice(
+            &Notice::plain(format!("{text} — the store's side isn't built yet")),
+            true,
+        );
     }
 
     /// Commands' titles where they differ from the registry's, for the palette.

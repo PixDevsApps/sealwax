@@ -152,6 +152,11 @@ sidebar-menu Fixtures:INBOX/Kvitteringer
 assert-shown folder-menu-rename true
 assert-accessible window
 key Escape
+# A `\Trash` folder's menu adds Empty Trash, and its name reaches the screen reader.
+sidebar-menu Fixtures:Trash
+assert-shown folder-menu-empty-trash true
+assert-accessible window
+key Escape
 account-menu account-1
 assert-shown account-menu-new-folder true
 assert-accessible window

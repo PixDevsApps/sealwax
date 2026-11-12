@@ -430,6 +430,9 @@ pub struct Sidebar {
     menu: RefCell<Option<gtk::Popover>>,
     /// Whether Mark Folder as Read applies to a folder key, and what it does.
     mark_read: RefCell<Option<MarkRead>>,
+    /// Whether Empty Trash applies to a folder key, and what it does. Its item shows only where
+    /// it applies, so an account's `\Trash` alone has it.
+    empty_trash: RefCell<Option<EmptyTrash>>,
     /// Whether New Subfolder, Rename Folder and Delete Folder apply to a folder key (why not),
     /// and what they do.
     folder_commands: RefCell<Option<FolderCommands>>,
@@ -454,6 +457,8 @@ pub struct Sidebar {
 }
 
 type MarkRead = (Rc<dyn Fn(&str) -> bool>, Rc<dyn Fn(&str)>);
+/// Whether Empty Trash applies to a folder key, and what it does.
+type EmptyTrash = (Rc<dyn Fn(&str) -> bool>, Rc<dyn Fn(&str)>);
 type FolderCommands = (
     Rc<dyn Fn(ActionId, &str) -> Result<(), &'static str>>,
     Rc<dyn Fn(ActionId, &str)>,
@@ -580,6 +585,7 @@ impl Sidebar {
             expanded: RefCell::new(HashSet::new()),
             menu: RefCell::new(None),
             mark_read: RefCell::new(None),
+            empty_trash: RefCell::new(None),
             folder_commands: RefCell::new(None),
             edit_account: RefCell::new(None),
             new_folder: RefCell::new(None),
@@ -903,6 +909,19 @@ impl Sidebar {
             .replace(Some((Rc::new(applies), Rc::new(activate))));
     }
 
+    /// Adds Empty Trash to a folder row's context menu, and only where `applies` says it does:
+    /// an account's `\Trash` alone, since no other folder holds mail that is being emptied. The
+    /// item is left out entirely elsewhere, rather than shown disabled, so the menu never offers
+    /// to empty a folder that isn't one.
+    pub fn connect_empty_trash(
+        &self,
+        applies: impl Fn(&str) -> bool + 'static,
+        activate: impl Fn(&str) + 'static,
+    ) {
+        self.empty_trash
+            .replace(Some((Rc::new(applies), Rc::new(activate))));
+    }
+
     /// Adds New Subfolder…, Rename Folder… and Delete Folder… to every folder row's context
     /// menu (M9, ADR-020): `applies` says whether the command applies to the folder's key, or
     /// why not (the item is then insensitive, its tooltip the reason); `activate` runs it.
@@ -988,12 +1007,25 @@ impl Sidebar {
             .filter(|menu| menu.parent().is_some())
     }
 
-    /// A folder row's menu: Mark Folder as Read, then (not on All Inboxes) New Subfolder…,
-    /// Rename Folder… and Delete Folder…, each insensitive with the reason as its tooltip where
-    /// it doesn't apply.
+    /// A folder row's menu: Empty Trash on the account's `\Trash` alone, then Mark Folder as
+    /// Read, then (not on All Inboxes) New Subfolder…, Rename Folder… and Delete Folder…, each
+    /// insensitive with the reason as its tooltip where it doesn't apply.
     fn show_menu(&self, row: &gtk::ListBoxRow, key: &str) {
         self.close_menu();
         let mut items: Vec<MenuItem> = Vec::new();
+        // First, and only where it applies: it is the item that folder's menu is for, and on any
+        // other folder it would have nothing to act on.
+        if let Some((applies, activate)) = self.empty_trash.borrow().clone()
+            && applies(key)
+        {
+            let key = key.to_owned();
+            items.push(MenuItem {
+                name: "folder-menu-empty-trash",
+                label: ActionId::EmptyTrash.title(),
+                why_not: None,
+                activate: Rc::new(move || activate(&key)),
+            });
+        }
         if let Some((applies, activate)) = self.mark_read.borrow().clone() {
             let enabled = applies(key);
             let key = key.to_owned();

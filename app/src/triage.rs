@@ -439,6 +439,18 @@ pub(crate) fn folder_read_text(queued: u32, name: &str) -> String {
     }
 }
 
+/// Emptying an account's Trash, in the toast's words. It names the account: every account has a
+/// Trash of its own, and the command deletes one account's, never several.
+pub(crate) fn emptied_text(account: &str, count: u32) -> String {
+    match count {
+        0 => format!("{account}'s Trash is already empty"),
+        count => format!(
+            "Emptied {account}'s Trash — {} deleted for good",
+            messages(count)
+        ),
+    }
+}
+
 /// What an Undo did, in the toast's words.
 pub(crate) fn undone_text(undone: &Undone) -> String {
     let lost: Vec<String> = undone
@@ -1252,6 +1264,18 @@ mod tests {
             "Marked 12 messages in Inbox as read"
         );
         assert_eq!(folder_read_text(0, "Inbox"), "Nothing in Inbox was unread");
+        assert_eq!(
+            emptied_text("Ada Berg", 12),
+            "Emptied Ada Berg's Trash — 12 messages deleted for good"
+        );
+        assert_eq!(
+            emptied_text("Ada Berg", 1),
+            "Emptied Ada Berg's Trash — 1 message deleted for good"
+        );
+        assert_eq!(
+            emptied_text("Ada Berg", 0),
+            "Ada Berg's Trash is already empty"
+        );
     }
 
     #[test]
