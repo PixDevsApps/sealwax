@@ -1,6 +1,7 @@
 # Outside Hyprland (DESIGN.md "Layout"): no title bar either, but the pane bars carry the window
 # controls where the panes meet the window's edges, and drag the window. On Hyprland there are
-# none (window.sealwax-test). Screenshots go to .local/selftest/.
+# none (window.sealwax-test). With the reading pane hidden (Toggle Reading Pane), the list's bar
+# carries the end controls. Screenshots go to .local/selftest/.
 # Run: tools/headless.sh 33 target/debug/sealwax-selftest --self-test tests/selftest/window-controls.sealwax-test
 
 desktop other
@@ -31,3 +32,25 @@ action nav.pane::reader
 assert-window-controls 2
 assert-labelled
 screenshot $DIR/../../.local/selftest/controls-800-reader.png
+
+# The reading pane hidden (issue #34): the list reaches the window's end and carries the end
+# controls there, the reader's bar keeps its own when a message is open, and the rail still has
+# no room for the start ones.
+action nav.pane::list
+resize 1440 900
+assert-layout wide
+assert-window-controls 2
+action win.toggle-reading-pane
+wait-until assert-shown reader false
+assert-window-controls 2
+assert-labelled
+screenshot $DIR/../../.local/selftest/controls-1440-reader-hidden.png
+action nav.pane::reader
+wait-until assert-shown reader true
+assert-window-controls 2
+resize 1100 900
+assert-layout rail
+assert-window-controls 1
+action nav.pane::list
+wait-until assert-shown list true
+assert-window-controls 1

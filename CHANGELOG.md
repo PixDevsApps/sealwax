@@ -2,6 +2,12 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.3.1 — Not released yet
+
+The list on its own, without the reading pane.
+
+- **Hide the reading pane** ([#34](https://github.com/PixDevsApps/sealwax/issues/34)): **Toggle Reading Pane**, in the main menu under Toggle Sidebar and in the command palette, shows the message list on its own beside the folders, in a window of any width. Enter or a double click opens a message in the list's place, and Escape or the back button goes back to the list. The main menu's button moves to the start of the bar, so it is at hand in the list and in a message. A message is marked read when you open it, not when you select it. Sealwax remembers the choice, and the reader beside the list stays the default ([user guide](docs/USER_GUIDE.md#the-window)).
+
 ## 1.3.0 — 2026-11-11
 
 Sealwax as a Flatpak, for Linux systems other than Omarchy.

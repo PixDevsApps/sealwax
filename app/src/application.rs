@@ -1153,6 +1153,29 @@ impl AppState {
             }
         });
         let weak = Rc::downgrade(self);
+        win_actions.connect_toggle(
+            ActionId::ToggleReadingPane,
+            !window.reader_hidden(),
+            move |on| {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                let Some(target) = state.window() else {
+                    return;
+                };
+                let in_reader = target.focus_in_reader();
+                target.set_reader_hidden(!on);
+                // The focus leaves a reader that hides for the list.
+                if in_reader
+                    && !on
+                    && let Some(list) = state.list()
+                {
+                    list.list_view().grab_focus();
+                }
+                state.change_layout(|layout| layout.reader_hidden = !on);
+            },
+        );
+        let weak = Rc::downgrade(self);
         window.connect_sidebar_shown(move |shown| {
             if let Some(state) = weak.upgrade()
                 && let Some(actions) = state.win_actions.borrow().as_ref()
@@ -2072,11 +2095,20 @@ impl AppState {
                 layout.list_width.map_or(window::LIST_WIDTH, f64::from),
             );
             window.set_sidebar_hidden(layout.sidebar_hidden);
+            self.apply_reader_hidden(&window, layout.reader_hidden);
         }
         if let Some(list) = self.list() {
             list.set_group_by(layout.group_by);
         }
         self.layout.replace(Some(layout));
+    }
+
+    /// The remembered reading pane on the window, with the menu's check mark.
+    fn apply_reader_hidden(&self, window: &Window, hidden: bool) {
+        window.set_reader_hidden(hidden);
+        if let Some(actions) = self.win_actions.borrow().as_ref() {
+            actions.set_toggle_state(ActionId::ToggleReadingPane, !hidden);
+        }
     }
 
     /// Changes the remembered layout with `change` and writes it off the GTK thread.
@@ -2142,6 +2174,7 @@ impl AppState {
                 layout.list_width.map_or(window::LIST_WIDTH, f64::from),
             );
             window.set_sidebar_hidden(layout.sidebar_hidden);
+            self.apply_reader_hidden(window, layout.reader_hidden);
         }
         if let (Some(list), Some(by)) = (
             self.list(),

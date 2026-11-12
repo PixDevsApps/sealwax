@@ -2,7 +2,10 @@
 //! layout (DESIGN.md "Layout"), built from two nested `adw::NavigationSplitView`s. Breakpoints
 //! switch between the full sidebar (≥ 1280 px), a rail of icons (900–1280 px) and one pane at a
 //! time with back navigation (< 900 px). Toggle Sidebar hides the folders pane in the wider two
-//! (the owner's word, 2026-10-21) and shows the folders page in the narrow one. On Hyprland there is no title bar and there are no
+//! (the owner's word, 2026-10-21) and shows the folders page in the narrow one. Toggle Reading
+//! Pane (issue #34) hides the reader in the wider two: the list and a message then take turns
+//! beside the folders, the main menu at the start of their bars. On Hyprland there is no title
+//! bar and there are no
 //! window controls; elsewhere the pane bars carry the controls at the window's edges and drag
 //! the window.
 //!
@@ -133,6 +136,11 @@ struct Inner {
     list_subtitle: gtk::Label,
     list_slot: adw::Bin,
     list_menu: gtk::MenuButton,
+    /// The list bar's own widgets: the title, "New" and the main menu, which moves to their
+    /// start while the reading pane is hidden.
+    list_content: gtk::Box,
+    /// The main menu in the reader's bar, while a message shows in the list's place.
+    reader_menu: gtk::MenuButton,
     /// "New" in the list's bar, while the sidebar's isn't shown.
     list_compose: gtk::Button,
     welcome_menu: gtk::MenuButton,
@@ -172,6 +180,12 @@ struct Inner {
     rail_on: Cell<bool>,
     /// One pane at a time.
     narrow_on: Cell<bool>,
+    /// Toggle Reading Pane hid the reader: the list and a message take turns at every width.
+    reader_hidden: Cell<bool>,
+    /// "Back to the list", in the reader's bar while the two take turns.
+    reader_back: gtk::Button,
+    /// The list's window controls at the window's end, shown while the list reaches it.
+    list_end_controls: Option<gtk::WindowControls>,
     /// Toggle Sidebar hid the folders pane (in the wider layouts).
     sidebar_hidden: Cell<bool>,
     /// Told whether the folders show whenever that may have changed.
@@ -238,10 +252,13 @@ impl Window {
         tooltips.add(&reader_back, "Back to the list", ActionId::BackToList);
         let reader_bar = PaneBar::new(
             tiling,
-            Some((reader_back, Pane::List.name())),
+            Some((reader_back.clone(), Pane::List.name())),
             &["sw-toolbar"],
         );
         reader_bar.show_controls(false, true);
+        let reader_menu = named(menu_button(), "reader-menu");
+        reader_menu.set_visible(false);
+        reader_bar.content.append(&reader_menu);
         let reader_toolbar = named(adw::Bin::builder().hexpand(true).build(), "reader-toolbar");
         reader_bar.content.append(&reader_toolbar);
         let column = ReaderColumn::new();
@@ -353,14 +370,15 @@ impl Window {
         if let Some(controls) = &sidebar.bar.start_controls {
             rail.add_setter(controls, "visible", Some(&hidden));
         }
+        // What folds the reader behind the list isn't set here but in `apply_fold`: the
+        // setting folds it too, and a setter would put back the value from before it applied.
         let narrow = breakpoint(RAIL_MIN_WIDTH);
         narrow.add_setter(&panes, "collapsed", Some(&shown));
-        narrow.add_setter(&mail, "collapsed", Some(&shown));
         narrow.add_setter(&sidebar_handle, "visible", Some(&hidden));
-        narrow.add_setter(&list_handle, "visible", Some(&hidden));
-        for bar in [&sidebar.bar, &list_bar, &reader_bar, &welcome_bar] {
-            bar.narrow_setters(&narrow);
-        }
+        sidebar.bar.narrow_setters(&narrow, true, true);
+        list_bar.narrow_setters(&narrow, true, false);
+        reader_bar.narrow_setters(&narrow, false, true);
+        welcome_bar.narrow_setters(&narrow, true, true);
         window.add_breakpoint(rail.clone());
         window.add_breakpoint(narrow.clone());
         // One pane at a time draws no borders between panes (`style.css`).
@@ -432,6 +450,8 @@ impl Window {
                 list_subtitle,
                 list_slot,
                 list_menu,
+                list_content: list_bar.content.clone(),
+                reader_menu,
                 list_compose,
                 welcome_menu,
                 reader_pane,
@@ -453,6 +473,9 @@ impl Window {
                 list_width: Cell::new(LIST_WIDTH),
                 rail_on: Cell::new(false),
                 narrow_on: Cell::new(false),
+                reader_hidden: Cell::new(false),
+                reader_back,
+                list_end_controls: list_bar.end_controls.clone(),
                 sidebar_hidden: Cell::new(false),
                 sidebar_shown_changed: RefCell::new(None),
                 sidebar_handle,
@@ -537,6 +560,7 @@ impl Window {
                 move |_: &adw::Breakpoint| {
                     inner.narrow_on.set(narrow);
                     let window = Window { inner };
+                    window.apply_fold();
                     window.apply_widths();
                     window.sidebar_shown_changed();
                 }
@@ -639,6 +663,63 @@ impl Window {
         }
     }
 
+    /// Whether Toggle Reading Pane hid the reader, as remembered between runs.
+    pub fn reader_hidden(&self) -> bool {
+        self.inner.reader_hidden.get()
+    }
+
+    /// Toggle Reading Pane (issue #34): hidden, the list and a message take turns at every
+    /// width, as they do while one pane fits, and the folders keep their pane in the wider
+    /// layouts. Hiding it shows the list, whatever was last opened.
+    pub fn set_reader_hidden(&self, hidden: bool) {
+        let inner = &self.inner;
+        let was = inner.reader_hidden.replace(hidden);
+        self.apply_fold();
+        if hidden && !was && !inner.narrow_on.get() {
+            self.show_pane(Pane::List);
+        }
+    }
+
+    /// Whether the keyboard focus is in the reader's pane.
+    pub fn focus_in_reader(&self) -> bool {
+        gtk::prelude::GtkWindowExt::focus(&self.inner.window)
+            .is_some_and(|focus| focus.is_ancestor(&self.inner.reader_pane))
+    }
+
+    /// Folds the reader behind the list or puts it beside it, with what goes with either: the
+    /// border between them drags only while both show, the reader's bar has its back button
+    /// while they take turns, and the list's bar has the window controls where it reaches the
+    /// window's end. With the reading pane hidden in the wider layouts, the main menu is at the
+    /// start of the list's bar, where the list begins, not at the far end of a bar as wide as
+    /// the window; and the reader's bar has it too, after its back button, so it is there
+    /// whichever of the two shows.
+    fn apply_fold(&self) {
+        let inner = &self.inner;
+        let folded = inner.folded();
+        inner.mail.set_collapsed(folded);
+        inner.list_handle.set_visible(!folded);
+        inner.reader_back.set_visible(folded);
+        if let Some(controls) = &inner.list_end_controls {
+            controls.set_visible(folded);
+        }
+        let alone = inner.reader_hidden.get() && !inner.narrow_on.get();
+        inner.reader_menu.set_visible(alone);
+        if alone {
+            inner
+                .list_content
+                .reorder_child_after(&inner.list_menu, None::<&gtk::Widget>);
+        } else {
+            inner
+                .list_content
+                .reorder_child_after(&inner.list_menu, Some(&inner.list_compose));
+        }
+        if folded {
+            inner.window.add_css_class("sw-reader-folded");
+        } else {
+            inner.window.remove_css_class("sw-reader-folded");
+        }
+    }
+
     /// The widths on the split views: the folders pane is the rail's while the rail shows, and
     /// none while Toggle Sidebar hides it.
     fn apply_widths(&self) {
@@ -682,7 +763,13 @@ impl Window {
             };
             let window = f64::from(inner.window.width());
             let (range, others) = if sidebar {
-                (&SIDEBAR_WIDTHS, inner.list_width.get())
+                // Taking turns, the list and the reader share the room beside the folders.
+                let list = if inner.folded() {
+                    0.0
+                } else {
+                    inner.list_width.get()
+                };
+                (&SIDEBAR_WIDTHS, list)
             } else {
                 let folders = if inner.rail_on.get() {
                     RAIL_WIDTH
@@ -692,7 +779,12 @@ impl Window {
                 (&LIST_WIDTHS, folders)
             };
             let (reader, ..) = inner.reader_pane.measure(gtk::Orientation::Horizontal, -1);
-            let room = window - others - READER_MIN_WIDTH.max(f64::from(reader));
+            let mut kept = READER_MIN_WIDTH.max(f64::from(reader));
+            if sidebar && inner.folded() {
+                let (list, ..) = inner.list_pane.measure(gtk::Orientation::Horizontal, -1);
+                kept = kept.max(f64::from(list));
+            }
+            let room = window - others - kept;
             // No narrower than the pane's content allows (the list's chips), so the width kept
             // is the width shown.
             let pane: &gtk::Widget = if sidebar {
@@ -940,9 +1032,11 @@ impl Window {
     }
 
     /// The main menu (ML-022), at the end of the list pane's bar, or of the welcome page's while
-    /// there is no account.
+    /// there is no account; with the reading pane hidden, at the start of the list's bar and
+    /// of the reader's.
     pub fn set_menu_model(&self, menu: Option<&gio::MenuModel>) {
         self.inner.list_menu.set_menu_model(menu);
+        self.inner.reader_menu.set_menu_model(menu);
         self.inner.welcome_menu.set_menu_model(menu);
     }
 
@@ -1013,6 +1107,13 @@ impl Window {
             .find(|widget| widget.widget_name() == name)
             .cloned()
             .or_else(|| find_named(self.inner.window.upcast_ref(), name))
+    }
+}
+
+impl Inner {
+    /// Whether the list and the reader take turns: one pane fits, or the reading pane is hidden.
+    fn folded(&self) -> bool {
+        self.narrow_on.get() || self.reader_hidden.get()
     }
 }
 

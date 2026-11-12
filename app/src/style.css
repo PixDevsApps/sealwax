@@ -223,7 +223,8 @@ button.sw-primary:disabled {
 
 /* The window's panes: the folders and the list on the sidebar surface with a border at
    their end, the reader and the welcome page on the window's. One pane at a time (narrow,
-   the window's sw-one-pane) needs no borders. */
+   the window's sw-one-pane) needs no borders, and neither does a list with the reader folded
+   behind it (sw-reader-folded: narrow, or the reading pane hidden). */
 .sw-sidebar,
 .sw-list-pane {
   border-right: var(--sw-control-border-width) solid var(--sidebar-border-color);
@@ -232,7 +233,7 @@ button.sw-primary:disabled {
 }
 
 window.sw-one-pane .sw-sidebar,
-window.sw-one-pane .sw-list-pane {
+window.sw-reader-folded .sw-list-pane {
   border-right: none;
 }
 
@@ -247,8 +248,9 @@ window.sw-one-pane .sw-list-pane {
   box-shadow: inset calc(2 * var(--sw-control-border-width)) 0 var(--accent-bg-color);
 }
 
-/* Alone in the window, the list's bar is set off from it, as in the mock's narrow window. */
-window.sw-one-pane .sw-list-pane .sw-pane-bar {
+/* Without the reader beside it, the list's bar is set off from it, as in the mock's narrow
+   window. */
+window.sw-reader-folded .sw-list-pane .sw-pane-bar {
   border-bottom: var(--sw-control-border-width) solid var(--border-color);
 }
 

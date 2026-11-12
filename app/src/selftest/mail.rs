@@ -74,6 +74,7 @@ pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-sidebar-count", 2, 2),
     ("assert-selection-reported", 1, 1),
     ("assert-action-enabled", 2, 2),
+    ("assert-action-state", 2, 2),
     ("assert-list-exact", 0, 0),
     // Group by Sender or Domain (issue #24).
     ("list-open-group", 1, 1),
@@ -319,6 +320,7 @@ pub(super) async fn run(harness: &Harness, command: &str, args: &[String]) -> Op
                 || command == "assert-sidebar-count"
                 || command == "assert-selection-reported"
                 || command == "assert-action-enabled"
+                || command == "assert-action-state"
                 || command == "assert-folder-at"
                 || command == "assert-layout-view" =>
         {
@@ -1330,6 +1332,19 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             .ok_or_else(|| format!("no action {name}"))?
             .is_enabled();
             equal(name, enabled, super::script::boolean(arg(1))?)
+        }
+        "assert-action-state" => {
+            let name = arg(0);
+            let window = harness.window()?;
+            let state = match name.split_once('.') {
+                Some(("win", action)) => window.window().lookup_action(action),
+                Some(("app", action)) => harness.app.lookup_action(action),
+                _ => return Err(format!("use win.NAME or app.NAME, not {name}")),
+            }
+            .ok_or_else(|| format!("no action {name}"))?
+            .state()
+            .and_then(|state| state.get::<bool>());
+            equal(name, state, Some(super::script::boolean(arg(1))?))
         }
         "assert-selection-reported" => {
             let reported = REPORTED.with(|reported| reported.borrow().clone());

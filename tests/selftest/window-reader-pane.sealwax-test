@@ -1,0 +1,221 @@
+# Toggle Reading Pane (issue #34), in the main menu under Toggle Sidebar: the reader shows beside
+# the list by default; hidden, the list takes the room beside the folders in the wide and rail
+# layouts, as one pane at a time does: Enter or a double click opens the message in the list's
+# place and Escape or the back button goes back; a message is read once it is opened, not when
+# it is selected. The main menu is then at the start of the list's bar and of the reader's, so it
+# is at hand whichever shows. The folders keep their pane, Toggle Sidebar still hides them and
+# their border still drags; a change made while one pane fits shows once the window widens; the
+# choice is written to layout.toml and comes back with a new window. Every name and message is
+# fictional.
+# Run: tools/headless.sh 35 target/debug/sealwax-selftest --self-test tests/selftest/window-reader-pane.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open true
+mail-account Personal
+mail-add Personal:inbox 10m "Hyttetur i oktober" "from=Ingrid Solberg" "text=Vi drar fredag ettermiddag."
+mail-add Personal:inbox 20m "Styremøte torsdag" "from=Marius Dahl" "text=Sakslisten kommer i morgen."
+mail-add Personal:inbox 30m "Dugnad lørdag" "from=Leah Kim" "text=Vi møtes klokken ti."
+folder inbox Personal
+assert-sidebar-count Personal:inbox 3
+focus list
+list-select 0
+wait-until assert-reader-page message
+wait-until assert-list-row 0 unread false
+
+# The default: the reader beside the list, their border drags, no back button; the main menu at
+# the end of the list's bar, and the command checked.
+assert-layout wide
+assert-action-state win.toggle-reading-pane true
+assert-shown reader true
+assert-width sidebar 220
+assert-width list 380
+assert-width reader 840
+assert-shown list-handle true
+assert-shown reader-back false
+assert-shown reader-menu false
+assert-right-of list-menu list-title
+assert-file-lacks $TMP/state/sealwax/layout.toml "reader_hidden"
+
+# Hidden: the list takes the reader's room beside the folders and keeps the focus; its main menu
+# is at the start of its bar, before the folder's name; the file remembers it.
+action win.toggle-reading-pane
+wait-until assert-shown reader false
+assert-action-state win.toggle-reading-pane false
+assert-layout wide
+assert-pane list
+assert-shown sidebar true
+assert-width sidebar 220
+assert-width list 1220
+assert-shown list-handle false
+assert-right-of list-title list-menu
+wait-until assert-focus list
+wait-until assert-file-contains $TMP/state/sealwax/layout.toml "reader_hidden = true"
+assert-accessible window
+screenshot $DIR/../../.local/selftest/window-reader-pane-list.png
+
+# A message selected stays unread and the list stays; Enter opens it in the list's place, with
+# the back button and then the main menu before its toolbar, and it is read.
+list-select 1
+sleep 300
+assert-list-row 1 unread true
+assert-pane list
+key Return
+assert-pane reader
+wait-until assert-shown reader true
+assert-shown list false
+assert-shown sidebar true
+assert-width sidebar 220
+assert-width reader 1220
+assert-shown reader-back true
+assert-shown reader-menu true
+assert-right-of reader-menu reader-back
+assert-right-of reader-toolbar reader-menu
+wait-until assert-list-row 1 unread false
+assert-accessible window
+screenshot $DIR/../../.local/selftest/window-reader-pane-message.png
+
+# Escape goes back to the list, which takes the focus; so does the back button.
+key Escape
+assert-pane list
+wait-until assert-shown list true
+wait-until assert-focus list
+key Return
+assert-pane reader
+wait-until assert-shown reader-back true
+click reader-back
+assert-pane list
+wait-until assert-shown list true
+
+# A click selects a row without opening it; a double click opens it.
+click-row 2
+assert-list-selection 2
+assert-pane list
+sleep 300
+assert-list-row 2 unread true
+double-click-row 2
+assert-pane reader
+wait-until assert-shown reader true
+wait-until assert-list-row 2 unread false
+click reader-back
+assert-pane list
+wait-until assert-shown list true
+
+# The rail keeps its width and the list takes the rest.
+resize 1100 900
+assert-layout rail
+assert-width sidebar 56
+assert-width list 1044
+assert-shown reader false
+assert-right-of list-title list-menu
+
+# One pane at a time is as it was, the main menu at the end of the list's bar and none in the
+# reader's; wide again, the message opened there still shows.
+resize 800 900
+assert-layout narrow
+assert-pane list
+assert-shown sidebar false
+assert-right-of list-menu list-title
+focus list
+key Return
+assert-pane reader
+wait-until assert-shown reader true
+assert-shown reader-menu false
+resize 1440 900
+assert-layout wide
+assert-pane reader
+assert-shown reader true
+assert-shown sidebar true
+assert-shown reader-back true
+assert-shown reader-menu true
+assert-width reader 1220
+click reader-back
+assert-pane list
+wait-until assert-shown list true
+
+# Toggle Sidebar hides the folders as before: the list has the whole window.
+key F9
+assert-shown sidebar false
+assert-width list 1440
+assert-shown list-compose true
+assert-right-of list-title list-menu
+assert-right-of list-compose list-title
+key F9
+assert-shown sidebar true
+assert-width list 1220
+
+# The folders' border drags through its whole range, and a double click puts it back.
+drag sidebar-handle 400
+assert-width sidebar 360
+assert-width list 1080
+double-click sidebar-handle
+assert-width sidebar 220
+
+# Shown again, from a message: the reader beside the list, the border between them, no back
+# button, the main menu back at the end of the list's bar, and the file forgets it.
+focus list
+key Return
+assert-pane reader
+action win.toggle-reading-pane
+wait-until assert-shown list true
+assert-action-state win.toggle-reading-pane true
+assert-shown reader true
+assert-width list 380
+assert-width reader 840
+assert-shown list-handle true
+assert-shown reader-back false
+assert-shown reader-menu false
+assert-right-of list-menu list-title
+wait-until assert-file-lacks $TMP/state/sealwax/layout.toml "reader_hidden"
+drag list-handle 100
+assert-width list 480
+double-click list-handle
+assert-width list 380
+
+# Hidden with a message open (Enter opened it above): the list shows, not the message.
+action win.toggle-reading-pane
+wait-until assert-shown reader false
+assert-pane list
+assert-shown list true
+action win.toggle-reading-pane
+wait-until assert-shown reader true
+
+# Changed while one pane fits: the wider layout follows it once the window widens.
+resize 800 900
+assert-layout narrow
+action win.toggle-reading-pane
+assert-action-state win.toggle-reading-pane false
+assert-pane list
+resize 1440 900
+assert-layout wide
+wait-until assert-shown reader false
+assert-shown sidebar true
+assert-width list 1220
+assert-shown list-handle false
+assert-right-of list-title list-menu
+resize 800 900
+assert-layout narrow
+action win.toggle-reading-pane
+resize 1440 900
+assert-layout wide
+wait-until assert-shown reader true
+assert-width list 380
+assert-shown list-handle true
+assert-shown reader-back false
+
+# A new window (background mode) comes back with the reading pane hidden and the command
+# unchecked.
+action win.toggle-reading-pane
+wait-until assert-shown reader false
+wait-until assert-file-contains $TMP/state/sealwax/layout.toml "reader_hidden = true"
+close-window
+wait-until assert-window false
+bus-activate
+wait-until assert-window true
+resize 1440 900
+wait-until assert-shown reader false
+assert-action-state win.toggle-reading-pane false
+assert-shown sidebar true
+assert-width list 1220
+assert-shown list-handle false
+assert-right-of list-title list-menu

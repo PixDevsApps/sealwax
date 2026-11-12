@@ -63,6 +63,7 @@ pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("hover", 1, 1),
     ("drag", 2, 2),
     ("double-click", 1, 1),
+    ("double-click-row", 1, 1),
     ("click-quick", 2, 2),
     ("click", 1, 2),
     ("triage-account", 2, 2),
@@ -130,6 +131,14 @@ pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> S
             let row = row_widget(harness, arg(0))?;
             let state = modifiers(args.get(1).map_or("none", String::as_str))?;
             click_widget(harness, row.upcast_ref(), state, 1).await
+        }
+        "double-click-row" => {
+            let row = row_widget(harness, arg(0))?;
+            let (x, y) = centre(harness, row.upcast_ref())?;
+            broadway::double_click(x, y).map_err(|error| error.to_string())?;
+            glib::timeout_future(Duration::from_millis(100)).await;
+            harness.wait_until_settled().await;
+            Ok(())
         }
         "check-row" => {
             let row = row_widget(harness, arg(0))?;

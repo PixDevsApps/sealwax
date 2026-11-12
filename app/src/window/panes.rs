@@ -116,14 +116,16 @@ impl PaneBar {
     }
 
     /// What the bar shows while one pane fills the window: its back button, and the window
-    /// controls on both sides.
-    pub fn narrow_setters(&self, breakpoint: &adw::Breakpoint) {
+    /// controls on both sides. `back` and `end` are false for a bar whose back button or end
+    /// controls the window shows itself (`Window::apply_fold`).
+    pub fn narrow_setters(&self, breakpoint: &adw::Breakpoint, back: bool, end: bool) {
         let shown = true.to_value();
-        for controls in self.start_controls.iter().chain(&self.end_controls) {
+        let end_controls = self.end_controls.iter().filter(|_| end);
+        for controls in self.start_controls.iter().chain(end_controls) {
             breakpoint.add_setter(controls, "visible", Some(&shown));
         }
-        if let Some(back) = &self.back {
-            breakpoint.add_setter(back, "visible", Some(&shown));
+        if let Some(button) = self.back.as_ref().filter(|_| back) {
+            breakpoint.add_setter(button, "visible", Some(&shown));
         }
     }
 }

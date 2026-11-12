@@ -264,6 +264,7 @@ pub enum ActionId {
     AlwaysShowImages,
     Refresh,
     ToggleSidebar,
+    ToggleReadingPane,
     CommandPalette,
     GroupBySender,
     GroupByDomain,
@@ -288,7 +289,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 97] = [
+    pub const ALL: [Self; 98] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -365,6 +366,7 @@ impl ActionId {
         Self::AlwaysShowImages,
         Self::Refresh,
         Self::ToggleSidebar,
+        Self::ToggleReadingPane,
         Self::CommandPalette,
         Self::GroupBySender,
         Self::GroupByDomain,
@@ -747,6 +749,18 @@ impl ActionId {
                     &["<Control><Shift>s", "F9"],
                 )
             },
+            // No default key (ADR-017: keys wait for the user); `keys.toml` can give it one.
+            Self::ToggleReadingPane => ActionSpec {
+                kind: ActionKind::Toggle,
+                menu: Some(MenuSection::View),
+                ..command(
+                    "toggle-reading-pane",
+                    "Toggle Reading Pane",
+                    View,
+                    Scope::Window,
+                    &[],
+                )
+            },
             Self::CommandPalette => ActionSpec {
                 palette: false,
                 menu: Some(MenuSection::View),
@@ -1079,6 +1093,7 @@ mod tests {
             [
                 ActionId::Refresh,
                 ActionId::ToggleSidebar,
+                ActionId::ToggleReadingPane,
                 ActionId::CommandPalette,
                 ActionId::AddAccount,
                 ActionId::EditAccount,
@@ -1097,6 +1112,11 @@ mod tests {
         assert!(ActionId::AddAccount.spec().palette);
         assert_eq!(ActionId::AddAccount.detailed_name(), "win.add-account");
         assert_eq!(ActionId::ToggleSidebar.kind(), ActionKind::Toggle);
+        assert_eq!(ActionId::ToggleReadingPane.kind(), ActionKind::Toggle);
+        assert_eq!(
+            ActionId::ToggleReadingPane.detailed_name(),
+            "win.toggle-reading-pane"
+        );
         assert_eq!(ActionId::StartAtLogin.kind(), ActionKind::Toggle);
         assert_eq!(ActionId::StartAtLogin.detailed_name(), "app.start-at-login");
     }
@@ -1191,6 +1211,7 @@ mod tests {
         assert_eq!(keys(ActionId::Quit), ["<Control>q"]);
         assert_eq!(keys(ActionId::Refresh), ["<Control><Alt>r", "F5"]);
         assert_eq!(keys(ActionId::ToggleSidebar), ["<Control><Shift>s", "F9"]);
+        assert!(keys(ActionId::ToggleReadingPane).is_empty());
         assert!(keys(ActionId::CustomizeShortcuts).is_empty());
         // No default key until the user picks one (ADR-017: keys wait for the user).
         assert!(keys(ActionId::AddAccount).is_empty());

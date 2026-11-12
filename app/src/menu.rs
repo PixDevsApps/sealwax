@@ -68,7 +68,12 @@ mod tests {
         assert_eq!(
             actions,
             [
-                vec!["win.refresh", "win.toggle-sidebar", "win.command-palette"],
+                vec![
+                    "win.refresh",
+                    "win.toggle-sidebar",
+                    "win.toggle-reading-pane",
+                    "win.command-palette"
+                ],
                 vec![
                     "win.add-account",
                     "win.edit-account",

@@ -154,6 +154,8 @@ The layout follows the window's width, so it works tiled:
 
 **Drag the borders** between the sidebar and the list, and between the list and the reader, to make a pane wider or narrower; double-click a border to put its default width back. The sidebar takes 160 to 360 px and the list 280 to 640 px, and the reader always keeps room for its toolbar. Sealwax remembers the widths. The message in the reader fills the reader's width up to 1,200 px.
 
+**The list on its own.** If you'd rather see only the list and open a message when you want to read it, choose **Toggle Reading Pane** in the main menu, under Toggle Sidebar (the command palette has it too). The list then takes the reader's room beside the folders, in a window of any width, and the main menu's button moves to the start of the list's bar, before the folder's name. Enter or a double click opens the selected message in the list's place (`o` and `l` open it too), and Escape, `u` or the back button at the start of its toolbar goes back to the list; the main menu's button is beside the back button there, so the menu is at hand either way. A message is marked read when you open it, not when you select it. Choose Toggle Reading Pane again to put the reader back beside the list; the menu shows a check mark while it is there. Sealwax remembers the choice for the next window. The command has no key; `keys.toml` can give it one (`toggle-reading-pane`).
+
 On Hyprland the window has no title bar; on other desktops the window controls sit at the ends of the pane bars.
 
 **Account status.** Each account's heading has its name (the account name you gave it, else its address), a dot and a word: synced, syncing…, offline, sending off, mailbox full, needs sign-in, needs adding again or bad certificate. An account with a colour shows its name and its synced dot in that colour; a dot that warns stays the warning's colour. A state that needs you shows as a **banner** across the top of the window, the most important first: no keyring, a certificate that no longer verifies, a sign-in or password needed, an account to add again, sending turned off, a message that may have been sent, a full mailbox, offline. Short results (archived, sent, saved) show as **toasts** at the bottom.
@@ -448,6 +450,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | View | Always Show Images from This Sender | — |  | `always-show-images` |
 | View | Refresh | Ctrl+Alt+R, F5 | anywhere | `refresh` |
 | View | Toggle Sidebar | Ctrl+Shift+S, F9 | anywhere | `toggle-sidebar` |
+| View | Toggle Reading Pane | — |  | `toggle-reading-pane` |
 | View | Command Palette | Ctrl+Shift+P, F1 | anywhere | `command-palette` |
 | View | Group by Sender | — |  | `group-by-sender` |
 | View | Group by Domain | — |  | `group-by-domain` |
@@ -522,6 +525,7 @@ Sealwax has no settings window: its settings are three plain files in `~/.config
 | `[appearance]` | `corner_radius` | `"auto"` | `"auto"` (Hyprland's rounding; 0 outside Hyprland) or whole pixels from 0 to 64 |
 | | `chrome_font` | `"omarchy"` | `"omarchy"` (the Omarchy font) or `"sans"` |
 | | `reading_font` | `"sans"` | `"sans"` or `"mono"` |
+| | `dark_styled_mail` | `false` | `true`: mail with a design of its own shows in dark colours under a dark theme ([above](#theme-fonts-and-corners)) |
 | `[oauth.microsoft]` | `client_id` | the build's, if any | The Microsoft client ID for Sign in with Microsoft ([above](#outlookcom-hotmail-and-microsoft-365-sign-in-with-microsoft)) |
 | `[storage]` | `cache_size` | `"2 GiB"` | Disk space for downloaded messages: a size such as `"2 GiB"` or `"500 MB"` (at least 100 MiB), or `"unlimited"`. When it is full, the messages opened longest ago keep only their headers and preview, and download again when opened. POP3 mail and drafts are never removed this way |
 | | `prefetch_days` | `14` | Inbox mail from this many days downloads in the background, so it opens without waiting; 0 to 365, 0 turns it off |
