@@ -1,0 +1,88 @@
+# The keyboard focus stays where it is when the window's width crosses a layout's (found while
+# building issue #34). libadwaita hides the window's content for a frame as a breakpoint changes,
+# which drops the focus, and it then landed on the first control of what showed again, so the
+# list's keys stopped working. In the list, the focus and the keys survive wide, the rail and
+# one pane at a time in every order, with the reader beside the list and folded behind it; in
+# the reader it survives the layouts that show the reader. Every name and message is fictional.
+# Run: tools/headless.sh 36 target/debug/sealwax-selftest --self-test tests/selftest/window-focus.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+mail-account Personal
+mail-add Personal:inbox 10m "Hyttetur i oktober" "from=Ingrid Solberg" "text=Vi drar fredag ettermiddag."
+mail-add Personal:inbox 20m "Styremøte torsdag" "from=Marius Dahl" "text=Sakslisten kommer i morgen."
+mail-add Personal:inbox 30m "Dugnad lørdag" "from=Leah Kim" "text=Vi møtes klokken ti."
+mail-add Personal:inbox 40m "Lunsj fredag" "from=Leah Kim" "text=Passer klokken tolv?"
+folder inbox Personal
+focus list
+list-select 1
+wait-until assert-reader-page message
+assert-focus list
+
+# Wide to the rail and back: the focus stays in the list and its keys work.
+resize 1100 900
+assert-layout rail
+wait-until assert-focus list
+key j
+assert-list-selection 2
+resize 1440 900
+assert-layout wide
+wait-until assert-focus list
+key k
+assert-list-selection 1
+
+# To one pane at a time, by way of the rail and straight from wide, and back.
+resize 1100 900
+resize 800 900
+assert-layout narrow
+assert-pane list
+wait-until assert-focus list
+key j
+assert-list-selection 2
+resize 1440 900
+assert-layout wide
+wait-until assert-focus list
+resize 800 900
+assert-layout narrow
+wait-until assert-focus list
+key Return
+assert-pane reader
+key Escape
+assert-pane list
+wait-until assert-focus list
+resize 1440 900
+assert-layout wide
+wait-until assert-focus list
+
+# In the reader, it stays there between wide and the rail.
+focus reader
+assert-focus reader
+resize 1100 900
+assert-layout rail
+wait-until assert-focus reader
+resize 1440 900
+assert-layout wide
+wait-until assert-focus reader
+
+# With the reading pane hidden (Toggle Reading Pane), the same.
+focus list
+action win.toggle-reading-pane
+wait-until assert-shown reader false
+wait-until assert-focus list
+resize 1100 900
+assert-layout rail
+wait-until assert-focus list
+key Return
+assert-pane reader
+key Escape
+assert-pane list
+wait-until assert-focus list
+resize 800 900
+assert-layout narrow
+wait-until assert-focus list
+resize 1440 900
+assert-layout wide
+wait-until assert-focus list
+key k
+assert-list-selection 1

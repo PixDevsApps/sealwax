@@ -116,7 +116,7 @@ assert-layout narrow
 assert-pane list
 assert-shown sidebar false
 assert-right-of list-menu list-title
-focus list
+wait-until assert-focus list
 key Return
 assert-pane reader
 wait-until assert-shown reader true

@@ -62,6 +62,8 @@ pub(crate) const RAIL_MIN_WIDTH: f64 = 900.0;
 /// One pane still fits (GNOME's smallest window, 360×294).
 pub(crate) const MIN_SIZE: (i32, i32) = (360, 294);
 pub(crate) const DEFAULT_SIZE: (i32, i32) = (1280, 800);
+/// The frames a change of layout gets to show again what had the keyboard focus.
+const FOCUS_FRAMES: u32 = 10;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Layout {
@@ -578,7 +580,11 @@ impl Window {
         inner.window.connect_current_breakpoint_notify(glib::clone!(
             #[weak(rename_to = inner)]
             self.inner,
-            move |_| tracing::debug!(layout = Window { inner }.layout().name(), "layout")
+            move |_| {
+                let window = Window { inner };
+                tracing::debug!(layout = window.layout().name(), "layout");
+                window.keep_focus();
+            }
         ));
     }
 
@@ -661,6 +667,52 @@ impl Window {
         if let Some(handler) = handler {
             handler(self.sidebar_shown());
         }
+    }
+
+    /// Keeps the keyboard focus where it is across a change of layout. libadwaita hides the
+    /// window's content for a frame while a breakpoint changes, which drops the focus, and
+    /// what shows again takes it at its first control: the list's keys stopped working
+    /// whenever the window's width crossed a layout's. Called as the breakpoint changes, with
+    /// the focus still in place: once what had it is on screen again, it gets it back, unless
+    /// the new layout doesn't show it.
+    fn keep_focus(&self) {
+        let window = &self.inner.window;
+        let Some(focus) = gtk::prelude::GtkWindowExt::focus(window) else {
+            return;
+        };
+        // A list's row may not outlive the change; its list gives the focus to the row it was
+        // on.
+        let kept = focus
+            .ancestor(gtk::ListView::static_type())
+            .unwrap_or(focus)
+            .downgrade();
+        let frames = Cell::new(0);
+        window.add_tick_callback(move |window, _| {
+            frames.set(frames.get() + 1);
+            let Some(widget) = kept.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if !widget.is_mapped() {
+                return if frames.get() < FOCUS_FRAMES {
+                    glib::ControlFlow::Continue
+                } else {
+                    glib::ControlFlow::Break
+                };
+            }
+            // After this frame's handlers, which give the focus to the first control.
+            let window = window.downgrade();
+            glib::idle_add_local_once(move || {
+                let Some(window) = window.upgrade() else {
+                    return;
+                };
+                let there = gtk::prelude::GtkWindowExt::focus(&window)
+                    .is_some_and(|focus| focus == widget || focus.is_ancestor(&widget));
+                if !there && widget.is_mapped() {
+                    widget.grab_focus();
+                }
+            });
+            glib::ControlFlow::Break
+        });
     }
 
     /// Whether Toggle Reading Pane hid the reader, as remembered between runs.
