@@ -388,6 +388,52 @@ fn notices_during_a_pass_are_followed() {
     });
 }
 
+/// A server without LIST-STATUS is asked for each folder's STATUS on its own. A folder it
+/// answers NO for is still listed, without a STATUS, and takes no other folder with it; its
+/// pass syncs it all the same. BAD still fails the listing.
+#[test]
+fn a_refused_status_leaves_the_folder_list_whole() {
+    runtime().block_on(async {
+        for flavor in [Flavor::Condstore, Flavor::Rev1] {
+            let fake = Fake::start(flavor).await;
+            seed(&fake);
+            let (_dir, store, account) = store();
+            let mut conn = fake.connect().await;
+
+            fake.world()
+                .refuse("STATUS \"Sendt\"", "NO [NOPERM] not allowed");
+            let listed = sealwax_engine::imap::list(&mut conn).await.unwrap();
+            let names: Vec<&str> = listed.iter().map(|f| f.name_raw.as_str()).collect();
+            assert_eq!(names.len(), 3, "{flavor:?}: {names:?}");
+            for folder in &listed {
+                assert_eq!(
+                    folder.status.is_none(),
+                    folder.name_raw == "Sendt",
+                    "{flavor:?}: {}",
+                    folder.name_raw
+                );
+            }
+
+            fake.world()
+                .refuse("STATUS \"Sendt\"", "NO [NOPERM] not allowed");
+            account_pass(&mut conn, &store, account, &options()).await;
+            assert_eq!(
+                diverged(&fake, &store, account).await,
+                Vec::<String>::new(),
+                "{flavor:?}"
+            );
+            let sent = folder(&store, account, "Sendt").await;
+            assert_eq!(state(&store, sent).await.messages, 5, "{flavor:?}");
+
+            fake.world()
+                .refuse("STATUS \"Sendt\"", "BAD not understood");
+            let error = sealwax_engine::imap::list(&mut conn).await.unwrap_err();
+            assert!(matches!(error, ImapError::Bad(_)), "{flavor:?}: {error:?}");
+            store.close().unwrap();
+        }
+    });
+}
+
 #[test]
 fn folders_gone_from_the_server_leave_the_store() {
     runtime().block_on(async {

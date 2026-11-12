@@ -26,7 +26,7 @@ pub struct ListedFolder {
     pub selectable: bool,
     pub counts: Option<ServerCounts>,
     /// STATUS as listed; `None` for the connection's selected mailbox when it couldn't be
-    /// closed first, whose STATUS may be stale.
+    /// closed first, whose STATUS may be stale, and for a folder the server refused it for.
     pub status: Option<FolderStatus>,
 }
 
@@ -131,8 +131,9 @@ impl Found {
 }
 
 /// Lists every folder with its STATUS: in one round trip with LIST-STATUS, else LIST followed by
-/// pipelined STATUS commands. SPECIAL-USE attributes are asked for explicitly
-/// (`RETURN (SPECIAL-USE)`, RFC 6154) where the server offers it with LIST-EXTENDED.
+/// pipelined STATUS commands, where a folder the server answers NO for is still listed.
+/// SPECIAL-USE attributes are asked for explicitly (`RETURN (SPECIAL-USE)`, RFC 6154) where
+/// the server offers it with LIST-EXTENDED.
 pub async fn list(conn: &mut Connection) -> Result<Vec<ListedFolder>, ImapError> {
     let special_use = conn.caps().has("SPECIAL-USE") && conn.caps().has("LIST-EXTENDED");
     let list_status = conn.caps().has("LIST-STATUS");
@@ -176,7 +177,13 @@ pub async fn list(conn: &mut Connection) -> Result<Vec<ListedFolder>, ImapError>
             .map(|entry| Ok(format!("STATUS {} ({items})", quote(&entry.name_raw)?)))
             .collect::<Result<Vec<_>, ImapError>>()?;
         if !commands.is_empty() {
-            raw::run_pipelined(&mut conn.session, &commands, |r| found.take(r)).await?;
+            // A folder the server refuses STATUS for is listed without one, as the stale one
+            // below is: its pass finds what it holds, or skips it if it can't be opened either.
+            let refused =
+                raw::run_pipelined_each(&mut conn.session, &commands, |r| found.take(r)).await?;
+            if refused > 0 {
+                tracing::debug!(refused, "the server refused STATUS for some folders");
+            }
         }
     }
     if let Some(name) = stale {

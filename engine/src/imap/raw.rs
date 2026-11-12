@@ -419,15 +419,39 @@ pub(crate) async fn run_pipelined<F>(
 where
     F: FnMut(&Response<'_>),
 {
-    pipelined(session, commands, Budget::COMMAND, on_untagged).await
+    let failures = pipelined(session, commands, Budget::COMMAND, on_untagged).await?;
+    failures.into_iter().next().map_or(Ok(()), Err)
 }
 
+/// As [`run_pipelined`], for commands that each stand alone: one the server answers NO doesn't
+/// fail the others. Gives how many were refused; any other failure (BAD, BYE, a lost
+/// connection) is returned as before.
+pub(crate) async fn run_pipelined_each<F>(
+    session: &mut Session,
+    commands: &[String],
+    on_untagged: F,
+) -> Result<usize, ImapError>
+where
+    F: FnMut(&Response<'_>),
+{
+    let failures = pipelined(session, commands, Budget::COMMAND, on_untagged).await?;
+    let mut refused = 0;
+    for error in failures {
+        match error {
+            ImapError::No(_) => refused += 1,
+            other => return Err(other),
+        }
+    }
+    Ok(refused)
+}
+
+/// What the commands that failed were answered, in the order their completions came.
 async fn pipelined<F>(
     session: &mut Session,
     commands: &[String],
     budget: Budget,
     mut on_untagged: F,
-) -> Result<(), ImapError>
+) -> Result<Vec<ImapError>, ImapError>
 where
     F: FnMut(&Response<'_>),
 {
@@ -439,7 +463,7 @@ where
         .first()
         .map_or("a command", |command| verb(command));
     let mut spent = Spent::new(session, budget);
-    let mut failure = None;
+    let mut failures = Vec::new();
     while !pending.is_empty() {
         let done = next(session, verb, &mut spent, |response| match response {
             Response::Done {
@@ -466,12 +490,12 @@ where
                 }
                 pending.retain(|id| *id != tag);
                 if let Err(error) = result {
-                    failure.get_or_insert(error);
+                    failures.push(error);
                 }
             }
         }
     }
-    failure.map_or(Ok(()), Err)
+    Ok(failures)
 }
 
 /// An IMAP quoted string. Mailbox names come from the server's LIST, so quotes and backslashes
