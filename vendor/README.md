@@ -12,7 +12,7 @@ For port 587, the greeting and the first EHLO reply come before STARTTLS, so bef
 
 The workspace's `Cargo.toml` and `fuzz/Cargo.toml` use it through `[patch.crates-io]`; it is excluded from the workspace, so `cargo fmt`, Clippy and the tests don't run on it.
 
-A build prints four dead-code warnings from lettre: Cargo shows warnings for a crate in a local folder, which it hides for one from crates.io. They are lettre's own, from features Sealwax leaves off.
+Cargo shows the warnings of a crate in a local folder, which it hides for one from crates.io, and lettre has four dead-code warnings from features Sealwax leaves off. So that a build prints none, `Cargo.toml` ends with a `[lints.rust.dead_code]` table that allows them (2026-11-12, marked "Sealwax's patch"); no code is changed for it.
 
 To check that nothing else differs, compare it with the published crate, a gzipped tarball whose SHA-256 is the checksum the lock file had before the patch (`f2c646bd5cc763b1087b15493e29a64be6147ba8f19342004fa52048ee596eae`):
 
@@ -28,7 +28,7 @@ sha256sum target/lettre-check/lettre-0.11.23.crate && tar -xzf target/lettre-che
 diff -r target/lettre-check/lettre-0.11.23 vendor/lettre
 ```
 
-The only differences should be the three changes: `src/transport/smtp/client/mod.rs`'s constant and its comment, the two `read_response`s with their imports, and the two functions after `parse_response`.
+The only differences should be the three changes: `src/transport/smtp/client/mod.rs`'s constant and its comment, the two `read_response`s with their imports, and the two functions after `parse_response`. `Cargo.toml` differs by the lint table at its end.
 
 To drop it once lettre releases fixes for all three: remove both `[patch.crates-io]` entries and this folder, raise `lettre` in the workspace `Cargo.toml` (and `archive/spikes/s5-oauth/Cargo.toml`), update the lock files, and keep `engine/src/smtp/submit/tests.rs`'s cases for long replies, a line that never ends and a reply of many lines passing. To move it to a newer lettre, copy the new published crate here and make the same changes.
 
@@ -86,7 +86,7 @@ Upstream knows about both: [chatmail/async-imap#148](https://github.com/chatmail
 
 The workspace's `Cargo.toml` and `fuzz/Cargo.toml` use it through `[patch.crates-io]`; it is excluded from the workspace, so `cargo fmt`, Clippy and the tests don't run on it. Its own tests pass with the changes (84 with `runtime-tokio`, as Sealwax builds it, and 78 with its default `runtime-async-std`, against the vendored imap-proto; run outside the repository, where its dev-dependencies can be fetched).
 
-A build prints four warnings from async-imap about its use of the deprecated `unsafe_pinned` macro, for the same reason as lettre's: Cargo shows a local crate's warnings.
+async-imap uses the deprecated `unsafe_pinned` macro in four places, which Cargo would warn about for the same reason as lettre's dead code. `Cargo.toml` ends with a `[lints.rust.deprecated]` table that allows it (2026-11-12, marked "Sealwax's patch"); no code is changed for it.
 
 To check it, fetch the published crate, whose SHA-256 is the checksum the lock file had before the patch (`f97b87216c9f0ccc63c516263169085fa34bba25633f6d96c6a9b9ca1fd5f70a`):
 
@@ -102,6 +102,6 @@ sha256sum target/async-imap-check/async-imap-0.12.0.crate && tar -xzf target/asy
 diff -r target/async-imap-check/async-imap-0.12.0 vendor/async-imap
 ```
 
-The only differences should be in `src/imap_stream.rs` (`ImapStream::decode` with `probe`, `parses_alone` and `parse`, the `framing` field, `parse_error`, `Frame`, `Framing` and `literal_len`, `Buffer::ensure_capacity`, `Buffer::split_to` and `Buffer::unsplit_front` in place of `take_block` and `return_block`, and the tests: `test_buffer_take_and_return_block` gone with those two, the end of `test_buffer_ensure_capacity`, a restart in `test_ensure_capacity_loop`, and the new `test_ensure_capacity_follows_the_data`, `test_buffer_split_to_and_unsplit_front`, `test_buffer_split_to_leaves_a_small_block`, `test_buffer_doubles_when_full`, `test_literal_len`, `test_framing_passes_over_literals`, `test_a_long_response_is_parsed_once`, `test_responses_in_pieces`, `test_random_pieces_read_as_whole`, `test_refused_bytes_fail_before_a_line_end` and `test_a_parse_error_holds_no_response`), `src/extensions/idle.rs` (the refusal in `Handle::init` with its comment) and `src/client.rs` (the new `idle_refused` test and the new text in `test_parsing_error`).
+The only differences should be in `src/imap_stream.rs` (`ImapStream::decode` with `probe`, `parses_alone` and `parse`, the `framing` field, `parse_error`, `Frame`, `Framing` and `literal_len`, `Buffer::ensure_capacity`, `Buffer::split_to` and `Buffer::unsplit_front` in place of `take_block` and `return_block`, and the tests: `test_buffer_take_and_return_block` gone with those two, the end of `test_buffer_ensure_capacity`, a restart in `test_ensure_capacity_loop`, and the new `test_ensure_capacity_follows_the_data`, `test_buffer_split_to_and_unsplit_front`, `test_buffer_split_to_leaves_a_small_block`, `test_buffer_doubles_when_full`, `test_literal_len`, `test_framing_passes_over_literals`, `test_a_long_response_is_parsed_once`, `test_responses_in_pieces`, `test_random_pieces_read_as_whole`, `test_refused_bytes_fail_before_a_line_end` and `test_a_parse_error_holds_no_response`), `src/extensions/idle.rs` (the refusal in `Handle::init` with its comment) and `src/client.rs` (the new `idle_refused` test and the new text in `test_parsing_error`). `Cargo.toml` differs by the lint table at its end.
 
 To drop it once an async-imap release no longer allocates a literal's announced size ahead of its data, parses a response once, builds its parse errors without the response and no longer panics on a bare `BAD` to IDLE: remove both `[patch.crates-io]` entries and this folder, raise `async-imap` in the workspace's `Cargo.toml` (and `spikes/s1-imap/Cargo.toml`), update the lock files, and keep `a_literals_announced_size_isnt_allocated_before_its_data` (`engine/tests/literal_size.rs`), `a_literal_that_arrives_in_pieces_comes_whole` (`engine/src/imap/raw.rs`) `an_idle_the_server_refuses_ends_in_an_error_at_once` (`engine/tests/newmail.rs`) and `a_long_reply_without_literals_is_read_at_once` (`engine/tests/long_reply.rs`) passing. To move it to a newer async-imap, copy the new published crate here and make the same changes.

@@ -146,3 +146,9 @@ features = [
     "rt-multi-thread",
     "macros",
 ]
+
+# Sealwax's patch: Cargo shows a local crate's warnings, which it hides for one from crates.io.
+# async-imap 0.12.0 uses pin-utils' deprecated `unsafe_pinned` macro in four places.
+[lints.rust.deprecated]
+level = "allow"
+priority = 0

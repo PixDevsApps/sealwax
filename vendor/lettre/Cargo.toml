@@ -507,3 +507,9 @@ optional = true
 level = "warn"
 priority = 0
 check-cfg = ["cfg(lettre_ignore_tls_mismatch)"]
+
+# Sealwax's patch: Cargo shows a local crate's warnings, which it hides for one from crates.io.
+# Four items are unused with the features Sealwax leaves off.
+[lints.rust.dead_code]
+level = "allow"
+priority = 0
