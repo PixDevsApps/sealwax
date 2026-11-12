@@ -1835,14 +1835,10 @@ impl AppState {
     }
 
     /// Empty Trash: deletes for good every message of the account's `\Trash`, including the mail
-    /// of it the store never downloaded, so the folder stays empty when it is opened again, and
-    /// one account's folder only — every account has a Trash of its own.
-    ///
-    /// The store's side isn't built yet: until it queues the change (`Store::empty_trash`), this
-    /// names what the command would delete, from the counts the sidebar already shows, and
-    /// queues nothing.
+    /// of it below its sync window the store never downloaded, so the folder stays empty when it
+    /// is opened again — and one account's folder only, since every account has a Trash of its own.
     fn empty_trash(self: &Rc<Self>, key: &str) {
-        let Some(folder) = self.trash_folder(key) else {
+        let (Some(folder), Some(triage)) = (self.trash_folder(key), self.triage()) else {
             return;
         };
         let account = self
@@ -1852,11 +1848,8 @@ impl AppState {
             .find(|account| account.id == folder.account)
             .map(|account| account.name)
             .unwrap_or_else(|| "the account".to_owned());
-        let text = triage::emptied_text(&account, folder.total);
-        self.show_notice(
-            &Notice::plain(format!("{text} — the store's side isn't built yet")),
-            true,
-        );
+        self.mark_started();
+        triage.empty_trash(folder.id, account);
     }
 
     /// Commands' titles where they differ from the registry's, for the palette.

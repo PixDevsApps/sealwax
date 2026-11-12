@@ -44,6 +44,7 @@ pub(super) fn refused(change: RefusedChange) -> Refused {
         RefusedChange::Expunge => Refused::Expunge,
         RefusedChange::FolderRead => Refused::FolderRead,
         RefusedChange::Copy => Refused::Copy,
+        RefusedChange::EmptyTrash => Refused::EmptyTrash,
     }
 }
 
@@ -53,6 +54,7 @@ fn kind(action: &OpAction) -> &'static str {
         OpAction::Move { .. } => "move",
         OpAction::Expunge => "expunge",
         OpAction::ReadBelow { .. } => "folder read",
+        OpAction::ExpungeBelow { .. } => "folder empty",
         OpAction::Copy { .. } => "copy",
     }
 }
@@ -354,6 +356,15 @@ impl Poller {
                 .await?
             }
             OpAction::ReadBelow { .. } => Ok(Done::default()),
+            OpAction::ExpungeBelow { floor } if *floor > 1 => {
+                race(
+                    &self.signals,
+                    seen,
+                    write::delete_below(conn, folder, *floor),
+                )
+                .await?
+            }
+            OpAction::ExpungeBelow { .. } => Ok(Done::default()),
         };
         self.used = Instant::now();
         Ok(Outcome::Written(written))
@@ -382,7 +393,11 @@ impl Poller {
                 Vec::new()
             }
         };
-        if matches!(group.action, OpAction::Move { .. } | OpAction::Expunge) && self.quota {
+        if matches!(
+            group.action,
+            OpAction::Move { .. } | OpAction::Expunge | OpAction::ExpungeBelow { .. }
+        ) && self.quota
+        {
             self.quota = false;
             self.status.set(self.healthy());
         }

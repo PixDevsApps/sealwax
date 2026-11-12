@@ -3,8 +3,8 @@
 //! the runner wakes, the undo window's timer, a retry after a cut and after `Reconnect`
 //! interrupts a write, a refusal reaching the app as `OpsRefused`, a full mailbox, ops finding
 //! their messages again after a UIDVALIDITY change, an Undo within the window never reaching
-//! the server, ops waiting while the account is offline, and a folder marked read below its
-//! window's floor. Synthetic data only.
+//! the server, ops waiting while the account is offline, a folder marked read below its
+//! window's floor, and a windowed folder emptied down to its floor. Synthetic data only.
 
 mod fake;
 
@@ -619,6 +619,54 @@ async fn a_folder_marked_read_reaches_the_messages_below_the_floor() {
         commands.contains(&"UID SEARCH UNSEEN UNDELETED UID 1:20".to_owned()),
         "{commands:?}"
     );
+    run.check().await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn emptying_a_windowed_folder_deletes_what_lay_below_its_floor() {
+    let fake = fake(Flavor::Qresync, true).await;
+    fake.world().append_many("Papirkurv", 18, |_| 1);
+    let mut sync = config();
+    sync.options.window = Window {
+        days: 90,
+        max: 10,
+        min: 10,
+    };
+    let mut run = Running::start(&fake, sync);
+    let account = run.add(&fake).await;
+    let trash = run.folder(account, "Papirkurv").await;
+    let floor = run
+        .store
+        .folder_sync(trash)
+        .recv()
+        .await
+        .unwrap()
+        .unwrap()
+        .floor
+        .unwrap();
+    assert_eq!(floor, 9, "the window keeps the newest 10 of 18");
+    let queued = run.store.empty_trash(trash, now_ms()).recv().await.unwrap();
+    assert_eq!(
+        queued.applied,
+        10 + 8,
+        "the folder's rows and the server's below them"
+    );
+    for account in &queued.accounts {
+        run.send(Command::OpsQueued { account: *account });
+    }
+    let done = within(WAIT, || async {
+        run.pending(account).await == 0 && fake.world().mailboxes["Papirkurv"].messages.is_empty()
+    })
+    .await;
+    assert!(done.is_some(), "every message gone from the server");
+    let commands = fake.world().commands.clone();
+    assert!(
+        commands.contains(&"UID SEARCH UID 1:8".to_owned()),
+        "{commands:?}"
+    );
+    assert_eq!(fake.world().count("CLOSE"), 0, "no CLOSE, ever");
+    let state = run.store.folder_sync(trash).recv().await.unwrap().unwrap();
+    assert_eq!(state.below, 0, "empty means empty for the next pass");
     run.check().await;
 }
 

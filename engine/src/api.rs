@@ -425,6 +425,8 @@ pub enum Refused {
     FolderRead,
     /// A rule's copy into another folder.
     Copy,
+    /// The mail a windowed folder holds below its sync window, when it was emptied.
+    EmptyTrash,
 }
 
 /// Where an account's sync stands (ML-048).

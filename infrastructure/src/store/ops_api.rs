@@ -90,6 +90,9 @@ pub enum Lost {
     /// The server's unread messages below a folder's floor were marked read; which ones isn't
     /// known.
     ReadBelow,
+    /// The messages a folder emptied held below its floor, which the store never downloaded;
+    /// which ones isn't known.
+    ExpungeBelow,
 }
 
 /// The reply to an Undo.
@@ -136,6 +139,9 @@ pub enum OpAction {
     /// A folder marked read: `UID STORE 1:floor-1 +FLAGS (\Seen)`, the messages below the floor
     /// that the store doesn't hold.
     ReadBelow { floor: u32 },
+    /// A folder emptied: `UID SEARCH UID 1:floor-1` and `\Deleted` with `UID EXPUNGE` of exactly
+    /// those, the messages below the floor that the store doesn't hold.
+    ExpungeBelow { floor: u32 },
 }
 
 /// One message of a group.
@@ -159,7 +165,7 @@ pub struct OpGroup {
     /// The UIDVALIDITY the UIDs belong to; the runner checks it after SELECT.
     pub uidvalidity: Option<u32>,
     pub action: OpAction,
-    /// In UID order; empty for `ReadBelow`.
+    /// In UID order; empty for the folder-wide actions, `ReadBelow` and `ExpungeBelow`.
     pub messages: Vec<OpMessage>,
     /// Every op of the group.
     pub ops: Vec<OpId>,
@@ -224,6 +230,8 @@ pub enum RefusedChange {
     Expunge,
     FolderRead,
     Copy,
+    /// The server's mail below an emptied folder's floor.
+    EmptyTrash,
 }
 
 /// Changes of one kind refused for an account: what `Event::OpsRefused` says.
@@ -273,6 +281,20 @@ impl Store {
     pub fn mark_folder_read(&self, folder: FolderId, not_before: i64) -> Reply<Queued> {
         self.write(|reply| {
             WriteJob::Ops(OpsJob::FolderRead {
+                folder,
+                not_before,
+                reply,
+            })
+        })
+    }
+
+    /// Empties `folder` for good: every message of it, the server's below a windowed folder's
+    /// floor that the store never downloaded included, so the folder is still empty when it is
+    /// opened again. Its rows leave the list at once. Undo undoes it only inside `not_before`
+    /// (the undo window), since what the server deletes for good can't come back.
+    pub fn empty_trash(&self, folder: FolderId, not_before: i64) -> Reply<Queued> {
+        self.write(|reply| {
+            WriteJob::Ops(OpsJob::EmptyTrash {
                 folder,
                 not_before,
                 reply,

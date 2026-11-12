@@ -54,10 +54,10 @@ impl fmt::Display for BackendError {
 
 pub(crate) type Pending<T> = Pin<Box<dyn Future<Output = Result<T, BackendError>>>>;
 
-/// Where actions are queued: the store's op queue (`queue_triage`, `mark_folder_read`, `undo`,
-/// `pending_ops`), or the unit tests' recording one. Each method sends its request before it
-/// returns, so the store takes it in the frame the key was pressed in; the future reports the
-/// outcome.
+/// Where actions are queued: the store's op queue (`queue_triage`, `mark_folder_read`,
+/// `empty_trash`, `undo`, `pending_ops`), or the unit tests' recording one. Each method sends its
+/// request before it returns, so the store takes it in the frame the key was pressed in; the
+/// future reports the outcome.
 pub trait Backend {
     /// Queues `action` on `targets` (they may span folders and accounts); their ops wait for
     /// `not_before`, until which [`Backend::undo`] cancels them.
@@ -65,6 +65,10 @@ pub trait Backend {
 
     /// Marks every message of `folder` read, the server's unread below its floor included.
     fn mark_folder_read(&self, folder: FolderId, not_before: SystemTime) -> Pending<Queued>;
+
+    /// Deletes every message of `folder` for good, the mail of it below a windowed folder's floor
+    /// that the store never downloaded included.
+    fn empty_trash(&self, folder: FolderId, not_before: SystemTime) -> Pending<Queued>;
 
     /// Cancels what of `batch` hasn't run, or queues the inverse.
     fn undo(&self, batch: BatchId) -> Pending<Undone>;
@@ -466,6 +470,9 @@ pub(crate) fn undone_text(undone: &Undone) -> String {
                 ),
                 Lost::Unknown => format!("{n} couldn't be found to bring back"),
                 Lost::ReadBelow => format!("{n} further back on the server stay read"),
+                Lost::ExpungeBelow => {
+                    format!("{n} further back on the server stay deleted for good")
+                }
             }
         })
         .collect();
@@ -510,6 +517,9 @@ pub(crate) fn refused_text(change: Refused, count: u32, account: Option<&str>) -
             format!("the server didn't mark {n} as read; {they} back as {were}")
         }
         Refused::Copy => format!("the server didn't copy {n} where a rule asked"),
+        Refused::EmptyTrash => {
+            format!("the server didn't delete {n} further back in the Trash; {they} still there")
+        }
     };
     match account {
         Some(name) => format!("{name}: {text}"),
@@ -879,6 +889,41 @@ impl Controller {
         });
     }
 
+    /// Empties `folder`, one account's `\Trash`, for good: its every message, the mail the store
+    /// never downloaded below its sync window included, so the folder is still empty when it is
+    /// opened again. `account` names it in the toast, since every account has a Trash of its own.
+    /// Undo stands only inside the undo window: once the op has run, the server's copies are gone.
+    pub fn empty_trash(&self, folder: FolderId, account: String) {
+        let this = self.clone();
+        let not_before = SystemTime::now() + self.window();
+        let pending = self.inner.backend.empty_trash(folder, not_before);
+        self.inner.queued.set(self.inner.queued.get() + 1);
+        self.spawn(async move {
+            let queued = match pending.await {
+                Ok(queued) => queued,
+                Err(error) => {
+                    tracing::warn!("a Trash wasn't emptied: {error}");
+                    this.answered();
+                    this.notify(&Notice::plain(
+                        "The change couldn't be saved in the mail store".into(),
+                    ));
+                    return;
+                }
+            };
+            this.answered();
+            this.wake(&queued.accounts);
+            let batch = queued.batch.filter(|_| queued.applied > 0);
+            if let Some(batch) = batch {
+                this.set_last(Some(batch));
+            }
+            this.notify(&Notice {
+                text: emptied_text(&account, queued.applied),
+                undo: batch,
+                shown: this.window(),
+            });
+        });
+    }
+
     /// Undoes the last action, if it is `batch` (the toast's) or any (`None`: `z`, Ctrl+Z).
     pub fn undo(&self, batch: Option<BatchId>) {
         let this = self.clone();
@@ -1014,6 +1059,15 @@ impl Backend for OpsBackend {
             self.mailbox
                 .store()
                 .map(|store| store.mark_folder_read(folder, not_before)),
+        )
+    }
+
+    fn empty_trash(&self, folder: FolderId, not_before: SystemTime) -> Pending<Queued> {
+        let not_before = unix_ms(not_before);
+        answer(
+            self.mailbox
+                .store()
+                .map(|store| store.empty_trash(folder, not_before)),
         )
     }
 
@@ -1306,6 +1360,10 @@ mod tests {
              server stay read"
         );
         assert_eq!(
+            undone_text(&undone(2, 0, &[(Lost::ExpungeBelow, 40)])),
+            "Undone. 40 messages further back on the server stay deleted for good"
+        );
+        assert_eq!(
             refused_text(Refused::Move, 3, None),
             "The server didn't move 3 messages; they're back where they were"
         );
@@ -1320,6 +1378,14 @@ mod tests {
         assert_eq!(
             refused_text(Refused::FolderRead, 12, None),
             "The server didn't mark 12 messages as read; they're back as they were"
+        );
+        assert_eq!(
+            refused_text(Refused::EmptyTrash, 400, None),
+            "The server didn't delete 400 messages further back in the Trash; they're still there"
+        );
+        assert_eq!(
+            refused_text(Refused::EmptyTrash, 1, Some("Work")),
+            "Work: the server didn't delete 1 message further back in the Trash; it's still there"
         );
     }
 
@@ -1378,6 +1444,15 @@ mod tests {
             self.calls
                 .borrow_mut()
                 .push(format!("read {} waits {waits}", folder.0));
+            let queued = self.batch(2, [folder]);
+            Box::pin(async move { Ok(queued) })
+        }
+
+        fn empty_trash(&self, folder: FolderId, not_before: SystemTime) -> Pending<Queued> {
+            let waits = not_before > SystemTime::now() + Duration::from_secs(1);
+            self.calls
+                .borrow_mut()
+                .push(format!("empty {} waits {waits}", folder.0));
             let queued = self.batch(2, [folder]);
             Box::pin(async move { Ok(queued) })
         }
@@ -1687,6 +1762,42 @@ mod tests {
                         "read 1 waits true",
                         "read 11 waits true"
                     ]
+                );
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn emptying_a_trash_names_the_account_and_offers_undo() {
+        let context = glib::MainContext::new();
+        context
+            .with_thread_default(|| {
+                let (controller, backend, engine, _events) = controller();
+                let notices: Rc<RefCell<Vec<Notice>>> = Rc::default();
+                let record = notices.clone();
+                controller.connect_notice(move |notice| record.borrow_mut().push(notice.clone()));
+                // Folder 4 is account 1's Trash, and account 1 has no key: nothing to wake.
+                controller.empty_trash(FolderId(4), "Ada Berg".into());
+                drain(&context);
+                let last = notices.borrow().last().cloned().unwrap();
+                assert_eq!(
+                    last.text,
+                    "Emptied Ada Berg's Trash — 2 messages deleted for good"
+                );
+                assert!(last.undo.is_some(), "the undo window is open");
+                assert_eq!(woken(&engine), Vec::<i64>::new());
+                // Folder 13 is a server account's Trash: its ops wake that account.
+                controller.empty_trash(FolderId(13), "Work".into());
+                drain(&context);
+                let last = notices.borrow().last().cloned().unwrap();
+                assert_eq!(
+                    last.text,
+                    "Emptied Work's Trash — 2 messages deleted for good"
+                );
+                assert_eq!(woken(&engine), [2]);
+                assert_eq!(
+                    *backend.calls.borrow(),
+                    ["empty 4 waits true", "empty 13 waits true"]
                 );
             })
             .unwrap();
