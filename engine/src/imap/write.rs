@@ -4,8 +4,9 @@
 //! connection and records what they report. Every call selects its folder read-write (Dovecot
 //! ignores a STORE in an EXAMINEd mailbox and still says OK, S1), checks that the folder's
 //! UIDVALIDITY is the op's, and runs every command through the raw layer, which checks each
-//! completion. CLOSE and a plain EXPUNGE are never sent: both remove every `\Deleted` message of
-//! the folder, not only the op's.
+//! completion. CLOSE is never sent, and a plain EXPUNGE only from [`delete_below`], which is
+//! emptying a folder; everywhere else UID EXPUNGE names the op's UIDs, since a plain EXPUNGE and
+//! CLOSE remove every `\Deleted` message of the folder, not only the op's.
 //!
 //! - [`store_flags`]: `UID STORE … +FLAGS.SILENT` and `-FLAGS.SILENT`, keywords only where the
 //!   folder's PERMANENTFLAGS keeps them.
@@ -20,6 +21,9 @@
 //! - [`copy_messages`] (ADR-020): `UID COPY` for a rule's `fileinto :copy`; a retry looks for
 //!   the copies by Message-ID from the [`Mark`] up first, as a move's does.
 //! - [`expunge`]: `\Deleted`, then `UID EXPUNGE` with UIDPLUS; otherwise left flagged.
+//! - [`delete_below`]: the mail a windowed folder's sync never downloaded, below its floor:
+//!   `UID SEARCH UID 1:floor-1`, `\Deleted` on exactly those, then `UID EXPUNGE` with UIDPLUS, or
+//!   a plain `EXPUNGE` of the folder when it has no UIDPLUS (the folder is being emptied).
 //! - [`mark_folder_read`]: `UID SEARCH UNSEEN UNDELETED`, then `\Seen` on exactly those.
 //! - [`append`], [`replace_draft`] and [`find`] (M6): the Sent copy and drafts, appended at most
 //!   once by the same mark.
@@ -896,6 +900,45 @@ pub async fn expunge(
     open(conn, folder).await?;
     delete(conn, &uids, &mut done).await?;
     logged("expunge", uids.len(), &done, started);
+    Ok(done)
+}
+
+/// Deletes the messages the server holds below `floor` — the UIDs a windowed folder's sync never
+/// downloaded, which an emptied folder must lose for good so its next pass doesn't count them
+/// below its floor again. `UID SEARCH UID 1:floor-1`, `\Deleted` on exactly those, and then
+/// `UID EXPUNGE` of the same set where the server has UIDPLUS. Where it doesn't, the folder is
+/// emptied with a plain EXPUNGE: in a folder the user is emptying every `\Deleted` message is one
+/// they asked to delete, and leaving them flagged would bring them back as the folder's mail
+/// below its floor at the next pass.
+pub async fn delete_below(
+    conn: &mut Connection,
+    folder: OpFolder<'_>,
+    floor: u32,
+) -> Result<Done, WriteError> {
+    let started = Instant::now();
+    let done = Done::default();
+    if floor <= 1 {
+        return Ok(done);
+    }
+    let selected = open(conn, folder).await?;
+    let below = if selected.exists == 0 {
+        Vec::new()
+    } else {
+        view::uid_search(conn, &format!("UID 1:{}", floor - 1), &mut View::default()).await?
+    };
+    if !below.is_empty() {
+        store(conn, &below, &["\\Deleted"], &[]).await?;
+        if conn.caps().has("UIDPLUS") {
+            let commands: Vec<String> = batches(&below)
+                .into_iter()
+                .map(|batch| format!("UID EXPUNGE {}", batch.set))
+                .collect();
+            pipelined(conn, &commands).await?;
+        } else {
+            pipelined(conn, &["EXPUNGE".to_owned()]).await?;
+        }
+    }
+    logged("empty below floor", below.len(), &done, started);
     Ok(done)
 }
 

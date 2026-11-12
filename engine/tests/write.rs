@@ -1,9 +1,10 @@
 //! The op queue's changes on the server (ML-051, ML-052) against the fake IMAP server, in CI: a
 //! read-write SELECT next to the sync's EXAMINE, flags and keywords by PERMANENTFLAGS, UID MOVE
 //! with COPYUID untagged, tagged or absent, the COPY path with and without UIDPLUS, deleting for
-//! good, a folder marked read, refusals by response code, a changed UIDVALIDITY, and S1's lost
-//! replies of MOVE, COPY, the `\Deleted` STORE and UID EXPUNGE, retried; a rule's copy, made
-//! once also when its reply is lost (ADR-020). Synthetic data only.
+//! good, a folder emptied below its floor with UID EXPUNGE or the one plain EXPUNGE, a folder
+//! marked read, refusals by response code, a changed UIDVALIDITY, and S1's lost replies of MOVE,
+//! COPY, the `\Deleted` STORE and UID EXPUNGE, retried; a rule's copy, made once also when its
+//! reply is lost (ADR-020). Synthetic data only.
 
 mod fake;
 
@@ -616,6 +617,78 @@ fn deleting_for_good_expunges_only_the_ops_messages() {
             .await
             .unwrap();
         assert_eq!(fake.world().uids("INBOX"), [3, 4]);
+    });
+}
+
+#[test]
+fn emptying_below_a_floor_expunges_only_the_mail_below_it() {
+    runtime().block_on(async {
+        let fake = fake(Flavor::Qresync, true, true).await;
+        // The store holds UIDs 4-6: the folder's floor is 4, and 1-3 are the server's alone.
+        fake.world().append_many("INBOX", 6, |_| 1);
+        let mut conn = fake.connect().await;
+        let from = sent(&fake);
+        let done = write::delete_below(&mut conn, folder(&fake, "INBOX"), 4)
+            .await
+            .unwrap();
+        assert!(done.left_deleted.is_empty(), "UIDPLUS expunged them");
+        assert_eq!(
+            commands(&fake, from),
+            [
+                "SELECT \"INBOX\"",
+                "UID SEARCH UID 1:3",
+                "UID STORE 1:3 +FLAGS.SILENT (\\Deleted)",
+                "UID EXPUNGE 1:3",
+            ]
+        );
+        assert_eq!(fake.world().uids("INBOX"), [4, 5, 6]);
+        assert_eq!(fake.world().count("CLOSE"), 0);
+        // A folder with nothing below its floor, and a floor of 1, send nothing at all.
+        let from = sent(&fake);
+        write::delete_below(&mut conn, folder(&fake, "INBOX"), 1)
+            .await
+            .unwrap();
+        assert!(commands(&fake, from).is_empty());
+        let from = sent(&fake);
+        write::delete_below(&mut conn, folder(&fake, "Arkiv"), 9)
+            .await
+            .unwrap();
+        assert_eq!(commands(&fake, from), ["SELECT \"Arkiv\""]);
+        assert_eq!(fake.world().count("EXPUNGE"), 1, "UID EXPUNGE, once");
+    });
+}
+
+#[test]
+fn emptying_below_a_floor_without_uidplus_empties_the_folder_with_one_expunge() {
+    runtime().block_on(async {
+        let fake = fake(Flavor::Rev1, false, false).await;
+        fake.world().append_many("INBOX", 5, |_| 1);
+        // Left `\Deleted` by an earlier delete this server couldn't UID EXPUNGE, above the floor.
+        let flagged = fake.world().append("INBOX", 1, &["\\Deleted"]);
+        let mut conn = fake.connect().await;
+        assert!(!conn.caps().has("UIDPLUS"));
+        let from = sent(&fake);
+        let done = write::delete_below(&mut conn, folder(&fake, "INBOX"), 4)
+            .await
+            .unwrap();
+        assert!(done.left_deleted.is_empty(), "the EXPUNGE took them");
+        assert_eq!(
+            commands(&fake, from),
+            [
+                "SELECT \"INBOX\"",
+                "UID SEARCH UID 1:3",
+                "UID STORE 1:3 +FLAGS.SILENT (\\Deleted)",
+                "EXPUNGE",
+            ],
+            "the one plain EXPUNGE of the module header, for an emptied folder"
+        );
+        assert_eq!(
+            fake.world().uids("INBOX"),
+            [4, 5],
+            "the folder emptied: its every `\\Deleted` message was one to delete for good"
+        );
+        assert!(!fake.world().uids("INBOX").contains(&flagged));
+        assert_eq!(fake.world().count("CLOSE"), 0);
     });
 }
 
