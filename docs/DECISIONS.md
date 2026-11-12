@@ -1726,3 +1726,13 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Alternatives:** Flathub (the store most people look in; see the reason); a `.flatpak` bundle on each GitHub release (simplest, but no updates); a `gh-pages` branch of the main repository (every clone would download the Flatpak's history); the owner's own GPG key (would publish their name and address in the repository's key).
 
 **Consequences:** each release has a Flatpak step and one push to `sealwax-flatpak`. Users of the Flatpak trust this repository's key; a lost key means everyone adds the repository again, a leaked one means a new key and a note to every user. Sealwax isn't in GNOME Software's or KDE Discover's catalogue unless the repository is added. The Flatpak and the Arch package keep separate settings, mail and keyrings (`~/.var/app/io.github.pixdevsapps.Sealwax/`), and share the app-id, so only one should be installed. Flathub stays open for later, written and submitted by the owner, with the disclosure its policy asks for.
+
+### ADR-027 amendment — the install command fetches the .flatpakref from the latest release (2026-11-12)
+
+**Status:** Accepted — the owner's word, 2026-11-12, for 1.3.1.
+
+**Decision:** the Flatpak's install command is `flatpak install --user https://github.com/PixDevsApps/sealwax/releases/latest/download/io.github.pixdevsapps.Sealwax.flatpakref`: the same `.flatpakref` as the repository's own, attached to every GitHub release by `tools/release.py github`, which stops if `tools/flatpak.py site` hasn't written it. The file still points at the repository on GitHub Pages, so the Flatpak itself, its signature and its updates come from there as before. The copy on GitHub Pages stays, so the command 1.3.0 gave keeps working, and the repository's page shows the new command.
+
+**Reason:** GitHub counts how many times a release's file is downloaded and GitHub Pages counts nothing, so this is the only way to see how many people install the Flatpak without adding anything to Sealwax or to the repository. It is GitHub's own count of downloads: it says nothing about who, and Sealwax still sends nothing ([ADR-021 amendment, 2026-10-20](#adr-021-amendment--check-for-updates-only-when-the-user-asks-2026-10-20)). Flatpak follows the two redirects GitHub answers such a link with (checked with Flatpak 1.18.4 on 2026-11-12).
+
+**Consequences:** the count is of first installs through that command: updates, installs through a software centre or `sealwax.flatpakrepo`, and installs with 1.3.0's command aren't in it. Every release must carry the file, or the command fails until one does; a release made by hand has to attach it. If the repository's address or key ever changes, the file on the latest release must be the new one.

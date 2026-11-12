@@ -17,7 +17,7 @@ Run the same line again to update; **Check for Updates…** in Sealwax's main me
 **On other Linux systems** (Fedora, Ubuntu, Mint and others), install the Flatpak from Sealwax's own Flatpak repository:
 
 ```sh
-flatpak install --user https://pixdevsapps.github.io/sealwax-flatpak/io.github.pixdevsapps.Sealwax.flatpakref
+flatpak install --user https://github.com/PixDevsApps/sealwax/releases/latest/download/io.github.pixdevsapps.Sealwax.flatpakref
 ```
 
 It updates with `flatpak update` or your software centre. On Omarchy, the package above is the better fit.

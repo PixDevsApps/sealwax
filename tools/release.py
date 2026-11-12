@@ -4,7 +4,8 @@
   python3 tools/release.py build    the Arch package, a tarball of its files for the AUR, the
                                     package's THIRD-PARTY-LICENSES.txt and their SHA-256 sums, in
                                     .local/release/<version>/
-  python3 tools/release.py github   the GitHub release v<version> with those files and the notes
+  python3 tools/release.py github   the GitHub release v<version> with those files, the Flatpak's
+                                    .flatpakref (tools/flatpak.py site wrote it) and the notes
                                     from CHANGELOG.md
   python3 tools/release.py aur      sealwax-bin's PKGBUILD and .SRCINFO for <version>, committed
                                     and pushed to the AUR
@@ -33,6 +34,10 @@ root = pathlib.Path(__file__).resolve().parents[1]
 AUR_REPO = "ssh://aur@aur.archlinux.org/sealwax-bin.git"
 AUR_TEMPLATE = root / "packaging" / "aur" / "sealwax-bin" / "PKGBUILD.in"
 STABLE_NAME = "sealwax-x86_64.pkg.tar.zst"
+# INSTALL.md's Flatpak command downloads this file through releases/latest, where GitHub counts
+# the downloads (ADR-027 amendment), so every release carries it. It is the one tools/flatpak.py
+# site wrote for the published repository; it changes only with that repository's address or key.
+FLATPAK_REF = root / ".local" / "flatpak" / "site" / "io.github.pixdevsapps.Sealwax.flatpakref"
 
 
 def run(*args: str, cwd: pathlib.Path = root, env: dict | None = None) -> None:
@@ -152,6 +157,11 @@ def github(ver: str) -> None:
     missing = [path for path in files(ver) if not path.exists()]
     if missing:
         raise SystemExit(f"run build first: {', '.join(path.name for path in missing)} missing")
+    if not FLATPAK_REF.exists():
+        raise SystemExit(
+            f"{FLATPAK_REF.relative_to(root)} is missing: run tools/flatpak.py site first "
+            "(INSTALL.md's Flatpak command downloads it from the latest release)"
+        )
     if not output("git", "ls-remote", "--tags", "origin", f"refs/tags/{tag}"):
         raise SystemExit(f"{tag} isn't on origin yet: git push origin {tag}")
     body = notes(ver) + (
@@ -165,7 +175,7 @@ def github(ver: str) -> None:
     try:
         run(
             "gh", "release", "create", tag, "--verify-tag", "--title", f"Sealwax {ver}",
-            "--notes-file", notes_file, *(str(path) for path in files(ver)),
+            "--notes-file", notes_file, *(str(path) for path in files(ver)), str(FLATPAK_REF),
         )
     finally:
         os.unlink(notes_file)

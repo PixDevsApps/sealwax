@@ -52,7 +52,7 @@ When it's done, the terminal shows the prompt again, and you can close it.
 On Fedora, Ubuntu, Linux Mint, Pop!_OS, Debian and other Linux systems, install Sealwax as a Flatpak from Sealwax's own Flatpak repository. Your system needs Flatpak; many have it already, and [flatpak.org](https://flatpak.org/setup/) shows how to add it. Then run this in a terminal:
 
 ```sh
-flatpak install --user https://pixdevsapps.github.io/sealwax-flatpak/io.github.pixdevsapps.Sealwax.flatpakref
+flatpak install --user https://github.com/PixDevsApps/sealwax/releases/latest/download/io.github.pixdevsapps.Sealwax.flatpakref
 ```
 
 Answer **y** when it asks. The first time, it also downloads the GNOME runtime Sealwax runs on, from Flathub; that takes a few minutes. Then start Sealwax from your app menu, or with `flatpak run io.github.pixdevsapps.Sealwax`.

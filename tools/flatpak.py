@@ -10,7 +10,9 @@ Flatpak repository people install it from (ADR-027). The steps, in order:
   python3 tools/flatpak.py site     that commit signed into the published repository,
                                     .local/flatpak/site/repo, with static deltas and the AppStream
                                     data, plus sealwax.flatpakrepo, the app's .flatpakref and an
-                                    index.html beside it
+                                    index.html beside it (tools/release.py github attaches that
+                                    .flatpakref to the GitHub release, where INSTALL.md's command
+                                    fetches it)
   python3 tools/flatpak.py publish  the site pushed to PixDevsApps/sealwax-flatpak, whose GitHub
                                     Pages serve it: one new commit with no history (the repository
                                     keeps the last commits itself), force-pushed to main
@@ -42,6 +44,10 @@ SITE = WORK / "site"
 KEY_NAME = "Sealwax Flatpak repository"
 RUNTIME_REPO = "https://dl.flathub.org/repo/flathub.flatpakrepo"
 PAGES_REPO = "https://github.com/PixDevsApps/sealwax-flatpak.git"
+# Where the install command fetches the .flatpakref: the latest GitHub release, which counts its
+# downloads; GitHub Pages counts nothing (ADR-027 amendment). The site keeps its own copy for
+# the command 1.3.0 gave.
+RELEASE_REF = f"https://github.com/PixDevsApps/sealwax/releases/latest/download/{APP_ID}.flatpakref"
 
 
 def run(*args: str, cwd: pathlib.Path = root, env: dict | None = None) -> None:
@@ -212,7 +218,6 @@ def site(ver: str) -> None:
 
 
 def index_html(url: str, ver: str) -> str:
-    ref = f"{url}{APP_ID}.flatpakref"
     return f"""<!doctype html>
 <html lang="en">
 <meta charset="utf-8">
@@ -227,9 +232,10 @@ def index_html(url: str, ver: str) -> str:
 On Omarchy, install the Arch package instead: see
 <a href="https://github.com/PixDevsApps/sealwax/blob/main/INSTALL.md">INSTALL.md</a>.</p>
 <p>Install it, and the GNOME runtime it needs from Flathub, with one line:</p>
-<pre>flatpak install --user {ref}</pre>
+<pre>flatpak install --user {RELEASE_REF}</pre>
 <p>Updates then come with <code>flatpak update</code>, or from GNOME Software or KDE Discover.
-The repository on its own: <a href="sealwax.flatpakrepo">sealwax.flatpakrepo</a>.</p>
+The repository on its own: <a href="sealwax.flatpakrepo">sealwax.flatpakrepo</a>; the file the
+line above fetches is <a href="{APP_ID}.flatpakref">here</a> too.</p>
 """
 
 
