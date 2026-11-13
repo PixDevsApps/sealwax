@@ -407,6 +407,10 @@ impl Writer {
         let accounts = touched.accounts.iter().copied().collect();
         let plans = touched.plans(&tx)?;
         prune(&tx)?;
+        // A local or POP3 folder's rows go now, so their raw messages are for an actor to take
+        // off the disk: the app deletes no blobs. An IMAP folder's plans wait with the ops, and
+        // their blobs are the record's to hand back.
+        defer_blob_deletions(&tx, &plans)?;
         let version = self.state.commit_rows(tx, &plans, folders)?.version;
         Ok(Queued {
             version,

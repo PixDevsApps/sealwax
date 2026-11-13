@@ -1,6 +1,7 @@
 //! POP3 accounts (M8, schema v11): the local folders, messages stored with their UIDLs once and
-//! in one transaction, the end of a pass, ops done at once with Undo, sending with the Sent copy
-//! filed locally and no Drafts-folder copies, the disk cap, removal and the v11 migration.
+//! in one transaction, the end of a pass, ops done at once with Undo, the Trash emptied at once
+//! with its UIDLs kept, sending with the Sent copy filed locally and no Drafts-folder copies, the
+//! disk cap, removal and the v11 migration.
 
 use crate::body_tests::{raw, upgrade};
 use crate::common::scratch;
@@ -480,6 +481,91 @@ fn a_pop3_accounts_triage_is_done_at_once_with_undo() {
     let recorded = uidls(&pop.store, pop.account);
     assert_eq!((recorded[5].0.as_str(), recorded[5].1), ("u6", None));
     clean(&pop.store);
+}
+
+/// Empty Trash on a POP3 account: the same at-once path as any other op of a POP3 account, with
+/// no folder-wide op (a POP3 folder is never windowed), the raw messages left for the account's
+/// actor, and the UIDLs kept so the mail never comes back.
+#[test]
+fn emptying_a_pop3_accounts_trash_is_done_at_once_and_its_mail_never_comes_back() {
+    let pop = pop();
+    let store = &pop.store;
+    let trash = pop.folder(FolderRole::Trash);
+    let ids: Vec<MessageId> = stored(
+        store,
+        pop.account,
+        (1..=6).map(|n| download(pop.inbox, n)).collect(),
+    )
+    .ids
+    .into_iter()
+    .map(Option::unwrap)
+    .collect();
+    queue(store, Triage::Delete, &ids[..4]);
+    assert_eq!(held_ids(store, trash).len(), 4);
+
+    let emptied = store
+        .empty_trash(trash, NOW + WINDOW)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(emptied.applied, 4);
+    assert!(emptied.accounts.is_empty(), "nothing for an op runner");
+    assert_eq!(counts(store, trash), (0, 0));
+    assert!(held_ids(store, trash).is_empty());
+    // Nothing waits and nothing is due: no `EXPUNGE_BELOW` op stands in for the mail below a
+    // floor, because a POP3 folder is never windowed and the store holds every message it knows.
+    assert_eq!(store.pending_ops(pop.account).recv_blocking().unwrap(), 0);
+    assert!(
+        store
+            .due_ops(pop.account, NOW + 60_000)
+            .recv_blocking()
+            .unwrap()
+            .groups
+            .is_empty(),
+        "no group for an op runner either"
+    );
+
+    // Their raw messages are the actor's to take off the disk: the app deletes no blobs, and an
+    // account with no server of its own has nothing else to answer with.
+    let mut keys: Vec<BlobKey> = store.take_blob_deletions().recv_blocking().unwrap();
+    keys.sort_by_key(|key| key.0);
+    assert_eq!(
+        keys,
+        (1..=4).map(|n| BlobKey([n as u8; 32])).collect::<Vec<_>>()
+    );
+
+    // Undo, inside the window or after it: the rows are gone at once, and there is no folder on
+    // the server to bring them back from.
+    let undone = store.undo(emptied.batch.unwrap()).recv_blocking().unwrap();
+    assert_eq!(undone.restored + undone.reverted, 0);
+    assert_eq!(undone.lost, vec![(Lost::Deleted, 4)]);
+    assert_eq!(counts(store, trash), (0, 0));
+
+    // The UIDLs outlive the rows, which is what keeps the emptied mail off the account: a listing
+    // of the same four UIDLs stores none of them again.
+    let recorded: Vec<(String, Option<MessageId>)> = uidls(store, pop.account)
+        .into_iter()
+        .map(|(uidl, message, _, _)| (uidl, message))
+        .collect();
+    assert_eq!(
+        recorded,
+        [
+            ("u1".to_owned(), None),
+            ("u2".to_owned(), None),
+            ("u3".to_owned(), None),
+            ("u4".to_owned(), None),
+            ("u5".to_owned(), Some(ids[4])),
+            ("u6".to_owned(), Some(ids[5]))
+        ]
+    );
+    let again = stored(
+        store,
+        pop.account,
+        (1..=4).map(|n| download(pop.inbox, n)).collect(),
+    );
+    assert_eq!(again.ids, vec![None; 4], "none of them downloads again");
+    assert_eq!(counts(store, trash), (0, 0));
+    assert_eq!(held_ids(store, pop.inbox).len(), 2);
+    clean(store);
 }
 
 #[test]
