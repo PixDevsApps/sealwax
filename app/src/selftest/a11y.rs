@@ -642,7 +642,8 @@ fn is_named_container(role: gtk::AccessibleRole) -> bool {
 
 /// GTK's and libadwaita's own parts, which name themselves or are left to them: a menu
 /// button's inner toggle, a text entry's inner text, a drop-down's insides (the drop-down is
-/// checked), the window controls, a toast's parts, an alert dialog's scrolled body.
+/// checked), the window controls, a toast's parts, an alert dialog's scrolled body, the lists
+/// of libadwaita's About dialog (their rows are named; ADR-028).
 fn gtk_internal(widget: &gtk::Widget) -> bool {
     let toast = glib::Type::from_name("AdwToastWidget");
     let parent_is = |ty: glib::Type| {
@@ -669,6 +670,10 @@ fn gtk_internal(widget: &gtk::Widget) -> bool {
         || widget.ancestor(gtk::DropDown::static_type()).is_some()
         || widget.has_css_class("body-scrolled-window")
         || toast.is_some_and(|toast| widget.ancestor(toast).is_some())
+        || (widget.is::<gtk::ListBox>()
+            && widget
+                .ancestor(libadwaita::AboutDialog::static_type())
+                .is_some())
 }
 
 /// libadwaita's own close button in a dialog's header bar: named "Close" by libadwaita, with

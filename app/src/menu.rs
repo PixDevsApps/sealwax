@@ -56,7 +56,7 @@ mod tests {
     #[test]
     fn sections_follow_the_registry() {
         let menu = primary_menu(&Keymap::default());
-        assert_eq!(menu.n_items(), 4);
+        assert_eq!(menu.n_items(), 5);
         let actions: Vec<Vec<String>> = (0..menu.n_items())
             .map(|section| {
                 let items = menu.item_link(section, "section").unwrap();
@@ -85,6 +85,7 @@ mod tests {
                     "win.pinned-senders",
                     "win.edit-rules",
                 ],
+                vec!["app.user-guide", "app.contact-support", "app.about"],
                 vec!["app.check-for-updates"],
                 vec!["app.quit"],
             ]

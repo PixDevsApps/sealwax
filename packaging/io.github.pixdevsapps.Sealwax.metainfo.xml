@@ -32,6 +32,11 @@
       Sealwax follows the system's light or dark style. On Omarchy it also follows the live theme
       and Hyprland's rounded corners.
     </p>
+    <p>
+      Help: the user guide is at pixdevs.com/guides/sealwax, and support answers at
+      support@pixdevs.com. Contact Support… in Sealwax's main menu gives you the address and the
+      details that help.
+    </p>
   </description>
 
   <launchable type="desktop-id">io.github.pixdevsapps.Sealwax.desktop</launchable>
@@ -41,10 +46,10 @@
     <mediatype>x-scheme-handler/mailto</mediatype>
   </provides>
 
-  <url type="homepage">https://github.com/PixDevsApps/sealwax</url>
+  <url type="homepage">https://pixdevs.com/guides/sealwax/</url>
+  <url type="help">https://pixdevs.com/guides/sealwax/</url>
   <url type="bugtracker">https://github.com/PixDevsApps/sealwax/issues</url>
   <url type="vcs-browser">https://github.com/PixDevsApps/sealwax</url>
-  <url type="help">https://github.com/PixDevsApps/sealwax/blob/main/docs/USER_GUIDE.md</url>
 
   <categories>
     <category>Network</category>

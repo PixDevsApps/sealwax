@@ -36,6 +36,31 @@ pub fn host_config_home(host_value: Option<&OsStr>, home: &Path) -> PathBuf {
     xdg::base_dir(host_value, home, ".config")
 }
 
+/// The os-release files that name the system (os-release(5)), in the order they are tried. In
+/// a Flatpak the runtime's own are its, so the host's copy comes first.
+pub fn os_release_paths(flatpak: bool) -> &'static [&'static str] {
+    if flatpak {
+        &["/run/host/os-release", "/run/host/usr/lib/os-release"]
+    } else {
+        &["/etc/os-release", "/usr/lib/os-release"]
+    }
+}
+
+/// The first os-release file that can be read, at most 64 KiB of it. A small file read: call it
+/// off the GTK thread.
+pub fn os_release() -> Option<String> {
+    use std::io::Read;
+    os_release_paths(is_flatpak()).iter().find_map(|path| {
+        let mut text = String::new();
+        std::fs::File::open(path)
+            .ok()?
+            .take(64 * 1024)
+            .read_to_string(&mut text)
+            .ok()?;
+        Some(text)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,5 +90,11 @@ mod tests {
             assert!(!is_flatpak());
             assert_eq!(desktop_config_home(), xdg::config_home());
         }
+    }
+
+    #[test]
+    fn the_host_names_the_system_in_a_flatpak() {
+        assert_eq!(os_release_paths(true)[0], "/run/host/os-release");
+        assert_eq!(os_release_paths(false)[0], "/etc/os-release");
     }
 }

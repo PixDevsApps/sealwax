@@ -1,0 +1,86 @@
+# Help for everyone, with or without a GitHub account (ADR-028): User Guide opens the online guide;
+# Contact Support… shows the support address and the details of this Sealwax, each with a Copy
+# button, and, once there is an account to send from, Write to Support opens a composer addressed
+# to support with the details in it; About Sealwax has the same links. The setup assistant's
+# problems offer the same help. Links go to the script's opener, never a browser; nothing is sent.
+# Every name and address is fictional.
+# Run: tools/headless.sh 58 target/debug/sealwax-selftest --self-test tests/selftest/support.sealwax-test
+
+desktop tiling
+resize 1440 900
+assert-action-enabled app.user-guide true
+assert-action-enabled app.contact-support true
+assert-action-enabled app.about true
+assert-action-enabled app.check-for-updates true
+
+# User Guide: the online guide.
+action app.user-guide
+assert-help-opened last https://pixdevs.com/guides/sealwax/
+assert-help-opened count 1
+
+# No account yet: the address and the details to copy into webmail; no Write to Support.
+action app.contact-support
+wait-until assert-shown contact-support true
+assert-text-contains contact-support "Contact Support"
+assert-text-contains contact-support "from your webmail"
+assert-text-contains support-address support@pixdevs.com
+assert-text-contains support-details "Sealwax "
+assert-text-contains support-details "Accounts: 0"
+assert-text-contains support-details "WebKitGTK "
+assert-accessible dialog
+setup-click support-copy-address
+assert-text-contains support-copy-address Copied
+assert-clipboard support@pixdevs.com
+setup-click support-copy-details
+assert-text-contains support-copy-details Copied
+setup-respond contact-support guide
+wait-until assert-shown contact-support false
+assert-help-opened last https://pixdevs.com/guides/sealwax/
+assert-help-opened count 2
+assert-compose-requests 0
+
+# The setup assistant's problems offer the same help.
+engine-attach
+action win.add-account
+setup-type setup-address kari@example.test
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply progress preset
+engine-reply detected fastmail
+setup-type setup-password fictional-password-2
+setup-key enter
+engine-expect verify username=kari@example.test second=none password=fictional-password-2
+engine-reply verified imap wrong-password
+wait-until assert-shown setup-alert true
+assert-label setup-alert-title "Wrong username or password"
+assert-shown setup-alert-help true
+assert-text-contains setup-alert-help "Get help from Sealwax's support"
+setup-click setup-alert-help
+wait-until assert-shown contact-support true
+setup-respond contact-support close
+wait-until assert-shown contact-support false
+setup-click setup-close
+engine-detach
+
+# With an account: Write to Support, a composer to support with the details; nothing is sent.
+conversation-account Personal alex.berg@example.test
+action app.contact-support
+wait-until assert-shown contact-support true
+assert-text-contains contact-support "Write to Sealwax's support and say what happened"
+assert-text-contains support-details "Accounts: 1"
+setup-respond contact-support write
+wait-until assert-shown contact-support false
+assert-compose-requests 1
+assert-compose-last mailto support@pixdevs.com
+composer-wait
+assert-composer db current subject "Sealwax support"
+assert-composer db current to support@pixdevs.com
+assert-composer db current html "About this Sealwax:"
+composer-close
+
+# About Sealwax.
+action app.about
+wait-until assert-shown about-sealwax true
+assert-accessible dialog
+key Escape
+wait-until assert-shown about-sealwax false

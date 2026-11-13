@@ -36,6 +36,7 @@ Use this page for decisions with meaningful long-term cost. Keep each entry shor
 | 024 | Pinned senders | Accepted (user decisions, 2026-10-31); built in 1.1.2, amended for 1.1.3 and 1.1.4 |
 | 025 | Workspace hygiene: a lint policy, the MSRV and dependency checks in CI, the spikes archived | Accepted (owner, 2026-11-04); built in 1.1.8 |
 | 027 | A Flatpak from Sealwax's own repository | Accepted (owner, 2026-11-11), for 1.3.0; not on Flathub |
+| 028 | Help without GitHub: the online guide, a support address and About in the app | Accepted (owner, 2026-11-13), for 1.3.2 |
 
 ## ADR-001 — Standalone native application (2026-10-04)
 
@@ -1736,3 +1737,22 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Reason:** GitHub counts how many times a release's file is downloaded and GitHub Pages counts nothing, so this is the only way to see how many people install the Flatpak without adding anything to Sealwax or to the repository. It is GitHub's own count of downloads: it says nothing about who, and Sealwax still sends nothing ([ADR-021 amendment, 2026-10-20](#adr-021-amendment--check-for-updates-only-when-the-user-asks-2026-10-20)). Flatpak follows the two redirects GitHub answers such a link with (checked with Flatpak 1.18.4 on 2026-11-12).
 
 **Consequences:** the count is of first installs through that command: updates, installs through a software centre or `sealwax.flatpakrepo`, and installs with 1.3.0's command aren't in it. Every release must carry the file, or the command fails until one does; a release made by hand has to attach it. If the repository's address or key ever changes, the file on the latest release must be the new one.
+
+## ADR-028 — Help without GitHub: the online guide, a support address and About in the app (2026-11-13)
+
+**Status:** Accepted — the owner, 2026-11-13: "I go with your recommendations, but the Check for Updates should be as is, easily available and not hidden in a sub menu. Let's make this version 1.3.2", after the proposal of the same day.
+
+**Decision:**
+- People who install Sealwax from pixdevs.com, a post on X or Reddit, or the Flatpak may have no GitHub account, so Sealwax names a way to get help that needs none: the support address **support@pixdevs.com** and the online user guide **https://pixdevs.com/guides/sealwax/** (`domain::support`).
+- The main menu has a **Help** section above Check for Updates, as plain items (no submenu): **User Guide** (opens the online guide), **Contact Support…** and **About Sealwax**. Check for Updates stays as it was, in its own section above Quit. The three are registry commands (`user-guide`, `contact-support`, `about`) in the palette, with **no default key**: F1 is the palette's (ADR-017), and `keys.toml` can bind one.
+- **Contact Support…** shows the address and a few lines about this Sealwax (its version; Flatpak, package, development build or built from source; the system's os-release name and the architecture; `XDG_CURRENT_DESKTOP` and `XDG_SESSION_TYPE`; the GTK, libadwaita and WebKitGTK versions at run time; the number of accounts), each with a Copy button. The lines never carry an address, server, folder name, path or anything from the mail, and values from the system lose control characters and are cut at 80 characters. With an account, **Write to Support** opens Sealwax's own composer to support with the subject "Sealwax support" and the lines under room to write; the user sends it, or not. Without one, the dialog says to copy both into webmail; it doesn't hand a `mailto:` link to the desktop, which can lead back to Sealwax when it is the default mail app.
+- The setup assistant's problems, and the note after a minute's wait for Microsoft's sign-in, have a **Get help from Sealwax's support** button that opens Contact Support: those who need help most often can't add an account yet.
+- **About Sealwax** is libadwaita's About dialog: the version, the guide as the website, support (its link opens Contact Support), GitHub's issues, the MIT licence and the same lines under Troubleshooting.
+- Outside the app: the AppStream metainfo's `homepage` and `help` are the online guide, and its description names the support address (AppStream accepts only web addresses as links, so there is no `contact` link); the `.flatpakref` gets `Homepage=` the guide. GitHub's issues and the security policy stay; SECURITY.md gives the support address as a first contact for those without a GitHub account.
+
+**Reason:** the issue tracker reaches only GitHub users, and the Flatpak's users, many of whom arrive from other links, see Sealwax's GitHub address nowhere in the app. A support address shown where people get stuck, with the details a first reply would ask for, saves a round trip, and Sealwax being a mail app means the message can start in it.
+
+**Alternatives:** a Help submenu (rejected by the owner: Check for Updates must stay in plain sight; the help items are plain items too); F1 for User Guide (GNOME's convention, but F1 is the palette's); a `mailto:` link for everyone (loops back to Sealwax when it is the default mail app, and does nothing useful without an account); the local copy of the guide in `/usr/share/doc` (the Flatpak doesn't ship it, and a Markdown file opens in an editor, not as a page); sending the details automatically (Sealwax sends nothing by itself, ADR-021 amendment of 2026-10-20).
+
+**Consequences:** the support address and the guide's address are in every release; changing either needs a release (and the metainfo). The owner answers the mail sent there. A message to support goes from the user's own account like any other, and its details are the ones the dialog shows. The audit of accessible names leaves libadwaita's About dialog's lists out (their rows are named), as it does other libadwaita internals.
+

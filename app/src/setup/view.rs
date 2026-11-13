@@ -12,6 +12,7 @@ use gtk4 as gtk;
 use gtk4::prelude::*;
 use libadwaita as adw;
 use sealwax_domain::account::{Endpoint, HelpLink, Protocol, Security};
+use sealwax_domain::actions::ActionId;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -159,6 +160,8 @@ pub(super) struct Widgets {
     pub(super) alert_title: gtk::Label,
     pub(super) alert_body: gtk::Label,
     pub(super) alert_link: gtk::LinkButton,
+    /// Contact Support… (ADR-028), under a problem.
+    pub(super) alert_help: gtk::Button,
     pub(super) address_field: gtk::Box,
     pub(super) address: gtk::Entry,
     pub(super) name_field: gtk::Box,
@@ -189,6 +192,8 @@ pub(super) struct Widgets {
     waiting: gtk::Box,
     /// After a minute: why Microsoft may never send the browser back.
     pub(super) still_waiting: gtk::Label,
+    /// Contact Support… with the note above.
+    pub(super) waiting_help: gtk::Button,
     pub(super) open_again: gtk::Button,
     pub(super) cancel: gtk::Button,
     pub(super) username_field: gtk::Box,
@@ -358,6 +363,22 @@ fn receive_choice() -> (gtk::DropDown, gtk::Box, gtk::Label) {
     (choice, row, note)
 }
 
+/// A button that opens Contact Support… (ADR-028): help for those who can't add an account.
+fn help_button(name: &str) -> gtk::Button {
+    let button = named(
+        gtk::Button::builder()
+            .label(HELP_LABEL)
+            .action_name(ActionId::ContactSupport.detailed_name())
+            .halign(gtk::Align::Start)
+            .build(),
+        name,
+    );
+    classed(button, &["sw-setup-link"])
+}
+
+/// The help button's label.
+pub(super) const HELP_LABEL: &str = "Get help from Sealwax's support";
+
 fn link(name: &str) -> gtk::LinkButton {
     let link = named(gtk::LinkButton::new("about:blank"), name);
     link.set_halign(gtk::Align::Start);
@@ -412,6 +433,8 @@ impl Widgets {
         alert_text.append(&alert_title);
         alert_text.append(&alert_body);
         alert_text.append(&alert_link);
+        let alert_help = help_button("setup-alert-help");
+        alert_text.append(&alert_help);
         let alert = named(
             classed(
                 gtk::Box::builder()
@@ -521,6 +544,8 @@ impl Widgets {
         );
         waiting.append(&waiting_row);
         waiting.append(&still_waiting);
+        let waiting_help = help_button("setup-waiting-help");
+        waiting.append(&waiting_help);
         waiting.append(&open_again);
 
         let microsoft_unavailable = named(
@@ -785,6 +810,7 @@ impl Widgets {
             alert_title,
             alert_body,
             alert_link,
+            alert_help,
             address_field,
             address,
             name_field,
@@ -811,6 +837,7 @@ impl Widgets {
             microsoft_unavailable,
             waiting,
             still_waiting,
+            waiting_help,
             open_again,
             cancel,
             username_field,
@@ -882,6 +909,7 @@ impl Widgets {
                     Tone::Info => &["dialog-information-symbolic"],
                 }));
             show_link(&w.alert_link, notice.link.as_ref());
+            w.alert_help.set_visible(notice.tone == Tone::Problem);
         }
 
         w.address_field.set_visible(matches!(
@@ -971,6 +999,7 @@ impl Widgets {
         // description too.
         let still_waiting = step == Step::SigningIn && state.still_waiting;
         w.still_waiting.set_visible(still_waiting);
+        w.waiting_help.set_visible(still_waiting);
         if still_waiting {
             w.cancel
                 .update_property(&[gtk::accessible::Property::Description(text::STILL_WAITING)]);

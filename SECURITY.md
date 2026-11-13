@@ -13,6 +13,8 @@ A report helps most when it says:
 
 Please put everything in the report as text, and test only with accounts and servers that are yours.
 
+No GitHub account? Write to **support@pixdevs.com** with "Security" in the subject and only a short description, and the maintainer answers with a private way to send the details.
+
 ## What happens next
 
 The report stays private between you and the maintainer, and the answer comes in the report's own thread. Once the problem is confirmed, the fix comes in a release, and a GitHub security advisory is published with it, crediting you if you want. When the fault is in a library Sealwax uses, its maintainers are told privately before the fix is published.

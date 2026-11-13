@@ -74,6 +74,7 @@ mod search;
 mod selftest;
 mod setup;
 mod status;
+mod support;
 mod triage;
 mod unsubscribe;
 mod updates;

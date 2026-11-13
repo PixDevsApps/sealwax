@@ -73,7 +73,9 @@ Other people package Sealwax for other systems. The project doesn't maintain or 
 2. Click **Add an account** and type your email address. Sealwax finds your mail provider's settings by itself.
 3. Type your email password, or click **Sign in with Microsoft** for Outlook.com, Hotmail and Microsoft 365 addresses. For Gmail, you need an app password from Google first: [GMAIL.md](docs/GMAIL.md) shows how, with pictures.
 
-The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and writing mail to rules and keyboard shortcuts. A copy comes with Sealwax, in `/usr/share/doc/sealwax/USER_GUIDE.md`.
+The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and writing mail to rules and keyboard shortcuts. A copy comes with Sealwax, in `/usr/share/doc/sealwax/USER_GUIDE.md`, and it is online at [pixdevs.com/guides/sealwax](https://pixdevs.com/guides/sealwax/) (**User Guide** in Sealwax's main menu).
+
+**Stuck?** Write to **support@pixdevs.com**. **Contact Support…** in Sealwax's main menu shows the address with a few lines about your Sealwax to copy into your message (its version, how it was installed, your system; nothing about your mail), and with an account added it starts the message for you. The setup assistant offers the same when an account can't be added.
 
 ## Updates
 

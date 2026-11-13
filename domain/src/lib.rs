@@ -31,6 +31,7 @@ pub mod search;
 pub mod senders;
 pub mod sieve;
 pub mod snippet;
+pub mod support;
 pub mod sync;
 pub mod theme;
 pub mod triage;

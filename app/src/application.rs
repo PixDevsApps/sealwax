@@ -31,6 +31,7 @@ use crate::search;
 use crate::setup::{self, Again, edit::Editable, remove::Removable};
 use crate::shortcuts;
 use crate::status::{self, Waiting};
+use crate::support;
 use crate::theme::{self, ThemeController};
 use crate::triage::{
     self, Controller, Directory, MARK_READ_ON_OPEN, Notice, OpsBackend, Origin, Target,
@@ -1018,6 +1019,7 @@ impl AppState {
                 default_handler::run(&window, &state.config.app_id);
             }
         });
+        support::install(self, &app_actions, &self.config.app_id);
         let weak_app = app.downgrade();
         let weak = Rc::downgrade(self);
         prefs.connect_changed(move |update| {

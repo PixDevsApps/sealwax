@@ -206,6 +206,7 @@ def site(ver: str) -> None:
         f"Name={APP_ID}\n"
         f"Branch={BRANCH}\n"
         f"Url={url}repo/\n"
+        "Homepage=https://pixdevs.com/guides/sealwax/\n"
         "SuggestRemoteName=sealwax\n"
         "IsRuntime=false\n"
         f"RuntimeRepo={RUNTIME_REPO}\n"

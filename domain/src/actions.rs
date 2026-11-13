@@ -92,12 +92,20 @@ impl Category {
 pub enum MenuSection {
     View,
     Settings,
+    /// The user guide, support and About (ADR-028).
+    Help,
     Updates,
     Quit,
 }
 
 impl MenuSection {
-    pub const ALL: [Self; 4] = [Self::View, Self::Settings, Self::Updates, Self::Quit];
+    pub const ALL: [Self; 5] = [
+        Self::View,
+        Self::Settings,
+        Self::Help,
+        Self::Updates,
+        Self::Quit,
+    ];
 }
 
 /// The shape of the GAction behind an [`ActionId`].
@@ -278,6 +286,9 @@ pub enum ActionId {
     RebuildSearchIndex,
     StartAtLogin,
     DefaultMailApp,
+    UserGuide,
+    ContactSupport,
+    About,
     CheckForUpdates,
     Quit,
     PinnedSenders,
@@ -289,7 +300,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 98] = [
+    pub const ALL: [Self; 101] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -380,6 +391,9 @@ impl ActionId {
         Self::RebuildSearchIndex,
         Self::StartAtLogin,
         Self::DefaultMailApp,
+        Self::UserGuide,
+        Self::ContactSupport,
+        Self::About,
         Self::CheckForUpdates,
         Self::Quit,
         Self::PinnedSenders,
@@ -860,6 +874,27 @@ impl ActionId {
                 Scope::App,
                 &[],
             ),
+            // Help for users with or without GitHub (ADR-028): the online guide, the support
+            // address and About, a menu section of their own above Check for Updates. No default
+            // keys: F1 is the palette's (ADR-017).
+            Self::UserGuide => ActionSpec {
+                menu: Some(MenuSection::Help),
+                ..command("user-guide", "User Guide", General, Scope::App, &[])
+            },
+            Self::ContactSupport => ActionSpec {
+                menu: Some(MenuSection::Help),
+                ..command(
+                    "contact-support",
+                    "Contact Support…",
+                    General,
+                    Scope::App,
+                    &[],
+                )
+            },
+            Self::About => ActionSpec {
+                menu: Some(MenuSection::Help),
+                ..command("about", "About Sealwax", General, Scope::App, &[])
+            },
             // Asks GitHub for the latest release, only when the user runs it (ADR-021 amendment,
             // 2026-10-20); a menu section of its own, between the settings and Quit. No default
             // key (ADR-017).
@@ -1102,6 +1137,9 @@ mod tests {
                 ActionId::Preferences,
                 ActionId::CustomizeShortcuts,
                 ActionId::StartAtLogin,
+                ActionId::UserGuide,
+                ActionId::ContactSupport,
+                ActionId::About,
                 ActionId::CheckForUpdates,
                 ActionId::Quit,
                 ActionId::PinnedSenders,
@@ -1119,6 +1157,16 @@ mod tests {
         );
         assert_eq!(ActionId::StartAtLogin.kind(), ActionKind::Toggle);
         assert_eq!(ActionId::StartAtLogin.detailed_name(), "app.start-at-login");
+        assert_eq!(ActionId::UserGuide.detailed_name(), "app.user-guide");
+        assert_eq!(
+            ActionId::ContactSupport.detailed_name(),
+            "app.contact-support"
+        );
+        assert_eq!(ActionId::About.detailed_name(), "app.about");
+        assert_eq!(
+            ActionId::CheckForUpdates.spec().menu,
+            Some(MenuSection::Updates)
+        );
     }
 
     #[test]
@@ -1270,6 +1318,9 @@ mod tests {
             ActionId::DefaultMailApp,
             ActionId::RebuildSearchIndex,
             ActionId::StartAtLogin,
+            ActionId::UserGuide,
+            ActionId::ContactSupport,
+            ActionId::About,
         ] {
             assert!(keys(id).is_empty(), "{id:?}");
         }

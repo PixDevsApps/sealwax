@@ -18,6 +18,7 @@ This guide is for people who use Sealwax every day. It describes Sealwax 1.0. Ev
 - [Settings files](#settings-files)
 - [Privacy and security](#privacy-and-security)
 - [Troubleshooting](#troubleshooting)
+- [Getting help](#getting-help)
 - [Removing Sealwax and its data](#removing-sealwax-and-its-data)
 
 ## Installing
@@ -464,6 +465,9 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | General | Rebuild Search Index | — |  | `rebuild-search-index` |
 | General | Start Sealwax at Login | — |  | `start-at-login` |
 | General | Make Sealwax the Default Mail App… | — |  | `default-mail-app` |
+| General | User Guide | — |  | `user-guide` |
+| General | Contact Support… | — |  | `contact-support` |
+| General | About Sealwax | — |  | `about` |
 | General | Check for Updates… | — |  | `check-for-updates` |
 | General | Quit | Ctrl+Q | anywhere | `quit` |
 | General | Pinned Senders… | — |  | `pinned-senders` |
@@ -616,7 +620,7 @@ Sealwax talks only to the servers your mail needs, and keeps each message sealed
 | Your domain's own HTTPS autoconfig | Your full address | While adding an account |
 | Mozilla's ISPDB, DNS, and likely mail server names | Only your domain name; a TLS check of the servers, without your address | While adding an account |
 | Servers that hold a message's images | Your IP address and the time, as for any web page | Only for a message or sender you allowed |
-| Your browser | A link you chose to open | When you open it |
+| Your browser | A link you chose to open, and the online user guide | When you open it |
 | Your desktop's notification server | A new message's sender and subject (only a count with `show = "count"`) | New mail, unless notifications are off |
 | GitHub (`api.github.com`) | A request for Sealwax's latest release, with nothing about you in it; GitHub sees your IP address | Only when you choose Check for Updates… |
 
@@ -703,6 +707,17 @@ The folders follow `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME` and `XDG
 ### Starting over
 
 To start from scratch: remove every account in Sealwax (Remove Account), quit with Ctrl+Q, then delete Sealwax's folders as in [Removing Sealwax and its data](#removing-sealwax-and-its-data), keeping the package installed. Removing the accounts first also deletes their keyring items.
+
+## Getting help
+
+The main menu has a section for help, above **Check for Updates…**; the palette has the same commands.
+
+- **User Guide** opens this guide on the web, at [pixdevs.com/guides/sealwax](https://pixdevs.com/guides/sealwax/).
+- **Contact Support…** shows Sealwax's support address, **support@pixdevs.com**, and a few lines about your Sealwax: its version, how it was installed (package, Flatpak or built from source), your Linux system, desktop and the GTK, libadwaita and WebKitGTK versions, and how many accounts it has. They say nothing about your mail, your addresses or your servers. Each has a **Copy** button. With an account added, **Write to Support** opens a new message to support with those lines in it; write what happened and what you expected above them, and send it as any other message. Nothing is sent until you send it.
+- **Can't add an account?** The setup assistant's problems, and the note when Microsoft's sign-in waits, have a **Get help from Sealwax's support** button that opens Contact Support. Copy the address and the lines, and write from your webmail or another mail app.
+- **About Sealwax** shows the version, the same links, and the same lines under Troubleshooting → Debugging Information.
+
+If you use GitHub, you can also [open an issue](https://github.com/PixDevsApps/sealwax/issues). A security problem goes privately to the [security policy](../SECURITY.md)'s address instead.
 
 ## Removing Sealwax and its data
 
