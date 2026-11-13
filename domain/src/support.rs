@@ -9,8 +9,8 @@ use crate::mailto::Mailto;
 pub const SUPPORT_ADDRESS: &str = "support@pixdevs.com";
 /// The online user guide.
 pub const GUIDE_URL: &str = "https://pixdevs.com/guides/sealwax/";
-/// The issue tracker, for those who use GitHub.
-pub const ISSUES_URL: &str = "https://github.com/PixDevsApps/sealwax/issues";
+/// A new issue on GitHub, for those who use it: Report an Issue opens it.
+pub const NEW_ISSUE_URL: &str = "https://github.com/PixDevsApps/sealwax/issues/new";
 /// The subject of a message Write to Support starts.
 pub const SUBJECT: &str = "Sealwax support";
 /// The line above the details in a message to support.
@@ -253,6 +253,7 @@ mod tests {
     fn the_addresses_are_the_owners() {
         assert_eq!(SUPPORT_ADDRESS, "support@pixdevs.com");
         assert_eq!(GUIDE_URL, "https://pixdevs.com/guides/sealwax/");
+        assert!(NEW_ISSUE_URL.starts_with("https://github.com/PixDevsApps/sealwax/"));
         assert!(crate::compose::address::is_valid(SUPPORT_ADDRESS));
     }
 }

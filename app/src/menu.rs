@@ -1,5 +1,6 @@
 //! The primary menu, generated from the registry: one section per `MenuSection`, the actions
-//! in registry order. Rebuild it when `keys.toml` changes.
+//! in registry order, in a submenu where the section has one (Help). Rebuild it when
+//! `keys.toml` changes.
 
 use gtk4::gio;
 use gtk4::prelude::*;
@@ -19,8 +20,16 @@ pub fn primary_menu(keymap: &Keymap) -> gio::Menu {
         {
             items.append_item(&item(id, keymap));
         }
-        if items.n_items() > 0 {
-            menu.append_section(None, &items);
+        if items.n_items() == 0 {
+            continue;
+        }
+        match section.submenu() {
+            Some(label) => {
+                let holder = gio::Menu::new();
+                holder.append_submenu(Some(label), &items);
+                menu.append_section(None, &holder);
+            }
+            None => menu.append_section(None, &items),
         }
     }
     menu
@@ -57,9 +66,13 @@ mod tests {
     fn sections_follow_the_registry() {
         let menu = primary_menu(&Keymap::default());
         assert_eq!(menu.n_items(), 5);
+        // A section's items, or, for a section holding a submenu, the submenu's items.
         let actions: Vec<Vec<String>> = (0..menu.n_items())
             .map(|section| {
-                let items = menu.item_link(section, "section").unwrap();
+                let mut items = menu.item_link(section, "section").unwrap();
+                if let Some(submenu) = items.item_link(0, "submenu") {
+                    items = submenu;
+                }
                 (0..items.n_items())
                     .map(|index| attribute(&items, index, "action").unwrap())
                     .collect()
@@ -85,11 +98,23 @@ mod tests {
                     "win.pinned-senders",
                     "win.edit-rules",
                 ],
-                vec!["app.user-guide", "app.contact-support", "app.about"],
+                vec![
+                    "app.user-guide",
+                    "app.contact-support",
+                    "app.report-issue",
+                    "app.about"
+                ],
                 vec!["app.check-for-updates"],
                 vec!["app.quit"],
             ]
         );
+        // Help is a submenu with a section of its own; Check for Updates stays a plain item.
+        let help = menu.item_link(2, "section").unwrap();
+        assert_eq!(help.n_items(), 1);
+        assert_eq!(attribute(&help, 0, "label").as_deref(), Some("Help"));
+        assert!(help.item_link(0, "submenu").is_some());
+        let updates = menu.item_link(3, "section").unwrap();
+        assert!(updates.item_link(0, "submenu").is_none());
         let settings = menu.item_link(1, "section").unwrap();
         assert_eq!(
             attribute(&settings, 0, "label").as_deref(),

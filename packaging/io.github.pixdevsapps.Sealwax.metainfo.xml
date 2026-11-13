@@ -98,7 +98,7 @@
     <release version="1.3.2" date="2026-11-13" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.3.2</url>
       <description>
-        <p>Help, also without a GitHub account: the main menu has User Guide, which opens the online guide, Contact Support…, which shows the support address with the details that help and can start the message, and About Sealwax. The setup assistant offers the same help when an account can't be added.</p>
+        <p>Help, also without a GitHub account: the main menu's Help submenu has User Guide, which opens the online guide, Contact Support…, which shows the support address with the details that help and can start the message, Report an Issue and About Sealwax. The setup assistant offers the same help when an account can't be added.</p>
       </description>
     </release>
     <release version="1.3.1" date="2026-11-12" type="stable">

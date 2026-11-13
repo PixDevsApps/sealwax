@@ -92,7 +92,7 @@ impl Category {
 pub enum MenuSection {
     View,
     Settings,
-    /// The user guide, support and About (ADR-028).
+    /// The user guide, support, the issue tracker and About, in a Help submenu (ADR-028).
     Help,
     Updates,
     Quit,
@@ -106,6 +106,14 @@ impl MenuSection {
         Self::Updates,
         Self::Quit,
     ];
+
+    /// The submenu a section's items sit in, or `None` for plain items.
+    pub const fn submenu(self) -> Option<&'static str> {
+        match self {
+            Self::Help => Some("Help"),
+            Self::View | Self::Settings | Self::Updates | Self::Quit => None,
+        }
+    }
 }
 
 /// The shape of the GAction behind an [`ActionId`].
@@ -288,6 +296,7 @@ pub enum ActionId {
     DefaultMailApp,
     UserGuide,
     ContactSupport,
+    ReportIssue,
     About,
     CheckForUpdates,
     Quit,
@@ -300,7 +309,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 101] = [
+    pub const ALL: [Self; 102] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -393,6 +402,7 @@ impl ActionId {
         Self::DefaultMailApp,
         Self::UserGuide,
         Self::ContactSupport,
+        Self::ReportIssue,
         Self::About,
         Self::CheckForUpdates,
         Self::Quit,
@@ -875,8 +885,8 @@ impl ActionId {
                 &[],
             ),
             // Help for users with or without GitHub (ADR-028): the online guide, the support
-            // address and About, a menu section of their own above Check for Updates. No default
-            // keys: F1 is the palette's (ADR-017).
+            // address, GitHub's issues and About, in a Help submenu above Check for Updates. No
+            // default keys: F1 is the palette's (ADR-017).
             Self::UserGuide => ActionSpec {
                 menu: Some(MenuSection::Help),
                 ..command("user-guide", "User Guide", General, Scope::App, &[])
@@ -890,6 +900,10 @@ impl ActionId {
                     Scope::App,
                     &[],
                 )
+            },
+            Self::ReportIssue => ActionSpec {
+                menu: Some(MenuSection::Help),
+                ..command("report-issue", "Report an Issue", General, Scope::App, &[])
             },
             Self::About => ActionSpec {
                 menu: Some(MenuSection::Help),
@@ -1139,6 +1153,7 @@ mod tests {
                 ActionId::StartAtLogin,
                 ActionId::UserGuide,
                 ActionId::ContactSupport,
+                ActionId::ReportIssue,
                 ActionId::About,
                 ActionId::CheckForUpdates,
                 ActionId::Quit,
@@ -1162,11 +1177,14 @@ mod tests {
             ActionId::ContactSupport.detailed_name(),
             "app.contact-support"
         );
+        assert_eq!(ActionId::ReportIssue.detailed_name(), "app.report-issue");
         assert_eq!(ActionId::About.detailed_name(), "app.about");
+        assert_eq!(MenuSection::Help.submenu(), Some("Help"));
         assert_eq!(
             ActionId::CheckForUpdates.spec().menu,
             Some(MenuSection::Updates)
         );
+        assert_eq!(MenuSection::Updates.submenu(), None);
     }
 
     #[test]
@@ -1320,6 +1338,7 @@ mod tests {
             ActionId::StartAtLogin,
             ActionId::UserGuide,
             ActionId::ContactSupport,
+            ActionId::ReportIssue,
             ActionId::About,
         ] {
             assert!(keys(id).is_empty(), "{id:?}");

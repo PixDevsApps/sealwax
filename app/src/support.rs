@@ -1,6 +1,7 @@
 //! Help for everyone, with or without a GitHub account (ADR-028): User Guide opens the online
 //! guide, Contact Support… shows the support address with the details a message to support
-//! needs, and About Sealwax is libadwaita's About dialog with the same links. Nothing is sent
+//! needs, Report an Issue opens a new issue on GitHub, and About Sealwax is libadwaita's About
+//! dialog. Nothing is sent
 //! by itself: Write to Support opens a composer the user reads and sends, and the details say
 //! nothing about the user's mail, accounts or files (`domain::support`).
 
@@ -51,7 +52,7 @@ thread_local! {
     static OPENED: Log<String> = const { Log::new() };
 }
 
-/// Installs User Guide, Contact Support… and About Sealwax, once at startup.
+/// Installs User Guide, Contact Support…, Report an Issue and About Sealwax, once at startup.
 pub(crate) fn install(state: &Rc<AppState>, actions: &ActionSet, app_id: &str) {
     let weak = Rc::downgrade(state);
     actions.connect(ActionId::UserGuide, move || {
@@ -63,6 +64,12 @@ pub(crate) fn install(state: &Rc<AppState>, actions: &ActionSet, app_id: &str) {
     actions.connect(ActionId::ContactSupport, move || {
         if let Some(state) = weak.upgrade() {
             contact(&state);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    actions.connect(ActionId::ReportIssue, move || {
+        if let Some(state) = weak.upgrade() {
+            open_link(&state, support::NEW_ISSUE_URL);
         }
     });
     let weak = Rc::downgrade(state);
@@ -251,8 +258,8 @@ fn copyable(
 }
 
 /// libadwaita's About dialog: the version, the guide as the website, support by mail (which
-/// opens Contact Support, so the details go with it), GitHub's issues and the details under
-/// Troubleshooting.
+/// opens Contact Support, so the details go with it) and the details under Troubleshooting.
+/// Report an Issue is in the Help menu, not here.
 fn about(state: &Rc<AppState>, app_id: &str) {
     let state = state.clone();
     let app_id = app_id.to_owned();
@@ -269,7 +276,6 @@ fn about(state: &Rc<AppState>, app_id: &str) {
             .comments("Fast, keyboard-first email client")
             .website(support::GUIDE_URL)
             .support_url(format!("mailto:{}", support::SUPPORT_ADDRESS))
-            .issue_url(support::ISSUES_URL)
             .debug_info(details.text())
             .debug_info_filename("sealwax-details.txt")
             .license_type(gtk::License::MitX11)

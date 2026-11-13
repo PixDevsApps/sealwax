@@ -24,7 +24,7 @@ It updates with `flatpak update` or your software centre. On Omarchy, the packag
 
 [INSTALL.md](INSTALL.md) explains every step in plain words: installing, starting, updating and uninstalling, and what to do if something goes wrong. [What's new](CHANGELOG.md) lists each release.
 
-**Need help?** The [user guide](https://pixdevs.com/guides/sealwax/) is online too. No GitHub account? Write to **support@pixdevs.com**; **Contact Support…** in Sealwax's main menu gives you the address and the details that help, and can start the message for you.
+**Need help?** The [user guide](https://pixdevs.com/guides/sealwax/) is online too. No GitHub account? Write to **support@pixdevs.com**; **Help → Contact Support…** in Sealwax's main menu gives you the address and the details that help, and can start the message for you.
 
 ## Status
 

@@ -467,6 +467,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | General | Make Sealwax the Default Mail App… | — |  | `default-mail-app` |
 | General | User Guide | — |  | `user-guide` |
 | General | Contact Support… | — |  | `contact-support` |
+| General | Report an Issue | — |  | `report-issue` |
 | General | About Sealwax | — |  | `about` |
 | General | Check for Updates… | — |  | `check-for-updates` |
 | General | Quit | Ctrl+Q | anywhere | `quit` |
@@ -710,12 +711,13 @@ To start from scratch: remove every account in Sealwax (Remove Account), quit wi
 
 ## Getting help
 
-The main menu has a section for help, above **Check for Updates…**; the palette has the same commands.
+The main menu's **Help** submenu, above **Check for Updates…**, has these; the palette has the same commands.
 
 - **User Guide** opens this guide on the web, at [pixdevs.com/guides/sealwax](https://pixdevs.com/guides/sealwax/).
 - **Contact Support…** shows Sealwax's support address, **support@pixdevs.com**, and a few lines about your Sealwax: its version, how it was installed (package, Flatpak or built from source), your Linux system, desktop and the GTK, libadwaita and WebKitGTK versions, and how many accounts it has. They say nothing about your mail, your addresses or your servers. Each has a **Copy** button. With an account added, **Write to Support** opens a new message to support with those lines in it; write what happened and what you expected above them, and send it as any other message. Nothing is sent until you send it.
 - **Can't add an account?** The setup assistant's problems, and the note when Microsoft's sign-in waits, have a **Get help from Sealwax's support** button that opens Contact Support. Copy the address and the lines, and write from your webmail or another mail app.
-- **About Sealwax** shows the version, the same links, and the same lines under Troubleshooting → Debugging Information.
+- **Report an Issue** opens a new issue on Sealwax's GitHub page, if you have a GitHub account: a bug, or an idea for Sealwax.
+- **About Sealwax** shows the version, the guide, support, and the same lines under Troubleshooting → Debugging Information.
 
 If you use GitHub, you can also [open an issue](https://github.com/PixDevsApps/sealwax/issues). A security problem goes privately to the [security policy](../SECURITY.md)'s address instead.
 

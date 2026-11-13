@@ -1756,3 +1756,9 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 **Consequences:** the support address and the guide's address are in every release; changing either needs a release (and the metainfo). The owner answers the mail sent there. A message to support goes from the user's own account like any other, and its details are the ones the dialog shows. The audit of accessible names leaves libadwaita's About dialog's lists out (their rows are named), as it does other libadwaita internals.
 
+### ADR-028 amendment — a Help submenu, with Report an Issue (2026-11-13)
+
+**Status:** Accepted — the owner, the same day, after trying 1.3.2 in a window before its release: "I would like those as a submenu under Help (only Check for updates stays as is) in that submenu I would like you to move Report issue/request feature there", then "I meant report an issue".
+
+**Decision:** User Guide, Contact Support… and About Sealwax go into a **Help** submenu, in a menu section of its own where the plain items were; Check for Updates stays a plain item in its own section above Quit. About's "Report an Issue" link moves out of About into the submenu as a registry command, **Report an Issue** (`report-issue`, no default key), which opens a new issue on GitHub (`domain::support::NEW_ISSUE_URL`); About keeps the guide, support and Troubleshooting. The registry says which section is a submenu (`MenuSection::submenu`), so the menu stays generated from it (ADR-017). This replaces "as plain items (no submenu)" above, and the "Help submenu" alternative is now the choice; Check for Updates' place, the reason that alternative was rejected, is kept.
+
