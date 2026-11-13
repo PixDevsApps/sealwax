@@ -933,8 +933,20 @@ pub async fn delete_below(
                 .into_iter()
                 .map(|batch| format!("UID EXPUNGE {}", batch.set))
                 .collect();
+            // The write a folder emptied takes is what has to be readable from a real server: the
+            // protocol crates are capped at warn (ADR-018 amendment), so the command line itself
+            // never reaches the log, and the two arms below differ in what they remove.
+            tracing::debug!(
+                batches = commands.len(),
+                below = below.len(),
+                "empty below floor: UID EXPUNGE of the searched set"
+            );
             pipelined(conn, &commands).await?;
         } else {
+            tracing::debug!(
+                below = below.len(),
+                "empty below floor: no UIDPLUS, one plain EXPUNGE of the folder"
+            );
             pipelined(conn, &["EXPUNGE".to_owned()]).await?;
         }
     }
