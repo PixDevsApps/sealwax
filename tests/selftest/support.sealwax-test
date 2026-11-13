@@ -14,6 +14,13 @@ assert-action-enabled app.contact-support true
 assert-action-enabled app.report-issue true
 assert-action-enabled app.about true
 assert-action-enabled app.check-for-updates true
+# The Help submenu opens beside the main menu on hover, in each of its buttons.
+assert-menu-nested list-menu true
+assert-menu-nested welcome-menu true
+assert-menu-nested reader-menu true
+menu-open list-menu
+assert-accessible window
+menu-close list-menu
 
 # User Guide: the online guide.
 action app.user-guide

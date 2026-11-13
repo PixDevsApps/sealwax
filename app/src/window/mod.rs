@@ -1085,11 +1085,20 @@ impl Window {
 
     /// The main menu (ML-022), at the end of the list pane's bar, or of the welcome page's while
     /// there is no account; with the reading pane hidden, at the start of the list's bar and
-    /// of the reader's.
+    /// of the reader's. Its submenu (Help) opens beside it on hover, not in its place on a click.
     pub fn set_menu_model(&self, menu: Option<&gio::MenuModel>) {
-        self.inner.list_menu.set_menu_model(menu);
-        self.inner.reader_menu.set_menu_model(menu);
-        self.inner.welcome_menu.set_menu_model(menu);
+        for button in [
+            &self.inner.list_menu,
+            &self.inner.reader_menu,
+            &self.inner.welcome_menu,
+        ] {
+            button.set_menu_model(menu);
+            if let Some(popover) = button.popover().and_downcast::<gtk::PopoverMenu>() {
+                // The flags apply when the model is set, so the model goes in again after them.
+                popover.set_flags(gtk::PopoverMenuFlags::NESTED);
+                popover.set_menu_model(menu);
+            }
+        }
     }
 
     /// Shows the keys of `keymap` (the registry with `keys.toml` over it) in every tooltip and

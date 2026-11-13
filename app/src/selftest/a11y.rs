@@ -17,6 +17,7 @@
 //! | `assert-focus-stop STOP [window\|composer]` | The keyboard focus is at STOP (as `tab-chain` names stops) in the main window or the newest composer |
 //! | `assert-dialog TITLE\|none` | The main window's top dialog has that title, or none is open |
 //! | `menu-open NAME`, `menu-close NAME` | Opens or closes the menu of the menu button NAME, as a click does |
+//! | `assert-menu-nested NAME true\|false` | The menu button NAME's submenus open beside its menu on hover (true) or slide in its place on a click (false) |
 //! | `link-hooks` | The app's reader records the links it would open instead of opening them |
 //! | `link-dialog-answer cancel\|open` | Answers the reader's "Open this link?" dialog |
 //! | `assert-link-strip TEXT\|hidden` | The reader's link strip shows TEXT, or is hidden |
@@ -54,6 +55,7 @@ pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-shortcut", 2, 2),
     ("menu-open", 1, 1),
     ("menu-close", 1, 1),
+    ("assert-menu-nested", 2, 2),
     ("link-hooks", 0, 0),
     ("link-dialog-answer", 1, 1),
     ("assert-link-strip", 1, 1),
@@ -193,6 +195,22 @@ pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> S
             }
             harness.wait_until_settled().await;
             harness.wait_frames(1).await
+        }
+        "assert-menu-nested" => {
+            let button = named(harness, arg(0))?
+                .downcast::<gtk::MenuButton>()
+                .map_err(|_| format!("{} isn't a menu button", arg(0)))?;
+            let popover = button
+                .popover()
+                .and_downcast::<gtk::PopoverMenu>()
+                .ok_or_else(|| format!("{} has no menu", arg(0)))?;
+            let nested = popover.flags().contains(gtk::PopoverMenuFlags::NESTED);
+            let want = arg(1) == "true";
+            if nested == want {
+                Ok(())
+            } else {
+                Err(format!("{}'s menu nested: {nested}", arg(0)))
+            }
         }
         "link-hooks" => {
             let reader = harness.state.reader().ok_or("there is no reader")?;
