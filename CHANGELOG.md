@@ -6,7 +6,7 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 
 Help, also without a GitHub account.
 
-- **Help in the main menu:** a new **Help** submenu with **User Guide**, which opens the [online user guide](https://pixdevs.com/guides/sealwax/), **Contact Support…**, **Report an Issue**, which opens a new issue on GitHub, and **About Sealwax**. **Check for Updates…** keeps its own place below it. The command palette has all four too.
+- **Help in the main menu:** a new **Help** submenu, which opens as you point at it, with **User Guide**, which opens the [online user guide](https://pixdevs.com/guides/sealwax/), **Contact Support…**, **Report an Issue**, which opens a new issue on GitHub, and **About Sealwax**. **Check for Updates…** keeps its own place below it. The command palette has all four too.
 - **Contact Support…** shows Sealwax's support address, **support@pixdevs.com**, and a few lines that help find a problem: Sealwax's version, how it was installed, your Linux system and desktop, and how many accounts it has. Nothing about your mail, addresses or servers is in them. Copy either with one click, or, once you have an account, choose **Write to Support** to start the message in Sealwax with those lines in it; nothing is sent until you send it.
 - **Can't add an account?** When the setup assistant can't sign in, or Microsoft's sign-in seems stuck, a **Get help from Sealwax's support** button opens the same dialog, so you can write from your webmail.
 - **About Sealwax** shows the version, the guide, support and the licence, with the same lines under Troubleshooting.
