@@ -12,10 +12,17 @@ pub(crate) const HIDDEN: u32 = 256;
 /// 264 for shown rows, 265 for shown unread ones, 268 = 4 for shown starred ones.
 pub(crate) const UNSHOWN: u32 = HIDDEN | Flags::DELETED.bits();
 /// The unread count a folder shows (of `folders`): its shown unread rows, plus the server's
-/// unread below its floor unless a pending "mark folder read" covers them.
+/// unread below its floor unless a pending folder-wide op covers them — a folder marked read
+/// counts them read, a folder emptied counts nothing at all.
 pub(crate) const UNREAD_SQL: &str = "unread_count + CASE WHEN EXISTS (SELECT 1 FROM ops \
-    WHERE ops.folder_id = folders.id AND ops.done = 0 AND ops.message IS NULL AND ops.kind = 3) \
-    THEN 0 ELSE below_unread END";
+    WHERE ops.folder_id = folders.id AND ops.done = 0 AND ops.message IS NULL AND ops.kind IN (3, \
+    5)) THEN 0 ELSE below_unread END";
+/// The total a folder shows: its shown rows, plus the server's messages below its floor unless a
+/// pending "empty trash" op covers them. Emptying a windowed folder deletes that mail on the
+/// server too, so it doesn't come back at the next pass.
+pub(crate) const TOTAL_SQL: &str = "total_count + CASE WHEN EXISTS (SELECT 1 FROM ops \
+    WHERE ops.folder_id = folders.id AND ops.done = 0 AND ops.message IS NULL AND ops.kind = 5) \
+    THEN 0 ELSE below_floor END";
 
 /// `kind` in the `ops` table.
 pub(crate) const FLAGS: i64 = 0;
@@ -26,6 +33,15 @@ pub(crate) const READ_BELOW: i64 = 3;
 /// A copy into `target` (a rule's `fileinto :copy`, ADR-020): the message stays where it is and
 /// shows the copy once the target's sync fetches it.
 pub(crate) const COPY: i64 = 4;
+/// A folder emptied: every message the server holds below its floor, which the store never
+/// downloaded (`uid` holds the floor as `READ_BELOW` does). The folder's own rows carry their own
+/// [`EXPUNGE`] ops.
+pub(crate) const EXPUNGE_BELOW: i64 = 5;
+
+/// The ops that name no message and cover a folder's server mail below its sync floor: a folder
+/// marked read and a folder emptied. The SQL fragments spell them out.
+pub(crate) const BELOW_SQL: &str = "kind IN (3, 5)";
+pub(crate) const NOT_BELOW_SQL: &str = "kind NOT IN (3, 5)";
 
 /// `kind` in the `op_batches` table.
 pub(crate) const BATCH_TRIAGE: i64 = 0;
@@ -36,6 +52,9 @@ pub(crate) const BATCH_UNDO: i64 = 2;
 pub(crate) const BATCH_COMPOSE: i64 = 3;
 /// What an account's rules did to a message that arrived (ADR-020).
 pub(crate) const BATCH_RULES: i64 = 4;
+/// Emptying a folder: an expunge op for every row of it and one for the server's mail below its
+/// sync floor that the store never downloaded.
+pub(crate) const BATCH_EMPTY_TRASH: i64 = 5;
 
 /// Whether a row with these flags is listed and counted.
 pub(crate) fn shown(flags: u32) -> bool {

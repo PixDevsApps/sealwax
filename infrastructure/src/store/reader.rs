@@ -389,9 +389,10 @@ impl Reader {
         let version = version(&tx)?;
         let value = tx
             .prepare_cached(&format!(
-                "SELECT id, account_id, name, role, selectable, total_count + below_floor, {}, \
+                "SELECT id, account_id, name, role, selectable, {}, {}, \
                    delimiter, attributes \
                  FROM folders ORDER BY account_id, id",
+                super::overlay::TOTAL_SQL,
                 super::overlay::UNREAD_SQL
             ))?
             .query_map([], |row| {

@@ -384,6 +384,8 @@ impl Harness {
                 done.flagged_only = !self.world.uidplus;
             }
             OpAction::ReadBelow { .. } => {}
+            // The model never empties a folder: `Store::empty_trash` isn't part of it.
+            OpAction::ExpungeBelow { .. } => {}
             OpAction::Copy { to, .. } => {
                 let target = self.world.index(*to);
                 for message in &group.messages {

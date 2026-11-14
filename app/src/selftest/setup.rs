@@ -1286,9 +1286,10 @@ fn sync_event(harness: &Harness, args: &[String]) -> Result<Option<Event>, Strin
                 "move" => Refused::Move,
                 "expunge" => Refused::Expunge,
                 "folder-read" => Refused::FolderRead,
+                "empty-trash" => Refused::EmptyTrash,
                 other => {
                     return Err(format!(
-                        "use flags, move, expunge or folder-read, not {other}"
+                        "use flags, move, expunge, folder-read or empty-trash, not {other}"
                     ));
                 }
             },

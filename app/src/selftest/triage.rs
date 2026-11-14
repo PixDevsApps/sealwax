@@ -35,7 +35,7 @@
 //! | `assert-row-check POS none\|true\|false` | A row's checkbox: hidden, ticked, not ticked |
 //! | `assert-row-quick POS BOOL` | Whether a row shows its quick actions |
 //! | `assert-move-to open\|shown\|selected VALUE` | The Move to… picker: open (BOOL), the folders shown (`A,B`), the folder Enter picks |
-//! | `assert-sidebar-menu closed\|enabled\|disabled [NAME]` | The sidebar's menu, and its item named NAME, else its first (Mark Folder as Read) |
+//! | `assert-sidebar-menu closed\|enabled\|disabled [NAME]` | The sidebar's menu, and its item named NAME, else its first (Empty Trash on a `\Trash` folder, Mark Folder as Read on any other) |
 //! | `assert-action-log NAMES\|none` | The commands run since the last check, in order (`win.archive,win.star`) |
 
 use super::{Harness, StepResult, WAIT_TIMEOUT, boolean, broadway, equal, number};

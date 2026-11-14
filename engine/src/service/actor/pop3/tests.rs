@@ -1297,6 +1297,103 @@ async fn mail_deleted_for_good_leaves_the_disk_after_the_next_pass() {
     stop(actor).await;
 }
 
+/// Empty Trash on a POP3 account, end to end through the actor: the rows go at once, their raw
+/// messages leave the disk with the next pass, their copies still come off the server when the
+/// account's policy reaches their day, and none of them downloads again.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_emptied_pop3_trash_empties_the_disk_and_the_servers_copies_still_go() {
+    // Both messages came in eight days ago, so the policy's day has come for them, and the user
+    // empties the Trash before the actor's first pass: what the UIDL rows must survive.
+    let policy = Pop3Policy {
+        leave_on_server: true,
+        delete_after_days: Some(7),
+    };
+    let mut h = harness(policy, quick(), None, Fake::with(1..=2)).await;
+    let local = h.shared.store.pop3_account(h.account).recv().await.unwrap();
+    let now = unix_seconds();
+    let mut ids = Vec::new();
+    for n in 1..=2 {
+        let blobs = h.shared.blobs.clone();
+        let raw = RawMessage {
+            folder: local.inbox,
+            raw: mail(n),
+            ..RawMessage::default()
+        };
+        let message = ingest::prepare(&blobs, vec![raw], 1)
+            .unwrap()
+            .messages
+            .remove(0);
+        ids.push(
+            h.shared
+                .store
+                .pop3_store(
+                    h.account,
+                    vec![Pop3Download {
+                        uidl: format!("u{n}"),
+                        message,
+                        whole: true,
+                    }],
+                    now - 8 * DAY,
+                )
+                .recv()
+                .await
+                .unwrap()
+                .ids[0],
+        );
+    }
+    let ids: Vec<MessageId> = ids.into_iter().flatten().collect();
+    let blobs: Vec<_> = h
+        .shared
+        .store
+        .body_targets(ids.clone())
+        .recv()
+        .await
+        .unwrap()
+        .iter()
+        .map(|target| target.blob.unwrap())
+        .collect();
+
+    // To the Trash, and emptied for good, all of it before the actor starts.
+    let trash = h.folder(FolderRole::Trash).await;
+    h.shared
+        .store
+        .queue_triage(QueueTriage {
+            action: Triage::Delete,
+            messages: ids.clone(),
+            not_before: 0,
+        })
+        .recv()
+        .await
+        .unwrap();
+    assert_eq!(h.subjects(trash).await.len(), 2);
+    h.shared.store.empty_trash(trash, 0).recv().await.unwrap();
+    assert!(h.subjects(trash).await.is_empty());
+
+    let actor = h.start();
+    h.status(SyncStatus::Synced).await;
+    // The pass knows both UIDLs as its own, so it downloads nothing; and the policy's day has
+    // come, so it deletes their copies although the store no longer has their rows.
+    assert!(
+        retrieved(&h.fake.log()).is_empty(),
+        "nothing of an emptied Trash downloads again"
+    );
+    h.eventually(|| {
+        let fake = h.fake.clone();
+        async move { fake.uidls().is_empty() }
+    })
+    .await;
+    // Their raw messages leave the disk at the same pass: an actor's job, not the app's.
+    h.eventually(|| {
+        let store = h.shared.blobs.clone();
+        let blobs = blobs.clone();
+        async move { blobs.iter().all(|blob| !store.contains(blob)) }
+    })
+    .await;
+    assert!(h.subjects(trash).await.is_empty());
+    assert!(h.subjects(local.inbox).await.is_empty());
+    stop(actor).await;
+}
+
 /// A message above IMAP's whole-message limit (10 MiB): a text part and an 8 MiB attachment.
 fn large_mail() -> Vec<u8> {
     let attachment: Vec<u8> = (0..8 * 1024 * 1024).map(|n| (n % 251) as u8).collect();

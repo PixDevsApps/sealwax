@@ -1401,6 +1401,39 @@ fn local_accounts_apply_at_once_and_undo_at_once() {
     fx.store.close().unwrap();
 }
 
+#[test]
+fn a_local_folder_empties_at_once_and_its_mail_stays_gone() {
+    let fx = local();
+    let ids = ingest_local(&fx);
+    let mut views = Views::open(&fx.store, &all_views(&fx));
+    queue(&fx.store, Triage::Delete, &ids[..3], NOW);
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.trash), (3, 3));
+    let queued = fx
+        .store
+        .empty_trash(fx.trash, NOW + WINDOW)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(queued.applied, 3);
+    assert!(queued.accounts.is_empty(), "nothing for an op runner");
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    assert!(listed_ids(&fx.store, ViewSpec::folder(fx.trash)).is_empty());
+    assert_eq!(fx.store.pending_ops(fx.account).recv_blocking().unwrap(), 0);
+    clean(&fx.store);
+    // Undone: there's no server to bring them back from.
+    let undone = fx
+        .store
+        .undo(queued.batch.unwrap())
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(undone.lost, vec![(Lost::Deleted, 3)]);
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    clean(&fx.store);
+    fx.store.close().unwrap();
+}
+
 pub(super) fn ingest_local(fx: &Fx) -> Vec<MessageId> {
     fx.store
         .ingest(
@@ -1489,15 +1522,15 @@ fn junk_and_not_junk_carry_their_keywords() {
 
 /// A first sync that kept UIDs 801–1000 (every third unread) and left 800 below the floor with
 /// 300 of them unread.
-fn windowed(fx: &Fx) {
+fn windowed(fx: &Fx, folder: FolderId) {
     let store = &fx.store;
     store
-        .reset_folder(fx.inbox, UIDVALIDITY)
+        .reset_folder(folder, UIDVALIDITY)
         .recv_blocking()
         .unwrap();
     store
         .first_sync_step(
-            fx.inbox,
+            folder,
             FirstSyncStep::Start {
                 uidvalidity: UIDVALIDITY,
                 top: 1_001,
@@ -1515,23 +1548,23 @@ fn windowed(fx: &Fx) {
                     } else {
                         Flags::SEEN
                     };
-                    message(fx.inbox, uid, flags)
+                    message(folder, uid, flags)
                 })
                 .collect(),
         )
         .recv_blocking()
         .unwrap();
     store
-        .first_sync_step(fx.inbox, FirstSyncStep::Floor(801))
+        .first_sync_step(folder, FirstSyncStep::Floor(801))
         .recv_blocking()
         .unwrap();
     store
-        .first_sync_step(fx.inbox, FirstSyncStep::Finish { below: 800 })
+        .first_sync_step(folder, FirstSyncStep::Finish { below: 800 })
         .recv_blocking()
         .unwrap();
     store
         .count_below(
-            fx.inbox,
+            folder,
             ServerStatus {
                 uidvalidity: UIDVALIDITY,
                 uidnext: 1_001,
@@ -1549,7 +1582,7 @@ fn windowed(fx: &Fx) {
 #[test]
 fn marking_a_folder_read_counts_below_the_floor_at_once() {
     let fx = server();
-    windowed(&fx);
+    windowed(&fx, fx.inbox);
     assert_eq!(counts(&fx.store, fx.inbox), (1_000, 367));
     let mut views = Views::open(&fx.store, &all_views(&fx));
     let queued = fx
@@ -1625,7 +1658,7 @@ fn marking_a_folder_read_counts_below_the_floor_at_once() {
 #[test]
 fn a_folder_read_refused_or_undone_in_time_shows_the_unread_below_again() {
     let fx = server();
-    windowed(&fx);
+    windowed(&fx, fx.inbox);
     let queued = fx
         .store
         .mark_folder_read(fx.inbox, NOW + WINDOW)
@@ -1664,9 +1697,267 @@ fn a_folder_read_refused_or_undone_in_time_shows_the_unread_below_again() {
 }
 
 #[test]
+fn emptying_a_windowed_folder_deletes_the_mail_below_its_floor_too() {
+    let fx = server();
+    windowed(&fx, fx.trash);
+    assert_eq!(counts(&fx.store, fx.trash), (1_000, 367));
+    let mut views = Views::open(&fx.store, &all_views(&fx));
+    let queued = fx.store.empty_trash(fx.trash, NOW).recv_blocking().unwrap();
+    assert_eq!(queued.applied, 200 + 800);
+    let events = views.settle(&fx.store);
+    assert_eq!(events.len(), 1);
+    assert_eq!(
+        events[0].folders,
+        vec![FolderCounts {
+            folder: fx.trash,
+            total: 0,
+            unread: 0
+        }]
+    );
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    assert!(listed_ids(&fx.store, ViewSpec::folder(fx.trash)).is_empty());
+    // The server still holds it all: a new STATUS brings nothing back while the ops wait.
+    fx.store
+        .count_below(
+            fx.trash,
+            ServerStatus {
+                uidvalidity: UIDVALIDITY,
+                uidnext: 1_001,
+                highestmodseq: Some(51),
+                counts: ServerCounts {
+                    total: 1_000,
+                    unread: 367,
+                },
+            },
+        )
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    // Two groups: the folder's own messages, and the server's mail below its floor.
+    let groups = due(&fx.store, fx.account, NOW).groups;
+    assert_eq!(groups.len(), 2);
+    let rows = groups
+        .iter()
+        .find(|g| g.action == OpAction::Expunge)
+        .unwrap();
+    assert_eq!(rows.messages.len(), 200);
+    let below = groups
+        .iter()
+        .find(|g| matches!(g.action, OpAction::ExpungeBelow { .. }))
+        .unwrap();
+    assert_eq!(below.action, OpAction::ExpungeBelow { floor: 801 });
+    assert!(below.messages.is_empty());
+    let mut next_uid = 2_000;
+    run_all(&fx, NOW, &mut next_uid);
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    assert!(held_ids(&fx.store, fx.trash).is_empty());
+    let state = fx
+        .store
+        .folder_sync(fx.trash)
+        .recv_blocking()
+        .unwrap()
+        .unwrap();
+    assert_eq!(state.below, 0, "the server holds nothing below");
+    assert_eq!(fx.store.pending_ops(fx.account).recv_blocking().unwrap(), 0);
+    // The next pass's STATUS finds an empty folder: empty means empty.
+    fx.store
+        .count_below(
+            fx.trash,
+            ServerStatus {
+                uidvalidity: UIDVALIDITY,
+                uidnext: 1_001,
+                highestmodseq: Some(51),
+                counts: ServerCounts {
+                    total: 0,
+                    unread: 0,
+                },
+            },
+        )
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    clean(&fx.store);
+
+    // Undone after it ran: nothing comes back, and what was below the floor is gone for good.
+    let undone = fx
+        .store
+        .undo(queued.batch.unwrap())
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(
+        undone.lost,
+        vec![(Lost::Deleted, 200), (Lost::ExpungeBelow, 800)]
+    );
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    clean(&fx.store);
+    fx.store.close().unwrap();
+}
+
+#[test]
+fn an_emptied_folder_undone_or_refused_in_time_shows_its_mail_again() {
+    let fx = server();
+    windowed(&fx, fx.trash);
+    let queued = fx
+        .store
+        .empty_trash(fx.trash, NOW + WINDOW)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(queued.applied, 200 + 800);
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    let undone = fx
+        .store
+        .undo(queued.batch.unwrap())
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(undone.restored, 200 + 800);
+    assert!(undone.lost.is_empty());
+    assert_eq!(counts(&fx.store, fx.trash), (1_000, 367));
+    assert_eq!(fx.store.pending_ops(fx.account).recv_blocking().unwrap(), 0);
+    clean(&fx.store);
+
+    // Refused for good: the server wouldn't delete them, so the folder shows them again.
+    fx.store.empty_trash(fx.trash, NOW).recv_blocking().unwrap();
+    let groups = due(&fx.store, fx.account, NOW).groups;
+    let ops: Vec<OpId> = groups.iter().flat_map(|g| g.ops.clone()).collect();
+    let refused = fx
+        .store
+        .ops_failed(ops, Failure::Permanent)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(
+        refused.refused,
+        vec![
+            OpsRefusal {
+                account: fx.account,
+                change: RefusedChange::Expunge,
+                messages: 200
+            },
+            OpsRefusal {
+                account: fx.account,
+                change: RefusedChange::EmptyTrash,
+                messages: 800
+            },
+        ]
+    );
+    assert_eq!(counts(&fx.store, fx.trash), (1_000, 367));
+    clean(&fx.store);
+    fx.store.close().unwrap();
+}
+
+#[test]
+fn mail_loaded_below_the_floor_while_a_folder_empties_goes_with_it() {
+    let fx = server();
+    windowed(&fx, fx.trash);
+    fx.store
+        .empty_trash(fx.trash, NOW + WINDOW)
+        .recv_blocking()
+        .unwrap();
+    let mut views = Views::open(&fx.store, &all_views(&fx));
+    // UIDs 701–800 arrive from below the floor while the empty waits: the server deletes
+    // everything up to its floor, so these rows leave with it.
+    fx.store
+        .sync_changes(
+            fx.trash,
+            FolderChanges {
+                new: (701..=800)
+                    .map(|uid| message(fx.trash, uid, Flags::SEEN))
+                    .collect(),
+                floor: Some(701),
+                below: Some(700),
+                ..FolderChanges::default()
+            },
+        )
+        .recv_blocking()
+        .unwrap();
+    views.settle(&fx.store);
+    assert_eq!(held_ids(&fx.store, fx.trash).len(), 300);
+    assert_eq!(counts(&fx.store, fx.trash), (100, 0));
+    clean(&fx.store);
+    // Both groups run due at once, each recorded as the runner would: the folder-wide op first,
+    // which takes the 100 rows loaded from below the floor with it, then the folder's own.
+    for group in due(&fx.store, fx.account, NOW + WINDOW).groups {
+        fx.store
+            .start_ops(group.ops.clone(), None)
+            .recv_blocking()
+            .unwrap();
+        fx.store
+            .ops_done(OpsDone {
+                ops: group.ops.clone(),
+                ..OpsDone::default()
+            })
+            .recv_blocking()
+            .unwrap();
+        views.settle(&fx.store);
+    }
+    assert!(
+        held_ids(&fx.store, fx.trash).is_empty(),
+        "gone from the store with the server"
+    );
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    assert_eq!(fx.store.pending_ops(fx.account).recv_blocking().unwrap(), 0);
+    clean(&fx.store);
+    fx.store.close().unwrap();
+}
+
+/// A message deleted from the Inbox is on its way to the Trash, and the Trash is emptied before
+/// that move has run. Emptying has to mean empty: the message is deleted for good where it is,
+/// and never turns up in the Trash afterwards.
+#[test]
+fn a_message_on_its_way_to_the_trash_emptied_before_the_move_never_lands_in_it() {
+    let fx = server();
+    let mut views = Views::open(&fx.store, &all_views(&fx));
+    let ids = arrive(
+        &fx.store,
+        fx.inbox,
+        (1..=2)
+            .map(|uid| message(fx.inbox, uid, Flags::NONE))
+            .collect(),
+    );
+    views.settle(&fx.store);
+    // Deleted from the Inbox: a move into the Trash, waiting out its own undo window.
+    queue(&fx.store, Triage::Delete, &ids[..1], NOW);
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.inbox), (1, 1));
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0), "the move hasn't run");
+    // The Trash is emptied while that move waits.
+    let emptied = fx
+        .store
+        .empty_trash(fx.trash, NOW + WINDOW)
+        .recv_blocking()
+        .unwrap();
+    assert!(
+        emptied.batch.is_some(),
+        "the message on its way is emptied too"
+    );
+    // Both ops run, each at its own window: the message must not land in the Trash.
+    run_all(&fx, NOW + 2 * WINDOW, &mut 100);
+    views.settle(&fx.store);
+    assert!(
+        held_ids(&fx.store, fx.trash).is_empty(),
+        "it never lands in the Trash"
+    );
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    assert!(
+        !held_ids(&fx.store, fx.inbox).contains_key(&1),
+        "gone from the Inbox for good"
+    );
+    assert_eq!(
+        held_ids(&fx.store, fx.inbox).len(),
+        1,
+        "the other one stays"
+    );
+    assert_eq!(counts(&fx.store, fx.inbox), (1, 1));
+    assert_eq!(fx.store.pending_ops(fx.account).recv_blocking().unwrap(), 0);
+    clean(&fx.store);
+    fx.store.close().unwrap();
+}
+
+#[test]
 fn older_mail_loaded_under_a_pending_folder_read_shows_read() {
     let fx = server();
-    windowed(&fx);
+    windowed(&fx, fx.inbox);
     fx.store
         .mark_folder_read(fx.inbox, NOW + WINDOW)
         .recv_blocking()
@@ -1717,7 +2008,7 @@ fn older_mail_loaded_under_a_pending_folder_read_shows_read() {
 #[test]
 fn count_below_counts_rows_as_the_server_holds_them() {
     let fx = server();
-    windowed(&fx);
+    windowed(&fx, fx.inbox);
     let held = held_ids(&fx.store, fx.inbox);
     // An unread one archived (pending), an unread one marked read (pending), and one the
     // server flagged `\Deleted`.

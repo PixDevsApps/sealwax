@@ -1,0 +1,88 @@
+# Empty Trash, reached only from a `\Trash` folder row's menu (ADR-015's folder-wide op): the
+# item is first in that menu and absent from every other (folders-tree covers the menu itself).
+# One account's folder, never several: emptying Work's Trash leaves Personal's counts alone. On a
+# local account the rows go at once and Undo says they can't be brought back; on a server account
+# the ops wait out the undo window, so Undo puts every message back with its counts, and what the
+# server refused for good is reported as still there. Every message is fictional.
+# Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/trash-empty.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-mark-read-on-open false
+mail-account Personal
+mail-add Personal:trash 10m "Gamelt utkast" "from=Ingrid Solberg"
+mail-add Personal:trash 20m "Videresendt tips" "from=Marius Dahl"
+mail-add Personal:trash 30m "Feilsendt kvittering" "from=Leah Kim"
+triage-account Work work
+mail-add Work:trash 40m "Gammel faktura" "from=Marius Dahl"
+mail-add Work:trash 50m "Utkast til møte" "from=Ingrid Solberg"
+mail-add Work:trash 60m "Kvittering 2019" "from=Leah Kim"
+mail-add Work:trash 70m "Nyhetsbrev 2019" "from=Leah Kim"
+
+# A server account's Trash: four messages, none of them read.
+folder trash Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+assert-sidebar-count Work:trash 4
+assert-list-count 4
+
+# The folder row's menu: Empty Trash, and it is that menu's first item.
+sidebar-menu Work:trash
+assert-shown folder-menu-empty-trash true
+assert-sidebar-menu enabled
+sidebar-menu-click folder-menu-empty-trash
+assert-toast "Emptied Work's Trash — 4 messages deleted for good"
+assert-sidebar-count Work:trash 0
+assert-list-count 0
+assert-undoable true
+engine-expect ops-queued
+
+# Undo inside the window: the ops never reached the server, and the folder is as it was.
+toast-undo
+assert-toast Undone
+assert-sidebar-count Work:trash 4
+assert-list-count 4
+assert-undoable false
+engine-expect none
+
+# The other account's Trash is untouched: one account's folder, never several.
+assert-sidebar-count Personal:trash 3
+
+# A change the server refused for good: what is still there, further back than the window.
+engine-reply ops-refused work@example.test empty-trash 400
+assert-toast "Work: the server didn't delete 400 messages further back in the Trash; they're still there"
+
+# A local account: its Trash empties at once, no op runner is woken, and Undo can't bring the
+# messages back from a server that was never asked.
+folder trash Personal
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+assert-sidebar-count Personal:trash 3
+assert-list-count 3
+focus list
+sidebar-menu Personal:trash
+assert-shown folder-menu-empty-trash true
+sidebar-menu-click folder-menu-empty-trash
+assert-toast "Emptied Personal's Trash — 3 messages deleted for good"
+assert-sidebar-count Personal:trash 0
+assert-list-count 0
+assert-undoable true
+engine-expect none
+toast-undo
+assert-toast "3 messages were deleted for good and can't be brought back"
+assert-sidebar-count Personal:trash 0
+assert-list-count 0
+assert-undoable false
+engine-expect none
+
+# Already empty: the toast says so, and queues nothing.
+sidebar-menu Personal:trash
+sidebar-menu-click folder-menu-empty-trash
+assert-toast "Personal's Trash is already empty"
+assert-undoable false
+assert-sidebar-count Personal:trash 0
+engine-expect none
+assert-labelled

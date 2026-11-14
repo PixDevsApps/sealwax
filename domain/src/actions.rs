@@ -235,6 +235,7 @@ pub enum ActionId {
     MarkRead,
     MarkUnread,
     MarkFolderRead,
+    EmptyTrash,
     NewFolder,
     RenameFolder,
     DeleteFolder,
@@ -309,7 +310,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 102] = [
+    pub const ALL: [Self; 103] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -341,6 +342,7 @@ impl ActionId {
         Self::MarkRead,
         Self::MarkUnread,
         Self::MarkFolderRead,
+        Self::EmptyTrash,
         Self::NewFolder,
         Self::RenameFolder,
         Self::DeleteFolder,
@@ -547,6 +549,15 @@ impl ActionId {
                 Scope::Window,
                 &[],
             ),
+            // Empties the account's Trash: deletes for good every message of a `\Trash` folder,
+            // the server's older messages with them. The sidebar's folder menu reaches it and
+            // only there, so it is never offered for a folder that isn't a Trash; no default key
+            // until the user picks one (ADR-017).
+            Self::EmptyTrash => ActionSpec {
+                palette: false,
+                menu: None,
+                ..command("empty-trash", "Empty Trash", Messages, Scope::Window, &[])
+            },
             // Folder management (ADR-020, M9): on the folder right-clicked in the sidebar, else on
             // the folder shown; New Folder from an account's heading goes at the account's top.
             // No default keys until the user picks them (ADR-017).
@@ -1127,11 +1138,23 @@ mod tests {
         assert!(!Scope::Composer.allows_one_key() && !Scope::Window.allows_one_key());
     }
 
+    /// Commands the sidebar's folder row menu reaches, and only there. An item that appears on
+    /// one kind of folder alone (Empty Trash, on a `\Trash`) has no palette entry and no main
+    /// menu item: outside that row it would have nothing to act on.
+    const FOLDER_MENU: [ActionId; 1] = [ActionId::EmptyTrash];
+
     #[test]
     fn every_action_is_reachable() {
         for id in ActionId::ALL {
             let spec = id.spec();
-            assert!(spec.palette || spec.menu.is_some(), "{id:?} is unreachable");
+            let folder_menu = FOLDER_MENU.contains(&id);
+            assert!(
+                spec.palette || spec.menu.is_some() || folder_menu,
+                "{id:?} is unreachable"
+            );
+            if folder_menu {
+                assert!(!spec.palette && spec.menu.is_none(), "{id:?}");
+            }
         }
         let menu: Vec<ActionId> = ActionId::ALL
             .into_iter()
@@ -1283,6 +1306,11 @@ mod tests {
         assert!(keys(ActionId::AddAccount).is_empty());
         assert!(keys(ActionId::EditAccount).is_empty());
         assert!(keys(ActionId::MarkFolderRead).is_empty());
+        // The sidebar's folder menu alone reaches it (ADR-017: keys wait for the user).
+        assert!(keys(ActionId::EmptyTrash).is_empty());
+        assert!(!ActionId::EmptyTrash.spec().palette);
+        assert!(ActionId::EmptyTrash.spec().menu.is_none());
+        assert_eq!(ActionId::EmptyTrash.category(), Category::Messages);
         for id in [
             ActionId::NewFolder,
             ActionId::RenameFolder,

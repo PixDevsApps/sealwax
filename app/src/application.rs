@@ -50,7 +50,7 @@ use sealwax_domain::layout::Layout;
 #[cfg(feature = "test-hooks")]
 use sealwax_domain::mailto::Mailto;
 use sealwax_domain::mailto;
-use sealwax_domain::model::{AccountId, FolderId, FolderRole, MessageId};
+use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole, MessageId};
 use sealwax_domain::senders::GroupBy;
 use sealwax_domain::triage::Triage;
 use sealwax_engine::api::{Command, Event};
@@ -1477,6 +1477,19 @@ impl AppState {
                 state.mark_read(list.scope());
             }
         });
+        // Empty Trash follows the folder the list shows, as Mark Folder as Read does. It ships
+        // with no key (ADR-017); a key the user binds fires only where the list shows a `\Trash`,
+        // since `refresh_commands` disables the action everywhere else and a disabled GAction
+        // takes neither an accelerator nor a scoped key. The folder row's menu still reaches it
+        // directly, wherever the list is.
+        let weak = Rc::downgrade(self);
+        actions.connect(ActionId::EmptyTrash, move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(folder) = state.shown_trash()
+            {
+                state.empty_folder(folder);
+            }
+        });
         let weak = Rc::downgrade(self);
         actions.connect(ActionId::Select, move || {
             if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
@@ -1531,6 +1544,19 @@ impl AppState {
                 if let Some(state) = activate.upgrade() {
                     let scope = state.mailbox.scope_for_key(key);
                     state.mark_read(scope);
+                }
+            },
+        );
+        let (applies, activate) = (Rc::downgrade(self), Rc::downgrade(self));
+        window.sidebar().connect_empty_trash(
+            move |key| {
+                applies
+                    .upgrade()
+                    .is_some_and(|state| state.trash_folder(key).is_some())
+            },
+            move |key| {
+                if let Some(state) = activate.upgrade() {
+                    state.empty_trash(key);
                 }
             },
         );
@@ -1809,6 +1835,60 @@ impl AppState {
         }
     }
 
+    /// The `\Trash` folder of the sidebar row `key`, `None` for every other row — All Inboxes,
+    /// an account's heading, and any folder that isn't one. Each account's own Trash has its own
+    /// row and its own id, so this is always one account's folder, never several.
+    fn trash_folder(&self, key: &str) -> Option<Folder> {
+        let ViewScope::Folder(id) = self.mailbox.scope_for_key(key)? else {
+            return None;
+        };
+        self.mailbox
+            .folder(id)
+            .filter(|folder| folder.role == FolderRole::Trash)
+    }
+
+    /// The `\Trash` the list shows, `None` for anything else — All Inboxes, search results (the
+    /// scope stays the folder while a search in it shows), and any folder that isn't one. The
+    /// list's scope names one folder, so this is always one account's.
+    fn shown_trash(&self) -> Option<Folder> {
+        let list = self.list()?;
+        let ViewScope::Folder(id) = list.scope()? else {
+            return None;
+        };
+        if !list.query().is_empty() {
+            return None;
+        }
+        self.mailbox
+            .folder(id)
+            .filter(|folder| folder.role == FolderRole::Trash)
+    }
+
+    /// Empty Trash: deletes for good every message of the account's `\Trash`, including the mail
+    /// of it below its sync window the store never downloaded, so the folder stays empty when it
+    /// is opened again — and one account's folder only, since every account has a Trash of its own.
+    fn empty_trash(&self, key: &str) {
+        if let Some(folder) = self.trash_folder(key) {
+            self.empty_folder(folder);
+        }
+    }
+
+    /// Empties `folder`, the `\Trash` the user pointed at: its row's menu, or the one the list
+    /// shows (a `keys.toml` key). Names the account and queues the op.
+    fn empty_folder(&self, folder: Folder) {
+        let Some(triage) = self.triage() else {
+            return;
+        };
+        let account = self
+            .mailbox
+            .accounts()
+            .into_iter()
+            .find(|account| account.id == folder.account)
+            .map(|account| account.name)
+            .unwrap_or_else(|| "the account".to_owned());
+        self.mark_started();
+        triage.empty_trash(folder.id, account);
+    }
+
     /// Commands' titles where they differ from the registry's, for the palette.
     fn command_titles(&self) -> Vec<(ActionId, String)> {
         let Some(list) = self.list() else {
@@ -1870,6 +1950,9 @@ impl AppState {
             ActionId::MarkFolderRead,
             list.query().is_empty() && self.unread_in(list.scope()) > 0,
         );
+        // Empty Trash applies only to a `\Trash` the list shows: a user-bound key is disabled
+        // everywhere else, so it can't fire, and the batch page and toolbar say why (ADR-015).
+        actions.set_applies(ActionId::EmptyTrash, self.shown_trash().is_some());
         let undo = self.triage().is_some_and(|triage| triage.can_undo())
             || outbox::can_undo()
             || crate::rules::can_undo();

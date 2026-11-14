@@ -9,7 +9,10 @@ use super::{
 };
 use crate::store::api::{ChangeEvent, StoreVersion};
 use crate::store::ops_api::{OpId, OpsRefusal, RefusedChange};
-use crate::store::overlay::{self, BATCH_FOLDER_READ, Change, Folded, HIDDEN, READ_BELOW};
+use crate::store::overlay::{
+    self, BATCH_FOLDER_READ, BELOW_SQL, Change, EXPUNGE_BELOW, Folded, HIDDEN, NOT_BELOW_SQL,
+    READ_BELOW,
+};
 use crate::store::{StoreError, compose};
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sealwax_domain::model::{AccountId, BlobKey, FolderId, MessageId, ThreadId};
@@ -125,10 +128,10 @@ pub(crate) fn read_below(
     uidvalidity: u32,
     uid: u32,
 ) -> rusqlite::Result<bool> {
-    tx.prepare_cached(
+    tx.prepare_cached(&format!(
         "SELECT EXISTS(SELECT 1 FROM ops WHERE folder_id = ?1 AND done = 0 AND message IS NULL \
-           AND kind = 3 AND uidvalidity = ?2 AND uid > ?3)",
-    )?
+           AND kind = {READ_BELOW} AND uidvalidity = ?2 AND uid > ?3)"
+    ))?
     .query_row(params![folder.0, uidvalidity, uid], |row| row.get(0))
 }
 
@@ -181,10 +184,10 @@ pub(crate) fn attach_waiting(
         return Ok(false);
     };
     let old: Option<(u32, u32)> = tx
-        .prepare_cached(
+        .prepare_cached(&format!(
             "SELECT uidvalidity, uid FROM ops WHERE folder_id = ?1 AND done = 0 \
-               AND message IS NULL AND kind <> 3 AND message_id = ?2 ORDER BY id LIMIT 1",
-        )?
+               AND message IS NULL AND {NOT_BELOW_SQL} AND message_id = ?2 ORDER BY id LIMIT 1"
+        ))?
         .query_row(params![folder.0, message_id], |row| {
             Ok((row.get(0)?, row.get(1)?))
         })
@@ -192,11 +195,11 @@ pub(crate) fn attach_waiting(
     let Some((old_uidvalidity, old_uid)) = old else {
         return Ok(false);
     };
-    tx.prepare_cached(
+    tx.prepare_cached(&format!(
         "UPDATE ops SET message = ?3, uid = ?4, uidvalidity = ?5 WHERE folder_id = ?1 \
-           AND done = 0 AND message IS NULL AND kind <> 3 AND message_id = ?2 \
-           AND uidvalidity = ?6 AND uid = ?7",
-    )?
+           AND done = 0 AND message IS NULL AND {NOT_BELOW_SQL} AND message_id = ?2 \
+           AND uidvalidity = ?6 AND uid = ?7"
+    ))?
     .execute(params![
         folder.0,
         message_id,
@@ -366,6 +369,7 @@ pub(crate) fn change_code(change: RefusedChange) -> i64 {
         RefusedChange::Expunge => 2,
         RefusedChange::FolderRead => 3,
         RefusedChange::Copy => 4,
+        RefusedChange::EmptyTrash => 5,
     }
 }
 
@@ -375,6 +379,7 @@ pub(crate) fn change_from_code(code: i64) -> RefusedChange {
         2 => RefusedChange::Expunge,
         3 => RefusedChange::FolderRead,
         4 => RefusedChange::Copy,
+        5 => RefusedChange::EmptyTrash,
         _ => RefusedChange::Flags,
     }
 }
@@ -621,12 +626,12 @@ pub(crate) fn waiting(
     tx: &Connection,
     folder: FolderId,
 ) -> rusqlite::Result<Vec<(AccountId, Vec<Pending>)>> {
-    let mut select = tx.prepare_cached(
+    let mut select = tx.prepare_cached(&format!(
         "SELECT account_id, uidvalidity, uid, id, kind, target, add_flags, remove_flags, batch, \
            attempts, not_before FROM ops \
-         WHERE folder_id = ?1 AND done = 0 AND message IS NULL AND kind <> 3 \
-         ORDER BY uidvalidity, uid, id",
-    )?;
+         WHERE folder_id = ?1 AND done = 0 AND message IS NULL AND {NOT_BELOW_SQL} \
+         ORDER BY uidvalidity, uid, id"
+    ))?;
     let rows = select.query_map([folder.0], |row| {
         Ok((
             AccountId(row.get(0)?),
@@ -662,17 +667,31 @@ pub(crate) fn waiting(
         .collect())
 }
 
-/// Pending folder-read ops of `folder`: their ids, accounts and the unread they covered.
+/// Pending folder-wide ops of `folder`: their ids, accounts, the server's mail they covered and
+/// which kind (`READ_BELOW` or `EXPUNGE_BELOW`).
 pub(crate) fn reads_below(
     tx: &Connection,
     folder: FolderId,
-) -> rusqlite::Result<Vec<(OpId, AccountId, u32)>> {
-    tx.prepare_cached(
-        "SELECT id, account_id, below FROM ops \
-         WHERE folder_id = ?1 AND done = 0 AND message IS NULL AND kind = ?2",
-    )?
-    .query_map(params![folder.0, READ_BELOW], |row| {
-        Ok((OpId(row.get(0)?), AccountId(row.get(1)?), row.get(2)?))
+) -> rusqlite::Result<Vec<(OpId, AccountId, u32, i64)>> {
+    tx.prepare_cached(&format!(
+        "SELECT id, account_id, below, kind FROM ops \
+         WHERE folder_id = ?1 AND done = 0 AND message IS NULL AND {BELOW_SQL}"
+    ))?
+    .query_map([folder.0], |row| {
+        Ok((
+            OpId(row.get(0)?),
+            AccountId(row.get(1)?),
+            row.get(2)?,
+            row.get(3)?,
+        ))
     })?
     .collect()
+}
+
+/// The change a folder-wide op of `kind` was making, for the refusal it leaves behind.
+pub(crate) fn below_change(kind: i64) -> RefusedChange {
+    match kind {
+        EXPUNGE_BELOW => RefusedChange::EmptyTrash,
+        _ => RefusedChange::FolderRead,
+    }
 }

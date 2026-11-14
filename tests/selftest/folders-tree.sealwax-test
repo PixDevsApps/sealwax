@@ -102,6 +102,7 @@ assert-sidebar-menu enabled folder-menu-new
 assert-sidebar-menu disabled folder-menu-rename
 assert-sidebar-menu disabled folder-menu-delete
 assert-tooltip folder-menu-rename "Special folders keep their names and places"
+assert-shown folder-menu-empty-trash false
 key Escape
 sidebar-menu "Work:Arkiv 2019"
 assert-sidebar-menu disabled folder-menu-new
@@ -111,6 +112,12 @@ key Escape
 sidebar-menu all-inboxes
 assert-sidebar-menu disabled folder-menu-mark-read
 assert-shown folder-menu-new false
+key Escape
+
+# Empty Trash: only the account's `\Trash` row has it, and it is that menu's first item.
+sidebar-menu Work:Trash
+assert-shown folder-menu-empty-trash true
+assert-sidebar-menu enabled
 key Escape
 
 # The account heading's menu: Edit Account and New Folder.

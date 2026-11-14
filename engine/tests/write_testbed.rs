@@ -1,7 +1,8 @@
 //! M4's testbed suites for the op queue's changes on the server (ML-051, ML-052): what each
 //! server offers (MOVE, UIDPLUS, COPYUID, PERMANENTFLAGS) and how it refuses; flags and keywords,
-//! moves (UID MOVE, and the COPY path, forced where MOVE is offered), deleting for good and a
-//! folder marked read, each checked against the server afterwards; S1's lost replies of MOVE,
+//! moves (UID MOVE, and the COPY path, forced where MOVE is offered), deleting for good, a folder
+//! emptied below its sync floor and a folder marked read, each checked against the server
+//! afterwards; S1's lost replies of MOVE,
 //! COPY, the `\Deleted` STORE and UID EXPUNGE through the fault proxy, retried, over several
 //! seeds; a rule's copy (ADR-020), and its retry making no second copy; and the timings of flags and moves on 1, 50 and 500 messages. They need the Docker
 //! testbed running and seeded, and use only the users `ops` (direct) and `opsfault` (through
@@ -670,6 +671,94 @@ fn deleting_for_good_on_every_server() {
             reset(&mut test).await;
             test.logout().await;
         }
+    });
+}
+
+/// Empties a folder below a sync floor on the server, both arms: the searched-set `UID EXPUNGE`
+/// where the server has UIDPLUS, and the one plain `EXPUNGE` where it doesn't — which takes every
+/// `\Deleted` message of the folder, an older delete's among them, the exception this op makes.
+/// Mail above the floor has to survive the empty on both arms.
+#[test]
+#[ignore = "needs the testbed: tools/testbed/up.sh && tools/testbed/seed.sh"]
+fn emptying_a_folder_below_its_floor_on_every_server() {
+    runtime().block_on(async {
+        let mut uidplus_arm = false;
+        let mut plain_arm = false;
+        for server in SERVERS {
+            let mut test = client(server, "ops").await;
+            reset(&mut test).await;
+            let mut rng = Rng(23);
+            // Six the store's window never downloaded, then four it holds — one of them already
+            // flagged `\Deleted` by an earlier delete.
+            fill(&mut test, TRASH, "below", 6, "", &mut rng).await;
+            fill(&mut test, TRASH, "above", 3, "\\Seen", &mut rng).await;
+            fill(&mut test, TRASH, "other", 1, "\\Deleted", &mut rng).await;
+            let rows = read(&mut test, TRASH).await;
+            assert_eq!(rows.len(), 10, "{}", server.name);
+            // The floor keeps the four newest: rows[6] is the first the window holds.
+            let floor = rows[6].uid;
+            let below: Vec<u32> = rows[..6].iter().map(|row| row.uid).collect();
+            let above: Vec<u32> = rows[6..9].iter().map(|row| row.uid).collect();
+            let mut conn = engine(server.tls, "ops", true).await;
+            let uidplus = conn.caps().has("UIDPLUS");
+            let trash = opened(&mut conn, TRASH).await;
+            write::delete_below(&mut conn, trash, floor).await.unwrap();
+            let after = read(&mut test, TRASH).await;
+            // Whatever the arm, the mail below the floor is gone for good.
+            for uid in &below {
+                assert!(
+                    !after.iter().any(|row| row.uid == *uid),
+                    "{}: below-floor UID {uid} kept",
+                    server.name
+                );
+            }
+            // The three `\Seen` messages above the floor stay either way.
+            for uid in &above {
+                assert!(
+                    after.iter().any(|row| row.uid == *uid),
+                    "{}: above-floor UID {uid} lost",
+                    server.name
+                );
+            }
+            let other = after.iter().find(|row| row.id.starts_with("ops.other."));
+            if uidplus {
+                uidplus_arm = true;
+                // `UID EXPUNGE` of the searched set alone: another client's `\Deleted` message
+                // above the floor stays, as `deleting_for_good` does.
+                assert_eq!(after.len(), 4, "{}", server.name);
+                assert!(
+                    other.is_some_and(Row::deleted),
+                    "{}: another \\Deleted message stays",
+                    server.name
+                );
+                println!(
+                    "{}: 6 below the floor deleted for good by UID EXPUNGE of the searched set; \
+                     the 4 above kept, another client's \\Deleted one flagged",
+                    server.name
+                );
+            } else {
+                plain_arm = true;
+                // One plain EXPUNGE: every `\Deleted` message of the folder goes, so the other
+                // client's `\Deleted` message above the floor goes with the below-floor mail.
+                assert_eq!(after.len(), 3, "{}", server.name);
+                assert!(
+                    other.is_none(),
+                    "{}: the one plain EXPUNGE takes it too",
+                    server.name
+                );
+                println!(
+                    "{}: 6 below the floor deleted for good by the one plain EXPUNGE, another \
+                     client's \\Deleted message above the floor with them; the 3 kept",
+                    server.name
+                );
+            }
+            conn.logout().await;
+            reset(&mut test).await;
+            test.logout().await;
+        }
+        // The two arms are both real here: a server with UIDPLUS and the IMAP4rev1-only one.
+        assert!(uidplus_arm, "no server took the UID EXPUNGE arm");
+        assert!(plain_arm, "no server took the plain EXPUNGE arm");
     });
 }
 

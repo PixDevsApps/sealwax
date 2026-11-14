@@ -17,7 +17,7 @@ use crate::store::overlay::{Change, HIDDEN};
 use crate::store::sync_api::{
     FlagUpdate, FolderChanges, FolderSynced, FoldersReplaced, ServerStatus, UnsubscribeHeaders,
 };
-use crate::store::{RefusedChange, StoreError, codec, views};
+use crate::store::{StoreError, codec, views};
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::model::{AccountId, BlobKey, Flags, FolderId, MessageId, ThreadId};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -664,9 +664,9 @@ fn refuse_gone(
         for (account, ops) in overlay::waiting(tx, *folder)? {
             refusals.refuse(tx, account, *folder, &ops)?;
         }
-        for (op, account, below) in overlay::reads_below(tx, *folder)? {
+        for (op, account, below, kind) in overlay::reads_below(tx, *folder)? {
             tx.execute("DELETE FROM ops WHERE id = ?1", [op.0])?;
-            refusals.add(account, RefusedChange::FolderRead, below);
+            refusals.add(account, overlay::below_change(kind), below);
         }
         let moving: Vec<MessageId> = tx
             .prepare_cached(

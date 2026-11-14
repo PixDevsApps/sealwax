@@ -5,19 +5,19 @@
 
 use super::Writer;
 use super::overlay::{
-    After, Pending, Refusals, Row, RowPlan, chain, change_from_code, defer_blob_deletions,
-    rehome_chain, row, row_at, shown, shown_at,
+    After, Pending, Refusals, Row, RowPlan, below_change, chain, change_from_code,
+    defer_blob_deletions, rehome_chain, row, row_at, shown, shown_at,
 };
 use crate::store::StoreError;
 use crate::store::api::StoreVersion;
 use crate::store::ops_api::{
     BatchId, DueOps, Failure, Lost, NotApplied, OpAction, OpGroup, OpId, OpMessage, OpsDone,
-    OpsFailed, OpsRefusal, QueueTriage, Queued, Recorded, RefusedChange, RuleChange, RuleChanges,
-    Undone,
+    OpsFailed, OpsRefusal, QueueTriage, Queued, Recorded, RuleChange, RuleChanges, Undone,
 };
 use crate::store::overlay::{
-    self, Action, BATCH_FOLDER_READ, BATCH_RULES, BATCH_TRIAGE, BATCH_UNDO, COPY, Change, EXPUNGE,
-    FLAGS, HIDDEN, MOVE, READ_BELOW,
+    self, Action, BATCH_EMPTY_TRASH, BATCH_FOLDER_READ, BATCH_RULES, BATCH_TRIAGE, BATCH_UNDO,
+    BELOW_SQL, COPY, Change, EXPUNGE, EXPUNGE_BELOW, FLAGS, HIDDEN, MOVE, NOT_BELOW_SQL,
+    READ_BELOW,
 };
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use sealwax_domain::model::{AccountId, Flags, FolderId, FolderRole, MessageId};
@@ -35,6 +35,11 @@ pub(crate) enum OpsJob {
         reply: Sender<Queued>,
     },
     FolderRead {
+        folder: FolderId,
+        not_before: i64,
+        reply: Sender<Queued>,
+    },
+    EmptyTrash {
         folder: FolderId,
         not_before: i64,
         reply: Sender<Queued>,
@@ -100,6 +105,13 @@ impl Writer {
                 reply,
             } => {
                 let _ = reply.try_send(self.folder_read(folder, not_before));
+            }
+            OpsJob::EmptyTrash {
+                folder,
+                not_before,
+                reply,
+            } => {
+                let _ = reply.try_send(self.empty_trash(folder, not_before));
             }
             OpsJob::Rules {
                 messages,
@@ -319,6 +331,109 @@ impl Writer {
         })
     }
 
+    /// An account's `\Trash`, emptied for good: an expunge op for every row of the folder, hidden
+    /// ones included (the mail the server kept when it has no UIDPLUS, and a pending move's), and
+    /// one op for the server's messages below a windowed folder's sync floor, which the store
+    /// never downloaded and which would otherwise come back at the folder's next pass. Nothing
+    /// goes to the server before `not_before`: the undo window.
+    fn empty_trash(&mut self, folder: FolderId, not_before: i64) -> Result<Queued, StoreError> {
+        let account = self.state.account(folder)?;
+        let tx = self
+            .conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let local = is_local(&tx, account)?;
+        let (uidvalidity, floor, below): (u32, u32, u32) = tx.query_row(
+            "SELECT coalesce(uidvalidity, 0), coalesce(sync_floor, 1), below_floor \
+             FROM folders WHERE id = ?1",
+            [folder.0],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        let ids: Vec<MessageId> = tx
+            .prepare_cached("SELECT id FROM messages WHERE folder_id = ?1")?
+            .query_map([folder.0], |row| row.get(0).map(MessageId))?
+            .collect::<rusqlite::Result<_>>()?;
+        // Mail another folder is moving here — a delete's move to the Trash, still waiting out
+        // its own undo window — isn't in the folder yet, and would land in it after the empty
+        // ran. Emptying means empty: it is emptied while it is still on its way, where its row
+        // is now, so nothing turns up in the folder afterwards.
+        let arriving: Vec<MessageId> = tx
+            .prepare_cached(
+                "SELECT DISTINCT message FROM ops WHERE account_id = ?1 AND done = 0 \
+                   AND message IS NOT NULL AND folder_id <> ?2",
+            )?
+            .query_map(params![account.0, folder.0], |row| {
+                row.get(0).map(MessageId)
+            })?
+            .collect::<rusqlite::Result<_>>()?;
+        let below = if local || floor <= 1 { 0 } else { below };
+        let batch = new_batch(&tx, BATCH_EMPTY_TRASH)?;
+        let mut touched = Touched::default();
+        let mut rows = 0usize;
+        for id in ids.into_iter().chain(arriving) {
+            let Some(found) = row(&tx, id)? else {
+                continue;
+            };
+            // A message its pending ops already take out of the folder needs no second op: one
+            // deleted for good, and one on its way to another folder, which the server removes
+            // from this one itself.
+            let chain = chain(&tx, id)?;
+            let folded = overlay::fold(found.folder, chain.iter().map(|op| op.change));
+            if folded.expunge || folded.at != folder {
+                continue;
+            }
+            rows += 1;
+            let op = NewOp {
+                change: Change::Expunge,
+                prior_folder: found.folder,
+                prior_flags: found.flags & !HIDDEN,
+                not_before,
+            };
+            touched.add(&tx, batch, found, op, local)?;
+        }
+        let mut folders = BTreeSet::new();
+        if below > 0 {
+            tx.prepare_cached(
+                "INSERT INTO ops(batch, account_id, kind, folder_id, uidvalidity, uid, \
+                   prior_folder, below, not_before) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?4, ?7, ?8)",
+            )?
+            .execute(params![
+                batch,
+                account.0,
+                EXPUNGE_BELOW,
+                folder.0,
+                uidvalidity,
+                floor,
+                below,
+                not_before
+            ])?;
+            touched.accounts.insert(account);
+            folders.insert(folder);
+        }
+        if rows == 0 && below == 0 {
+            prune(&tx)?;
+            tx.commit()?;
+            return Ok(Queued {
+                version: StoreVersion(self.state.version),
+                ..Queued::default()
+            });
+        }
+        let accounts = touched.accounts.iter().copied().collect();
+        let plans = touched.plans(&tx)?;
+        prune(&tx)?;
+        // A local or POP3 folder's rows go now, so their raw messages are for an actor to take
+        // off the disk: the app deletes no blobs. An IMAP folder's plans wait with the ops, and
+        // their blobs are the record's to hand back.
+        defer_blob_deletions(&tx, &plans)?;
+        let version = self.state.commit_rows(tx, &plans, folders)?.version;
+        Ok(Queued {
+            version,
+            batch: Some(BatchId(batch)),
+            applied: count(rows) + below,
+            not_applied: Vec::new(),
+            accounts,
+        })
+    }
+
     fn rules(&mut self, messages: &[RuleChanges], not_before: i64) -> Result<Queued, StoreError> {
         let tx = self
             .conn
@@ -450,13 +565,17 @@ impl Writer {
         let mut folders = BTreeSet::new();
         let mut inverse_batch = None;
         for op in ops {
-            if op.kind == READ_BELOW {
+            if op.kind == READ_BELOW || op.kind == EXPUNGE_BELOW {
                 if !op.done && op.attempts == 0 {
                     tx.execute("DELETE FROM ops WHERE id = ?1", [op.id.0])?;
                     folders.insert(op.folder);
                     restored += op.below;
                 } else {
-                    *lost.entry(Lost::ReadBelow).or_default() += op.below;
+                    let why = match op.kind {
+                        READ_BELOW => Lost::ReadBelow,
+                        _ => Lost::ExpungeBelow,
+                    };
+                    *lost.entry(why).or_default() += op.below;
                 }
                 continue;
             }
@@ -518,7 +637,7 @@ impl Writer {
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let chains = pending_chains(&tx, account)?;
-        type Key = (FolderId, Option<Action>, bool, Option<u32>);
+        type Key = (FolderId, Option<Action>, bool, Option<(i64, u32)>);
         let mut groups: BTreeMap<Key, OpGroup> = BTreeMap::new();
         let mut trivial = Vec::new();
         for (message, chain) in chains {
@@ -594,16 +713,22 @@ impl Writer {
                 ops,
             });
         }
-        for read in reads_due(&tx, account)? {
-            if read.not_before > now {
+        for below in below_due(&tx, account)? {
+            if below.not_before > now {
                 continue;
             }
-            let retry = read.attempts > 0;
-            let mut group = empty_group(account, read.folder, retry);
-            group.action = OpAction::ReadBelow { floor: read.floor };
-            group.ops.push(read.id);
-            group.attempts = read.attempts;
-            groups.insert((read.folder, None, retry, Some(read.floor)), group);
+            let retry = below.attempts > 0;
+            let mut group = empty_group(account, below.folder, retry);
+            group.action = match below.kind {
+                READ_BELOW => OpAction::ReadBelow { floor: below.floor },
+                _ => OpAction::ExpungeBelow { floor: below.floor },
+            };
+            group.ops.push(below.id);
+            group.attempts = below.attempts;
+            groups.insert(
+                (below.folder, None, retry, Some((below.kind, below.floor))),
+                group,
+            );
         }
         let mut groups: Vec<OpGroup> = groups.into_values().collect();
         for group in &mut groups {
@@ -627,10 +752,10 @@ impl Writer {
             group.messages.sort_by_key(|message| message.uid);
         }
         let next: Option<i64> = tx
-            .prepare_cached(
+            .prepare_cached(&format!(
                 "SELECT min(not_before) FROM ops WHERE account_id = ?1 AND done = 0 \
-                   AND not_before > ?2 AND (message IS NOT NULL OR kind = 3)",
-            )?
+                   AND not_before > ?2 AND (message IS NOT NULL OR {BELOW_SQL})"
+            ))?
             .query_row(params![account.0, now], |row| row.get(0))?;
         let refused = take_refusals(&tx, account)?;
         let mut plans = Vec::new();
@@ -680,7 +805,7 @@ impl Writer {
         let tx = self
             .conn
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let (by_message, reads) = given(&tx, &done.ops)?;
+        let (by_message, below_ops) = given(&tx, &done.ops)?;
         let mut plans = Vec::new();
         let mut folders = BTreeSet::new();
         let mut unplaced = BTreeSet::new();
@@ -781,35 +906,45 @@ impl Writer {
                 }
             }
         }
-        for read in reads {
-            let (folder, floor) = (read.folder, read.floor);
-            tx.execute("UPDATE ops SET done = 1 WHERE id = ?1", [read.id.0])?;
-            let changed = tx.execute(
-                "UPDATE folders SET below_unread = 0 WHERE id = ?1 AND uidvalidity = ?2",
-                params![folder.0, read.uidvalidity],
-            )?;
-            if changed > 0 {
-                folders.insert(folder);
-                // Rows loaded from below the floor since are read on the server now too.
-                let below: Vec<MessageId> = tx
-                    .prepare_cached("SELECT id FROM messages WHERE folder_id = ?1 AND uid < ?2")?
-                    .query_map(params![folder.0, floor], |row| row.get(0).map(MessageId))?
-                    .collect::<rusqlite::Result<_>>()?;
-                for id in below {
-                    if plans.iter().any(|plan: &RowPlan| plan.row.id == id) {
-                        continue;
-                    }
-                    if let Some(found) = row(&tx, id)? {
-                        let server = found.server | Flags::SEEN.bits();
-                        plans.push(RowPlan {
-                            after: After::Stay {
-                                flags: shown(&tx, &found, server)?,
-                                server,
-                            },
-                            row: found,
-                        });
-                    }
+        for below in below_ops {
+            let (folder, floor) = (below.folder, below.floor);
+            let read = below.kind == READ_BELOW;
+            tx.execute("UPDATE ops SET done = 1 WHERE id = ?1", [below.id.0])?;
+            // A folder emptied counts nothing below its floor: the server deleted it. One marked
+            // read keeps its mail there, only read.
+            let counts = if read {
+                "UPDATE folders SET below_unread = 0 WHERE id = ?1 AND uidvalidity = ?2"
+            } else {
+                "UPDATE folders SET below_floor = 0, below_unread = 0 \
+                 WHERE id = ?1 AND uidvalidity = ?2"
+            };
+            if tx.execute(counts, params![folder.0, below.uidvalidity])? == 0 {
+                continue;
+            }
+            folders.insert(folder);
+            // A row loaded from below the floor since follows the server: read where the folder
+            // was marked read, gone for good where it was emptied.
+            let older: Vec<MessageId> = tx
+                .prepare_cached("SELECT id FROM messages WHERE folder_id = ?1 AND uid < ?2")?
+                .query_map(params![folder.0, floor], |row| row.get(0).map(MessageId))?
+                .collect::<rusqlite::Result<_>>()?;
+            for id in older {
+                if plans.iter().any(|plan: &RowPlan| plan.row.id == id) {
+                    continue;
                 }
+                let Some(found) = row(&tx, id)? else {
+                    continue;
+                };
+                let after = if read {
+                    let server = found.server | Flags::SEEN.bits();
+                    After::Stay {
+                        flags: shown(&tx, &found, server)?,
+                        server,
+                    }
+                } else {
+                    After::Deleted
+                };
+                plans.push(RowPlan { row: found, after });
             }
         }
         refusals.record(&tx)?;
@@ -841,7 +976,7 @@ impl Writer {
                 refused: Vec::new(),
             });
         }
-        let (by_message, reads) = given(&tx, ops)?;
+        let (by_message, below_ops) = given(&tx, ops)?;
         let mut refusals = Refusals::default();
         let mut plans = Vec::new();
         let mut folders = BTreeSet::new();
@@ -862,10 +997,10 @@ impl Writer {
                 row: found,
             });
         }
-        for read in reads {
-            tx.execute("DELETE FROM ops WHERE id = ?1", [read.id.0])?;
-            refusals.add(read.account, RefusedChange::FolderRead, read.below);
-            folders.insert(read.folder);
+        for below in below_ops {
+            tx.execute("DELETE FROM ops WHERE id = ?1", [below.id.0])?;
+            refusals.add(below.account, below_change(below.kind), below.below);
+            folders.insert(below.folder);
         }
         let version = self.state.commit_rows(tx, &plans, folders)?.version;
         Ok(OpsFailed {
@@ -1192,57 +1327,63 @@ fn pending_chains(
     Ok(chains)
 }
 
-/// A pending read below a folder's floor (a folder marked read).
-struct ReadOp {
+/// A pending folder-wide op: the server's mail below a folder's sync floor, marked read or
+/// emptied.
+struct BelowOp {
     id: OpId,
     account: AccountId,
     folder: FolderId,
     uidvalidity: u32,
     floor: u32,
-    /// The server's unread below the floor when it was queued.
+    /// What the server held below the floor when it was queued: unread for a folder marked read,
+    /// everything for a folder emptied.
     below: u32,
+    /// `READ_BELOW` or `EXPUNGE_BELOW`.
+    kind: i64,
     attempts: u32,
     not_before: i64,
 }
 
-const READ_COLUMNS: &str =
-    "id, account_id, folder_id, uidvalidity, uid, below, attempts, not_before";
+const BELOW_COLUMNS: &str =
+    "id, account_id, folder_id, uidvalidity, uid, below, kind, attempts, not_before";
 
-fn read_op(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReadOp> {
-    Ok(ReadOp {
+fn below_op(row: &rusqlite::Row<'_>) -> rusqlite::Result<BelowOp> {
+    Ok(BelowOp {
         id: OpId(row.get(0)?),
         account: AccountId(row.get(1)?),
         folder: FolderId(row.get(2)?),
         uidvalidity: row.get(3)?,
         floor: row.get(4)?,
         below: row.get(5)?,
-        attempts: row.get(6)?,
-        not_before: row.get(7)?,
+        kind: row.get(6)?,
+        attempts: row.get(7)?,
+        not_before: row.get(8)?,
     })
 }
 
-/// The account's pending folder-read ops.
-fn reads_due(tx: &Connection, account: AccountId) -> rusqlite::Result<Vec<ReadOp>> {
+/// The account's pending folder-wide ops.
+fn below_due(tx: &Connection, account: AccountId) -> rusqlite::Result<Vec<BelowOp>> {
     tx.prepare_cached(&format!(
-        "SELECT {READ_COLUMNS} FROM ops WHERE account_id = ?1 AND done = 0 AND kind = 3 \
+        "SELECT {BELOW_COLUMNS} FROM ops WHERE account_id = ?1 AND done = 0 AND {BELOW_SQL} \
          ORDER BY id"
     ))?
-    .query_map([account.0], read_op)?
+    .query_map([account.0], below_op)?
     .collect()
 }
 
 /// Ops by the message they apply to.
 type ByMessage = BTreeMap<MessageId, BTreeSet<OpId>>;
 
-/// The pending ops among `ops`: per message, and the folder-read ops. Ops waiting for their
+/// The pending ops among `ops`: per message, and the folder-wide ones. Ops waiting for their
 /// message are left alone.
-fn given(tx: &Connection, ops: &[OpId]) -> rusqlite::Result<(ByMessage, Vec<ReadOp>)> {
+fn given(tx: &Connection, ops: &[OpId]) -> rusqlite::Result<(ByMessage, Vec<BelowOp>)> {
     let mut by_message = ByMessage::new();
-    let mut reads = Vec::new();
-    let mut message =
-        tx.prepare_cached("SELECT message FROM ops WHERE id = ?1 AND done = 0 AND kind <> 3")?;
+    let mut below = Vec::new();
+    let mut message = tx.prepare_cached(&format!(
+        "SELECT message FROM ops WHERE id = ?1 AND done = 0 AND {NOT_BELOW_SQL}"
+    ))?;
     let mut read = tx.prepare_cached(&format!(
-        "SELECT {READ_COLUMNS} FROM ops WHERE id = ?1 AND done = 0 AND kind = 3"
+        "SELECT {BELOW_COLUMNS} FROM ops WHERE id = ?1 AND done = 0 AND {BELOW_SQL}"
     ))?;
     let mut seen = BTreeSet::new();
     for op in ops {
@@ -1256,10 +1397,10 @@ fn given(tx: &Connection, ops: &[OpId]) -> rusqlite::Result<(ByMessage, Vec<Read
                 by_message.entry(MessageId(id)).or_default().insert(*op);
             }
             Some(None) => {}
-            None => reads.extend(read.query_row([op.0], read_op).optional()?),
+            None => below.extend(read.query_row([op.0], below_op).optional()?),
         }
     }
-    Ok((by_message, reads))
+    Ok((by_message, below))
 }
 
 fn mark_done(tx: &Connection, ops: &[Pending]) -> rusqlite::Result<()> {

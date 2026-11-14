@@ -231,11 +231,14 @@ A toast says how it went. Sealwax remembers whom you unsubscribed from, and the 
 | Star or Unstar | `s` | Stars the messages, or unstars them when all are starred |
 | Mark as Read, Mark as Unread | Shift+I, Shift+U | |
 | Mark Folder as Read | — | A right-click on a folder in the sidebar (or Menu, or Shift+F10), or the palette |
+| Empty Trash | — | A right-click on an account's Trash folder in the sidebar (or Menu, or Shift+F10); it is that folder's menu's first item, and it is on no other |
 | Undo | `z`, Ctrl+Z | Undoes the last action |
 
 The same commands are buttons in the reader's toolbar, and hovering a row shows archive, delete and star for that row. A button that doesn't apply says why in its tooltip ("already archived", "the account has no Junk folder").
 
 **Undo.** An action that moves messages or changes several shows a toast, such as "Archived 3 messages", with **Undo** for 7 seconds. `z` or Ctrl+Z undoes the last action while it still can be, also after the toast has gone. Deleting for good waits for those 7 seconds before it reaches the server, so it can be undone too.
+
+**Empty Trash.** An account's Trash folder has **Empty Trash** on its sidebar row's menu, first there and nowhere else: it deletes that folder's messages for good, here and on the server, including the mail older than what the list holds that Sealwax never downloaded. The folder is still empty when you open it again. The toast names the account, since every account has its own Trash; emptying one leaves the others alone. **Undo** stands for the usual 7 seconds; after that, the toast says what can't be brought back.
 
 **Several messages.** Ctrl+click adds a message, Shift+click selects a range, and Shift with `j`/`k` or Down/Up extends the selection from the keyboard. `x` or Space selects the message under the cursor and turns the list into a select mode with checkboxes, where `j`/`k` move without changing the selection. Every command applies to every selected message; the reader shows how many are selected, with buttons. Escape leaves the select mode. Move to… can't move messages between accounts.
 
@@ -406,6 +409,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Messages | Mark as Read | Shift+I | list and reader | `mark-read` |
 | Messages | Mark as Unread | Shift+U | list and reader | `mark-unread` |
 | Messages | Mark Folder as Read | — |  | `mark-folder-read` |
+| Messages | Empty Trash | — |  | `empty-trash` |
 | Messages | New Folder… | — |  | `new-folder` |
 | Messages | Rename Folder… | — |  | `rename-folder` |
 | Messages | Delete Folder… | — |  | `delete-folder` |
