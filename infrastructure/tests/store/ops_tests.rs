@@ -1901,6 +1901,59 @@ fn mail_loaded_below_the_floor_while_a_folder_empties_goes_with_it() {
     fx.store.close().unwrap();
 }
 
+/// A message deleted from the Inbox is on its way to the Trash, and the Trash is emptied before
+/// that move has run. Emptying has to mean empty: the message is deleted for good where it is,
+/// and never turns up in the Trash afterwards.
+#[test]
+fn a_message_on_its_way_to_the_trash_emptied_before_the_move_never_lands_in_it() {
+    let fx = server();
+    let mut views = Views::open(&fx.store, &all_views(&fx));
+    let ids = arrive(
+        &fx.store,
+        fx.inbox,
+        (1..=2)
+            .map(|uid| message(fx.inbox, uid, Flags::NONE))
+            .collect(),
+    );
+    views.settle(&fx.store);
+    // Deleted from the Inbox: a move into the Trash, waiting out its own undo window.
+    queue(&fx.store, Triage::Delete, &ids[..1], NOW);
+    views.settle(&fx.store);
+    assert_eq!(counts(&fx.store, fx.inbox), (1, 1));
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0), "the move hasn't run");
+    // The Trash is emptied while that move waits.
+    let emptied = fx
+        .store
+        .empty_trash(fx.trash, NOW + WINDOW)
+        .recv_blocking()
+        .unwrap();
+    assert!(
+        emptied.batch.is_some(),
+        "the message on its way is emptied too"
+    );
+    // Both ops run, each at its own window: the message must not land in the Trash.
+    run_all(&fx, NOW + 2 * WINDOW, &mut 100);
+    views.settle(&fx.store);
+    assert!(
+        held_ids(&fx.store, fx.trash).is_empty(),
+        "it never lands in the Trash"
+    );
+    assert_eq!(counts(&fx.store, fx.trash), (0, 0));
+    assert!(
+        !held_ids(&fx.store, fx.inbox).contains_key(&1),
+        "gone from the Inbox for good"
+    );
+    assert_eq!(
+        held_ids(&fx.store, fx.inbox).len(),
+        1,
+        "the other one stays"
+    );
+    assert_eq!(counts(&fx.store, fx.inbox), (1, 1));
+    assert_eq!(fx.store.pending_ops(fx.account).recv_blocking().unwrap(), 0);
+    clean(&fx.store);
+    fx.store.close().unwrap();
+}
+
 #[test]
 fn older_mail_loaded_under_a_pending_folder_read_shows_read() {
     let fx = server();

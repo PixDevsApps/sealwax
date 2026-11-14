@@ -352,11 +352,24 @@ impl Writer {
             .prepare_cached("SELECT id FROM messages WHERE folder_id = ?1")?
             .query_map([folder.0], |row| row.get(0).map(MessageId))?
             .collect::<rusqlite::Result<_>>()?;
+        // Mail another folder is moving here — a delete's move to the Trash, still waiting out
+        // its own undo window — isn't in the folder yet, and would land in it after the empty
+        // ran. Emptying means empty: it is emptied while it is still on its way, where its row
+        // is now, so nothing turns up in the folder afterwards.
+        let arriving: Vec<MessageId> = tx
+            .prepare_cached(
+                "SELECT DISTINCT message FROM ops WHERE account_id = ?1 AND done = 0 \
+                   AND message IS NOT NULL AND folder_id <> ?2",
+            )?
+            .query_map(params![account.0, folder.0], |row| {
+                row.get(0).map(MessageId)
+            })?
+            .collect::<rusqlite::Result<_>>()?;
         let below = if local || floor <= 1 { 0 } else { below };
         let batch = new_batch(&tx, BATCH_EMPTY_TRASH)?;
         let mut touched = Touched::default();
         let mut rows = 0usize;
-        for id in ids {
+        for id in ids.into_iter().chain(arriving) {
             let Some(found) = row(&tx, id)? else {
                 continue;
             };
@@ -364,14 +377,14 @@ impl Writer {
             // deleted for good, and one on its way to another folder, which the server removes
             // from this one itself.
             let chain = chain(&tx, id)?;
-            let folded = overlay::fold(folder, chain.iter().map(|op| op.change));
+            let folded = overlay::fold(found.folder, chain.iter().map(|op| op.change));
             if folded.expunge || folded.at != folder {
                 continue;
             }
             rows += 1;
             let op = NewOp {
                 change: Change::Expunge,
-                prior_folder: folder,
+                prior_folder: found.folder,
                 prior_flags: found.flags & !HIDDEN,
                 not_before,
             };
