@@ -1477,6 +1477,19 @@ impl AppState {
                 state.mark_read(list.scope());
             }
         });
+        // Empty Trash follows the folder the list shows, as Mark Folder as Read does. It ships
+        // with no key (ADR-017); a key the user binds fires only where the list shows a `\Trash`,
+        // since `refresh_commands` disables the action everywhere else and a disabled GAction
+        // takes neither an accelerator nor a scoped key. The folder row's menu still reaches it
+        // directly, wherever the list is.
+        let weak = Rc::downgrade(self);
+        actions.connect(ActionId::EmptyTrash, move || {
+            if let Some(state) = weak.upgrade()
+                && let Some(folder) = state.shown_trash()
+            {
+                state.empty_folder(folder);
+            }
+        });
         let weak = Rc::downgrade(self);
         actions.connect(ActionId::Select, move || {
             if let Some(list) = weak.upgrade().and_then(|state| state.list()) {
@@ -1834,11 +1847,32 @@ impl AppState {
             .filter(|folder| folder.role == FolderRole::Trash)
     }
 
+    /// The `\Trash` the list shows, `None` for anything else — All Inboxes, search results, and
+    /// any folder that isn't one. The list's scope is the one answer to what it shows, so this is
+    /// always one account's folder.
+    fn shown_trash(&self) -> Option<Folder> {
+        let list = self.list()?;
+        let ViewScope::Folder(id) = list.scope()? else {
+            return None;
+        };
+        self.mailbox
+            .folder(id)
+            .filter(|folder| folder.role == FolderRole::Trash)
+    }
+
     /// Empty Trash: deletes for good every message of the account's `\Trash`, including the mail
     /// of it below its sync window the store never downloaded, so the folder stays empty when it
     /// is opened again — and one account's folder only, since every account has a Trash of its own.
-    fn empty_trash(self: &Rc<Self>, key: &str) {
-        let (Some(folder), Some(triage)) = (self.trash_folder(key), self.triage()) else {
+    fn empty_trash(&self, key: &str) {
+        if let Some(folder) = self.trash_folder(key) {
+            self.empty_folder(folder);
+        }
+    }
+
+    /// Empties `folder`, the `\Trash` the user pointed at: its row's menu, or the one the list
+    /// shows (a `keys.toml` key). Names the account and queues the op.
+    fn empty_folder(&self, folder: Folder) {
+        let Some(triage) = self.triage() else {
             return;
         };
         let account = self
@@ -1913,6 +1947,9 @@ impl AppState {
             ActionId::MarkFolderRead,
             list.query().is_empty() && self.unread_in(list.scope()) > 0,
         );
+        // Empty Trash applies only to a `\Trash` the list shows: a user-bound key is disabled
+        // everywhere else, so it can't fire, and the batch page and toolbar say why (ADR-015).
+        actions.set_applies(ActionId::EmptyTrash, self.shown_trash().is_some());
         let undo = self.triage().is_some_and(|triage| triage.can_undo())
             || outbox::can_undo()
             || crate::rules::can_undo();

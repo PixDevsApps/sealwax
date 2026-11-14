@@ -1,0 +1,60 @@
+# Empty Trash's key (ADR-015 amendment, ADR-017): it ships with no default key, and a key the
+# user binds in keys.toml fires only while the list shows a `\Trash`. The action is *disabled*
+# everywhere else — a disabled GAction takes neither an accelerator nor a scoped key — so the key
+# can't delete for good from a folder that isn't one. `trash-empty` covers the folder row's menu;
+# this covers the same command reached by a bound key. Every message is fictional.
+# Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/trash-key.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-mark-read-on-open false
+mail-account Personal
+mail-add Personal:trash 10m "Gamelt utkast" "from=Ingrid Solberg"
+triage-account Work work
+mail-add Work:trash 40m "Gammel faktura" "from=Marius Dahl"
+mail-add Work:trash 50m "Utkast til møte" "from=Ingrid Solberg"
+
+# The user binds a key to empty-trash; the registry gives it none.
+write-file $TMP/config/sealwax/keys.toml "empty-trash = [\"<Control><Shift>t\"]\n"
+sleep 700
+
+# A folder that isn't a Trash: the action is disabled and the key does nothing at all.
+folder inbox Work
+engine-expect folder-opened
+wait-until assert-action-enabled win.empty-trash false
+assert-sidebar-count Work:trash 2
+focus list
+key <Control><Shift>t
+sleep 300
+assert-sidebar-count Work:trash 2
+assert-undoable false
+engine-expect none
+
+# The Trash the list shows: the action is enabled, and the key empties that account's folder.
+folder trash Work
+engine-expect folder-opened
+engine-expect load-older
+engine-reply older-loaded 0 complete
+wait-until assert-action-enabled win.empty-trash true
+focus list
+key <Control><Shift>t
+wait-until assert-toast "Emptied Work's Trash — 2 messages deleted for good"
+assert-sidebar-count Work:trash 0
+assert-list-count 0
+assert-undoable true
+engine-expect ops-queued
+
+# Undo inside the window puts the folder back, as the menu's empty does.
+toast-undo
+assert-toast Undone
+assert-sidebar-count Work:trash 2
+assert-undoable false
+
+# All Inboxes is not a Trash either: the action is disabled there too, and the other account's
+# Trash is never touched.
+folder all-inboxes
+wait-until assert-action-enabled win.empty-trash false
+assert-sidebar-count Personal:trash 1
+
+assert-labelled
