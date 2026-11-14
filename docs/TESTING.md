@@ -77,6 +77,25 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.4.1 — 2026-11-14
+
+This machine. The change since 1.4.0: a toast's **Undo** retired as the undo window ends, for a delete for good ([PR #37](https://github.com/PixDevsApps/sealwax/pull/37) by @lama7, merged as `f1c4e8e` with `939ad9d` added in review: a focus the button held goes back to the list) and for the send's toast (`38b5ace`); [ADR-015 amendment](DECISIONS.md#adr-015-amendment--a-delete-for-goods-undo-is-retired-with-the-undo-window-2026-11-14). The sections below this one hold the runs on each.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `bash tools/ci.sh --ui` on `ac27394` (the version commit) | Exit 0: 1,500 passed, 0 failed, 93 ignored; 94 self-test scripts, 9,139 of 9,139 steps (`reply-outbox` 116, `triage-undo` 120, `trash-empty` 76); hostile suite `production_failures=[]`, dns production=0 | Pass |
+| `bash tools/ci.sh --testbed` | Not run: the changes are in the app's toasts alone | Not verified |
+| The push range (`f1c4e8e..ac27394`, 2 commits, 12 files) scanned | No working doc or reference to one, no home path, hostname or personal data beyond the usual commit author | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note); up to date | Pass |
+| `python3 tools/release.py build` on `v1.4.1` | `check()` 1,214 passed, 0 failed, 93 ignored; no compiler warning in the build log; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.4.1` and holds no home path, user name, hostname or self-test code; package SHA-256 `3c58475d51210e8ce06c34b497b25785c7a6abc5491697d663fe5e85a2fa42c4` | Pass |
+| The clean-container install test (`sealwax-selftest` from `ac27394`) | `/usr/bin/sealwax` to its first frame; `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container, the web process in WebKit's sandbox | Pass |
+| `python3 tools/flatpak.py build` on `v1.4.1` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid, the 1.4.1 release present; `/app/bin/sealwax` 23,996,952 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `1e573d57…` on 1.4.0's `285a0006…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.4.1](https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.1) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the repository for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak installation | The served `summary` the same bytes as the local one within a minute; `flatpak remote-info` on `https://pixdevsapps.github.io/sealwax-flatpak/sealwax.flatpakrepo`: commit `1e573d57…`, parent `285a0006…` | Pass |
+| An install and update of the Flatpak from the real address | Not run this time (1.3.2's run checked the path; this release changes no packaging) | Not verified |
+| Hovering or focusing a toast on a live desktop | Not run here: the self-tests focus the button headless; hovering is libadwaita's own behaviour, read from its documentation | Not verified |
+
 ### The send's toast: its Undo retired as the window ends — 2026-11-14
 
 This machine. The same gap as [PR #37](https://github.com/PixDevsApps/sealwax/pull/37)'s, in "Message queued": hovered or focused, the toast stayed up past the undo window with an **Undo** that then did nothing. Its button now goes when the outbox's window ends, with the focus rule of the section below (`AppState::retire_toast_button`, which the delete-for-good toast now uses too).
