@@ -3,7 +3,9 @@
 # One account's folder, never several: emptying Work's Trash leaves Personal's counts alone. On a
 # local account the rows go at once and Undo says they can't be brought back; on a server account
 # the ops wait out the undo window, so Undo puts every message back with its counts, and what the
-# server refused for good is reported as still there. Every message is fictional.
+# server refused for good is reported as still there. The toast's Undo dies with the undo window
+# (a delete for good the store can't take back once the op has run), so a toast that outlives the
+# window stops offering it. Every message is fictional.
 # Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/trash-empty.sealwax-test
 
 desktop tiling
@@ -49,6 +51,24 @@ engine-expect none
 
 # The other account's Trash is untouched: one account's folder, never several.
 assert-sidebar-count Personal:trash 3
+
+# The toast's Undo dies with the undo window. Empty Trash deletes for good whatever the server,
+# so once its op has run the store can't bring the mail back; libadwaita keeps a hovered or
+# focused toast up past its own timeout, so a toast can outlive the window still offering that
+# Undo. The button is retired as the window ends, and the toast stays readable.
+# `triage-undo-window 1500` keeps the toast up for two seconds, so `wait-within` catches the
+# window's end while the toast is still there. The list still shows Work's Trash.
+triage-undo-window 1500
+sidebar-menu Work:trash
+assert-shown folder-menu-empty-trash true
+sidebar-menu-click folder-menu-empty-trash
+assert-toast "Emptied Work's Trash — 4 messages deleted for good"
+assert-sidebar-count Work:trash 0
+assert-undoable true
+engine-expect ops-queued
+assert-toast-button Undo
+wait-within 1900 assert-toast-button none
+assert-undoable true
 
 # A change the server refused for good: what is still there, further back than the window.
 engine-reply ops-refused work@example.test empty-trash 400

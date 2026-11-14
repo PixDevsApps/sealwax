@@ -541,6 +541,15 @@ pub struct Notice {
     pub text: String,
     /// The toast's Undo undoes this batch, while it is the last action.
     pub undo: Option<BatchId>,
+    /// Whether the toast's Undo dies with the undo window: true for a notice whose op deletes
+    /// the mail for good — Empty Trash, and Delete in the Trash (or where an account has no
+    /// Trash). Once the window has passed the op has run, and on a server with UIDPLUS the
+    /// store can't bring the mail back, so a toast that outlives the window — libadwaita keeps
+    /// a hovered or focused toast up past its own timeout — must stop offering Undo. False for
+    /// a move or a flag change, whose completed op the store reverses, so their Undo still
+    /// works after the window. (A server without UIDPLUS only flags the message `\Deleted`, so
+    /// its Undo would still work then; the window is the contract either way.)
+    pub undo_expires: bool,
     /// How long the toast shows.
     pub shown: Duration,
 }
@@ -551,6 +560,7 @@ impl Notice {
         Self {
             text,
             undo: None,
+            undo_expires: false,
             shown: Duration::from_secs(4),
         }
     }
@@ -821,9 +831,13 @@ impl Controller {
         if let Some(batch) = undo {
             self.set_last(Some(batch));
         }
+        // Plans that delete for good have an Undo that dies with the window (see
+        // `Notice::undo_expires`); a local delete ran at once and has none to retire.
+        let deletes_for_good = !plans.is_empty() && plans.iter().all(|plan| *plan == Plan::Expunge);
         Some(Notice {
             text: done_text(action, &queued, &plans, &folders),
             undo,
+            undo_expires: undo.is_some() && deletes_for_good,
             shown: self.window(),
         })
     }
@@ -884,6 +898,7 @@ impl Controller {
             this.notify(&Notice {
                 text: folder_read_text(applied, &name),
                 undo: batch,
+                undo_expires: false,
                 shown: this.window(),
             });
         });
@@ -919,6 +934,7 @@ impl Controller {
             this.notify(&Notice {
                 text: emptied_text(&account, queued.applied),
                 undo: batch,
+                undo_expires: true,
                 shown: this.window(),
             });
         });
@@ -977,6 +993,7 @@ impl Controller {
         Notice {
             text: refused_text(change, count, name),
             undo: None,
+            undo_expires: false,
             shown: Duration::from_secs(10),
         }
     }
@@ -1630,6 +1647,7 @@ mod tests {
                     .expect("a toast");
                 assert_eq!(notice.text, "Deleted 2 messages for good");
                 assert_eq!(notice.undo, None);
+                assert!(!notice.undo_expires, "no Undo to retire");
                 assert!(!controller.can_undo());
                 // On a server it waits for the window, and the store says what Undo brought
                 // back.
@@ -1642,6 +1660,10 @@ mod tests {
                     .expect("a toast");
                 assert_eq!(notice.text, "Deleted 1 message for good");
                 assert_eq!(notice.undo, Some(BatchId(4)));
+                assert!(
+                    notice.undo_expires,
+                    "a delete for good's Undo dies with the window"
+                );
                 assert_eq!(
                     backend.calls.borrow().last().unwrap(),
                     "Delete x1 waits true"
@@ -1678,6 +1700,10 @@ mod tests {
                     "Moved 1 message to Junk. Mail from kari@example.test goes to Junk from now on"
                 );
                 assert!(notice.undo.is_some());
+                assert!(
+                    !notice.undo_expires,
+                    "a move's Undo still works after the window"
+                );
                 controller.undo(None);
                 drain(&context);
                 assert_eq!(
@@ -1785,6 +1811,7 @@ mod tests {
                     "Emptied Ada Berg's Trash — 2 messages deleted for good"
                 );
                 assert!(last.undo.is_some(), "the undo window is open");
+                assert!(last.undo_expires, "its Undo dies with the undo window");
                 assert_eq!(woken(&engine), Vec::<i64>::new());
                 // Folder 13 is a server account's Trash: its ops wake that account.
                 controller.empty_trash(FolderId(13), "Work".into());

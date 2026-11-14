@@ -32,6 +32,7 @@
 //! | `assert-reader-page empty\|message\|batch` | What the reader pane shows |
 //! | `assert-undoable BOOL` | Whether Undo has something to undo |
 //! | `assert-toasts N` | Toasts on screen |
+//! | `assert-toast-button none\|LABEL` | The toast on screen offers no button, or one labelled LABEL |
 //! | `assert-row-check POS none\|true\|false` | A row's checkbox: hidden, ticked, not ticked |
 //! | `assert-row-quick POS BOOL` | Whether a row shows its quick actions |
 //! | `assert-move-to open\|shown\|selected VALUE` | The Move to… picker: open (BOOL), the folders shown (`A,B`), the folder Enter picks |
@@ -85,6 +86,7 @@ pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-undoable", 1, 1),
     ("assert-pending", 1, 1),
     ("assert-toasts", 1, 1),
+    ("assert-toast-button", 1, 1),
     ("assert-row-check", 2, 2),
     ("assert-row-quick", 2, 2),
     ("assert-move-to", 2, 2),
@@ -373,6 +375,21 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
             boolean(arg(0))?,
         ),
         "assert-toasts" => equal("toasts on screen", toasts(harness)?.len(), number(arg(0))?),
+        "assert-toast-button" => {
+            if toasts(harness)?.is_empty() {
+                return Err("no toast on screen".to_owned());
+            }
+            let labels: Vec<String> = toast_buttons(harness)?
+                .iter()
+                .filter_map(|button| button.label().map(|label| label.to_string()))
+                .collect();
+            let shown = if labels.is_empty() {
+                "none".to_owned()
+            } else {
+                labels.join(",")
+            };
+            equal("the toast's button", shown.as_str(), arg(0))
+        }
         "assert-row-check" => {
             let row = row_widget(harness, arg(0))?;
             let state = match row.check_state() {
