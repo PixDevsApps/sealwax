@@ -51,6 +51,17 @@ assert-toast Undone
 assert-sidebar-count Work:trash 2
 assert-undoable false
 
+# A search in the Trash shows its results, not the folder: the action is disabled there too, and
+# the key empties nothing.
+search faktura
+assert-list-search 1 false
+wait-until assert-action-enabled win.empty-trash false
+focus list
+key <Control><Shift>t
+sleep 300
+assert-sidebar-count Work:trash 2
+assert-undoable false
+
 # All Inboxes is not a Trash either: the action is disabled there too, and the other account's
 # Trash is never touched.
 folder all-inboxes

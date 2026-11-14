@@ -1847,14 +1847,17 @@ impl AppState {
             .filter(|folder| folder.role == FolderRole::Trash)
     }
 
-    /// The `\Trash` the list shows, `None` for anything else — All Inboxes, search results, and
-    /// any folder that isn't one. The list's scope is the one answer to what it shows, so this is
-    /// always one account's folder.
+    /// The `\Trash` the list shows, `None` for anything else — All Inboxes, search results (the
+    /// scope stays the folder while a search in it shows), and any folder that isn't one. The
+    /// list's scope names one folder, so this is always one account's.
     fn shown_trash(&self) -> Option<Folder> {
         let list = self.list()?;
         let ViewScope::Folder(id) = list.scope()? else {
             return None;
         };
+        if !list.query().is_empty() {
+            return None;
+        }
         self.mailbox
             .folder(id)
             .filter(|folder| folder.role == FolderRole::Trash)
