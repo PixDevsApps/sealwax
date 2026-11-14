@@ -1328,7 +1328,7 @@ Built on the user's "Start item 5's small 1.0.x fixes, one commit each, as PLAN.
 
 ### ADR-015 amendment — Empty Trash, and a folder's mail below its floor (2026-11-12)
 
-**Status:** Accepted, on the owner's ask for the command and the rule that emptying must mean empty: mail the server holds below the sync window goes too, so a folder emptied stays empty instead of recounting that mail at its next pass.
+**Status:** Proposed in [PR #35](https://github.com/PixDevsApps/sealwax/pull/35) by the contributor; accepted by the owner on 2026-11-13, the ADR-006 exception and, on 2026-11-14, the gated `keys.toml` binding included: the rule that emptying must mean empty, so mail the server holds below the sync window goes too and a folder emptied stays empty instead of recounting that mail at its next pass.
 
 **Decision:** Mark Folder as Read's shape, one op kind wider.
 

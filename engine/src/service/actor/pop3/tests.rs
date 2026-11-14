@@ -1302,7 +1302,7 @@ async fn mail_deleted_for_good_leaves_the_disk_after_the_next_pass() {
 /// account's policy reaches their day, and none of them downloads again.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_emptied_pop3_trash_empties_the_disk_and_the_servers_copies_still_go() {
-    // Both messages came in eight days ago, so the policy's day has come for them, and the owner
+    // Both messages came in eight days ago, so the policy's day has come for them, and the user
     // empties the Trash before the actor's first pass: what the UIDL rows must survive.
     let policy = Pop3Policy {
         leave_on_server: true,
