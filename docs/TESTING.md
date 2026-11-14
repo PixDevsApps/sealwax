@@ -77,6 +77,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Empty Trash: the gated key, and the contributor's own runs — 2026-11-14
+
+The maintainer's answer on [PR #35](https://github.com/PixDevsApps/sealwax/pull/35) settled the third ask — connect `empty-trash` and gate it, no new class of name the parser refuses — and corrected the wording here and in ADR-015, where "the owner" read as if the project owner had done the contributor's runs (in this repository "the owner" is the project owner). This machine (the same laptop, AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets -- -D warnings` | Both clean | Pass |
+| `cargo test --workspace -j 2 -- --skip webkit_checks` | Exit 0: 1,499 passed, 0 failed, 93 ignored, 1 filtered, 55 test targets. The one ignored more than the 2026-11-13 run is the testbed case (`write_testbed` has twelve `#[ignore]` tests now); the one filtered is `app::webview::tests::webkit_checks`, which SIGSEGVs with no display here | Pass |
+| The gated key, the new self-test `trash-key` (`tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/trash-key.sealwax-test`) | 41 of 41 steps: `empty-trash` bound to `<Control><Shift>t` in `keys.toml`; on a shown Inbox and on All Inboxes the action is disabled and the key does nothing (the Trash count unchanged, `assert-undoable false`, no engine op); on the shown `\Trash` it is enabled and the key empties that account's folder alone ("Emptied Work's Trash — 2 messages deleted for good", `ops-queued`), the sidebar and list at 0, and Undo puts the two back; the other account's Trash keeps its one | Pass |
+| The whole `bash tools/ci.sh --ui --testbed` | Not run here: the maintainer runs it on this head in PR #35 before merging (his word) | Not verified |
+
+- **The gated key.** `empty-trash` is connected (`actions.connect`), and `refresh_commands` drives `ActionSet::set_applies` off `MessageList::scope()`, so the action is enabled only while the list shows a `\Trash` and disabled — not merely a no-op — everywhere else: a `keys.toml` key bound to it takes neither the accelerator nor the scoped key outside one. No default key (ADR-017), no new "not bindable" class in the parser, and nothing else changed. A `\Trash` row's context menu reaches it wherever the list is, since that item's `applies` is the row's own key and not the registry action's.
+- **The wording (the maintainer's fix).** The rows and sections below no longer say "the owner" of the contributor's runs on their own machine, accounts and servers; they say "the contributor". ADR-015's amendment status reads "Proposed in PR #35 by the contributor; accepted by the owner on 2026-11-13, the ADR-006 exception and, on 2026-11-14, the gated `keys.toml` binding included" where it said "Accepted, on the owner's ask for the command". The results are as recorded; one POP3 test comment that said the owner empties the Trash says the user.
+- **OOM note.** A first `cargo test --workspace` run on this tree stopped while linking `sealwax-uitest`'s `remote_senders` example: `ld` was OOM-killed (this laptop has 9 GiB, about 4 GiB available). The re-run with `-j 2` passed; it is the machine's memory, not the tree.
+
 ### Empty Trash, rebased onto 1.3.2, and the two review asks — 2026-11-13
 
 On the review branch, rebased onto `80f1cf4` (`main`, 1.3.2): the nine commits of the feature, the store fix the maintainer's fourth ask turned up, the testbed case for the second, and the two docs commits for the review asks — thirteen in all. The only conflicts were in the action registry — `ActionId::ALL` is `[Self; 103]` now, the base 98 with our `EmptyTrash` and the four Help actions 1.3.2 added — and in this file. This machine (the same laptop, AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds.
