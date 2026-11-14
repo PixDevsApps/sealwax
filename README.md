@@ -28,14 +28,14 @@ It updates with `flatpak update` or your software centre. On Omarchy, the packag
 
 ## Status
 
-**Version 1.3.2.** The features below are built and tested, and its author has read their own mail with it every day since 7 October 2026: Outlook.com, Microsoft 365 and IMAP, Gmail among them. Testing also covers local test mail servers (Dovecot, Stalwart, Mailpit), a fresh install in a clean Arch Linux container, and measurements on a live desktop; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) say what was checked and what wasn't.
+**Version 1.4.0.** The features below are built and tested, and its author has read their own mail with it every day since 7 October 2026: Outlook.com, Microsoft 365 and IMAP, Gmail among them. Testing also covers local test mail servers (Dovecot, Stalwart, Mailpit), a fresh install in a clean Arch Linux container, and measurements on a live desktop; other providers are welcome to report how it goes. The [1.0 release notes](docs/RELEASE_NOTES.md) say what was checked and what wasn't.
 
 ## Features
 
 - **Accounts without server settings:** type your address, and Sealwax finds the servers (its provider list, your domain's autoconfig, Mozilla's ISPDB, DNS). **Sign in with Microsoft** for Outlook.com and Microsoft 365; app passwords for iCloud, Fastmail, Yahoo and others, with a link to the provider's page; manual settings for the rest. Several accounts and All Inboxes, each account with a name and a muted colour of your choosing, folding away in the sidebar.
 - **IMAP** with IDLE push and an offline copy of your mail, and **POP3** into local folders (mail left on the server by default).
 - **Reading:** whole conversations; safe HTML (no message script ever runs; nothing remote loads until you allow it, per message or per sender); attachments that open safely, with a warning for programs and disguised files; link warnings; print, Show Original, Save as `.eml`; graceful display of encrypted and signed mail.
-- **Triage:** archive, delete, junk, move, star, read and unread at once, on one message or many, with Undo, also offline; a right-click menu on messages.
+- **Triage:** archive, delete, junk, move, star, read and unread at once, on one message or many, with Undo, also offline; a right-click menu on messages; Empty Trash on a Trash folder's menu.
 - **Folders and rules:** new subfolders, rename and delete, shown as a tree you can fold; rules in Sieve, the standard mail-filter language, made in a Rules dialog or by hand in `rules/<account>.sieve`, run by Sealwax on new mail (move, copy, mark read, star, junk, delete), with always-junk and never-junk senders and Create Rule from Message.
 - **Writing:** a rich-text composer docked in the main window (minimize, expand, several at once), reply, reply all, forward and a quick reply under the conversation; identities and signatures; attachments with the server's size limit checked; drafts saved as you type and kept on the server; an outbox with Undo send that never sends a message twice; `mailto:` links, and becoming the default mail app when you choose.
 - **Search** on this computer with `from:`, `to:`, `subject:`, `sender:`, `domain:`, `has:attachment`, `is:unread`, `is:subscription`, `before:`, `after:` and suggestions as you type.
@@ -65,6 +65,6 @@ The package: Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+,
 
 ## Thanks
 
-Thanks to everyone who reports bugs and suggests improvements in the [issues](https://github.com/PixDevsApps/sealwax/issues), and especially to [@ocewers](https://github.com/ocewers) for detailed reports and ideas (issues #2 to #8), to [@hurricaane](https://github.com/hurricaane) and [@biddster](https://github.com/biddster) for the ideas behind 1.1 (issues #14, #24, #25 and #26), and to [@alauppe](https://github.com/alauppe), [@chrisonline](https://github.com/chrisonline) and [@mlamoure](https://github.com/mlamoure) for their fixes (pull requests #19, #28 and #33).
+Thanks to everyone who reports bugs and suggests improvements in the [issues](https://github.com/PixDevsApps/sealwax/issues), and especially to [@ocewers](https://github.com/ocewers) for detailed reports and ideas (issues #2 to #8), to [@hurricaane](https://github.com/hurricaane) and [@biddster](https://github.com/biddster) for the ideas behind 1.1 (issues #14, #24, #25 and #26), and to [@alauppe](https://github.com/alauppe), [@chrisonline](https://github.com/chrisonline) and [@mlamoure](https://github.com/mlamoure) for their fixes (pull requests #19, #28 and #33), and to [@lama7](https://github.com/lama7) for Empty Trash (pull request #35).
 
 License: MIT. The licenses of the crates Sealwax is built from come with the package, in `/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt`.

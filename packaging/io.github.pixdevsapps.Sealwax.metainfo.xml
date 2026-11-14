@@ -95,6 +95,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.4.0" date="2026-11-14" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.0</url>
+      <description>
+        <p>Empty Trash: an account's Trash folder has Empty Trash on its sidebar menu, which deletes the folder's messages for good, on the server too, including older mail Sealwax never downloaded. Undo in the toast stands for the usual seven seconds.</p>
+      </description>
+    </release>
     <release version="1.3.2" date="2026-11-13" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.3.2</url>
       <description>

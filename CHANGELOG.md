@@ -2,6 +2,15 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.4.0 — 2026-11-14
+
+Empty Trash.
+
+- **Empty Trash** ([PR #35](https://github.com/PixDevsApps/sealwax/pull/35), thanks @lama7): right-click an account's Trash folder in the sidebar (or press Menu or Shift+F10 on it) and choose **Empty Trash**, the first item there. It deletes the folder's messages for good, here and on the server, including the older mail Sealwax never downloaded, so the folder is still empty when you open it again. Mail you deleted a moment before, still on its way to the Trash, goes too.
+- **Nothing asks first:** **Undo** in the toast stands for the usual 7 seconds, as when you delete from the Trash. The toast names the account, since every account has its own Trash, and emptying one leaves the others alone.
+- **A key, if you want one:** Empty Trash has no key, but you can give it one in `keys.toml` (`empty-trash`). The key works only while the list shows a Trash folder, not while it shows search results.
+- **On a mail server without UIDPLUS**, which can't delete chosen messages alone, emptying the Trash also removes any message another mail program left marked as deleted there.
+
 ## 1.3.2 — 2026-11-13
 
 Help, also without a GitHub account.
