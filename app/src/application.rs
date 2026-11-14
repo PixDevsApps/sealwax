@@ -1990,6 +1990,16 @@ impl AppState {
                     triage.undo(Some(batch));
                 }
             });
+            // An Undo that dies with the window must not outlive it: libadwaita keeps a hovered
+            // or focused toast up past its own timeout (see `Notice::undo_expires`), and the
+            // store refuses the Undo once the op has run. Retire the button as the window ends;
+            // the toast itself stays readable.
+            if notice.undo_expires {
+                let toast = toast.clone();
+                glib::timeout_add_local_once(notice.shown, move || {
+                    toast.set_button_label(None::<&str>);
+                });
+            }
         }
         self.show_toast(&toast, replaces);
     }

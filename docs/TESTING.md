@@ -77,6 +77,22 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Empty Trash and Delete in the Trash: the toast's Undo retired as the window ends — 2026-11-14
+
+A follow-up to 1.4.0, in its own PR at the maintainer's word: hover the toast a permanent delete leaves — **Empty Trash**, or **Delete** in a server's Trash — and it stays up past the **7 s** undo window (libadwaita pauses a toast's own timeout while it is hovered, pressed or has focus inside it), still offering **Undo**, which the store then refuses ("… deleted for good and can't be brought back"). The undo window is 7 s from the command (`not_before`, when the op runner wakes and expunges), but nothing retired the toast's button. The fix retires it as the window ends: `Notice` gains `undo_expires`, true for a notice whose op deletes the mail for good, and `show_notice` schedules a one-shot at `notice.shown` that clears the button (`set_button_label(None)` hides it; the toast stays readable). This machine (the same laptop, AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets -- -D warnings` | Both clean | Pass |
+| `cargo test --workspace -j 2 -- --skip webkit_checks` | Exit 0: 1,499 passed, 0 failed, 93 ignored, 1 filtered, 55 test targets. The app's unit tests pin the flag on a delete for good's notice (true) and on a move's (false). The one filtered is `app::webview::tests::webkit_checks`, which SIGSEGVs with no display here | Pass |
+| `trash-empty.sealwax-test` (`tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/trash-empty.sealwax-test`) | 76 of 76 steps (was 65). New: empty a Trash with `triage-undo-window 1500`, `assert-toast-button Undo`, then `wait-within 1900 assert-toast-button none` — the window's end caught while the toast is still on screen (the small window keeps the toast up at least one second); `assert-undoable true` throughout, since the last action stays undoable by key even when the toast's button is gone | Pass |
+| `triage-undo.sealwax-test` (`tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/triage-undo.sealwax-test`) | 110 of 110 steps (was 96). New: on a server account, Delete in the Trash shows "Deleted 1 message for good" with Undo, then `wait-within 2600 assert-toast-button none` catches the window's end while the toast is up; `assert-undoable true` throughout, and `z` after still brings the message back | Pass |
+| The whole `bash tools/ci.sh --ui --testbed` | Not run here (no Docker on this machine); the maintainer runs the gate on the PR before merging | Not verified |
+
+- **The scope.** `undo_expires` is set for every notice whose op deletes the mail for good — Empty Trash, and Delete in the Trash or where an account has no Trash, on a server account; a local account's delete ran at once and offers no Undo. Whether such an Undo would still work after the window depends on the server, which the app does not know at queue time: with UIDPLUS the row is gone (`Lost::Deleted`), and without it the store only flags the message `\Deleted` and Undo would unflag it. The 7 s window is the contract either way, so the button retires there too. Moves and flag changes are left alone: the store reverses a completed one, so their Undo still works after the window.
+- **The harness.** `assert-toast-button none|LABEL` is new (`app/src/selftest/triage.rs`); it fails with "no toast on screen" when there is none and reads a toast's mapped buttons. `trash-empty` and `triage-undo` use it, and their headers, ADR-015 and DESIGN say so.
+- **OOM note.** A first `cargo test --workspace` run after the rebase stopped before any test, linking `sealwax-engine`'s `oauth_live` example: `ld` was OOM-killed (this laptop has 9 GiB). The re-run passed; it is the machine's memory, not the tree.
+
 ### 1.4.0 — 2026-11-14
 
 This machine. The change since 1.3.2: Empty Trash ([PR #35](https://github.com/PixDevsApps/sealwax/pull/35) by @lama7, [ADR-015 amendment](DECISIONS.md#adr-015-amendment--empty-trash-and-a-folders-mail-below-its-floor-2026-11-12)), merged as `322eae7` with one commit added in review, `b4d9102`: a `keys.toml` key bound to `empty-trash` does nothing while a search in the Trash shows its results. The sections below this one hold the contributor's runs.

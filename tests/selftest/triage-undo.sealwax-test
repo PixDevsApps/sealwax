@@ -3,7 +3,8 @@
 # undoable from the toast; z and Ctrl+Z undo the last action while it can be undone, also after
 # the toast is gone; a single message's read or star change has no toast and leaves the last
 # action alone; a local account deletes for good at once, without Undo, and on a server the
-# store says what Undo brought back. Every message is fictional.
+# store says what Undo brought back; a delete for good (in the Trash, on a server) retires its
+# toast's Undo as the window ends, even while the toast stays up. Every message is fictional.
 # Run: tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/triage-undo.sealwax-test
 
 desktop tiling
@@ -118,3 +119,22 @@ key z
 assert-toast Undone
 assert-list-count 1
 assert-list-row 0 subject "Gammel faktura"
+
+# A delete for good from a server's Trash is a permanent delete too, so like Empty Trash its
+# toast's Undo is retired as the undo window ends — even while the toast stays up (the undo
+# window 2001 ms, the toast's own timeout 3 s, a margin on a loaded machine). The last action
+# stays undoable by key, so z still brings the message back.
+triage-undo-window 2001
+focus list
+list-select 0
+key Delete
+assert-toast "Deleted 1 message for good"
+assert-list-count 0
+assert-undoable true
+assert-toast-button Undo
+wait-within 2600 assert-toast-button none
+assert-undoable true
+sleep 500
+key z
+assert-toast Undone
+assert-list-count 1
