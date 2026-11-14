@@ -77,6 +77,38 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The retired Undo and the keyboard focus, and the project's runs on PR #37 — 2026-11-14
+
+This machine (the project's). [PR #37](https://github.com/PixDevsApps/sealwax/pull/37) by @lama7 retires the **Undo** of a delete for good's toast as the undo window ends ([ADR-015 amendment](DECISIONS.md#adr-015-amendment--a-delete-for-goods-undo-is-retired-with-the-undo-window-2026-11-14)); the section below this one holds the contributor's runs. One commit was added in review: when the retired button held the keyboard focus, the focus goes back to the message list.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `bash tools/ci.sh --ui` on the PR's head `9a30459` | Exit 0: 1,500 passed, 0 failed, 93 ignored; 94 self-tests, 9,114 of 9,114 steps (`trash-empty` 76 of 76, `triage-undo` 110 of 110); hostile suite `production_failures=[]`, dns production=0 | Pass |
+| The PR's steps without its fix (the one-shot taken out of `show_notice`) | `trash-empty` 75 of 76 and `triage-undo` 109 of 110, each failing at `wait-within … assert-toast-button none` | Pass (the steps pin the fix) |
+| The focus, before the review's commit: the toast's Undo focused, then retired | The focus moved on to the Compose button; `j` did nothing in the list | The finding |
+| `triage-undo.sealwax-test` with the review's commit | 120 of 120 steps (was 110). New: `focus toast` puts the focus on the toast's Undo, and after `wait-within 2600 assert-toast-button none` the focus is in the list and `z` brings the message back. Without `take_focus`: 117 of 120, the focus on the Compose button and `z` undoing nothing | Pass |
+| `bash tools/ci.sh --ui` with the review's commit | Exit 0: 1,500 passed, 0 failed, 93 ignored; 94 self-tests, 9,124 of 9,124 steps; hostile suite `production_failures=[]`, dns production=0 | Pass |
+| `bash tools/ci.sh --testbed` | Not run: the change is in the app's toast alone | Not verified |
+
+- **The usual case is unchanged.** With the list focused and its last row deleted, the focus stays on the message list from the delete to after the toast has gone; only a button that itself held the focus (Tab reaches it) took it along.
+- **The harness.** `focus toast` and `assert-focus toast` name the toast's button (`app/src/selftest/triage.rs`).
+
+### Empty Trash and Delete in the Trash: the toast's Undo retired as the window ends — 2026-11-14
+
+A follow-up to 1.4.0, in its own PR at the maintainer's word: hover the toast a permanent delete leaves — **Empty Trash**, or **Delete** in a server's Trash — and it stays up past the **7 s** undo window (libadwaita pauses a toast's own timeout while it is hovered, pressed or has focus inside it), still offering **Undo**, which the store then refuses ("… deleted for good and can't be brought back"). The undo window is 7 s from the command (`not_before`, when the op runner wakes and expunges), but nothing retired the toast's button. The fix retires it as the window ends: `Notice` gains `undo_expires`, true for a notice whose op deletes the mail for good, and `show_notice` schedules a one-shot at `notice.shown` that clears the button (`set_button_label(None)` hides it; the toast stays readable). The contributor's runs, on the contributor's machine (the same laptop as in his sections below: AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds; the project's own runs are in the section above.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo fmt --all -- --check`; `cargo clippy --workspace --all-targets -- -D warnings` | Both clean | Pass |
+| `cargo test --workspace -j 2 -- --skip webkit_checks` | Exit 0: 1,499 passed, 0 failed, 93 ignored, 1 filtered, 55 test targets. The app's unit tests pin the flag on a delete for good's notice (true) and on a move's (false). The one filtered is `app::webview::tests::webkit_checks`, which SIGSEGVs with no display here | Pass |
+| `trash-empty.sealwax-test` (`tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/trash-empty.sealwax-test`) | 76 of 76 steps (was 65). New: empty a Trash with `triage-undo-window 1500`, `assert-toast-button Undo`, then `wait-within 1900 assert-toast-button none` — the window's end caught while the toast is still on screen (the small window keeps the toast up at least one second); `assert-undoable true` throughout, since the last action stays undoable by key even when the toast's button is gone | Pass |
+| `triage-undo.sealwax-test` (`tools/headless.sh 23 target/debug/sealwax-selftest --self-test tests/selftest/triage-undo.sealwax-test`) | 110 of 110 steps (was 96). New: on a server account, Delete in the Trash shows "Deleted 1 message for good" with Undo, then `wait-within 2600 assert-toast-button none` catches the window's end while the toast is up; `assert-undoable true` throughout, and `z` after still brings the message back | Pass |
+| The whole `bash tools/ci.sh --ui --testbed` | Not run here (no Docker on this machine); the maintainer runs the gate on the PR before merging | Not verified |
+
+- **The scope.** `undo_expires` is set for every notice whose op deletes the mail for good — Empty Trash, and Delete in the Trash or where an account has no Trash, on a server account; a local account's delete ran at once and offers no Undo. Whether such an Undo would still work after the window depends on the server, which the app does not know at queue time: with UIDPLUS the row is gone (`Lost::Deleted`), and without it the store only flags the message `\Deleted` and Undo would unflag it. The 7 s window is the contract either way, so the button retires there too. Moves and flag changes are left alone: the store reverses a completed one, so their Undo still works after the window.
+- **The harness.** `assert-toast-button none|LABEL` is new (`app/src/selftest/triage.rs`); it fails with "no toast on screen" when there is none and reads a toast's mapped buttons. `trash-empty` and `triage-undo` use it, and their headers, ADR-015 and DESIGN say so.
+- **OOM note.** A first `cargo test --workspace` run after the rebase stopped before any test, linking `sealwax-engine`'s `oauth_live` example: `ld` was OOM-killed (this laptop has 9 GiB). The re-run passed; it is the machine's memory, not the tree.
+
 ### 1.4.0 — 2026-11-14
 
 This machine. The change since 1.3.2: Empty Trash ([PR #35](https://github.com/PixDevsApps/sealwax/pull/35) by @lama7, [ADR-015 amendment](DECISIONS.md#adr-015-amendment--empty-trash-and-a-folders-mail-below-its-floor-2026-11-12)), merged as `322eae7` with one commit added in review, `b4d9102`: a `keys.toml` key bound to `empty-trash` does nothing while a search in the Trash shows its results. The sections below this one hold the contributor's runs.

@@ -1990,6 +1990,30 @@ impl AppState {
                     triage.undo(Some(batch));
                 }
             });
+            // An Undo that dies with the window must not outlive it: libadwaita keeps a hovered
+            // or focused toast up past its own timeout (see `Notice::undo_expires`), and the
+            // store refuses the Undo once the op has run. Retire the button as the window ends;
+            // the toast itself stays readable.
+            if notice.undo_expires {
+                let toast = toast.clone();
+                let weak = Rc::downgrade(self);
+                glib::timeout_add_local_once(notice.shown, move || {
+                    let state = weak.upgrade();
+                    let focus = state
+                        .as_ref()
+                        .and_then(|state| state.window())
+                        .and_then(|window| gtk4::prelude::GtkWindowExt::focus(window.window()));
+                    toast.set_button_label(None::<&str>);
+                    // The button held the keyboard focus (Tab reaches it): GTK would move it on
+                    // to the window's first button, so it goes back to the list, whose keys
+                    // (`z` among them) keep working.
+                    if focus.is_some_and(|focus| !focus.is_mapped())
+                        && let Some(list) = state.and_then(|state| state.list())
+                    {
+                        list.take_focus();
+                    }
+                });
+            }
         }
         self.show_toast(&toast, replaces);
     }

@@ -667,6 +667,14 @@ impl MessageList {
         });
     }
 
+    /// Puts the keyboard focus on the list while it is shown: for a widget that held the focus
+    /// and went away, where GTK would move the focus on to the window's first button.
+    pub fn take_focus(&self) {
+        if self.inner.root.is_mapped() {
+            self.inner.view.grab_focus();
+        }
+    }
+
     #[cfg(feature = "test-hooks")]
     pub fn search_entry(&self) -> &gtk::SearchEntry {
         &self.inner.search
