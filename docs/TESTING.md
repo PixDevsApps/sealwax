@@ -77,6 +77,26 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.4.0 — 2026-11-14
+
+This machine. The change since 1.3.2: Empty Trash ([PR #35](https://github.com/PixDevsApps/sealwax/pull/35) by @lama7, [ADR-015 amendment](DECISIONS.md#adr-015-amendment--empty-trash-and-a-folders-mail-below-its-floor-2026-11-12)), merged as `322eae7` with one commit added in review, `b4d9102`: a `keys.toml` key bound to `empty-trash` does nothing while a search in the Trash shows its results. The sections below this one hold the contributor's runs.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| The review fix `b4d9102`: `trash-key` with a search step (`tools/headless.sh 37 … --self-test tests/selftest/trash-key.sealwax-test`) | 49 of 49 steps; with the check taken out of `shown_trash`, steps 40, 44 and 45 fail (the action stays enabled during the search and the key empties the Trash); `trash-empty` 65 of 65 | Pass |
+| `bash tools/ci.sh --ui --testbed` on PR #35's head `b4d9102` (Dovecot 2.4.5, Stalwart 0.16.24, Mailpit 1.31.4, the images already here) | Exit 0: 1,500 tests passed, 0 failed, 93 ignored; 94 self-test scripts, every step; hostile suite `production_failures=[]`, dns production=0; 16 testbed suites, 83 passed, 0 failed. `emptying_a_folder_below_its_floor_on_every_server`: on Dovecot and Stalwart 6 below the floor deleted by `UID EXPUNGE` of the searched set, the 4 above kept and another client's `\Deleted` one still flagged; on the IMAP4rev1-only Dovecot 6 deleted by the one plain `EXPUNGE`, the other client's `\Deleted` message above the floor with them. `ops_testbed` 12 of 12 (the Stalwart junk-move failure seen on the contributor's machine didn't appear). Two earlier attempts stopped before any suite for this checkout's setup, not the code: a build directory elsewhere than `target/`, then a testbed CA the stored Stalwart volume didn't hold | Pass |
+| `SEALWAX_CI_DISPLAY=37 bash tools/ci.sh --ui` on `f7bd6c0` (the version commit) | Exit 0: 1,500 passed, 0 failed, 93 ignored; 94 self-test scripts, 9,089 of 9,089 steps; hostile suite as above. A first run failed one test, `the_report_lists_the_registry_keymap`, against a local keymap table without the new row; the table updated, the rerun passed | Pass |
+| The push range (`322eae7..f7bd6c0`, 1 commit, 6 files) scanned | No working doc or reference to one, no home path, hostname or personal data beyond the usual commit author | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note); up to date | Pass |
+| `python3 tools/release.py build` on `v1.4.0` | `check()` 1,214 passed, 0 failed, 93 ignored; no compiler warning in the build log; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.4.0` and holds no home path, user name, hostname or self-test code; package SHA-256 `55a3359b955a40fffed5bdb90f8f82a5b4ca5144f6ea1b6726c2163e97bf00e5` | Pass |
+| The clean-container install test (`sealwax-selftest` from `f7bd6c0`) | `/usr/bin/sealwax` to its first frame; `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container | Pass |
+| `python3 tools/flatpak.py build` on `v1.4.0` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid, the 1.4.0 release present; `/app/bin/sealwax` 23,993,800 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `285a0006…` on 1.3.2's `2c9141f1…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.4.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.0) (`tools/release.py github`, 16:23:08 UTC) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the repository for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak installation | `flatpak remote-info` on `https://pixdevsapps.github.io/sealwax-flatpak/sealwax.flatpakrepo`: commit `285a0006…`, parent `2c9141f1…`, within a minute of the push | Pass |
+| An install and update of the Flatpak from the real address | Not run this time (1.3.2's run checked the path; this release changes no packaging) | Not verified |
+| Empty Trash on a live account, on this machine | Not run: the contributor's runs on their own servers are in the sections below | Not verified |
+
 ### Empty Trash: the gated key, and the contributor's own runs — 2026-11-14
 
 The maintainer's answer on [PR #35](https://github.com/PixDevsApps/sealwax/pull/35) settled the third ask — connect `empty-trash` and gate it, no new class of name the parser refuses — and corrected the wording here and in ADR-015, where "the owner" read as if the project owner had done the contributor's runs (in this repository "the owner" is the project owner). This machine (the same laptop, AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds.
