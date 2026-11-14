@@ -1998,24 +1998,31 @@ impl AppState {
                 let toast = toast.clone();
                 let weak = Rc::downgrade(self);
                 glib::timeout_add_local_once(notice.shown, move || {
-                    let state = weak.upgrade();
-                    let focus = state
-                        .as_ref()
-                        .and_then(|state| state.window())
-                        .and_then(|window| gtk4::prelude::GtkWindowExt::focus(window.window()));
-                    toast.set_button_label(None::<&str>);
-                    // The button held the keyboard focus (Tab reaches it): GTK would move it on
-                    // to the window's first button, so it goes back to the list, whose keys
-                    // (`z` among them) keep working.
-                    if focus.is_some_and(|focus| !focus.is_mapped())
-                        && let Some(list) = state.and_then(|state| state.list())
-                    {
-                        list.take_focus();
+                    if let Some(state) = weak.upgrade() {
+                        state.retire_toast_button(&toast);
                     }
                 });
             }
         }
         self.show_toast(&toast, replaces);
+    }
+
+    /// Hides `toast`'s button once what it offered has run out (an Undo whose window ended),
+    /// while the toast stays to be read: libadwaita keeps a hovered or focused toast up past
+    /// its own timeout. When the button held the keyboard focus (Tab reaches it), GTK would
+    /// move the focus on to the window's first button, so it goes back to the list, whose keys
+    /// (`z` among them) keep working.
+    pub fn retire_toast_button(&self, toast: &adw::Toast) {
+        let focus = self
+            .window()
+            .and_then(|window| gtk4::prelude::GtkWindowExt::focus(window.window()))
+            .filter(|focus| focus.is_mapped());
+        toast.set_button_label(None::<&str>);
+        if focus.is_some_and(|focus| !focus.is_mapped())
+            && let Some(list) = self.list()
+        {
+            list.take_focus();
+        }
     }
 
     /// Shows `toast` in the main window; with `replaces`, it takes the last action's toast's

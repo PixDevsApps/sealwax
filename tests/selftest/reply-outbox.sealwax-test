@@ -1,7 +1,8 @@
 # The outbox in the main window (M6 phase B, ML-076), with the app's store and the fake engine:
 # a send queued as the composer's backend queues it shows "Message queued" with Undo for the undo
 # window and becomes the last action, so the toast's Undo and `z` take it back to a composer
-# window (and wake the account); after the window Undo has nothing to take back; a send the
+# window (and wake the account); after the window Undo has nothing to take back, and the toast's
+# Undo goes then even from a toast still up (its focus back to the list); a send the
 # engine started is too late to undo; Sent says so; a send that failed for good says why (never
 # its recipients) and Open opens its draft; a send that may have gone out puts the banner up,
 # after the sign-ins and before the full mailboxes, and each of its three answers is recorded;
@@ -18,6 +19,7 @@ outbox-draft second Work
 outbox-draft third Work
 outbox-draft fourth Work
 outbox-draft fifth Work
+outbox-draft sixth Work
 focus list
 
 # Queued: the toast with Undo; the send is the last action; Undo reopens it in a composer.
@@ -50,6 +52,24 @@ outbox-queue first
 sleep 3300
 assert-action-enabled win.undo false
 assert-outbox first queued
+
+# A toast stays up while it is hovered or focused, past the window: its Undo goes as the window
+# ends, and a focus it held goes back to the list. The window 2001 ms keeps the toast up for
+# three seconds, so `wait-within` sees it go while the toast is still there.
+triage-undo-window 2001
+outbox-queue sixth
+assert-toast "Message queued"
+assert-toast-button Undo
+focus toast
+assert-focus toast
+wait-within 2600 assert-toast-button none
+assert-focus list
+assert-action-enabled win.undo false
+assert-outbox sixth queued
+outbox-engine start sixth
+outbox-engine sent sixth
+wait-until assert-outbox sixth sent
+triage-undo-window 3000
 
 # The engine started it inside the window: too late to undo. Then the server took it.
 outbox-queue second

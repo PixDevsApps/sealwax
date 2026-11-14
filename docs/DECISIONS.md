@@ -1347,6 +1347,8 @@ Built on the user's "Start item 5's small 1.0.x fixes, one commit each, as PLAN.
 
 **Decision:** a toast whose op deletes the mail for good — **Empty Trash**, and **Delete** in the Trash or where an account has no Trash, on a server account — has its **Undo** button retired as the window ends (`Notice::undo_expires`; `show_notice` hides the button, the toast stays readable). On a server without UIDPLUS the op only flags the message `\Deleted` and an Undo would still work, which the app doesn't know at queue time: the window is the contract either way. A move's or a flag change's Undo is left alone, since the store reverses a completed one, and so is a selection that mixes moves and deletes for good. `z` and Ctrl+Z still ask the store afterwards, which says what can't come back. When the retired button held the keyboard focus, the focus goes back to the message list, not on to the window's first button, so the list's keys keep working.
 
+**The send's toast, the same day** (found in review, built by the project for 1.4.1): "Message queued" had the same gap, and there a click after the window did nothing at all, since the send is no longer the last action. Its **Undo** goes when the outbox's window ends, by the same rule and with the same focus handling (`AppState::retire_toast_button`, shared by both).
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.

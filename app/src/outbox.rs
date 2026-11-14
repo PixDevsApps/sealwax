@@ -246,19 +246,6 @@ pub(crate) fn queued(state: &AppState, draft: DraftId, account: AccountId) {
     let window = state
         .triage()
         .map_or(triage::UNDO_WINDOW, |triage| triage.window());
-    let expiry = glib::timeout_add_local_once(window, move || {
-        let outbox = shared();
-        outbox.expiry.replace(None);
-        if outbox.last.get() == Some(draft) {
-            outbox.last.set(None);
-            if let Some(state) = outbox.state.borrow().upgrade() {
-                state.refresh_commands();
-            }
-        }
-    });
-    if let Some(old) = outbox.expiry.replace(Some(expiry)) {
-        old.remove();
-    }
     let toast = toast(QUEUED_TEXT, window);
     toast.set_button_label(Some("Undo"));
     toast.connect_button_clicked(move |_| {
@@ -266,6 +253,26 @@ pub(crate) fn queued(state: &AppState, draft: DraftId, account: AccountId) {
             undo(&state, draft);
         }
     });
+    // The window over, the toast's Undo would take nothing back: it goes, also from a toast
+    // still up because it is hovered or focused.
+    let expiring = toast.clone();
+    let expiry = glib::timeout_add_local_once(window, move || {
+        let outbox = shared();
+        outbox.expiry.replace(None);
+        let state = outbox.state.borrow().upgrade();
+        if let Some(state) = &state {
+            state.retire_toast_button(&expiring);
+        }
+        if outbox.last.get() == Some(draft) {
+            outbox.last.set(None);
+            if let Some(state) = state {
+                state.refresh_commands();
+            }
+        }
+    });
+    if let Some(old) = outbox.expiry.replace(Some(expiry)) {
+        old.remove();
+    }
     state.show_toast(&toast, true);
     state.refresh_commands();
 }

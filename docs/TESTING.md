@@ -77,6 +77,16 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The send's toast: its Undo retired as the window ends — 2026-11-14
+
+This machine. The same gap as [PR #37](https://github.com/PixDevsApps/sealwax/pull/37)'s, in "Message queued": hovered or focused, the toast stayed up past the undo window with an **Undo** that then did nothing. Its button now goes when the outbox's window ends, with the focus rule of the section below (`AppState::retire_toast_button`, which the delete-for-good toast now uses too).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `reply-outbox.sealwax-test` | 116 of 116 steps (was 101). New: a send queued with the window at 2,001 ms, `assert-toast-button Undo`, the focus put on it, then `wait-within 2600 assert-toast-button none`, the focus in the list, Undo disabled, the send still queued; then it is sent | Pass |
+| The same without the retirement in `outbox::queued` | 114 of 116: the button still "Undo" after 2.6 s, the focus on the toast's button | Pass (the steps pin the fix) |
+| `triage-undo`, `trash-empty`, `reply-quick-drafts` on the shared helper | 120 of 120, 76 of 76, 60 of 60 | Pass |
+
 ### The retired Undo and the keyboard focus, and the project's runs on PR #37 — 2026-11-14
 
 This machine (the project's). [PR #37](https://github.com/PixDevsApps/sealwax/pull/37) by @lama7 retires the **Undo** of a delete for good's toast as the undo window ends ([ADR-015 amendment](DECISIONS.md#adr-015-amendment--a-delete-for-goods-undo-is-retired-with-the-undo-window-2026-11-14)); the section below this one holds the contributor's runs. One commit was added in review: when the retired button held the keyboard focus, the focus goes back to the message list.
