@@ -2,6 +2,15 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.4.1 — 2026-11-14
+
+An Undo that could no longer undo is gone from the toast.
+
+- **Undo leaves the toast when its time is up** ([PR #37](https://github.com/PixDevsApps/sealwax/pull/37), thanks @lama7): after **Empty Trash**, or **Delete** in an account's Trash, the toast's **Undo** stands for 7 seconds. A toast stays on screen for as long as the pointer rests on it or the keyboard focus is in it, though, and it went on showing **Undo** after those seconds, when the messages were already deleted for good and Undo could only say that they can't be brought back. The button now goes when its time is up, and the toast stays to be read. Nothing more was ever deleted than you asked for.
+- **The keyboard stays with the list:** if **Undo** itself had the keyboard focus when it went, the focus returns to the message list, so its keys keep working.
+- **The same after Send:** "Message queued" also kept its **Undo** on screen after the 7 seconds, where a click did nothing at all. It goes too, and the message is sent as before.
+- **Other toasts keep their Undo** (archive, move, junk, star, read): those can be undone after the 7 seconds too.
+
 ## 1.4.0 — 2026-11-14
 
 Empty Trash.

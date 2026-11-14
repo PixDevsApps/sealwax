@@ -95,6 +95,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.4.1" date="2026-11-14" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.1</url>
+      <description>
+        <p>After Empty Trash, Delete in the Trash or Send, the toast's Undo now goes when its seven seconds are up. A toast the pointer rested on used to keep showing an Undo that could no longer undo. If Undo had the keyboard focus, the focus returns to the message list.</p>
+      </description>
+    </release>
     <release version="1.4.0" date="2026-11-14" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.0</url>
       <description>
