@@ -6,7 +6,7 @@
 //! | --- | --- |
 //! | `key KEY [COUNT]` | Presses KEY (a GTK accelerator: `j`, `<Shift>i`, `numbersign`, `<Control>z`), COUNT times, to the focused widget |
 //! | `type TEXT` | Types TEXT, a character at a time |
-//! | `focus list\|search\|reader\|NAME` | Puts the keyboard focus there |
+//! | `focus list\|search\|reader\|toast\|NAME` | Puts the keyboard focus there (`toast`: the toast's button) |
 //! | `click-row POS [ctrl\|shift\|ctrl+shift]` | Clicks a list row with the primary button |
 //! | `check-row POS` | Ticks or unticks a row's checkbox, as a click on it does |
 //! | `hover-row POS` | Moves the pointer over a row |
@@ -487,7 +487,7 @@ fn menu_item(harness: &Harness, name: Option<&str>) -> Result<gtk::Button, Strin
 }
 
 /// The widget `name` names for `focus` and `assert-focus`: `list`, `search`, `reader`, the
-/// Move to… picker's entry `move-to`, or a named widget.
+/// toast's button `toast`, the Move to… picker's entry `move-to`, or a named widget.
 fn focus_target(harness: &Harness, name: &str) -> Result<gtk::Widget, String> {
     match name {
         "list" => Ok(super::mail::list(harness)?.list_view().clone().upcast()),
@@ -505,6 +505,11 @@ fn focus_target(harness: &Harness, name: &str) -> Result<gtk::Widget, String> {
             });
             Ok(plain.unwrap_or_else(|| reader.widget()))
         }
+        "toast" => toast_buttons(harness)?
+            .into_iter()
+            .next()
+            .map(|button| button.upcast())
+            .ok_or_else(|| "no toast offers a button".to_owned()),
         "move-to" => move_to::current()
             .and_then(|picker| picker.search_entry())
             .map(|entry| entry.upcast())

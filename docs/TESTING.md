@@ -77,9 +77,25 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### The retired Undo and the keyboard focus, and the project's runs on PR #37 — 2026-11-14
+
+This machine (the project's). [PR #37](https://github.com/PixDevsApps/sealwax/pull/37) by @lama7 retires the **Undo** of a delete for good's toast as the undo window ends ([ADR-015 amendment](DECISIONS.md#adr-015-amendment--a-delete-for-goods-undo-is-retired-with-the-undo-window-2026-11-14)); the section below this one holds the contributor's runs. One commit was added in review: when the retired button held the keyboard focus, the focus goes back to the message list.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `bash tools/ci.sh --ui` on the PR's head `9a30459` | Exit 0: 1,500 passed, 0 failed, 93 ignored; 94 self-tests, 9,114 of 9,114 steps (`trash-empty` 76 of 76, `triage-undo` 110 of 110); hostile suite `production_failures=[]`, dns production=0 | Pass |
+| The PR's steps without its fix (the one-shot taken out of `show_notice`) | `trash-empty` 75 of 76 and `triage-undo` 109 of 110, each failing at `wait-within … assert-toast-button none` | Pass (the steps pin the fix) |
+| The focus, before the review's commit: the toast's Undo focused, then retired | The focus moved on to the Compose button; `j` did nothing in the list | The finding |
+| `triage-undo.sealwax-test` with the review's commit | 120 of 120 steps (was 110). New: `focus toast` puts the focus on the toast's Undo, and after `wait-within 2600 assert-toast-button none` the focus is in the list and `z` brings the message back. Without `take_focus`: 117 of 120, the focus on the Compose button and `z` undoing nothing | Pass |
+| `bash tools/ci.sh --ui` with the review's commit | Exit 0: 1,500 passed, 0 failed, 93 ignored; 94 self-tests, 9,124 of 9,124 steps; hostile suite `production_failures=[]`, dns production=0 | Pass |
+| `bash tools/ci.sh --testbed` | Not run: the change is in the app's toast alone | Not verified |
+
+- **The usual case is unchanged.** With the list focused and its last row deleted, the focus stays on the message list from the delete to after the toast has gone; only a button that itself held the focus (Tab reaches it) took it along.
+- **The harness.** `focus toast` and `assert-focus toast` name the toast's button (`app/src/selftest/triage.rs`).
+
 ### Empty Trash and Delete in the Trash: the toast's Undo retired as the window ends — 2026-11-14
 
-A follow-up to 1.4.0, in its own PR at the maintainer's word: hover the toast a permanent delete leaves — **Empty Trash**, or **Delete** in a server's Trash — and it stays up past the **7 s** undo window (libadwaita pauses a toast's own timeout while it is hovered, pressed or has focus inside it), still offering **Undo**, which the store then refuses ("… deleted for good and can't be brought back"). The undo window is 7 s from the command (`not_before`, when the op runner wakes and expunges), but nothing retired the toast's button. The fix retires it as the window ends: `Notice` gains `undo_expires`, true for a notice whose op deletes the mail for good, and `show_notice` schedules a one-shot at `notice.shown` that clears the button (`set_button_label(None)` hides it; the toast stays readable). This machine (the same laptop, AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds.
+A follow-up to 1.4.0, in its own PR at the maintainer's word: hover the toast a permanent delete leaves — **Empty Trash**, or **Delete** in a server's Trash — and it stays up past the **7 s** undo window (libadwaita pauses a toast's own timeout while it is hovered, pressed or has focus inside it), still offering **Undo**, which the store then refuses ("… deleted for good and can't be brought back"). The undo window is 7 s from the command (`not_before`, when the op runner wakes and expunges), but nothing retired the toast's button. The fix retires it as the window ends: `Notice` gains `undo_expires`, true for a notice whose op deletes the mail for good, and `show_notice` schedules a one-shot at `notice.shown` that clears the button (`set_button_label(None)` hides it; the toast stays readable). The contributor's runs, on the contributor's machine (the same laptop as in his sections below: AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds; the project's own runs are in the section above.
 
 | Check | Result | Verdict |
 | --- | --- | --- |
