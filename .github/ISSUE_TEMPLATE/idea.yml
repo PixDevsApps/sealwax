@@ -1,0 +1,25 @@
+name: Idea or feature request
+description: Something Sealwax could do, or do better.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sealwax keeps its scope small on purpose, so not every idea is built, but every one is read. For a loose idea you'd like to talk through first, [Discussions → Ideas](https://github.com/PixDevsApps/sealwax/discussions/categories/ideas) works too.
+  - type: textarea
+    id: need
+    attributes:
+      label: What you'd like to do
+      description: The task or the problem, in your own words. What gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: How it could work
+      description: How you picture it, or how another mail app does it.
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: Your setup (Omarchy or another Linux system, the kind of account) if it matters, or a sketch.

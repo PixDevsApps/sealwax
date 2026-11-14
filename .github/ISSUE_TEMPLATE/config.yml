@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or help using Sealwax
+    url: https://github.com/PixDevsApps/sealwax/discussions/categories/q-a
+    about: Ask in Discussions. The user guide at https://pixdevs.com/guides/sealwax/ may already have the answer.
+  - name: No GitHub account? Email support
+    url: https://pixdevs.com/guides/sealwax/
+    about: Write to support@pixdevs.com. In Sealwax, Help → Contact Support… gives you the address and the lines that help.
+  - name: Security problem
+    url: https://github.com/PixDevsApps/sealwax/security/advisories/new
+    about: Report it privately, never in a public issue. See SECURITY.md.

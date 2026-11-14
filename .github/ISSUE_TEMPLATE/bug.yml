@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in Sealwax doesn't work as it should.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please leave out your email addresses, message text and server passwords: nothing here needs them.
+        A security problem goes privately to the [security policy](https://github.com/PixDevsApps/sealwax/security/policy) instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to make it happen again
+      placeholder: |
+        1. Open …
+        2. Press …
+        3. See …
+  - type: textarea
+    id: debug
+    attributes:
+      label: Debugging information
+      description: In Sealwax, **Help → About Sealwax → Troubleshooting → Debugging Information**, then copy. It holds the version, how Sealwax was installed, your system and desktop, and nothing about your mail.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: account
+    attributes:
+      label: Kind of account
+      description: The account where it happens, if it's about mail.
+      multiple: true
+      options:
+        - Outlook.com or Hotmail (Sign in with Microsoft)
+        - Microsoft 365, work or school
+        - Gmail
+        - iCloud
+        - Fastmail
+        - Yahoo
+        - Proton Mail through Proton Mail Bridge
+        - Another IMAP account
+        - A POP3 account
+        - Not about an account
+  - type: textarea
+    id: more
+    attributes:
+      label: Anything else
+      description: A screenshot (with fictional or blurred mail), the log lines around the problem, or what you've tried.
