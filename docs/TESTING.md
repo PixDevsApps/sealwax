@@ -77,6 +77,17 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### Empty Trash, rebased onto 1.3.2, and the two review asks — 2026-11-13
+
+On the review branch, rebased onto `80f1cf4` (`main`, 1.3.2): the ten commits of the feature, the store fix the maintainer's fourth ask turned up, and the testbed case for the second, eleven in all. The only conflicts were in the action registry — `ActionId::ALL` is `[Self; 103]` now, the base 98 with our `EmptyTrash` and the four Help actions 1.3.2 added — and in this file. This machine (the same laptop, AMD Ryzen 5 3500U, Omarchy, rustc 1.98.1, GTK 4.24.1, WebKitGTK 2.54.1), debug builds.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo test --workspace -- --skip webkit_checks` | Exit 0: 1,499 passed, 0 failed, 92 ignored, 1 filtered, 55 test targets. The one filtered is `app::webview::tests::webkit_checks`, which SIGSEGVs with no display here; it runs in CI | Pass |
+| The store, `cargo test -p sealwax-infrastructure --test store` | 163 passed, 0 failed, 2 ignored. New: `a_message_on_its_way_to_the_trash_emptied_before_the_move_never_lands_in_it` — the maintainer's fourth ask, and a real hole. Delete from the Inbox (a move into the Trash, inside its undo window), empty the Trash before the move runs, run both ops, and the message is gone from both folders. With the old `empty_trash` it failed at both ends: the batch came back `None` (a message still filed in the Inbox is not one it looks at) and, that check relaxed, the message landed in the Trash afterwards — the folder the user had just emptied was not empty | Pass |
+| The engine's writes and op runner, `cargo test -p sealwax-engine --test write` / `--test ops` | 26 and 13 passed, 0 failed | Pass |
+| `delete_below` on the real servers — the new testbed case `emptying_a_folder_below_its_floor_on_every_server`, `bash tools/ci.sh --testbed` | Not run: the Docker daemon is inactive on this machine and the testbed is not set up here (it needs `tools/testbed/up.sh` and `seed.sh`). The case is written and compiles (`cargo test -p sealwax-engine --test write_testbed --no-run`): it fills a folder with six messages below a floor and four above, one of those already `\Deleted` by an earlier delete, empties below the floor, and reads it back — the below-floor six gone for good and the three `\Seen` above kept, on both arms; with UIDPLUS the other client's `\Deleted` message stays flagged, without it the one plain `EXPUNGE` takes it with the below-floor mail. It holds that both arms were taken here, so it can't pass on a single server by accident. To be run and recorded | Not verified |
+
 ### 1.3.2 — 2026-11-13
 
 This machine. The changes since 1.3.1: help without a GitHub account ([ADR-028](DECISIONS.md#adr-028--help-without-github-the-online-guide-a-support-address-and-about-in-the-app-2026-11-13)): a Help submenu in the main menu with User Guide, Contact Support…, Report an Issue and About Sealwax, opening on hover; the setup assistant's Get help button; the metainfo's and the `.flatpakref`'s links to the online guide; the version commit `e8d81a3` and the docs, up to `v1.3.2` = `14ade62`.
