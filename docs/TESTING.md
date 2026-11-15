@@ -94,7 +94,7 @@ This machine. The changes since 1.4.1: `rusqlite` 0.43.0 with `libsqlite3-sys` 0
 | `python3 tools/flatpak.py build` on `v1.4.2` (flatpak-builder 1.4.12) | Exit 0, built against the GNOME 51 runtime's SQLite (libsqlite3-sys refuses one older than 3.45.3); metainfo and desktop file valid, the 1.4.2 release present; `/app/bin/sealwax` 24,065,608 bytes | Pass |
 | `tools/flatpak.py site`: the signed repository | Commit `1870b1e5…` on 1.4.1's `1e573d57…`, signed by the repository key (`C3A84406A8A78141`); the `.flatpakref`'s `Homepage=` the product page | Pass |
 | The release [v1.4.2](https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.2) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the repository for the `.flatpakref` | Pass |
-| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak installation | FLATPAK_SERVED | FLATPAK_VERDICT |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak installation | `sealwax-flatpak` `main` = `d3d14b8` at 23:12:39 UTC; the served `summary` the same bytes as the local one at 23:13:21 UTC; `flatpak remote-info` on `https://pixdevsapps.github.io/sealwax-flatpak/sealwax.flatpakrepo`: commit `1870b1e5…`, parent `1e573d57…` | Pass |
 | An install and update of the Flatpak from the real address | Not run this time (1.3.2's run checked the path) | Not verified |
 | A software centre showing the new homepage and finding Sealwax by the new keywords | Not run: read from the validated metainfo and `.desktop` file only | Not verified |
 
