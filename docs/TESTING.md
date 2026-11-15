@@ -77,6 +77,27 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.4.2 — 2026-11-16
+
+This machine. The changes since 1.4.1: `rusqlite` 0.43.0 with `libsqlite3-sys` 0.40.0 and SQLite 3.45.3 or later (`8ac453e`, [ADR-005 amendment](DECISIONS.md#adr-005-amendment--rusqlite-043-sqlite-3453-or-later-2026-11-15)); `ammonia` 4.1.9 and SECURITY.md's advisory list (`4f6269a`); search keywords, the product page as homepage and "email client for Linux" (`43f8ac1`, [ADR-028 amendment](DECISIONS.md#adr-028-amendment--the-homepage-is-the-product-page-2026-11-15)); the version commit, up to `v1.4.2` = `0ae141c`.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `bash tools/ci.sh --ui` on `1097e3e` (the version commit before its date moved to 2026-11-16 in the CHANGELOG and the metainfo, `0ae141c`), from a clean target folder | Exit 0: 1,500 passed, 0 failed, 93 ignored; 94 self-test scripts, 9,139 of 9,139 steps; hostile suite `production_failures=[]`, dns production=0; the MSRV check; no compiler warning. The same on the branch's two dependency commits before the merge | Pass |
+| `bash tools/ci.sh --testbed` | Not run | Not verified |
+| RustSec advisories (`cargo deny check advisories`, the database fetched 2026-11-15) | 10, none reaching Sealwax (SECURITY.md); RUSTSEC-2026-0459 (`libsqlite3-sys`) and the four in `ammonia` gone. RUSTSEC-2026-0533 also checked against `domain::compose::clean` before the update: 41 payloads (the advisory's example and each raw-text tag inside MathML and SVG integration points) came out with no MathML, SVG, raw-text tag, `img` or `onerror` | Pass |
+| The push range (`288d375..0ae141c`, 4 commits) scanned | No working doc or reference to one, no home path, hostname or personal data beyond the usual commit author | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `desktop-file-validate` on the `.desktop` file; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note); valid; up to date | Pass |
+| The product page `https://pixdevs.com/omarchy/sealwax/`, the new homepage | HTTP 200 | Pass |
+| `python3 tools/release.py build` on `v1.4.2` | `check()` 1,214 passed, 0 failed, 93 ignored; no compiler warning in the build log; `SHA256SUMS` checks for all four files; the binary says `sealwax 1.4.2` and holds no home path, user name, hostname or self-test code; `depends` `sqlite>=3.45.3`; the metainfo with the 1.4.2 release and the product page, the `.desktop` file with the new keywords; package SHA-256 `3df883c3d1e10ee4cde6c903d3f14bd002e972e74a2f2ae5bce4c41c1984a5c6` | Pass |
+| The clean-container install test (`sealwax-selftest` from `1097e3e`, whose code `0ae141c` keeps) | `/usr/bin/sealwax` to its first frame with the container's SQLite 3.54.1; `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container, the web process in WebKit's sandbox | Pass |
+| `python3 tools/flatpak.py build` on `v1.4.2` (flatpak-builder 1.4.12) | Exit 0, built against the GNOME 51 runtime's SQLite (libsqlite3-sys refuses one older than 3.45.3); metainfo and desktop file valid, the 1.4.2 release present; `/app/bin/sealwax` 24,065,608 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `1870b1e5…` on 1.4.1's `1e573d57…`, signed by the repository key (`C3A84406A8A78141`); the `.flatpakref`'s `Homepage=` the product page | Pass |
+| The release [v1.4.2](https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.2) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the repository for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak installation | FLATPAK_SERVED | FLATPAK_VERDICT |
+| An install and update of the Flatpak from the real address | Not run this time (1.3.2's run checked the path) | Not verified |
+| A software centre showing the new homepage and finding Sealwax by the new keywords | Not run: read from the validated metainfo and `.desktop` file only | Not verified |
+
 ### 1.4.1 — 2026-11-14
 
 This machine. The change since 1.4.0: a toast's **Undo** retired as the undo window ends, for a delete for good ([PR #37](https://github.com/PixDevsApps/sealwax/pull/37) by @lama7, merged as `f1c4e8e` with `939ad9d` added in review: a focus the button held goes back to the list) and for the send's toast (`38b5ace`); [ADR-015 amendment](DECISIONS.md#adr-015-amendment--a-delete-for-goods-undo-is-retired-with-the-undo-window-2026-11-14). The sections below this one hold the runs on each.
