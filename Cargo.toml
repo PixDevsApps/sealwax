@@ -52,7 +52,7 @@ hickory-resolver = { version = "0.26.3", default-features = false, features = ["
 quick-xml = "0.42.0"
 psl = "2.1"
 idna = "1.1"
-ammonia = "~4.1.5"
+ammonia = "~4.1.9"
 html5ever = "0.39"
 mail-builder = { version = "~1.0.0", default-features = false }
 oo7 = "0.6"
