@@ -103,6 +103,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.4.2" date="2026-11-16" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.2</url>
+      <description>
+        <p>Updated libraries: rusqlite 0.43 and ammonia 4.1.9, which clear published advisories that did not reach Sealwax. SQLite 3.45.3 or later is now needed. Software centres find Sealwax by more search words, and its website link is now its product page.</p>
+      </description>
+    </release>
     <release version="1.4.1" date="2026-11-14" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.1</url>
       <description>

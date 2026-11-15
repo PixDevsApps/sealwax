@@ -2,6 +2,14 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.4.2 — 2026-11-16
+
+Up-to-date building blocks, and easier to find.
+
+- **Updated libraries:** the database library (rusqlite 0.43) and the HTML cleaner Sealwax uses when you reply to or forward an HTML message (ammonia 4.1.9). Both updates clear published advisories, none of which reached Sealwax: it uses your system's SQLite, not the copy the advisory was about, and its HTML cleaner keeps no SVG, MathML or style element. [SECURITY.md](docs/SECURITY.md) lists what was checked.
+- **SQLite 3.45.3 or later:** the package now asks for it (3.43 before). Arch Linux and Omarchy have had a newer one for a long time; the Flatpak brings its own.
+- **Easier to find:** software centres and app launchers find Sealwax by words such as Outlook, Microsoft 365, Gmail, offline, keyboard and privacy, and its website link is now [Sealwax's page](https://pixdevs.com/omarchy/sealwax/). The user guide stays under **Help → User Guide**.
+
 ## 1.4.1 — 2026-11-14
 
 An Undo that could no longer undo is gone from the toast.
