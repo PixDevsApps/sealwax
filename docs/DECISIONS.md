@@ -1789,3 +1789,11 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 **Decision:** User Guide, Contact Support… and About Sealwax go into a **Help** submenu, in a menu section of its own where the plain items were; Check for Updates stays a plain item in its own section above Quit. About's "Report an Issue" link moves out of About into the submenu as a registry command, **Report an Issue** (`report-issue`, no default key), which opens a new issue on GitHub (`domain::support::NEW_ISSUE_URL`); About keeps the guide, support and Troubleshooting. The registry says which section is a submenu (`MenuSection::submenu`), so the menu stays generated from it (ADR-017). This replaces "as plain items (no submenu)" above, and the "Help submenu" alternative is now the choice; Check for Updates' place, the reason that alternative was rejected, is kept. The submenu opens beside the main menu on hover (GTK's nested popover menu, `PopoverMenuFlags::NESTED`), not by sliding into the menu's place on a click, at the owner's word after a second look the same day: "I want the sub menu to open on hoover, not on mouse click as it is now".
 
+
+### ADR-028 amendment — the homepage is the product page (2026-11-15)
+
+**Status:** Accepted — the owner, 2026-11-15: "release it as 1.4.2 together with reach-plan phase 3" (phase 3 of the plan for the repository's reach, 2026-11-14).
+
+**Decision:** the AppStream metainfo's `homepage` and the `.flatpakref`'s `Homepage=` become Sealwax's product page, **https://pixdevs.com/omarchy/sealwax/**, the same address as the GitHub repository's website. The online guide stays the metainfo's `help` link and what **Help → User Guide** opens. The metainfo and the `.desktop` file gain search keywords (outlook, microsoft 365, gmail, offline, keyboard, privacy, sieve, omarchy, and `pop3` in the `.desktop` file), so software centres and app launchers find Sealwax by them.
+
+**Consequences:** a software centre's "Website" button shows the product page, with its screenshots and install choices, instead of the guide; nothing in the app changes.

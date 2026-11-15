@@ -10,5 +10,5 @@ StartupNotify=true
 StartupWMClass=io.github.pixdevsapps.Sealwax
 DBusActivatable=true
 Categories=Network;Email;
-Keywords=mail;email;inbox;imap;smtp;
+Keywords=mail;email;inbox;imap;pop3;smtp;outlook;microsoft 365;gmail;offline;keyboard;privacy;sieve;omarchy;
 MimeType=x-scheme-handler/mailto;

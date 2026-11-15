@@ -46,7 +46,7 @@
     <mediatype>x-scheme-handler/mailto</mediatype>
   </provides>
 
-  <url type="homepage">https://pixdevs.com/guides/sealwax/</url>
+  <url type="homepage">https://pixdevs.com/omarchy/sealwax/</url>
   <url type="help">https://pixdevs.com/guides/sealwax/</url>
   <url type="bugtracker">https://github.com/PixDevsApps/sealwax/issues</url>
   <url type="vcs-browser">https://github.com/PixDevsApps/sealwax</url>
@@ -62,6 +62,14 @@
     <keyword>imap</keyword>
     <keyword>pop3</keyword>
     <keyword>smtp</keyword>
+    <keyword>outlook</keyword>
+    <keyword>microsoft 365</keyword>
+    <keyword>gmail</keyword>
+    <keyword>offline</keyword>
+    <keyword>keyboard</keyword>
+    <keyword>privacy</keyword>
+    <keyword>sieve</keyword>
+    <keyword>omarchy</keyword>
   </keywords>
 
   <branding>
