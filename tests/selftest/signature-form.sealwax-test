@@ -1,0 +1,53 @@
+# Signature… (1.5.0, issue #6) on a scripted engine: unavailable without an account that
+# accounts.toml lists; then the form opens with the account's name and address filled in, Save
+# writes the designed signature, its fields and its icons into the signatures folder and sets
+# signature_html for the address in accounts.toml; the form opens again with what was saved, and
+# Remove Signature takes the line out and leaves the files. The account's heading menu offers it.
+# Every address and name is fictional.
+# Run: tools/headless.sh 39 target/debug/sealwax-selftest --self-test tests/selftest/signature-form.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+assert-action-enabled win.edit-signature false
+
+action win.add-account
+setup-type setup-address kari@example.test
+setup-type setup-name "Kari Nordmann"
+setup-key enter
+engine-expect detect address=kari@example.test
+engine-reply detected fjordpost
+setup-type setup-password fictional-password-12
+setup-key enter
+engine-expect verify address=kari@example.test
+engine-reply verified ok
+engine-expect add-account label=none color=rose
+engine-reply added ok file
+wait-until assert-setup open false
+setup-dismiss-toasts
+wait-until assert-action-enabled win.edit-signature true
+
+# The form: the account's name and address filled in; Save writes the signature.
+action win.edit-signature
+assert-dialog "Signature for kari@example.test"
+wait-until assert-field signature-name "Kari Nordmann"
+assert-field signature-email kari@example.test
+setup-type signature-title "Lead engineer"
+setup-type signature-github github.com/kari
+setup-type signature-website fjordpost.example
+setup-click signature-save
+wait-until assert-file-contains $TMP/config/sealwax/accounts.toml "signature_html = \"kari/kari@example.test.html\""
+assert-file-contains $TMP/config/sealwax/signatures/kari/kari@example.test.html "Lead engineer"
+assert-file-contains $TMP/config/sealwax/signatures/kari/kari@example.test.html "sealwax-github.png"
+assert-file-contains $TMP/config/sealwax/signatures/kari/kari@example.test.html "https://fjordpost.example"
+assert-file-contains $TMP/config/sealwax/signatures/kari/kari@example.test.json "github.com/kari"
+
+# From the heading's menu it opens again with what was saved; Remove Signature takes the line
+# out of accounts.toml and leaves the files.
+account-menu account-1
+sidebar-menu-click account-menu-signature
+wait-until assert-field signature-title "Lead engineer"
+assert-field signature-github github.com/kari
+setup-click signature-remove
+wait-until assert-file-lacks $TMP/config/sealwax/accounts.toml signature_html
+assert-file-contains $TMP/config/sealwax/signatures/kari/kari@example.test.html "Lead engineer"

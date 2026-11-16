@@ -9,7 +9,7 @@
 
 use super::ComposeRequest;
 use super::editor::InlineImage;
-use sealwax_domain::compose::Draft;
+use sealwax_domain::compose::{Draft, DraftPart};
 use sealwax_domain::compose::identity::SignatureBlock;
 use sealwax_domain::model::{AccountId, Address, DraftId};
 use sealwax_infrastructure::blobs::BlobStore;
@@ -37,9 +37,14 @@ pub(crate) struct Sender {
     pub signature_html: Option<String>,
 }
 
-/// An HTML signature ready to insert: its block, and its images as the editor's inline parts
-/// by Content-ID, their bytes already in the blob store.
-pub(crate) type HtmlSignature = (SignatureBlock, Vec<(String, InlineImage)>);
+/// An HTML signature ready to insert: its block, its images as the editor's inline parts by
+/// Content-ID (their bytes already in the blob store), and a designed signature's styled HTML
+/// as the draft's hidden part (issue #6), stored too.
+pub(crate) struct HtmlSignature {
+    pub block: SignatureBlock,
+    pub images: Vec<(String, InlineImage)>,
+    pub styled: Option<(String, DraftPart)>,
+}
 
 /// What a composer window starts from.
 #[derive(Clone, Debug)]

@@ -76,6 +76,12 @@ impl fmt::Debug for SignatureBlock {
     }
 }
 
+/// The media type of a draft's hidden part that holds a designed signature's styled HTML
+/// (issue #6): Sealwax's own, made from the Signature… form's fields. The composer shows the
+/// signature from it and the MIME builder puts it in place of the signature's `div` when the
+/// message is built; it is never sent as a part, and one read back from a server is dropped.
+pub const STYLED_SIGNATURE_TYPE: &str = "application/x-sealwax-signature";
+
 /// The separator line in a signature's HTML: `--` and a no-break space, which survives HTML's
 /// whitespace rules; the plain-text part turns the line back into `-- ` (RFC 3676 4.3).
 pub const SEPARATOR_HTML: &str = "<div>--&nbsp;</div>";

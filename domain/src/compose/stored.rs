@@ -170,6 +170,13 @@ pub fn parse(raw: &[u8]) -> Option<StoredDraft> {
     let parts = parsed
         .attachments
         .iter()
+        // A designed signature's hidden part is Sealwax's own; one from a server is never
+        // trusted (issue #6).
+        .filter(|attachment| {
+            !attachment
+                .mime_type
+                .eq_ignore_ascii_case(super::identity::STYLED_SIGNATURE_TYPE)
+        })
         .filter_map(|attachment| {
             let part = message.parts.get(attachment.part as usize)?;
             let content_id = attachment

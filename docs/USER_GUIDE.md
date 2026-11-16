@@ -314,7 +314,9 @@ Pasted text keeps simple formatting and loses the rest; **Paste as Plain Text** 
 
 **Identities and signatures** are set in `accounts.toml` ([below](#accountstoml)): `signature` on an account, and an `[[account.identity]]` table for each other address the account sends from, with its own name and signature. A signature is plain text, put under what you write after a `-- ` line.
 
-**HTML signatures.** For a signature with formatting, links and a logo, write it as an HTML file in Sealwax's signatures folder, `~/.config/sealwax/signatures/`, with its images beside it, and name the file with `signature_html` on the account or identity:
+**HTML signatures.** The easy way: right-click the account's name in the sidebar and choose **Signature…** (it is in the palette too). It makes a simple designed signature: your picture at the left (a photo, shown round, or a logo), your name in bold, your title and company in grey and the icons of your social profiles (LinkedIn, X, GitHub, Instagram, Facebook, YouTube) as links, then a thin line and your address, phone, email and website, each after a small grey icon. It sets no text colour but that grey and no background, so it reads in light and dark mail alike: the text takes the colour of the reader's mail program. Fill in what you want (every field is optional), choose a picture (PNG, JPEG or GIF, up to 1 MB), and check the preview, which shows it as light and as dark mail; **Save** makes the signature and every new message from that address has it. In the composer it can't be edited: change it in the form. An account that sends from several addresses lets you pick the address at the top. **Remove Signature** stops using it (its files stay). The form keeps what you typed, so it opens with it next time; a signature you wrote by hand is never overwritten: the form makes its own file and uses that instead.
+
+For a signature the form can't make, write it as an HTML file in Sealwax's signatures folder, `~/.config/sealwax/signatures/`, with its images beside it, and name the file with `signature_html` on the account or identity:
 
 ```text
 ~/.config/sealwax/signatures/work/signature.html
@@ -327,7 +329,7 @@ signature_html = "work/signature.html"
 
 In the file, an image names its file the way a web page does, `<img src="logo.png" alt="Acme">`, relative to the HTML file; Sealwax sends each image inside the message (as an inline part), never as a link or a path on your computer. When you start a message, reply or forward, the composer shows the signature as it will be sent, under what you write and above the quoted message, and changing **From** puts the other address's signature in its place.
 
-- **What it keeps** is what the composer itself can write: bold, italic, underline, strikethrough, links (web and `mailto:`), lists, tables and line breaks. Colours, fonts, sizes and other styles are left out, and so are scripts, forms and anything that would load from the internet, including images on a web address.
+- **What it keeps,** for a file you write yourself, is what the composer itself can write: bold, italic, underline, strikethrough, links (web and `mailto:`), lists, tables and line breaks. Colours, fonts, sizes and other styles are left out, and so are scripts, forms and anything that would load from the internet, including images on a web address.
 - **Images:** PNG, JPEG or GIF files of at most 1 MB each, at most ten, in the HTML file's own folder or below it. The file itself can be at most 256 KB.
 - **The plain-text part** of the message is made from the HTML, as for the rest of what you write.
 - **When it can't be used** (the file or an image is missing, an image is something else than PNG, JPEG or GIF, or a path leads outside the folder), a notice says why and the plain `signature` is used instead, if there is one. Nothing broken is ever sent.
@@ -494,6 +496,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | View | Don't Group | — |  | `dont-group` |
 | General | Add Account | — |  | `add-account` |
 | General | Edit Account | — |  | `edit-account` |
+| General | Signature… | — |  | `edit-signature` |
 | General | Remove Account | — |  | `remove-account` |
 | General | Keyboard Shortcuts | ?, h, Ctrl+? | ?, h: list and reader; Ctrl+?: anywhere | `shortcuts` |
 | General | Preferences (config.toml) | Ctrl+, | anywhere | `preferences` |

@@ -154,6 +154,8 @@ pub enum AccountFault {
     Pop3(&'static str),
     /// The file written didn't read back as the accounts it should hold.
     NotReadBack,
+    /// An HTML signature's path isn't one `signature_html` takes.
+    SignaturePath,
 }
 
 impl fmt::Display for AccountFault {
@@ -172,6 +174,9 @@ impl fmt::Display for AccountFault {
             Self::Port(protocol) => write!(f, "{}: port 0 is not a port", protocol_name(*protocol)),
             Self::Pop3(fault) => write!(f, "pop3: {fault}"),
             Self::NotReadBack => f.write_str("the entry did not read back as written"),
+            Self::SignaturePath => {
+                f.write_str("the signature's file isn't an .html file in the signatures folder")
+            }
         }
     }
 }
@@ -1288,6 +1293,90 @@ pub fn relabel(
     Ok(Some(output))
 }
 
+/// `text` with the HTML signature of `address`, the account `key`'s own address or one of its
+/// identities', set to `path` (`None` takes the line out); `None` when the file has no such
+/// account or address. A value already written is replaced in place, its comment kept; a new
+/// one goes after the address's `signature`, else after its address. Everything else stays byte
+/// for byte. A file with mistakes, or one that doesn't read back, is refused.
+pub fn set_signature_html(
+    text: &str,
+    key: &AccountKey,
+    address: &str,
+    path: Option<&str>,
+) -> Result<Option<String>, EditError> {
+    if path.is_some_and(|path| !is_signature_path(path)) {
+        return Err(EditError::Account(AccountFault::SignaturePath));
+    }
+    let before = parse(text).map_err(EditError::Invalid)?;
+    let Some(account) = before.iter().find(|account| &account.key == key) else {
+        return Ok(None);
+    };
+    let own = crate::address::same(&account.address, address);
+    let identity = account
+        .identities
+        .iter()
+        .position(|identity| crate::address::same(&identity.address, address));
+    if !own && identity.is_none() {
+        return Ok(None);
+    }
+    let mut document: DocumentMut = text
+        .parse()
+        .map_err(|_| EditError::Invalid(parse_toml(text).err().into_iter().collect()))?;
+    let Some(table) = document
+        .get_mut("account")
+        .and_then(Item::as_array_of_tables_mut)
+        .and_then(|tables| {
+            tables.iter_mut().find(|table| {
+                table.get("key").and_then(Item::as_str).map(str::trim) == Some(key.as_str())
+            })
+        })
+    else {
+        return Ok(None);
+    };
+    let target = if own {
+        Some(table)
+    } else {
+        table
+            .get_mut("identity")
+            .and_then(Item::as_array_of_tables_mut)
+            .and_then(|identities| {
+                identities.iter_mut().find(|identity| {
+                    identity
+                        .get("address")
+                        .and_then(Item::as_str)
+                        .is_some_and(|known| crate::address::same(known.trim(), address))
+                })
+            })
+    };
+    let Some(target) = target else {
+        return Ok(None);
+    };
+    let after = if target.contains_key("signature") {
+        "signature"
+    } else {
+        "address"
+    };
+    set_value(target, "signature_html", path, after);
+    let output = document.to_string();
+    let expected: Vec<AccountSettings> = before
+        .into_iter()
+        .map(|mut account| {
+            if &account.key == key {
+                let path = path.map(str::to_owned);
+                match identity.filter(|_| !own) {
+                    Some(index) => account.identities[index].signature_html = path,
+                    None => account.signature_html = path,
+                }
+            }
+            account
+        })
+        .collect();
+    if parse(&output).map_err(EditError::Invalid)? != expected {
+        return Err(EditError::Account(AccountFault::NotReadBack));
+    }
+    Ok(Some(output))
+}
+
 /// Sets the string `name` in `table`: in place when it is there (its comment kept), else right
 /// after `after`; `None` removes it.
 fn set_value(table: &mut Table, name: &str, text: Option<&str>, after: &str) {
@@ -1599,6 +1688,66 @@ mod tests {
             "{renamed}"
         );
         assert_eq!(relabel(&named, &work, None, None).unwrap().unwrap(), text);
+    }
+
+    #[test]
+    fn the_html_signature_is_set_for_the_account_or_an_identity() {
+        let text = "[[account]]\nkey = \"work\"\nname = \"Ada\"\naddress = \"ada@example.test\"\n\
+                    signature = \"Ada\"  # mine\n\n[account.imap]\nhost = \"imap.example.test\"\n\n\
+                    [account.smtp]\nhost = \"smtp.example.test\"\n\n[[account.identity]]\n\
+                    address = \"board@example.test\"\n";
+        let work = AccountKey::parse("work").unwrap();
+        let own = set_signature_html(text, &work, "ADA@example.test", Some("work/ada.html"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            own,
+            text.replace(
+                "signature = \"Ada\"  # mine\n",
+                "signature = \"Ada\"  # mine\nsignature_html = \"work/ada.html\"\n"
+            )
+        );
+        let both = set_signature_html(&own, &work, "board@example.test", Some("work/board.html"))
+            .unwrap()
+            .unwrap();
+        let account = &parse(&both).unwrap()[0];
+        assert_eq!(account.signature_html.as_deref(), Some("work/ada.html"));
+        assert_eq!(
+            account.identities[0].signature_html.as_deref(),
+            Some("work/board.html")
+        );
+        assert!(
+            both.ends_with(
+                "address = \"board@example.test\"\nsignature_html = \"work/board.html\"\n"
+            )
+        );
+        // Taken out again: the file as it was.
+        let back = set_signature_html(&both, &work, "board@example.test", None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            set_signature_html(&back, &work, "ada@example.test", None)
+                .unwrap()
+                .unwrap(),
+            text
+        );
+        assert_eq!(
+            set_signature_html(text, &work, "other@example.test", None),
+            Ok(None)
+        );
+        assert_eq!(
+            set_signature_html(
+                text,
+                &AccountKey::parse("gone").unwrap(),
+                "ada@example.test",
+                None
+            ),
+            Ok(None)
+        );
+        assert_eq!(
+            set_signature_html(text, &work, "ada@example.test", Some("../x.html")),
+            Err(EditError::Account(AccountFault::SignaturePath))
+        );
     }
 
     #[test]

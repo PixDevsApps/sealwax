@@ -962,7 +962,27 @@ impl Backend for StoreBackend {
                         },
                     ));
                 }
-                Ok((loaded.block, images))
+                let styled = match loaded.styled {
+                    Some(styled) => {
+                        let blob = blobs
+                            .put(styled.as_bytes())
+                            .map_err(|_| "it couldn't be stored".to_owned())?;
+                        let part = DraftPart {
+                            name: "signature.html".to_owned(),
+                            mime_type: identity::STYLED_SIGNATURE_TYPE.to_owned(),
+                            size: styled.len() as u64,
+                            blob,
+                            content_id: None,
+                        };
+                        Some((styled, part))
+                    }
+                    None => None,
+                };
+                Ok(super::backend::HtmlSignature {
+                    block: loaded.block,
+                    images,
+                    styled,
+                })
             })
             .await
             .map_err(|_| "the file couldn't be read".to_owned())?

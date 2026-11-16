@@ -2,7 +2,7 @@
 //! (`archive/spikes/s7-composer/src/fixtures.rs` and `roundtrip.rs`).
 
 use super::*;
-use crate::compose::{DraftSource, ReplyKind, reply, stored};
+use crate::compose::{DraftSource, ReplyKind, identity, reply, stored};
 use crate::model::{AccountId, BlobKey, MessageId as StoredId};
 use mail_parser::{Message, MessageParser, MimeHeaders, PartType};
 use proptest::prelude::*;
@@ -681,6 +681,58 @@ fn a_forwarded_message_goes_as_it_is_or_as_a_file() {
         );
         assert!(built.transmitted.is_ascii());
     }
+}
+
+#[test]
+fn a_designed_signature_is_put_in_place_and_never_sent_as_a_part() {
+    let styled = "<table><tr><td style=\"color:#a3232f\"><b>Ada</b></td>\
+                  <td><img src=\"cid:logo@example.com\"></td></tr></table>";
+    let data = vec![styled.as_bytes().to_vec(), image()];
+    let draft = Draft {
+        parts: vec![
+            part(
+                "signature.html",
+                identity::STYLED_SIGNATURE_TYPE,
+                &data[0],
+                None,
+            ),
+            part("logo.png", "image/png", &data[1], Some("logo@example.com")),
+        ],
+        ..draft(
+            "x",
+            "<div>Hei</div><div class=\"sw-signature\"><div>--&nbsp;</div><div><b>Ada</b>\
+             <div><img src=\"cid:logo@example.com\"></div></div></div><div>after</div>",
+        )
+    };
+    let built = build(&draft, DATE, &slices(&data)).unwrap();
+    let message = MessageParser::default().parse(&built.transmitted).unwrap();
+    let html = message.body_html(0).unwrap().into_owned();
+    assert!(html.contains("color:#a3232f"), "{html}");
+    assert!(html.contains("<div>Hei</div>"));
+    assert!(html.contains("</table></div><div>after</div>"), "{html}");
+    assert_eq!(html.matches("--&nbsp;").count(), 1);
+    assert!(
+        !String::from_utf8_lossy(&built.transmitted).contains(identity::STYLED_SIGNATURE_TYPE),
+        "the hidden part isn't sent"
+    );
+    assert_eq!(message.attachments().count(), 1, "the logo, inline");
+    assert!(message.body_text(0).unwrap().contains("Ada"));
+    // Without a signature div, the HTML stays as it was, and the part still isn't sent.
+    let plain = Draft {
+        html: "<div>Hei</div>".into(),
+        ..draft.clone()
+    };
+    let built = build(&plain, DATE, &slices(&data)).unwrap();
+    assert!(!String::from_utf8_lossy(&built.transmitted).contains("a3232f"));
+    let copy = drafts_copy(&draft, DATE, &slices(&data)).unwrap();
+    assert!(String::from_utf8_lossy(&copy).contains("a3232f"));
+    let read_back = stored::parse(&copy).unwrap();
+    assert!(
+        read_back
+            .parts
+            .iter()
+            .all(|part| part.mime_type != identity::STYLED_SIGNATURE_TYPE)
+    );
 }
 
 #[test]

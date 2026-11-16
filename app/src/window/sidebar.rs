@@ -451,6 +451,8 @@ pub struct Sidebar {
     new_folder: RefCell<Option<EditAccount>>,
     /// What an account heading's Rules… does, given the account's key.
     edit_rules: RefCell<Option<EditAccount>>,
+    /// What an account heading's Signature… does, given the account's key.
+    edit_signature: RefCell<Option<EditAccount>>,
     /// Whether Apply Rules to This Folder applies to a folder key (why not), and what it does.
     apply_rules: RefCell<Option<ApplyRules>>,
     /// The saved searches' names, in order.
@@ -611,6 +613,7 @@ impl Sidebar {
             edit_account: RefCell::new(None),
             new_folder: RefCell::new(None),
             edit_rules: RefCell::new(None),
+            edit_signature: RefCell::new(None),
             apply_rules: RefCell::new(None),
             searches: RefCell::new(Vec::new()),
             search_commands: RefCell::new(None),
@@ -968,6 +971,12 @@ impl Sidebar {
         self.new_folder.replace(Some(Rc::new(activate)));
     }
 
+    /// Adds Signature… to every account heading's menu (1.5.0, issue #6): `activate` gets the
+    /// account's key.
+    pub fn connect_edit_signature(&self, activate: impl Fn(&str) + 'static) {
+        self.edit_signature.replace(Some(Rc::new(activate)));
+    }
+
     /// Adds Rules… to every account heading's menu (M9, ADR-020): `activate` gets the account's
     /// key.
     pub fn connect_edit_rules(&self, activate: impl Fn(&str) + 'static) {
@@ -1207,7 +1216,8 @@ impl Sidebar {
         }
     }
 
-    /// An account heading's menu: Edit Account, Rules… and New Folder… for that account.
+    /// An account heading's menu: Edit Account, Signature…, Rules… and New Folder… for that
+    /// account.
     fn show_account_menu(&self, row: &gtk::ListBoxRow, key: &str) {
         self.close_menu();
         let mut items: Vec<MenuItem> = Vec::new();
@@ -1216,6 +1226,11 @@ impl Sidebar {
                 self.edit_account.borrow().clone(),
                 "account-menu-edit",
                 ActionId::EditAccount.title(),
+            ),
+            (
+                self.edit_signature.borrow().clone(),
+                "account-menu-signature",
+                ActionId::EditSignature.title(),
             ),
             (
                 self.edit_rules.borrow().clone(),

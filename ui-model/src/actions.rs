@@ -293,6 +293,7 @@ pub enum ActionId {
     DontGroup,
     AddAccount,
     EditAccount,
+    EditSignature,
     RemoveAccount,
     KeyboardShortcuts,
     Preferences,
@@ -315,7 +316,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 108] = [
+    pub const ALL: [Self; 109] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -405,6 +406,7 @@ impl ActionId {
         Self::DontGroup,
         Self::AddAccount,
         Self::EditAccount,
+        Self::EditSignature,
         Self::RemoveAccount,
         Self::KeyboardShortcuts,
         Self::Preferences,
@@ -872,6 +874,11 @@ impl ActionId {
                 menu: Some(MenuSection::Settings),
                 ..command("edit-account", "Edit Account", General, Scope::Window, &[])
             },
+            // An account's HTML signature from a form (1.5.0, issue #6): the account heading's
+            // menu, and the palette for the account the list shows. No default key (ADR-017).
+            Self::EditSignature => {
+                command("edit-signature", "Signature…", General, Scope::Window, &[])
+            }
             // ML-038: asks which account and whether, then the engine deletes it. Available
             // while `accounts.toml` lists an account.
             Self::RemoveAccount => ActionSpec {

@@ -1247,11 +1247,44 @@ impl AppState {
                 state.edit_account(mailbox::account_for_key(key));
             }
         });
+        let weak = Rc::downgrade(self);
+        window.sidebar().connect_edit_signature(move |key| {
+            if let Some(state) = weak.upgrade() {
+                crate::signature_form::present(&state, Some(key));
+            }
+        });
+        let weak = Rc::downgrade(self);
+        win_actions.connect(ActionId::EditSignature, move || {
+            if let Some(state) = weak.upgrade() {
+                let key = state.list().and_then(|list| {
+                    let selected = list
+                        .selected_targets()
+                        .ok()
+                        .and_then(|targets| targets.first().map(|target| target.folder));
+                    let account = compose_actions::compose_account(
+                        list.scope(),
+                        selected,
+                        &state.mailbox.folders(),
+                    )?;
+                    state
+                        .mailbox
+                        .accounts()
+                        .into_iter()
+                        .find(|known| known.id == account)
+                        .and_then(|known| known.key)
+                });
+                crate::signature_form::present(&state, key.as_ref().map(AccountKey::as_str));
+            }
+        });
         win_actions.set_available(
             ActionId::RemoveAccount,
             !self.removable_accounts().is_empty(),
         );
         win_actions.set_available(ActionId::EditAccount, !self.editable_accounts().is_empty());
+        win_actions.set_available(
+            ActionId::EditSignature,
+            crate::signature_form::applies(self),
+        );
         window.set_menu_model(Some(menu::primary_menu(&keymap).upcast_ref()));
         window.set_keymap(&keymap);
         actions::apply_accels(app, &keymap);
@@ -2435,6 +2468,10 @@ impl AppState {
                 !self.removable_accounts().is_empty(),
             );
             actions.set_available(ActionId::EditAccount, !self.editable_accounts().is_empty());
+            actions.set_available(
+                ActionId::EditSignature,
+                crate::signature_form::applies(self),
+            );
         }
     }
 

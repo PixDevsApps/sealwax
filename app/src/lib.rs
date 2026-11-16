@@ -74,6 +74,7 @@ mod search;
 #[cfg(feature = "test-hooks")]
 mod selftest;
 mod setup;
+mod signature_form;
 mod status;
 mod support;
 mod triage;

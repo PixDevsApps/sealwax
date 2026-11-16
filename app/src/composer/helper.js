@@ -562,6 +562,33 @@
       }
       return true;
     },
+    // A designed signature (issue #6): Sealwax's own HTML, made from the Signature… form's
+    // fields, shown as it will be sent and not editable. The draft keeps the cleaned copy the
+    // serializer makes of it; the styled one is the draft's hidden part, which the MIME builder
+    // puts in its place.
+    setStyledSignature: (html) => {
+      const holder = document.createElement('div');
+      holder.className = 'sw-signature';
+      holder.setAttribute('contenteditable', 'false');
+      holder.innerHTML = `<div>--&nbsp;</div>${html}`;
+      const current = document.querySelector('div.sw-signature');
+      if (current) {
+        current.replaceWith(holder);
+        return true;
+      }
+      const quote = document.querySelector('blockquote[type=cite]');
+      const anchor = quote && quote.previousElementSibling ? quote.previousElementSibling : quote;
+      const spacer = document.createElement('div');
+      spacer.innerHTML = '<br>';
+      for (const node of [spacer, holder]) {
+        if (anchor) {
+          anchor.parentNode.insertBefore(node, anchor);
+        } else {
+          document.body.appendChild(node);
+        }
+      }
+      return true;
+    },
     insertImage: (cid, name) => document.execCommand('insertHTML', false,
       `<img src="cid:${escapeAttribute(cid)}" alt="${escapeAttribute(name.slice(0, 200))}">`),
     // A link on the selection, or the address itself as a link where nothing is selected.

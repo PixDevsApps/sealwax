@@ -119,6 +119,20 @@ pub fn relabel(
     })
 }
 
+/// Sets the HTML signature of `address` in the account `key` to `signature` (`None` takes the
+/// line out); false when the file has no such account or address.
+pub fn set_signature_html(
+    path: &Path,
+    key: &AccountKey,
+    address: &str,
+    signature: Option<&str>,
+) -> Result<bool, AccountsFileError> {
+    edit(path, |text| match text {
+        Some(text) => accounts_file::set_signature_html(text, key, address, signature),
+        None => Ok(None),
+    })
+}
+
 /// Rewrites `path` with what `change` makes of its text (`None` inside: no file); `change`
 /// returning `None` writes nothing. Returns whether it wrote.
 fn edit(

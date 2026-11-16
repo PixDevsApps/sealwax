@@ -18,9 +18,9 @@
 //! fewer goes as `application/octet-stream` in base64 instead, under its `.eml` name, as other
 //! clients do: sending 8-bit data needs 8BITMIME, which Sealwax doesn't ask for.
 
-use super::ids;
 use super::text::header_text;
 use super::{Draft, DraftPart};
+use super::{identity, ids};
 use crate::model::Address;
 use crate::{html_depth, message};
 use mail_builder::MessageBuilder;
@@ -304,13 +304,76 @@ fn write(draft: &Draft, date: i64, parts: &[&[u8]], copy: Copy) -> Result<Vec<u8
     if !references.is_empty() {
         builder = builder.references(MessageId::from(references));
     }
-    let html = crlf(&html_document(&draft.html));
+    let (html, kept, bytes) = with_styled_signature(&draft.html, &draft.parts, parts);
+    let html = crlf(&html_document(&html));
     let text = crlf(&plain_text(&html));
-    let body = body(&html, &text, &draft.parts, parts)?;
+    let body = body(&html, &text, &kept, &bytes)?;
     builder
         .body(body)
         .write_to_vec()
         .map_err(|_| BuildError::Parts)
+}
+
+/// `html` with its signature's `div` holding the designed signature of the draft's hidden part
+/// ([`identity::STYLED_SIGNATURE_TYPE`]), and the parts and their bytes without that part, which
+/// is never sent.
+fn with_styled_signature<'a>(
+    html: &str,
+    parts: &'a [DraftPart],
+    bytes: &[&'a [u8]],
+) -> (String, Vec<DraftPart>, Vec<&'a [u8]>) {
+    let hidden = |part: &DraftPart| {
+        part.content_id.is_none() && part.mime_type == identity::STYLED_SIGNATURE_TYPE
+    };
+    let styled = parts
+        .iter()
+        .zip(bytes)
+        .find(|(part, _)| hidden(part))
+        .and_then(|(_, data)| std::str::from_utf8(data).ok());
+    let html = match styled.and_then(|styled| replace_signature(html, styled)) {
+        Some(html) => html,
+        None => html.to_owned(),
+    };
+    let (kept, bytes) = parts
+        .iter()
+        .zip(bytes)
+        .filter(|(part, _)| !hidden(part))
+        .map(|(part, data)| (part.clone(), *data))
+        .unzip();
+    (html, kept, bytes)
+}
+
+/// `html` with the content of its signature's `div` replaced by the separator and `styled`;
+/// `None` when it has no signature.
+fn replace_signature(html: &str, styled: &str) -> Option<String> {
+    let open = format!("<div class=\"{}\">", super::clean::SIGNATURE_CLASS);
+    let start = html.find(&open)?;
+    let mut depth = 0usize;
+    let mut at = start;
+    let end = loop {
+        let next_open = html[at..].find("<div").map(|index| at + index);
+        let next_close = html[at..].find("</div>").map(|index| at + index);
+        match (next_open, next_close) {
+            (Some(open_at), Some(close_at)) if open_at < close_at => {
+                depth += 1;
+                at = open_at + 4;
+            }
+            (_, Some(close_at)) => {
+                depth -= 1;
+                at = close_at + "</div>".len();
+                if depth == 0 {
+                    break at;
+                }
+            }
+            _ => return None,
+        }
+    };
+    Some(format!(
+        "{}{open}{}{styled}</div>{}",
+        &html[..start],
+        identity::SEPARATOR_HTML,
+        &html[end..]
+    ))
 }
 
 /// `mixed{ alternative{ text, related{ html, inline… } }, attachments… }`. An inline part the

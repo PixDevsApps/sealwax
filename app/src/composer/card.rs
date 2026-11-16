@@ -195,6 +195,9 @@ struct Inner {
     focus_on_ready: Cell<bool>,
     /// A message started now: its sender's HTML signature goes in when the body is ready.
     html_signature_due: Cell<bool>,
+    /// A designed signature's hidden part (issue #6): its styled HTML, which the MIME builder
+    /// puts in place of the signature the editor shows.
+    styled_signature: RefCell<Option<DraftPart>>,
     widgets: Widgets,
     editor: Editor,
     backend: Rc<dyn Backend>,
@@ -288,6 +291,7 @@ impl Composer {
             return_focus: RefCell::new(return_focus),
             focus_on_ready: Cell::new(focus),
             html_signature_due: Cell::new(false),
+            styled_signature: RefCell::new(None),
             widgets,
             editor,
             backend,
@@ -1348,10 +1352,14 @@ impl Inner {
         }
         self.widgets.subject.set_text(&draft.subject);
         self.show_title();
-        let (inline, attached): (Vec<DraftPart>, Vec<DraftPart>) = draft
-            .parts
-            .iter()
-            .cloned()
+        let (styled, parts): (Vec<DraftPart>, Vec<DraftPart>) =
+            draft.parts.iter().cloned().partition(|part| {
+                part.content_id.is_none()
+                    && part.mime_type == sealwax_domain::compose::identity::STYLED_SIGNATURE_TYPE
+            });
+        self.styled_signature.replace(styled.into_iter().next());
+        let (inline, attached): (Vec<DraftPart>, Vec<DraftPart>) = parts
+            .into_iter()
             .partition(|part| part.content_id.is_some());
         for part in inline {
             if let Some(content_id) = part.content_id {
@@ -1413,12 +1421,37 @@ impl Inner {
             .and_then(sealwax_domain::compose::identity::signature)
             .map(|signature| signature.html)
             .unwrap_or_default();
+        self.styled_signature.replace(None);
         self.editor.eval_detached(&format!(
             "sealwaxComposer.setSignature({})",
             super::js::literal(&signature)
         ));
         self.changed();
         self.insert_html_signature(index);
+    }
+
+    /// A draft opened again with a designed signature shows it styled, from its hidden part.
+    fn show_styled_signature(self: &Rc<Self>) {
+        let (Some(part), Some(blobs)) =
+            (self.styled_signature.borrow().clone(), self.backend.blobs())
+        else {
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let read = gio::spawn_blocking(move || blobs.get(&part.blob)).await;
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            if let Ok(Ok(data)) = read
+                && let Ok(styled) = String::from_utf8(data)
+            {
+                inner.editor.eval_detached(&format!(
+                    "sealwaxComposer.setStyledSignature({})",
+                    super::js::literal(&styled)
+                ));
+            }
+        });
     }
 
     /// The HTML signature of the sender in place `index` (issue #6), once it is read, in place
@@ -1443,14 +1476,26 @@ impl Inner {
                 return;
             }
             match read {
-                Ok((block, images)) => {
-                    for (content_id, image) in images {
+                Ok(signature) => {
+                    for (content_id, image) in signature.images {
                         inner.editor.add_part(content_id, image);
                     }
-                    inner.editor.eval_detached(&format!(
-                        "sealwaxComposer.setSignature({})",
-                        super::js::literal(&block.html)
-                    ));
+                    match signature.styled {
+                        Some((styled, part)) => {
+                            inner.styled_signature.replace(Some(part));
+                            inner.editor.eval_detached(&format!(
+                                "sealwaxComposer.setStyledSignature({})",
+                                super::js::literal(&styled)
+                            ));
+                        }
+                        None => {
+                            inner.styled_signature.replace(None);
+                            inner.editor.eval_detached(&format!(
+                                "sealwaxComposer.setSignature({})",
+                                super::js::literal(&signature.block.html)
+                            ));
+                        }
+                    }
                     inner.changed();
                 }
                 Err(why) => {
@@ -1549,6 +1594,8 @@ impl Inner {
         }
         if self.html_signature_due.replace(false) {
             self.insert_html_signature(self.sender.get());
+        } else {
+            self.show_styled_signature();
         }
     }
 
@@ -1757,6 +1804,9 @@ impl Inner {
             }
         };
         let mut parts = self.widgets.tray.parts();
+        if let Some(part) = self.styled_signature.borrow().clone() {
+            parts.push(part);
+        }
         let images = self.editor.parts();
         let mut seen = HashSet::new();
         for cid in cids {
