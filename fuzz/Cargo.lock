@@ -2095,7 +2095,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sealwax-domain"
-version = "1.4.2"
+version = "1.5.0"
 dependencies = [
  "ammonia",
  "html2text",
@@ -2111,7 +2111,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-engine"
-version = "1.4.2"
+version = "1.5.0"
 dependencies = [
  "async-channel 2.5.0",
  "async-imap",
@@ -2148,21 +2148,32 @@ dependencies = [
  "libfuzzer-sys",
  "sealwax-domain",
  "sealwax-engine",
+ "sealwax-ui-model",
 ]
 
 [[package]]
 name = "sealwax-infrastructure"
-version = "1.4.2"
+version = "1.5.0"
 dependencies = [
  "async-channel 2.5.0",
  "getrandom 0.4.3",
  "libc",
  "rusqlite",
  "sealwax-domain",
+ "sealwax-ui-model",
+ "serde_json",
  "sha2",
  "thiserror 2.0.21",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sealwax-ui-model"
+version = "1.5.0"
+dependencies = [
+ "sealwax-domain",
+ "toml",
 ]
 
 [[package]]

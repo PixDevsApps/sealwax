@@ -103,6 +103,13 @@
   </screenshots>
 
   <releases>
+    <release version="1.5.0" date="2026-11-16" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.0</url>
+      <description>
+        <p>Signatures with your photo or logo, contact details and social profiles, made in a form and readable in light and dark mail, or from your own HTML file. Go to any folder from the keyboard, forward messages as attachments and keep searches in the sidebar.</p>
+        <p>While Sealwax runs it shares your unread count, so a bar widget or a script can show it.</p>
+      </description>
+    </release>
     <release version="1.4.2" date="2026-11-16" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.4.2</url>
       <description>

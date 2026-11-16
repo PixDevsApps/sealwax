@@ -2,7 +2,7 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## 1.5.0 — not released yet
+## 1.5.0 — 2026-11-16
 
 Go to any folder, forward messages as attachments, save searches, see your unread mail in the bar, and sign with an HTML signature.
 
