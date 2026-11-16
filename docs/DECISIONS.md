@@ -655,6 +655,12 @@ The plain part is html2text's text of the HTML, rendered from a tree at most 1,0
 
 **Reason:** before this, the assistant accepted such an address and the user learnt only at Send, after writing the message, from a "refused" that didn't say why.
 
+### ADR-007 amendment — a server that refuses a second EHLO (issue #38, 2026-11-16)
+
+**Status:** Accepted — the owner's word, 2026-11-16 ("Do 1").
+
+**Decision:** Sealwax's own EHLO after TLS, sent for SIZE, may be refused. IONOS (`smtp.ionos.de`, 465 and 587) answers it with `503 Bad sequence of commands`, which failed every send as a connection error, retried without end. A permanent (5xx) reply to it now leaves the extensions to lettre's reading of the first answer (8BITMIME and SMTPUTF8; SIZE unknown), and AUTH goes on over the same connection: IONOS evaluates AUTH normally after the 503 (checked 2026-11-16 with a made-up login: 535 after one EHLO and after two). A transient (4xx) reply still fails the connection, to be retried. Without SIZE, the composer's size check has no limit, so a message too large for such a server is refused by the server's 552 at send (`SubmitError::TooLarge`).
+
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
 **Status:** OAuth2 sign-in for Google and Microsoft in 1.0 is accepted — user decision, 2026-10-04. The mechanism is proposed; S5 is the go/no-go.

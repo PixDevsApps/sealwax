@@ -5,7 +5,8 @@
 //! IMAP, because lettre takes a connected stream only before its greeting. STARTTLS uses
 //! lettre's own TLS parameters, built from the same [`Trust`]. lettre's typed EHLO answer keeps
 //! neither SIZE nor keywords in any case but upper, so Sealwax sends EHLO once more after TLS
-//! and reads the extensions itself ([`Extensions`]).
+//! and reads the extensions itself ([`Extensions`]), or takes lettre's reading when a server
+//! refuses the second EHLO.
 
 pub mod submit;
 
@@ -18,7 +19,7 @@ use lettre::transport::smtp::client::{
     AsyncSmtpConnection, AsyncTokioStream, Certificate, CertificateStore, TlsParameters,
 };
 use lettre::transport::smtp::commands::Ehlo;
-use lettre::transport::smtp::extension::ClientId;
+use lettre::transport::smtp::extension::{ClientId, Extension, ServerInfo};
 use lettre::transport::smtp::response::Response;
 use sealwax_domain::account::{Endpoint, LoginFailure, Security};
 use std::error::Error as _;
@@ -130,6 +131,15 @@ impl Extensions {
         Extensions::from_lines(response.message().skip(1))
     }
 
+    /// What lettre kept of the first answer: 8BITMIME and SMTPUTF8, never SIZE.
+    fn from_server_info(info: &ServerInfo) -> Extensions {
+        Extensions {
+            size: None,
+            smtputf8: info.supports_feature(Extension::SmtpUtfEight),
+            eight_bit: info.supports_feature(Extension::EightBitMime),
+        }
+    }
+
     fn from_lines<'a>(lines: impl Iterator<Item = &'a str>) -> Extensions {
         let mut found = Extensions::default();
         for line in lines {
@@ -151,12 +161,23 @@ impl Extensions {
     }
 }
 
-/// EHLO once more on a secured connection, before AUTH, for its extensions.
+/// EHLO once more on a secured connection, before AUTH, for its extensions. A server that
+/// refuses it for good (IONOS answers 503, issue #38) leaves the connection usable, so the
+/// extensions come from lettre's reading of the first answer, without SIZE.
 pub(crate) async fn extensions(
     conn: &mut AsyncSmtpConnection,
 ) -> Result<Extensions, lettre::transport::smtp::Error> {
-    let response = conn.command(Ehlo::new(hello())).await?;
-    Ok(Extensions::from_response(&response))
+    match conn.command(Ehlo::new(hello())).await {
+        Ok(response) => Ok(Extensions::from_response(&response)),
+        Err(error) if error.is_permanent() => {
+            tracing::debug!(
+                code = error.status().map(u16::from),
+                "smtp second ehlo refused, extensions from the first"
+            );
+            Ok(Extensions::from_server_info(conn.server_info()))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// One command line as given, ended with CRLF.

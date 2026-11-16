@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Sending through IONOS** ([issue #38](https://github.com/PixDevsApps/sealwax/issues/38), thanks @YenZi): messages from an IONOS mailbox (`smtp.ionos.de`) stayed in the outbox, retried every few minutes, and never went out. After the secure connection is made, Sealwax asks the server a second time which features it supports, to learn the largest message it takes; IONOS refuses the repeated question. Sealwax now carries on with what the server named the first time, and the login and the send go ahead. Only the size limit stays unknown for such a server, so a message that's too large is refused by the server when it's sent instead of in the composer.
+
 ## 1.5.0 — 2026-11-16
 
 Go to any folder, forward messages as attachments, save searches, see your unread mail in the bar, and sign with an HTML signature.

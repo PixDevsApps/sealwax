@@ -30,6 +30,8 @@ fn quick() -> Timeouts {
 struct Script {
     /// EHLO's extension lines, after the server's name.
     ehlo: Vec<&'static str>,
+    /// The reply to every EHLO after the first, when it isn't the first's answer again.
+    ehlo_again: Option<&'static str>,
     /// Replies to AUTH and to each answer to a challenge, in order.
     auth: Vec<&'static str>,
     mail: &'static str,
@@ -52,6 +54,7 @@ impl Default for Script {
     fn default() -> Self {
         Script {
             ehlo: vec!["AUTH PLAIN LOGIN XOAUTH2", "SIZE 1000000", "8BITMIME"],
+            ehlo_again: None,
             auth: vec!["235 2.7.0 accepted"],
             mail: "250 2.1.0 ok",
             rcpt: vec!["250 2.1.5 ok"],
@@ -86,6 +89,7 @@ async fn serve(mut peer: Peer, script: Script, seen: Arc<Mutex<Seen>>) {
     peer.send("220 test ESMTP\r\n").await;
     let mut auth = script.auth.iter();
     let mut rcpts = 0;
+    let mut ehlos = 0;
     while let Some(line) = peer.line().await {
         seen.lock().unwrap().lines.push(line.clone());
         let verb = line
@@ -94,7 +98,11 @@ async fn serve(mut peer: Peer, script: Script, seen: Arc<Mutex<Seen>>) {
             .unwrap_or("")
             .to_ascii_uppercase();
         let reply = match verb.as_str() {
+            "EHLO" if ehlos > 0 && script.ehlo_again.is_some() => {
+                format!("{}\r\n", script.ehlo_again.unwrap_or_default())
+            }
             "EHLO" => {
+                ehlos += 1;
                 let mut reply = String::from("250-test\r\n");
                 for (i, line) in script.ehlo.iter().enumerate() {
                     let dash = if i + 1 == script.ehlo.len() { ' ' } else { '-' };
@@ -990,6 +998,65 @@ async fn the_limit_needs_no_login() {
             .unwrap();
         assert_eq!(limit, expected);
     }
+    let verbs = server.seen().verbs();
+    assert!(!verbs.contains(&"AUTH".to_owned()), "{verbs:?}");
+}
+
+/// IONOS's submission server (issue #38): the extensions it names, and its answer to a second
+/// EHLO on the same connection.
+fn ionos() -> Script {
+    Script {
+        ehlo: vec!["8BITMIME", "AUTH PLAIN LOGIN", "SIZE 141557760"],
+        ehlo_again: Some("503 Bad sequence of commands"),
+        ..Script::default()
+    }
+}
+
+#[tokio::test]
+async fn a_server_that_refuses_a_second_ehlo_still_takes_the_message() {
+    let server = Server::start(vec![ionos()]).await;
+    let mut submitter = server.connect().await.unwrap();
+    assert_eq!(
+        submitter.extensions(),
+        Extensions {
+            size: None,
+            smtputf8: false,
+            eight_bit: true,
+        },
+        "the first answer's extensions, without SIZE"
+    );
+    send(&mut submitter, &to(&["b@example.test"]), MESSAGE)
+        .await
+        .unwrap();
+    submitter.quit().await;
+    let seen = server.seen();
+    assert_eq!(
+        seen.verbs(),
+        ["EHLO", "EHLO", "AUTH", "MAIL", "RCPT", "DATA", "QUIT"]
+    );
+    assert_eq!(seen.lines[3], "MAIL FROM:<a@example.test>");
+    assert_eq!(seen.messages, [MESSAGE.to_vec()]);
+}
+
+#[tokio::test]
+async fn a_refused_second_ehlo_leaves_the_limit_unknown() {
+    let server = Server::start(vec![ionos()]).await;
+    let limit = submission_limit(&server.endpoint(), &server.ca.trust, quick())
+        .await
+        .unwrap();
+    assert_eq!(limit, None);
+}
+
+#[tokio::test]
+async fn a_second_ehlo_put_off_for_now_is_tried_again_later() {
+    let server = Server::start(vec![Script {
+        ehlo_again: Some("421 4.3.2 service not available"),
+        ..Script::default()
+    }])
+    .await;
+    let error = server.connect().await.unwrap_err();
+    assert!(matches!(error, SubmitError::Connect(_)), "{error:?}");
+    assert_eq!(error.failure(), SubmitFailure::Retry);
     let verbs = server.seen().verbs();
     assert!(!verbs.contains(&"AUTH".to_owned()), "{verbs:?}");
 }
