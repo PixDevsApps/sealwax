@@ -365,6 +365,7 @@ async fn harness(
         username: "pop".into(),
         auth: AuthMethod::Password,
         signature: None,
+        signature_html: None,
         identities: Vec::new(),
     };
     Harness {
@@ -1180,6 +1181,7 @@ async fn replies_quoting_deeply_nested_html_are_filed_and_sent() {
         name: "Pop".into(),
         address: "pop@example.test".into(),
         signature: None,
+        signature_html: None,
     }];
     let planned = reply::plan(&original, ReplyKind::Reply, &senders);
     let mut saved = Vec::new();

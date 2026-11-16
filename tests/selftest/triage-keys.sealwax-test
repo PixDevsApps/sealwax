@@ -302,3 +302,23 @@ key g
 key 9
 assert-action-log win.go-to-account-9
 assert-folder folder-1
+
+# Go to Folder… (1.5.0): g then f opens the picker over every folder, All Inboxes first; typing
+# filters and Enter shows the folder, with the list focused; Escape leaves the folder as it was.
+key g
+key f
+assert-action-log win.go-to-folder
+assert-move-to open true
+assert-focus move-to
+type sent
+assert-move-to selected Sent
+key Return
+assert-move-to open false
+assert-folder folder-2
+assert-focus list
+key g
+key f
+assert-move-to open true
+key Escape
+assert-move-to open false
+assert-folder folder-2

@@ -97,6 +97,7 @@ fn a_listed_pop3_account_gets_its_local_folders_and_leaves_nothing_when_removed(
         username: "pop".into(),
         auth: AuthMethod::Password,
         signature: None,
+        signature_html: None,
         identities: Vec::new(),
     };
     let commands = engine.commands();

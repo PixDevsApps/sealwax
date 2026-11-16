@@ -97,6 +97,7 @@ fn steps(html: &str) -> Vec<(&'static str, Duration)> {
                 name: "Ada".into(),
                 address: "ada@example.test".into(),
                 signature: Some("Ada".into()),
+                signature_html: None,
             }];
             let planned = reply::plan(&original, ReplyKind::Reply, &senders);
             let message_id = ids::message_id("ada@example.test", [9; 16]).expect("a Message-ID");

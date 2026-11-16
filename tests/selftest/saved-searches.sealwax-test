@@ -1,0 +1,53 @@
+# Saved searches (1.5.0): Save Search… applies only while a search runs and keeps it under a
+# name, the query by default, in the sidebar's Searches; Save stays off without a name. Choosing
+# the saved search shows its folder and runs it again; its menu renames it and removes it. Go to
+# Folder… (g then f) is in triage-keys. Every message is fictional.
+# Run: tools/headless.sh 37 target/debug/sealwax-selftest --self-test tests/selftest/saved-searches.sealwax-test
+
+desktop tiling
+fixtures --count 200 --seed 3 --folders spread
+resize 1440 900
+list-wait
+mail-account Personal
+folder inbox Personal
+mail-add Personal:inbox 2m "Blåbærsyltetøy til hytta" "text=Husk blåbærsyltetøy og vafler til helga."
+mail-add Personal:inbox 3m "Oppskrift" "text=Blåbærsyltetøy med lite sukker." read
+mail-add Personal:inbox 4m "Handleliste" "text=Melk, brød og egg."
+assert-list-count 3
+assert-saved-searches none
+assert-action-enabled win.save-search false
+
+# Save the search the list runs; the name starts as the query. (The self-test's account isn't
+# in accounts.toml, so its folder can't be named and the search runs over every folder.)
+search blåbærsyltetøy
+assert-list-search 2 false
+assert-action-enabled win.save-search true
+action win.save-search
+assert-response save-search save enabled
+assert-response save-search save default
+setup-type search-name "   "
+assert-response save-search save disabled
+setup-type search-name "Syltetøy"
+setup-respond save-search save
+assert-saved-searches Syltetøy
+search-escape
+assert-list-count 3
+assert-action-enabled win.save-search false
+
+# Choosing it shows its folder (All Inboxes here) and runs it again.
+folder sent Personal
+click search:0
+assert-folder all-inboxes
+assert-label list-title Search
+assert-list-row 0 subject "Blåbærsyltetøy til hytta"
+search-escape
+
+# Its menu renames it, then removes it.
+search-menu 0
+sidebar-menu-click search-menu-rename
+setup-type search-name "Blåbær"
+setup-respond rename-search save
+assert-saved-searches Blåbær
+search-menu 0
+sidebar-menu-click search-menu-remove
+assert-saved-searches none

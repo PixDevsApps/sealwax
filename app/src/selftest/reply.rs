@@ -127,6 +127,13 @@ fn describe(harness: &Harness, request: &ComposeRequest) -> String {
         ComposeRequest::ServerDraft(message) => {
             format!("server-draft {}", name_of(harness, *message))
         }
+        ComposeRequest::ForwardAsAttachment(messages) => {
+            let names: Vec<String> = messages
+                .iter()
+                .map(|message| name_of(harness, *message))
+                .collect();
+            format!("forward-as-attachment {}", names.join(","))
+        }
     }
 }
 
@@ -254,6 +261,11 @@ fn compose_last(harness: &Harness, args: &[String]) -> StepResult {
         ("mailto", ComposeRequest::Mailto(mailto)) => {
             equal("to", mailto.to.join(",").as_str(), wanted(1)?)
         }
+        ("forward-as-attachment", ComposeRequest::ForwardAsAttachment(_)) => equal(
+            "request",
+            describe(harness, last).as_str(),
+            args.join(" ").as_str(),
+        ),
         _ => mismatch(),
     }
 }

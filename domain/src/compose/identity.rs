@@ -15,6 +15,7 @@ pub fn senders(account: &AccountSettings) -> Vec<Identity> {
         name: account.name.clone(),
         address: account.address.clone(),
         signature: account.signature.clone(),
+        signature_html: account.signature_html.clone(),
     };
     let mut out = vec![own];
     for identity in &account.identities {
@@ -96,6 +97,22 @@ pub fn signature(text: &str) -> Option<SignatureBlock> {
     })
 }
 
+/// An HTML signature (issue #6) as the composer inserts it: `cleaned`, HTML that has been through
+/// [`super::clean::clean_signature`], under the separator line in the signature's `div`; its
+/// plain text is the HTML's. `None` when it shows nothing.
+pub fn html_signature(cleaned: &str) -> Option<SignatureBlock> {
+    let cleaned = cleaned.trim();
+    let text = crate::message::html_to_text(cleaned);
+    let text = text.trim_end();
+    if text.trim().is_empty() && !cleaned.contains("<img") {
+        return None;
+    }
+    Some(SignatureBlock {
+        html: format!("<div class=\"{SIGNATURE_CLASS}\">{SEPARATOR_HTML}{cleaned}</div>"),
+        text: format!("-- \n{text}"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,16 +137,19 @@ mod tests {
             username: "ada@example.test".into(),
             auth: AuthMethod::Password,
             signature: Some("Ada".into()),
+            signature_html: None,
             identities: vec![
                 Identity {
                     name: "Ada at the board".into(),
                     address: "board@example.test".into(),
                     signature: None,
+                    signature_html: None,
                 },
                 Identity {
                     name: "Duplicate".into(),
                     address: "ADA@example.test".into(),
                     signature: None,
+                    signature_html: None,
                 },
             ],
         }
@@ -183,5 +203,21 @@ mod tests {
         );
         assert_eq!(super::signature(" \n\t\n"), None);
         assert!(!format!("{signature:?}").contains("Ada"));
+    }
+
+    #[test]
+    fn an_html_signature_goes_under_the_separator() {
+        let block =
+            html_signature("<div><b>Ada</b> <a href=\"https://example.test\">Lovelace</a></div>")
+                .unwrap();
+        assert_eq!(
+            block.html,
+            "<div class=\"sw-signature\"><div>--&nbsp;</div><div><b>Ada</b> \
+             <a href=\"https://example.test\">Lovelace</a></div></div>"
+        );
+        assert!(block.text.starts_with("-- \n"));
+        assert!(block.text.contains("Ada"));
+        assert!(html_signature("<img src=\"cid:logo@example.test\">").is_some());
+        assert_eq!(html_signature(" <div> </div> "), None);
     }
 }

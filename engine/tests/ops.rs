@@ -152,6 +152,7 @@ impl Running {
             username: "ops@example.test".into(),
             auth: AuthMethod::Password,
             signature: None,
+            signature_html: None,
             identities: Vec::new(),
         };
         self.send(Command::AddAccount {

@@ -321,6 +321,7 @@ mod tests {
             name: "Ada".into(),
             address: "ada@example.test".into(),
             signature: Some("Ada".into()),
+            signature_html: None,
         };
         let mut draft = compose::new_draft(
             crate::model::AccountId(1),

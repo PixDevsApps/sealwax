@@ -15,6 +15,10 @@
 //! `status-text:<account>`), rail buttons `rail:<key>` (their badges `badge:<key>`) and
 //! `rail-account:<account>` (their dots `rail-status:<account>`), and the `config.toml` buttons
 //! `config` and `rail-config`.
+//!
+//! Saved searches (1.5.0) are a "Searches" section under All Inboxes, in the full sidebar only:
+//! rows `search:<n>` (from 0, in the saved order) that run the search, with Rename… and Remove
+//! in their context menu; the heading `searches-heading` takes no click.
 
 use super::panes::{PaneBar, classed, icon, icon_button, named};
 use super::tooltips::Tooltips;
@@ -33,6 +37,7 @@ use std::rc::Rc;
 pub const ALL_INBOXES: &str = "all-inboxes";
 
 const ALL_INBOXES_ICONS: &[&str] = &["mail-unread-symbolic"];
+const SEARCH_ICONS: &[&str] = &["system-search-symbolic", "edit-find-symbolic"];
 const FOLDER_ICONS: &[&str] = &["folder-symbolic"];
 const COMPOSE_ICONS: &[&str] = &["mail-message-new-symbolic", "document-edit-symbolic"];
 const CONFIG_ICONS: &[&str] = &["preferences-other-symbolic", "emblem-system-symbolic"];
@@ -397,6 +402,10 @@ enum RowKind {
     /// An account's heading, by the account's key.
     Header(String),
     More(String),
+    /// The saved searches' heading.
+    SearchesHeading,
+    /// A saved search, by its place in the saved order.
+    Search(usize),
 }
 
 struct Row {
@@ -444,6 +453,10 @@ pub struct Sidebar {
     edit_rules: RefCell<Option<EditAccount>>,
     /// Whether Apply Rules to This Folder applies to a folder key (why not), and what it does.
     apply_rules: RefCell<Option<ApplyRules>>,
+    /// The saved searches' names, in order.
+    searches: RefCell<Vec<String>>,
+    /// What running, renaming and removing a saved search do, given its place.
+    search_commands: RefCell<Option<SearchCommands>>,
     /// The accounts whose folders are folded away, by key.
     collapsed: RefCell<HashSet<String>>,
     /// Told when an account is folded away (true) or opened again.
@@ -469,6 +482,14 @@ type ApplyRules = (
     Rc<dyn Fn(&str)>,
 );
 type CollapseChanged = Rc<dyn Fn(&str, bool)>;
+
+/// What a saved search's row does, given its place: run it, rename it, remove it.
+#[derive(Clone)]
+pub struct SearchCommands {
+    pub run: Rc<dyn Fn(usize)>,
+    pub rename: Rc<dyn Fn(usize)>,
+    pub remove: Rc<dyn Fn(usize)>,
+}
 
 impl Sidebar {
     /// `tooltips` names the keys of the buttons that run a registry command.
@@ -591,6 +612,8 @@ impl Sidebar {
             new_folder: RefCell::new(None),
             edit_rules: RefCell::new(None),
             apply_rules: RefCell::new(None),
+            searches: RefCell::new(Vec::new()),
+            search_commands: RefCell::new(None),
             collapsed: RefCell::new(HashSet::new()),
             collapse_changed: RefCell::new(None),
             folded: RefCell::new(HashSet::new()),
@@ -960,6 +983,109 @@ impl Sidebar {
     ) {
         self.apply_rules
             .replace(Some((Rc::new(applies), Rc::new(activate))));
+    }
+
+    /// The saved searches' rows (1.5.0): what a click, Rename… and Remove do.
+    pub fn connect_searches(&self, commands: SearchCommands) {
+        self.search_commands.replace(Some(commands));
+    }
+
+    /// Shows the saved searches named `names`, in that order.
+    pub fn set_searches(&self, names: Vec<String>) {
+        if *self.searches.borrow() != names {
+            self.searches.replace(names);
+            self.rebuild_list();
+        }
+    }
+
+    /// The saved searches' names as the sidebar shows them.
+    #[cfg(feature = "test-hooks")]
+    pub fn searches(&self) -> Vec<String> {
+        self.searches.borrow().clone()
+    }
+
+    /// Opens the context menu of the saved search in place `index`, as a right click does.
+    #[cfg(feature = "test-hooks")]
+    pub fn open_search_menu(&self, index: usize) -> bool {
+        let row = self
+            .rows
+            .borrow()
+            .iter()
+            .find(|row| row.kind == RowKind::Search(index))
+            .map(|row| row.widget.clone());
+        match row {
+            Some(row) => {
+                self.show_search_menu(&row, index);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// A saved search's menu: Rename… and Remove.
+    fn show_search_menu(&self, row: &gtk::ListBoxRow, index: usize) {
+        self.close_menu();
+        let Some(commands) = self.search_commands.borrow().clone() else {
+            return;
+        };
+        let items = vec![
+            MenuItem {
+                name: "search-menu-rename",
+                label: ActionId::RenameSearch.title(),
+                why_not: None,
+                // After the closed menu has put the focus back, so the dialog keeps it.
+                activate: {
+                    let rename = commands.rename.clone();
+                    Rc::new(move || {
+                        let rename = rename.clone();
+                        glib::idle_add_local_once(move || rename(index));
+                    })
+                },
+            },
+            MenuItem {
+                name: "search-menu-remove",
+                label: ActionId::RemoveSearch.title(),
+                why_not: None,
+                activate: {
+                    let remove = commands.remove.clone();
+                    Rc::new(move || remove(index))
+                },
+            },
+        ];
+        self.popup(row, items, "search-menu");
+    }
+
+    /// A right click, Menu or Shift+F10 on a saved search's row opens its menu.
+    fn add_search_triggers(&self, row: &gtk::ListBoxRow, index: usize) {
+        let click = gtk::GestureClick::builder().button(3).build();
+        let weak = self.weak.borrow().clone();
+        click.connect_pressed(move |gesture, _, _, _| {
+            if let (Some(sidebar), Some(row)) = (
+                weak.upgrade(),
+                gesture.widget().and_downcast::<gtk::ListBoxRow>(),
+            ) {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+                sidebar.show_search_menu(&row, index);
+            }
+        });
+        row.add_controller(click);
+        let keys = gtk::EventControllerKey::new();
+        let weak = self.weak.borrow().clone();
+        keys.connect_key_pressed(move |controller, key, _, state| {
+            let menu = key == gtk::gdk::Key::Menu
+                || (key == gtk::gdk::Key::F10
+                    && state.contains(gtk::gdk::ModifierType::SHIFT_MASK));
+            if let (true, Some(sidebar), Some(row)) = (
+                menu,
+                weak.upgrade(),
+                controller.widget().and_downcast::<gtk::ListBoxRow>(),
+            ) {
+                sidebar.show_search_menu(&row, index);
+                return glib::Propagation::Stop;
+            }
+            glib::Propagation::Proceed
+        });
+        row.add_controller(keys);
     }
 
     /// Opens the context menu of the folder row `key`, as a right click does.
@@ -1436,7 +1562,18 @@ impl Sidebar {
             Some(RowKind::Folder(key)) => ("nav.folder", key),
             Some(RowKind::More(account)) => ("nav.more", account),
             Some(RowKind::Header(account)) => ("nav.collapse", account),
-            None => return,
+            Some(RowKind::Search(index)) => {
+                let run = self
+                    .search_commands
+                    .borrow()
+                    .as_ref()
+                    .map(|commands| commands.run.clone());
+                if let Some(run) = run {
+                    run(index);
+                }
+                return;
+            }
+            Some(RowKind::SearchesHeading) | None => return,
         };
         if let Err(error) = self
             .list
@@ -1467,6 +1604,13 @@ impl Sidebar {
                 false,
                 None,
             ));
+            let searches = self.searches.borrow();
+            if !searches.is_empty() {
+                rows.push(searches_heading());
+                for (index, name) in searches.iter().enumerate() {
+                    rows.push(search_row(index, name));
+                }
+            }
         }
         let collapsed = self.collapsed.borrow();
         let expanded = self.expanded.borrow();
@@ -1501,7 +1645,8 @@ impl Sidebar {
                     }
                 }
                 RowKind::Header(key) => self.add_heading_triggers(&row.widget, key),
-                RowKind::More(_) => {}
+                RowKind::Search(index) => self.add_search_triggers(&row.widget, *index),
+                RowKind::More(_) | RowKind::SearchesHeading => {}
             }
             self.list.append(&row.widget);
         }
@@ -1790,6 +1935,71 @@ fn folder_row(
         set_expanded(&row, !place.folded);
     }
     row
+}
+
+/// The saved searches' heading, styled as an account's; it takes no click.
+fn searches_heading() -> Row {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    content.append(&classed(
+        gtk::Label::builder()
+            .label("Searches")
+            .xalign(0.0)
+            .hexpand(true)
+            .build(),
+        &["sw-account-name"],
+    ));
+    let widget = named(
+        classed(
+            gtk::ListBoxRow::builder()
+                .child(&content)
+                .selectable(false)
+                .activatable(false)
+                .focusable(false)
+                .accessible_role(gtk::AccessibleRole::Heading)
+                .build(),
+            &["sw-sidebar-heading", "sw-searches-heading"],
+        ),
+        "searches-heading",
+    );
+    widget.update_property(&[gtk::accessible::Property::Label("Searches")]);
+    Row {
+        widget,
+        kind: RowKind::SearchesHeading,
+        more_of: None,
+        arrow: None,
+        ancestors: Vec::new(),
+    }
+}
+
+/// A saved search's row: the search icon and its name.
+fn search_row(index: usize, name: &str) -> Row {
+    let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    content.append(&icon(SEARCH_ICONS));
+    content.append(
+        &gtk::Label::builder()
+            .label(name)
+            .xalign(0.0)
+            .hexpand(true)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .build(),
+    );
+    let widget = named(
+        classed(
+            gtk::ListBoxRow::builder().child(&content).build(),
+            &["sw-sidebar-row", "sw-saved-search"],
+        ),
+        &format!("search:{index}"),
+    );
+    widget.update_property(&[gtk::accessible::Property::Label(&format!(
+        "Saved search {name}"
+    ))]);
+    Row {
+        widget,
+        kind: RowKind::Search(index),
+        more_of: None,
+        arrow: None,
+        ancestors: Vec::new(),
+    }
 }
 
 /// The account's state as a dot (DESIGN.md "Components"); the words beside it say the same.

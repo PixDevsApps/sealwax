@@ -45,6 +45,11 @@ key <Control>l
 assert-compose-last reply trip-6 forward
 composer-close
 assert-compose-requests 6
+# Forward as Attachment (1.5.0), from the palette: the selected message, attached whole.
+assert-action-enabled win.forward-as-attachment true
+action win.forward-as-attachment
+assert-compose-last forward-as-attachment trip-6
+composer-close
 # Compose (c, Ctrl+N) writes from the account whose folder the list shows.
 key c
 assert-compose-last new Personal
@@ -52,7 +57,7 @@ composer-close
 key <Control>n
 assert-compose-last new Personal
 composer-close
-assert-compose-requests 8
+assert-compose-requests 9
 
 # The reader: n and p move to a message, and the commands act on it.
 key p
@@ -73,7 +78,7 @@ composer-close
 key c
 assert-compose-last new Personal
 composer-close
-assert-compose-requests 12
+assert-compose-requests 13
 
 # Each card's buttons act on that card's message.
 action win.expand-all
@@ -91,7 +96,7 @@ assert-tooltip reader-card-reply "Reply (r, Ctrl+R)"
 assert-tooltip reader-card-reply-all "Reply all (a, Ctrl+Shift+R)"
 assert-tooltip reader-card-forward "Forward (f, Ctrl+L)"
 assert-labelled
-assert-compose-requests 15
+assert-compose-requests 16
 
 # As the palette runs them: the focus is still on trip-5's Forward button.
 action win.reply
@@ -104,7 +109,7 @@ composer-close
 action win.compose
 assert-compose-last new Personal
 composer-close
-assert-compose-requests 18
+assert-compose-requests 19
 
 # Several messages: Reply, Reply All and Forward don't apply, and their keys do nothing.
 focus list
@@ -113,9 +118,10 @@ assert-select-mode true
 assert-action-enabled win.reply false
 assert-action-enabled win.reply-all false
 assert-action-enabled win.forward false
+assert-action-enabled win.forward-as-attachment true
 key r
 key f
-assert-compose-requests 18
+assert-compose-requests 19
 key Escape
 assert-select-mode false
 
@@ -131,7 +137,7 @@ composer-close
 reply-click-card selected edit-draft
 assert-compose-last server-draft selected
 composer-close
-assert-compose-requests 20
+assert-compose-requests 21
 # Opening a draft (Enter, o) edits it in the composer, as Gmail and Thunderbird do (the user's
 # choice at the M6 gate).
 focus list
@@ -141,7 +147,7 @@ composer-close
 key o
 assert-compose-last server-draft selected
 composer-close
-assert-compose-requests 22
+assert-compose-requests 23
 
 # All Inboxes: the selected message's account; another account's folder: that account.
 folder all-inboxes
@@ -154,12 +160,12 @@ folder inbox Work
 action win.compose
 assert-compose-last new Work
 composer-close
-assert-compose-requests 24
+assert-compose-requests 25
 
 # A mailto: link through the application's open path (D-Bus Open, `sealwax mailto:`); the
 # attach parameter is dropped.
 bus-open "mailto:ingrid@example.test?subject=Cabin&attach=%2Fetc%2Fpasswd"
-wait-until assert-compose-requests 25
+wait-until assert-compose-requests 26
 assert-compose-last mailto ingrid@example.test
 composer-close
 assert-compose-count 1

@@ -25,7 +25,7 @@ assert-list-row 2 pin-icon false
 
 # Pin Sender from the row's menu: Anna's unread message goes to the top, under Pinned.
 row-menu 2
-assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Pin Sender,Pin Domain,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+assert-row-menu-items "Reply,Reply All,Forward,Forward as Attachment,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Pin Sender,Pin Domain,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
 row-menu-click message-menu-pin-sender
 wait-until assert-toast "anna@example.test pinned until read"
 wait-until assert-list-sections Pinned:1,Today:3
@@ -45,7 +45,7 @@ list-select 0
 assert-action-enabled win.pin-sender false
 assert-action-enabled win.unpin-sender true
 row-menu 0
-assert-row-menu-items "Reply,Reply All,Forward,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Unpin Sender,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
+assert-row-menu-items "Reply,Reply All,Forward,Forward as Attachment,Archive,Delete,Move to…,Move to Junk,Mark as Read,Star,!Unsubscribe…,Unpin Sender,!Create Rule from Message…,!Always Junk Messages from Sender,!Never Junk Messages from Sender"
 key Escape
 
 # Opened and read, it goes back to its date and keeps its pin; the reader still shows it.

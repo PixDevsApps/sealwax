@@ -317,6 +317,19 @@ pub(crate) fn move_choices(
     };
     let sources: BTreeSet<FolderId> = targets.iter().map(|target| target.folder).collect();
     let current = (sources.len() == 1).then(|| *sources.first().expect("one folder"));
+    let mut choices: Vec<Folder> = folders
+        .iter()
+        .filter(|folder| folder.account == account && folder.selectable)
+        .filter(|folder| Some(folder.id) != current)
+        .cloned()
+        .collect();
+    sort_for_picker(&mut choices);
+    Ok(choices)
+}
+
+/// The folder pickers' order (Move to…, Go to Folder…): role folders first, by role, then the
+/// others by name.
+pub(crate) fn sort_for_picker(folders: &mut [Folder]) {
     let order = |role: FolderRole| match role {
         FolderRole::Inbox => 0,
         FolderRole::Archive => 1,
@@ -327,18 +340,11 @@ pub(crate) fn move_choices(
         FolderRole::All => 6,
         FolderRole::Other => 7,
     };
-    let mut choices: Vec<Folder> = folders
-        .iter()
-        .filter(|folder| folder.account == account && folder.selectable)
-        .filter(|folder| Some(folder.id) != current)
-        .cloned()
-        .collect();
-    choices.sort_by(|a, b| {
+    folders.sort_by(|a, b| {
         order(a.role)
             .cmp(&order(b.role))
             .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
-    Ok(choices)
 }
 
 fn messages(count: u32) -> String {

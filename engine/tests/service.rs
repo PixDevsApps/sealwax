@@ -206,6 +206,7 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
         username: "service".into(),
         auth: AuthMethod::Password,
         signature: None,
+        signature_html: None,
         identities: Vec::new(),
     };
     let commands = engine.commands();

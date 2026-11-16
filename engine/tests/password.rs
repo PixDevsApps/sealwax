@@ -409,6 +409,7 @@ async fn a_new_password_is_checked_stored_and_the_account_syncs_again() {
         username: "user".into(),
         auth: AuthMethod::Password,
         signature: None,
+        signature_html: None,
         identities: Vec::new(),
     };
     let account = added(&engine, 1, settings).await;

@@ -4,8 +4,8 @@
 //! #34), the accounts folded in the sidebar, the
 //! accounts whose "More folders" are open, the folders whose subfolders it folds away (M9,
 //! folders; the sidebar comes back as the user left it, their word on 2026-10-09), and the view
-//! the window last showed, which a new window opens on (issue #5, 2026-10-11), in
-//! `$XDG_STATE_HOME/sealwax/layout.toml`. Sealwax writes it; it isn't a setting, so it is read
+//! the window last showed, which a new window opens on (issue #5, 2026-10-11), and the saved
+//! searches the sidebar lists (1.5.0), in `$XDG_STATE_HOME/sealwax/layout.toml`. Sealwax writes it; it isn't a setting, so it is read
 //! leniently: anything it doesn't know, or a width out of range, is left out and the default
 //! applies.
 
@@ -41,7 +41,22 @@ pub struct Layout {
     pub view: Option<View>,
     /// What the message list groups by (issue #24, ADR-023).
     pub group_by: GroupBy,
+    /// The saved searches, in the sidebar's order (1.5.0).
+    pub searches: Vec<SavedSearch>,
 }
+
+/// A search kept under a name: its query, and where it runs, All Inboxes for every folder.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SavedSearch {
+    pub name: String,
+    pub query: String,
+    pub view: View,
+}
+
+/// The longest name or query a saved search keeps, in characters.
+pub const SEARCH_TEXT_MAX: usize = 200;
+/// The most saved searches the file keeps.
+pub const SEARCHES_MAX: usize = 50;
 
 /// A view a new window can open on: All Inboxes, or an account's folder by its whole name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,24 +115,34 @@ impl Layout {
                 folded.insert(key, names);
             }
         }
-        let view = match table.get("view") {
-            Some(Value::String(view)) if view == ALL_INBOXES => Some(View::AllInboxes),
-            Some(Value::Table(view)) => {
-                match (
-                    view.get("account").and_then(Value::as_str),
-                    view.get("folder").and_then(Value::as_str),
-                ) {
-                    (Some(account), Some(name)) if !name.is_empty() => {
-                        AccountKey::parse(account).ok().map(|account| View::Folder {
-                            account,
-                            name: name.to_owned(),
+        let view = read_view(table.get("view"));
+        let searches = table
+            .get("search")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_table)
+            .filter_map(|search| {
+                let text = |name: &str| {
+                    search
+                        .get(name)
+                        .and_then(Value::as_str)
+                        .map(|text| {
+                            text.trim()
+                                .chars()
+                                .take(SEARCH_TEXT_MAX)
+                                .collect::<String>()
                         })
-                    }
-                    _ => None,
-                }
-            }
-            _ => None,
-        };
+                        .filter(|text| !text.is_empty())
+                };
+                Some(SavedSearch {
+                    name: text("name")?,
+                    query: text("query")?,
+                    view: read_view(search.get("view"))?,
+                })
+            })
+            .take(SEARCHES_MAX)
+            .collect();
         Self {
             sidebar_width: width("sidebar_width", &SIDEBAR_WIDTHS),
             list_width: width("list_width", &LIST_WIDTHS),
@@ -132,6 +157,7 @@ impl Layout {
                 .and_then(Value::as_str)
                 .and_then(GroupBy::from_name)
                 .unwrap_or_default(),
+            searches,
         }
     }
 
@@ -171,14 +197,8 @@ impl Layout {
                 .collect();
             text.push_str(&format!("more_open = [{}]\n", keys.join(", ")));
         }
-        match &self.view {
-            Some(View::AllInboxes) => text.push_str(&format!("view = \"{ALL_INBOXES}\"\n")),
-            Some(View::Folder { account, name }) => text.push_str(&format!(
-                "view = {{ account = \"{}\", folder = {} }}\n",
-                account.as_str(),
-                Value::String(name.clone())
-            )),
-            None => {}
+        if let Some(view) = &self.view {
+            text.push_str(&format!("view = {}\n", view_text(view)));
         }
         if !self.folded.is_empty() {
             text.push_str("\n[folded]\n");
@@ -190,7 +210,33 @@ impl Layout {
                 text.push_str(&format!("{} = [{}]\n", key.as_str(), names.join(", ")));
             }
         }
+        for search in &self.searches {
+            text.push_str(&format!(
+                "\n[[search]]\nname = {}\nquery = {}\nview = {}\n",
+                Value::String(search.name.clone()),
+                Value::String(search.query.clone()),
+                view_text(&search.view)
+            ));
+        }
         text
+    }
+
+    /// Keeps `search` at the end, or in place of the one of the same name; false when the
+    /// file holds [`SEARCHES_MAX`] already.
+    pub fn save_search(&mut self, search: SavedSearch) -> bool {
+        if let Some(known) = self
+            .searches
+            .iter_mut()
+            .find(|known| known.name == search.name)
+        {
+            *known = search;
+            return true;
+        }
+        if self.searches.len() >= SEARCHES_MAX {
+            return false;
+        }
+        self.searches.push(search);
+        true
     }
 
     /// Whether the folder `name` of `key`'s account has its subfolders folded away.
@@ -267,6 +313,27 @@ impl Layout {
         changed || !moved.is_empty()
     }
 
+    /// The saved searches' views follow `key`'s folder `old` to `new` (a rename).
+    pub fn rename_searched(
+        &mut self,
+        key: &AccountKey,
+        old: &str,
+        new: &str,
+        delimiter: Option<char>,
+    ) -> bool {
+        let mut changed = false;
+        for search in &mut self.searches {
+            if let View::Folder { account, name } = &mut search.view
+                && account == key
+                && let Some(to) = sealwax_domain::folders::renamed(name, old, new, delimiter)
+            {
+                *name = to;
+                changed = true;
+            }
+        }
+        changed
+    }
+
     /// Folds `key`'s account away or opens it again; true when that changed anything.
     pub fn set_collapsed(&mut self, key: &AccountKey, collapsed: bool) -> bool {
         let known = self.collapsed.iter().position(|known| known == key);
@@ -278,6 +345,37 @@ impl Layout {
             _ => return false,
         }
         true
+    }
+}
+
+/// A view as the file reads it: `"all-inboxes"`, or `{ account, folder }`.
+fn read_view(value: Option<&Value>) -> Option<View> {
+    match value? {
+        Value::String(view) if view == ALL_INBOXES => Some(View::AllInboxes),
+        Value::Table(view) => match (
+            view.get("account").and_then(Value::as_str),
+            view.get("folder").and_then(Value::as_str),
+        ) {
+            (Some(account), Some(name)) if !name.is_empty() => {
+                AccountKey::parse(account).ok().map(|account| View::Folder {
+                    account,
+                    name: name.to_owned(),
+                })
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn view_text(view: &View) -> String {
+    match view {
+        View::AllInboxes => format!("\"{ALL_INBOXES}\""),
+        View::Folder { account, name } => format!(
+            "{{ account = \"{}\", folder = {} }}",
+            account.as_str(),
+            Value::String(name.clone())
+        ),
     }
 }
 
@@ -313,6 +411,21 @@ mod tests {
             )]),
             view: Some(View::AllInboxes),
             group_by: GroupBy::Domain,
+            searches: vec![
+                SavedSearch {
+                    name: "Fakturaer \"2026\" 📬".to_owned(),
+                    query: "from:regnskap@example.test has:attachment".to_owned(),
+                    view: View::AllInboxes,
+                },
+                SavedSearch {
+                    name: "Kunder".to_owned(),
+                    query: "is:unread".to_owned(),
+                    view: View::Folder {
+                        account: AccountKey::parse("work").unwrap(),
+                        name: "INBOX/Kunder".to_owned(),
+                    },
+                },
+            ],
         };
         assert_eq!(Layout::parse(&layout.to_text()), layout);
         assert_eq!(
@@ -346,6 +459,7 @@ mod tests {
                 folded: BTreeMap::new(),
                 view: None,
                 group_by: GroupBy::None,
+                searches: Vec::new(),
             }
         );
         assert_eq!(
@@ -370,6 +484,61 @@ mod tests {
         assert!(Layout::parse("reader_hidden = true").reader_hidden);
         assert!(!Layout::parse("reader_hidden = 1").reader_hidden);
         assert!(!Layout::parse("sidebar_hidden = true").reader_hidden);
+    }
+
+    #[test]
+    fn saved_searches_are_read_leniently_and_kept_by_name() {
+        let layout = Layout::parse(
+            "[[search]]\nname = \" Unread \"\nquery = \"is:unread\"\nview = \"all-inboxes\"\n\
+             [[search]]\nname = \"No query\"\nview = \"all-inboxes\"\n\
+             [[search]]\nname = \"\"\nquery = \"x\"\nview = \"all-inboxes\"\n\
+             [[search]]\nname = \"No view\"\nquery = \"x\"\n\
+             [[search]]\nname = \"Bad key\"\nquery = \"x\"\nview = { account = \"Not a key\", folder = \"INBOX\" }\n",
+        );
+        assert_eq!(
+            layout.searches,
+            [SavedSearch {
+                name: "Unread".to_owned(),
+                query: "is:unread".to_owned(),
+                view: View::AllInboxes,
+            }]
+        );
+        let long = "x".repeat(SEARCH_TEXT_MAX + 10);
+        let cut = Layout::parse(&format!(
+            "[[search]]\nname = \"{long}\"\nquery = \"{long}\"\nview = \"all-inboxes\"\n"
+        ));
+        assert_eq!(cut.searches[0].name.chars().count(), SEARCH_TEXT_MAX);
+        let mut layout = Layout::default();
+        let search = |name: &str, query: &str| SavedSearch {
+            name: name.to_owned(),
+            query: query.to_owned(),
+            view: View::AllInboxes,
+        };
+        assert!(layout.save_search(search("A", "one")));
+        assert!(layout.save_search(search("B", "two")));
+        assert!(layout.save_search(search("A", "three")));
+        assert_eq!(layout.searches, [search("A", "three"), search("B", "two")]);
+        for index in 0..SEARCHES_MAX {
+            layout.save_search(search(&index.to_string(), "x"));
+        }
+        assert_eq!(layout.searches.len(), SEARCHES_MAX);
+        assert!(!layout.save_search(search("one too many", "x")));
+        let work = AccountKey::parse("work").unwrap();
+        layout.searches = vec![SavedSearch {
+            view: View::Folder {
+                account: work.clone(),
+                name: "Kunder/Acme".to_owned(),
+            },
+            ..search("Acme", "x")
+        }];
+        assert!(layout.rename_searched(&work, "Kunder", "Klienter", Some('/')));
+        assert_eq!(
+            layout.searches[0].view,
+            View::Folder {
+                account: work,
+                name: "Klienter/Acme".to_owned()
+            }
+        );
     }
 
     #[test]

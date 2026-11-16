@@ -20,7 +20,7 @@ use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, Value, value};
 
 pub const ACCOUNTS_FILE: &str = "accounts.toml";
 
-const ACCOUNT_SETTINGS: [&str; 12] = [
+const ACCOUNT_SETTINGS: [&str; 13] = [
     "key",
     "name",
     "label",
@@ -29,6 +29,7 @@ const ACCOUNT_SETTINGS: [&str; 12] = [
     "username",
     "auth",
     "signature",
+    "signature_html",
     "imap",
     "pop3",
     "smtp",
@@ -39,7 +40,7 @@ const ENDPOINT_SETTINGS: [&str; 4] = ["host", "port", "security", "certificate"]
 const POP3_SETTINGS: [&str; 2] = ["leave_on_server", "delete_after_days"];
 /// The most days `delete_after_days` takes: ten years.
 pub const MAX_DELETE_AFTER_DAYS: u32 = 3650;
-const IDENTITY_SETTINGS: [&str; 3] = ["name", "address", "signature"];
+const IDENTITY_SETTINGS: [&str; 4] = ["name", "address", "signature", "signature_html"];
 /// The longest signature, in characters.
 pub const MAX_SIGNATURE_CHARS: usize = 10_000;
 
@@ -53,6 +54,21 @@ pub fn default_port(protocol: Protocol, security: Security) -> u16 {
         (Protocol::Pop3, Security::Tls) => 995,
         (Protocol::Pop3, Security::StartTls) => 110,
     }
+}
+
+/// Whether `path` can name an HTML signature: relative, at most 255 characters, no control
+/// characters, no `..` or empty step, and an `.html` or `.htm` file.
+pub fn is_signature_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    !path.is_empty()
+        && path.chars().count() <= 255
+        && !path.starts_with('/')
+        && !path.contains('\\')
+        && !path.chars().any(char::is_control)
+        && path
+            .split('/')
+            .all(|step| !step.is_empty() && step != "." && step != "..")
+        && (lower.ends_with(".html") || lower.ends_with(".htm"))
 }
 
 /// A field name that looks like it holds a secret.
@@ -262,6 +278,7 @@ struct ReadIdentity {
     address: String,
     address_span: Range<usize>,
     signature: Option<String>,
+    signature_html: Option<String>,
 }
 
 /// Collects the mistakes of one `accounts.toml` read.
@@ -307,6 +324,31 @@ impl Reader<'_> {
                 None
             }
         }
+    }
+
+    /// An HTML signature's file (issue #6): a relative path under the signatures folder, of at
+    /// most 255 characters, without `..`, ending in `.html` or `.htm`.
+    fn signature_html(&mut self, value: &Spanned<DeValue<'_>>) -> Option<String> {
+        let Some(path) = value.get_ref().as_str() else {
+            self.error(
+                value.span(),
+                format!(
+                    "signature_html takes a file name in quotes, not {}",
+                    article(value.get_ref().type_str())
+                ),
+            );
+            return None;
+        };
+        let path = path.trim();
+        if !is_signature_path(path) {
+            self.error(
+                value.span(),
+                "signature_html takes an .html file in the signatures folder, such as \
+                 \"work/signature.html\"",
+            );
+            return None;
+        }
+        Some(path.to_owned())
     }
 
     /// A signature: plain text, line breaks and tabs allowed, at most [`MAX_SIGNATURE_CHARS`];
@@ -371,6 +413,7 @@ impl Reader<'_> {
         let mut name = None;
         let mut address = None;
         let mut signature = None;
+        let mut signature_html = None;
         for (field, value) in entries(table) {
             let field_name = field.get_ref().as_ref();
             let span = value.span();
@@ -401,6 +444,7 @@ impl Reader<'_> {
                     }
                 }
                 "signature" => signature = self.signature(value),
+                "signature_html" => signature_html = self.signature_html(value),
                 _ if is_secret_name(field_name) => {
                     self.error(field.span(), secret_message(field_name));
                 }
@@ -434,6 +478,7 @@ impl Reader<'_> {
             address,
             address_span,
             signature,
+            signature_html,
         })
     }
 
@@ -450,6 +495,7 @@ impl Reader<'_> {
         let mut incoming_key: Option<&str> = None;
         let mut smtp = None;
         let mut signature = None;
+        let mut signature_html = None;
         let mut identities = Vec::new();
         for (field, value) in entries(table) {
             let field_name = field.get_ref().as_ref();
@@ -556,6 +602,7 @@ impl Reader<'_> {
                 }
                 "smtp" => smtp = self.server(Protocol::Smtp, value).map(|(server, _)| server),
                 "signature" => signature = self.signature(value),
+                "signature_html" => signature_html = self.signature_html(value),
                 "identity" => identities = self.identities(value),
                 _ if is_secret_name(field_name) => {
                     self.error(field.span(), secret_message(field_name));
@@ -619,6 +666,7 @@ impl Reader<'_> {
                 name: identity.name.unwrap_or_else(|| name.clone()),
                 address: identity.address,
                 signature: identity.signature,
+                signature_html: identity.signature_html,
             })
             .collect();
         Some(Located {
@@ -635,6 +683,7 @@ impl Reader<'_> {
                 smtp,
                 auth,
                 signature,
+                signature_html,
                 identities,
             },
             key_span,
@@ -1345,6 +1394,7 @@ mod tests {
             username: address.to_owned(),
             auth: AuthMethod::Password,
             signature: None,
+            signature_html: None,
             identities: Vec::new(),
         }
     }
@@ -1642,6 +1692,7 @@ mod tests {
                 name: "Ada at the board".to_owned(),
                 address: "board@example.test".to_owned(),
                 signature: Some("Ada, for the board".to_owned()),
+                signature_html: None,
             }]
         );
     }
@@ -1962,11 +2013,13 @@ mod tests {
                     name: "Ada Lovelace".to_owned(),
                     address: "alias@example.test".to_owned(),
                     signature: None,
+                    signature_html: None,
                 },
                 Identity {
                     name: "Board".to_owned(),
                     address: "board@example.test".to_owned(),
                     signature: Some("B".to_owned()),
+                    signature_html: None,
                 },
             ]
         );
@@ -2259,6 +2312,7 @@ mod tests {
             name: "Åse".to_owned(),
             address: "åse@example.test".to_owned(),
             signature: None,
+            signature_html: None,
         });
         assert_eq!(check(&alias), Err(AccountFault::NotSendable));
         let written = entry(&account("jorg", "jorg@example.test"))

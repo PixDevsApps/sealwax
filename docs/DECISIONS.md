@@ -1151,6 +1151,12 @@ The owner's decisions on the sign-off sheet (2026-10-19). (1) The 150 ms rule of
 
 **Status:** Accepted — the owner's word, 2026-11-03, choosing what goes into 1.2: "Unread count + bar widget (#17); Forward as attachment; Go to Folder… picker (#12); Saved searches". From the 1.x list: an Omarchy bar unread widget ([#17](https://github.com/PixDevsApps/sealwax/issues/17)) with an unread count other programs can read, forward as attachment, and saved searches; and a Go to Folder… picker, on no list before, from [#12](https://github.com/PixDevsApps/sealwax/issues/12). The rest of the 1.x list (COMPRESS, pinned certificates for servers elsewhere, schedule send, snooze, server-side search, templates) stays there. How each is built, its keys (ADR-017) and the interface the widget reads are decided before each is built.
 
+### ADR-013 amendment — 1.2's four items and HTML signatures are 1.5.0 (2026-11-16)
+
+**Status:** Accepted — the owner, 2026-11-16: "Do phase 3, the 1.2 theme and #6., and close #17 and #6. For the 1.2 theme: You choose the best options", after the proposal of the same day (1.5.0: architecture phase 3, the four items of the amendment above and HTML signatures; then PGP; then a conversation view).
+
+**Decision:** the four items of the 2026-11-03 amendment ship in 1.5.0, the version number 1.2 having gone to other releases, with HTML signatures from files ([#6](https://github.com/PixDevsApps/sealwax/issues/6)) from the 1.x list. Their choices are in [ADR-029](#adr-029--150-the-unread-count-as-a-file-saved-searches-with-the-layout-html-signatures-from-files-2026-11-16).
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
@@ -1834,3 +1840,21 @@ The same day, the AUR answered the owner's registration with "New account regist
 **Decision:** the AppStream metainfo's `homepage` and the `.flatpakref`'s `Homepage=` become Sealwax's product page, **https://pixdevs.com/omarchy/sealwax/**, the same address as the GitHub repository's website. The online guide stays the metainfo's `help` link and what **Help → User Guide** opens. The metainfo and the `.desktop` file gain search keywords (outlook, microsoft 365, gmail, offline, keyboard, privacy, sieve, omarchy, and `pop3` in the `.desktop` file), so software centres and app launchers find Sealwax by them.
 
 **Consequences:** a software centre's "Website" button shows the product page, with its screenshots and install choices, instead of the guide; nothing in the app changes.
+
+## ADR-029 — 1.5.0: the unread count as a file, saved searches with the layout, HTML signatures from files (2026-11-16)
+
+**Status:** Accepted — the owner, 2026-11-16, leaving the open choices of the 1.2 design to the recommendations ("For the 1.2 theme: You choose the best options").
+
+**Decision:**
+- **Go to Folder…** (`go-to-folder`) is `g` then `f`: a sequence, so ADR-017's one-key rule is kept, and `f` was free after `g`. It is Move to…'s picker over every account's folders, All Inboxes first, a folder's account named beside it when there is more than one.
+- **Forward as Attachment** (`forward-as-attachment`) has no default key. It attaches each selected message whole as `message/rfc822`, `7bit` as it is when the message is 7-bit with CRLF line ends and lines of at most 998 bytes (RFC 2046 forbids base64 there), else as `application/octet-stream` in base64 under the same `.eml` name; Sealwax never sends 8-bit data, since it doesn't ask for 8BITMIME. Only the server's original is attached, never the copy a store keeps as its text parts.
+- **Saved searches** are kept in `layout.toml` (`[[search]]`: name, query, view), not in the store: a new table would raise the store's schema, which an older Sealwax then refuses to open, and these few lines of the user's own state need no SQL. They are a **Searches** section of the full sidebar under All Inboxes (no counts: a count would run every search on every change), at most 50, and follow a renamed folder. A search of every folder runs from All Inboxes. **Save Search…** has no default key; Rename and Remove are a saved search's menu, like Empty Trash outside the palette.
+- **The unread count** for other programs is a file, `$XDG_RUNTIME_DIR/sealwax/unread.json` (`{"version":1,"pid":…,"unread":…,"accounts":[{"name":…,"unread":…}]}`), written atomically when the counts change and removed at quit, with `sealwax --unread` to print it. `unread` is All Inboxes' number. Accounts are named by their label, or "Account N", never by their address. In a Flatpak the file is in `$XDG_RUNTIME_DIR/app/<app-id>/`, the folder the host sees.
+- **The Omarchy bar widget** is a plugin in `contrib/omarchy-plugin/` (`io.github.pixdevsapps.sealwax-unread`): the icon, the number beside it only when it isn't 0, a click that runs `uwsm-app -- sealwax`. Sealwax never installs it (the app doesn't write `~/.config`); publishing it to Omarchy's marketplace is the owner's.
+- **HTML signatures** come from files: `signature_html` on an account or identity names an `.html` file under `~/.config/sealwax/signatures/`, its images in its folder. They go through the composer's allowlist, local images become inline `cid:` parts, and anything else is left out ([SECURITY.md](SECURITY.md)). The composer inserts the signature when a message starts and when the sender changes; a draft keeps what was inserted. When the file can't be used, the plain `signature` is used and a toast says why. There is no editor in the app.
+
+**Reason:** each choice is the 1.2 design's recommendation, or the smallest one that keeps the rules: no schema change for a list of names, no D-Bus property that would start Sealwax just to read a number, nothing remote in a signature, and the user's own files only.
+
+**Alternatives:** a D-Bus property for the count (cleaner for D-Bus clients, but a QML widget needs a binding, and with Sealwax not running the bus would start it); saved searches in the store (schema v15) or only in the search suggestions; a signature editor, or keeping the file's styles (the composer can't write them, so what was sent would differ from what it shows); 8-bit forwarded messages.
+
+**Consequences:** the file's format is a promise to the widgets that read it: a change gets a new `version`. A downgrade to 1.4.x keeps working, `layout.toml`'s `[[search]]` tables left alone. An HTML signature's colours and fonts are lost; the guide says what is kept. The quick reply keeps the plain signature.

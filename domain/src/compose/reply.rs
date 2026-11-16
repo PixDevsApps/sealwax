@@ -164,6 +164,7 @@ pub fn plan(original: &Original, kind: ReplyKind, senders: &[Identity]) -> Reply
             name: String::new(),
             address: String::new(),
             signature: None,
+            signature_html: None,
         });
     let (to, cc) = recipients(headers, kind, senders);
     let subject = match kind {
@@ -439,6 +440,17 @@ pub fn forward_subject(subject: &str) -> String {
     )
 }
 
+/// Forward as Attachment's subject for `count` messages, the first's `subject`: "Fwd: Kvartal",
+/// "Fwd: Kvartal and 2 more", or "Fwd: 3 messages" when the first has none.
+pub fn forward_subjects(subject: &str, count: usize) -> String {
+    let first = forward_subject(subject);
+    match count.saturating_sub(1) {
+        0 => first,
+        _ if first == "Fwd:" => format!("Fwd: {count} messages"),
+        more => format!("{first} and {more} more"),
+    }
+}
+
 fn prefixed(prefix: &str, rest: &str) -> String {
     if rest.is_empty() {
         prefix.to_owned()
@@ -456,6 +468,7 @@ pub fn everyone(headers: &Headers, mine: &[String]) -> Vec<Address> {
             name: String::new(),
             address: address.clone(),
             signature: None,
+            signature_html: None,
         })
         .collect();
     let (to, cc) = recipients(headers, ReplyKind::ReplyAll, &senders);

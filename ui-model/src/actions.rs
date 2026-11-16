@@ -213,11 +213,15 @@ pub enum ActionId {
     OpenMessage,
     BackToList,
     Search,
+    SaveSearch,
+    RenameSearch,
+    RemoveSearch,
     GoToInbox,
     GoToStarred,
     GoToSent,
     GoToDrafts,
     GoToAllInboxes,
+    GoToFolder,
     GoToAccount1,
     GoToAccount2,
     GoToAccount3,
@@ -253,6 +257,7 @@ pub enum ActionId {
     ReplyAll,
     ReplySender,
     Forward,
+    ForwardAsAttachment,
     Send,
     EditDraft,
     QuickReply,
@@ -310,7 +315,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 103] = [
+    pub const ALL: [Self; 108] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -320,11 +325,15 @@ impl ActionId {
         Self::OpenMessage,
         Self::BackToList,
         Self::Search,
+        Self::SaveSearch,
+        Self::RenameSearch,
+        Self::RemoveSearch,
         Self::GoToInbox,
         Self::GoToStarred,
         Self::GoToSent,
         Self::GoToDrafts,
         Self::GoToAllInboxes,
+        Self::GoToFolder,
         Self::GoToAccount1,
         Self::GoToAccount2,
         Self::GoToAccount3,
@@ -360,6 +369,7 @@ impl ActionId {
         Self::ReplyAll,
         Self::ReplySender,
         Self::Forward,
+        Self::ForwardAsAttachment,
         Self::Send,
         Self::EditDraft,
         Self::QuickReply,
@@ -513,6 +523,37 @@ impl ActionId {
                 Scope::Window,
                 &["slash", "<Control>f"],
             ),
+            // Keeps the search the list runs under a name, in the sidebar's Searches (1.5.0). No
+            // default key (ADR-017). Rename and Remove are a saved search's context menu only.
+            Self::SaveSearch => command(
+                "save-search",
+                "Save Search…",
+                Navigation,
+                Scope::Window,
+                &[],
+            ),
+            Self::RenameSearch => ActionSpec {
+                palette: false,
+                menu: None,
+                ..command(
+                    "rename-search",
+                    "Rename Search…",
+                    Navigation,
+                    Scope::Window,
+                    &[],
+                )
+            },
+            Self::RemoveSearch => ActionSpec {
+                palette: false,
+                menu: None,
+                ..command(
+                    "remove-search",
+                    "Remove Search",
+                    Navigation,
+                    Scope::Window,
+                    &[],
+                )
+            },
             Self::GoToInbox => go_to("go-to-inbox", "Go to Inbox", &["g i"]),
             Self::GoToStarred => go_to("go-to-starred", "Go to Starred", &["g s"]),
             Self::GoToSent => go_to("go-to-sent", "Go to Sent", &["g t"]),
@@ -520,6 +561,9 @@ impl ActionId {
             // Issue #12 (accepted 2026-10-19): All Inboxes, and the Inbox of the sidebar's first to
             // ninth account.
             Self::GoToAllInboxes => go_to("go-to-all-inboxes", "Go to All Inboxes", &["g a"]),
+            // A picker over every account's folders (issue #12; 1.5.0, the owner's "you choose the
+            // best options", 2026-11-16): `g f`, free since `g` starts only sequences.
+            Self::GoToFolder => go_to("go-to-folder", "Go to Folder…", &["g f"]),
             Self::GoToAccount1 => go_to("go-to-account-1", "Go to Account 1", &["g 1"]),
             Self::GoToAccount2 => go_to("go-to-account-2", "Go to Account 2", &["g 2"]),
             Self::GoToAccount3 => go_to("go-to-account-3", "Go to Account 3", &["g 3"]),
@@ -608,6 +652,14 @@ impl ActionId {
             ),
             Self::ReplySender => on_selection("reply-sender", "Reply to Sender", Compose, &[]),
             Self::Forward => on_selection("forward", "Forward", Compose, &["f", "<Control>l"]),
+            // Each selected message whole, as a `message/rfc822` part (1.5.0). No default key
+            // (ADR-017); the message menu, the reader's More menu and the palette reach it.
+            Self::ForwardAsAttachment => on_selection(
+                "forward-as-attachment",
+                "Forward as Attachment",
+                Compose,
+                &[],
+            ),
             Self::Send => command(
                 "send",
                 "Send",
@@ -1138,10 +1190,14 @@ mod tests {
         assert!(!Scope::Composer.allows_one_key() && !Scope::Window.allows_one_key());
     }
 
-    /// Commands the sidebar's folder row menu reaches, and only there. An item that appears on
-    /// one kind of folder alone (Empty Trash, on a `\Trash`) has no palette entry and no main
-    /// menu item: outside that row it would have nothing to act on.
-    const FOLDER_MENU: [ActionId; 1] = [ActionId::EmptyTrash];
+    /// Commands the sidebar's row menus reach, and only there. An item that appears on one kind
+    /// of row alone (Empty Trash, on a `\Trash`; Rename… and Remove, on a saved search) has no
+    /// palette entry and no main menu item: outside that row it would have nothing to act on.
+    const FOLDER_MENU: [ActionId; 3] = [
+        ActionId::EmptyTrash,
+        ActionId::RenameSearch,
+        ActionId::RemoveSearch,
+    ];
 
     #[test]
     fn every_action_is_reachable() {
@@ -1238,6 +1294,7 @@ mod tests {
                 ActionId::ReplyAll,
                 ActionId::ReplySender,
                 ActionId::Forward,
+                ActionId::ForwardAsAttachment,
                 ActionId::EditDraft,
                 ActionId::NewRuleFromMessage,
                 ActionId::JunkSender,
@@ -1280,6 +1337,7 @@ mod tests {
         assert_eq!(keys(ActionId::ScrollMessageDown), ["d"]);
         assert_eq!(keys(ActionId::ScrollMessageUp), ["<Shift>d"]);
         assert_eq!(keys(ActionId::GoToAllInboxes), ["g a"]);
+        assert_eq!(keys(ActionId::GoToFolder), ["g f"]);
         for number in 1..=9 {
             let id = ActionId::go_to_account(number).unwrap();
             assert_eq!(keys(id), [format!("g {number}")], "{id:?}");

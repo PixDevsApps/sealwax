@@ -152,6 +152,7 @@ async fn imap_protos_panic_restarts_the_account() {
                 username: "panic@example.test".into(),
                 auth: AuthMethod::Password,
                 signature: None,
+                signature_html: None,
                 identities: Vec::new(),
             },
             password: Password::new("fake-password".into()),

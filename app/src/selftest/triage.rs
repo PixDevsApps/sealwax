@@ -92,6 +92,8 @@ pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("assert-move-to", 2, 2),
     ("assert-sidebar-menu", 1, 2),
     ("assert-action-log", 1, 1),
+    ("search-menu", 1, 1),
+    ("assert-saved-searches", 1, 1),
 ];
 
 thread_local! {
@@ -307,6 +309,24 @@ pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> S
             click_button(harness, &button).await
         }
         "action-log" => start_log(harness),
+        "search-menu" => {
+            let index = number(arg(0))?;
+            harness.wait_until_settled().await;
+            if harness.window()?.sidebar().open_search_menu(index) {
+                Ok(())
+            } else {
+                Err(format!("the sidebar has no saved search {index}"))
+            }
+        }
+        "assert-saved-searches" => {
+            let names = harness.window()?.sidebar().searches();
+            let shown = if names.is_empty() {
+                "none".to_owned()
+            } else {
+                names.join(",")
+            };
+            equal("saved searches", shown.as_str(), arg(0))
+        }
         "measure-triage" => measure(harness, arg(0), number(arg(1))?).await,
         "hold-reader-layout" => {
             let reader = harness.state.reader().ok_or("the reader isn't installed")?;

@@ -345,6 +345,9 @@ pub struct AccountSettings {
     pub auth: AuthMethod,
     /// The signature under mail sent from `address` (M6, ML-070): plain text, `None` for none.
     pub signature: Option<String>,
+    /// An HTML signature for `address` (issue #6): a file's path under the signatures folder
+    /// (`signatures/work/signature.html`), used in place of `signature` when it can be read.
+    pub signature_html: Option<String>,
     /// The other addresses the account sends from (aliases, PRD A6), from
     /// `[[account.identity]]` (M6, ML-070).
     pub identities: Vec<Identity>,
@@ -366,6 +369,8 @@ pub struct Identity {
     pub address: String,
     /// Plain text; `None` for none.
     pub signature: Option<String>,
+    /// An HTML signature's file under the signatures folder (issue #6), as for an account.
+    pub signature_html: Option<String>,
 }
 
 /// The login name a detected setting expects, relative to the address.

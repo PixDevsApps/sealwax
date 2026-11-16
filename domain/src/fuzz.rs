@@ -106,6 +106,7 @@ fn answers(data: &[u8]) {
         name: "Kari Nordmann".to_owned(),
         address: ADDRESS.to_owned(),
         signature: Some("Kari".to_owned()),
+        signature_html: None,
     }];
     for kind in [ReplyKind::Reply, ReplyKind::ReplyAll, ReplyKind::Forward] {
         let planned = reply::plan(&original, kind, &senders);

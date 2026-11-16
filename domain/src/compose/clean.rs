@@ -187,8 +187,40 @@ pub fn clean_with(html: &str, keep_cid: impl Fn(&str) -> bool) -> Cleaned {
     clean_once(&cleaned.html, &keep_cid)
 }
 
+/// A signature's HTML (issue #6) through the same allowlist: an image whose `src` `local` maps
+/// to a Content-ID shows that part (`cid:`); every other image, remote, `data:` or `cid:`, is
+/// left out, so a signature never loads anything and never refers to a part it didn't bring.
+pub fn clean_signature(html: &str, local: impl Fn(&str) -> Option<String>) -> Cleaned {
+    let mapped: RefCell<HashSet<String>> = RefCell::default();
+    let rewrite = |source: &str| {
+        let id = local(source.trim())?;
+        let source = format!("cid:{id}");
+        is_image_source(&source).then(|| {
+            mapped.borrow_mut().insert(id);
+            source
+        })
+    };
+    let keep_cid = |id: &str| mapped.borrow().contains(id);
+    let first = clean_rewriting(html, &keep_cid, Some(&rewrite));
+    // As in `clean_with`: a second round over the allowlist's output sees every image.
+    clean_rewriting(&first.html, &keep_cid, None)
+}
+
+/// What a signature's image sources become ([`clean_signature`]).
+type Rewrite<'r> = &'r dyn Fn(&str) -> Option<String>;
+
 fn clean_once(html: &str, keep_cid: &dyn Fn(&str) -> bool) -> Cleaned {
-    let normalized = normalize(html, keep_cid);
+    clean_rewriting(html, keep_cid, None)
+}
+
+/// [`clean_once`]; with `rewrite`, every image's `src` is what `rewrite` makes of it, and an
+/// image it gives nothing for is left out.
+fn clean_rewriting(
+    html: &str,
+    keep_cid: &dyn Fn(&str) -> bool,
+    rewrite: Option<Rewrite<'_>>,
+) -> Cleaned {
+    let normalized = normalize(html, keep_cid, rewrite);
     let html = BUILDER
         .clean(&normalized)
         .to_string()
@@ -322,7 +354,7 @@ fn is_image_source(value: &str) -> bool {
 
 /// The first pass: presentational markup as the tags the allowlist keeps, and nothing nested
 /// deeper than [`html_depth::MAX_DEPTH`] (its start tags are left out, its content kept).
-fn normalize(html: &str, keep_cid: &dyn Fn(&str) -> bool) -> String {
+fn normalize(html: &str, keep_cid: &dyn Fn(&str) -> bool, rewrite: Option<Rewrite<'_>>) -> String {
     let sink = Normalizer {
         out: RefCell::new(String::with_capacity(html.len())),
         stack: RefCell::new(Vec::new()),
@@ -332,6 +364,7 @@ fn normalize(html: &str, keep_cid: &dyn Fn(&str) -> bool) -> String {
         nesting: RefCell::new(Nesting::new(html_depth::MAX_DEPTH, true)),
         skipping: Cell::new(false),
         keep_cid,
+        rewrite,
     };
     let tokenizer = Tokenizer::new(sink, TokenizerOpts::default());
     let input = BufferQueue::default();
@@ -374,6 +407,8 @@ struct Normalizer<'k> {
     /// A raw text element left out as too deep: its text goes too, up to its end tag.
     skipping: Cell<bool>,
     keep_cid: &'k dyn Fn(&str) -> bool,
+    /// A signature's image sources ([`clean_signature`]).
+    rewrite: Option<Rewrite<'k>>,
 }
 
 impl TokenSink for Normalizer<'_> {
@@ -476,6 +511,23 @@ impl Normalizer<'_> {
                 }
                 None => TokenSinkResult::Continue,
             };
+        }
+        if name == "img"
+            && let Some(rewrite) = self.rewrite
+        {
+            let Some(source) = attribute(&tag.attrs, "src").and_then(rewrite) else {
+                return TokenSinkResult::Continue;
+            };
+            let mut attrs = tag.attrs.clone();
+            for attr in &mut attrs {
+                if &*attr.name.local == "src" {
+                    attr.value = source.as_str().into();
+                }
+            }
+            if self.image_kept(&attrs) {
+                self.write_tag("img", &attrs, true);
+            }
+            return TokenSinkResult::Continue;
         }
         if name == "img" && !self.image_kept(&tag.attrs) {
             return TokenSinkResult::Continue;

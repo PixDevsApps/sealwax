@@ -65,6 +65,7 @@ fn senders() -> [Identity; 1] {
         name: "Ada".into(),
         address: "ada@example.test".into(),
         signature: None,
+        signature_html: None,
     }]
 }
 

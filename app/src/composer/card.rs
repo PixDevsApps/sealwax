@@ -193,6 +193,8 @@ struct Inner {
     return_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     /// The card takes the focus when its body is ready.
     focus_on_ready: Cell<bool>,
+    /// A message started now: its sender's HTML signature goes in when the body is ready.
+    html_signature_due: Cell<bool>,
     widgets: Widgets,
     editor: Editor,
     backend: Rc<dyn Backend>,
@@ -285,6 +287,7 @@ impl Composer {
             request_title: RefCell::new("New message".to_owned()),
             return_focus: RefCell::new(return_focus),
             focus_on_ready: Cell::new(focus),
+            html_signature_due: Cell::new(false),
             widgets,
             editor,
             backend,
@@ -1306,7 +1309,9 @@ impl Inner {
             draft,
             senders,
             title,
+            fresh,
         } = prepared;
+        self.html_signature_due.set(fresh);
         self.id.set(Some(id));
         self.account.set(draft.account);
         self.request_title.replace(title);
@@ -1413,6 +1418,53 @@ impl Inner {
             super::js::literal(&signature)
         ));
         self.changed();
+        self.insert_html_signature(index);
+    }
+
+    /// The HTML signature of the sender in place `index` (issue #6), once it is read, in place
+    /// of the plain one; when it can't be used, the plain one stays and a toast says why.
+    fn insert_html_signature(self: &Rc<Self>, index: usize) {
+        let Some(sender) = self.senders.borrow().get(index).cloned() else {
+            return;
+        };
+        let Some(path) = sender.signature_html.clone() else {
+            return;
+        };
+        let read = self
+            .backend
+            .html_signature(path, id_domain(&sender.address.email));
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let read = read.await;
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            if inner.sender.get() != index {
+                return;
+            }
+            match read {
+                Ok((block, images)) => {
+                    for (content_id, image) in images {
+                        inner.editor.add_part(content_id, image);
+                    }
+                    inner.editor.eval_detached(&format!(
+                        "sealwaxComposer.setSignature({})",
+                        super::js::literal(&block.html)
+                    ));
+                    inner.changed();
+                }
+                Err(why) => {
+                    let plain = if sender.signature.is_some() {
+                        "the plain one is used"
+                    } else {
+                        "the message has none"
+                    };
+                    inner.toast(&format!(
+                        "The HTML signature can't be used: {why}; {plain}"
+                    ));
+                }
+            }
+        });
     }
 
     fn editor_event(self: &Rc<Self>, event: EditorEvent) {
@@ -1494,6 +1546,9 @@ impl Inner {
         // Unless the user went elsewhere while the draft was prepared.
         if self.focus_on_ready.get() && self.holds_focus() {
             self.take_focus();
+        }
+        if self.html_signature_due.replace(false) {
+            self.insert_html_signature(self.sender.get());
         }
     }
 

@@ -93,6 +93,7 @@ impl Setup {
             username: ADDRESS.into(),
             auth: AuthMethod::OAuth(OAuthProvider::Microsoft),
             signature: None,
+            signature_html: None,
             identities: Vec::new(),
         }
     }

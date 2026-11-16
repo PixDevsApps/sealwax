@@ -1611,6 +1611,7 @@ mod tests {
             assert_eq!(resolve("t"), [ActionId::GoToSent]);
             assert_eq!(resolve("d"), [ActionId::GoToDrafts]);
             assert_eq!(resolve("a"), [ActionId::GoToAllInboxes]);
+            assert_eq!(resolve("f"), [ActionId::GoToFolder]);
             assert_eq!(resolve("1"), [ActionId::GoToAccount1]);
             assert_eq!(resolve("9"), [ActionId::GoToAccount9]);
             assert!(
@@ -1625,7 +1626,7 @@ mod tests {
             ActionId::Star,
             vec![binding("g")],
         )]));
-        assert_eq!(problems.len(), 14, "{problems:?}");
+        assert_eq!(problems.len(), 15, "{problems:?}");
         assert!(
             problems
                 .iter()

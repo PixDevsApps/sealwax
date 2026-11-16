@@ -8,11 +8,13 @@ fn senders() -> Vec<Identity> {
             name: "Ada Lovelace".into(),
             address: "ada@example.test".into(),
             signature: Some("Ada".into()),
+            signature_html: None,
         },
         Identity {
             name: "Ada at the board".into(),
             address: "board@example.test".into(),
             signature: None,
+            signature_html: None,
         },
     ]
 }
@@ -388,6 +390,20 @@ fn subjects_get_one_prefix() {
         assert_eq!(reply_subject(subject), reply, "{subject}");
         assert_eq!(forward_subject(subject), forward, "{subject}");
     }
+}
+
+#[test]
+fn forwarding_several_messages_names_the_first_and_counts_the_rest() {
+    assert_eq!(
+        forward_subjects("Fwd: Kvartalstall", 1),
+        "Fwd: Kvartalstall"
+    );
+    assert_eq!(
+        forward_subjects("Kvartalstall", 3),
+        "Fwd: Kvartalstall and 2 more"
+    );
+    assert_eq!(forward_subjects("", 2), "Fwd: 2 messages");
+    assert_eq!(forward_subjects("x", 0), "Fwd: x");
 }
 
 #[test]

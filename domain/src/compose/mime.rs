@@ -12,6 +12,11 @@
 //! the HTML through html2text at 78 columns. No host name anywhere, and no User-Agent or
 //! X-Mailer field (accepted at the M6 gate). Everything is 7-bit with CRLF line ends. Part bytes come from
 //! the caller (the blob store); nothing here does I/O.
+//!
+//! A forwarded message (`message/rfc822`, Forward as Attachment) goes as it is, `7bit`: RFC 2046
+//! allows no base64 there. One that isn't 7-bit with CRLF line ends and lines of 998 bytes or
+//! fewer goes as `application/octet-stream` in base64 instead, under its `.eml` name, as other
+//! clients do: sending 8-bit data needs 8BITMIME, which Sealwax doesn't ask for.
 
 use super::ids;
 use super::text::header_text;
@@ -25,6 +30,7 @@ use mail_builder::headers::address::Address as Mailbox;
 use mail_builder::headers::content_type::ContentType;
 use mail_builder::headers::date::Date;
 use mail_builder::headers::message_id::MessageId;
+use mail_builder::headers::text::Text;
 use mail_builder::mime::MimePart;
 use std::fmt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -334,12 +340,23 @@ fn body<'a>(
             }
             Some(_) => {}
             None => {
+                let message = mime_type.eq_ignore_ascii_case("message/rfc822");
+                let as_is = message && seven_bit_lines(data);
+                let mime_type = if message && !as_is {
+                    "application/octet-stream"
+                } else {
+                    mime_type
+                };
                 let mut content_type = ContentType::new(mime_type);
                 if mime_type.starts_with("text/") && std::str::from_utf8(data).is_ok() {
                     content_type = content_type.attribute("charset", "utf-8");
                 }
                 let content_type = content_type.attribute("name", rfc2047_parameter(&part.name));
-                attachments.push(MimePart::new(content_type, *data).attachment(part.name.as_str()));
+                let mut attachment = MimePart::new(content_type, *data);
+                if as_is {
+                    attachment = attachment.header("Content-Transfer-Encoding", Text::new("7bit"));
+                }
+                attachments.push(attachment.attachment(part.name.as_str()));
             }
         }
     }
@@ -368,6 +385,28 @@ fn body<'a>(
 
 /// A part's type as it may be written: `type/subtype` of token characters, else
 /// `application/octet-stream` (a forwarded part's type comes from hostile mail).
+/// Whether `data` can go as it is in a 7-bit part: ASCII without NUL, every line ending in CRLF
+/// (the last may have none) and no longer than 998 bytes (RFC 5322).
+fn seven_bit_lines(data: &[u8]) -> bool {
+    let mut lines = data.split(|&byte| byte == b'\n').peekable();
+    while let Some(line) = lines.next() {
+        let last = lines.peek().is_none();
+        let line = match line.strip_suffix(b"\r") {
+            Some(line) if !last => line,
+            _ if last => line,
+            _ => return false,
+        };
+        if line.len() > 998
+            || line
+                .iter()
+                .any(|&byte| byte == 0 || byte == b'\r' || byte > 0x7f)
+        {
+            return false;
+        }
+    }
+    true
+}
+
 fn mime_type(mime_type: &str) -> &str {
     let token = |text: &str| {
         !text.is_empty()

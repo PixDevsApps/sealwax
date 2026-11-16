@@ -98,6 +98,7 @@ impl StandIn {
             label: label.to_owned(),
             address: Address::new(name, email),
             signature: None,
+            signature_html: None,
         });
     }
 
@@ -167,6 +168,14 @@ impl StandIn {
                 }
                 id
             }
+            ComposeRequest::ForwardAsAttachment(messages) => {
+                title = "Forward".to_owned();
+                draft.subject = sealwax_domain::compose::reply::forward_subjects(
+                    "The quarterly figures",
+                    messages.len(),
+                );
+                self.next_id()
+            }
             ComposeRequest::ServerDraft(_) => {
                 title = "Draft".to_owned();
                 draft.subject = "Notes for Thursday".to_owned();
@@ -213,6 +222,7 @@ impl Backend for StandIn {
                 label: account.name.clone(),
                 address: Address::new(account.name.clone(), account.address.clone()),
                 signature: None,
+                signature_html: None,
             }];
             if let Some(key) = &account.key
                 && let Some(settings) = settings.iter().find(|settings| &settings.key == key)
@@ -222,6 +232,7 @@ impl Backend for StandIn {
                     label: identity.name.clone(),
                     address: Address::new(identity.name.clone(), identity.address.clone()),
                     signature: identity.signature.clone(),
+                    signature_html: None,
                 }));
             }
             senders.extend(identities.into_iter().map(|sender| Sender {
@@ -242,6 +253,7 @@ impl Backend for StandIn {
                 draft,
                 senders,
                 title,
+                fresh: false,
             })
         })
     }

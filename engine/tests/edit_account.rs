@@ -117,6 +117,7 @@ fn an_edited_label_and_color_reach_the_file_and_the_store() {
             username: "ada".into(),
             auth: AuthMethod::Password,
             signature: None,
+            signature_html: None,
             identities: Vec::new(),
         },
     )

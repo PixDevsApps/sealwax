@@ -42,6 +42,21 @@ pub fn cache_home() -> PathBuf {
     from_env("XDG_CACHE_HOME", ".cache")
 }
 
+/// `$XDG_RUNTIME_DIR/<name>`; in a Flatpak `$XDG_RUNTIME_DIR/app/$FLATPAK_ID`, which the host
+/// sees at the same place. `None` when the variable isn't an absolute path.
+fn runtime_dir(name: &str) -> Option<PathBuf> {
+    let base = PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR")?);
+    if !base.is_absolute() {
+        return None;
+    }
+    match std::env::var("FLATPAK_ID") {
+        Ok(id) if crate::sandbox::is_flatpak() && !id.is_empty() && !id.contains('/') => {
+            Some(base.join("app").join(id))
+        }
+        _ => Some(base.join(name)),
+    }
+}
+
 /// Where Sealwax keeps its files.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SealwaxDirs {
@@ -53,6 +68,10 @@ pub struct SealwaxDirs {
     pub state: PathBuf,
     /// Regenerable files.
     pub cache: PathBuf,
+    /// Files for other programs while Sealwax runs (the unread count, 1.5.0):
+    /// `$XDG_RUNTIME_DIR/sealwax`, or in a Flatpak `$XDG_RUNTIME_DIR/app/<app-id>`, the folder
+    /// the host sees; `None` without an absolute `XDG_RUNTIME_DIR`.
+    pub runtime: Option<PathBuf>,
 }
 
 impl SealwaxDirs {
@@ -68,6 +87,7 @@ impl SealwaxDirs {
             data: data_home().join(name),
             state: state_home().join(name),
             cache: cache_home().join(name),
+            runtime: runtime_dir(name),
         }
     }
 
@@ -78,7 +98,15 @@ impl SealwaxDirs {
             data: root.join("data").join(APP_DIR),
             state: root.join("state").join(APP_DIR),
             cache: root.join("cache").join(APP_DIR),
+            runtime: Some(root.join("runtime").join(APP_DIR)),
         }
+    }
+
+    /// The unread count for other programs, while Sealwax runs (`crate::unread`).
+    pub fn unread_file(&self) -> Option<PathBuf> {
+        self.runtime
+            .as_ref()
+            .map(|dir| dir.join(crate::unread::UNREAD_FILE))
     }
 
     pub fn config_file(&self) -> PathBuf {

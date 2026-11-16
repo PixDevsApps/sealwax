@@ -320,6 +320,7 @@ async fn sign_in_and_add(
             username,
             auth: AuthMethod::OAuth(OAuthProvider::Microsoft),
             signature: None,
+            signature_html: None,
             identities: Vec::new(),
         },
         password: Password::new(String::new()),

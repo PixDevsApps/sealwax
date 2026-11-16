@@ -10,6 +10,10 @@
 //! running Sealwax it shows nothing. `--compose` opens a new message; with `mailto:` links, those
 //! messages are opened instead. Both are forwarded to a running Sealwax like the links.
 //!
+//! `--unread` (1.5.0, issue #17) prints the unread number of the Sealwax running now, from the
+//! file it keeps (`sealwax_infrastructure::unread`), and exits 1 when none runs; it never starts
+//! or asks a running Sealwax, so a bar or a script can call it as often as it likes.
+//!
 //! `--self-test` exists only in a build with the `test-hooks` feature (`sealwax-selftest`); the
 //! released binary has no such option.
 
@@ -31,6 +35,8 @@ pub(crate) struct Cli {
     pub background: bool,
     /// Open a new message.
     pub compose: bool,
+    /// Print the running Sealwax's unread number and exit.
+    pub unread: bool,
 }
 
 pub(crate) fn command() -> Command {
@@ -57,6 +63,16 @@ pub(crate) fn command() -> Command {
                 .action(ArgAction::SetTrue)
                 .conflicts_with_all(["uris", "compose"])
                 .help("Start without a window, as at login; mail keeps syncing in the background"),
+        )
+        .arg(
+            Arg::new("unread")
+                .long("unread")
+                .action(ArgAction::SetTrue)
+                .conflicts_with_all(["uris", "compose", "background"])
+                .help(
+                    "Print the number of unread messages in the Inboxes of the Sealwax running \
+                     now, or exit 1 when it isn't running",
+                ),
         )
         .arg(
             Arg::new("gapplication-service")
@@ -102,6 +118,7 @@ where
         service: matches.get_flag("gapplication-service"),
         background: matches.get_flag("background"),
         compose: matches.get_flag("compose"),
+        unread: matches.get_flag("unread"),
     })
 }
 
@@ -186,6 +203,20 @@ mod tests {
             cli.self_test,
             Some(PathBuf::from("tests/selftest/window.sealwax-test"))
         );
+    }
+
+    #[test]
+    fn unread_stands_alone() {
+        assert!(parse(["sealwax", "--unread"]).unwrap().unread);
+        assert!(!parse(["sealwax"]).unwrap().unread);
+        for args in [
+            &["sealwax", "--unread", "--compose"][..],
+            &["sealwax", "--unread", "--background"],
+            &["sealwax", "--unread", "mailto:a@example.com"],
+        ] {
+            let error = parse(args).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::ArgumentConflict, "{args:?}");
+        }
     }
 
     #[test]

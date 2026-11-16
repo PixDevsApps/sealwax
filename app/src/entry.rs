@@ -36,6 +36,9 @@ pub fn main() -> glib::ExitCode {
             return glib::ExitCode::from(error.exit_code() as u8);
         }
     };
+    if parsed.unread {
+        return print_unread();
+    }
     let exit_after = match config::exit_after_from_env() {
         Ok(exit_after) => exit_after,
         Err(message) => {
@@ -59,4 +62,25 @@ pub fn main() -> glib::ExitCode {
         tracing::debug!(?outcome, "command line");
     }
     application::run(config, started)
+}
+
+/// `--unread`: the running Sealwax's number on stdout, or exit 1 when none runs.
+fn print_unread() -> glib::ExitCode {
+    let dirs = sealwax_infrastructure::xdg::SealwaxDirs::named(config::DIR_NAME);
+    let running = dirs.unread_file().and_then(|path| {
+        sealwax_infrastructure::unread::read_running(
+            &path,
+            !sealwax_infrastructure::sandbox::is_flatpak(),
+        )
+    });
+    match running {
+        Some(unread) => {
+            println!("{unread}");
+            glib::ExitCode::SUCCESS
+        }
+        None => {
+            eprintln!("Sealwax isn't running");
+            glib::ExitCode::FAILURE
+        }
+    }
 }

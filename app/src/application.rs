@@ -155,6 +155,7 @@ mod imp {
         }
 
         fn shutdown(&self) {
+            crate::unread::clear(&self.state());
             self.state().stop_engine();
             self.state().mailbox.close();
             self.parent_shutdown();
@@ -707,6 +708,29 @@ impl AppState {
         self.app_actions.get()
     }
 
+    /// Whether the window's command `id` applies now.
+    pub(crate) fn set_window_applies(&self, id: ActionId, applies: bool) {
+        if let Some(actions) = self.win_actions.borrow().as_ref() {
+            actions.set_applies(id, applies);
+        }
+    }
+
+    /// The saved searches (1.5.0), as `layout.toml` keeps them.
+    pub(crate) fn saved_searches(&self) -> Vec<sealwax_ui_model::layout::SavedSearch> {
+        self.layout
+            .borrow()
+            .as_ref()
+            .map(|layout| layout.searches.clone())
+            .unwrap_or_default()
+    }
+
+    /// Changes the saved searches through the layout, which is written off the GTK thread; the
+    /// sidebar shows them again.
+    pub(crate) fn change_searches(&self, change: impl FnOnce(&mut Layout)) {
+        self.change_layout(change);
+        crate::saved_searches::show(self);
+    }
+
     /// Whether a command is built and usable now, in either action group, or, for the
     /// composer's commands, in every composer window.
     pub fn is_available(&self, id: ActionId) -> bool {
@@ -770,6 +794,7 @@ impl AppState {
             state.refresh_commands();
             state.update_banner();
         });
+        crate::unread::install(self);
         // The sidebar's account states and the banner follow whatever engine the link has: the
         // one started below, or a self-test's scripted one.
         let weak = Rc::downgrade(self);
@@ -1233,6 +1258,7 @@ impl AppState {
         self.install_list(window, &win_actions, &keymap);
         compose_actions::install(self, window, &win_actions);
         crate::go_to::install(self, &win_actions);
+        crate::saved_searches::install(self, &win_actions);
         crate::folders::install(self, window, &win_actions);
         crate::rules::install_window(self, window, &win_actions);
         crate::unsubscribe::install_window(self, &win_actions);
@@ -1547,6 +1573,7 @@ impl AppState {
                 }
             },
         );
+        crate::saved_searches::connect(self, window);
         let (applies, activate) = (Rc::downgrade(self), Rc::downgrade(self));
         window.sidebar().connect_empty_trash(
             move |key| {
@@ -2217,6 +2244,7 @@ impl AppState {
             list.set_group_by(layout.group_by);
         }
         self.layout.replace(Some(layout));
+        crate::saved_searches::show(self);
     }
 
     /// The remembered reading pane on the window, with the menu's check mark.
@@ -2395,6 +2423,7 @@ impl AppState {
         };
         self.change_layout(|layout| {
             layout.rename_folded(&key, old, new, delimiter);
+            layout.rename_searched(&key, old, new, delimiter);
         });
     }
 

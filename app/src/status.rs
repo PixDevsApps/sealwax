@@ -201,6 +201,7 @@ mod tests {
             username: key.to_owned(),
             auth,
             signature: None,
+            signature_html: None,
             identities: Vec::new(),
         }
     }

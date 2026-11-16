@@ -2,7 +2,8 @@
 //! (Escape, `u` in the reader): the keymap's navigation commands, built in M9 (ML-092) with
 //! the keys the registry already had. Go to All Inboxes (`g a`) and Go to Account 1 to 9
 //! (`g 1` to `g 9`, that account's Inbox in the sidebar's order) followed for issue #12
-//! (2026-10-19). A go-to shows the account's folder of that role: the
+//! (2026-10-19), and Go to Folder… (`g f`, 1.5.0) after it: a picker over every account's
+//! folders ([`crate::move_to::present_go_to`]). A go-to shows the account's folder of that role: the
 //! account the list shows, in All Inboxes the selected message's, else the first account's;
 //! Go to Inbox from All Inboxes stays there, and Go to Starred turns on the Starred chip, as
 //! there is no Starred folder. Back to List puts the keyboard focus in the list, showing it
@@ -11,6 +12,7 @@
 use crate::application::AppState;
 use crate::compose_actions::compose_account;
 use crate::mailbox::folder_key;
+use crate::move_to::Place;
 use crate::window::{ALL_INBOXES, Pane};
 use gtk4::prelude::*;
 use sealwax_domain::model::{AccountId, Folder, FolderId, FolderRole};
@@ -107,6 +109,12 @@ pub(crate) fn install(state: &Rc<AppState>, actions: &crate::actions::ActionSet)
         });
     }
     let weak = Rc::downgrade(state);
+    actions.connect(ActionId::GoToFolder, move || {
+        if let Some(state) = weak.upgrade() {
+            go_to_folder(&state);
+        }
+    });
+    let weak = Rc::downgrade(state);
     actions.connect(ActionId::GoToStarred, move || {
         if let Some(state) = weak.upgrade()
             && let (Some(window), Some(list)) = (state.window(), state.list())
@@ -140,8 +148,31 @@ fn go_to(state: &Rc<AppState>, role: FolderRole) {
     show(state, &key);
 }
 
+/// Go to Folder…: the picker over every account's folders; the place chosen is shown.
+fn go_to_folder(state: &Rc<AppState>) {
+    let Some(window) = state.window() else {
+        return;
+    };
+    let mailbox = state.mailbox();
+    let weak = Rc::downgrade(state);
+    crate::move_to::present_go_to(
+        window.window(),
+        &mailbox.accounts(),
+        &mailbox.folders(),
+        move |place| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            match place {
+                Place::AllInboxes => show(&state, ALL_INBOXES),
+                Place::Folder(folder) => show(&state, &folder_key(folder)),
+            }
+        },
+    );
+}
+
 /// Shows the sidebar's folder `key` in the list, which takes the keyboard focus.
-fn show(state: &Rc<AppState>, key: &str) {
+pub(crate) fn show(state: &Rc<AppState>, key: &str) {
     let (Some(window), Some(list)) = (state.window(), state.list()) else {
         return;
     };

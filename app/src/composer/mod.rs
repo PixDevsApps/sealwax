@@ -62,6 +62,8 @@ pub enum ComposeRequest {
     Draft(DraftId),
     /// A message in a Drafts folder, written in Sealwax or elsewhere (Edit Draft).
     ServerDraft(MessageId),
+    /// A new message with these messages attached whole (Forward as Attachment).
+    ForwardAsAttachment(Vec<MessageId>),
 }
 
 /// The request's kind only: what it carries is the user's mail.
@@ -76,6 +78,9 @@ impl fmt::Debug for ComposeRequest {
             ComposeRequest::Mailto(_) => f.write_str("Mailto"),
             ComposeRequest::Draft(draft) => write!(f, "Draft({draft})"),
             ComposeRequest::ServerDraft(message) => write!(f, "ServerDraft({message})"),
+            ComposeRequest::ForwardAsAttachment(messages) => {
+                write!(f, "ForwardAsAttachment({})", messages.len())
+            }
         }
     }
 }

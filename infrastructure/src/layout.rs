@@ -50,6 +50,7 @@ mod tests {
                 name: "INBOX".into(),
             }),
             group_by: sealwax_domain::senders::GroupBy::Sender,
+            searches: Vec::new(),
         };
         write(&path, &layout).unwrap();
         assert_eq!(read(&path), layout);

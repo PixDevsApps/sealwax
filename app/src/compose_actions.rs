@@ -37,12 +37,13 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 /// The commands this module handles.
-pub(crate) const COMMANDS: [ActionId; 6] = [
+pub(crate) const COMMANDS: [ActionId; 7] = [
     ActionId::Compose,
     ActionId::Reply,
     ActionId::ReplyAll,
     ActionId::ReplySender,
     ActionId::Forward,
+    ActionId::ForwardAsAttachment,
     ActionId::EditDraft,
 ];
 
@@ -97,8 +98,8 @@ pub(crate) fn connect_reader(reader: &Reader, window: &Window) {
 }
 
 /// Reply, Reply All, Reply to Sender and Forward apply to one selected message that isn't a
-/// draft; Edit Draft to one in a Drafts folder. `targets` are the selected messages whose rows
-/// are loaded.
+/// draft; Edit Draft to one in a Drafts folder; Forward as Attachment to any selected messages.
+/// `targets` are the selected messages whose rows are loaded.
 pub(crate) fn refresh(
     actions: &ActionSet,
     list: &MessageList,
@@ -120,6 +121,7 @@ pub(crate) fn refresh(
         actions.set_applies(id, one && !draft);
     }
     actions.set_applies(ActionId::EditDraft, draft);
+    actions.set_applies(ActionId::ForwardAsAttachment, !targets.is_empty());
 }
 
 /// Opening a message of a Drafts folder (Enter, `o`, a double click) edits it in the composer
@@ -164,6 +166,18 @@ fn request_for(state: &AppState, id: ActionId) -> Option<ComposeRequest> {
                 Selected::One(message) => Some(ComposeRequest::ServerDraft(message)),
                 _ => None,
             };
+        }
+        ActionId::ForwardAsAttachment => {
+            let messages = match message_for(&list, state.reader().as_ref()) {
+                Some(message) => vec![message],
+                None => list
+                    .selected_targets()
+                    .ok()?
+                    .into_iter()
+                    .map(|target| target.id)
+                    .collect(),
+            };
+            return (!messages.is_empty()).then_some(ComposeRequest::ForwardAsAttachment(messages));
         }
         ActionId::Reply => reply_kind(state),
         ActionId::ReplyAll => ReplyKind::ReplyAll,

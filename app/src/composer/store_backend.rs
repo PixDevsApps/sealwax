@@ -11,17 +11,20 @@
 
 use super::ComposeRequest;
 use super::backend::{Backend, Local, Prepared, Refusal, Sender, Suggestion};
+use super::editor::InlineImage;
 use crate::application::AppState;
 use crate::engine_link::EngineLink;
 use crate::mailbox;
 use gtk4::{gio, glib};
 use sealwax_domain::address::is_sendable;
+use sealwax_domain::attachment::eml_file_name;
 use sealwax_domain::account::{AccountSettings, Identity};
 use sealwax_domain::compose::reply::{self, Original};
 use sealwax_domain::compose::{self, Draft, DraftPart, ReplyKind, identity, ids, mime, stored};
 use sealwax_domain::model::{Account, AccountId, Address, DraftId, MessageId};
 use sealwax_engine::api::{Command, Event};
 use sealwax_infrastructure::blobs::BlobStore;
+use sealwax_infrastructure::signatures;
 use sealwax_infrastructure::store::{
     BodyState, DraftSaved, SaveDraft, SendQueued, Store, StoredDraft,
 };
@@ -75,6 +78,7 @@ pub(crate) fn senders(account: &Account, settings: &[AccountSettings]) -> Vec<Id
             name: account.name.clone(),
             address: account.address.clone(),
             signature: None,
+            signature_html: None,
         }],
     }
 }
@@ -97,6 +101,7 @@ fn chips(account: AccountId, senders: &[Identity]) -> Vec<Sender> {
             label: identity.name.clone(),
             address: identity::from_address(identity),
             signature: identity.signature.clone(),
+            signature_html: identity.signature_html.clone(),
         })
         .collect()
 }
@@ -243,10 +248,11 @@ impl Context {
 
     /// The raw message `message` as the server has it: from the blob store, after the engine
     /// downloads its body if the store has none, or whole from the server when the store
-    /// keeps only its text parts, unless `text_will_do` (a reply, which needs no attachments,
-    /// gets its inline images one by one: [`Self::fetch_parts`]). `None` with why it couldn't
-    /// be had.
-    async fn original(&self, message: MessageId, text_will_do: bool) -> Result<Vec<u8>, String> {
+    /// keeps only its text parts, unless `want` is [`Want::Text`] (a reply, which needs no
+    /// attachments, gets its inline images one by one: [`Self::fetch_parts`]). Offline, a
+    /// message stored as its text parts is that copy, except for [`Want::Exact`]. `None` with
+    /// why it couldn't be had.
+    async fn original(&self, message: MessageId, want: Want) -> Result<Vec<u8>, String> {
         let store = self.store()?;
         let target = store
             .body_targets(vec![message])
@@ -258,7 +264,7 @@ impl Context {
         let engine = self.state()?.engine();
         match target.body_state {
             BodyState::Full => {}
-            BodyState::Text if text_will_do => {}
+            BodyState::Text if want == Want::Text => {}
             BodyState::Text => {
                 let fetched = ask(
                     &engine,
@@ -275,6 +281,13 @@ impl Context {
                 .await;
                 if let Some(Ok(original)) = fetched {
                     return Ok(original.0);
+                }
+                if want == Want::Exact {
+                    return Err(
+                        "The original message couldn't be downloaded. Try again when Sealwax is \
+                         online."
+                            .to_owned(),
+                    );
                 }
                 // Without the server, the stored text parts still make the quote; the parts
                 // left empty are dropped from the draft.
@@ -416,6 +429,10 @@ fn title(kind: ReplyKind) -> &'static str {
 }
 
 async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, String> {
+    let fresh = !matches!(
+        request,
+        ComposeRequest::Draft(_) | ComposeRequest::ServerDraft(_)
+    );
     let state = context.state()?;
     state.mailbox().wait_ready().await;
     let (account, draft, title, id) = match request {
@@ -446,6 +463,12 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
             let typed = compose::text::to_html(&text);
             let draft = answer(&context, &account, message, kind, &typed).await?;
             (account, draft, title(kind).to_owned(), None)
+        }
+        ComposeRequest::ForwardAsAttachment(messages) => {
+            let first = *messages.first().ok_or_else(|| "No message to forward.".to_owned())?;
+            let account = context.account_of(first).await?;
+            let draft = forward_as_attachment(&context, &account, &messages).await?;
+            (account, draft, "Forward".to_owned(), None)
         }
         ComposeRequest::Draft(id) => {
             let stored = stored_draft(&context, id).await?;
@@ -487,6 +510,7 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
         draft,
         senders,
         title,
+        fresh,
     })
 }
 
@@ -514,9 +538,11 @@ async fn answer(
     kind: ReplyKind,
     typed: &str,
 ) -> Result<Draft, String> {
-    let raw = context
-        .original(message, kind != ReplyKind::Forward)
-        .await?;
+    let want = match kind {
+        ReplyKind::Forward => Want::Whole,
+        ReplyKind::Reply | ReplyKind::ReplyAll => Want::Text,
+    };
+    let raw = context.original(message, want).await?;
     let blobs = context.blobs()?;
     let senders = context.senders(account);
     let worker = blobs.clone();
@@ -555,13 +581,64 @@ async fn answer(
     Ok(planned.draft(account.id, message, id, typed, parts))
 }
 
+/// A new message from `account` with each of `messages` attached whole as a `message/rfc822`
+/// part named after its subject; the subject is the first's with "Fwd:", and how many more.
+/// Only the server's original is attached, never the copy kept as its text parts.
+async fn forward_as_attachment(
+    context: &Context,
+    account: &Account,
+    messages: &[MessageId],
+) -> Result<Draft, String> {
+    let blobs = context.blobs()?;
+    let mut parts = Vec::with_capacity(messages.len());
+    let mut first_subject = None;
+    for &message in messages {
+        let raw = context.original(message, Want::Exact).await?;
+        let worker = blobs.clone();
+        let stored = gio::spawn_blocking(move || {
+            let subject = Original::parse(&raw).headers.subject;
+            let blob = worker.put(&raw).ok()?;
+            Some((subject, blob, raw.len() as u64))
+        })
+        .await
+        .ok()
+        .flatten()
+        .ok_or_else(|| "The message couldn't be attached.".to_owned())?;
+        let (subject, blob, size) = stored;
+        parts.push(DraftPart {
+            name: eml_file_name(&subject),
+            mime_type: "message/rfc822".to_owned(),
+            size,
+            blob,
+            content_id: None,
+        });
+        first_subject.get_or_insert(subject);
+    }
+    let sender = context.senders(account).remove(0);
+    let mut draft = compose::new_draft(account.id, &sender, message_id(&sender.address));
+    draft.subject = reply::forward_subjects(first_subject.as_deref().unwrap_or(""), parts.len());
+    draft.parts = parts;
+    Ok(draft)
+}
+
+/// What [`Context::original`] has to give.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Want {
+    /// The text parts will do: a reply.
+    Text,
+    /// The whole message, or offline the copy kept as its text parts: a forward.
+    Whole,
+    /// The server's original, nothing else: Forward as Attachment.
+    Exact,
+}
+
 /// A Drafts-folder message written elsewhere, as a new local draft.
 async fn server_draft(
     context: &Context,
     account: &Account,
     message: MessageId,
 ) -> Result<Draft, String> {
-    let raw = context.original(message, false).await?;
+    let raw = context.original(message, Want::Whole).await?;
     let blobs = context.blobs()?;
     let parsed = gio::spawn_blocking(move || {
         let stored = stored::parse(&raw)?;
@@ -852,6 +929,45 @@ impl Backend for StoreBackend {
             .upgrade()
             .and_then(|state| state.mailbox().blobs())
     }
+
+    fn html_signature(
+        &self,
+        path: String,
+        domain: String,
+    ) -> Local<Result<super::backend::HtmlSignature, String>> {
+        let config = self
+            .state
+            .upgrade()
+            .map(|state| state.config().dirs.config.clone());
+        let blobs = self.blobs();
+        Box::pin(async move {
+            let (Some(config), Some(blobs)) = (config, blobs) else {
+                return Err("the mail store isn't open yet".to_owned());
+            };
+            gio::spawn_blocking(move || {
+                let loaded = signatures::load(&signatures::dir(&config), &path, &domain)
+                    .map_err(|error| error.to_string())?;
+                let mut images = Vec::with_capacity(loaded.images.len());
+                for image in loaded.images {
+                    let blob = blobs
+                        .put(&image.data)
+                        .map_err(|_| "its images couldn't be stored".to_owned())?;
+                    images.push((
+                        image.content_id,
+                        InlineImage {
+                            mime_type: image.mime_type.to_owned(),
+                            blob,
+                            size: image.data.len() as u64,
+                            name: image.name,
+                        },
+                    ));
+                }
+                Ok((loaded.block, images))
+            })
+            .await
+            .map_err(|_| "the file couldn't be read".to_owned())?
+        })
+    }
 }
 
 #[cfg(test)]
@@ -864,6 +980,7 @@ mod tests {
             label: String::new(),
             address: Address::new("", email),
             signature: None,
+            signature_html: None,
         }
     }
 

@@ -104,12 +104,14 @@ fn sections(state: &AppState, targets: &[Target]) -> Vec<Vec<Entry>> {
             },
             plain(ActionId::ReplySender),
             plain(ActionId::Forward),
+            plain(ActionId::ForwardAsAttachment),
         ]
     } else {
         vec![
             plain(ActionId::Reply),
             plain(ActionId::ReplyAll),
             plain(ActionId::Forward),
+            plain(ActionId::ForwardAsAttachment),
         ]
     };
     vec![

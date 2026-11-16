@@ -631,6 +631,59 @@ fn inline_parts_the_html_dropped_are_left_out() {
 }
 
 #[test]
+fn a_forwarded_message_goes_as_it_is_or_as_a_file() {
+    let original = b"From: Ola Nordmann <ola@example.org>\r\nSubject: Kvartalstall\r\n\r\nHei Kari,\r\ntallene kommer.\r\n".to_vec();
+    let eight_bit = "From: Ola <ola@example.org>\r\nSubject: Blåbær\r\n\r\nBlåbær\r\n"
+        .as_bytes()
+        .to_vec();
+    let bare_line_feeds = b"From: Ola <ola@example.org>\nSubject: x\n\nHei\n".to_vec();
+    let long_line = [b"Subject: x\r\n\r\n".as_slice(), &[b'a'; 999], b"\r\n"].concat();
+    for (data, as_is) in [
+        (original, true),
+        (eight_bit, false),
+        (bare_line_feeds, false),
+        (long_line, false),
+    ] {
+        let parts = vec![data];
+        let draft = Draft {
+            parts: vec![part("Kvartalstall.eml", "message/rfc822", &parts[0], None)],
+            ..draft("Fwd: Kvartalstall", "<div>Se vedlagt.</div>")
+        };
+        let built = build(&draft, DATE, &slices(&parts)).unwrap();
+        let raw = String::from_utf8_lossy(&built.transmitted);
+        let message = MessageParser::default().parse(&built.transmitted).unwrap();
+        let attached = children(&message, 0)[1];
+        if as_is {
+            assert_eq!(content_type(&message, attached), "message/rfc822");
+            assert!(raw.contains("Content-Transfer-Encoding: 7bit\r\n"));
+            assert!(!raw.contains("Content-Transfer-Encoding: base64"));
+            assert!(
+                raw.contains(
+                    "\r\n\r\nFrom: Ola Nordmann <ola@example.org>\r\nSubject: Kvartalstall\r\n"
+                ),
+                "the original's bytes, unchanged"
+            );
+            let PartType::Message(inner) = &message.parts[attached].body else {
+                panic!("not read as a message");
+            };
+            assert_eq!(inner.subject(), Some("Kvartalstall"));
+        } else {
+            assert_eq!(content_type(&message, attached), "application/octet-stream");
+            assert_eq!(
+                message.parts[attached].contents(),
+                parts[0].as_slice(),
+                "the original's bytes, in base64"
+            );
+        }
+        assert_eq!(
+            message.parts[attached].attachment_name(),
+            Some("Kvartalstall.eml")
+        );
+        assert!(built.transmitted.is_ascii());
+    }
+}
+
+#[test]
 fn the_estimate_is_a_little_above_the_size() {
     for (name, draft, data) in samples() {
         let size = build(&draft, DATE, &slices(&data))
@@ -669,6 +722,7 @@ fn a_planned_reply_builds_and_reads_back_as_a_draft() {
         name: "Kari Nordmann".into(),
         address: "kari@example.com".into(),
         signature: Some("Kari".into()),
+        signature_html: None,
     }];
     let plan = reply::plan(
         &reply::Original::parse(raw.as_bytes()),

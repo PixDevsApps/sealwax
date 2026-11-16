@@ -2,6 +2,17 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## 1.5.0 — not released yet
+
+Go to any folder, forward messages as attachments, save searches, see your unread mail in the bar, and sign with an HTML signature.
+
+- **Go to Folder…** (`g` then `f`): a picker over every account's folders, All Inboxes first. Type a few letters, then Enter shows the folder ([issue #12](https://github.com/PixDevsApps/sealwax/issues/12)).
+- **Forward as Attachment:** in the message menu, the reader's **More** menu and the palette. It attaches the selected messages whole, as `.eml` files named after their subjects, so the recipient gets them exactly as they came; select several to forward them together.
+- **Saved searches:** while a search runs, **Save Search…** (in the palette) keeps it in a new **Searches** section of the sidebar, and a click runs it again. Right-click one to rename or remove it.
+- **Your unread count in the bar** ([issue #17](https://github.com/PixDevsApps/sealwax/issues/17)): while Sealwax runs, it shares the number of unread messages in your Inboxes in a small file, so other programs can show it without reading your mail. `sealwax --unread` prints it. A widget for Omarchy's bar is in [`contrib/omarchy-plugin`](contrib/omarchy-plugin): Sealwax's icon with the number beside it, and a click that opens Sealwax.
+- **HTML signatures** ([issue #6](https://github.com/PixDevsApps/sealwax/issues/6)): a signature with formatting, links and your logo, from an HTML file in `~/.config/sealwax/signatures/`, named with `signature_html` in `accounts.toml`. Its images go inside the message, never as links. Changing **From** changes the signature, and if the file or an image can't be used, a notice says why and your plain signature is used instead. The user guide has the details.
+- **Tidier inside:** addresses are compared the same way everywhere, so `Kari@Example.com` and `kari@example.com` are one person in every check, and an address with international letters in its domain matches its ASCII form. The keyboard's and the window's code moved into a part of their own.
+
 ## 1.4.2 — 2026-11-16
 
 Up-to-date building blocks, and easier to find.

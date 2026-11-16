@@ -276,6 +276,7 @@ fn running(server: &Arc<Mutex<Server>>) -> Running {
         username: "bodies@example.test".into(),
         auth: AuthMethod::Password,
         signature: None,
+        signature_html: None,
         identities: Vec::new(),
     };
     let commands = engine.commands();

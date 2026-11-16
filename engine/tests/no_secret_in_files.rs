@@ -132,6 +132,7 @@ fn settings(address: &str) -> AccountSettings {
         username: address.to_owned(),
         auth: AuthMethod::Password,
         signature: None,
+        signature_html: None,
         identities: Vec::new(),
     }
 }
@@ -361,6 +362,7 @@ async fn no_token_reaches_a_file_or_a_log() {
                 username: TOKEN_ADDRESS.into(),
                 auth: AuthMethod::OAuth(OAuthProvider::Microsoft),
                 signature: None,
+                signature_html: None,
                 identities: Vec::new(),
             },
             password: Password::new(String::new()),
