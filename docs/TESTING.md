@@ -77,6 +77,26 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.5.0 — 2026-11-16
+
+This machine. The changes since 1.4.2: the architecture review's phase 3, domain value types and the `sealwax-ui-model` crate (`1a79615..0ef9356`, [ADR-026](DECISIONS.md#adr-026--domain-value-types-one-rule-in-one-place-2026-11-04)); Go to Folder…, Forward as Attachment, saved searches, the unread count with `sealwax --unread` and the Omarchy bar widget, and HTML signatures from files (`360bf4f`); the Signature… form and the designed signature (`5a097a1`, [ADR-029](DECISIONS.md#adr-029--150-the-unread-count-as-a-file-saved-searches-with-the-layout-html-signatures-from-files-2026-11-16)); the version commit, up to `v1.5.0` = `9f431f7`.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `bash tools/ci.sh --ui` on `9f431f7` | Exit 0: 1,530 passed, 0 failed, 93 ignored; 96 self-test scripts, 9,247 of 9,247 steps (new: `saved-searches`, `signature-form`; Go to Folder… in `triage-keys`, Forward as Attachment in `reply-commands`); hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; MSRV, rustdoc and `cargo deny` included | Pass |
+| `bash tools/ci.sh --testbed` | Not run | Not verified |
+| The push range (`07cd06f..9f431f7`, 9 commits) scanned | No working doc or reference to one, no home path, hostname or personal data beyond the usual commit author; the only `gmail.com` matches are Google's provider hosts in the code | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note); up to date (the lock gained only `serde_json` for the infrastructure crate) | Pass |
+| `python3 tools/release.py build` on `v1.5.0` | `check()` 1,115 passed, 0 failed, 93 ignored: the PKGBUILD's `check()` doesn't test the new `sealwax-ui-model` crate (its tests ran in CI above), hence fewer than 1.4.2's 1,214; no compiler warning in the build log; `SHA256SUMS` checks for all four files; the binary says 1.5.0 and holds no home path, user name or self-test code; package SHA-256 `c425a275b3d72ba18678c0b92d5733367c7ad8e0a48d84e63d6516563225796f` | Pass |
+| The clean-container install test (`sealwax-selftest` from `9f431f7`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container with its SQLite 3.54.1, the web process in WebKit's sandbox (`.local/install-test/20261116-130758`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.5.0` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid, the 1.5.0 release present; `/app/bin/sealwax` 24,453,504 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `d45e0860…` on 1.4.2's `1870b1e5…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.5.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.0) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the repository for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak installation | `flatpak remote-info` gives commit `d45e0860…` with parent `1870b1e5…`, about a minute after the push | Pass |
+| An HTML signature in a composer window, sent to webmail | The owner, before the release, on this machine with their own account and the release build of `360bf4f` and `5a097a1`: a hand-written file and then the form's designed signature shown as intended ("That's perfect!"); a message sent to webmail not reported here | Partly verified |
+| The Omarchy bar widget in a running omarchy-shell | Not run | Not verified |
+| An install and update of the Flatpak from the real address | Not run this time | Not verified |
+
 ### 1.4.2 — 2026-11-16
 
 This machine. The changes since 1.4.1: `rusqlite` 0.43.0 with `libsqlite3-sys` 0.40.0 and SQLite 3.45.3 or later (`8ac453e`, [ADR-005 amendment](DECISIONS.md#adr-005-amendment--rusqlite-043-sqlite-3453-or-later-2026-11-15)); `ammonia` 4.1.9 and SECURITY.md's advisory list (`4f6269a`); search keywords, the product page as homepage and "email client for Linux" (`43f8ac1`, [ADR-028 amendment](DECISIONS.md#adr-028-amendment--the-homepage-is-the-product-page-2026-11-15)); the version commit, up to `v1.4.2` = `0ae141c`.
