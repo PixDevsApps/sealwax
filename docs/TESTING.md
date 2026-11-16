@@ -77,6 +77,27 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.5.1 — 2026-11-16
+
+This machine. The changes since 1.5.0: the package's `check()` tests the UI-model crate (`962a83f`); a server that refuses a second EHLO, IONOS's (`8f31d4f`, [issue #38](https://github.com/PixDevsApps/sealwax/issues/38), [ADR-007 amendment](DECISIONS.md#adr-007-amendment--a-server-that-refuses-a-second-ehlo-issue-38-2026-11-16)); the version commit, up to `v1.5.1` = `5a367a1`.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| IONOS's submission server, `smtp.ionos.de` 465 and 587 (STARTTLS), with a made-up login (`openssl s_client`, `EHLO [127.0.0.1]`) | The second EHLO answered `503 Bad sequence of commands`; AUTH then evaluated on the same connection (`535`), as after a single EHLO | Pass |
+| The engine's `submission_limit` and `Submitter::connect` against `smtp.ionos.de` (a scratch example, not committed; the made-up login) | Before `8f31d4f`: `Connect(Other)`, Retry, on both ports. After: the limit `None`, connect `Auth(WrongPassword)` on both ports (AUTH reached) | Pass |
+| The new tests against the scripted server | An IONOS-like server takes the message without `SIZE=` and gives no limit (both fail on the old code); a `421` to the second EHLO is still retried, without AUTH | Pass |
+| `bash tools/ci.sh --ui` on `5a367a1` | Exit 0: 1,533 passed, 0 failed, 93 ignored; 96 self-test scripts, 9,247 of 9,247 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; MSRV, rustdoc and `cargo deny` included | Pass |
+| `bash tools/ci.sh --testbed` | Not run | Not verified |
+| The push range (`89a1a73..5a367a1`, 3 commits) scanned | No working doc, home path, hostname or personal data | Pass |
+| `appstreamcli validate` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note); up to date | Pass |
+| `python3 tools/release.py build` on `v1.5.1` | `check()` 1,243 passed, 0 failed, 93 ignored (the UI-model crate's tests now included); no compiler warning; `SHA256SUMS` checks for all four files; the binary says 1.5.1 and holds no home path, user name, hostname or self-test code (its one `gmail.com` is a provider domain); package SHA-256 `cec3fc421a8d2b63e410222ccb073e5902971ef9bfa2da719c55c0d95b98b87a` | Pass |
+| The clean-container install test (`sealwax-selftest` from `5a367a1`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container with its SQLite 3.54.1, the web process in WebKit's sandbox (`.local/install-test/20261116-214048`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.5.1` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,453,904 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `e1efbba9…` on 1.5.0's `d45e0860…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.5.1](https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.1) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the repository for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak installation | `flatpak remote-info` gives commit `e1efbba9…` with parent `d45e0860…`, on the third try (15 s apart) after the push | Pass |
+| A real send through IONOS | No account here; asked of the reporter on #38 | Not verified |
+
 ### 1.5.0 — 2026-11-16
 
 This machine. The changes since 1.4.2: the architecture review's phase 3, domain value types and the `sealwax-ui-model` crate (`1a79615..0ef9356`, [ADR-026](DECISIONS.md#adr-026--domain-value-types-one-rule-in-one-place-2026-11-04)); Go to Folder…, Forward as Attachment, saved searches, the unread count with `sealwax --unread` and the Omarchy bar widget, and HTML signatures from files (`360bf4f`); the Signature… form and the designed signature (`5a097a1`, [ADR-029](DECISIONS.md#adr-029--150-the-unread-count-as-a-file-saved-searches-with-the-layout-html-signatures-from-files-2026-11-16)); the version commit, up to `v1.5.0` = `9f431f7`.
