@@ -103,6 +103,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.5.1" date="2026-11-16" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.1</url>
+      <description>
+        <p>Mail sends through IONOS again: its server refuses a second request for its features, which left every message waiting in the outbox. Sealwax now carries on with the features the server named the first time.</p>
+      </description>
+    </release>
     <release version="1.5.0" date="2026-11-16" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.0</url>
       <description>
