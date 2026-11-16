@@ -52,7 +52,8 @@ check() {
   cd "$srcdir/sealwax-$pkgver"
   _remap_paths
   # Only the crates without GTK: a clean build has no display for the app's self-tests.
-  cargo test --locked --offline -p sealwax-domain -p sealwax-infrastructure -p sealwax-engine
+  cargo test --locked --offline -p sealwax-domain -p sealwax-ui-model -p sealwax-infrastructure \
+    -p sealwax-engine
 }
 
 package() {
