@@ -50,6 +50,7 @@
   <url type="help">https://pixdevs.com/guides/sealwax/</url>
   <url type="bugtracker">https://github.com/PixDevsApps/sealwax/issues</url>
   <url type="vcs-browser">https://github.com/PixDevsApps/sealwax</url>
+  <url type="donation">https://github.com/sponsors/PixDevsApps</url>
 
   <categories>
     <category>Network</category>

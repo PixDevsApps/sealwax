@@ -75,4 +75,6 @@ The package: Omarchy, or Arch Linux, on x86_64, with GTK 4.18+, libadwaita 1.9+,
 
 Thanks to everyone who reports bugs and suggests improvements in the [issues](https://github.com/PixDevsApps/sealwax/issues), and especially to [@ocewers](https://github.com/ocewers) for detailed reports and ideas (issues #2 to #8), to [@hurricaane](https://github.com/hurricaane) and [@biddster](https://github.com/biddster) for the ideas behind 1.1 (issues #14, #24, #25 and #26), and to [@alauppe](https://github.com/alauppe), [@chrisonline](https://github.com/chrisonline) and [@mlamoure](https://github.com/mlamoure) for their fixes (pull requests #19, #28 and #33), and to [@lama7](https://github.com/lama7) for Empty Trash (pull request #35).
 
+**Support Sealwax:** Sealwax is free and made by one person in Norway. If it saves you time, you can [sponsor its work on GitHub](https://github.com/sponsors/PixDevsApps), monthly or once.
+
 License: MIT. The licenses of the crates Sealwax is built from come with the package, in `/usr/share/licenses/sealwax/THIRD-PARTY-LICENSES.txt`.
