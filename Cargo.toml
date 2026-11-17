@@ -1,6 +1,6 @@
 [workspace]
 members = ["app", "domain", "ui-model", "infrastructure", "engine", "uitest", "devtools/*"]
-exclude = ["fuzz", "archive/spikes", "vendor/lettre", "vendor/imap-proto", "vendor/async-imap"]
+exclude = ["fuzz", "archive/spikes", "vendor/imap-proto", "vendor/async-imap"]
 default-members = ["app", "domain", "ui-model", "infrastructure", "engine"]
 resolver = "3"
 
@@ -58,7 +58,7 @@ html5ever = "0.39"
 mail-builder = { version = "~1.0.0", default-features = false }
 oo7 = "0.6"
 zeroize = "1"
-lettre = { version = "0.11.23", default-features = false, features = ["smtp-transport", "tokio1-rustls", "rustls-platform-verifier", "ring"] }
+lettre = { version = "0.11.24", default-features = false, features = ["smtp-transport", "tokio1-rustls", "rustls-platform-verifier", "ring"] }
 socket2 = "0.6.5"
 base64 = "0.22.1"
 url = "2.5.8"
@@ -77,11 +77,9 @@ todo = "deny"
 unimplemented = "deny"
 allow_attributes_without_reason = "warn"
 
-# lettre 0.11.23 with a longer reply-line limit, imap-proto 0.17.0 with a nesting limit and
-# reading Proton Mail Bridge's replies, and async-imap 0.12.0 with a buffer that grows with a
-# literal's data (vendor/README.md).
+# imap-proto 0.17.0 with a nesting limit and reading Proton Mail Bridge's replies, and
+# async-imap 0.12.0 with a buffer that grows with a literal's data (vendor/README.md).
 [patch.crates-io]
-lettre = { path = "vendor/lettre" }
 imap-proto = { path = "vendor/imap-proto" }
 async-imap = { path = "vendor/async-imap" }
 

@@ -1,12 +1,13 @@
-//! A live check of sending through Microsoft 365 with the patched lettre (vendor/README.md), for
+//! A live check of sending through Microsoft 365 (issue #2's long replies), for
 //! the lead to run under the owner's authorization of 2026-10-13: one sign-in in the default
 //! browser (`xdg-open`), then two sends through the Microsoft 365 preset's SMTP server with the
 //! engine's submitter, both to the signed-in address and nowhere else:
 //!
 //! 1. from the signed-in address: a normal send, which the server should accept;
 //! 2. from `sendas-check@example.com`, an address the mailbox doesn't own: Microsoft refuses it
-//!    with SendAsDenied after the message's end, the long reply of issue #2. The patched lettre
-//!    should read it (a 554 refusal) where lettre 0.11.23 left the send uncertain.
+//!    with SendAsDenied after the message's end, the long reply of issue #2. lettre 0.11.24 should
+//!    read it (a 554 refusal), as Sealwax's patched copy of 0.11.23 did; 0.11.23 itself left the
+//!    send uncertain.
 //!
 //! ```text
 //! RUST_LOG=info,sealwax_engine::smtp=debug cargo run -p sealwax-engine --example send_live -- <address>
@@ -79,7 +80,7 @@ fn message(from: &str, to: &str, subject: &str) -> Result<(Vec<u8>, String), Err
         from: Address::new("Sealwax live check", from),
         to: vec![Address::new("", to)],
         subject: subject.to_owned(),
-        html: "<p>A test from Sealwax's send_live runner (the patched lettre). \
+        html: "<p>A test from Sealwax's send_live runner. \
                It can be deleted.</p>"
             .to_owned(),
         message_id: ids::message_id(from, random).ok_or("no Message-ID")?,

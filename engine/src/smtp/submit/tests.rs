@@ -422,9 +422,10 @@ async fn deferred_recipients_and_refusals_before_data_are_transient_or_refused()
 
 #[tokio::test]
 async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
-    // Microsoft 365's reply lines can be longer than lettre's 1,000 bytes (issue #2): the patched
-    // lettre reads lines up to 16 KiB, so they are definite. A line longer than that is answered,
-    // but neither a refusal nor an acceptance can be read.
+    // Microsoft 365's reply lines can be longer than 1,000 bytes (issue #2): lettre reads a reply
+    // up to 100,000 bytes, so they are definite. A longer one is answered, but neither a refusal
+    // nor an acceptance can be read, and neither can a reply of another class than 2xx, 4xx or
+    // 5xx, which answers some other command.
     let long = |code: &str, length: usize| -> &'static str {
         Box::leak(format!("{code} {}", "x".repeat(length)).into_boxed_str())
     };
@@ -485,11 +486,25 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
                 end: Some(long("554 5.2.252 SendAsDenied;", 17_000)),
                 ..Script::default()
             },
+            SubmitError::Refused { code: 554 },
+        ),
+        (
+            Script {
+                end: Some(long("554 5.2.252 SendAsDenied;", 100_000)),
+                ..Script::default()
+            },
             SubmitError::Uncertain(UncertainReason::UnreadableReply),
         ),
         (
             Script {
-                end: Some(long("250 2.0.0 OK", 17_000)),
+                end: Some(long("250 2.0.0 OK", 100_000)),
+                ..Script::default()
+            },
+            SubmitError::Uncertain(UncertainReason::UnreadableReply),
+        ),
+        (
+            Script {
+                end: Some("354 go ahead"),
                 ..Script::default()
             },
             SubmitError::Uncertain(UncertainReason::UnreadableReply),
@@ -535,19 +550,46 @@ async fn replies_to_the_end_of_data_are_definite_and_silence_is_uncertain() {
 }
 
 #[tokio::test]
-async fn a_long_acceptance_is_a_sent_message() {
-    let reply = format!("250 2.0.0 OK {}", "x".repeat(4_000));
-    let server = Server::start(vec![Script {
-        end: Some(Box::leak(reply.into_boxed_str())),
-        ..Script::default()
-    }])
-    .await;
-    let mut submitter = server.connect().await.unwrap();
-    send(&mut submitter, &to(&["b@x.test"]), MESSAGE)
-        .await
-        .unwrap();
-    submitter.quit().await;
-    assert_eq!(server.seen().messages.len(), 1);
+async fn a_long_or_bare_acceptance_is_a_sent_message() {
+    // Microsoft 365's long lines (issue #2), and a code with no text after it, which lettre
+    // 0.11.23 couldn't read.
+    for reply in [
+        format!("250 2.0.0 OK {}", "x".repeat(4_000)),
+        format!("250 2.0.0 OK {}", "x".repeat(17_000)),
+        "250".to_owned(),
+    ] {
+        let server = Server::start(vec![Script {
+            end: Some(Box::leak(reply.into_boxed_str())),
+            ..Script::default()
+        }])
+        .await;
+        let mut submitter = server.connect().await.unwrap();
+        send(&mut submitter, &to(&["b@x.test"]), MESSAGE)
+            .await
+            .unwrap();
+        submitter.quit().await;
+        assert_eq!(server.seen().messages.len(), 1);
+    }
+}
+
+#[tokio::test]
+async fn an_ehlo_line_of_only_white_space_is_passed_over() {
+    // lettre 0.11.23 panicked reading it (GHSA-23wm-4vvw-r7p2), and on port 587 the first EHLO
+    // is answered before the connection is encrypted.
+    for ehlo_again in [None, Some("503 Bad sequence of commands")] {
+        let server = Server::start(vec![Script {
+            ehlo: vec!["AUTH PLAIN", " ", "8BITMIME"],
+            ehlo_again,
+            ..Script::default()
+        }])
+        .await;
+        let mut submitter = server.connect().await.unwrap();
+        assert!(submitter.extensions().eight_bit, "{ehlo_again:?}");
+        send(&mut submitter, &to(&["b@x.test"]), MESSAGE)
+            .await
+            .unwrap();
+        submitter.quit().await;
+    }
 }
 
 #[tokio::test]
@@ -593,8 +635,8 @@ async fn a_token_goes_to_no_smtp_server_but_microsofts() {
 
 #[tokio::test]
 async fn a_reply_line_that_never_ends_is_given_up_at_its_limit() {
-    // lettre read a whole line before checking its length, so a server that never ended one
-    // filled the client's memory until the timeout: 300 s at the message's end.
+    // lettre 0.11.23 read a whole line before checking its length, so a server that never ended
+    // one filled the client's memory until the timeout: 300 s at the message's end.
     let server = Server::start(vec![Script {
         endless: true,
         ..Script::default()
@@ -631,7 +673,7 @@ async fn a_reply_line_that_never_ends_is_given_up_at_its_limit() {
 
 #[tokio::test]
 async fn a_reply_of_many_lines_is_parsed_once() {
-    // lettre parsed the whole reply again after each line: 16,000 short lines took 268 s in a
+    // lettre 0.11.23 parsed the whole reply again after each line: 16,000 short lines took 268 s in a
     // debug build before the 100,000-byte cap, and no timeout stops it, since the reply is
     // already read and the parse never yields. A first line ending in a bare LF, which isn't one
     // of lettre's lines on its own, mustn't bring that back (605 s with a first, naive fix).
@@ -699,7 +741,7 @@ async fn an_unreadable_reply_is_logged_by_why_without_the_servers_text() {
     let _second = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
     let reply = format!(
         "554 5.2.252 SendAsDenied; {}",
-        "secret-words ".repeat(1_400)
+        "secret-words ".repeat(8_000)
     );
     let server = Server::start(vec![Script {
         end: Some(Box::leak(reply.into_boxed_str())),
@@ -716,7 +758,7 @@ async fn an_unreadable_reply_is_logged_by_why_without_the_servers_text() {
     );
     let text = String::from_utf8(capture.0.lock().unwrap().clone()).unwrap();
     assert!(
-        text.contains("a reply line longer than 16384 bytes")
+        text.contains("a reply longer than 100000 bytes")
             && text.contains("smtp reply to the message unknown"),
         "{text}"
     );

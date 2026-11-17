@@ -1,7 +1,0 @@
-[clog]
-repository = "https://github.com/lettre/lettre"
-changelog = "CHANGELOG.md"
-
-[sections]
-Style = ["style"]
-Documentation = ["docs"]

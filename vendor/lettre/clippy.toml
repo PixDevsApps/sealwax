@@ -1,3 +1,0 @@
-disallowed-methods = [
-    { "path" = "std::time::SystemTime::now", reason = "does not work on WASM environments", replacement = "crate::time::now" }
-]

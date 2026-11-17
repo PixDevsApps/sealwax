@@ -1390,6 +1390,16 @@ Built on the user's "Start item 5's small 1.0.x fixes, one commit each, as PLAN.
 
 **The send's toast, the same day** (found in review, built by the project for 1.4.1): "Message queued" had the same gap, and there a click after the window did nothing at all, since the send is no longer the last action. Its **Undo** goes when the outbox's window ends, by the same rule and with the same focus handling (`AppState::retire_toast_button`, shared by both).
 
+### ADR-015 amendment — lettre 0.11.24 from crates.io; the reply to the message's end checked by class (2026-11-17)
+
+**Status:** Accepted — the owner's word, 2026-11-17 ("Please do it"), after lettre 0.11.24 came out the same day with four advisories, [GHSA-pmvc-x69f-5p9f](https://github.com/lettre/lettre/security/advisories/GHSA-pmvc-x69f-5p9f) among them (Sealwax's report of 2026-10-24), and [lettre/lettre#1168](https://github.com/lettre/lettre/issues/1168) closed.
+
+**Context:** the vendored lettre 0.11.23 carried three changes (the amendments of 2026-10-13 and 2026-10-24). lettre 0.11.24 has all three in its own form: no limit of its own on a line, only the 100,000-byte cap on a whole reply, each read bounded by what is left of it, and a reply parsed in linear time. It also fixes a panic on an EHLO line of white space only ([GHSA-23wm-4vvw-r7p2](https://github.com/lettre/lettre/security/advisories/GHSA-23wm-4vvw-r7p2)), which reached Sealwax through `ServerInfo::from_response` at every connection, before STARTTLS on port 587 (Sealwax's own EHLO reading already passed such a line over). Its other fixes were covered by Sealwax's own code: replies sent before the TLS handshake (`Plain` in `engine/src/smtp.rs`, since ML-093), a bare CR or LF in a message (refused before sending), and the class of the reply to DATA (only 354 goes on). One wasn't: lettre's new check of the reply to the message's end is in its `send`, which Sealwax doesn't use, and lettre's `message` still takes any 2xx or 3xx as success.
+
+**Decision:** Sealwax uses lettre 0.11.24 from crates.io, in the workspace, `fuzz/` and `archive/spikes/`; `vendor/lettre/` and its `[patch.crates-io]` entries are gone. The submitter takes only a 2xx reply to the message's end as sent; a 3xx can only answer another command, so the send is uncertain (`UnreadableReply`) and the connection is dropped, as for any reply it can't read. A reply line may now be as long as the whole reply (100,000 bytes), so the log's "a reply line longer than 16384 bytes" is gone; a reply over the cap is still "a reply longer than 100000 bytes". The tests for a line that never ends and a reply of many lines stay and pass on lettre's own code.
+
+**Consequence:** lettre is updated by `cargo update` again. Sealwax's patches are now only imap-proto's and async-imap's.
+
 ## ADR-016 — Conversation threading (2026-10-04)
 
 **Status:** Proposed.

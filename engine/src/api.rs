@@ -479,8 +479,8 @@ pub enum UncertainReason {
     Stopped,
     /// No reply to the message's end: the connection closed, broke or timed out.
     NoReply,
-    /// The server replied, but its reply couldn't be read (such as a line longer than lettre
-    /// takes), so whether it took the message is unknown.
+    /// The server replied, but its reply couldn't be read (such as one longer than lettre's
+    /// 100,000 bytes, or a reply out of step), so whether it took the message is unknown.
     UnreadableReply,
 }
 

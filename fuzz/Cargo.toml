@@ -15,9 +15,8 @@ sealwax-engine = { path = "../engine", features = ["fuzz"] }
 
 [workspace]
 
-# The same patched lettre, imap-proto and async-imap as the main workspace (vendor/README.md).
+# The same patched imap-proto and async-imap as the main workspace (vendor/README.md).
 [patch.crates-io]
-lettre = { path = "../vendor/lettre" }
 imap-proto = { path = "../vendor/imap-proto" }
 async-imap = { path = "../vendor/async-imap" }
 

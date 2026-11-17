@@ -24,7 +24,7 @@ use crate::net::Trust;
 use crate::oauth::Fetched;
 use lettre::transport::smtp::client::AsyncSmtpConnection;
 use lettre::transport::smtp::commands::{Data, Rset};
-use lettre::transport::smtp::response::Response;
+use lettre::transport::smtp::response::{Response, Severity};
 use sealwax_domain::account::{Endpoint, LoginFailure};
 use std::fmt;
 use std::future::Future;
@@ -218,10 +218,6 @@ fn unanswered(error: &lettre::transport::smtp::Error) -> (UncertainReason, &'sta
     }
     match error.source().map(ToString::to_string).as_deref() {
         Some("incomplete response") => (UncertainReason::NoReply, "connection closed"),
-        Some("SMTP response line too long") => (
-            UncertainReason::UnreadableReply,
-            "a reply line longer than 16384 bytes",
-        ),
         Some("SMTP response too large") => (
             UncertainReason::UnreadableReply,
             "a reply longer than 100000 bytes",
@@ -628,7 +624,19 @@ impl Prepared<'_, '_> {
         let reply = tokio::time::timeout(timeouts.data, conn.message(body)).await;
         submitter.open = false;
         match reply {
-            Ok(Ok(_)) => Ok(()),
+            Ok(Ok(response)) if response.code().severity == Severity::PositiveCompletion => Ok(()),
+            // lettre takes a 3xx for success too. Here it can only answer another command, so
+            // client and server are out of step and whether the message was taken is unknown.
+            Ok(Ok(response)) => {
+                submitter.conn = None;
+                tracing::info!(
+                    stage = "end of data",
+                    why = "a reply of the wrong class",
+                    code = u16::from(response.code()),
+                    "smtp reply to the message unknown"
+                );
+                Err(SubmitError::Uncertain(UncertainReason::UnreadableReply))
+            }
             Ok(Err(error)) => match error.status().map(u16::from) {
                 Some(code) => {
                     tracing::debug!(

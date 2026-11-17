@@ -30,6 +30,5 @@ rustls-pki-types = { version = "1.15", features = ["std"] }
 
 # The same vendored crates as Sealwax's workspace (vendor/README.md).
 [patch.crates-io]
-lettre = { path = "../../vendor/lettre" }
 imap-proto = { path = "../../vendor/imap-proto" }
 async-imap = { path = "../../vendor/async-imap" }
