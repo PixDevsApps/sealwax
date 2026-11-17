@@ -77,6 +77,21 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### lettre 0.11.24 from crates.io — 2026-11-17
+
+This machine. Branch `deps-lettre-0.11.24` on `442be13`, commit `078c304`: [ADR-015 amendment](DECISIONS.md#adr-015-amendment--lettre-01124-from-cratesio-the-reply-to-the-messages-end-checked-by-class-2026-11-17). Scripted SMTP servers only; no real account.
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `cargo test -p sealwax-engine --lib smtp` | 35 passed. New or changed: 17,000-byte reply lines read (554 refused, 250 sent), replies over 100,000 bytes and a `354` to the message's end uncertain with the connection dropped, a bare `250` sent, an EHLO line of `" "` with and without a 503 to the second EHLO; the endless-line, many-lines and log tests pass on lettre's own code (the log now says "a reply longer than 100000 bytes") | Pass |
+| The white-space EHLO test on `main`'s vendored 0.11.23 (a throwaway worktree, test added there only) | Panics: `called Option::unwrap() on a None value` at `vendor/lettre/src/transport/smtp/extension.rs:144` | Pass (the fault was real) |
+| The class guard loosened to accept any reply but a 4xx | `replies_to_the_end_of_data_are_definite_and_silence_is_uncertain` fails | Pass (the test holds it) |
+| `SEALWAX_CI_DISPLAY=41 bash tools/ci.sh --ui` | Exit 0: 1,538 passed, 0 failed, 93 ignored; 97 self-test scripts, 9,344 of 9,344 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; MSRV, rustdoc and `cargo deny` bans, licenses and sources included | Pass |
+| `cargo check --manifest-path fuzz/Cargo.toml --locked` | Builds | Pass |
+| `cargo deny check advisories` | None names lettre. The ten of 2026-11-15 (four `rustls`, `tokio`, `webpki-root-certs`, four unmaintained) plus a new notice, `chrono` unmaintained (RUSTSEC-2026-0543), not from this change | Pass (for lettre) |
+| `archive/spikes/` | Not built: it no longer resolves on `main` either (rusqlite 0.43 against the spikes' 0.40); its lock's lettre entry edited by hand | Not verified |
+| `bash tools/ci.sh --testbed`, a live send | Not run | Not verified |
+
 ### 1.5.2 — 2026-11-17
 
 This machine. The changes since 1.5.1: the bar widget's one-line install (`0d713be`), Group by Conversation (`8b5192b`, [issue #4](https://github.com/PixDevsApps/sealwax/issues/4), below) and its Group by menu (`497d8dc`), and the version commit `98d6d42` (Cargo.toml 1.5.2, both lock files with only Sealwax's own nine crates, CHANGELOG "1.5.2 — 2026-11-17", the metainfo's 1.5.2 release, README's version).
