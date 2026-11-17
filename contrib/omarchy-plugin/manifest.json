@@ -25,6 +25,6 @@
     "description": "Unread mail in your Inboxes; click to open Sealwax",
     "category": "Info",
     "allowMultiple": false,
-    "defaultSection": "right"
+    "defaultSection": "center"
   }
 }

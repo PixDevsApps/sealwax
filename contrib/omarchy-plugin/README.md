@@ -10,8 +10,16 @@ scripts and other bars (it exits 1 when Sealwax isn't running).
 
 ## Install
 
-Copy this folder to `~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread/`, then add
-the widget to the bar from Omarchy's bar settings.
+In a terminal, this line asks where in the bar the widget goes (left, center beside the clock,
+or right; center is the default), downloads it into
+`~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread/` and turns it on there:
+
+```sh
+s=$(gum choose --header "Where in the bar?" --selected center left center right) && d=~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread && mkdir -p "$d" && for f in manifest.json BarWidget.qml; do curl -fsSL -o "$d/$f" https://raw.githubusercontent.com/PixDevsApps/sealwax/main/contrib/omarchy-plugin/$f; done && omarchy-shell shell rescanPlugins && omarchy plugin enable io.github.pixdevsapps.sealwax-unread --section "${s/center/centerEnd}"
+```
+
+From a checkout, copying this folder to that path does the same. Run the line again to update;
+`omarchy plugin remove io.github.pixdevsapps.sealwax-unread` takes it off.
 
 ## Settings
 

@@ -22,6 +22,14 @@ flatpak install --user https://github.com/PixDevsApps/sealwax/releases/latest/do
 
 It updates with `flatpak update` or your software centre. On Omarchy, the package above is the better fit.
 
+**Your unread count in Omarchy's bar** (optional): this line adds a Sealwax icon to the bar, with the number of unread messages beside it while Sealwax runs. It asks where in the bar to put it: left, center (beside the clock, the default) or right. A click opens Sealwax.
+
+```sh
+s=$(gum choose --header "Where in the bar?" --selected center left center right) && d=~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread && mkdir -p "$d" && for f in manifest.json BarWidget.qml; do curl -fsSL -o "$d/$f" https://raw.githubusercontent.com/PixDevsApps/sealwax/main/contrib/omarchy-plugin/$f; done && omarchy-shell shell rescanPlugins && omarchy plugin enable io.github.pixdevsapps.sealwax-unread --section "${s/center/centerEnd}"
+```
+
+To take it off again: `omarchy plugin remove io.github.pixdevsapps.sealwax-unread`. [INSTALL.md](INSTALL.md#unread-count-in-omarchys-bar-optional) has the details.
+
 [INSTALL.md](INSTALL.md) explains every step in plain words: installing, starting, updating and uninstalling, and what to do if something goes wrong. [What's new](CHANGELOG.md) lists each release.
 
 **Need help?** The [user guide](https://pixdevs.com/guides/sealwax/) is online too. No GitHub account? Write to **support@pixdevs.com**; **Help → Contact Support…** in Sealwax's main menu gives you the address and the details that help, and can start the message for you.

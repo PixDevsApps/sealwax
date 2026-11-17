@@ -77,6 +77,25 @@ The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and 
 
 **Stuck?** Write to **support@pixdevs.com**. **Help → Contact Support…** in Sealwax's main menu shows the address with a few lines about your Sealwax to copy into your message (its version, how it was installed, your system; nothing about your mail), and with an account added it starts the message for you. The setup assistant offers the same when an account can't be added.
 
+## Unread count in Omarchy's bar (optional)
+
+Sealwax can show how many unread messages are in your Inboxes in Omarchy's bar: its icon, with the number beside it. A click opens Sealwax. Installing Sealwax doesn't add it; it's a small Omarchy plugin you add yourself, once.
+
+**To add it,** open a terminal, paste this line and press **Enter**:
+
+```sh
+s=$(gum choose --header "Where in the bar?" --selected center left center right) && d=~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread && mkdir -p "$d" && for f in manifest.json BarWidget.qml; do curl -fsSL -o "$d/$f" https://raw.githubusercontent.com/PixDevsApps/sealwax/main/contrib/omarchy-plugin/$f; done && omarchy-shell shell rescanPlugins && omarchy plugin enable io.github.pixdevsapps.sealwax-unread --section "${s/center/centerEnd}"
+```
+
+It asks where in the bar to put the icon: **left**, **center** (beside the clock) or **right**. Center is already selected, so pressing **Enter** puts it there; use the arrow keys for another place. Then it downloads the plugin's two files into `~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread/` and turns it on. You can move it later by dragging it along the bar.
+
+- The number shows only while Sealwax runs (with or without a window open). At 0 the icon shows alone.
+- The plugin never reads your mail: it reads only a small file with the count, which Sealwax keeps while it runs.
+- **With the Flatpak,** the plugin needs `"flatpak": true` in its entry in Omarchy's `shell.json`, so it finds the count and opens the Flatpak. The [plugin's README](contrib/omarchy-plugin/README.md) shows the settings.
+- **To update it,** run the same line again. **To remove it:** `omarchy plugin remove io.github.pixdevsapps.sealwax-unread`.
+
+Other bars and scripts can use `sealwax --unread`, which prints the number (and fails when Sealwax isn't running).
+
 ## Updates
 
 **To see whether there is a new version,** open Sealwax's main menu (the button with three lines, ☰, at the top of the message list) and choose **Check for Updates…**. Sealwax asks GitHub and says "You have the latest version", or shows the command that installs the new one: click **Copy Command**, paste it into a terminal (see [how](#before-you-start)) and press **Enter**.
