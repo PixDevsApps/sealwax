@@ -2,7 +2,7 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Unreleased
+## 1.5.2 — 2026-11-17
 
 Conversations as one row in the list.
 

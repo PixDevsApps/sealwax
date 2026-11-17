@@ -103,6 +103,13 @@
   </screenshots>
 
   <releases>
+    <release version="1.5.2" date="2026-11-17" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.2</url>
+      <description>
+        <p>Conversations as one row in the message list: choose Group by Conversation in the new Group by menu at the end of the filter chips. Each row shows the newest message, how many messages the conversation has and whether any is unread, and selecting it shows the whole conversation.</p>
+        <p>Archive, Delete and Mark as Read act on the conversation's messages in the folder shown, and say so.</p>
+      </description>
+    </release>
     <release version="1.5.1" date="2026-11-16" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.1</url>
       <description>

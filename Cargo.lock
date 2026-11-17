@@ -2736,7 +2736,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "sealwax"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "async-channel 2.5.0",
  "clap",
@@ -2755,7 +2755,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-autodetect-measure"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "sealwax-domain",
  "sealwax-engine",
@@ -2764,14 +2764,14 @@ dependencies = [
 
 [[package]]
 name = "sealwax-dns-canary"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "sealwax-domain"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "ammonia",
  "html2text",
@@ -2789,7 +2789,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-engine"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "async-channel 2.5.0",
  "async-imap",
@@ -2825,7 +2825,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-fixtures"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "anyhow",
  "encoding_rs",
@@ -2838,7 +2838,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-infrastructure"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "async-channel 2.5.0",
  "getrandom 0.4.3",
@@ -2858,7 +2858,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-ui-model"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "insta",
  "proptest",
@@ -2868,7 +2868,7 @@ dependencies = [
 
 [[package]]
 name = "sealwax-uitest"
-version = "1.5.1"
+version = "1.5.2"
 dependencies = [
  "async-channel 2.5.0",
  "gio",
