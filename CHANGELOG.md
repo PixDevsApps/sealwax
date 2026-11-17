@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.5.3 — 2026-11-17
+
+A security release: lettre 0.11.24, and a stricter check of the server's answer to a sent message.
 
 - **lettre 0.11.24, the library Sealwax sends mail with**, out on 17 November with security fixes. Sealwax had carried its own copy of lettre since 0.4.7 to read the long replies Microsoft 365 sends and, since 1.0.3, to hold a server's reply to a bounded size and time; those fixes are now lettre's own, one of them from Sealwax's report ([GHSA-pmvc-x69f-5p9f](https://github.com/lettre/lettre/security/advisories/GHSA-pmvc-x69f-5p9f)), so the copy is gone. Of lettre's other fixes, one reached Sealwax: a line of only spaces in the server's list of the features it supports crashed the account's background work, which started again after a pause with the account shown offline meanwhile, and the message stayed in the outbox ([GHSA-23wm-4vvw-r7p2](https://github.com/lettre/lettre/security/advisories/GHSA-23wm-4vvw-r7p2)); on port 587 that list comes before the connection is encrypted, so anyone on the network path could send it. Sealwax already guarded against the others in its own code: replies slipped in before encryption on port 587, and a message with a bare line break being read as commands.
 - **A server's answer to a sent message is checked more strictly:** an answer of the kind that can only belong to another command (a 3xx) now leaves the send uncertain, so Sealwax asks you to check your Sent folder, where before it was taken as sent.

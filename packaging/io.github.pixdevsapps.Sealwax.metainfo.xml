@@ -104,6 +104,13 @@
   </screenshots>
 
   <releases>
+    <release version="1.5.3" date="2026-11-17" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.3</url>
+      <description>
+        <p>A security release. Sealwax now sends mail with lettre 0.11.24 instead of its own patched copy. A line of only spaces in a server's list of features could crash an account's background work and take the account offline for a while; that no longer happens.</p>
+        <p>An answer from the server after a sent message that can only belong to another command now leaves the send uncertain, so Sealwax asks you to check your Sent folder.</p>
+      </description>
+    </release>
     <release version="1.5.2" date="2026-11-17" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.2</url>
       <description>
