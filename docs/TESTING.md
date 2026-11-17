@@ -77,6 +77,24 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.5.3 — 2026-11-17
+
+This machine. The changes since 1.5.2: the Sponsors commit (`442be13`), lettre 0.11.24 (`078c304`, `9055fa1`, above) and the version commit `95f91dc` (Cargo.toml 1.5.3, both lock files with only Sealwax's own crates, CHANGELOG "1.5.3 — 2026-11-17", the metainfo's 1.5.3 release, README's version, and `packaging/flatpak/cargo-sources.json` with lettre 0.11.24 from crates.io, which the branch had missed: `tools/flatpak-cargo-sources.py --check` caught it).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `SEALWAX_CI_DISPLAY=41 bash tools/ci.sh --ui` on `95f91dc` | Exit 0: 1,538 passed, 0 failed, 93 ignored; 97 self-test scripts, 9,344 of 9,344 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; MSRV, rustdoc and `cargo deny` bans, licenses and sources included | Pass |
+| `bash tools/ci.sh --testbed`, a live send | Not run | Not verified |
+| The push range (`442be13..95f91dc`, 3 commits) scanned | No working doc, home path or personal data (one address, `b@x.test`, from a test) | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note, as before); up to date after regenerating | Pass |
+| `python3 tools/release.py build` on `v1.5.3` | `check()` 1,246 passed, 0 failed, 93 ignored; no compiler warning; `SHA256SUMS` checks for all four files; the package `78706745…`; its binary says 1.5.3, names `lettre-0.11.24`, and holds no home path or self-test code | Pass |
+| The clean-container install test (`sealwax-selftest` from `95f91dc`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container, the web process in WebKit's sandbox (`.local/install-test/20261117-222048`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.5.3` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,473,760 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `eb393987…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.5.3](https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.3) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the site for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address with `ostree remote summary` in a scratch repository | The Pages build of `ba06c98` done; the served `app/io.github.pixdevsapps.Sealwax/x86_64/stable` is `eb393987…`, the signed commit | Pass |
+| Installed here | Not installed | Not verified |
+
 ### lettre 0.11.24 from crates.io — 2026-11-17
 
 This machine. Branch `deps-lettre-0.11.24` on `442be13`, commit `078c304`: [ADR-015 amendment](DECISIONS.md#adr-015-amendment--lettre-01124-from-cratesio-the-reply-to-the-messages-end-checked-by-class-2026-11-17). Scripted SMTP servers only; no real account.
