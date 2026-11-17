@@ -94,6 +94,7 @@ This machine. The changes since 1.5.1: the bar widget's one-line install (`0d713
 | The release [v1.5.2](https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.2) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the site for the `.flatpakref` | Pass |
 | The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak user folder | `flatpak remote-info` gives commit `587d472b…` with parent `e1efbba9…`, on the third try (20 s apart) after the push | Pass |
 | The owner's own try of the branch (before the release) | "Works great" | Pass (the owner's) |
+| Installed here by the owner (`pacman -Q`, `/var/log/pacman.log`, `cmp`) | `sealwax 1.5.2-1`, upgraded from 1.5.1-1 at 10:35:08; `/usr/bin/sealwax` is byte for byte the package's; the running Sealwax started at 10:35:30 from it | Pass |
 
 ### Group by Conversation (issue #4) — 2026-11-17
 
