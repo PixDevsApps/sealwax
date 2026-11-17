@@ -77,6 +77,24 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.5.2 — 2026-11-17
+
+This machine. The changes since 1.5.1: the bar widget's one-line install (`0d713be`), Group by Conversation (`8b5192b`, [issue #4](https://github.com/PixDevsApps/sealwax/issues/4), below) and its Group by menu (`497d8dc`), and the version commit `98d6d42` (Cargo.toml 1.5.2, both lock files with only Sealwax's own nine crates, CHANGELOG "1.5.2 — 2026-11-17", the metainfo's 1.5.2 release, README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| `bash tools/ci.sh --ui` on `98d6d42` | Exit 0: 1,537 passed, 0 failed, 93 ignored; 97 self-test scripts, 9,344 of 9,344 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; MSRV, rustdoc and `cargo deny` included | Pass |
+| `bash tools/ci.sh --testbed` | Not run | Not verified |
+| The push range (`0d713be..98d6d42`, 3 commits) scanned | No working doc, home path, hostname or personal data | Pass |
+| `appstreamcli validate --pedantic` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note, as before); up to date | Pass |
+| `python3 tools/release.py build` on `v1.5.2` | `check()` 1,245 passed, 0 failed, 93 ignored; no compiler warning; `SHA256SUMS` checks for all four files; the package `d10c2122…`; its binary says 1.5.2, holds no home path or self-test code, and has `group-by-conversation`. makepkg printed "libfakeroot internal error: payload not recognized!", as in the 0.5.0 and 1.0.4 builds; the package was made | Pass |
+| The clean-container install test (`sealwax-selftest` from `98d6d42`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container, the web process in WebKit's sandbox (`.local/install-test/20261117-102540`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.5.2` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,477,424 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `587d472b…` on 1.5.1's `e1efbba9…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.5.2](https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.2) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the site for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`), read from the real address in a separate Flatpak user folder | `flatpak remote-info` gives commit `587d472b…` with parent `e1efbba9…`, on the third try (20 s apart) after the push | Pass |
+| The owner's own try of the branch (before the release) | "Works great" | Pass (the owner's) |
+
 ### Group by Conversation (issue #4) — 2026-11-17
 
 This machine. Branch `feat/issue-4-conversations` on `508b646`: [issue #4](https://github.com/PixDevsApps/sealwax/issues/4), [ADR-016 amendment](DECISIONS.md#adr-016-amendment--group-by-conversation-one-list-row-per-conversation-2026-11-17).
@@ -93,7 +111,7 @@ This machine. Branch `feat/issue-4-conversations` on `508b646`: [issue #4](https
 | The Group by menu in the chip row (the owner's word, same day), in `list-conversations` (now 97 steps) and `list-senders` (130 of 130, its asserts now on the toggles' ticks) | A real click opens it with Don't Group ticked; `assert-accessible window` passes with it open; choosing Conversation ticks it and unticks the rest; choosing it again leaves it chosen. Screenshots looked at: the menu headed "Group by" with its four items, the button filled while grouped; the first version widened the list pane from 380 to 392 px (the theme's minimum button width), fixed with `min-width: 0` and smaller padding, back to 380 px | Pass |
 | `bash tools/ci.sh --ui` with the menu | Exit 0: 1,537 passed, 0 failed, 93 ignored; 97 self-test scripts, 9,344 of 9,344 steps (`list-conversations` 97 of 97, `a11y-window` 182 of 182); hostile suite clean (`.local/ci-issue-4-button.log`) | Pass |
 | `bash tools/ci.sh --testbed` | Not run | Not verified |
-| The owner's own try | Waiting | Not verified |
+| The owner's own try | "Works great" (2026-11-17), then released as 1.5.2 | Pass (the owner's) |
 
 ### 1.5.1 — 2026-11-16
 
