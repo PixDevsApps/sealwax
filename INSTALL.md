@@ -84,7 +84,7 @@ Sealwax can show how many unread messages are in your Inboxes in Omarchy's bar: 
 **To add it,** open a terminal, paste this line and press **Enter**:
 
 ```sh
-s=$(gum choose --header "Where in the bar?" --selected center left center right) && d=~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread && mkdir -p "$d" && for f in manifest.json BarWidget.qml; do curl -fsSL -o "$d/$f" https://raw.githubusercontent.com/PixDevsApps/sealwax/main/contrib/omarchy-plugin/$f; done && omarchy-shell shell rescanPlugins && omarchy plugin enable io.github.pixdevsapps.sealwax-unread --section "${s/center/centerEnd}"
+s=$(gum choose --header "Where in the bar?" --selected center left center right) && d=~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread && mkdir -p "$d" && for f in manifest.json BarWidget.qml; do curl -fsSL -o "$d/$f" https://raw.githubusercontent.com/PixDevsApps/sealwax/main/contrib/omarchy-plugin/$f; done && omarchy-shell shell rescanPlugins && { for i in {1..50}; do omarchy plugin list --json | grep -q '"io.github.pixdevsapps.sealwax-unread"' && break; sleep 0.1; done; omarchy plugin enable io.github.pixdevsapps.sealwax-unread --section "${s/center/centerEnd}"; }
 ```
 
 It asks where in the bar to put the icon: **left**, **center** (beside the clock) or **right**. Center is already selected, so pressing **Enter** puts it there; use the arrow keys for another place. Then it downloads the plugin's two files into `~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread/` and turns it on. You can move it later by dragging it along the bar.
