@@ -196,6 +196,16 @@ Open a row with Enter or a double click to see that sender's mail as a list, wit
 
 **Acting on a whole group.** Select a row (click it, or move to it with the arrow keys) and the mail commands act on all of that sender's mail in what the list shows: Archive (`e`), Delete (`#`), Move to Junk (`!`), Move to… (`v`), Star (`s`), Mark as Read (`Shift+I`) and Mark as Unread (`Shift+U`), from their keys, the toolbar, the palette or the buttons the reader shows for the group. With a chip on, only the mail it shows: with Unread, Archive takes the sender's unread mail and leaves the rest. Undo brings it back, as for messages, and the selection goes on to the next sender. **Unsubscribe…** on a group leaves the sender's list, and its dialog can archive or delete their messages here at the same time ("Their 12 messages here: Keep, Archive or Delete").
 
+## Conversations as one row
+
+**Group by Conversation** (in the command palette) shows the folder, or All Inboxes, as one row per conversation instead of one row per message, so a long back and forth takes one row. A conversation's row looks like a message's, from its newest message here: the sender, the time, the subject and the start of the text, with the number of messages in the conversation beside the time (your own replies in Sent count too, as the reader shows them). The blue dot and bold text mean something in it is unread; the star means one of its messages here is starred, the paper clip that one has attachments. The newest conversations come first, under the same date headings as the plain list.
+
+Select a row and the reader shows the whole conversation, its unread messages opened and marked read, as when you select one of its messages. `j` and `k` (or the arrow keys) go from conversation to conversation, and `n` and `p` from message to message inside it. New mail in the conversation you're reading joins it there.
+
+**What the commands act on.** With a conversation selected, Archive (`e`), Delete (`#`), Move to Junk (`!`), Move to… (`v`), Mark as Read and Mark as Unread act on all of its messages *in what the list shows*: the folder, or All Inboxes. Archiving a conversation in the Inbox moves its messages out of the Inbox; your replies stay in Sent. The toast says what was done, for example "Archived 3 messages of the conversation", with **Undo**. **Star** (`s`) stars only the newest message, and **Reply**, **Reply All** and **Forward** answer the newest message, or the one you're on in the reader.
+
+The chips choose conversations: **Unread** shows the conversations with something unread, but the row and the commands still take the whole conversation, so Archive never leaves half of it behind. A search shows matching messages one per row, as always; Escape comes back to the conversations. **Don't Group** goes back to one row per message, and Sealwax remembers your choice for the next start. In a folder with more than 5,000 conversations, the newest 5,000 are listed, and a line under the list says to search for older mail.
+
 ## Pinned senders
 
 Some mail mustn't get lost in the rest: a bill, a school, a club. **Pin Sender** keeps a sender's mail at the top of the Inbox, in a **Pinned** section above Today, and **Pin Domain** does it for everyone who writes from that domain (`trener@klatring.example` and `leder@post.klatring.example` are both `klatring.example`). Both are in the message's right-click menu, the reader's ⋮ menu and the command palette; on a group of Group by Sender or Domain they pin that group.
@@ -493,6 +503,7 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | View | Command Palette | Ctrl+Shift+P, F1 | anywhere | `command-palette` |
 | View | Group by Sender | — |  | `group-by-sender` |
 | View | Group by Domain | — |  | `group-by-domain` |
+| View | Group by Conversation | — |  | `group-by-conversation` |
 | View | Don't Group | — |  | `dont-group` |
 | General | Add Account | — |  | `add-account` |
 | General | Edit Account | — |  | `edit-account` |

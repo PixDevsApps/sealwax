@@ -432,6 +432,16 @@ mod tests {
             Layout::parse("group_by = \"sideways\"").group_by,
             GroupBy::None
         );
+        let conversations = Layout {
+            group_by: GroupBy::Conversation,
+            ..Layout::default()
+        };
+        assert!(
+            conversations
+                .to_text()
+                .contains("group_by = \"conversation\"")
+        );
+        assert_eq!(Layout::parse(&conversations.to_text()), conversations);
         assert_eq!(
             Layout::parse(&Layout::default().to_text()),
             Layout::default()

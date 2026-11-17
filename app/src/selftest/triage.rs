@@ -511,6 +511,7 @@ fn menu_item(harness: &Harness, name: Option<&str>) -> Result<gtk::Button, Strin
 fn focus_target(harness: &Harness, name: &str) -> Result<gtk::Widget, String> {
     match name {
         "list" => Ok(super::mail::list(harness)?.list_view().clone().upcast()),
+        "groups" => Ok(super::mail::list(harness)?.groups_view().clone().upcast()),
         "search" => Ok(super::mail::list(harness)?.search_entry().clone().upcast()),
         "reader" => {
             let reader = harness.state.reader().ok_or("there is no reader")?;

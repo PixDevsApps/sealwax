@@ -82,6 +82,9 @@ pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("list-select-group", 1, 1),
     ("assert-list-groups", 1, 1),
     ("assert-list-group", 4, 5),
+    // Group by Conversation (issue #4): row N's newest message (a sample's name, or else its
+    // subject), the conversation's size, its unread messages here, and `starred`/`unstarred`.
+    ("assert-list-conversation", 4, 5),
     // Group by's date sections and times (issue #26).
     ("assert-list-group-sections", 1, 1),
     ("assert-list-group-headers", 1, 1),
@@ -1313,6 +1316,40 @@ async fn check(harness: &Harness, assertion: &str, args: &[String]) -> StepResul
                                 Some(other) => Err(format!("pinned or unpinned, not {other}")),
                                 None => Ok(()),
                             }),
+                    },
+                };
+                if result.is_ok() || Instant::now() > deadline {
+                    return result;
+                }
+                glib::timeout_future(Duration::from_millis(20)).await;
+            }
+        }
+        "assert-list-conversation" => {
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                let result = match list.shown_groups() {
+                    None => Err("the list shows no conversations".to_owned()),
+                    Some(groups) => match groups.get(number(arg(0))?) {
+                        None => Err(format!("no conversation {}", arg(0))),
+                        Some(group) => {
+                            let newest = super::conversation::name(group.newest)
+                                .unwrap_or_else(|| group.subject.clone());
+                            equal("newest", newest.as_str(), arg(1))
+                                .and_then(|()| {
+                                    equal("messages", group.count, number(arg(2))? as u32)
+                                })
+                                .and_then(|()| {
+                                    equal("unread", group.unread, number(arg(3))? as u32)
+                                })
+                                .and_then(|()| match args.get(4).map(String::as_str) {
+                                    Some("starred") => equal("starred", group.starred, true),
+                                    Some("unstarred") => equal("starred", group.starred, false),
+                                    Some(other) => {
+                                        Err(format!("starred or unstarred, not {other}"))
+                                    }
+                                    None => Ok(()),
+                                })
+                        }
                     },
                 };
                 if result.is_ok() || Instant::now() > deadline {

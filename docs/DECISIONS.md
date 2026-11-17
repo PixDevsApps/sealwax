@@ -1163,6 +1163,10 @@ The owner's decisions on the sign-off sheet (2026-10-19). (1) The 150 ms rule of
 
 **Decision:** the four items of the 2026-11-03 amendment ship in 1.5.0, the version number 1.2 having gone to other releases, with HTML signatures from files ([#6](https://github.com/PixDevsApps/sealwax/issues/6)) from the 1.x list. Their choices are in [ADR-029](#adr-029--150-the-unread-count-as-a-file-saved-searches-with-the-layout-html-signatures-from-files-2026-11-16).
 
+### ADR-013 amendment — the conversation view (#4) is 1.5.2 (2026-11-17)
+
+**Status:** Accepted — the owner, 2026-11-17: "Let's work on GitHub Issue #4", then "I want this out as soon as it is done (first I need to test it for my self)", as 1.5.2 ("Sorry, meant 1.5.2"). The 2026-11-16 plan had PGP (#32) as 1.6.0 and the conversation view as 1.7.0; the conversation view goes first, in 1.5.2, and PGP after it. How it is built: [ADR-016 amendment](#adr-016-amendment--group-by-conversation-one-list-row-per-conversation-2026-11-17).
+
 ## ADR-014 — WYSIWYG composer in an editable WebKit view (2026-10-04)
 
 **Status:** The WYSIWYG format is accepted — user decision, 2026-10-04 (over a Markdown composer). The mechanism is proposed; S7 confirms it.
@@ -1430,6 +1434,23 @@ Built in M3.
 ### ADR-016 amendment — the order of a conversation's messages (2026-10-11)
 
 The user's word (2026-10-11, "build #5 and #3", on [issue #3](https://github.com/PixDevsApps/sealwax/issues/3)): `config.toml`'s `[reader] conversation_order` is `"oldest-first"` (the default, as before) or `"newest-first"`. Only the screen turns: `Store::conversation` and the page's model stay oldest first (folds, "N earlier messages", which messages expand), and the page puts each row, card and revealed or newly arrived message in the turned place (`Page::place`). Newest first, the quick reply sits under the subject, above the latest message, and still answers the same message; Next and Previous Message in Conversation (`n`, `p`) go down and up the screen, so Next goes to older messages. A change applies at once: the shown conversation is shown again, scrolled to the selected message.
+
+### ADR-016 amendment — Group by Conversation: one list row per conversation (2026-11-17)
+
+**Status:** Accepted — the owner's answers of 2026-11-17 on [issue #4](https://github.com/PixDevsApps/sealwax/issues/4) (one row per conversation in the list, asked for on 2026-10-11 and again on 1.3.0): a third Group by; the commands on a conversation's messages in the view; the newest sender on the row. This reverses the M5 start amendment's "per-folder conversation rows aren't built in 1.0" for after 1.0, as an option; the plain list stays the default.
+
+**Decision:**
+- **Group by Conversation** (`group-by-conversation`, the command palette, no key) is a mode of the message list beside Group by Sender and Domain ([ADR-023](#adr-023--group-by-sender-and-list-unsubscribe-2026-10-29)), on any folder and on All Inboxes, remembered with the window's layout (`group_by = "conversation"`). The list shows one row per conversation (`thread_id`) with a message in the view, from its newest message there: the sender, time, subject and preview as a message row shows them, the conversation's size (`threads.message_count`, as rows show it), the unread dot and bold text while any of its messages there is unread, the star while one is starred, the clip while one has attachments; newest first in the plain list's date sections; in the Inboxes, a conversation whose newest message's sender or domain is pinned leads by the Pinned section's rule ([ADR-024](#adr-024--pinned-senders-2026-10-31)). A search shows messages, ungrouped.
+- **The chips choose conversations** (those with an unread, starred or attached message in the view), but a row counts, and a command takes, all of the conversation's messages in the view, so a command never splits a conversation. (Group by Sender and Domain keep the chip's filter on their commands.)
+- **Selecting a row shows the conversation in the reader** from its newest message in the view, as selecting that message does: its unread messages expanded and marked read, `n`/`p` inside it; `j`/`k` go from conversation to conversation, and the reader's "n of N" counts conversations. The same conversation selected again (new mail in it, its counts read again) isn't shown again: new mail joins it in place.
+- **Commands** ([ADR-023 amendment](#adr-023-amendment--a-group-takes-the-mail-commands-2026-10-30)'s group commands): Archive, Delete, Move to Junk, Move to…, Mark as Read and Mark as Unread act on the conversation's messages in the view (the user's replies in Sent stay there), with Undo; the toast names the scope ("Archived 3 messages of the conversation"). Star takes only the newest message there; Reply, Reply All, Forward and Forward as Attachment the newest message, or the one the user is on in the reader; Pin Sender and Pin Domain the newest message's sender; Unsubscribe the conversation's newest message with the header.
+- **At most 5,000 conversations** an answer, the newest, as for groups; a line under the list says so and points to search.
+
+**Reason:** the Group by machinery (the store's grouping query, the groups list in sections with its in-place updates, a selected group taking the mail commands with Undo) is what one row per conversation needs; reusing it costs far less than the M5 start's 4–6 days for conversation rows in the paged views, and leaves the views, their change events and triage untouched. Commands in the view keep what a folder shows the user's and never reach folders the list doesn't show.
+
+**Alternatives:** a separate Conversations switch combining with Group by Sender or Domain; conversation rows in the store's paged views (no 5,000 cap, but a rework of the views, counts, change events and triage); commands on every message of the conversation in every folder, Sent included (Gmail's labels); the conversation's participants on the row instead of the newest sender.
+
+**Consequences:** no schema or engine change. Measured on the 100,000-message fixture Inbox (`sealwax-fixtures bench-groups`, TESTING.md 2026-11-17): the grouping reads in about 133 ms warm and 1.1 s cold, as Group by Sender does (147 ms, 1.2 s), on the store's reader thread; it runs again 300 ms after each change while the list is grouped, as Group by Sender's does. A folder with more than 5,000 conversations lists only the newest 5,000.
 
 ## ADR-017 — Keymap: scoped one-key shortcuts under Omarchy rules (2026-10-04)
 

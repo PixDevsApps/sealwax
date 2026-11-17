@@ -46,7 +46,7 @@ use sealwax_domain::model::{AccountId, FolderId, MessageId};
 use sealwax_domain::search::Date;
 use sealwax_domain::senders::GroupBy;
 use sealwax_infrastructure::store::{
-    ChangeEvent, GroupMail, SenderGroup, ViewFilter, ViewScope, ViewSpec,
+    ChangeEvent, GroupMail, MAX_GROUPS, SenderGroup, ViewFilter, ViewScope, ViewSpec,
 };
 use sealwax_ui_model::actions::{ActionId, Scope};
 use sealwax_ui_model::keymap::Keymap;
@@ -253,6 +253,8 @@ struct Inner {
     day_check: RefCell<Option<glib::SourceId>>,
     /// The quiet row under the list while older mail loads.
     older_row: gtk::Label,
+    /// The line under the groups when there are more than one answer holds.
+    groups_capped: gtk::Label,
     older: RefCell<std::collections::HashMap<FolderId, Older>>,
     /// Group by Sender or Domain (issue #24): the view shows `groups` while nothing is searched.
     group_by: Cell<GroupBy>,
@@ -267,6 +269,10 @@ struct Inner {
     group_mail: RefCell<Option<(String, GroupMail)>>,
     /// The group the selection goes to when the selected one leaves the view.
     group_next: RefCell<Option<String>>,
+    /// Grouped by conversation (issue #4): the selected conversation and the message the
+    /// reader was given for it, its newest when it was selected. It stays while the same
+    /// conversation stays selected, so new mail joining it doesn't show it again.
+    conversation_shown: RefCell<Option<(String, MessageId)>>,
 }
 
 impl Drop for Inner {
@@ -423,6 +429,19 @@ impl MessageList {
         older_row.add_css_class("sw-list-older");
         older_row.set_widget_name("list-older");
         root.append(&older_row);
+        let groups_capped = gtk::Label::builder()
+            .visible(false)
+            .wrap(true)
+            .justify(gtk::Justification::Center)
+            .margin_top(6)
+            .margin_bottom(6)
+            .margin_start(12)
+            .margin_end(12)
+            .build();
+        groups_capped.add_css_class("dim-label");
+        groups_capped.add_css_class("caption");
+        groups_capped.set_widget_name("list-groups-capped");
+        root.append(&groups_capped);
 
         let list = Self {
             inner: Rc::new(Inner {
@@ -473,6 +492,7 @@ impl MessageList {
                 first_rows: RefCell::new(None),
                 day_check: RefCell::new(None),
                 older_row,
+                groups_capped,
                 older: RefCell::default(),
                 group_by: Cell::new(GroupBy::None),
                 groups,
@@ -482,6 +502,7 @@ impl MessageList {
                 group_reported: RefCell::new(None),
                 group_mail: RefCell::new(None),
                 group_next: RefCell::new(None),
+                conversation_shown: RefCell::new(None),
             }),
         };
         list.connect();
@@ -503,7 +524,13 @@ impl MessageList {
         let inner = &self.inner;
         let weak = self.downgrade();
         inner.groups.connect_open(move |key| {
-            Self::with(&weak, |list| list.open_group(key));
+            Self::with(&weak, |list| {
+                if list.by_conversation() {
+                    list.open_selected();
+                } else {
+                    list.open_group(key);
+                }
+            });
         });
         let weak = self.downgrade();
         inner.groups.connect_selected(move || {
@@ -887,11 +914,18 @@ impl MessageList {
         self.inner.group_by.get()
     }
 
-    /// Groups the view by sender or by domain, or not (issue #24); a search ends.
+    /// Groups the view by sender, by domain or by conversation, or not (issues #24, #4); a
+    /// search ends.
     pub fn set_group_by(&self, by: GroupBy) {
         if self.inner.group_by.replace(by) == by {
             return;
         }
+        // The other mode's groups go at once: none of them is a group of this mode, and one
+        // left selected until this mode's arrive would be taken for one.
+        self.inner.groups.set(Vec::new(), &[], self.day());
+        self.inner
+            .groups
+            .set_conversations(by == GroupBy::Conversation);
         self.inner.opened_group.replace(None);
         if self.inner.query.borrow().is_empty() {
             self.reload();
@@ -914,6 +948,33 @@ impl MessageList {
         self.inner.group_by.get() != GroupBy::None
             && self.inner.query.borrow().is_empty()
             && self.inner.scope.get().is_some()
+    }
+
+    /// Grouped by conversation (issue #4): a group is a conversation, which the reader shows
+    /// when it is selected, and which isn't opened as a list of its own.
+    fn by_conversation(&self) -> bool {
+        self.inner.group_by.get() == GroupBy::Conversation
+    }
+
+    /// The conversation selected while the list shows its conversations (issue #4).
+    pub fn selected_conversation(&self) -> Option<SenderGroup> {
+        self.selected_group().filter(|_| self.by_conversation())
+    }
+
+    /// The group of Group by Sender or Domain selected while the list shows its groups: what
+    /// the sender's commands (pins, Unsubscribe's "their messages here") take.
+    pub fn selected_sender_group(&self) -> Option<SenderGroup> {
+        self.selected_group().filter(|_| !self.by_conversation())
+    }
+
+    /// The message the reader was given for the selected conversation (issue #4).
+    pub fn conversation_message(&self) -> Option<MessageId> {
+        self.selected_conversation()?;
+        self.inner
+            .conversation_shown
+            .borrow()
+            .as_ref()
+            .map(|(_, id)| *id)
     }
 
     /// The list shows a group's mail: Escape goes back to the groups.
@@ -980,19 +1041,33 @@ impl MessageList {
                     inner.empty.set_title(title);
                     inner
                         .empty
-                        .set_description(Some("Senders of messages here appear here."));
+                        .set_description(Some(if by == GroupBy::Conversation {
+                            "Conversations of messages here appear here."
+                        } else {
+                            "Senders of messages here appear here."
+                        }));
                     inner.stack.set_visible_child_name("empty");
                 } else {
                     inner.stack.set_visible_child_name("groups");
                 }
+                let capped = inner.groups.len() >= MAX_GROUPS;
+                if capped {
+                    inner.groups_capped.set_text(&capped_text(by));
+                }
+                inner.groups_capped.set_visible(capped);
                 list.report_group(true);
             });
         });
     }
 
+    /// The list shows its groups: grouped, nothing searched, and some group to show.
+    fn shows_groups(&self) -> bool {
+        self.grouped() && self.inner.stack.visible_child_name().as_deref() == Some("groups")
+    }
+
     /// The group selected while the list shows its groups.
     pub fn selected_group(&self) -> Option<SenderGroup> {
-        (self.grouped() && self.inner.stack.visible_child_name().as_deref() == Some("groups"))
+        self.shows_groups()
             .then(|| self.inner.groups.selected())
             .flatten()
     }
@@ -1064,6 +1139,11 @@ impl MessageList {
         inner.group_reported.replace(key.clone());
         if changed {
             inner.group_mail.replace(None);
+            let shown = group
+                .as_ref()
+                .filter(|_| self.by_conversation())
+                .map(|group| (group.key.clone(), group.newest));
+            inner.conversation_shown.replace(shown);
         }
         self.emit_group(group.as_ref());
         let Some(key) = key else {
@@ -1253,6 +1333,7 @@ impl MessageList {
 
     fn reload(&self) {
         let inner = &self.inner;
+        inner.groups_capped.set_visible(false);
         let thresholds = self.thresholds_now();
         let query = inner.query.borrow().clone();
         self.update_scope();
@@ -1836,8 +1917,12 @@ impl MessageList {
         }
     }
 
-    /// What the list last reported: nothing, one message, or the select mode's count.
+    /// What the list last reported: nothing, one message, or the select mode's count. A
+    /// selected conversation (issue #4) is the message the reader was given for it.
     pub fn reported(&self) -> Selected {
+        if let Some(id) = self.conversation_message() {
+            return Selected::One(id);
+        }
         self.inner.reported.get()
     }
 
@@ -1982,6 +2067,9 @@ impl MessageList {
     /// Where a message is in the list, 1-based, and how many the list holds: the reader's
     /// "n of N". `None` when its row isn't loaded.
     pub fn position(&self, id: MessageId) -> Option<(u32, u32)> {
+        if self.conversation_message() == Some(id) {
+            return self.inner.groups.position();
+        }
         let total = self.inner.model.total();
         if let Some(selected) = self.selected_position()
             && self
@@ -2011,6 +2099,10 @@ impl MessageList {
     }
 
     fn step(&self, delta: i64) {
+        if self.shows_groups() {
+            self.inner.groups.step(delta);
+            return;
+        }
         let total = self.inner.model.total();
         if total == 0 {
             return;
@@ -2400,7 +2492,7 @@ impl MessageList {
 
     /// Opens the selected message (Open Message: Enter, `o`, or a double click).
     pub fn open_selected(&self) {
-        if let Some(id) = self.selected() {
+        if let Some(id) = self.conversation_message().or_else(|| self.selected()) {
             let handlers = self.inner.handlers.opened.borrow().clone();
             for handler in handlers {
                 handler(id);
@@ -2726,6 +2818,32 @@ fn extend_keys(keymap: &Keymap) -> Vec<(gdk::Key, i64)> {
         .collect()
 }
 
+/// The line under groups cut at [`MAX_GROUPS`]: the newest are shown, search finds the rest.
+fn capped_text(by: GroupBy) -> String {
+    let what = match by {
+        GroupBy::Conversation => "conversations",
+        GroupBy::Domain => "domains",
+        GroupBy::None | GroupBy::Sender => "senders",
+    };
+    format!(
+        "Only the newest {} {what} are listed. Search to find older mail.",
+        format_thousands(MAX_GROUPS)
+    )
+}
+
+/// "5,000".
+fn format_thousands(number: u32) -> String {
+    let digits = number.to_string();
+    let mut text = String::new();
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index).is_multiple_of(3) {
+            text.push(',');
+        }
+        text.push(digit);
+    }
+    text
+}
+
 fn targets_of(mail: &GroupMail) -> Vec<Target> {
     mail.messages
         .iter()
@@ -2789,6 +2907,16 @@ mod tests {
             everywhere(50, true, false).subtitle(),
             "50+ results in all folders"
         );
+    }
+
+    #[test]
+    fn groups_cut_at_the_cap_say_so() {
+        assert_eq!(
+            capped_text(GroupBy::Conversation),
+            "Only the newest 5,000 conversations are listed. Search to find older mail."
+        );
+        assert_eq!(format_thousands(999), "999");
+        assert_eq!(format_thousands(1_234_567), "1,234,567");
     }
 
     #[test]

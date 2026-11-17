@@ -358,14 +358,31 @@ fn were(count: u32) -> &'static str {
     if count == 1 { "was" } else { "were" }
 }
 
-/// What a queued action did, in the toast's words.
-pub(crate) fn done_text(
+/// What a queued action did on the messages given, in the toast's words.
+#[cfg(test)]
+fn done_text(action: Triage, queued: &Queued, plans: &[Plan], folders: &[Folder]) -> String {
+    done_text_of(action, queued, plans, folders, Whole::Messages)
+}
+
+/// What an action took: the messages given, or a conversation's messages in the list's view
+/// (issue #4), which the toast names so that its scope is plain.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Whole {
+    Messages,
+    Conversation,
+}
+
+fn done_text_of(
     action: Triage,
     queued: &Queued,
     plans: &[Plan],
     folders: &[Folder],
+    whole: Whole,
 ) -> String {
-    let n = messages(queued.applied);
+    let n = match whole {
+        Whole::Messages => messages(queued.applied),
+        Whole::Conversation => format!("{} of the conversation", messages(queued.applied)),
+    };
     let to = |id: FolderId| folder_name(id, folders);
     let all_expunge = !plans.is_empty() && plans.iter().all(|plan| *plan == Plan::Expunge);
     let text = match action {
@@ -762,6 +779,21 @@ impl Controller {
         self.finish(outcome).await
     }
 
+    /// Queues a user's `action` on a conversation's messages in the list's view (issue #4): as
+    /// `queue`, with a toast that says it took the conversation's messages.
+    pub fn queue_conversation(&self, action: Triage, targets: Vec<Target>) {
+        let Some(mut outcome) = self.start(action, targets, Origin::User) else {
+            return;
+        };
+        outcome.whole = Whole::Conversation;
+        let this = self.clone();
+        self.spawn(async move {
+            if let Some(notice) = this.finish(outcome).await {
+                this.notify(&notice);
+            }
+        });
+    }
+
     fn start(&self, action: Triage, targets: Vec<Target>, origin: Origin) -> Option<Started> {
         if targets.is_empty() {
             return None;
@@ -800,6 +832,7 @@ impl Controller {
             folders,
             notable,
             deleted_now,
+            whole: Whole::Messages,
         })
     }
 
@@ -811,6 +844,7 @@ impl Controller {
             folders,
             notable,
             deleted_now,
+            whole,
         } = started;
         let queued = pending.await;
         self.answered();
@@ -841,7 +875,7 @@ impl Controller {
         // `Notice::undo_expires`); a local delete ran at once and has none to retire.
         let deletes_for_good = !plans.is_empty() && plans.iter().all(|plan| *plan == Plan::Expunge);
         Some(Notice {
-            text: done_text(action, &queued, &plans, &folders),
+            text: done_text_of(action, &queued, &plans, &folders, whole),
             undo,
             undo_expires: undo.is_some() && deletes_for_good,
             shown: self.window(),
@@ -1029,6 +1063,8 @@ struct Started {
     notable: bool,
     /// Deleted for good in local accounts, at once: no Undo to offer.
     deleted_now: bool,
+    /// What the toast says the action took.
+    whole: Whole,
 }
 
 /// Unix milliseconds, the store's time.
@@ -1273,6 +1309,26 @@ mod tests {
         assert_eq!(
             done_text(Triage::Archive, &queued(1, 0), &[to(2)], &all),
             "Archived 1 message"
+        );
+        assert_eq!(
+            done_text_of(
+                Triage::Delete,
+                &queued(3, 0),
+                &[to(4); 3],
+                &all,
+                Whole::Conversation
+            ),
+            "Moved 3 messages of the conversation to the Trash"
+        );
+        assert_eq!(
+            done_text_of(
+                Triage::Read(true),
+                &queued(2, 0),
+                &[],
+                &all,
+                Whole::Conversation
+            ),
+            "Marked 2 messages of the conversation as read"
         );
         assert_eq!(
             done_text(Triage::Delete, &queued(3, 0), &[to(4); 3], &all),

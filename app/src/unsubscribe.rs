@@ -5,7 +5,9 @@
 //! button that opens it in the browser. Each one done is remembered, and the dialog says so the
 //! next time. The lists' addresses never reach a log. On a group of Group by Sender or Domain
 //! (issue #25), it leaves the sender's list, from its newest message with the header, and can
-//! archive or delete the group's mail here too.
+//! archive or delete the group's mail here too. On a conversation of Group by Conversation
+//! (issue #4), it leaves the list of the conversation's newest message here with the header, as
+//! on that message.
 
 use crate::actions::ActionSet;
 use crate::application::AppState;
@@ -29,7 +31,10 @@ pub(crate) fn install_window(state: &Rc<AppState>, actions: &ActionSet) {
     let weak = Rc::downgrade(state);
     actions.connect(ActionId::Unsubscribe, move || {
         if let Some(state) = weak.upgrade() {
-            match state.list().filter(|list| list.selected_group().is_some()) {
+            match state
+                .list()
+                .filter(|list| list.selected_sender_group().is_some())
+            {
                 Some(list) => start_group(&state, &list),
                 None => start(&state, selected(&state), None),
             }
@@ -50,6 +55,13 @@ pub(crate) fn connect_reader(state: &Rc<AppState>, reader: &crate::reader::Reade
 /// Whether Unsubscribe applies to the selected messages, or why not.
 pub(crate) fn applies(state: &AppState) -> Result<(), &'static str> {
     let list = state.list().ok_or("Select a message")?;
+    if list.selected_conversation().is_some() {
+        return match (list.group_targets(), list.group_subscription()) {
+            (_, Some(_)) => Ok(()),
+            (Some(_), None) => Err("This conversation has no unsubscribe link"),
+            (None, None) => Err("The conversation's mail hasn't loaded"),
+        };
+    }
     if list.selected_group().is_some() {
         return match (list.group_targets(), list.group_subscription()) {
             (_, Some(_)) => Ok(()),
@@ -80,6 +92,9 @@ fn selected(state: &AppState) -> Vec<MessageId> {
     let Some(list) = state.list() else {
         return Vec::new();
     };
+    if list.selected_conversation().is_some() {
+        return list.group_subscription().into_iter().collect();
+    }
     list.selected_positions()
         .into_iter()
         .filter_map(|position| list.model().row_at(position))

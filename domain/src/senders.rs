@@ -1,5 +1,5 @@
-//! Grouping the message list by sender or by domain (issue #24, ADR-023): the keys a message is
-//! grouped under.
+//! Grouping the message list by sender or by domain (issue #24, ADR-023), or by conversation
+//! (issue #4): the keys a message is grouped under.
 
 use crate::links;
 
@@ -10,6 +10,8 @@ pub enum GroupBy {
     None,
     Sender,
     Domain,
+    /// One row per conversation (issue #4): its messages in the view, keyed by their thread.
+    Conversation,
 }
 
 impl GroupBy {
@@ -18,11 +20,12 @@ impl GroupBy {
             Self::None => "none",
             Self::Sender => "sender",
             Self::Domain => "domain",
+            Self::Conversation => "conversation",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
-        [Self::None, Self::Sender, Self::Domain]
+        [Self::None, Self::Sender, Self::Domain, Self::Conversation]
             .into_iter()
             .find(|group| group.name() == name)
     }
@@ -72,7 +75,12 @@ mod tests {
 
     #[test]
     fn names() {
-        for group in [GroupBy::None, GroupBy::Sender, GroupBy::Domain] {
+        for group in [
+            GroupBy::None,
+            GroupBy::Sender,
+            GroupBy::Domain,
+            GroupBy::Conversation,
+        ] {
             assert_eq!(GroupBy::from_name(group.name()), Some(group));
         }
         assert_eq!(GroupBy::from_name("x"), None);

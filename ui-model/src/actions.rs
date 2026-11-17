@@ -290,6 +290,7 @@ pub enum ActionId {
     CommandPalette,
     GroupBySender,
     GroupByDomain,
+    GroupByConversation,
     DontGroup,
     AddAccount,
     EditAccount,
@@ -316,7 +317,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 109] = [
+    pub const ALL: [Self; 110] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -403,6 +404,7 @@ impl ActionId {
         Self::CommandPalette,
         Self::GroupBySender,
         Self::GroupByDomain,
+        Self::GroupByConversation,
         Self::DontGroup,
         Self::AddAccount,
         Self::EditAccount,
@@ -1051,6 +1053,13 @@ impl ActionId {
                 Scope::Window,
                 &[],
             ),
+            Self::GroupByConversation => command(
+                "group-by-conversation",
+                "Group by Conversation",
+                View,
+                Scope::Window,
+                &[],
+            ),
             Self::DontGroup => command("dont-group", "Don't Group", View, Scope::Window, &[]),
             Self::ApplyRules => command(
                 "apply-rules",
@@ -1456,6 +1465,7 @@ mod tests {
             ActionId::PinnedSenders,
             ActionId::GroupBySender,
             ActionId::GroupByDomain,
+            ActionId::GroupByConversation,
             ActionId::DontGroup,
         ] {
             assert!(keys(id).is_empty(), "{id:?}");

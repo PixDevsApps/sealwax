@@ -6,6 +6,11 @@
 //! pin, and in the Inboxes the store puts it first (issue #26). The rows are in the plain list's
 //! sections (issue #26): Pinned for the groups the store put first, then Today, Yesterday, This
 //! week, This month and Older by each group's newest message; they regroup when the day changes.
+//!
+//! Grouped by conversation (issue #4), a row looks like a message row, from the conversation's
+//! newest message here: the unread dot while any of its messages here is unread, the avatar,
+//! the sender, the conversation's size, the time, the subject and the preview, the star and the
+//! clip. Each list item holds both looks and shows the one of the list's mode.
 
 use super::place;
 use super::row::time_text;
@@ -16,6 +21,7 @@ use gtk4::prelude::*;
 use gtk4::subclass::prelude::*;
 use gtk4::{gio, glib, pango};
 use sealwax_infrastructure::store::SenderGroup;
+use sealwax_ui_model::theme::{avatar_index, initials};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -204,6 +210,8 @@ pub(super) struct Groups {
     day: Rc<Cell<Day>>,
     /// The list items bound to a group now, to bind again when a group's contents change.
     bound: Rc<RefCell<Vec<gtk::ListItem>>>,
+    /// The groups are conversations (issue #4).
+    conversations: Rc<Cell<bool>>,
 }
 
 impl Groups {
@@ -222,6 +230,8 @@ impl Groups {
             }
         });
         let bind_day = day.clone();
+        let conversations: Rc<Cell<bool>> = Rc::default();
+        let bind_conversations = conversations.clone();
         let bound: Rc<RefCell<Vec<gtk::ListItem>>> = Rc::default();
         let bind_bound = bound.clone();
         factory.connect_bind(move |_, object| {
@@ -238,6 +248,7 @@ impl Groups {
                     &row,
                     &item.borrow::<SenderGroup>(),
                     bind_day.get(),
+                    bind_conversations.get(),
                 );
             }
         });
@@ -290,7 +301,23 @@ impl Groups {
             quiet: Rc::default(),
             day,
             bound,
+            conversations,
         }
+    }
+
+    /// Shows the groups as conversations (issue #4), or as senders or domains.
+    pub(super) fn set_conversations(&self, conversations: bool) {
+        if self.conversations.replace(conversations) == conversations {
+            return;
+        }
+        let label = if conversations {
+            "Conversations"
+        } else {
+            "Senders"
+        };
+        self.view
+            .update_property(&[gtk::accessible::Property::Label(label)]);
+        self.bind_again(|_| true);
     }
 
     pub(super) fn widget(&self) -> &gtk::ScrolledWindow {
@@ -337,6 +364,7 @@ impl Groups {
     /// Binds again the rows showing a group that `again` names, after its contents changed.
     fn bind_again(&self, again: impl Fn(&glib::BoxedAnyObject) -> bool) {
         let day = self.day.get();
+        let conversations = self.conversations.get();
         let bound = self.bound.borrow().clone();
         for list_item in bound {
             if let (Some(row), Some(item)) = (
@@ -344,7 +372,13 @@ impl Groups {
                 list_item.item().and_downcast::<glib::BoxedAnyObject>(),
             ) && again(&item)
             {
-                bind(&list_item, &row, &item.borrow::<SenderGroup>(), day);
+                bind(
+                    &list_item,
+                    &row,
+                    &item.borrow::<SenderGroup>(),
+                    day,
+                    conversations,
+                );
             }
         }
     }
@@ -408,6 +442,46 @@ impl Groups {
             .find_map(|candidate| self.items.item(candidate))
             .and_downcast::<glib::BoxedAnyObject>()
             .map(|item| item.borrow::<SenderGroup>().key.clone())
+    }
+
+    /// Selects the group `delta` rows from the selected one (the first when none is), kept
+    /// inside the list, and shows it: Next and Previous Message on the groups.
+    pub(super) fn step(&self, delta: i64) {
+        let total = self.items.n_items();
+        if total == 0 {
+            return;
+        }
+        let current = self.selection.selected();
+        let target = if current == gtk::INVALID_LIST_POSITION {
+            0
+        } else {
+            (i64::from(current) + delta).clamp(0, i64::from(total) - 1) as u32
+        };
+        // The keyboard focus moves with the row only when it is in the list (`j` in the reader
+        // leaves it there), as the plain list does.
+        let focus = self
+            .view
+            .root()
+            .and_then(|root| root.focus())
+            .is_some_and(|focused| {
+                &focused == self.view.upcast_ref::<gtk::Widget>() || focused.is_ancestor(&self.view)
+            });
+        if target != current {
+            self.selection.set_selected(target);
+        }
+        let flags = if focus {
+            gtk::ListScrollFlags::FOCUS
+        } else {
+            gtk::ListScrollFlags::NONE
+        };
+        self.view.scroll_to(target, flags, None);
+    }
+
+    /// The selected group's place, 1-based, and how many groups there are: the reader's "n of
+    /// N" for a conversation.
+    pub(super) fn position(&self) -> Option<(u32, u32)> {
+        let position = self.selection.selected();
+        (position != gtk::INVALID_LIST_POSITION).then(|| (position + 1, self.items.n_items()))
     }
 
     /// Selects the group at `position` (the self-test's click).
@@ -541,7 +615,18 @@ impl Groups {
     }
 }
 
+/// A list item's child: the sender or domain look, then the conversation look; `bind` shows
+/// the one of the list's mode.
 fn row() -> gtk::Box {
+    let holder = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
+    holder.append(&sender_row());
+    holder.append(&conversation_row());
+    holder
+}
+
+fn sender_row() -> gtk::Box {
     let name = gtk::Label::builder()
         .xalign(0.0)
         .hexpand(true)
@@ -615,7 +700,219 @@ fn top_of(
         .map(|bounds| bounds.y())
 }
 
-/// A group row's widgets, as `row` makes them.
+/// A conversation's row (issue #4), as a message row looks (`row.rs`).
+fn conversation_row() -> gtk::Box {
+    let line = |class: &str| {
+        let label = gtk::Label::builder()
+            .xalign(0.0)
+            .ellipsize(pango::EllipsizeMode::End)
+            .single_line_mode(true)
+            .build();
+        label.add_css_class(class);
+        label
+    };
+    let dot = gtk::Box::builder()
+        .valign(gtk::Align::Start)
+        .halign(gtk::Align::Center)
+        .opacity(0.0)
+        .build();
+    dot.add_css_class("sw-unread-dot");
+    let avatar = gtk::Label::builder()
+        .valign(gtk::Align::Start)
+        .halign(gtk::Align::Center)
+        .xalign(0.5)
+        .build();
+    avatar.add_css_class("sw-avatar");
+    let sender = line("sw-sender");
+    sender.set_hexpand(true);
+    let pin = gtk::Image::builder()
+        .icon_name("view-pin-symbolic")
+        .tooltip_text("Pinned sender")
+        .visible(false)
+        .build();
+    pin.add_css_class("sw-pin");
+    pin.add_css_class("sw-indicator");
+    let count = gtk::Label::builder().visible(false).build();
+    count.add_css_class("sw-thread-count");
+    let time = gtk::Label::new(None);
+    time.add_css_class("sw-time");
+    let top = gtk::Box::builder().spacing(6).build();
+    top.append(&sender);
+    top.append(&pin);
+    top.append(&count);
+    top.append(&time);
+    let subject = line("sw-subject");
+    let snippet = gtk::Label::builder()
+        .xalign(0.0)
+        .yalign(0.0)
+        .wrap(true)
+        .wrap_mode(pango::WrapMode::WordChar)
+        .lines(2)
+        .ellipsize(pango::EllipsizeMode::End)
+        .width_chars(1)
+        .build();
+    snippet.add_css_class("sw-snippet");
+    let content = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(2)
+        .hexpand(true)
+        .build();
+    content.append(&top);
+    content.append(&subject);
+    content.append(&snippet);
+    let star = gtk::Image::builder()
+        .icon_name("starred-symbolic")
+        .opacity(0.0)
+        .build();
+    star.add_css_class("sw-star");
+    let clip = gtk::Image::builder()
+        .icon_name("mail-attachment-symbolic")
+        .opacity(0.0)
+        .build();
+    clip.add_css_class("sw-indicator");
+    let indicators = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(6)
+        .valign(gtk::Align::Start)
+        .build();
+    indicators.add_css_class("sw-row-indicators");
+    indicators.append(&star);
+    indicators.append(&clip);
+    let row = gtk::Box::builder().visible(false).build();
+    row.add_css_class("sw-message-row");
+    row.add_css_class("sw-conversation");
+    row.append(&dot);
+    row.append(&avatar);
+    row.append(&content);
+    row.append(&indicators);
+    row
+}
+
+/// A conversation row's widgets, as `conversation_row` makes them.
+struct ConversationParts {
+    dot: gtk::Widget,
+    avatar: gtk::Label,
+    sender: gtk::Label,
+    pin: gtk::Widget,
+    count: gtk::Label,
+    time: gtk::Label,
+    subject: gtk::Label,
+    snippet: gtk::Label,
+    star: gtk::Widget,
+    clip: gtk::Widget,
+}
+
+fn conversation_parts(row: &gtk::Box) -> Option<ConversationParts> {
+    let dot = row.first_child()?;
+    let avatar = dot.next_sibling()?;
+    let content = avatar.next_sibling()?;
+    let indicators = content.next_sibling()?;
+    let top = content.first_child()?;
+    let subject = top.next_sibling()?;
+    let snippet = subject.next_sibling()?;
+    let sender = top.first_child()?;
+    let pin = sender.next_sibling()?;
+    let count = pin.next_sibling()?;
+    let time = count.next_sibling()?;
+    let star = indicators.first_child()?;
+    let clip = star.next_sibling()?;
+    Some(ConversationParts {
+        dot,
+        avatar: avatar.downcast().ok()?,
+        sender: sender.downcast().ok()?,
+        pin,
+        count: count.downcast().ok()?,
+        time: time.downcast().ok()?,
+        subject: subject.downcast().ok()?,
+        snippet: snippet.downcast().ok()?,
+        star,
+        clip,
+    })
+}
+
+const TINTS: [&str; 7] = [
+    "sw-avatar-tint-0",
+    "sw-avatar-tint-1",
+    "sw-avatar-tint-2",
+    "sw-avatar-tint-3",
+    "sw-avatar-tint-4",
+    "sw-avatar-tint-5",
+    "sw-avatar-tint-6",
+];
+
+fn bind_conversation(list_item: &gtk::ListItem, row: &gtk::Box, group: &SenderGroup, day: Day) {
+    let Some(parts) = conversation_parts(row) else {
+        return;
+    };
+    let unread = group.unread > 0;
+    if unread {
+        row.add_css_class("sw-unread");
+    } else {
+        row.remove_css_class("sw-unread");
+    }
+    let shown = |widget: &gtk::Widget, on: bool| widget.set_opacity(if on { 1.0 } else { 0.0 });
+    shown(&parts.dot, unread);
+    for tint in TINTS {
+        parts.avatar.remove_css_class(tint);
+    }
+    parts
+        .avatar
+        .add_css_class(TINTS[avatar_index(&group.address) % TINTS.len()]);
+    parts
+        .avatar
+        .set_text(&initials(&group.name, &group.address));
+    parts.sender.set_text(&group.name);
+    parts.pin.set_visible(group.pinned);
+    parts.count.set_visible(group.count > 1);
+    parts.count.set_text(&group.count.to_string());
+    let time = time_text(
+        group.latest,
+        day.thresholds.section_of(group.latest),
+        day.year,
+    );
+    parts.time.set_text(&time);
+    parts.subject.set_text(if group.subject.is_empty() {
+        "(no subject)"
+    } else {
+        &group.subject
+    });
+    parts.snippet.set_text(&group.snippet);
+    shown(&parts.star, group.starred);
+    shown(&parts.clip, group.attachments);
+    list_item.set_accessible_label(&conversation_text(group, &time));
+}
+
+/// "Unread, Bjørn Dahl, Middag på fredag?, 10:32, conversation of 3 messages, 1 unread,
+/// starred": state in words as well as in weight and colour, as a message row says it.
+fn conversation_text(group: &SenderGroup, time: &str) -> String {
+    let mut text = String::new();
+    if group.unread > 0 {
+        text.push_str("Unread, ");
+    }
+    text.push_str(&group.name);
+    text.push_str(", ");
+    text.push_str(if group.subject.is_empty() {
+        "no subject"
+    } else {
+        &group.subject
+    });
+    text.push_str(", ");
+    text.push_str(time);
+    text.push_str(", conversation of ");
+    text.push_str(&count_text(group.count, group.unread));
+    if group.pinned {
+        text.push_str(", pinned sender");
+    }
+    if group.starred {
+        text.push_str(", starred");
+    }
+    if group.attachments {
+        text.push_str(", has attachments");
+    }
+    text
+}
+
+/// A group row's widgets, as `sender_row` makes them.
 struct Parts {
     name: gtk::Label,
     pin: gtk::Image,
@@ -643,7 +940,30 @@ fn parts(row: &gtk::Box) -> Option<Parts> {
     })
 }
 
-fn bind(list_item: &gtk::ListItem, row: &gtk::Box, group: &SenderGroup, day: Day) {
+fn bind(
+    list_item: &gtk::ListItem,
+    holder: &gtk::Box,
+    group: &SenderGroup,
+    day: Day,
+    conversations: bool,
+) {
+    let Some((sender, conversation)) = holder
+        .first_child()
+        .and_downcast::<gtk::Box>()
+        .zip(holder.last_child().and_downcast::<gtk::Box>())
+    else {
+        return;
+    };
+    sender.set_visible(!conversations);
+    conversation.set_visible(conversations);
+    if conversations {
+        bind_conversation(list_item, &conversation, group, day);
+    } else {
+        bind_sender(list_item, &sender, group, day);
+    }
+}
+
+fn bind_sender(list_item: &gtk::ListItem, row: &gtk::Box, group: &SenderGroup, day: Day) {
     let Some(parts) = parts(row) else {
         return;
     };
@@ -712,6 +1032,11 @@ mod tests {
             unread: 1,
             latest,
             subject: "Middag på fredag?".into(),
+            newest: sealwax_domain::model::MessageId(7),
+            address: "anna@example.test".into(),
+            snippet: "Hei! Kommer du?".into(),
+            starred: false,
+            attachments: false,
             pinned: leads,
             leads,
         }
@@ -731,6 +1056,26 @@ mod tests {
         assert_eq!(
             section_of(&group(today - 40 * DAY, true), &thresholds),
             PINNED
+        );
+    }
+
+    #[test]
+    fn a_conversation_row_says_what_a_message_row_says_and_its_size() {
+        let mut talk = group(0, false);
+        talk.count = 3;
+        talk.starred = true;
+        assert_eq!(
+            conversation_text(&talk, "10:32"),
+            "Unread, Anna Berg, Middag på fredag?, 10:32, conversation of 3 messages, 1 unread, \
+             starred"
+        );
+        talk.unread = 0;
+        talk.subject.clear();
+        talk.starred = false;
+        talk.attachments = true;
+        assert_eq!(
+            conversation_text(&talk, "10:32"),
+            "Anna Berg, no subject, 10:32, conversation of 3 messages, has attachments"
         );
     }
 

@@ -1,0 +1,126 @@
+# Group by Conversation (issue #4): one row per conversation, from its newest message here,
+# newest first, with the conversation's size and its unread messages here; the chips choose
+# conversations but a row counts all of them; selecting a row shows the conversation in the
+# reader and marks its unread messages read; `j`/`k` go from conversation to conversation; new
+# mail in the selected conversation joins it without showing it again; the mail commands take
+# the conversation's messages here (the user's reply stays in Sent), say so in the toast and
+# undo; Star takes the newest message only; Reply answers the newest message; a search shows
+# messages; Don't Group goes back. Every message is fictional (app/src/reader/samples.rs).
+# Run: tools/headless.sh 37 target/debug/sealwax-selftest --self-test tests/selftest/list-conversations.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Personal
+mail-add inbox 3d "A message on its own" read
+conversation-add trip
+# Five of trip's six messages are in the Inbox (trip-5 and trip-6 unread); trip-3, the user's
+# reply, is in Sent.
+assert-list-count 6
+
+assert-action-enabled win.group-by-conversation true
+action win.group-by-conversation
+assert-action-enabled win.group-by-conversation false
+assert-action-enabled win.dont-group true
+assert-list-groups 2
+assert-list-conversation 0 trip-6 6 2 unstarred
+assert-list-conversation 1 "A message on its own" 1 0
+assert-shown list-older false
+screenshot $DIR/../../.local/selftest/list-conversations.png
+
+# The Unread chip shows the conversations with unread mail, each counted whole.
+chip unread
+assert-list-groups 1
+assert-list-conversation 0 trip-6 6 2
+chip all
+assert-list-groups 2
+
+# Selecting a conversation shows it in the reader, from its newest message; its unread messages
+# are expanded and marked read.
+list-select-group 0
+wait-until assert-reader-page message
+wait-until assert-conversation selected trip-6
+assert-conversation messages 6
+assert-label reader-subject "Re: Cabin trip in November?"
+wait-until assert-conversation read trip-5 true
+wait-until assert-list-conversation 0 trip-6 6 0
+assert-action-enabled win.reply true
+assert-action-enabled win.archive true
+screenshot $DIR/../../.local/selftest/list-conversations-reader.png
+
+# Next and Previous Message go from conversation to conversation.
+action win.next-message
+wait-until assert-label reader-subject "A message on its own"
+action win.previous-message
+wait-until assert-conversation selected trip-6
+
+# `j` and `k` in the list do the same, the keyboard focus staying in the list; `j` in the reader
+# moves the list's selection and leaves the focus in the reader.
+focus groups
+key j
+wait-until assert-label reader-subject "A message on its own"
+assert-list-focus groups
+key k
+wait-until assert-conversation selected trip-6
+assert-list-focus groups
+focus reader
+key j
+wait-until assert-label reader-subject "A message on its own"
+assert-list-focus elsewhere
+focus groups
+key k
+wait-until assert-conversation selected trip-6
+
+# A reply joining the selected conversation updates its row, and the reader keeps showing the
+# conversation it showed (the reply joins it there).
+conversation-reply trip
+wait-until assert-list-conversation 0 trip-reply-1 7 1
+wait-until assert-conversation messages 7
+assert-conversation selected trip-6
+
+# Star takes the newest message only.
+action win.star
+wait-until assert-list-conversation 0 trip-reply-1 7 1 starred
+
+# Archive takes the conversation's messages here, says so, and goes on to the next one.
+key e
+wait-until assert-toast "Archived 6 messages of the conversation"
+wait-until assert-list-groups 1
+wait-until assert-label reader-subject "A message on its own"
+# The user's reply stays in Sent.
+folder sent
+wait-until assert-list-groups 1
+assert-list-conversation 0 trip-3 7 0
+folder inbox
+wait-until assert-list-groups 1
+action win.undo
+wait-until assert-list-groups 2
+assert-list-conversation 0 trip-reply-1 7 1 starred
+
+# A search shows messages; Escape comes back to the conversations.
+search Cabin
+assert-list-search 5 false
+search-escape
+wait-until assert-list-groups 2
+
+# Switching between groupings with a group selected leaves nothing of the other mode selected:
+# no sender's page taken for a conversation, and no conversation left in the reader.
+action win.group-by-sender
+wait-until assert-list-groups 4
+list-select-group 0
+wait-until assert-reader-page batch
+action win.group-by-conversation
+wait-until assert-list-groups 2
+wait-until assert-reader-page empty
+list-select-group 0
+wait-until assert-reader-page message
+action win.group-by-sender
+wait-until assert-list-groups 4
+wait-until assert-reader-page empty
+action win.group-by-conversation
+wait-until assert-list-groups 2
+
+# Don't Group goes back to the plain list, where only the newest message was starred.
+action win.dont-group
+wait-until assert-list-count 7
+assert-list-row 0 starred true
+assert-list-row 1 starred false

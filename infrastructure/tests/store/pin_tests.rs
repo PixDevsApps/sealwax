@@ -869,3 +869,55 @@ fn a_group_whose_address_has_non_ascii_capitals_pins_its_mail() {
     assert_eq!(self::ids(&rows), [ids[0]]);
     assert!(rows[0].pinned, "the group's pin matches its mail");
 }
+
+/// Group by Conversation (issue #4): a conversation's newest message here names its pin, by the
+/// Pinned section's rule; an *until read* pin leads only while the conversation has unread mail.
+#[test]
+fn a_conversation_is_pinned_by_its_newest_senders_pin() {
+    let fx = fixture();
+    let mut answer = mail(fx.inbox, 2, "regning@kraft.example", true);
+    answer.headers.in_reply_to = vec!["pin-1@example.test".into()];
+    let ids = ingest(
+        &fx.store,
+        vec![
+            mail(fx.inbox, 1, "anna@example.test", true),
+            answer,
+            mail(fx.inbox, 3, "nyheter@avisa.example", true),
+        ],
+    );
+    let inbox = ViewSpec::folder(fx.inbox);
+    let conversations = || {
+        fx.store
+            .sender_groups(inbox, GroupBy::Conversation)
+            .recv_blocking()
+            .unwrap()
+            .into_iter()
+            .map(|group| (group.newest, group.pinned, group.leads))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        conversations(),
+        [(ids[2], false, false), (ids[1], false, false)]
+    );
+    // Until read, and read: a pin, in its date.
+    let bill = pin(&fx.store, PinTarget::Message(ids[1]), PinKind::Sender).unwrap();
+    assert_eq!(
+        conversations(),
+        [(ids[2], false, false), (ids[1], true, false)]
+    );
+    // Always: first.
+    keep(&fx.store, bill);
+    assert_eq!(
+        conversations(),
+        [(ids[1], true, true), (ids[2], false, false)]
+    );
+    // The first message's sender pinned names nothing: only the newest's does.
+    assert_eq!(
+        pin(&fx.store, PinTarget::Message(ids[0]), PinKind::Sender).map(|pin| pin.key),
+        Some("anna@example.test".into())
+    );
+    assert_eq!(
+        conversations(),
+        [(ids[1], true, true), (ids[2], false, false)]
+    );
+}

@@ -122,6 +122,8 @@ fn picked(state: &AppState) -> Result<Picked, &'static str> {
         return match list.group_by() {
             GroupBy::Sender => Ok(Picked::Group(PinKind::Sender, group.key)),
             GroupBy::Domain => Ok(Picked::Group(PinKind::Domain, group.key)),
+            // A conversation (issue #4) pins as its newest message here does.
+            GroupBy::Conversation => Ok(Picked::Messages(vec![(group.newest, group.address)])),
             GroupBy::None => Err("Select a message"),
         };
     }

@@ -2,6 +2,12 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Unreleased
+
+Conversations as one row in the list.
+
+- **Group by Conversation** ([issue #4](https://github.com/PixDevsApps/sealwax/issues/4), thanks @ocewers): in the command palette, beside Group by Sender and Group by Domain. Each conversation takes one row, from its newest message: the sender, time, subject and preview, how many messages the conversation has, and whether anything in it is unread. Select a row to read the whole conversation. Archive, Delete, Move and Mark as Read act on the conversation's messages in the folder you're looking at (your replies stay in Sent), and the toast says so; Star marks the newest message. **Don't Group** goes back, and the choice is remembered.
+
 ## 1.5.1 — 2026-11-16
 
 Mail sends through IONOS again.

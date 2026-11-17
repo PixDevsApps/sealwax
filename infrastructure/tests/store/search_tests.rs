@@ -1355,6 +1355,116 @@ fn a_groups_mail_in_the_view_newest_first_with_its_newest_subscription() {
     );
 }
 
+/// Message `n` of a conversation: in reply to `parent` (a message number), from `name`.
+fn reply(folder: FolderId, n: u32, date: i64, parent: Option<u32>, name: &str) -> NewMessage {
+    let mut message = mail(folder, n, date);
+    message.headers.from = vec![person(name)];
+    if let Some(parent) = parent {
+        let id = format!("melding-{parent}@example.test");
+        message.headers.in_reply_to = vec![id.clone()];
+        message.headers.references = vec![id];
+    }
+    message
+}
+
+#[test]
+fn a_view_grouped_by_conversation() {
+    let fx = fixture();
+    let mut first = reply(fx.inbox, 1, NOW - 500, None, "Anna Berg");
+    first.flags = Flags::SEEN | Flags::FLAGGED;
+    let in_archive = reply(fx.archive, 2, NOW - 450, Some(1), "Søk");
+    let mut answer = reply(fx.inbox, 3, NOW - 300, Some(2), "Bjørn Dahl");
+    answer.flags = Flags::NONE;
+    let mut file = reply(fx.inbox, 4, NOW - 400, None, "Cecilie Eng");
+    file.has_attachments = true;
+    let single = reply(fx.inbox, 5, NOW - 100, None, "Dag Fjell");
+    let elsewhere = reply(fx.archive, 6, NOW, None, "Anna Berg");
+    let ids = ingest(
+        &fx.store,
+        vec![first, in_archive, answer, file, single, elsewhere],
+    );
+    let groups = |filter: ViewFilter| {
+        fx.store
+            .sender_groups(
+                ViewSpec::folder(fx.inbox).with_filter(filter),
+                GroupBy::Conversation,
+            )
+            .recv_blocking()
+            .unwrap()
+    };
+    let all = groups(ViewFilter::All);
+    let shown = |groups: &[SenderGroup]| {
+        groups
+            .iter()
+            .map(|group| (group.newest, group.count, group.unread, group.latest))
+            .collect::<Vec<_>>()
+    };
+    // Newest first by the newest message here; the conversation's size counts the reply in
+    // the Archive, as the list's rows do; the Archive's own conversation isn't here.
+    assert_eq!(
+        shown(&all),
+        [
+            (ids[4], 1, 0, NOW - 100),
+            (ids[2], 3, 1, NOW - 300),
+            (ids[3], 1, 0, NOW - 400),
+        ]
+    );
+    let talk = &all[1];
+    assert_eq!(talk.name, "Bjørn Dahl");
+    assert_eq!(talk.address, "bjørn.dahl@example.test");
+    assert_eq!(talk.subject, "Melding 3");
+    assert_eq!(talk.snippet, "Utdrag 3");
+    assert!(talk.starred, "the first message is starred");
+    assert!(!talk.attachments);
+    assert!(all[2].attachments && !all[2].starred);
+    assert!(!all.iter().any(|group| group.pinned || group.leads));
+    assert!(
+        !format!("{talk:?}").contains("Melding"),
+        "no subject in Debug"
+    );
+    // The chips choose conversations, but a row still counts all of them here.
+    assert_eq!(
+        shown(&groups(ViewFilter::Unread)),
+        [(ids[2], 3, 1, NOW - 300)]
+    );
+    assert_eq!(
+        shown(&groups(ViewFilter::Starred)),
+        [(ids[2], 3, 1, NOW - 300)]
+    );
+    assert_eq!(
+        shown(&groups(ViewFilter::Attachments)),
+        [(ids[3], 1, 0, NOW - 400)]
+    );
+
+    // A command takes the whole conversation here, whatever the chip: never the Archive's.
+    let mail = |filter: ViewFilter, key: &str| {
+        fx.store
+            .group_mail(
+                ViewSpec::folder(fx.inbox).with_filter(filter),
+                GroupBy::Conversation,
+                key.into(),
+            )
+            .recv_blocking()
+            .unwrap()
+            .messages
+            .iter()
+            .map(|message| message.id)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(mail(ViewFilter::All, &talk.key), [ids[2], ids[0]]);
+    assert_eq!(mail(ViewFilter::Unread, &talk.key), [ids[2], ids[0]]);
+    assert!(mail(ViewFilter::All, "not a thread").is_empty());
+    assert!(mail(ViewFilter::All, "").is_empty());
+
+    // All Inboxes groups the same way; a conversation archived away leaves.
+    let all_inboxes = fx
+        .store
+        .sender_groups(ViewSpec::unified_inbox(), GroupBy::Conversation)
+        .recv_blocking()
+        .unwrap();
+    assert_eq!(shown(&all_inboxes), shown(&all));
+}
+
 #[test]
 fn v13_fills_the_sender_domains_and_marks_folders_for_the_backfill() {
     let fx = fixture();
