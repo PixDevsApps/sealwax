@@ -28,10 +28,10 @@ search-escape
 assert-list-count 4
 
 # By sender: one row each, newest first, with their counts.
-assert-action-enabled win.dont-group false
+assert-action-state win.dont-group true
 action win.group-by-sender
-assert-action-enabled win.group-by-sender false
-assert-action-enabled win.dont-group true
+assert-action-state win.group-by-sender true
+assert-action-state win.dont-group false
 assert-list-groups 4
 # No "Loading older messages…" under the groups (from 1.1.0 to 1.1.6 the plain list's row stayed).
 assert-shown list-older false

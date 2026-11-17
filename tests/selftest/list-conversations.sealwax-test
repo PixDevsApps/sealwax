@@ -17,10 +17,21 @@ conversation-add trip
 # reply, is in Sent.
 assert-list-count 6
 
-assert-action-enabled win.group-by-conversation true
+# The chip row's Group by menu: a real click opens it, Don't Group ticked; every item named.
+assert-action-state win.dont-group true
+assert-action-state win.group-by-conversation false
+click list-group-by
+sleep 300
+assert-accessible window
+screenshot $DIR/../../.local/selftest/list-conversations-menu.png
+menu-close list-group-by
 action win.group-by-conversation
-assert-action-enabled win.group-by-conversation false
-assert-action-enabled win.dont-group true
+assert-action-state win.group-by-conversation true
+assert-action-state win.dont-group false
+assert-action-state win.group-by-sender false
+# Choosing the chosen one again leaves it chosen.
+action win.group-by-conversation
+assert-action-state win.group-by-conversation true
 assert-list-groups 2
 assert-list-conversation 0 trip-6 6 2 unstarred
 assert-list-conversation 1 "A message on its own" 1 0

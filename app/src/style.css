@@ -657,6 +657,28 @@ entry.sw-search {
   font-weight: bold;
 }
 
+/* The chip row's Group by menu (issue #4): a chip with an icon, filled while the list is
+   grouped, as a chosen chip is. */
+menubutton.sw-group-by > button {
+  min-height: calc(var(--sw-size-chip) - 2 * var(--sw-control-border-width));
+  min-width: 0;
+  padding: 0 var(--sw-space-sm);
+  border: var(--sw-control-border-width) solid var(--border-color);
+  border-radius: var(--sw-radius-small);
+  background: none;
+  box-shadow: none;
+}
+
+menubutton.sw-group-by > button:hover {
+  background: var(--sw-hover-bg-color);
+}
+
+menubutton.sw-group-by.sw-selected > button {
+  border-color: var(--sw-chip-selected-bg-color);
+  background: var(--sw-chip-selected-bg-color);
+  color: var(--sw-chip-selected-fg-color);
+}
+
 /* Avatars: initials on a tint chosen from the address (sw-avatar-tint-<0..6>). */
 .sw-avatar {
   min-width: var(--sw-size-avatar);

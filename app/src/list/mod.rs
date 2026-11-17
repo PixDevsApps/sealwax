@@ -38,7 +38,7 @@ use crate::window::empty;
 use groups::Groups;
 use gtk4 as gtk;
 use gtk4::prelude::*;
-use gtk4::{gdk, glib};
+use gtk4::{gdk, gio, glib};
 use item::MessageItem;
 pub(crate) use row::Quick;
 use row::{MessageRow, RowContext, SectionHeader};
@@ -255,6 +255,8 @@ struct Inner {
     older_row: gtk::Label,
     /// The line under the groups when there are more than one answer holds.
     groups_capped: gtk::Label,
+    /// The chip row's Group by menu (issue #4), marked while the list is grouped.
+    group_menu: gtk::MenuButton,
     older: RefCell<std::collections::HashMap<FolderId, Older>>,
     /// Group by Sender or Domain (issue #24): the view shows `groups` while nothing is searched.
     group_by: Cell<GroupBy>,
@@ -320,6 +322,8 @@ impl MessageList {
             chip_row.append(&chip);
             chips.push((filter, chip));
         }
+        let group_menu = group_menu();
+        chip_row.append(&group_menu);
         let head = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .spacing(8)
@@ -493,6 +497,7 @@ impl MessageList {
                 day_check: RefCell::new(None),
                 older_row,
                 groups_capped,
+                group_menu,
                 older: RefCell::default(),
                 group_by: Cell::new(GroupBy::None),
                 groups,
@@ -926,6 +931,13 @@ impl MessageList {
         self.inner
             .groups
             .set_conversations(by == GroupBy::Conversation);
+        let menu = &self.inner.group_menu;
+        if by == GroupBy::None {
+            menu.remove_css_class("sw-selected");
+        } else {
+            menu.add_css_class("sw-selected");
+        }
+        menu.set_tooltip_text(Some(group_tooltip(by)));
         self.inner.opened_group.replace(None);
         if self.inner.query.borrow().is_empty() {
             self.reload();
@@ -2816,6 +2828,44 @@ fn extend_keys(keymap: &Keymap) -> Vec<(gdk::Key, i64)> {
                 .collect::<Vec<_>>()
         })
         .collect()
+}
+
+/// The chip row's Group by menu (issue #4): the list's ways of grouping, the one shown ticked
+/// (they are toggles), from the registry's commands.
+fn group_menu() -> gtk::MenuButton {
+    let choices = gio::Menu::new();
+    for (id, label) in [
+        (ActionId::DontGroup, "Don't Group"),
+        (ActionId::GroupByConversation, "Conversation"),
+        (ActionId::GroupBySender, "Sender"),
+        (ActionId::GroupByDomain, "Domain"),
+    ] {
+        choices.append(Some(label), Some(&id.detailed_name()));
+    }
+    let model = gio::Menu::new();
+    model.append_section(Some("Group by"), &choices);
+    let button = gtk::MenuButton::builder()
+        .icon_name("view-list-symbolic")
+        .menu_model(&model)
+        .tooltip_text(group_tooltip(GroupBy::None))
+        .valign(gtk::Align::Center)
+        .hexpand(true)
+        .halign(gtk::Align::End)
+        .build();
+    button.add_css_class("sw-group-by");
+    button.set_widget_name("list-group-by");
+    button.update_property(&[gtk::accessible::Property::Label("Group by")]);
+    button
+}
+
+/// The Group by menu's tooltip: what the list shows.
+fn group_tooltip(by: GroupBy) -> &'static str {
+    match by {
+        GroupBy::None => "Group by: one row per message",
+        GroupBy::Conversation => "Group by: conversation",
+        GroupBy::Sender => "Group by: sender",
+        GroupBy::Domain => "Group by: domain",
+    }
 }
 
 /// The line under groups cut at [`MAX_GROUPS`]: the newest are shown, search finds the rest.

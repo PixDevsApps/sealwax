@@ -1039,28 +1039,43 @@ impl ActionId {
                     &[],
                 )
             },
-            Self::GroupBySender => command(
-                "group-by-sender",
-                "Group by Sender",
-                View,
-                Scope::Window,
-                &[],
-            ),
-            Self::GroupByDomain => command(
-                "group-by-domain",
-                "Group by Domain",
-                View,
-                Scope::Window,
-                &[],
-            ),
-            Self::GroupByConversation => command(
-                "group-by-conversation",
-                "Group by Conversation",
-                View,
-                Scope::Window,
-                &[],
-            ),
-            Self::DontGroup => command("dont-group", "Don't Group", View, Scope::Window, &[]),
+            // The list's ways of grouping (issues #24, #4): toggles, on for the one the list
+            // shows, so the list's Group by menu and the palette tick it. Turning one on turns
+            // the others off; turning the one on off leaves it on.
+            Self::GroupBySender => ActionSpec {
+                kind: ActionKind::Toggle,
+                ..command(
+                    "group-by-sender",
+                    "Group by Sender",
+                    View,
+                    Scope::Window,
+                    &[],
+                )
+            },
+            Self::GroupByDomain => ActionSpec {
+                kind: ActionKind::Toggle,
+                ..command(
+                    "group-by-domain",
+                    "Group by Domain",
+                    View,
+                    Scope::Window,
+                    &[],
+                )
+            },
+            Self::GroupByConversation => ActionSpec {
+                kind: ActionKind::Toggle,
+                ..command(
+                    "group-by-conversation",
+                    "Group by Conversation",
+                    View,
+                    Scope::Window,
+                    &[],
+                )
+            },
+            Self::DontGroup => ActionSpec {
+                kind: ActionKind::Toggle,
+                ..command("dont-group", "Don't Group", View, Scope::Window, &[])
+            },
             Self::ApplyRules => command(
                 "apply-rules",
                 "Apply Rules to This Folder",

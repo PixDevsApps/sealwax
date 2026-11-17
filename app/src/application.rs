@@ -1306,15 +1306,20 @@ impl AppState {
             (ActionId::GroupByConversation, GroupBy::Conversation),
             (ActionId::DontGroup, GroupBy::None),
         ] {
+            // Toggles shown as one choice (the list's Group by menu ticks the one on): turning
+            // one on chooses it; turning the chosen one off leaves it chosen.
             let weak = Rc::downgrade(self);
-            win_actions.connect(id, move || {
-                if let Some(state) = weak.upgrade()
-                    && let Some(list) = state.list()
+            win_actions.connect_toggle(id, by == GroupBy::None, move |on| {
+                let Some(state) = weak.upgrade() else {
+                    return;
+                };
+                if let Some(list) = state.list()
+                    && on
                 {
                     list.set_group_by(by);
                     state.change_layout(|layout| layout.group_by = by);
-                    state.refresh_commands();
                 }
+                state.refresh_commands();
             });
         }
         self.win_actions.replace(Some(win_actions));
@@ -2096,13 +2101,14 @@ impl AppState {
         );
         crate::pins::refresh(self, actions);
         let group_by = list.group_by();
-        actions.set_applies(ActionId::GroupBySender, group_by != GroupBy::Sender);
-        actions.set_applies(ActionId::GroupByDomain, group_by != GroupBy::Domain);
-        actions.set_applies(
-            ActionId::GroupByConversation,
-            group_by != GroupBy::Conversation,
-        );
-        actions.set_applies(ActionId::DontGroup, group_by != GroupBy::None);
+        for (id, by) in [
+            (ActionId::GroupBySender, GroupBy::Sender),
+            (ActionId::GroupByDomain, GroupBy::Domain),
+            (ActionId::GroupByConversation, GroupBy::Conversation),
+            (ActionId::DontGroup, GroupBy::None),
+        ] {
+            actions.set_toggle_state(id, group_by == by);
+        }
     }
 
     /// Shows `notice` as a toast; with `replaces`, it takes the last action's toast's place
@@ -2351,6 +2357,7 @@ impl AppState {
             list.set_group_by(layout.group_by);
         }
         self.layout.replace(Some(layout));
+        self.refresh_commands();
         crate::saved_searches::show(self);
     }
 
