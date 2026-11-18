@@ -104,6 +104,13 @@
   </screenshots>
 
   <releases>
+    <release version="1.6.0" date="2026-11-18" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.0</url>
+      <description>
+        <p>PGP mail is decrypted with your own GnuPG keyring and gpg-agent, and its signatures are checked: a signature is called checked only when your keyring vouches for the sender's key. The decrypted text is never saved or searched.</p>
+        <p>Attached emails, such as a forwarded message or the original inside an Italian certified email (PEC), open in the reader with a way back. A message can be handed to a program of your own with Open With, set up in config.toml.</p>
+      </description>
+    </release>
     <release version="1.5.3" date="2026-11-17" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.5.3</url>
       <description>

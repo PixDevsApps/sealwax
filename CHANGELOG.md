@@ -2,7 +2,7 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.6.0 — 2026-11-18
 
 Read PGP mail with your own GnuPG, open attached emails in the reader, and hand a message to a program of your own.
 
