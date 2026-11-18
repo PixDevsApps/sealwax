@@ -202,6 +202,17 @@ impl Palette {
             .collect()
     }
 
+    /// The titles of the commands shown, best match first.
+    #[cfg(feature = "test-hooks")]
+    pub fn shown_titles(&self) -> Vec<String> {
+        self.inner
+            .shown
+            .borrow()
+            .iter()
+            .map(|item| item.title.clone())
+            .collect()
+    }
+
     /// The search entry: typing, Enter (`activate`) and Escape (`stop-search`) arrive there.
     #[cfg(feature = "test-hooks")]
     pub fn search_entry(&self) -> Option<gtk::SearchEntry> {

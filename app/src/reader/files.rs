@@ -7,8 +7,10 @@
 //!
 //! An attachment opens from its own folder (0700) under `$XDG_RUNTIME_DIR/<app-id>/attachments`
 //! (the cache folder without a runtime folder), as a 0600 file with a safe name and never the
-//! executable bit. The folder is emptied when the next reader starts; the runtime folder is
-//! also emptied at logout.
+//! executable bit; a message handed to an Open With command (`open_with`) is written the same
+//! way under `open-with`. The attachments' folder is emptied whenever a reader starts, the
+//! Open With folder when the first reader of a run does; the runtime folder is also emptied at
+//! logout.
 
 use super::{Inner, Reader};
 use crate::engine_link::{EngineLink, Subscription};
@@ -19,6 +21,7 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use sealwax_domain::message;
 use sealwax_domain::model::{Attachment, MessageId};
+use sealwax_domain::open_with::OpenWith;
 use sealwax_engine::api::{BodyError, Command, Event};
 use sealwax_infrastructure::store::BodyState;
 use sealwax_infrastructure::xdg::ensure_private_dir;
@@ -29,6 +32,7 @@ use std::io::{self, Write};
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 type Waiter = async_channel::Sender<Result<Vec<u8>, BodyError>>;
 type Opener = Rc<dyn Fn(&Path)>;
@@ -77,6 +81,10 @@ pub(super) struct Files {
     parts: RefCell<HashMap<(MessageId, u32), Vec<Waiter>>>,
     originals: RefCell<HashMap<MessageId, Vec<Waiter>>>,
     root: RefCell<PathBuf>,
+    /// Where messages handed to Open With commands are written.
+    pub(super) open_with_root: RefCell<PathBuf>,
+    /// `config.toml`'s `[[open_with]]` entries the reader offers (none in a Flatpak).
+    pub(super) open_with: RefCell<Vec<OpenWith>>,
     opener: RefCell<Option<Opener>>,
     chooser: RefCell<Option<Chooser>>,
     print_target: RefCell<Option<PathBuf>>,
@@ -84,15 +92,25 @@ pub(super) struct Files {
 }
 
 impl Files {
-    /// Empties what an earlier run left in the private folder, off the GTK thread.
+    /// Empties what an earlier run left in the private folders, off the GTK thread: the
+    /// attachments' whenever a reader starts, the Open With folder only for the run's first
+    /// reader, so a window opened again from background mode leaves the files a program may
+    /// still be reading.
     pub(super) fn new(cache: &Path) -> Files {
-        let root = default_root(cache);
-        let stale = root.clone();
+        static OPEN_WITH_EMPTIED: AtomicBool = AtomicBool::new(false);
+        let root = default_root(cache, ATTACHMENTS);
+        let open_with_root = default_root(cache, OPEN_WITH);
+        let mut stale = vec![root.clone()];
+        if !OPEN_WITH_EMPTIED.swap(true, Ordering::Relaxed) {
+            stale.push(open_with_root.clone());
+        }
         gio::spawn_blocking(move || {
-            if let Err(error) = std::fs::remove_dir_all(&stale)
-                && error.kind() != io::ErrorKind::NotFound
-            {
-                tracing::warn!(%error, "reader: opened attachments of an earlier run stayed");
+            for stale in stale {
+                if let Err(error) = std::fs::remove_dir_all(&stale)
+                    && error.kind() != io::ErrorKind::NotFound
+                {
+                    tracing::warn!(%error, "reader: files opened in an earlier run stayed");
+                }
             }
         });
         Files {
@@ -101,6 +119,8 @@ impl Files {
             parts: RefCell::new(HashMap::new()),
             originals: RefCell::new(HashMap::new()),
             root: RefCell::new(root),
+            open_with_root: RefCell::new(open_with_root),
+            open_with: RefCell::new(Vec::new()),
             opener: RefCell::new(None),
             chooser: RefCell::new(None),
             print_target: RefCell::new(None),
@@ -142,15 +162,20 @@ impl Files {
     }
 }
 
-/// `$XDG_RUNTIME_DIR/<app-id>/attachments`, or the cache folder's `attachments`.
-fn default_root(cache: &Path) -> PathBuf {
+/// The private folder opened attachments are written into.
+const ATTACHMENTS: &str = "attachments";
+/// The private folder messages for Open With commands are written into.
+const OPEN_WITH: &str = "open-with";
+
+/// `$XDG_RUNTIME_DIR/<app-id>/<name>`, or the cache folder's `<name>`.
+fn default_root(cache: &Path, name: &str) -> PathBuf {
     let runtime = std::env::var_os("XDG_RUNTIME_DIR")
         .map(PathBuf::from)
         .filter(|dir| dir.is_absolute());
     let application = gio::Application::default().and_then(|app| app.application_id());
     match (runtime, application) {
-        (Some(runtime), Some(id)) => runtime.join(id.as_str()).join("attachments"),
-        _ => cache.join("attachments"),
+        (Some(runtime), Some(id)) => runtime.join(id.as_str()).join(name),
+        _ => cache.join(name),
     }
 }
 
@@ -211,6 +236,13 @@ impl Reader {
     pub fn set_file_opener(&self, root: &Path, opener: impl Fn(&Path) + 'static) {
         self.inner.files.root.replace(root.to_owned());
         self.inner.files.opener.replace(Some(Rc::new(opener)));
+    }
+
+    /// Writes the messages handed to Open With commands under `root`: for tests and headless
+    /// runs, so a check can find them.
+    #[cfg(feature = "test-hooks")]
+    pub fn set_open_with_root(&self, root: &Path) {
+        self.inner.files.open_with_root.replace(root.to_owned());
     }
 
     /// Answers the Save and folder choosers instead of GTK's file dialog (`None` cancels): for
@@ -445,6 +477,16 @@ pub(super) async fn write_private(
     bytes: Vec<u8>,
 ) -> io::Result<PathBuf> {
     let root = inner.files.root.borrow().clone();
+    write_private_in(root, name, bytes).await
+}
+
+/// Writes `bytes` into a new private folder (0700) under `root` (0700) as `name` (0600), off
+/// the GTK thread, and returns the file.
+pub(super) async fn write_private_in(
+    root: PathBuf,
+    name: String,
+    bytes: Vec<u8>,
+) -> io::Result<PathBuf> {
     gio::spawn_blocking(move || -> io::Result<PathBuf> {
         ensure_private_dir(&root)?;
         let folder = root.join(glib::uuid_string_random().as_str());

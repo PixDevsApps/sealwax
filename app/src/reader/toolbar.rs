@@ -4,7 +4,8 @@
 //! command, its keys, and why it doesn't apply when it doesn't; in a Junk folder Move to Junk
 //! is Not Junk. M5 adds Print and a More menu (the approved mock's): Show Original, Save as
 //! .eml, Expand All and Collapse All Messages, Show Images and Always Show Images from This
-//! Sender; each insensitive until its command is built.
+//! Sender; each insensitive until its command is built. The user's Open With commands (issue
+//! #39) follow Save as .eml, one item per `[[open_with]]` in `config.toml`.
 
 use crate::window::panes::{icon, icon_button};
 use gtk4 as gtk;
@@ -40,7 +41,8 @@ const ACTIONS: [(ActionId, &[&str]); 7] = [
 ];
 
 /// The More menu's sections (the approved mock's "Show original, Save as .eml", then M5's
-/// conversation and remote-content commands, Unsubscribe and the pins).
+/// conversation and remote-content commands, Unsubscribe and the pins). The Open With section
+/// goes after [`OPEN_WITH_AFTER`].
 const MORE: [&[ActionId]; 6] = [
     &[ActionId::ForwardAsAttachment],
     &[ActionId::ShowOriginal, ActionId::SaveMessage],
@@ -53,6 +55,9 @@ const MORE: [&[ActionId]; 6] = [
         ActionId::UnpinSender,
     ],
 ];
+
+/// The index in [`MORE`] of the section the Open With commands follow.
+const OPEN_WITH_AFTER: usize = 1;
 
 /// Where the shown message is in its list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +81,8 @@ pub(super) struct Toolbar {
     keymap: RefCell<Keymap>,
     /// Each command's title here and why it doesn't apply, when it doesn't.
     commands: RefCell<HashMap<ActionId, (String, Option<String>)>>,
+    /// The More menu's Open With section; empty without `[[open_with]]` entries.
+    open_with: gio::Menu,
 }
 
 impl Toolbar {
@@ -106,7 +113,8 @@ impl Toolbar {
                 );
             }
         }
-        root.append(&more_button());
+        let open_with = gio::Menu::new();
+        root.append(&more_button(&open_with));
         let position = gtk::Label::builder()
             .hexpand(true)
             .xalign(1.0)
@@ -136,6 +144,7 @@ impl Toolbar {
             on_next: Callbacks::default(),
             keymap: RefCell::new(keymap.clone()),
             commands: RefCell::new(HashMap::new()),
+            open_with,
         });
         for (button, callbacks) in [
             (&toolbar.previous, toolbar.on_previous.clone()),
@@ -174,6 +183,36 @@ impl Toolbar {
             "Next message",
             None,
         )));
+    }
+
+    /// The More menu's Open With items: "Open With" and each title's name, in order, each
+    /// running its `open-with-N` action. No titles, no items.
+    pub(super) fn set_open_with(&self, titles: &[String]) {
+        self.open_with.remove_all();
+        for (index, title) in titles.iter().enumerate() {
+            if let Some(id) = ActionId::open_with(index + 1) {
+                self.open_with
+                    .append(Some(title.as_str()), Some(&id.detailed_name()));
+            }
+        }
+    }
+
+    /// The More menu's Open With items' titles and actions, for checks.
+    #[cfg(feature = "test-hooks")]
+    pub(super) fn open_with_items(&self) -> Vec<(String, String)> {
+        (0..self.open_with.n_items())
+            .filter_map(|index| {
+                let title = self
+                    .open_with
+                    .item_attribute_value(index, gio::MENU_ATTRIBUTE_LABEL, None)?
+                    .get::<String>()?;
+                let action = self
+                    .open_with
+                    .item_attribute_value(index, gio::MENU_ATTRIBUTE_ACTION, None)?
+                    .get::<String>()?;
+                Some((title, action))
+            })
+            .collect()
     }
 
     /// A command's title for the selected messages (Not Junk, Unstar) and why it doesn't apply.
@@ -249,15 +288,18 @@ impl Toolbar {
     }
 }
 
-/// The More menu, bound to the registry's window actions.
-fn more_button() -> gtk::MenuButton {
+/// The More menu, bound to the registry's window actions, with `open_with` as a section.
+fn more_button(open_with: &gio::Menu) -> gtk::MenuButton {
     let menu = gio::Menu::new();
-    for section in MORE {
+    for (index, section) in MORE.into_iter().enumerate() {
         let items = gio::Menu::new();
         for id in section {
             items.append(Some(id.title()), Some(&id.detailed_name()));
         }
         menu.append_section(None, &items);
+        if index == OPEN_WITH_AFTER {
+            menu.append_section(None, open_with);
+        }
     }
     let button = gtk::MenuButton::builder()
         .icon_name("view-more-symbolic")

@@ -9,6 +9,7 @@ use std::ops::Range;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
+use crate::open_with::{self, OpenWith};
 use crate::settings_file::{article, did_you_mean, entries, parse_toml};
 
 pub const CONFIG_FILE: &str = "config.toml";
@@ -139,6 +140,9 @@ pub struct Config {
     pub notifications: Notifications,
     pub background: Background,
     pub reader: ReaderSettings,
+    /// `[[open_with]]`: commands handed a message's original, in the file's order (issue #39,
+    /// ADR-031); empty unless the user writes some.
+    pub open_with: Vec<OpenWith>,
 }
 
 const APPEARANCE_SETTINGS: [&str; 4] = [
@@ -151,13 +155,15 @@ const STORAGE_SETTINGS: [&str; 2] = ["cache_size", "prefetch_days"];
 const NOTIFICATION_SETTINGS: [&str; 2] = ["enabled", "show"];
 const BACKGROUND_SETTINGS: [&str; 1] = ["enabled"];
 const READER_SETTINGS: [&str; 2] = ["conversation_order", "reply"];
-const SECTIONS: [&str; 6] = [
+const OPEN_WITH_SETTINGS: [&str; 2] = ["name", "command"];
+const SECTIONS: [&str; 7] = [
     "appearance",
     "oauth",
     "storage",
     "notifications",
     "background",
     "reader",
+    "open_with",
 ];
 const PROVIDERS: [&str; 1] = ["microsoft"];
 
@@ -175,6 +181,8 @@ fn section_of(name: &str) -> Option<&'static str> {
         Some("[notifications]")
     } else if READER_SETTINGS.contains(&name) {
         Some("[reader]")
+    } else if OPEN_WITH_SETTINGS.contains(&name) {
+        Some("an [[open_with]] table")
     } else {
         None
     }
@@ -513,6 +521,155 @@ impl Reader<'_> {
     }
 }
 
+impl Reader<'_> {
+    /// `[[open_with]]`: every table, each name once, at most [`open_with::MAX_ENTRIES`].
+    fn open_with(&mut self, value: &Spanned<DeValue<'_>>, entries_out: &mut Vec<OpenWith>) {
+        let tables = value.get_ref().as_array().filter(|array| {
+            array
+                .iter()
+                .all(|element| self.text[element.span()].starts_with("[["))
+        });
+        let Some(tables) = tables else {
+            self.error(
+                value.span(),
+                "open_with is written as [[open_with]] tables, one per command",
+            );
+            return;
+        };
+        for element in tables.iter() {
+            let Some(table) = element.get_ref().as_table() else {
+                continue;
+            };
+            let Some(entry) = self.open_with_entry(table, element.span()) else {
+                continue;
+            };
+            if entries_out
+                .iter()
+                .any(|other| open_with::same_name(&other.name, &entry.name))
+            {
+                self.error(
+                    element.span(),
+                    format!(
+                        "another [[open_with]] is named \"{}\"; give each one its own name",
+                        entry.name
+                    ),
+                );
+            } else if entries_out.len() == open_with::MAX_ENTRIES {
+                self.error(
+                    element.span(),
+                    format!(
+                        "Sealwax offers at most {} [[open_with]] commands",
+                        open_with::MAX_ENTRIES
+                    ),
+                );
+            } else {
+                entries_out.push(entry);
+            }
+        }
+    }
+
+    /// One `[[open_with]]` table, or its mistakes.
+    fn open_with_entry(&mut self, table: &DeTable<'_>, span: Range<usize>) -> Option<OpenWith> {
+        let before = self.errors.len();
+        let mut name = None;
+        let mut command = None;
+        for (key, value) in entries(table) {
+            match key.get_ref().as_ref() {
+                "name" => match value.get_ref().as_str() {
+                    Some(text) => match open_with::name_problem(text) {
+                        Some(problem) => self.error(value.span(), problem),
+                        None => name = Some(text.trim().to_owned()),
+                    },
+                    None => self.error(
+                        value.span(),
+                        format!(
+                            "name takes a string in quotes, not {}",
+                            article(value.get_ref().type_str())
+                        ),
+                    ),
+                },
+                "command" => command = self.command(value),
+                other => self.error(
+                    key.span(),
+                    format!(
+                        "unknown setting {other} in [[open_with]]{}",
+                        did_you_mean(other, OPEN_WITH_SETTINGS)
+                    ),
+                ),
+            }
+        }
+        if !table.contains_key("name") {
+            self.error(
+                span.clone(),
+                "[[open_with]] needs a name, such as name = \"Archive\"",
+            );
+        }
+        if !table.contains_key("command") {
+            self.error(
+                span,
+                "[[open_with]] needs a command, such as command = [\"my-archiver\", \"{file}\"]",
+            );
+        }
+        if self.errors.len() > before {
+            return None;
+        }
+        Some(OpenWith {
+            name: name?,
+            command: command?,
+        })
+    }
+
+    /// `command`: a list of strings, the program first, `{file}` in a later one.
+    fn command(&mut self, value: &Spanned<DeValue<'_>>) -> Option<Vec<String>> {
+        let items = match value.get_ref() {
+            DeValue::Array(items) => items,
+            DeValue::String(_) => {
+                self.error(
+                    value.span(),
+                    "command is a list with each argument in its own quotes, such as \
+                     [\"my-archiver\", \"--import\", \"{file}\"]; Sealwax runs it without a \
+                     shell, so it never splits a line into arguments",
+                );
+                return None;
+            }
+            other => {
+                self.error(
+                    value.span(),
+                    format!(
+                        "command is a list of strings in quotes, such as \
+                         [\"my-archiver\", \"{{file}}\"], not {}",
+                        shown(other)
+                    ),
+                );
+                return None;
+            }
+        };
+        let mut command = Vec::with_capacity(items.len());
+        for (index, item) in items.iter().enumerate() {
+            let Some(argument) = item.get_ref().as_str() else {
+                self.error(
+                    item.span(),
+                    format!(
+                        "each item of command is a string in quotes, not {}",
+                        article(item.get_ref().type_str())
+                    ),
+                );
+                return None;
+            };
+            if let Some(problem) = open_with::argument_problem(index, argument) {
+                self.error(item.span(), problem);
+                return None;
+            }
+            command.push(argument.to_owned());
+        }
+        if let Some(problem) = open_with::command_problem(&command) {
+            self.error(value.span(), problem);
+            return None;
+        }
+        Some(command)
+    }
+}
+
 fn whole_number(value: &DeValue<'_>) -> Option<i64> {
     match value {
         DeValue::Integer(integer) => i64::from_str_radix(integer.as_str(), integer.radix()).ok(),
@@ -583,13 +740,20 @@ impl Config {
                         reader.reader(table, &mut config.reader);
                     }
                 }
+                "open_with" => reader.open_with(value, &mut config.open_with),
                 _ => match section_of(name) {
                     Some(section) => reader.error(
                         key.span(),
                         format!("{name} belongs in {section}; put it under that line"),
                     ),
                     None => {
-                        let kind = if value.get_ref().as_table().is_some() {
+                        let tables = value.get_ref().as_array().is_some_and(|array| {
+                            !array.is_empty()
+                                && array
+                                    .iter()
+                                    .all(|element| text[element.span()].starts_with("[["))
+                        });
+                        let kind = if value.get_ref().as_table().is_some() || tables {
                             "section"
                         } else {
                             "setting"
@@ -662,7 +826,15 @@ pub fn default_config_file() -> String {
          # conversation_order = \"oldest-first\"\n\
          # Whom Reply (r, Ctrl+R) answers: \"sender\", or \"all\" to answer everyone the\n\
          # message went to, as Reply All does; Reply to Sender then answers the sender alone.\n\
-         # reply = \"sender\"\n"
+         # reply = \"sender\"\n\
+         \n\
+         # Commands the reader's More menu and the palette offer as \"Open With\" and their name\n\
+         # (not in the Flatpak). Each is given the path of a file holding the message as the\n\
+         # server has it, where \"{{file}}\" is written; it runs without a shell. For each one,\n\
+         # copy these three lines without \"# \" at their start:\n\
+         # [[open_with]]\n\
+         #   name = \"Archive\"\n\
+         #   command = [\"my-archiver\", \"--import\", \"{{file}}\"]\n"
     )
 }
 
@@ -1002,6 +1174,154 @@ mod tests {
         assert_eq!(
             errors("[notification]\n"),
             ["line 1, column 2: unknown section notification; did you mean notifications?"]
+        );
+    }
+
+    #[test]
+    fn open_with_commands_in_the_files_order() {
+        assert!(Config::default().open_with.is_empty());
+        let config = Config::parse(
+            "[[open_with]]\nname = \" Archive \"\ncommand = [\"my-archiver\", \"--import\", \"{file}\"]\n\n\
+             [[open_with]]\nname = \"Summarise\"\ncommand = [\"/opt/bin/sum\", \"--in={file}\"]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            config.open_with,
+            [
+                OpenWith {
+                    name: "Archive".to_owned(),
+                    command: vec!["my-archiver".into(), "--import".into(), "{file}".into()],
+                },
+                OpenWith {
+                    name: "Summarise".to_owned(),
+                    command: vec!["/opt/bin/sum".into(), "--in={file}".into()],
+                },
+            ]
+        );
+        // Other sections around them are read as before.
+        let config = Config::parse(
+            "[reader]\nreply = \"all\"\n[[open_with]]\nname = \"A\"\ncommand = [\"a\", \"{file}\"]\n",
+        )
+        .unwrap();
+        assert_eq!(config.reader.reply, DefaultReply::All);
+        assert_eq!(config.open_with.len(), 1);
+    }
+
+    #[test]
+    fn open_with_mistakes_say_where_they_are() {
+        assert_eq!(
+            errors("[[open_with]]\nname = \"\"\ncommand = [\"a\", \"{file}\"]\n"),
+            [
+                "line 2, column 8: name can't be empty; it is shown as \"Open With\" and the \
+                 name"
+            ]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = 3\ncommand = [\"a\", \"{file}\"]\n"),
+            ["line 2, column 8: name takes a string in quotes, not an integer"]
+        );
+        assert_eq!(
+            errors("[[open_with]]\ncommand = [\"a\", \"{file}\"]\n"),
+            ["line 1, column 1: [[open_with]] needs a name, such as name = \"Archive\""]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\n"),
+            [
+                "line 1, column 1: [[open_with]] needs a command, such as command = \
+                 [\"my-archiver\", \"{file}\"]"
+            ]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\ncommand = []\n"),
+            [
+                "line 3, column 11: command needs at least the program, such as \
+                 [\"my-archiver\", \"{file}\"]"
+            ]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\ncommand = [\"my-archiver\", \"--import\"]\n"),
+            [
+                "line 3, column 11: command has no \"{file}\"; put it where the message's path \
+                 goes, such as [\"my-archiver\", \"{file}\"]"
+            ]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\ncommand = \"my-archiver {file}\"\n"),
+            [
+                "line 3, column 11: command is a list with each argument in its own quotes, such \
+                 as [\"my-archiver\", \"--import\", \"{file}\"]; Sealwax runs it without a \
+                 shell, so it never splits a line into arguments"
+            ]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\ncommand = [\"a\", 7, \"{file}\"]\n"),
+            ["line 3, column 17: each item of command is a string in quotes, not an integer"]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\ncommand = [\"\", \"{file}\"]\n"),
+            [
+                "line 3, column 12: command's first item is the program, and it can't be \
+                 empty"
+            ]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\ncommand = [\"{file}\"]\n"),
+            [
+                "line 3, column 12: command's first item is the program; put \"{file}\" in a \
+                 later item"
+            ]
+        );
+        assert_eq!(
+            errors("[[open_with]]\nname = \"A\"\ncomand = [\"a\", \"{file}\"]\n"),
+            [
+                "line 3, column 1: unknown setting comand in [[open_with]]; did you mean \
+                 command?",
+                "line 1, column 1: [[open_with]] needs a command, such as command = \
+                 [\"my-archiver\", \"{file}\"]"
+            ]
+        );
+        assert_eq!(
+            errors("open_with = [\"a\", \"{file}\"]\n"),
+            ["line 1, column 13: open_with is written as [[open_with]] tables, one per command"]
+        );
+        assert_eq!(
+            errors("[open_with]\nname = \"A\"\n"),
+            ["line 1, column 1: open_with is written as [[open_with]] tables, one per command"]
+        );
+        assert_eq!(
+            errors("command = [\"a\", \"{file}\"]\n"),
+            [
+                "line 1, column 1: command belongs in an [[open_with]] table; put it under that \
+                 line"
+            ]
+        );
+        assert_eq!(
+            errors("[[open-with]]\n"),
+            ["line 1, column 3: unknown section open-with; did you mean open_with?"]
+        );
+    }
+
+    #[test]
+    fn each_open_with_has_its_own_name_and_there_are_at_most_nine() {
+        let entry = |name: &str| {
+            format!("[[open_with]]\nname = \"{name}\"\ncommand = [\"a\", \"{{file}}\"]\n")
+        };
+        let found = errors(&format!("{}{}", entry("Archive"), entry(" archive ")));
+        assert_eq!(
+            found,
+            [
+                "line 4, column 1: another [[open_with]] is named \"archive\"; give each one its \
+                 own name"
+            ]
+        );
+        let nine: String = (1..=open_with::MAX_ENTRIES)
+            .map(|number| entry(&format!("Tool {number}")))
+            .collect();
+        assert_eq!(Config::parse(&nine).unwrap().open_with.len(), 9);
+        let found = errors(&format!("{nine}{}", entry("Tool 10")));
+        assert_eq!(
+            found,
+            ["line 28, column 1: Sealwax offers at most 9 [[open_with]] commands"]
         );
     }
 

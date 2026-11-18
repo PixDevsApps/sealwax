@@ -4,10 +4,11 @@ Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to
 
 ## Not released yet
 
-Read PGP mail with your own GnuPG, and open attached emails in the reader.
+Read PGP mail with your own GnuPG, open attached emails in the reader, and hand a message to a program of your own.
 
 - **PGP mail** ([issue #32](https://github.com/PixDevsApps/sealwax/issues/32), thanks @mlamoure): encrypted messages are decrypted when you open them, with your GnuPG keyring and gpg-agent, so your keys stay where they are (hardware keys too) and passphrases go through pinentry; Sealwax keeps no keys. The decrypted text is never saved, searched or quoted in a reply, and its attachments open and save as usual. Signatures are checked: "Signed by NAME · checked" only when the signature is good, your keyring vouches for the key and it is the sender's; otherwise the line says what's missing, and warns when the message may have been changed. Needs GnuPG installed; the Flatpak can't reach your keyring and reads no PGP. Sending signed or encrypted mail comes in a later release.
 - **Attached emails open in the reader** ([issue #40](https://github.com/PixDevsApps/sealwax/issues/40), thanks @neuromante): **Open** on an attached `.eml` (a message forwarded as an attachment, or the `postacert.eml` of an Italian certified email, PEC) shows it in Sealwax, with its own attachments, under a bar with **Back**; Escape goes back too. It's shown as safely as any message: no scripts, remote images held back.
+- **Open With** ([issue #39](https://github.com/PixDevsApps/sealwax/issues/39), thanks @neuromante): hand the message you're reading to a program of your own, such as a document archive, a script that files the message, or an assistant that summarises it. List each program in `config.toml` as an `[[open_with]]` table with a `name` and a `command`, where `"{file}"` stands for the message's file; **Open With** and the name then appear in the reader's **More** menu and in the palette. The program gets a copy of the message exactly as the server has it, the same file Save as .eml saves, readable by you alone; Sealwax starts it directly, without a shell, and empties the folder the copies are in when it next starts. Nothing is shown until you add one. Not in the Flatpak, whose sandbox can't start programs on your system. The user guide has an example.
 
 ## 1.5.3 — 2026-11-17
 

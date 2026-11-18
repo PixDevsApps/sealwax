@@ -63,6 +63,7 @@ mod message_menu;
 mod monitor;
 mod move_to;
 mod oauth;
+mod open_with;
 mod outbox;
 mod part_cache;
 mod pins;

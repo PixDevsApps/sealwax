@@ -12,7 +12,7 @@
 //! | `files-add NAME…` | Stores the named samples (and the PGP ones, `selftest::pgp`) whole in the first account's Inbox, the first one newest; `files-thread` stores that conversation's four messages (`files-thread-1` … `-4`) |
 //! | `files-show NAME` | Selects NAME's row in the list and waits until the reader shows its conversation |
 //! | `files-add-text NAME` | Stores a sample as a large message's text parts: its attachments and inline parts empty, their sections recorded, `BodyState::Text` |
-//! | `files-hooks` | Opens attachments under `$TMP/files-open` and records them; Save answers `$TMP/files-saved/<name>`, Download all `$TMP/files-folder` |
+//! | `files-hooks` | Opens attachments under `$TMP/files-open` and records them; Save answers `$TMP/files-saved/<name>`, Download all `$TMP/files-folder`; Open With writes under `$TMP/open-with` |
 //! | `files-answer save\|folder PATH\|cancel` | The next answers of the Save or the folder chooser |
 //! | `files-click N open\|save\|cancel\|retry` | A real click on card N's button (scrolled into view first) |
 //! | `files-click download-all\|attached-back\|show-images\|always\|hide [NAME]` | A real click on that button of the selected message's card, or of NAME's |
@@ -38,14 +38,19 @@
 //! | `assert-files toggle NAME BOOL` | The window action NAME's state (a toggle) |
 //! | `assert-files original open\|cut BOOL`, `assert-files original contains\|lacks\|status TEXT` | The Show Original dialog |
 //! | `assert-files pdf PATH TEXT` | PATH is a PDF with at least one page whose text (`pdftotext`) contains TEXT |
+//! | `assert-files open-with-menu TITLES\|none` | The reader's More menu's Open With items, `\|`-separated, each on its `win.open-with-N` in order |
+//! | `assert-files open-with-palette QUERY TITLES\|none` | The palette, QUERY typed, shows these Open With commands (`\|`-separated), best match first |
+//! | `assert-files open-with-link LINK SAMPLE` | LINK is a symbolic link an Open With command made to the file it was handed: a 0600 file named after SAMPLE's subject in a 0700 folder under `$TMP/open-with` (0700), holding SAMPLE's message byte for byte |
 
 use super::script::boolean;
 use super::{Harness, StepResult, blocking, equal, number};
+use crate::palette::Palette;
 use crate::reader::{FileChoice, Reader, original_dialog, samples};
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use sealwax_domain::attachment::eml_file_name;
 use sealwax_domain::message;
 use sealwax_domain::model::{Flags, FolderRole, MessageId};
 use sealwax_infrastructure::ingest::{self, RawMessage};
@@ -413,6 +418,7 @@ async fn add_text(harness: &Harness, name: &str) -> StepResult {
 /// `files-hooks`: the opener and the choosers answer with scratch paths.
 fn install_hooks(harness: &Harness) -> StepResult {
     let reader = reader(harness)?;
+    reader.set_open_with_root(&scratch(harness, "open-with"));
     let hooks = Rc::new(Hooks::default());
     let opened = hooks.opened.clone();
     reader.set_file_opener(&scratch(harness, "files-open"), move |path| {
@@ -826,7 +832,85 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 Err(format!("the PDF's text lacks {wanted:?}"))
             }
         }
+        "open-with-menu" => {
+            let items = reader.open_with_items();
+            for (index, (_, action)) in items.iter().enumerate() {
+                equal(
+                    "the item's action",
+                    action.as_str(),
+                    format!("win.open-with-{}", index + 1).as_str(),
+                )?;
+            }
+            let titles: Vec<String> = items.into_iter().map(|(title, _)| title).collect();
+            equal(
+                "the More menu's Open With items",
+                joined(&titles),
+                arg(1)?.into(),
+            )
+        }
+        "open-with-palette" => {
+            let window = harness.window()?;
+            let keymap = harness
+                .state
+                .preferences()
+                .map(|prefs| prefs.keymap())
+                .unwrap_or_default();
+            let titles = harness.state.command_titles();
+            let palette = Palette::titled(window.window(), &keymap, None, &move |id| {
+                titles
+                    .iter()
+                    .find(|(candidate, _)| *candidate == id)
+                    .map(|(_, title)| title.clone())
+            });
+            palette.set_query(arg(1)?);
+            let shown: Vec<String> = palette
+                .shown_titles()
+                .into_iter()
+                .filter(|title| title.starts_with("Open With"))
+                .collect();
+            equal(
+                "the palette's Open With commands",
+                joined(&shown),
+                arg(2)?.into(),
+            )
+        }
+        "open-with-link" => {
+            let target = std::fs::read_link(arg(1)?)
+                .map_err(|error| format!("{}: {error}", arg(1).unwrap_or_default()))?;
+            let folder = target.parent().ok_or("the file has no folder")?;
+            let root = scratch(harness, "open-with");
+            equal(
+                "the file's folder is in the Open With folder",
+                folder.parent() == Some(root.as_path()),
+                true,
+            )?;
+            let raw = added_raw(arg(2)?)?;
+            let subject = message::parse(&raw).headers.subject;
+            equal(
+                "the file's name",
+                target.file_name().and_then(|name| name.to_str()),
+                Some(eml_file_name(&subject).as_str()),
+            )?;
+            for (what, path, wanted) in [
+                ("the Open With folder's mode", root.as_path(), "700"),
+                ("the file's folder's mode", folder, "700"),
+                ("the file's mode", target.as_path(), "600"),
+            ] {
+                equal(what, format!("{:o}", mode(path)?), wanted.into())?;
+            }
+            let bytes = std::fs::read(&target).map_err(|error| error.to_string())?;
+            equal("the file holds the original", bytes == raw, true)
+        }
         other => Err(format!("no assert-files {other}")),
+    }
+}
+
+/// Titles as a check names them: `|`-separated, or `none`.
+fn joined(titles: &[String]) -> String {
+    if titles.is_empty() {
+        "none".to_owned()
+    } else {
+        titles.join("|")
     }
 }
 

@@ -1,0 +1,79 @@
+# Open With (issue #39, ADR-031) in the app's own reader, against the fake engine: config.toml's
+# [[open_with]] entries in the reader's More menu and the palette, nothing without them; the
+# message's original written as a 0600 file in a 0700 folder under the Open With folder
+# ($TMP/open-with through the reader's hook) and handed to a real command, started without a
+# shell (cp and ln, the path as one argument); a program that isn't there named in a toast; a
+# message stored as its text parts downloaded whole first; a config.toml with a mistake keeps
+# the entries, and an empty one takes them away. Every name, address and message is fictional.
+# Run: tools/headless.sh 35 target/debug/sealwax-selftest --self-test tests/selftest/open-with.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-mark-read-on-open false
+mail-account Files
+files-add attachments newsletter
+files-hooks
+assert-list-count 2
+
+# Without [[open_with]] nothing is offered.
+list-select 0
+wait-until assert-files message attachments
+assert-files open-with-menu none
+assert-files open-with-palette "open with" none
+assert-action-enabled win.open-with-1 false
+
+# Three entries, in the file's order, in the More menu and the palette; no fourth command.
+write-file $TMP/config/sealwax/config.toml "[[open_with]]\nname = \"Copy\"\ncommand = [\"cp\", \"--\", \"{file}\", \"$TMP/open-with-copy.eml\"]\n\n[[open_with]]\nname = \"Link\"\ncommand = [\"ln\", \"-s\", \"--\", \"{file}\", \"$TMP/open-with-link\"]\n\n[[open_with]]\nname = \"Missing\"\ncommand = [\"sealwax-no-such-program\", \"{file}\"]\n"
+wait-until assert-files open-with-menu "Open With Copy|Open With Link|Open With Missing"
+assert-action-enabled win.open-with-1 true
+assert-action-enabled win.open-with-3 true
+assert-action-enabled win.open-with-4 false
+assert-files open-with-palette "open with" "Open With Copy|Open With Link|Open With Missing"
+assert-files open-with-palette "link" "Open With Link"
+assert-labelled
+
+# The command gets the path of a private copy of the original, as one argument.
+action win.open-with-2
+wait-until assert-files open-with-link $TMP/open-with-link attachments
+action win.open-with-1
+wait-until assert-files eml $TMP/open-with-copy.eml attachments
+
+# A program that isn't there: a toast says so in plain words.
+action win.open-with-3
+wait-until assert-toast "Open With Missing didn't start: Sealwax can't find the program “sealwax-no-such-program”; give its full path if it isn't in PATH."
+setup-dismiss-toasts
+
+# Several selected: Open With doesn't apply, as Save as .eml doesn't.
+click-row 1 ctrl
+assert-action-enabled win.open-with-1 false
+assert-action-enabled win.save-message false
+click-row 0
+wait-until assert-files message attachments
+assert-action-enabled win.open-with-1 true
+
+# A message stored as its text parts: its original comes from the server first, never the copy
+# rebuilt from its text parts.
+files-add-text files-large
+assert-list-count 3
+list-select 0
+wait-until assert-files message files-large
+engine-expect none
+action win.open-with-1
+engine-expect fetch-original
+engine-reply original-fetched offline
+wait-until assert-toast "Open With Copy didn't start: the mail server can't be reached."
+setup-dismiss-toasts
+action win.open-with-1
+engine-expect fetch-original
+engine-reply original-fetched ok
+wait-until assert-files eml $TMP/open-with-copy.eml files-large
+
+# A config.toml with a mistake isn't applied: the entries stay. An empty one takes them away.
+write-file $TMP/config/sealwax/config.toml "[[open_with]]\nname = \"Copy\"\n"
+wait-until assert-toast "config.toml not applied: line 1, column 1: [[open_with]] needs a command, such as command = [\"my-archiver\", \"{file}\"]"
+assert-files open-with-menu "Open With Copy|Open With Link|Open With Missing"
+write-file $TMP/config/sealwax/config.toml ""
+wait-until assert-files open-with-menu none
+assert-action-enabled win.open-with-1 false
+assert-files open-with-palette "open with" none

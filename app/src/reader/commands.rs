@@ -17,6 +17,7 @@ pub(crate) fn connect(actions: &ActionSet, reader: &Reader) {
     conversation(actions, reader);
     scrolling(actions, reader);
     files(actions, reader);
+    open_with(actions, reader);
     remote_content(actions, reader);
     quick_reply(actions, reader);
 }
@@ -81,6 +82,23 @@ fn files(actions: &ActionSet, reader: &Reader) {
         actions.connect(id, move || {
             if let Some(inner) = target.upgrade() {
                 run(&Reader { inner });
+            }
+        });
+    }
+}
+
+/// Open With 1 to 9 (issue #39), on the message the reader shows. The app makes one available
+/// for each `[[open_with]]` entry it offers (`crate::open_with`), and, as Save as .eml, applies
+/// it only while the reader shows one message.
+fn open_with(actions: &ActionSet, reader: &Reader) {
+    for number in 1..=sealwax_domain::open_with::MAX_ENTRIES {
+        let Some(id) = ActionId::open_with(number) else {
+            continue;
+        };
+        let target = Rc::downgrade(&reader.inner);
+        actions.connect(id, move || {
+            if let Some(inner) = target.upgrade() {
+                Reader { inner }.open_with(number);
             }
         });
     }

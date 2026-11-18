@@ -23,6 +23,7 @@ pub mod links;
 pub mod mailto;
 pub mod message;
 pub mod model;
+pub mod open_with;
 pub mod percent;
 pub mod pgp;
 pub mod quotes;
