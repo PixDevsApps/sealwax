@@ -10,6 +10,7 @@
 //! with Cancel, or why it failed with Retry. Nothing here runs on the GTK thread but the
 //! widgets: bytes are read, decoded and written on worker threads.
 
+use super::attached;
 use super::files::{self, Failure};
 use super::{Inner, Reader, format};
 use crate::window::panes::icon;
@@ -431,7 +432,14 @@ impl Card {
 
     /// Copies the attachment into a private folder and opens it, unless its content says it
     /// is a program after all.
-    async fn open_from(&self, inner: &Inner, bytes: Vec<u8>) {
+    async fn open_from(&self, inner: &Rc<Inner>, bytes: Vec<u8>) {
+        if attached::is_message(&self.attachment.mime_type) {
+            if inner.open_attached(self.message, bytes, &self.name).await {
+                return;
+            }
+            self.failed("Couldn't read it as a message. Save it to look at it in another program.");
+            return;
+        }
         let (sniffed, bytes) = gio::spawn_blocking(move || {
             let head = &bytes[..bytes.len().min(4096)];
             let (kind, _) = gio::content_type_guess(None::<&str>, head);

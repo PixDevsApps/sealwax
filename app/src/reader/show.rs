@@ -8,11 +8,12 @@ use super::conversation::{
     self, Entry, Fold, Item, Page, collapsed_row, fill_row, fold_row, folds, heading,
     initially_expanded, initially_shown,
 };
+use super::memory::is_attached;
 use super::{Inner, Opened, READY_TIMEOUT, Shown, ShownBody, page, widgets};
 use gtk4 as gtk;
 use gtk4::glib;
 use gtk4::prelude::*;
-use sealwax_domain::model::MessageId;
+use sealwax_domain::model::{FolderRole, MessageId};
 use sealwax_engine::api::BodyError;
 use sealwax_infrastructure::store::{ChangeEvent, Conversation, ConversationMessage};
 use std::collections::HashSet;
@@ -22,15 +23,20 @@ use std::time::{Duration, Instant};
 impl Inner {
     pub(super) async fn load(self: Rc<Self>, id: MessageId, generation: u64) {
         let started = Instant::now();
-        let conversation = match self.store.conversation(id) {
-            Some(reply) => match reply.recv().await {
-                Ok(versioned) => versioned.value,
-                Err(error) => {
-                    tracing::warn!(message = id.0, %error, "reader: the conversation couldn't be read");
-                    None
-                }
-            },
-            None => None,
+        self.memory.forget_content();
+        let conversation = if is_attached(id) {
+            self.memory.attached(id).map(|attached| Conversation {
+                thread: attached.detail.summary.thread,
+                selected: id,
+                messages: vec![ConversationMessage {
+                    summary: attached.detail.summary,
+                    role: FolderRole::Other,
+                    copies: Vec::new(),
+                }],
+                left_out: Vec::new(),
+            })
+        } else {
+            self.read_conversation(id).await
         };
         if self.stale(generation) {
             return;
@@ -49,6 +55,9 @@ impl Inner {
         }
         self.discard_pending();
         let page = self.build_page(generation, &conversation);
+        if let Some(attached) = self.memory.attached(id) {
+            page.root.prepend(&self.attached_bar(id, &attached.name));
+        }
         let expanded: Vec<MessageId> = page
             .items()
             .filter(|item| item.expanded)
@@ -96,6 +105,17 @@ impl Inner {
         }
         self.present(generation, staged, started, fetched, prepared);
         self.settle(early);
+    }
+
+    /// The stored conversation of `id`.
+    async fn read_conversation(&self, id: MessageId) -> Option<Conversation> {
+        match self.store.conversation(id)?.recv().await {
+            Ok(versioned) => versioned.value,
+            Err(error) => {
+                tracing::warn!(message = id.0, %error, "reader: the conversation couldn't be read");
+                None
+            }
+        }
     }
 
     /// The page of `conversation`: the heading, then a row or an expanded card's place for each
@@ -432,6 +452,7 @@ impl Inner {
                 .items_mut()
                 .filter(|item| {
                     !item.opened
+                        && !is_attached(item.id())
                         && item.expanded
                         && item.card.as_ref().is_some_and(|card| card.body.is_shown())
                 })

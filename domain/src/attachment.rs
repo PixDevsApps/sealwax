@@ -236,7 +236,7 @@ fn is_direction_control(c: char) -> bool {
 /// Characters that show nothing: direction marks and controls, zero-width characters, the
 /// soft hyphen, variation selectors, the byte-order mark, interlinear annotation marks and
 /// tags.
-fn is_invisible(c: char) -> bool {
+pub(crate) fn is_invisible(c: char) -> bool {
     matches!(
         c,
         '\u{00AD}'

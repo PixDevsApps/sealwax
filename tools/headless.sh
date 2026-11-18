@@ -57,13 +57,19 @@ fi
 # network session included) lands in the user's home. A command can still set its own.
 xdg="$root/.local/headless-$display"
 mkdir -p "$xdg/config" "$xdg/cache" "$xdg/data" "$xdg/state"
+# An empty keyring of its own, so the reader's GnuPG (ADR-030) never reaches the user's keys or
+# their gpg-agent; its agent is stopped afterwards.
+mkdir -p -m 700 "$xdg/gnupg"
 
 status=0
 env -u WAYLAND_DISPLAY -u DISPLAY -u HYPRLAND_INSTANCE_SIGNATURE \
     GDK_BACKEND=broadway BROADWAY_DISPLAY=":$display" \
     GTK_A11Y=none ADW_DISABLE_PORTAL=1 GSETTINGS_BACKEND=memory GIO_USE_VFS=local \
     XDG_CONFIG_HOME="$xdg/config" XDG_CACHE_HOME="$xdg/cache" \
-    XDG_DATA_HOME="$xdg/data" XDG_STATE_HOME="$xdg/state" \
+    XDG_DATA_HOME="$xdg/data" XDG_STATE_HOME="$xdg/state" GNUPGHOME="$xdg/gnupg" \
     dbus-run-session --config-file="$root/tools/headless-dbus.conf" -- \
     timeout --kill-after=5 "$timeout_s" "$@" || status=$?
+if command -v gpgconf >/dev/null; then
+    GNUPGHOME="$xdg/gnupg" gpgconf --kill all 2>/dev/null || true
+fi
 exit "$status"

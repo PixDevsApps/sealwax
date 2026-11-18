@@ -1,15 +1,19 @@
 //! Turns a stored message into what the reader shows, off the GTK thread: the body (HTML with
 //! its style, remote-image flag and inline parts, plain text with format=flowed joined, or why
-//! it can't be shown), the attachment cards, and whether it is signed (ML-064).
+//! it can't be shown), the attachment cards, and its signature (ML-064). With GnuPG (#32,
+//! ADR-030) encrypted mail is decrypted and PGP signatures are checked; the decrypted content
+//! stays in memory, for the card and its attachments, and is never stored.
 
 use super::engine::{InlinePart, InlineParts};
-use super::protection::Unreadable;
+use super::protection::{Signature, Unreadable};
 use gtk4::glib;
 use sealwax_domain::flowed::{self, Flowed};
 use sealwax_domain::html_scan;
 use sealwax_domain::message;
 use sealwax_domain::model::{Attachment, MessageDetail, MessageId};
-use sealwax_domain::reading::{self, Encryption, InlinePgp, SignatureKind};
+use sealwax_domain::pgp::{self, Decryption, Work};
+use sealwax_domain::reading::{self, Encryption, InlinePgp, Inspection, SignatureKind};
+use sealwax_infrastructure::pgp::Gpg;
 use sealwax_ui_model::theme::BodyStyle;
 use std::collections::HashSet;
 
@@ -32,7 +36,7 @@ pub(super) enum Body {
     Empty,
     /// The store has only the headers; the body comes with sync (M3).
     NotDownloaded,
-    /// Encrypted, or sealed inside an S/MIME signature: none of it is shown.
+    /// Encrypted and not decrypted, or sealed inside an S/MIME signature: none of it is shown.
     Unreadable(Unreadable),
 }
 
@@ -42,29 +46,161 @@ pub(super) struct Prepared {
     /// Attachments to show as cards: everything but the inline parts the HTML shows, the
     /// signatures and PGP/MIME's version part.
     pub attachments: Vec<Attachment>,
-    /// How the message is signed; the signature isn't checked.
-    pub signed: Option<SignatureKind>,
+    pub signature: Option<Signature>,
+    /// The message was encrypted and is shown decrypted.
+    pub decrypted: bool,
+    /// The decrypted MIME content the body and the attachment cards come from: their part
+    /// numbers are its, not the stored message's.
+    pub content: Option<Vec<u8>>,
 }
 
-pub(super) fn prepare(detail: &MessageDetail, raw: Option<&[u8]>) -> Prepared {
+impl Prepared {
+    fn new(body: Body, attachments: Vec<Attachment>, signature: Option<Signature>) -> Prepared {
+        Prepared {
+            body,
+            attachments,
+            signature,
+            decrypted: false,
+            content: None,
+        }
+    }
+
+    pub(super) fn empty() -> Prepared {
+        Prepared::new(Body::Empty, Vec::new(), None)
+    }
+}
+
+/// What the reader shows of `detail`, whose raw message is `raw`; `gpg` decrypts and checks
+/// signatures, and without it encrypted mail shows a notice and signatures stay unchecked.
+pub(super) fn prepare(detail: &MessageDetail, raw: Option<&[u8]>, gpg: Option<&Gpg>) -> Prepared {
     let Some(raw) = raw else {
-        return Prepared {
-            body: if detail.html_parts.is_empty() && detail.text_parts.is_empty() {
+        return Prepared::new(
+            if detail.html_parts.is_empty() && detail.text_parts.is_empty() {
                 Body::Empty
             } else {
                 Body::NotDownloaded
             },
-            attachments: detail.attachments.clone(),
-            signed: None,
-        };
+            detail.attachments.clone(),
+            None,
+        );
     };
     let inspection = reading::inspect(raw);
-    let kept: Vec<Attachment> = detail
+    if inspection.encrypted == Some(Encryption::PgpMime) {
+        return decrypt(detail, raw, &inspection, gpg);
+    }
+    clear(detail, raw, &inspection, gpg)
+}
+
+/// A PGP/MIME message, decrypted and shown from its content.
+fn decrypt(
+    detail: &MessageDetail,
+    raw: &[u8],
+    inspection: &Inspection,
+    gpg: Option<&Gpg>,
+) -> Prepared {
+    let kept = kept(detail, inspection);
+    let unreadable =
+        |why: Unreadable| Prepared::new(Body::Unreadable(why), kept.clone(), None);
+    let Some(gpg) = gpg else {
+        return unreadable(Unreadable::Encrypted(Encryption::PgpMime));
+    };
+    let Some(Work::Decrypt(ciphertext)) = pgp::work(raw) else {
+        return unreadable(Unreadable::DecryptFailed);
+    };
+    let answer = match gpg.decrypt(&ciphertext) {
+        Ok(answer) => answer,
+        Err(error) => {
+            tracing::warn!(%error, "reader: GnuPG couldn't decrypt a message");
+            return unreadable(Unreadable::DecryptFailed);
+        }
+    };
+    match answer.status.decryption {
+        Some(Decryption::Okay) if !answer.output.is_empty() => {}
+        Some(Decryption::NoSecretKey) => return unreadable(Unreadable::NoSecretKey),
+        _ => return unreadable(Unreadable::DecryptFailed),
+    }
+    let content = answer.output;
+    let parsed = message::parse(&content);
+    let inner = MessageDetail {
+        body_kind: parsed.body_kind,
+        text_parts: parsed.text_parts,
+        html_parts: parsed.html_parts,
+        attachments: parsed.attachments,
+        ..detail.clone()
+    };
+    let inner_inspection = reading::inspect(&content);
+    let mut prepared = clear(&inner, &content, &inner_inspection, Some(gpg));
+    if let Some(signature) = &answer.status.signature {
+        prepared.signature = Some(Signature::Checked(verdict(gpg, signature, detail)));
+    }
+    prepared.decrypted = true;
+    prepared.content = Some(content);
+    prepared
+}
+
+/// The attachments `detail` lists, but signatures and PGP/MIME's version part.
+fn kept(detail: &MessageDetail, inspection: &Inspection) -> Vec<Attachment> {
+    detail
         .attachments
         .iter()
         .filter(|attachment| !inspection.hidden.contains(&attachment.part))
         .cloned()
-        .collect();
+        .collect()
+}
+
+/// The sender's address, for a signature's verdict.
+fn sender(detail: &MessageDetail) -> Option<&str> {
+    detail.headers.from.first().map(|from| from.email.as_str())
+}
+
+/// GnuPG's word on a signature, with the key's user IDs read for the sender check.
+fn verdict(gpg: &Gpg, signature: &pgp::SignatureStatus, detail: &MessageDetail) -> pgp::Verdict {
+    let user_ids = match (&signature.outcome, &signature.fingerprint) {
+        (pgp::Outcome::Good, Some(fingerprint)) => gpg.user_ids(fingerprint).unwrap_or_else(|error| {
+            tracing::warn!(%error, "reader: GnuPG couldn't list a signing key");
+            Vec::new()
+        }),
+        _ => Vec::new(),
+    };
+    pgp::verdict(signature, &user_ids, sender(detail))
+}
+
+/// A PGP/MIME signature over the whole message, checked; `None` for other signatures.
+fn check_mime(gpg: Option<&Gpg>, raw: &[u8], detail: &MessageDetail) -> Option<Signature> {
+    let gpg = gpg?;
+    let Some(Work::Verify { signed, signature }) = pgp::work(raw) else {
+        return None;
+    };
+    Some(Signature::Checked(
+        match gpg.verify_detached(&signed, &signature) {
+            Ok(status) => match &status.signature {
+                Some(signature) => verdict(gpg, signature, detail),
+                None => pgp::Verdict::Error,
+            },
+            Err(error) => {
+                tracing::warn!(%error, "reader: GnuPG couldn't check a signature");
+                pgp::Verdict::Error
+            }
+        },
+    ))
+}
+
+/// How a signature the reader doesn't check is shown.
+fn unchecked(kind: SignatureKind, gpg: Option<&Gpg>) -> Signature {
+    Signature::NotChecked {
+        kind,
+        gnupg: gpg.is_some(),
+    }
+}
+
+/// A message that isn't PGP/MIME encrypted (or a decrypted message's content).
+fn clear(
+    detail: &MessageDetail,
+    raw: &[u8],
+    inspection: &Inspection,
+    gpg: Option<&Gpg>,
+) -> Prepared {
+    let kept = kept(detail, inspection);
     let unreadable = match (inspection.encrypted, inspection.signed) {
         (Some(encryption), _) => Some(Unreadable::Encrypted(encryption)),
         (None, Some(SignatureKind::SmimeOpaque))
@@ -75,20 +211,19 @@ pub(super) fn prepare(detail: &MessageDetail, raw: Option<&[u8]>) -> Prepared {
         _ => None,
     };
     if let Some(unreadable) = unreadable {
-        return Prepared {
-            body: Body::Unreadable(unreadable),
-            attachments: kept,
-            signed: None,
-        };
+        return Prepared::new(Body::Unreadable(unreadable), kept, None);
     }
+    let signature = match inspection.signed {
+        Some(SignatureKind::PgpMime) => {
+            check_mime(gpg, raw, detail).or(Some(unchecked(SignatureKind::PgpMime, gpg)))
+        }
+        Some(kind) => Some(unchecked(kind, gpg)),
+        None => None,
+    };
     if !detail.html_parts.is_empty() {
         let html = join(raw, &detail.html_parts, "\n", &[]);
         if html_is_encrypted(&html) {
-            return Prepared {
-                body: Body::Unreadable(Unreadable::Encrypted(Encryption::InlinePgp)),
-                attachments: kept,
-                signed: None,
-            };
+            return inline_encrypted(&message::html_to_text(&html), kept, gpg, detail);
         }
         let referenced = cid_references(&html);
         let parts = inline_parts(detail.summary.id, raw, &kept, &referenced);
@@ -97,8 +232,8 @@ pub(super) fn prepare(detail: &MessageDetail, raw: Option<&[u8]>) -> Prepared {
             .into_iter()
             .filter(|attachment| !shown_inline(attachment, &referenced))
             .collect();
-        return Prepared {
-            body: Body::Html {
+        return Prepared::new(
+            Body::Html {
                 style: if scan.own_colours {
                     BodyStyle::Paper
                 } else {
@@ -109,33 +244,77 @@ pub(super) fn prepare(detail: &MessageDetail, raw: Option<&[u8]>) -> Prepared {
                 html,
             },
             attachments,
-            signed: inspection.signed,
-        };
+            signature,
+        );
     }
     if detail.text_parts.is_empty() {
-        return Prepared {
-            body: Body::Empty,
-            attachments: kept,
-            signed: inspection.signed,
-        };
+        return Prepared::new(Body::Empty, kept, signature);
     }
     let text = join(raw, &detail.text_parts, "\n\n", &inspection.flowed);
-    let (body, signed) = match reading::inline_pgp(&text) {
-        Some(InlinePgp::Encrypted) => (
-            Body::Unreadable(Unreadable::Encrypted(Encryption::InlinePgp)),
-            None,
-        ),
-        Some(InlinePgp::Signed(text)) => (
-            Body::Plain(text),
-            inspection.signed.or(Some(SignatureKind::InlinePgp)),
-        ),
-        None => (Body::Plain(text), inspection.signed),
-    };
-    Prepared {
-        body,
-        attachments: kept,
-        signed,
+    match reading::inline_pgp(&text) {
+        Some(InlinePgp::Encrypted) => inline_encrypted(&text, kept, gpg, detail),
+        Some(InlinePgp::Signed(shown)) => {
+            let signature = signature.or_else(|| Some(inline_signed(&text, gpg, detail)));
+            Prepared::new(Body::Plain(shown), kept, signature)
+        }
+        None => Prepared::new(Body::Plain(text), kept, signature),
     }
+}
+
+/// A clear-signed text's signature, checked when GnuPG is there.
+fn inline_signed(text: &str, gpg: Option<&Gpg>, detail: &MessageDetail) -> Signature {
+    let (Some(gpg), Some(pgp::Inline::Signed(block))) = (gpg, pgp::inline(text)) else {
+        return unchecked(SignatureKind::InlinePgp, gpg);
+    };
+    Signature::Checked(match gpg.verify_inline(block.as_bytes()) {
+        Ok(status) => match &status.signature {
+            Some(signature) => verdict(gpg, signature, detail),
+            None => pgp::Verdict::Error,
+        },
+        Err(error) => {
+            tracing::warn!(%error, "reader: GnuPG couldn't check a signature");
+            pgp::Verdict::Error
+        }
+    })
+}
+
+/// A text with an inline PGP message: its decrypted text, or why it can't be shown.
+fn inline_encrypted(
+    text: &str,
+    kept: Vec<Attachment>,
+    gpg: Option<&Gpg>,
+    detail: &MessageDetail,
+) -> Prepared {
+    let unreadable = |why: Unreadable, kept: Vec<Attachment>| {
+        Prepared::new(Body::Unreadable(why), kept, None)
+    };
+    let (Some(gpg), Some(pgp::Inline::Encrypted(block))) = (gpg, pgp::inline(text)) else {
+        return unreadable(Unreadable::Encrypted(Encryption::InlinePgp), kept);
+    };
+    let answer = match gpg.decrypt(block.as_bytes()) {
+        Ok(answer) => answer,
+        Err(error) => {
+            tracing::warn!(%error, "reader: GnuPG couldn't decrypt a message");
+            return unreadable(Unreadable::DecryptFailed, kept);
+        }
+    };
+    match answer.status.decryption {
+        Some(Decryption::Okay) => {}
+        Some(Decryption::NoSecretKey) => return unreadable(Unreadable::NoSecretKey, kept),
+        _ => return unreadable(Unreadable::DecryptFailed, kept),
+    }
+    let signature = answer
+        .status
+        .signature
+        .as_ref()
+        .map(|signature| Signature::Checked(verdict(gpg, signature, detail)));
+    let mut prepared = Prepared::new(
+        Body::Plain(String::from_utf8_lossy(&answer.output).into_owned()),
+        kept,
+        signature,
+    );
+    prepared.decrypted = true;
+    prepared
 }
 
 /// The text of the body parts at `indexes`, in order, format=flowed parts joined.
@@ -294,7 +473,7 @@ mod tests {
                    Content-Transfer-Encoding: base64\r\n\r\n\r\n--r--\r\n";
         let detail = detail(raw.as_bytes());
         assert_eq!(detail.attachments.len(), 1, "the image is a part");
-        let prepared = prepare(&detail, Some(raw.as_bytes()));
+        let prepared = prepare(&detail, Some(raw.as_bytes()), None);
         let Body::Html { parts, .. } = prepared.body else {
             panic!("not HTML");
         };
@@ -317,7 +496,7 @@ mod tests {
                        Content-Type: text/plain; charset=utf-8; format=flowed\n\n\
                        The cabin sleeps six, so there is \nroom for every\nfriend.\n\n> quoted \n> on two\n",
         );
-        let prepared = prepare(&detail(&raw), Some(&raw));
+        let prepared = prepare(&detail(&raw), Some(&raw), None);
         assert!(
             matches!(&prepared.body, Body::Plain(text)
                 if text == "The cabin sleeps six, so there is room for every\nfriend.\n\n> quoted on two"),
@@ -335,7 +514,7 @@ mod tests {
             --e\nContent-Type: application/octet-stream; name=\"encrypted.asc\"\n\n\
             -----BEGIN PGP MESSAGE-----\n\nhQEMA0lv\n-----END PGP MESSAGE-----\n--e--\n",
         );
-        let prepared = prepare(&detail(&pgp_mime), Some(&pgp_mime));
+        let prepared = prepare(&detail(&pgp_mime), Some(&pgp_mime), None);
         assert!(matches!(
             prepared.body,
             Body::Unreadable(Unreadable::Encrypted(Encryption::PgpMime))
@@ -350,7 +529,7 @@ mod tests {
             "From: Ada <ada@example.com>\nSubject: x\nContent-Type: text/plain\n\n\
             Hi\n-----BEGIN PGP MESSAGE-----\n\nhQEMA0lv\n-----END PGP MESSAGE-----\n",
         );
-        let prepared = prepare(&detail(&inline), Some(&inline));
+        let prepared = prepare(&detail(&inline), Some(&inline), None);
         assert!(matches!(
             prepared.body,
             Body::Unreadable(Unreadable::Encrypted(Encryption::InlinePgp))
@@ -359,14 +538,14 @@ mod tests {
             "From: Ada <ada@example.com>\nSubject: x\nContent-Type: text/html\n\n\
             <pre>-----BEGIN PGP MESSAGE-----\n\nhQEMA0lv\n-----END PGP MESSAGE-----</pre>\n",
         );
-        let prepared = prepare(&detail(&html), Some(&html));
+        let prepared = prepare(&detail(&html), Some(&html), None);
         assert!(matches!(prepared.body, Body::Unreadable(_)));
         let smime = raw(
             "From: Ada <ada@example.com>\nSubject: x\nMIME-Version: 1.0\n\
             Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name=smime.p7m\n\
             Content-Transfer-Encoding: base64\n\nMIAGCSqGSIb3DQEHA6CAMIACAQAxggE=\n",
         );
-        let prepared = prepare(&detail(&smime), Some(&smime));
+        let prepared = prepare(&detail(&smime), Some(&smime), None);
         assert!(matches!(
             prepared.body,
             Body::Unreadable(Unreadable::Encrypted(Encryption::Smime))
@@ -376,7 +555,7 @@ mod tests {
             Content-Type: application/pkcs7-mime; smime-type=signed-data; name=smime.p7m\n\
             Content-Transfer-Encoding: base64\n\nMIAGCSqGSIb3DQEHA6CAMIACAQAxggE=\n",
         );
-        let prepared = prepare(&detail(&opaque), Some(&opaque));
+        let prepared = prepare(&detail(&opaque), Some(&opaque), None);
         assert!(matches!(
             prepared.body,
             Body::Unreadable(Unreadable::SignedOpaque)
@@ -391,25 +570,37 @@ mod tests {
             --s\nContent-Type: text/plain\n\nThe minutes.\n\
             --s\nContent-Type: application/pgp-signature; name=\"signature.asc\"\n\nsig\n--s--\n",
         );
-        let prepared = prepare(&detail(&signed), Some(&signed));
+        let prepared = prepare(&detail(&signed), Some(&signed), None);
         assert!(matches!(&prepared.body, Body::Plain(text) if text.trim() == "The minutes."));
         assert!(prepared.attachments.is_empty());
-        assert_eq!(prepared.signed, Some(SignatureKind::PgpMime));
+        assert_eq!(
+            prepared.signature,
+            Some(Signature::NotChecked {
+                kind: SignatureKind::PgpMime,
+                gnupg: false
+            })
+        );
         let clear = raw(
             "From: Ada <ada@example.com>\nSubject: x\nContent-Type: text/plain\n\n\
             -----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nMeeting moved.\n\
             -----BEGIN PGP SIGNATURE-----\n\niQEz\n-----END PGP SIGNATURE-----\n",
         );
-        let prepared = prepare(&detail(&clear), Some(&clear));
+        let prepared = prepare(&detail(&clear), Some(&clear), None);
         assert!(matches!(&prepared.body, Body::Plain(text) if text == "Meeting moved."));
-        assert_eq!(prepared.signed, Some(SignatureKind::InlinePgp));
+        assert_eq!(
+            prepared.signature,
+            Some(Signature::NotChecked {
+                kind: SignatureKind::InlinePgp,
+                gnupg: false
+            })
+        );
     }
 
     #[cfg(feature = "test-hooks")]
     #[test]
     fn html_with_an_inline_image_keeps_it_out_of_the_cards() {
         let raw = sample("cid");
-        let prepared = prepare(&detail(&raw), Some(&raw));
+        let prepared = prepare(&detail(&raw), Some(&raw), None);
         let Body::Html {
             style,
             remote_images,
@@ -433,7 +624,7 @@ mod tests {
     #[test]
     fn newsletters_go_on_paper_and_flag_remote_images() {
         let raw = sample("newsletter");
-        let prepared = prepare(&detail(&raw), Some(&raw));
+        let prepared = prepare(&detail(&raw), Some(&raw), None);
         let Body::Html {
             style,
             remote_images,
@@ -452,7 +643,7 @@ mod tests {
         let raw = sample("attachments");
         let detail = detail(&raw);
         assert_eq!(detail.body_kind, BodyKind::Plain);
-        let prepared = prepare(&detail, Some(&raw));
+        let prepared = prepare(&detail, Some(&raw), None);
         assert!(matches!(&prepared.body, Body::Plain(text) if text.contains("Attached is")));
         assert_eq!(prepared.attachments.len(), 3);
     }
@@ -461,10 +652,10 @@ mod tests {
     #[test]
     fn alternatives_show_the_html_and_latin1_is_decoded() {
         let raw = sample("simple");
-        let prepared = prepare(&detail(&raw), Some(&raw));
+        let prepared = prepare(&detail(&raw), Some(&raw), None);
         assert!(matches!(prepared.body, Body::Html { .. }));
         let raw = sample("latin1");
-        let prepared = prepare(&detail(&raw), Some(&raw));
+        let prepared = prepare(&detail(&raw), Some(&raw), None);
         assert!(matches!(&prepared.body, Body::Html { html, .. } if html.contains("Kåre")));
     }
 
@@ -472,13 +663,133 @@ mod tests {
     #[test]
     fn without_the_raw_message_nothing_is_parsed() {
         let raw = sample("plain");
-        let prepared = prepare(&detail(&raw), None);
+        let prepared = prepare(&detail(&raw), None, None);
         assert!(matches!(prepared.body, Body::NotDownloaded));
         let empty = MessageDetail {
             text_parts: Vec::new(),
             html_parts: Vec::new(),
             ..detail(&raw)
         };
-        assert!(matches!(prepare(&empty, None).body, Body::Empty));
+        assert!(matches!(prepare(&empty, None, None).body, Body::Empty));
+    }
+
+    /// A throwaway keyring with Ada's key (no passphrase), or `None` without GnuPG.
+    fn keyring() -> Option<(std::path::PathBuf, Gpg)> {
+        let program = std::env::split_paths(&std::env::var_os("PATH")?)
+            .map(|folder| folder.join("gpg"))
+            .find(|path| path.is_file())?;
+        let home = std::path::PathBuf::from(format!(
+            "/tmp/sw-{}-{}",
+            std::process::id(),
+            glib::random_int()
+        ));
+        std::fs::create_dir_all(&home).ok()?;
+        let gpg = |arguments: &[&str], input: &[u8]| -> Vec<u8> {
+            use std::io::Write;
+            let mut child = std::process::Command::new(&program)
+                .env("GNUPGHOME", &home)
+                .args(["--batch", "--yes", "--quiet", "--no-tty"])
+                .args(arguments)
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::piped())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap_or_else(|error| panic!("gpg: {error}"));
+            if let Some(mut stdin) = child.stdin.take() {
+                let _ = stdin.write_all(input);
+            }
+            child
+                .wait_with_output()
+                .map(|output| output.stdout)
+                .unwrap_or_default()
+        };
+        gpg(
+            &[
+                "--passphrase",
+                "",
+                "--quick-gen-key",
+                "Ada <ada@example.com>",
+                "future-default",
+                "default",
+                "never",
+            ],
+            b"",
+        );
+        let reader = Gpg::new(program.clone(), Some(home.clone()), &home.join("scratch"));
+        ENCRYPTED.with(|cell| {
+            cell.replace(gpg(
+                &[
+                    "--local-user",
+                    "ada@example.com",
+                    "--recipient",
+                    "ada@example.com",
+                    "--armor",
+                    "--sign",
+                    "--encrypt",
+                ],
+                CONTENT.as_bytes(),
+            ))
+        });
+        Some((home, reader))
+    }
+
+    thread_local! {
+        static ENCRYPTED: std::cell::RefCell<Vec<u8>> = const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    const CONTENT: &str = "Content-Type: multipart/mixed; boundary=\"m\"\r\n\r\n\
+        --m\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThe original, decrypted.\r\n\
+        --m\r\nContent-Type: application/pdf; name=\"report.pdf\"\r\n\
+        Content-Disposition: attachment; filename=\"report.pdf\"\r\n\
+        Content-Transfer-Encoding: base64\r\n\r\nJVBERi0xLjQK\r\n--m--\r\n";
+
+    #[test]
+    fn encrypted_mail_is_decrypted_with_its_attachments_and_signature() {
+        let Some((home, gpg)) = keyring() else {
+            eprintln!("GnuPG isn't installed: skipped");
+            return;
+        };
+        let ciphertext = ENCRYPTED.with(|cell| cell.borrow().clone());
+        let mut raw = b"From: Ada <ada@example.com>\r\nSubject: Secret\r\nMIME-Version: 1.0\r\n\
+            Content-Type: multipart/encrypted; protocol=\"application/pgp-encrypted\"; boundary=\"e\"\r\n\r\n\
+            --e\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n\r\n\
+            --e\r\nContent-Type: application/octet-stream\r\n\r\n"
+            .to_vec();
+        raw.extend_from_slice(&ciphertext);
+        raw.extend_from_slice(b"\r\n--e--\r\n");
+        let prepared = prepare(&detail(&raw), Some(&raw), Some(&gpg));
+        let _ = std::process::Command::new("gpgconf")
+            .env("GNUPGHOME", &home)
+            .args(["--kill", "all"])
+            .status();
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(
+            matches!(&prepared.body, Body::Plain(text) if text.trim() == "The original, decrypted."),
+            "{:?}",
+            prepared.body
+        );
+        assert!(prepared.decrypted);
+        let names: Vec<_> = prepared
+            .attachments
+            .iter()
+            .map(|card| card.name.as_deref())
+            .collect();
+        assert_eq!(names, [Some("report.pdf")]);
+        let content = prepared.content.unwrap_or_default();
+        let part = prepared.attachments[0].part;
+        assert_eq!(
+            message::part(&content, part).map(|part| part.data),
+            Some(b"%PDF-1.4\n".to_vec()),
+            "the card's part is read from the decrypted content"
+        );
+        assert!(matches!(
+            prepared.signature,
+            Some(Signature::Checked(pgp::Verdict::Checked { .. }))
+        ));
+        let without = prepare(&detail(&raw), Some(&raw), None);
+        assert!(matches!(
+            without.body,
+            Body::Unreadable(Unreadable::Encrypted(Encryption::PgpMime))
+        ));
     }
 }

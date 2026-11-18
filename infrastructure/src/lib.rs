@@ -11,6 +11,7 @@ pub mod logging;
 #[cfg(feature = "test-support")]
 pub mod loopback;
 pub mod omarchy;
+pub mod pgp;
 pub mod rules;
 pub mod sandbox;
 pub mod settings_files;

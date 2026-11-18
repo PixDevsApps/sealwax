@@ -18,6 +18,7 @@ mod mail;
 mod notify;
 mod outbox;
 mod perf;
+mod pgp;
 mod probe;
 mod processes;
 mod reader;

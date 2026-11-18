@@ -185,6 +185,12 @@ pub(crate) fn show(state: &Rc<AppState>, key: &str) {
 /// Leaves the reader for the list: the select mode ends as Escape ends it there, and the
 /// list, shown first when one pane fits, takes the keyboard focus.
 fn back_to_list(state: &Rc<AppState>) {
+    if state
+        .reader()
+        .is_some_and(|reader| reader.back_from_attached())
+    {
+        return;
+    }
     let (Some(window), Some(list)) = (state.window(), state.list()) else {
         return;
     };

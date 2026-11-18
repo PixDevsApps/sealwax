@@ -215,6 +215,15 @@ fn part_text(part: &Part, inline: bool) -> String {
         Some(name) => format!("{}; name=\"{name}\"", part.mime_type),
         None => part.mime_type.clone(),
     };
+    // RFC 2046 §5.2.1: an attached message is never base64.
+    if part.mime_type == "message/rfc822" {
+        return leaf(
+            &content_type,
+            "8bit",
+            &String::from_utf8_lossy(&part.data),
+            &extra,
+        );
+    }
     leaf(&content_type, "base64", &base64_lines(&part.data), &extra)
 }
 
@@ -639,11 +648,14 @@ pub fn messages(now: i64) -> Vec<(&'static str, Vec<u8>)> {
 /// attachments the desktop must never open, one whose content is a script though its name
 /// says text, a second message from the remote sample's sender, and a message with
 /// attachments that the self-test stores as its text parts, as a large one is.
-pub const FILES_NAMES: [&str; 4] = [
+pub const FILES_NAMES: [&str; 7] = [
     "files-danger",
     "files-sniffed",
     "files-remote-again",
     "files-large",
+    "files-pec",
+    "files-forwarded",
+    "files-not-a-message",
 ];
 
 /// A files sample by name, dated `date`; also any of [`NAMES`].
@@ -715,6 +727,77 @@ pub fn files_draft(name: &str, date: i64) -> Option<Draft> {
                  once online.</p><p><img src=\"{REMOTE_ORIGIN}/library/due.png\" width=\"120\" \
                  height=\"80\" alt=\"Library card\"></p><p>Aker Library</p>"
             ));
+            draft
+        }
+        // An Italian certified mail (PEC) envelope (#40): the original message, with a PDF,
+        // inside `postacert.eml`.
+        "files-pec" => {
+            let mut original = Draft::new(
+                ("Studio Rossi", "studio@rossi.example.test"),
+                "Contratto di locazione",
+                date - 600,
+                "files-pec-original",
+            );
+            original.text = Some(
+                "Buongiorno,\n\nin allegato il contratto firmato.\n\nStudio Rossi\n".into(),
+            );
+            original.attachments = vec![Part::attachment(
+                "contratto.pdf",
+                "application/pdf",
+                filler(b"%PDF-1.4\n", 18_000),
+            )];
+            let mut draft = Draft::new(
+                ("Posta Certificata", "posta-certificata@pec.example.test"),
+                "POSTA CERTIFICATA: Contratto di locazione",
+                date,
+                "files-pec",
+            );
+            draft.text = Some(
+                "Messaggio di posta certificata.\n\nIl messaggio originale è incluso in \
+                 allegato.\n"
+                    .into(),
+            );
+            draft.attachments = vec![
+                Part::attachment(
+                    "daticert.xml",
+                    "application/xml",
+                    b"<?xml version=\"1.0\"?><postacert tipo=\"posta-certificata\"/>\n".to_vec(),
+                ),
+                Part::attachment("postacert.eml", "message/rfc822", original.render()),
+            ];
+            draft
+        }
+        // A message forwarded as an attachment, whose HTML has a remote image (#40).
+        "files-forwarded" => {
+            let inner = draft("remote", date - 3_600).render();
+            let mut draft = Draft::new(
+                ("Jonas Lie", "jonas@example.test"),
+                "Fwd: Your reservation is ready",
+                date,
+                "files-forwarded",
+            );
+            draft.text = Some("See the one below.\n\nJonas\n".into());
+            draft.attachments = vec![Part::attachment(
+                "Your reservation is ready.eml",
+                "message/rfc822",
+                inner,
+            )];
+            draft
+        }
+        // An attached message that isn't one (#40): the card says so.
+        "files-not-a-message" => {
+            let mut draft = Draft::new(
+                ("Jonas Lie", "jonas@example.test"),
+                "A broken forward",
+                date,
+                "files-not-a-message",
+            );
+            draft.text = Some("This one didn't come through.\n".into());
+            draft.attachments = vec![Part::attachment(
+                "broken.eml",
+                "message/rfc822",
+                b"\x00\x01 no header here".to_vec(),
+            )];
             draft
         }
         "files-large" => {

@@ -9,21 +9,24 @@
 //!
 //! | Command | What it does |
 //! | --- | --- |
-//! | `files-add NAME…` | Stores the named samples whole in the first account's Inbox, the first one newest; `files-thread` stores that conversation's four messages (`files-thread-1` … `-4`) |
+//! | `files-add NAME…` | Stores the named samples (and the PGP ones, `selftest::pgp`) whole in the first account's Inbox, the first one newest; `files-thread` stores that conversation's four messages (`files-thread-1` … `-4`) |
 //! | `files-show NAME` | Selects NAME's row in the list and waits until the reader shows its conversation |
 //! | `files-add-text NAME` | Stores a sample as a large message's text parts: its attachments and inline parts empty, their sections recorded, `BodyState::Text` |
 //! | `files-hooks` | Opens attachments under `$TMP/files-open` and records them; Save answers `$TMP/files-saved/<name>`, Download all `$TMP/files-folder` |
 //! | `files-answer save\|folder PATH\|cancel` | The next answers of the Save or the folder chooser |
 //! | `files-click N open\|save\|cancel\|retry` | A real click on card N's button (scrolled into view first) |
-//! | `files-click download-all\|show-images\|always\|hide [NAME]` | A real click on that button of the selected message's card, or of NAME's |
+//! | `files-click download-all\|attached-back\|show-images\|always\|hide [NAME]` | A real click on that button of the selected message's card, or of NAME's |
 //! | `files-click original-save\|original-save-rest\|original-retry\|original-close` | A real click on that button of the Show Original dialog |
 //! | `files-print PATH` | Print through the registry, into a PDF at PATH; waits until it is written |
 //! | `assert-files message NAME` | The reader's selected message is the sample NAME |
 //! | `assert-files cards N` | The selected message has N attachment cards |
 //! | `assert-files card N name\|size\|danger\|open\|busy\|failure\|warning VALUE` | What card N shows (`failure`, `warning`: its text contains VALUE; `failure none`) |
 //! | `assert-files opened N` | N attachments were handed to the opener |
+//! | `assert-files shows\|lacks TEXT` | The reader's labels and text views hold TEXT, or don't |
+//! | `assert-files opened-bytes TEXT` | The last opened file holds TEXT (`\n` for a line break) |
+//! | `assert-files attached BOOL`, `assert-files attached-name NAME` | The reader shows an attached message (#40), and its bar names NAME |
 //! | `assert-files opened-file NAME SAMPLE INDEX` | The last one: a 0600 file named NAME in a 0700 folder holding the sample's attachment INDEX |
-//! | `assert-files saved PATH SAMPLE INDEX` | PATH holds the sample's attachment INDEX |
+//! | `assert-files saved PATH SAMPLE INDEX` | PATH holds the sample's attachment INDEX (`SAMPLE/N`: of the message attached as its attachment N) |
 //! | `assert-files eml PATH SAMPLE` | PATH holds the sample's message byte for byte |
 //! | `assert-files folder N` | The Download all folder holds N files |
 //! | `assert-files missing PATH` | Nothing was written at PATH |
@@ -115,6 +118,9 @@ pub(super) fn original_bytes(message: MessageId) -> Option<Vec<u8>> {
 }
 
 fn sample_raw(name: &str, date: i64) -> Result<Vec<u8>, String> {
+    if super::pgp::NAMES.contains(&name) {
+        return super::pgp::sample(name);
+    }
     samples::files_draft(name, date)
         .map(|draft| draft.render())
         .ok_or_else(|| format!("no sample {name}"))
@@ -144,9 +150,40 @@ fn added_raw(name: &str) -> Result<Vec<u8>, String> {
         .ok_or_else(|| format!("files-add {name} first"))
 }
 
-/// The decoded bytes of attachment `index` (0 for the first) of a stored sample.
+/// Every label's and text view's text under `root`, one per line.
+fn widget_text(root: &gtk::Widget) -> String {
+    let mut out = Vec::new();
+    let mut stack = vec![root.clone()];
+    while let Some(widget) = stack.pop() {
+        if !widget.is_visible() {
+            continue;
+        }
+        if let Some(label) = widget.downcast_ref::<gtk::Label>() {
+            out.push(label.text().to_string());
+        } else if let Some(view) = widget.downcast_ref::<gtk::TextView>() {
+            let buffer = view.buffer();
+            out.push(
+                buffer
+                    .text(&buffer.start_iter(), &buffer.end_iter(), false)
+                    .to_string(),
+            );
+        }
+        let mut child = widget.last_child();
+        while let Some(next) = child {
+            child = next.prev_sibling();
+            stack.push(next);
+        }
+    }
+    out.join("\n")
+}
+
+/// The decoded bytes of attachment `index` (0 for the first) of a stored sample; `NAME/N` names
+/// the message attached as the sample's attachment N (#40).
 fn attachment_bytes(name: &str, index: &str) -> Result<Vec<u8>, String> {
-    let raw = added_raw(name)?;
+    let raw = match name.split_once('/') {
+        Some((outer, attached)) => attachment_bytes(outer, attached)?,
+        None => added_raw(name)?,
+    };
     let index = number(index)?;
     let parsed = message::parse(&raw);
     let attachment = parsed
@@ -453,6 +490,9 @@ async fn click(harness: &Harness, args: &[String]) -> StepResult {
         _ => None,
     };
     let widget = match (args[0].as_str(), args.get(1).map(String::as_str)) {
+        ("attached-back", None) => {
+            find(&reader.widget(), "reader-attached-back").ok_or("no attached message's Back")?
+        }
         (which, of) if remote(which).is_some() => {
             let name = remote(which).unwrap_or_default();
             find(&card(&reader, of)?, name)
@@ -556,6 +596,43 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
             }
         }
         "opened" => equal("opened", hooks()?.opened.borrow().len(), number(arg(1)?)?),
+        "shows" | "lacks" => {
+            let text = widget_text(&reader.widget());
+            let wanted = args[0] == "shows";
+            if text.contains(arg(1)?) == wanted {
+                Ok(())
+            } else {
+                Err(format!(
+                    "the reader {} {:?}; it shows {text:?}",
+                    if wanted { "lacks" } else { "shows" },
+                    arg(1)?
+                ))
+            }
+        }
+        "opened-bytes" => {
+            let path = hooks()?
+                .opened
+                .borrow()
+                .last()
+                .cloned()
+                .ok_or("nothing was opened")?;
+            let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+            equal(
+                "the opened bytes",
+                String::from_utf8_lossy(&bytes).into_owned(),
+                arg(1)?.replace("\\n", "\n"),
+            )
+        }
+        "attached" => equal(
+            "an attached message shown",
+            reader.attached_name().is_some(),
+            boolean(arg(1)?)?,
+        ),
+        "attached-name" => equal(
+            "the attached message's name",
+            reader.attached_name().as_deref(),
+            Some(arg(1)?),
+        ),
         "opened-file" => {
             let path = hooks()?
                 .opened

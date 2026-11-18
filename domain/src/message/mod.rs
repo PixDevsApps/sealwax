@@ -86,6 +86,22 @@ fn parse_message(raw: &[u8]) -> ParsedMessage {
     }
 }
 
+/// Whether `raw` reads as a message: its header has a From, To, Subject, Date or Message-ID.
+pub fn is_message(raw: &[u8]) -> bool {
+    catch_unwind(AssertUnwindSafe(|| {
+        MessageParser::default()
+            .parse_headers(raw)
+            .is_some_and(|message| {
+                message.from().is_some()
+                    || message.to().is_some()
+                    || message.subject().is_some()
+                    || message.date().is_some()
+                    || message.message_id().is_some()
+            })
+    }))
+    .unwrap_or(false)
+}
+
 /// One header field as rules read it (ADR-020): the name in lower case, the value unfolded and
 /// RFC 2047-decoded, and for an address field each address as `local@domain`.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -441,3 +457,15 @@ fn attachments(message: &Message<'_>) -> Vec<Attachment> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod is_message_tests {
+    #[test]
+    fn a_message_needs_a_header_a_message_has() {
+        assert!(super::is_message(b"From: a@example.com\r\n\r\nHi\r\n"));
+        assert!(super::is_message(b"Subject: x\n\nHi\n"));
+        assert!(!super::is_message(b"\x00\x01 no header here"));
+        assert!(!super::is_message(b"X-Only: one\r\n\r\n"));
+        assert!(!super::is_message(b""));
+    }
+}

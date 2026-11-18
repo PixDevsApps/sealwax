@@ -24,6 +24,7 @@ pub mod mailto;
 pub mod message;
 pub mod model;
 pub mod percent;
+pub mod pgp;
 pub mod quotes;
 pub mod reading;
 pub mod search;

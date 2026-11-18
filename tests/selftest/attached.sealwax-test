@@ -1,0 +1,74 @@
+# Attached messages in the reader (#40): Open on a message/rfc822 attachment shows the message
+# inside it in the reader, under a bar with Back, its own attachments opening and saving as
+# usual; Back and Back to List (Escape) lead back to the message it came in; its remote images
+# stay hidden; one that isn't a message says so on its card. A PEC envelope (postacert.eml with
+# a PDF) and a message forwarded as an attachment. Opened files and the choosers go to the
+# reader's hooks under $TMP: nothing reaches the desktop. Every name, address and message is
+# fictional.
+# Run: tools/headless.sh 35 target/debug/sealwax-selftest --self-test tests/selftest/attached.sealwax-test
+
+desktop tiling
+resize 1440 900
+engine-attach
+triage-mark-read-on-open false
+mail-account Files
+files-add files-pec files-forwarded files-not-a-message
+files-hooks
+assert-list-count 3
+
+# The PEC envelope: postacert.eml opens in the reader, not in another program.
+list-select 0
+wait-until assert-files message files-pec
+wait-until assert-files cards 2
+assert-files card 1 name postacert.eml
+assert-files attached false
+files-click 1 open
+wait-until assert-files attached true
+assert-files attached-name postacert.eml
+assert-files opened 0
+wait-until assert-files cards 1
+assert-files card 0 name contratto.pdf
+assert-labelled
+# Its PDF opens and saves from the attached message's bytes.
+files-click 0 open
+wait-until assert-files opened 1
+assert-files opened-file contratto.pdf files-pec/1 0
+files-click 0 save
+wait-until assert-files saved $TMP/files-saved/contratto.pdf files-pec/1 0
+setup-dismiss-toasts
+# Back leads to the envelope.
+files-click attached-back
+wait-until assert-files attached false
+wait-until assert-files message files-pec
+wait-until assert-files cards 2
+# Back to List (Escape) on an attached message goes back from it first.
+files-click 1 open
+wait-until assert-files attached true
+key Escape
+wait-until assert-files attached false
+wait-until assert-files message files-pec
+# Selecting another message leaves the attached one.
+files-click 1 open
+wait-until assert-files attached true
+list-select 1
+wait-until assert-files message files-forwarded
+assert-files attached false
+
+# A forwarded message: its remote image stays hidden behind the banner.
+wait-until assert-files cards 1
+files-click 0 open
+wait-until assert-files attached true
+assert-files attached-name "Your reservation is ready.eml"
+wait-until assert-files banner true
+assert-files remote-allowed false
+files-click attached-back
+wait-until assert-files attached false
+
+# One that isn't a message: the card says so, and nothing opens.
+list-select 2
+wait-until assert-files message files-not-a-message
+wait-until assert-files cards 1
+files-click 0 open
+wait-until assert-files card 0 failure "Couldn't read it as a message"
+assert-files attached false
+assert-files opened 1

@@ -7,6 +7,7 @@
 
 use super::conversation::{Card, Entry, HtmlBody, Item, reveal};
 use super::page::{self, Header};
+use super::memory::is_attached;
 use super::prepare::{self, Body, Prepared};
 use super::remote::Notice;
 use super::{
@@ -20,6 +21,14 @@ use sealwax_domain::model::{FolderRole, MessageDetail, MessageId};
 use sealwax_ui_model::theme::BodyStyle;
 use sealwax_engine::api::BodyError;
 use std::rc::Rc;
+
+/// A message read for its card.
+pub(super) struct Read {
+    pub detail: Option<MessageDetail>,
+    pub raw: Option<Vec<u8>>,
+    /// The user's own addresses.
+    pub mine: Vec<String>,
+}
 
 /// Above a body shown as text after its view crashed twice, or without a content filter.
 const TEXT_FALLBACK: &str = "This message is shown as text: its formatted view isn't available.";
@@ -59,36 +68,19 @@ impl Inner {
     /// Reads message `id` and builds its card on page `key`, in place of its row or of the card
     /// it had. A newer load of the message, or a collapse, drops this one.
     pub(super) async fn load_card(self: Rc<Self>, key: u64, id: MessageId, token: u64) {
-        let Some(reads) = self.store.read(id) else {
+        let Some(read) = self.read_message(id).await else {
             self.install_missing(key, id, token);
             return;
         };
-        let detail = reads.detail.recv().await;
-        let accounts = reads.accounts.recv().await;
-        let raw = reads.raw.recv().await.ok().flatten();
         if !self.wanted_load(key, id, token) {
             return;
         }
-        let detail = match detail {
-            Ok(versioned) => versioned.value,
-            Err(error) => {
-                tracing::warn!(message = id.0, %error, "reader: the message couldn't be read");
-                None
-            }
-        };
-        let Some(detail) = detail else {
+        let Some(detail) = read.detail else {
             self.install_missing(key, id, token);
             return;
         };
-        let mine: Vec<String> = accounts
-            .map(|accounts| {
-                accounts
-                    .value
-                    .into_iter()
-                    .map(|account| account.address)
-                    .collect()
-            })
-            .unwrap_or_default();
+        let raw = read.raw;
+        let mine = read.mine;
         if !mine.is_empty() {
             self.mine
                 .replace(mine.iter().map(|address| address.to_lowercase()).collect());
@@ -98,17 +90,7 @@ impl Inner {
             None => self.download_state(answer),
             Some(_) => None,
         };
-        let for_worker = detail.clone();
-        let prepared = gio::spawn_blocking(move || prepare::prepare(&for_worker, raw.as_deref()))
-            .await
-            .unwrap_or_else(|_| {
-                tracing::error!(message = id.0, "reader: preparing the message failed");
-                Prepared {
-                    body: Body::Empty,
-                    attachments: Vec::new(),
-                    signed: None,
-                }
-            });
+        let prepared = self.prepare_off_thread(id, &detail, raw).await;
         if !self.wanted_load(key, id, token) {
             return;
         }
@@ -141,10 +123,15 @@ impl Inner {
                     .is_some_and(|item| item.message.role == FolderRole::Drafts)
             })
             .unwrap_or(false);
-        if !draft && detail.headers.list_unsubscribe.is_some() {
+        let attached = is_attached(id);
+        if !draft && !attached && detail.headers.list_unsubscribe.is_some() {
             self.unsubscribe_link(&widgets.header, id);
         }
-        let replies = self.reply_buttons(&widgets.header, id, draft);
+        let replies = if attached {
+            Vec::new()
+        } else {
+            self.reply_buttons(&widgets.header, id, draft)
+        };
         let weak = Rc::downgrade(&self);
         widgets.header.connect_clicked(move |_| {
             if let Some(inner) = weak.upgrade()
@@ -185,6 +172,65 @@ impl Inner {
             return;
         }
         self.install(key, id, card);
+    }
+
+    /// Message `id` from the store, or an attached message from memory; `None` while no store
+    /// is open.
+    pub(super) async fn read_message(&self, id: MessageId) -> Option<Read> {
+        if is_attached(id) {
+            let attached = self.memory.attached(id);
+            return Some(Read {
+                raw: attached.as_ref().map(|attached| attached.raw.to_vec()),
+                detail: attached.map(|attached| attached.detail),
+                mine: self.mine.borrow().clone(),
+            });
+        }
+        let reads = self.store.read(id)?;
+        let detail = reads.detail.recv().await;
+        let accounts = reads.accounts.recv().await;
+        let raw = reads.raw.recv().await.ok().flatten();
+        let detail = match detail {
+            Ok(versioned) => versioned.value,
+            Err(error) => {
+                tracing::warn!(message = id.0, %error, "reader: the message couldn't be read");
+                None
+            }
+        };
+        let mine = accounts
+            .map(|accounts| {
+                accounts
+                    .value
+                    .into_iter()
+                    .map(|account| account.address)
+                    .collect()
+            })
+            .unwrap_or_default();
+        Some(Read { detail, raw, mine })
+    }
+
+    /// Prepares message `id` on a thread of its own: GnuPG may wait for a passphrase.
+    pub(super) async fn prepare_off_thread(
+        &self,
+        id: MessageId,
+        detail: &MessageDetail,
+        raw: Option<Vec<u8>>,
+    ) -> Prepared {
+        let gpg = self.gpg.clone();
+        let detail = detail.clone();
+        let (sender, answer) = async_channel::bounded(1);
+        let started = std::thread::Builder::new()
+            .name("sealwax-prepare".into())
+            .spawn(move || {
+                let _ = sender.send_blocking(prepare::prepare(&detail, raw.as_deref(), gpg.as_deref()));
+            });
+        if let Err(error) = started {
+            tracing::error!(%error, "reader: no thread to prepare a message on");
+            return Prepared::empty();
+        }
+        answer.recv().await.unwrap_or_else(|_| {
+            tracing::error!(message = id.0, "reader: preparing the message failed");
+            Prepared::empty()
+        })
     }
 
     /// What a message whose body isn't stored shows (ML-044): `None` without a fetcher (M1's
@@ -252,11 +298,15 @@ impl Inner {
         prepared: Prepared,
         collapse_quotes: bool,
     ) {
-        if let Some(signature) = prepared.signed {
+        if prepared.decrypted {
+            card.widgets.body.append(&protection::decrypted_note());
+        }
+        if let Some(signature) = &prepared.signature {
             card.widgets
                 .body
-                .append(&protection::signed_note(signature));
+                .append(&protection::signature_note(signature));
         }
+        self.memory.remember_content(id, prepared.content.clone());
         match prepared.body {
             Body::Html {
                 html,
@@ -317,7 +367,25 @@ impl Inner {
                 card.body = ShownBody::Plain;
             }
             Body::Unreadable(unreadable) => {
-                card.widgets.body.append(&protection::notice(unreadable));
+                let notice = protection::notice(unreadable);
+                if unreadable.retry() {
+                    let retry = gtk::Button::builder()
+                        .label("Try Again")
+                        .valign(gtk::Align::Center)
+                        .css_classes(["sw-control"])
+                        .build();
+                    retry.set_widget_name("reader-decrypt-again");
+                    let weak = Rc::downgrade(self);
+                    retry.connect_clicked(move |_| {
+                        if let Some(inner) = weak.upgrade()
+                            && let Some(key) = inner.shown_key()
+                        {
+                            inner.reload_card(key, id);
+                        }
+                    });
+                    notice.append(&retry);
+                }
+                card.widgets.body.append(&notice);
                 card.body = ShownBody::Unreadable(unreadable);
             }
             Body::Empty => {

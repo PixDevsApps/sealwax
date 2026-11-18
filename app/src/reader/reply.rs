@@ -14,6 +14,7 @@
 //! window opens through [`ComposeRequest`]s the app hands to `composer::open`; the quick reply's
 //! Send goes through a seam the app sets ([`Reader::set_quick_send`]).
 
+use super::memory::is_attached;
 use super::conversation::{Entry, Item, Page};
 use super::{Inner, Reader, tooltip};
 use crate::composer::ComposeRequest;
@@ -611,7 +612,7 @@ impl Inner {
         let mine = self.mine.borrow().clone();
         let target = self
             .with_page(key, |page| {
-                if page.quick.is_some() || page.missing {
+                if page.quick.is_some() || page.missing || is_attached(page.selected) {
                     return None;
                 }
                 let messages = page_messages(page);

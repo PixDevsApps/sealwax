@@ -313,6 +313,15 @@ pub(super) async fn attachment(
     attachment: &Attachment,
     downloading: impl FnOnce(),
 ) -> Result<Vec<u8>, Failure> {
+    if let Some(bytes) = inner.memory.parts_of(message) {
+        let bytes = bytes.to_vec();
+        let index = attachment.part;
+        return gio::spawn_blocking(move || message::part(&bytes, index).map(|part| part.data))
+            .await
+            .ok()
+            .flatten()
+            .ok_or(Failure::Unreadable);
+    }
     if stored_as_text(inner, message).await {
         downloading();
         return fetch_part(inner, message, attachment.part)
@@ -335,6 +344,9 @@ pub(super) async fn original(
     message: MessageId,
     downloading: impl FnOnce(),
 ) -> Result<Vec<u8>, Failure> {
+    if let Some(bytes) = inner.memory.original_of(message) {
+        return Ok(bytes.to_vec());
+    }
     match body_state(inner, message).await {
         None => Err(Failure::Download(BodyError::Gone)),
         Some((BodyState::Full, true)) => raw(inner, message).await,

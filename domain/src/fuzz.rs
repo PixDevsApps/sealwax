@@ -61,6 +61,10 @@ pub fn message(data: &[u8]) {
     let _ = message::base_subject(&headers.subject);
 
     let inspection = reading::inspect(data);
+    let _ = crate::pgp::work(data);
+    let _ = crate::pgp::status(data);
+    let _ = crate::pgp::user_ids(&String::from_utf8_lossy(data));
+    let _ = message::is_message(data);
     let mut html = String::new();
     for &index in parsed.text_parts.iter().take(MAX_PARTS) {
         let Some(text) = message::part(data, index).and_then(|part| part.text) else {
@@ -167,6 +171,7 @@ fn plain_body(text: &str) {
         assert!(quote.start == 0 || text[..quote.start].ends_with('\n'));
     }
     let _ = reading::inline_pgp(text);
+    let _ = crate::pgp::inline(text);
     found_links(text);
     let _ = quote::reply_text("On a day, someone wrote:", text);
     let html = text::to_html(text);
