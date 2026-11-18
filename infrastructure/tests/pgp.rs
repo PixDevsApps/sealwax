@@ -25,6 +25,14 @@ impl Drop for Keyring {
 
 impl Keyring {
     fn new() -> Option<Keyring> {
+        Keyring::with(&[
+            "Ada Lovelace <ada@example.com>",
+            "Mallory <mallory@example.com>",
+        ])
+    }
+
+    /// A keyring with a key of its own, without a passphrase, for each of `users`.
+    fn with(users: &[&str]) -> Option<Keyring> {
         let program = which("gpg")?;
         let scratch = tempfile::tempdir().ok()?;
         let home = tempfile::Builder::new()
@@ -36,16 +44,13 @@ impl Keyring {
             scratch,
             program,
         };
-        for user in [
-            "Ada Lovelace <ada@example.com>",
-            "Mallory <mallory@example.com>",
-        ] {
+        for user in users {
             let made = keyring
                 .gpg(&[
                     "--passphrase",
                     "",
                     "--quick-gen-key",
-                    user,
+                    *user,
                     "future-default",
                     "default",
                     "never",
@@ -105,13 +110,14 @@ fn which(name: &str) -> Option<PathBuf> {
 const ENTITY: &[u8] = b"Content-Type: text/plain; charset=utf-8\r\n\r\nHello Bob.\r\n";
 
 fn signed_message(keyring: &Keyring, from: &str, body: &[u8]) -> Vec<u8> {
+    signed_by(keyring, "ada@example.com", from, body)
+}
+
+/// A PGP/MIME message From `from`, signed with `signer`'s key over [`ENTITY`], with `body` as
+/// its first part.
+fn signed_by(keyring: &Keyring, signer: &str, from: &str, body: &[u8]) -> Vec<u8> {
     let signature = keyring.pipe(
-        &[
-            "--local-user",
-            "ada@example.com",
-            "--armor",
-            "--detach-sign",
-        ],
+        &["--local-user", signer, "--armor", "--detach-sign"],
         ENTITY,
     );
     let mut raw = format!(
@@ -183,6 +189,68 @@ fn a_signed_message_is_checked_against_the_keyring() {
     );
 }
 
+/// #32: the user certified Mallory's own user ID; she adds `The Boss <boss@example.com>` to
+/// that key, the user refreshes it, and she signs mail From the boss. GnuPG's TRUST line says
+/// the key is fully valid, but the added user ID isn't, so it isn't "checked".
+#[test]
+fn a_user_id_added_to_a_certified_key_is_not_checked() {
+    let (Some(user), Some(mallory)) = (
+        Keyring::with(&["Ada Lovelace <ada@example.com>"]),
+        Keyring::with(&["Mallory <mallory@example.com>"]),
+    ) else {
+        eprintln!("GnuPG isn't installed: skipped");
+        return;
+    };
+    let public = mallory.pipe(&["--armor", "--export", "mallory@example.com"], b"");
+    user.pipe(&["--import"], &public);
+    let listed = String::from_utf8_lossy(&user.pipe(
+        &[
+            "--with-colons",
+            "--fixed-list-mode",
+            "--list-keys",
+            "mallory@example.com",
+        ],
+        b"",
+    ))
+    .into_owned();
+    let fingerprint = pgp::keys(&listed)
+        .first()
+        .map(|key| key.fingerprint.clone())
+        .unwrap_or_else(|| panic!("Mallory's key wasn't imported"));
+    let certified = user
+        .gpg(&[
+            "--quick-lsign-key",
+            &fingerprint,
+            "Mallory <mallory@example.com>",
+        ])
+        .status()
+        .is_ok_and(|status| status.success());
+    assert!(certified, "the user's certification failed");
+    let added = mallory
+        .gpg(&[
+            "--quick-add-uid",
+            "Mallory <mallory@example.com>",
+            "The Boss <boss@example.com>",
+        ])
+        .status()
+        .is_ok_and(|status| status.success());
+    assert!(added, "the user ID couldn't be added");
+    let refreshed = mallory.pipe(&["--armor", "--export", "mallory@example.com"], b"");
+    user.pipe(&["--import"], &refreshed);
+
+    let raw = signed_by(&mallory, "mallory@example.com", "boss@example.com", ENTITY);
+    assert_eq!(
+        check(&user, &raw, "boss@example.com"),
+        Verdict::KeyNotVerified {
+            signer: "The Boss <boss@example.com>".to_owned()
+        }
+    );
+    assert!(matches!(
+        check(&user, &raw, "mallory@example.com"),
+        Verdict::Checked { .. }
+    ));
+}
+
 #[test]
 fn an_encrypted_message_is_decrypted_and_its_signature_read() {
     let Some(keyring) = Keyring::new() else {
@@ -249,12 +317,17 @@ fn a_clear_signed_text_is_checked() {
     let Some(pgp::Inline::Signed(block)) = pgp::inline(&text) else {
         panic!("no inline block");
     };
-    let status = keyring
+    let answer = keyring
         .reader()
-        .verify_inline(block.as_bytes())
+        .verify_inline(text.as_bytes())
         .unwrap_or_else(|error| panic!("verify: {error}"));
     assert_eq!(
-        status.signature.map(|signature| signature.outcome),
+        answer.status.signature.map(|signature| signature.outcome),
         Some(pgp::Outcome::Good)
     );
+    assert_eq!(
+        answer.output, b"Hello Bob.\n",
+        "only the signed text, never what stands around it"
+    );
+    assert!(block.starts_with("-----BEGIN PGP SIGNED MESSAGE-----"));
 }

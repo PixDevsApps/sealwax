@@ -141,8 +141,36 @@ fn attribute<'a>(content_type: &'a mail_parser::ContentType<'_>, name: &str) -> 
 pub enum InlinePgp {
     /// The text holds an encrypted block: none of it is shown.
     Encrypted,
-    /// The text was clear-signed: here it is without the armour, its dash-escaping undone.
-    Signed(String),
+    /// The text was clear-signed: its first signed block without the armour, its dash-escaping
+    /// undone, and what stands outside that block, which the signature doesn't cover.
+    Signed(ClearSigned),
+}
+
+/// A text body with a clear-signed block.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ClearSigned {
+    pub before: String,
+    pub signed: String,
+    pub after: String,
+}
+
+impl ClearSigned {
+    /// Something other than blank lines stands outside the signed block (#32: anyone can wrap
+    /// someone's old clear-signed text in their own words).
+    pub fn has_unsigned(&self) -> bool {
+        !self.before.trim().is_empty() || !self.after.trim().is_empty()
+    }
+
+    /// The whole text without the armour, for when a signature over the whole message covers
+    /// the parts outside the block too.
+    pub fn whole(&self) -> String {
+        [&self.before, &self.signed, &self.after]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
 
 const ENCRYPTED: &str = "-----BEGIN PGP MESSAGE-----";
@@ -159,32 +187,36 @@ pub fn inline_pgp(text: &str) -> Option<InlinePgp> {
     if !starts(SIGNED) {
         return None;
     }
-    let mut out = Vec::new();
+    let (mut before, mut signed, mut after) = (Vec::new(), Vec::new(), Vec::new());
     let mut state = Clear::Before;
     for line in text.lines() {
         let trimmed = line.trim_end();
         state = match state {
             Clear::Before if trimmed == SIGNED => Clear::Headers,
             Clear::Before => {
-                out.push(line);
+                before.push(line);
                 Clear::Before
             }
             Clear::Headers if trimmed.is_empty() => Clear::Text,
             Clear::Headers => Clear::Headers,
             Clear::Text if trimmed == SIGNATURE_START => Clear::Signature,
             Clear::Text => {
-                out.push(line.strip_prefix("- ").unwrap_or(line));
+                signed.push(line.strip_prefix("- ").unwrap_or(line));
                 Clear::Text
             }
             Clear::Signature if trimmed == SIGNATURE_END => Clear::After,
             Clear::Signature => Clear::Signature,
             Clear::After => {
-                out.push(line);
+                after.push(line);
                 Clear::After
             }
         };
     }
-    Some(InlinePgp::Signed(out.join("\n")))
+    Some(InlinePgp::Signed(ClearSigned {
+        before: before.join("\n"),
+        signed: signed.join("\n"),
+        after: after.join("\n"),
+    }))
 }
 
 #[derive(Clone, Copy)]
@@ -455,17 +487,21 @@ mod tests {
                     \r\n\
                     iQEzBAEBCAAdFiEE\r\n\
                     -----END PGP SIGNATURE-----\r\n";
+        let Some(InlinePgp::Signed(clear)) = inline_pgp(text) else {
+            panic!("not clear-signed");
+        };
         assert_eq!(
-            inline_pgp(text),
-            Some(InlinePgp::Signed(
-                "The meeting moved to Thursday.\n-- \nFrom the board".into()
-            ))
+            clear.signed,
+            "The meeting moved to Thursday.\n-- \nFrom the board"
         );
+        assert!(!clear.has_unsigned());
         let around = "Forwarded:\n-----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA1\n\nBody\n\
                       -----BEGIN PGP SIGNATURE-----\nx\n-----END PGP SIGNATURE-----\nAfter\n";
-        assert_eq!(
-            inline_pgp(around),
-            Some(InlinePgp::Signed("Forwarded:\nBody\nAfter".into()))
-        );
+        let Some(InlinePgp::Signed(clear)) = inline_pgp(around) else {
+            panic!("not clear-signed");
+        };
+        assert_eq!(clear.signed, "Body");
+        assert!(clear.has_unsigned(), "the words around it aren't signed");
+        assert_eq!(clear.whole(), "Forwarded:\nBody\nAfter");
     }
 }

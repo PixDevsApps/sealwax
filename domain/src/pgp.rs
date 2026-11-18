@@ -348,16 +348,170 @@ fn clean(text: &str) -> String {
         .collect()
 }
 
-/// The valid user IDs in `gpg --with-colons --list-keys` output (`uid` records whose validity
-/// isn't revoked or expired), unescaped.
-pub fn user_ids(colons: &str) -> Vec<String> {
+/// How far the user's keyring vouches for a key or user ID: the validity field of
+/// `gpg --with-colons` (field 2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Validity {
+    /// `o`, `-`, `q` and anything GnuPG adds later: nothing is known.
+    #[default]
+    Unknown,
+    /// `i` or `d`.
+    Invalid,
+    Revoked,
+    Expired,
+    /// `n`: the keyring says never to rely on it.
+    Never,
+    Marginal,
+    Full,
+    Ultimate,
+}
+
+impl Validity {
+    fn from_field(field: &str) -> Validity {
+        match field {
+            "i" | "d" => Validity::Invalid,
+            "r" => Validity::Revoked,
+            "e" => Validity::Expired,
+            "n" => Validity::Never,
+            "m" => Validity::Marginal,
+            "f" => Validity::Full,
+            "u" => Validity::Ultimate,
+            _ => Validity::Unknown,
+        }
+    }
+
+    /// The keyring vouches for it: fully valid or the user's own.
+    pub fn verified(self) -> bool {
+        matches!(self, Validity::Full | Validity::Ultimate)
+    }
+
+    /// It may still be used: not revoked, expired, invalid or distrusted.
+    pub fn usable(self) -> bool {
+        !matches!(
+            self,
+            Validity::Invalid | Validity::Revoked | Validity::Expired | Validity::Never
+        )
+    }
+}
+
+/// A user ID of a key and its own validity, which may differ from the key's: a user ID added
+/// to a key the user certified isn't certified itself (#32).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UserId {
+    pub text: String,
+    pub validity: Validity,
+}
+
+impl UserId {
+    /// Its address, lower case.
+    pub fn address(&self) -> Option<String> {
+        user_id_address(&self.text)
+    }
+}
+
+/// A key in `gpg --with-colons --fixed-list-mode --list-keys` (or `--list-secret-keys`)
+/// output.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Key {
+    /// The primary key's fingerprint, upper-case hex.
+    pub fingerprint: String,
+    pub validity: Validity,
+    /// The key as a whole can encrypt (an `E` among its capabilities: a usable subkey).
+    pub can_encrypt: bool,
+    /// The key as a whole can sign.
+    pub can_sign: bool,
+    /// Disabled by the user (`D`).
+    pub disabled: bool,
+    /// From `--list-secret-keys`: the secret key is there (`sec` and not a stub).
+    pub secret: bool,
+    pub user_ids: Vec<UserId>,
+}
+
+impl Key {
+    /// Its user IDs with `address` that may be used, the verified ones first.
+    pub fn user_ids_for(&self, address: &str) -> impl Iterator<Item = &UserId> {
+        let address = address.to_lowercase();
+        self.user_ids.iter().filter(move |user_id| {
+            user_id.validity.usable() && user_id.address().as_deref() == Some(&address)
+        })
+    }
+
+    /// The best validity among its user IDs with `address`: `None` when it has none that may
+    /// be used.
+    pub fn validity_for(&self, address: &str) -> Option<Validity> {
+        let mut best = None;
+        for user_id in self.user_ids_for(address) {
+            if user_id.validity.verified() {
+                return Some(user_id.validity);
+            }
+            best.get_or_insert(user_id.validity);
+        }
+        best
+    }
+}
+
+/// The keys in `gpg --with-colons --fixed-list-mode` output, unescaped.
+pub fn keys(colons: &str) -> Vec<Key> {
+    let mut keys: Vec<Key> = Vec::new();
+    let mut in_primary = false;
+    for line in colons.lines() {
+        let fields: Vec<&str> = line.split(':').collect();
+        let field = |at: usize| fields.get(at).copied().unwrap_or_default();
+        match field(0) {
+            kind @ ("pub" | "sec") => {
+                let capabilities = field(11);
+                keys.push(Key {
+                    validity: Validity::from_field(field(1)),
+                    can_encrypt: capabilities.contains('E'),
+                    can_sign: capabilities.contains('S'),
+                    disabled: capabilities.contains('D'),
+                    // A `sec` record's field 15 is `#` for a stub and `>` for a card; a stub
+                    // has no secret key here.
+                    secret: kind == "sec" && !field(14).starts_with('#'),
+                    ..Key::default()
+                });
+                in_primary = true;
+            }
+            "fpr" if in_primary => {
+                if let Some(key) = keys.last_mut() {
+                    key.fingerprint = field(9).to_ascii_uppercase();
+                }
+                in_primary = false;
+            }
+            "uid" => {
+                if let Some(key) = keys.last_mut() {
+                    key.user_ids.push(UserId {
+                        text: clean(&colon_unescape(field(9))),
+                        validity: Validity::from_field(field(1)),
+                    });
+                }
+                in_primary = false;
+            }
+            "sub" | "ssb" | "uat" => in_primary = false,
+            _ => {}
+        }
+    }
+    keys.retain(|key| !key.fingerprint.is_empty());
+    keys
+}
+
+/// The user IDs in `gpg --with-colons --list-keys` output that aren't revoked or expired, with
+/// their validity.
+pub fn user_ids(colons: &str) -> Vec<UserId> {
     colons
         .lines()
         .filter_map(|line| {
             let fields: Vec<&str> = line.split(':').collect();
-            (fields.first() == Some(&"uid") && !matches!(fields.get(1), Some(&"r" | &"e")))
-                .then(|| fields.get(9).map(|uid| clean(&colon_unescape(uid))))
-                .flatten()
+            let validity = Validity::from_field(fields.get(1).copied().unwrap_or_default());
+            (fields.first() == Some(&"uid")
+                && !matches!(validity, Validity::Revoked | Validity::Expired))
+            .then(|| {
+                fields.get(9).map(|text| UserId {
+                    text: clean(&colon_unescape(text)),
+                    validity,
+                })
+            })
+            .flatten()
         })
         .collect()
 }
@@ -398,7 +552,7 @@ pub fn user_id_address(user_id: &str) -> Option<String> {
 /// What the reader may say about a signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict {
-    /// Good, the key valid in the user's keyring, and one of its user IDs is the sender.
+    /// Good, and the key's user ID with the sender's address valid in the user's keyring.
     Checked {
         signer: String,
     },
@@ -430,23 +584,32 @@ pub enum Verdict {
     Error,
 }
 
-/// The verdict on `signature`: `user_ids` are the signing key's valid user IDs, `sender` the
-/// message's From address.
-pub fn verdict(signature: &SignatureStatus, user_ids: &[String], sender: Option<&str>) -> Verdict {
+/// The verdict on `signature`: `user_ids` are the signing key's user IDs (from [`user_ids`]),
+/// `sender` the message's From address. "Checked" needs the user ID with the sender's address
+/// to be valid in the keyring itself: GnuPG's TRUST line speaks for the key's primary user ID,
+/// and anyone can add a user ID to a key someone certified (#32).
+pub fn verdict(signature: &SignatureStatus, user_ids: &[UserId], sender: Option<&str>) -> Verdict {
     let sender = sender.map(str::to_lowercase);
-    let matching = user_ids.iter().find(|user_id| {
-        sender.is_some() && user_id_address(user_id).as_deref() == sender.as_deref()
-    });
-    let signer = matching
-        .cloned()
+    let matching: Vec<&UserId> = user_ids
+        .iter()
+        .filter(|user_id| sender.is_some() && user_id.address() == sender)
+        .collect();
+    let verified = matching
+        .iter()
+        .find(|user_id| user_id.validity.verified())
+        .copied();
+    let signer = verified
+        .or_else(|| matching.first().copied())
+        .map(|user_id| user_id.text.clone())
         .or_else(|| signature.user_id.clone())
-        .or_else(|| user_ids.first().cloned())
+        .or_else(|| user_ids.first().map(|user_id| user_id.text.clone()))
         .unwrap_or_else(|| signature.key.clone());
     match signature.outcome {
         Outcome::Good => match signature.trust {
-            Trust::Full | Trust::Ultimate if matching.is_some() => Verdict::Checked { signer },
-            Trust::Full | Trust::Ultimate => Verdict::OtherSigner { signer },
             Trust::Never => Verdict::KeyDistrusted { signer },
+            _ if verified.is_some() => Verdict::Checked { signer },
+            _ if !matching.is_empty() => Verdict::KeyNotVerified { signer },
+            Trust::Full | Trust::Ultimate => Verdict::OtherSigner { signer },
             Trust::Undefined | Trust::Marginal => Verdict::KeyNotVerified { signer },
         },
         Outcome::Bad => Verdict::Bad,
@@ -576,7 +739,10 @@ mod tests {
 
     #[test]
     fn a_good_signature_is_checked_only_with_a_valid_key_for_the_sender() {
-        let ada = vec!["Ada Lovelace <ada@example.com>".to_owned()];
+        let ada = vec![UserId {
+            text: "Ada Lovelace <ada@example.com>".to_owned(),
+            validity: Validity::Ultimate,
+        }];
         let signature = good("TRUST_ULTIMATE").signature.unwrap_or_else(|| panic!());
         assert_eq!(signature.fingerprint.as_deref(), Some("FFFF"));
         assert_eq!(
@@ -592,8 +758,12 @@ mod tests {
         let unknown = good("TRUST_UNDEFINED")
             .signature
             .unwrap_or_else(|| panic!());
+        let unverified = vec![UserId {
+            validity: Validity::Unknown,
+            ..ada[0].clone()
+        }];
         assert!(matches!(
-            verdict(&unknown, &ada, Some("ada@example.com")),
+            verdict(&unknown, &unverified, Some("ada@example.com")),
             Verdict::KeyNotVerified { .. }
         ));
         let never = good("TRUST_NEVER").signature.unwrap_or_else(|| panic!());
@@ -601,6 +771,77 @@ mod tests {
             verdict(&never, &ada, Some("ada@example.com")),
             Verdict::KeyDistrusted { .. }
         ));
+    }
+
+    /// #32: Mallory adds `The Boss` to a key whose own user ID the user certified; GnuPG's
+    /// TRUST line is the key's (fully trusted), the added user ID's validity is unknown.
+    #[test]
+    fn a_user_id_the_keyring_does_not_vouch_for_is_not_checked() {
+        let fully = good("TRUST_FULLY").signature.unwrap_or_else(|| panic!());
+        let ids = user_ids(
+            "pub:f:255:22:01:1:::-:::scESC::::::23::0:\n\
+             fpr:::::::::FFFF:\n\
+             uid:f::::1::AA::Mallory <mallory@example.com>::::::::::0:\n\
+             uid:-::::2::BB::The Boss <boss@example.com>::::::::::0:\n",
+        );
+        assert_eq!(ids[1].validity, Validity::Unknown);
+        assert_eq!(
+            verdict(&fully, &ids, Some("boss@example.com")),
+            Verdict::KeyNotVerified {
+                signer: "The Boss <boss@example.com>".to_owned()
+            }
+        );
+        assert!(matches!(
+            verdict(&fully, &ids, Some("mallory@example.com")),
+            Verdict::Checked { .. }
+        ));
+        let marginal: Vec<UserId> = ids
+            .iter()
+            .map(|id| UserId {
+                validity: Validity::Marginal,
+                ..id.clone()
+            })
+            .collect();
+        assert!(matches!(
+            verdict(&fully, &marginal, Some("mallory@example.com")),
+            Verdict::KeyNotVerified { .. }
+        ));
+    }
+
+    #[test]
+    fn keys_are_read_with_their_capabilities_and_user_ids() {
+        let listed = keys(
+            "tru::1:1700000000:0:3:1:5\n\
+             pub:u:255:22:AAAA:1:::u:::scESC::::::23::0:\n\
+             fpr:::::::::aaaa1111:\n\
+             uid:u::::1::X::Ada <ada@example.com>::::::::::0:\n\
+             uid:r::::1::Y::Old <ada@old.example>::::::::::0:\n\
+             sub:u:255:18:BBBB:1::::::e::::::cv25519::\n\
+             fpr:::::::::BBBB2222:\n\
+             pub:-:255:22:CCCC:1:::-:::scSCD::::::23::0:\n\
+             fpr:::::::::CCCC3333:\n\
+             uid:-::::1::Z::Bob <bob@example.com>::::::::::0:\n",
+        );
+        assert_eq!(listed.len(), 2);
+        assert_eq!(listed[0].fingerprint, "AAAA1111");
+        assert!(listed[0].can_encrypt && listed[0].can_sign && !listed[0].disabled);
+        assert_eq!(
+            listed[0].validity_for("ADA@example.com"),
+            Some(Validity::Ultimate)
+        );
+        assert_eq!(listed[0].validity_for("ada@old.example"), None);
+        assert!(!listed[1].can_encrypt && listed[1].disabled);
+        assert_eq!(
+            listed[1].validity_for("bob@example.com"),
+            Some(Validity::Unknown)
+        );
+        let secret = keys(
+            "sec:u:255:22:AAAA:1:::u:::scESC:::+:::23::0:\n\
+             fpr:::::::::AAAA1111:\n\
+             sec:u:255:22:DDDD:1:::u:::scESC:::#:::23::0:\n\
+             fpr:::::::::DDDD4444:\n",
+        );
+        assert!(secret[0].secret && !secret[1].secret);
     }
 
     #[test]
@@ -640,7 +881,10 @@ mod tests {
             uid:r::::1::BB::Old <old@example.com>::::::::::0:\n\
             uid:u::::1::CC::Colon\\x3a Name <c@example.com>::::::::::0:\n";
         assert_eq!(
-            user_ids(colons),
+            user_ids(colons)
+                .into_iter()
+                .map(|id| id.text)
+                .collect::<Vec<_>>(),
             vec![
                 "Ada Lovelace <ada@example.com>".to_owned(),
                 "Colon: Name <c@example.com>".to_owned()

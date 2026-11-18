@@ -1917,6 +1917,21 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 **Consequences:** reading PGP needs GnuPG installed (`gnupg` is on every Omarchy); without it the notice says to install it. Encrypted mail isn't found by searching its text. Each time an encrypted message is shown it is decrypted again, which may ask for the passphrase again once the agent's cache expires, or for a touch on a hardware key. The Flatpak reads no PGP until a portal or a permission for the keyring is chosen. Sending signed or encrypted mail (1.6.1) builds on `infrastructure::pgp` and keeps an encrypted message's drafts local only.
 
+### ADR-030 amendment — what "checked" stands for, and over (1.6.1, 2026-11-18)
+
+**Status:** Accepted — the owner, 2026-11-18, after @mlamoure's report on [issue #32](https://github.com/PixDevsApps/sealwax/issues/32) (two cases reproduced with `sealwax-selftest` from v1.6.0 and GnuPG 2.4.9): the fixes ship with the PGP send side in 1.6.1.
+
+**Decision:**
+- **"Checked" needs the From address's own user ID to be valid.** GnuPG's TRUST line is about the key's primary user ID; a user ID the key's owner adds later isn't certified by anyone, yet 1.6.0 counted it. Now `domain::pgp::user_ids` keeps each user ID's validity, and `verdict` says "checked" only when a user ID with the From address has full or ultimate validity (a distrusted key still warns first); a matching user ID that isn't valid gives "key not verified".
+- **Only what GnuPG checked stands under the line.** Under a clear-signed text the reader shows GnuPG's own output (`--verify --output -`: the signed text, its dash-escaping undone), not Sealwax's reading of the armour; under an inline encrypted text, what GnuPG decrypted, as before. Text around either block is left out, and a line says so ("Text outside the signed part isn't shown", or "…the encrypted part…"). When a PGP/MIME signature covers the whole message, the text around a clear-signed block is signed too and is shown.
+- **Status lines on a pipe of their own** (file descriptor 3, stderr to `/dev/null`), so no log line can be read as a status line.
+
+**Reason:** a signature line that says more than the keyring and GnuPG know is worse than none (ADR-030); both cases let someone else's words or name stand under "checked".
+
+**Alternatives:** `--sender <From>` (GnuPG's TRUST line would then speak for that address; reading the user ID's validity says the same without depending on the option); marking the unsigned text inside the body (a marker in the text can be imitated by the text around it; a line outside the body can't).
+
+**Consequences:** mail checked by 1.6.0 as "checked" through an added, uncertified user ID now says "key not verified". Mailing-list footers after a clear-signed text are no longer shown; Show Original has them.
+
 ## ADR-031 — Open With: the user's own commands from config.toml (2026-11-18)
 
 **Status:** Accepted — the owner, 2026-11-18, in the reply on [issue #39](https://github.com/PixDevsApps/sealwax/issues/39) ("I'll build it for the next release, 1.6.0, mostly as you describe"), with the reporter's proposal changed in one point (the file isn't deleted when the command exits) and one limit (not in the Flatpak). ADR-030 is kept for the PGP work of the same release.

@@ -306,6 +306,11 @@ impl Inner {
                 .body
                 .append(&protection::signature_note(signature));
         }
+        if let Some(left_out) = prepared.left_out {
+            card.widgets
+                .body
+                .append(&protection::left_out_note(left_out));
+        }
         self.memory.remember_content(id, prepared.content.clone());
         match prepared.body {
             Body::Html {

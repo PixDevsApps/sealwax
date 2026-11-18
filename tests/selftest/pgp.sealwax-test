@@ -1,7 +1,8 @@
 # PGP in the reader (#32, ADR-030): encrypted mail decrypted through GnuPG, its attachment
 # opened from the decrypted content; signatures checked against the keyring, and "checked" only
 # for a good signature by the sender's own valid key; a changed message warns; mail encrypted to
-# someone else says so. The keys and messages are made with the real gpg in the run's own empty
+# someone else says so; a user ID added to a key the user certified isn't "checked", and words
+# around a clear-signed text are left out (#32). The keys and messages are made with the real gpg in the run's own empty
 # keyring ($GNUPGHOME from tools/headless.sh), never the user's. Every name, address and message
 # is fictional.
 # Run: tools/headless.sh 35 target/debug/sealwax-selftest --self-test tests/selftest/pgp.sealwax-test
@@ -11,9 +12,9 @@ resize 1440 900
 engine-attach
 triage-mark-read-on-open false
 mail-account Files
-files-add pgp-encrypted pgp-signed pgp-tampered pgp-not-for-me pgp-inline
+files-add pgp-encrypted pgp-signed pgp-tampered pgp-not-for-me pgp-inline pgp-added-uid pgp-wrapped
 files-hooks
-assert-list-count 5
+assert-list-count 7
 
 # Signed and encrypted: decrypted, the signature checked, the PDF opens from the content.
 files-show pgp-encrypted
@@ -52,4 +53,22 @@ files-show pgp-inline
 wait-until assert-files message pgp-inline
 wait-until assert-files shows "The inline secret."
 assert-files shows "Encrypted · decrypted with your key"
+assert-files shows "Text outside the encrypted part isn't shown"
+assert-files lacks "Hello,"
+
+# #32: Ada certified Mallory's own user ID; the boss's, added later, isn't vouched for.
+files-show pgp-added-uid
+wait-until assert-files message pgp-added-uid
+wait-until assert-files shows "Pay the invoice today."
+assert-files shows "Signed by The Boss <boss@example.test> · key not verified"
+assert-files lacks "· checked"
+
+# #32: only Ada's signed words stand under her checked line; Mallory's around them are left out.
+files-show pgp-wrapped
+wait-until assert-files message pgp-wrapped
+wait-until assert-files shows "The meeting moved to Friday."
+assert-files shows "Signed by Ada Lovelace <ada@example.test> · checked"
+assert-files shows "Text outside the signed part isn't shown"
+assert-files lacks "wire the money"
+assert-files lacks "Thanks, Mallory"
 assert-labelled

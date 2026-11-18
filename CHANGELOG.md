@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Two fixes to PGP signature checking** ([issue #32](https://github.com/PixDevsApps/sealwax/issues/32), thanks @mlamoure, who found and reported both): "Signed by NAME · checked" could appear for a user ID that nobody certified, when someone added it to a key you had certified for its own user ID; now the user ID with the sender's address must itself be valid in your keyring, otherwise the line says "key not verified". And text written around a clear-signed block was shown under the signature line as if it were signed; now only the text GnuPG checked is shown there, and a line says "Text outside the signed part isn't shown" (Show Original has the whole message). The same line appears when an inline encrypted message had text around it. GnuPG's status lines now come through a pipe of their own, apart from its log.
+
 ## 1.6.0 — 2026-11-18
 
 Read PGP mail with your own GnuPG, open attached emails in the reader, and hand a message to a program of your own.

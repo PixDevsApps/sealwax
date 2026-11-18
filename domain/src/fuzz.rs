@@ -64,6 +64,7 @@ pub fn message(data: &[u8]) {
     let _ = crate::pgp::work(data);
     let _ = crate::pgp::status(data);
     let _ = crate::pgp::user_ids(&String::from_utf8_lossy(data));
+    let _ = crate::pgp::keys(&String::from_utf8_lossy(data));
     let _ = message::is_message(data);
     let mut html = String::new();
     for &index in parsed.text_parts.iter().take(MAX_PARTS) {

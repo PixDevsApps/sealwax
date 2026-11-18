@@ -1,10 +1,13 @@
 //! Encrypted and signed mail (ML-064; #32, ADR-030; SECURITY.md "PGP"). With GnuPG, PGP mail
 //! is decrypted through the user's keyring and gpg-agent and PGP signatures are checked; the
 //! quiet line above the body says what was found, and says "checked" only when the signature
-//! is good, the keyring vouches for the key and the key is the sender's. A body that can't be
-//! shown is replaced by a notice and its ciphertext is never shown; the signature parts stay out
-//! of the attachment cards (`prepare`). S/MIME is neither decrypted nor checked.
+//! is good and the keyring vouches for the key's user ID with the sender's address. Under a
+//! clear-signed or inline encrypted text, only what GnuPG checked or decrypted is shown, with a
+//! line saying when text around it was left out. A body that can't be shown is replaced by a
+//! notice and its ciphertext is never shown; the signature parts stay out of the attachment
+//! cards (`prepare`). S/MIME is neither decrypted nor checked.
 
+use super::prepare::LeftOut;
 use crate::window::panes::icon;
 use gtk4 as gtk;
 use gtk4::prelude::*;
@@ -125,15 +128,16 @@ fn signature_text(signature: &Signature) -> (String, String, bool) {
         Signature::Checked(verdict) => match verdict {
             Verdict::Checked { signer } => (
                 format!("Signed by {signer} · checked"),
-                "The signature is good, and your GnuPG keyring vouches for the sender's key"
+                "The signature is good, and your GnuPG keyring vouches for the key and for \
+                 the sender's address on it"
                     .to_owned(),
                 false,
             ),
             Verdict::KeyNotVerified { signer } => (
                 format!("Signed by {signer} · key not verified"),
                 format!(
-                    "The signature is good, but your GnuPG keyring doesn't vouch for the key. \
-                     {keyring}"
+                    "The signature is good, but your GnuPG keyring doesn't vouch for the key, \
+                     or for the sender's address on it. {keyring}"
                 ),
                 false,
             ),
@@ -225,6 +229,33 @@ pub(super) fn decrypted_note() -> gtk::Box {
     row.append(&gtk::Label::new(Some(DECRYPTED)));
     row.update_property(&[gtk::accessible::Property::Label(&format!(
         "{DECRYPTED}. {tooltip}."
+    ))]);
+    row
+}
+
+/// What the line under a signed or decrypted text says when text around it isn't shown.
+pub(super) fn left_out_text(left_out: LeftOut) -> &'static str {
+    match left_out {
+        LeftOut::Unsigned => "Text outside the signed part isn't shown",
+        LeftOut::Unencrypted => "Text outside the encrypted part isn't shown",
+    }
+}
+
+pub(super) fn left_out_note(left_out: LeftOut) -> gtk::Box {
+    let text = left_out_text(left_out);
+    let tooltip = "Anyone can add words around a signed or encrypted text. Show Original \
+                   shows the whole message";
+    let row = gtk::Box::builder()
+        .spacing(6)
+        .tooltip_text(tooltip)
+        .css_classes(["sw-small", "sw-secondary", "sw-reader-signed"])
+        .build();
+    row.set_widget_name("reader-left-out");
+    row.append(&icon(&["dialog-information-symbolic"]));
+    let label = gtk::Label::builder().label(text).xalign(0.0).wrap(true).build();
+    row.append(&label);
+    row.update_property(&[gtk::accessible::Property::Label(&format!(
+        "{text}. {tooltip}."
     ))]);
     row
 }

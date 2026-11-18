@@ -40,6 +40,15 @@ pub(super) enum Body {
     Unreadable(Unreadable),
 }
 
+/// Why text of the body isn't shown.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum LeftOut {
+    /// Outside a clear-signed block: the signature doesn't cover it.
+    Unsigned,
+    /// Outside an inline encrypted block.
+    Unencrypted,
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct Prepared {
     pub body: Body,
@@ -49,6 +58,8 @@ pub(super) struct Prepared {
     pub signature: Option<Signature>,
     /// The message was encrypted and is shown decrypted.
     pub decrypted: bool,
+    /// Text stood outside the inline signed or encrypted block and isn't shown (#32).
+    pub left_out: Option<LeftOut>,
     /// The decrypted MIME content the body and the attachment cards come from: their part
     /// numbers are its, not the stored message's.
     pub content: Option<Vec<u8>>,
@@ -61,6 +72,7 @@ impl Prepared {
             attachments,
             signature,
             decrypted: false,
+            left_out: None,
             content: None,
         }
     }
@@ -253,29 +265,47 @@ fn clear(
     let text = join(raw, &detail.text_parts, "\n\n", &inspection.flowed);
     match reading::inline_pgp(&text) {
         Some(InlinePgp::Encrypted) => inline_encrypted(&text, kept, gpg, detail),
-        Some(InlinePgp::Signed(shown)) => {
-            let signature = signature.or_else(|| Some(inline_signed(&text, gpg, detail)));
-            Prepared::new(Body::Plain(shown), kept, signature)
-        }
+        Some(InlinePgp::Signed(clear)) => match signature {
+            // A signature over the whole message covers the text around the block too.
+            Some(signature) => Prepared::new(Body::Plain(clear.whole()), kept, Some(signature)),
+            None => {
+                let (signature, checked) = inline_signed(&text, gpg, detail);
+                let shown = checked.unwrap_or_else(|| clear.signed.clone());
+                let mut prepared = Prepared::new(Body::Plain(shown), kept, Some(signature));
+                if clear.has_unsigned() {
+                    prepared.left_out = Some(LeftOut::Unsigned);
+                }
+                prepared
+            }
+        },
         None => Prepared::new(Body::Plain(text), kept, signature),
     }
 }
 
-/// A clear-signed text's signature, checked when GnuPG is there.
-fn inline_signed(text: &str, gpg: Option<&Gpg>, detail: &MessageDetail) -> Signature {
+/// A clear-signed text's signature, checked when GnuPG is there, and the text GnuPG checked:
+/// that, not Sealwax's own reading of the armour, is what the signature line stands over.
+fn inline_signed(
+    text: &str,
+    gpg: Option<&Gpg>,
+    detail: &MessageDetail,
+) -> (Signature, Option<String>) {
     let (Some(gpg), Some(pgp::Inline::Signed(block))) = (gpg, pgp::inline(text)) else {
-        return unchecked(SignatureKind::InlinePgp, gpg);
+        return (unchecked(SignatureKind::InlinePgp, gpg), None);
     };
-    Signature::Checked(match gpg.verify_inline(block.as_bytes()) {
-        Ok(status) => match &status.signature {
-            Some(signature) => verdict(gpg, signature, detail),
-            None => pgp::Verdict::Error,
+    match gpg.verify_inline(block.as_bytes()) {
+        Ok(answer) => match &answer.status.signature {
+            Some(signature) => (
+                Signature::Checked(verdict(gpg, signature, detail)),
+                Some(String::from_utf8_lossy(&answer.output).replace("\r\n", "\n"))
+                    .filter(|checked| !checked.is_empty()),
+            ),
+            None => (Signature::Checked(pgp::Verdict::Error), None),
         },
         Err(error) => {
             tracing::warn!(%error, "reader: GnuPG couldn't check a signature");
-            pgp::Verdict::Error
+            (Signature::Checked(pgp::Verdict::Error), None)
         }
-    })
+    }
 }
 
 /// A text with an inline PGP message: its decrypted text, or why it can't be shown.
@@ -314,7 +344,31 @@ fn inline_encrypted(
         signature,
     );
     prepared.decrypted = true;
+    if text_around(text) {
+        prepared.left_out = Some(LeftOut::Unencrypted);
+    }
     prepared
+}
+
+/// Something other than blank lines stands outside the first inline encrypted block of `text`.
+fn text_around(text: &str) -> bool {
+    let mut inside = false;
+    let mut done = false;
+    text.lines().any(|line| {
+        let trimmed = line.trim();
+        if !done && !inside && trimmed == "-----BEGIN PGP MESSAGE-----" {
+            inside = true;
+            return false;
+        }
+        if inside {
+            if trimmed == "-----END PGP MESSAGE-----" {
+                inside = false;
+                done = true;
+            }
+            return false;
+        }
+        !trimmed.is_empty()
+    })
 }
 
 /// The text of the body parts at `indexes`, in order, format=flowed parts joined.
@@ -594,6 +648,29 @@ mod tests {
                 gnupg: false
             })
         );
+        assert_eq!(prepared.left_out, None);
+    }
+
+    /// #32: words wrapped around someone's clear-signed text never stand under its signature
+    /// line.
+    #[test]
+    fn text_around_a_clear_signed_block_is_left_out() {
+        let wrapped = raw(
+            "From: Mallory <mallory@example.com>\nSubject: x\nContent-Type: text/plain\n\n\
+            The board agreed to wire the money today:\n\n\
+            -----BEGIN PGP SIGNED MESSAGE-----\nHash: SHA256\n\nMeeting moved.\n\
+            -----BEGIN PGP SIGNATURE-----\n\niQEz\n-----END PGP SIGNATURE-----\n\
+            Send it to account 1234.\n",
+        );
+        let prepared = prepare(&detail(&wrapped), Some(&wrapped), None);
+        assert!(matches!(&prepared.body, Body::Plain(text) if text == "Meeting moved."));
+        assert_eq!(prepared.left_out, Some(LeftOut::Unsigned));
+        assert!(text_around(
+            "Read this:\n-----BEGIN PGP MESSAGE-----\nhQEM\n-----END PGP MESSAGE-----\n"
+        ));
+        assert!(!text_around(
+            "\n-----BEGIN PGP MESSAGE-----\nhQEM\n-----END PGP MESSAGE-----\n\n"
+        ));
     }
 
     #[cfg(feature = "test-hooks")]
