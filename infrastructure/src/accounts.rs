@@ -349,6 +349,7 @@ mod tests {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         }
     }
 

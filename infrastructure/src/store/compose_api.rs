@@ -84,6 +84,9 @@ pub enum SendFailure {
     /// Sealwax stopped while it built the message, which may be what stopped it: the message
     /// isn't built again until the user sends it again ([`Store::send_building`]).
     Interrupted,
+    /// It couldn't be signed or encrypted (ADR-032): a key is missing, the passphrase was
+    /// cancelled, or GnuPG failed.
+    Protection,
 }
 
 /// A draft as the store keeps it.

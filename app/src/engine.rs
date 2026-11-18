@@ -66,6 +66,7 @@ pub(crate) fn start(
         microsoft_client_id,
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: crate::pgp::find_for(app_id),
     })
 }
 

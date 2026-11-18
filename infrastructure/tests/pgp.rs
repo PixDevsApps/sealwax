@@ -1,8 +1,11 @@
 //! `sealwax_infrastructure::pgp` against the real `gpg`, with a throwaway keyring and a key
 //! without a passphrase (ADR-030). Skipped where GnuPG isn't installed.
 
+use sealwax_domain::compose::protect::{self, Problem, Protection};
+use sealwax_domain::compose::{Draft, mime};
+use sealwax_domain::model::Address;
 use sealwax_domain::pgp::{self, Decryption, Verdict, Work};
-use sealwax_infrastructure::pgp::Gpg;
+use sealwax_infrastructure::pgp::{Gpg, SealError};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -330,4 +333,131 @@ fn a_clear_signed_text_is_checked() {
         "only the signed text, never what stands around it"
     );
     assert!(block.starts_with("-----BEGIN PGP SIGNED MESSAGE-----"));
+}
+
+fn draft_to(to: &str, bcc: Option<&str>, sign: bool, encrypt: bool) -> Draft {
+    Draft {
+        from: Address::new("Ada Lovelace", "ada@example.com"),
+        to: vec![Address::new("", to)],
+        bcc: bcc
+            .map(|bcc| vec![Address::new("", bcc)])
+            .unwrap_or_default(),
+        subject: "Plans".into(),
+        html: "<div>The plans are ready.</div>".into(),
+        message_id: "plans-1@example.com".into(),
+        protection: Protection {
+            sign,
+            encrypt,
+            ..Protection::default()
+        },
+        ..Draft::default()
+    }
+}
+
+fn transmitted(draft: &Draft) -> Vec<u8> {
+    mime::build(draft, 1_795_000_000, &[])
+        .unwrap_or_else(|error| panic!("{error}"))
+        .transmitted
+}
+
+#[test]
+fn a_signed_message_checks_in_the_reader() {
+    let Some(keyring) = Keyring::new() else {
+        eprintln!("GnuPG isn't installed: skipped");
+        return;
+    };
+    let gpg = keyring.reader();
+    let draft = draft_to("mallory@example.com", None, true, false);
+    let sealed = gpg
+        .seal(&draft, &transmitted(&draft), None)
+        .unwrap_or_else(|error| panic!("{error:?}"));
+    let text = String::from_utf8_lossy(&sealed);
+    assert!(
+        text.contains("Content-Type: multipart/signed; micalg=pgp-sha"),
+        "{text}"
+    );
+    assert!(text.contains("The plans are ready."));
+    assert_eq!(
+        check(&keyring, &sealed, "ada@example.com"),
+        Verdict::Checked {
+            signer: "Ada Lovelace <ada@example.com>".to_owned()
+        }
+    );
+}
+
+#[test]
+fn an_encrypted_message_opens_for_each_recipient_and_hides_the_bcc() {
+    let Some(keyring) = Keyring::with(&[
+        "Ada Lovelace <ada@example.com>",
+        "Mallory <mallory@example.com>",
+        "Bob <bob@example.com>",
+    ]) else {
+        eprintln!("GnuPG isn't installed: skipped");
+        return;
+    };
+    let gpg = keyring.reader();
+    let draft = draft_to("mallory@example.com", Some("bob@example.com"), true, true);
+    let message = transmitted(&draft);
+    let sealed = gpg
+        .seal(&draft, &message, None)
+        .unwrap_or_else(|error| panic!("{error:?}"));
+    assert!(
+        sealed.len() as u64 <= mime::estimate(&draft),
+        "the composer's size check counts the armour"
+    );
+    let text = String::from_utf8_lossy(&sealed);
+    assert!(text.contains("Subject: Plans"), "the Subject stays visible");
+    assert!(!text.contains("The plans are ready."));
+    let Some(Work::Decrypt(ciphertext)) = pgp::work(&sealed) else {
+        panic!("no decrypt work");
+    };
+    let answer = gpg
+        .decrypt(&ciphertext)
+        .unwrap_or_else(|error| panic!("decrypt: {error}"));
+    assert_eq!(answer.status.decryption, Some(Decryption::Okay));
+    let split = protect::split(&message).unwrap_or_else(|| panic!("no split"));
+    assert_eq!(answer.output, split.entity);
+    assert_eq!(
+        answer.status.signature.map(|signature| signature.outcome),
+        Some(pgp::Outcome::Good)
+    );
+    let packets =
+        String::from_utf8_lossy(&keyring.pipe(&["--list-packets"], &ciphertext)).into_owned();
+    let keyids: Vec<&str> = packets
+        .lines()
+        .filter(|line| line.starts_with(":pubkey enc packet:"))
+        .collect();
+    assert_eq!(keyids.len(), 3, "Mallory, Bob and Ada herself: {packets}");
+    assert_eq!(
+        keyids
+            .iter()
+            .filter(|line| line.ends_with("keyid 0000000000000000"))
+            .count(),
+        1,
+        "only Bob's is hidden: {packets}"
+    );
+}
+
+#[test]
+fn a_recipient_without_a_key_refuses_the_send() {
+    let Some(keyring) = Keyring::new() else {
+        eprintln!("GnuPG isn't installed: skipped");
+        return;
+    };
+    let draft = draft_to("carl@example.com", None, false, true);
+    match keyring.reader().seal(&draft, &transmitted(&draft), None) {
+        Err(SealError::Problem(Problem::Missing(missing))) => {
+            assert_eq!(missing, vec!["carl@example.com".to_owned()]);
+        }
+        other => panic!("{other:?}"),
+    }
+    let exported = keyring
+        .reader()
+        .secret_keys()
+        .unwrap_or_default()
+        .first()
+        .map(|key| keyring.reader().export(&key.fingerprint))
+        .unwrap_or_else(|| panic!("no secret key"))
+        .unwrap_or_else(|error| panic!("export: {error}"));
+    assert!(exported.starts_with(b"-----BEGIN PGP PUBLIC KEY BLOCK-----"));
 }

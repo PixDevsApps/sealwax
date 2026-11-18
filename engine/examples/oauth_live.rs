@@ -129,6 +129,7 @@ fn start(dirs: &SealwaxDirs, client_id: &str) -> Result<Running, Error> {
         microsoft_client_id: Some(client_id.to_owned()),
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: None,
     })?;
     Ok(Running { engine, store })
 }
@@ -322,6 +323,7 @@ async fn sign_in_and_add(
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         },
         password: Password::new(String::new()),
         sign_in: Some(1),

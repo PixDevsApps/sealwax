@@ -35,6 +35,8 @@ pub(crate) struct Sender {
     /// Its HTML signature's file under the signatures folder (issue #6), used in place of
     /// `signature` when it can be read.
     pub signature_html: Option<String>,
+    /// The account's `pgp_key`, for its own address only (ADR-032).
+    pub pgp_key: Option<String>,
 }
 
 /// An HTML signature ready to insert: its block, its images as the editor's inline parts by

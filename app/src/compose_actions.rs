@@ -26,6 +26,7 @@ use crate::window::Window;
 use gtk4::glib;
 use gtk4::prelude::*;
 use libadwaita as adw;
+use sealwax_domain::compose::protect::Problem;
 use sealwax_domain::compose::{Draft, ReplyKind};
 use sealwax_domain::config::DefaultReply;
 use sealwax_domain::model::{AccountId, DraftId, Folder, FolderId, FolderRole, MessageId};
@@ -268,6 +269,32 @@ async fn send_quick(app: &SealwaxApplication, message: MessageId, text: String) 
         Ok(prepared) => prepared,
         Err(why) => return refuse(&why),
     };
+    // A reply to encrypted mail goes encrypted too (ADR-032); what stands in the way is said
+    // here, before it reaches the outbox.
+    if prepared.draft.protection.any() {
+        let from = prepared.draft.from.email.clone();
+        let configured = prepared
+            .senders
+            .iter()
+            .find(|sender| {
+                sender.account == prepared.draft.account
+                    && sealwax_domain::address::same(&sender.address.email, &from)
+            })
+            .and_then(|sender| sender.pgp_key.clone());
+        if let Err(problem) = crate::pgp::plan(prepared.draft.clone(), configured).await {
+            let _ = backend.discard(prepared.id).await;
+            let why = match problem {
+                Problem::Choose(_) => "A recipient has several keys: open the reply in the \
+                                       composer to pick one."
+                    .to_owned(),
+                problem => format!(
+                    "{}.",
+                    crate::pgp::problem_text(&problem, &from).replacen("Not sent: ", "", 1)
+                ),
+            };
+            return refuse(&why);
+        }
+    }
     if let Err(why) = backend.save(prepared.id, prepared.draft.clone()).await {
         let _ = backend.discard(prepared.id).await;
         return refuse(&why);

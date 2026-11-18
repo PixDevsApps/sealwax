@@ -35,6 +35,7 @@ const ADA: &str = "Ada Lovelace <ada@example.test>";
 const BOB: &str = "Bob Berg <bob@example.test>";
 const MALLORY: &str = "Mallory Mint <mallory@example.test>";
 const BOSS: &str = "The Boss <boss@example.test>";
+const CAROL: &str = "Carol Cole <carol@example.test>";
 
 /// Mallory's own keyring.
 fn mallory_home() -> Option<PathBuf> {
@@ -182,6 +183,49 @@ fn mallory() -> Result<PathBuf, String> {
     })();
     stop_agent(&home);
     made.map(|()| home)
+}
+
+/// The keys the composer's PGP self-test sends with (ADR-032): Ada's own and Bob's (both
+/// valid), Mallory's with the boss's unverified user ID, and two unverified keys of Carol's,
+/// each made in a keyring of its own.
+pub(super) fn composer_keys() -> Result<(), String> {
+    keys()?;
+    mallory()?;
+    let listed =
+        gpg(&["--list-keys", "--with-colons", "carol@example.test"], b"").unwrap_or_default();
+    if String::from_utf8_lossy(&listed).contains("carol@example.test") {
+        return Ok(());
+    }
+    let root = std::env::var_os("GNUPGHOME").ok_or("no GNUPGHOME")?;
+    for n in 1..=2 {
+        let home = PathBuf::from(&root).join(format!("carol-{n}"));
+        std::fs::create_dir_all(&home).map_err(|error| format!("Carol's keyring: {error}"))?;
+        std::fs::set_permissions(&home, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("Carol's keyring: {error}"))?;
+        let made = gpg_in(
+            Some(&home),
+            &[
+                "--passphrase",
+                "",
+                "--quick-gen-key",
+                CAROL,
+                "future-default",
+                "default",
+                "never",
+            ],
+            b"",
+        )
+        .and_then(|_| {
+            gpg_in(
+                Some(&home),
+                &["--armor", "--export", "carol@example.test"],
+                b"",
+            )
+        });
+        stop_agent(&home);
+        gpg(&["--import"], &made?)?;
+    }
+    Ok(())
 }
 
 /// Mallory's gpg-agent, which `tools/headless.sh` doesn't know about.

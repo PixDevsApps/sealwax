@@ -9,6 +9,7 @@ use super::{State, Writer};
 use crate::store::api::{ChangeEvent, StoreVersion};
 use crate::store::compose::{
     self, COPY_PENDING, COPY_STARTED, QUEUED, SENDING, SENT, UNCERTAIN, failure_code, kind_code,
+    protection_code,
 };
 use crate::store::compose_api::{
     CLOSED_DRAFT_QUIET_MS, CopyFolder, DRAFT_QUIET_MS, DeletionId, DeletionTarget, Discarded,
@@ -765,8 +766,9 @@ impl Writer {
                 if let Some(state) = old.state {
                     return Ok(DraftSaved::NotEditable { id, state });
                 }
-                if old.account != draft.account {
-                    // Its copies belong to the account it leaves.
+                // Its copies belong to the account it leaves; an encrypted draft keeps none
+                // (ADR-032).
+                if old.account != draft.account || draft.protection.encrypt {
                     deletions.all(&tx, &old)?;
                     tx.prepare_cached(
                         "UPDATE drafts SET copy_folder = NULL, copy_uidvalidity = NULL, \
@@ -783,7 +785,8 @@ impl Writer {
                        cc_addrs = ?9, bcc_addrs = ?10, subject = ?11, html = ?12, \
                        in_reply_to = ?13, refs = ?14, \
                        source_message = (SELECT id FROM messages WHERE id = ?15), \
-                       source_message_id = ?16, source_kind = ?17 WHERE id = ?1",
+                       source_message_id = ?16, source_kind = ?17, pgp = ?18, pgp_keys = ?19 \
+                     WHERE id = ?1",
                 )?
                 .execute(params![
                     id.0,
@@ -803,6 +806,8 @@ impl Writer {
                     source,
                     source_message_id,
                     draft.source.map(|source| kind_code(source.kind)),
+                    protection_code(&draft.protection),
+                    draft.protection.encode_picked(),
                 ])?;
                 tx.prepare_cached("DELETE FROM draft_parts WHERE draft = ?1")?
                     .execute([id.0])?;
@@ -812,9 +817,10 @@ impl Writer {
                 tx.prepare_cached(
                     "INSERT INTO drafts(account_id, message_id, revision, created, saved, open, \
                        from_name, from_addr, to_addrs, cc_addrs, bcc_addrs, subject, html, \
-                       in_reply_to, refs, source_message, source_message_id, source_kind) \
+                       in_reply_to, refs, source_message, source_message_id, source_kind, pgp, \
+                       pgp_keys) \
                      VALUES (?1, ?2, 1, ?3, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, \
-                       (SELECT id FROM messages WHERE id = ?14), ?15, ?16) RETURNING id",
+                       (SELECT id FROM messages WHERE id = ?14), ?15, ?16, ?17, ?18) RETURNING id",
                 )?
                 .query_row(
                     params![
@@ -834,6 +840,8 @@ impl Writer {
                         source,
                         source_message_id,
                         draft.source.map(|source| kind_code(source.kind)),
+                        protection_code(&draft.protection),
+                        draft.protection.encode_picked(),
                     ],
                     |row| row.get(0),
                 )?,
@@ -1526,7 +1534,7 @@ impl Writer {
                 .prepare_cached(
                     "SELECT id, max(upload_not_before, saved + CASE WHEN open THEN ?2 ELSE ?3 END) \
                      FROM drafts d WHERE account_id = ?1 AND revision > copy_revision \
-                       AND revision > upload_refused \
+                       AND revision > upload_refused AND pgp & 2 = 0 \
                        AND NOT EXISTS (SELECT 1 FROM outbox WHERE draft = d.id) \
                      ORDER BY id",
                 )?

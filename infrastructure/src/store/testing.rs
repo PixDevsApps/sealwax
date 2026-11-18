@@ -10,6 +10,8 @@ use sealwax_domain::search::Date;
 pub const V1: &str = schema::V1;
 /// Every schema step in order: `MIGRATIONS[n]` makes version `n + 1`.
 pub const MIGRATIONS: &[&str] = schema::MIGRATIONS;
+/// Takes the current schema back to version 14.
+pub const UNDO_V15: &str = schema::UNDO_V15;
 /// Takes the current schema back to version 13.
 pub const UNDO_V14: &str = schema::UNDO_V14;
 /// Takes the current schema back to version 12.

@@ -8,6 +8,7 @@ use crate::ops_tests::{NOW, UIDVALIDITY, arrive, held_ids, message, ready};
 use crate::prelude::*;
 use rusqlite::Connection;
 use sealwax_domain::account::AccountKey;
+use sealwax_domain::compose::protect::Protection;
 use sealwax_domain::compose::{Draft, DraftPart, DraftSource, ReplyKind};
 use sealwax_domain::model::{Address, DraftId, FolderRole, Headers};
 use std::path::PathBuf;
@@ -1284,4 +1285,51 @@ fn an_outbox_state_no_sealwax_writes_is_an_error_never_sent() {
     assert!(store.undo_send(id).recv_blocking().is_err());
     // And it is never due.
     assert!(due(store, cx.account, NOW + 60_000).is_empty());
+}
+
+/// ADR-032: a draft's Sign, Encrypt and picked keys are kept; while Encrypt is on it has no
+/// server copy (the one it had is deleted) and none is uploaded; off again, it uploads.
+#[test]
+fn an_encrypted_draft_stays_on_this_computer() {
+    let cx = server();
+    let store = &cx.store;
+    let id = save(store, None, draft(cx.account, 1), true);
+    let later = NOW + 3_600_000;
+    let first = store.due_drafts(cx.account, later).recv_blocking().unwrap();
+    assert_eq!(first.uploads.len(), 1);
+    store
+        .draft_upload_started(id, 1, cx.drafts, UIDVALIDITY, 10)
+        .recv_blocking()
+        .unwrap();
+    store
+        .draft_upload_done(id, 1, Some(10))
+        .recv_blocking()
+        .unwrap();
+
+    let mut encrypted = draft(cx.account, 1);
+    encrypted.protection = Protection {
+        sign: true,
+        encrypt: true,
+        picked: vec![(
+            "kari@example.test".into(),
+            "0123456789ABCDEF0123456789ABCDEF01234567".into(),
+        )],
+    };
+    save(store, Some(id), encrypted.clone(), true);
+    let stored = store.draft(id).recv_blocking().unwrap().unwrap();
+    assert_eq!(stored.draft.protection, encrypted.protection);
+    let due = store.due_drafts(cx.account, later).recv_blocking().unwrap();
+    assert!(
+        due.uploads.is_empty(),
+        "nothing is uploaded while it is encrypted"
+    );
+    assert_eq!(due.deletions.len(), 1, "the server copy it had goes");
+    assert_eq!(due.deletions[0].target, DeletionTarget::Uid(10));
+
+    let mut plain = encrypted;
+    plain.protection.encrypt = false;
+    save(store, Some(id), plain, true);
+    let due = store.due_drafts(cx.account, later).recv_blocking().unwrap();
+    assert_eq!(due.uploads.len(), 1, "Encrypt off: it uploads again");
+    assert!(due.uploads[0].message.protection.sign);
 }

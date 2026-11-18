@@ -351,6 +351,20 @@ pub struct AccountSettings {
     /// The other addresses the account sends from (aliases, PRD A6), from
     /// `[[account.identity]]` (M6, ML-070).
     pub identities: Vec<Identity>,
+    /// Signing and encrypting by default, and the signing key (#32, ADR-032).
+    pub pgp: PgpSettings,
+}
+
+/// An account's PGP settings: `pgp_sign`, `pgp_encrypt` and `pgp_key` in `accounts.toml`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct PgpSettings {
+    /// A new message starts with Sign on.
+    pub sign: bool,
+    /// A new message starts with Encrypt on.
+    pub encrypt: bool,
+    /// The fingerprint of the key that signs mail from the account's own address, upper case;
+    /// `None`: the one secret key with that address.
+    pub key: Option<String>,
 }
 
 impl AccountSettings {

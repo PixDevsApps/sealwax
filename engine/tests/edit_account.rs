@@ -38,6 +38,7 @@ fn start(dirs: &SealwaxDirs) -> (Engine, Arc<Store>) {
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: None,
     })
     .unwrap();
     (engine, store)
@@ -119,6 +120,7 @@ fn an_edited_label_and_color_reach_the_file_and_the_store() {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         },
     )
     .unwrap();

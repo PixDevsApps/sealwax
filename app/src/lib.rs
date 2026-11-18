@@ -66,6 +66,7 @@ mod oauth;
 mod open_with;
 mod outbox;
 mod part_cache;
+mod pgp;
 mod pins;
 mod pop3;
 mod portal;

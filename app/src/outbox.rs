@@ -23,8 +23,9 @@ use gtk4::prelude::*;
 use gtk4::{gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
+use sealwax_domain::compose::protect::OwnKeyProblem;
 use sealwax_domain::model::{AccountId, BlobKey, DraftId, MessageId};
-use sealwax_engine::api::{Command, Event, SendError, UncertainReason};
+use sealwax_engine::api::{Command, Event, ProtectionError, SendError, UncertainReason};
 use sealwax_infrastructure::store::{OutboxEntry, Resolution, SendRecorded, SendState, SendUndone};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -438,12 +439,41 @@ pub(crate) fn failure_text(error: &SendError) -> String {
         SendError::NeedsSignIn => "the account needs you to sign in again".to_owned(),
         SendError::Offline => "the mail server can't be reached".to_owned(),
         SendError::Interrupted => "Sealwax stopped while preparing it".to_owned(),
+        SendError::Protection(error) => protection_text(error),
         SendError::Store | SendError::Other => String::new(),
     };
     if why.is_empty() {
         "Your message wasn't sent. It's back in your drafts.".to_owned()
     } else {
         format!("Your message wasn't sent: {why}. It's back in your drafts.")
+    }
+}
+
+/// Why a message couldn't be signed or encrypted, for the toast (no addresses).
+pub(crate) fn protection_text(error: &ProtectionError) -> String {
+    match error {
+        ProtectionError::NoGnuPG => "GnuPG isn't available to sign or encrypt it".to_owned(),
+        ProtectionError::OwnKey(OwnKeyProblem::Missing) => {
+            "you have no key for the address it's sent from".to_owned()
+        }
+        ProtectionError::OwnKey(OwnKeyProblem::Unusable) => {
+            "your key for the address it's sent from can't sign or encrypt".to_owned()
+        }
+        ProtectionError::OwnKey(OwnKeyProblem::Several) => {
+            "you have several keys for the address it's sent from; name one as pgp_key in \
+             accounts.toml"
+                .to_owned()
+        }
+        ProtectionError::Missing(list) if list.len() == 1 => {
+            "1 recipient has no key to encrypt to".to_owned()
+        }
+        ProtectionError::Missing(list) => {
+            format!("{} recipients have no key to encrypt to", list.len())
+        }
+        ProtectionError::Choose(_) => "a recipient's key needs to be picked".to_owned(),
+        ProtectionError::Failed => {
+            "it couldn't be signed or encrypted; the passphrase may have been cancelled".to_owned()
+        }
     }
 }
 

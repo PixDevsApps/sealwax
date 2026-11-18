@@ -134,6 +134,7 @@ fn settings(address: &str) -> AccountSettings {
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     }
 }
 
@@ -342,6 +343,7 @@ async fn no_token_reaches_a_file_or_a_log() {
             wait: Duration::from_secs(10),
         },
         sync: SyncConfig::default(),
+        gpg: None,
     })
     .unwrap();
 
@@ -364,6 +366,7 @@ async fn no_token_reaches_a_file_or_a_log() {
                 signature: None,
                 signature_html: None,
                 identities: Vec::new(),
+                pgp: Default::default(),
             },
             password: Password::new(String::new()),
             sign_in: Some(1),

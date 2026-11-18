@@ -133,6 +133,7 @@ async fn imap_protos_panic_restarts_the_account() {
             backoff_max: Duration::from_secs(2),
             ..SyncConfig::default()
         },
+        gpg: None,
     })
     .unwrap();
     let events = engine.events();
@@ -154,6 +155,7 @@ async fn imap_protos_panic_restarts_the_account() {
                 signature: None,
                 signature_html: None,
                 identities: Vec::new(),
+                pgp: Default::default(),
             },
             password: Password::new("fake-password".into()),
             sign_in: None,

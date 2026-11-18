@@ -127,6 +127,7 @@ fn settings(imap: u16, smtp: u16) -> AccountSettings {
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     }
 }
 

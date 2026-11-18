@@ -103,6 +103,7 @@ impl StoredDraft {
             references: self.references.clone(),
             source: None,
             parts,
+            protection: super::protect::Protection::default(),
         }
     }
 }

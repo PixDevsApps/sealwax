@@ -192,7 +192,7 @@ Allowed images load only over HTTPS and without cookies. A forged From address c
 
 A signed message has a line above it. **"Signed by Ada Lovelace <ada@example.com> · checked"** means the signature is good and your keyring vouches for the key with the sender's address on it: for that address itself, not only for another name on the same key. Anything less says what's missing: "key not verified" (the signature is good, but you haven't certified the key in GnuPG: check its fingerprint with the sender, then sign it with `gpg --lsign-key`), "not by the sender", "the key isn't in your keyring", "expired", "revoked", or "The signature doesn't match: the message may have been changed". The warnings have a warning sign. Sealwax never fetches keys from a keyserver by itself; import them with GnuPG. In a clear-signed text (the signature at the end of the text itself), only the signed part is shown under the line; anything written around it isn't signed, so it's left out, with "Text outside the signed part isn't shown" under the line. Show Original shows the whole message.
 
-Without GnuPG installed, an encrypted message says to install it and signatures show "Signed · not checked". In the Flatpak, Sealwax can't reach your GnuPG keyring, so it reads no PGP; use the Arch package for that. S/MIME is shown but not decrypted or checked. Sending signed or encrypted mail comes in a later release.
+Without GnuPG installed, an encrypted message says to install it and signatures show "Signed · not checked". In the Flatpak, Sealwax can't reach your GnuPG keyring, so it reads no PGP; use the Arch package for that. S/MIME is shown but not decrypted or checked. To send signed or encrypted mail, see [Writing mail](#writing-mail).
 
 **Attached messages.** **Open** on an attached email (a `.eml` attachment, such as a message forwarded as an attachment or the `postacert.eml` inside an Italian certified email, PEC) shows it in the reader: its sender, text and attachments, which open and save as usual. A bar above it says "Attached message" with its name and **Back**; Back, or Escape, goes back to the message it came in. An attached message inside it opens the same way. Remote images stay hidden as in any message. Reply and the list's commands act on the message you selected in the list, not on the attached one; to reply to the attached message's sender, save it and open it in your mail. **Save** still saves the `.eml` file.
 
@@ -360,6 +360,18 @@ In the file, an image names its file the way a web page does, `<img src="logo.pn
 
 Outgoing mail carries no name of your computer and no Bcc header, and Sealwax adds no "sent with" field.
 
+**Signed and encrypted mail (PGP).** The composer's **Sign** and **Encrypt** buttons, beside Attach File… (also **Sign Message** and **Encrypt Message** in the palette, with no keys by default), sign and encrypt with your own GnuPG, as reading does: your keyring and gpg-agent, passphrases through pinentry, hardware keys included. The message goes as PGP/MIME, which other PGP mail programs read.
+
+- **Encrypt** needs a key in your keyring for every recipient: a key with their address that isn't expired, revoked, disabled or marked as not to be trusted. Keys you haven't verified are used too, and the line under the fields names those recipients ("Key not verified: …"), so you can check the fingerprint with them. When an address has a verified key and unverified ones, the verified one is used; when it has several unverified ones, Send asks which ("Which key for …?"), and the draft remembers your choice. A recipient without a key stops the send, and the composer names them; Sealwax never sends in plain text by itself, so turning Encrypt off is your own step. Your own key is added, so you can read your Sent copy. Bcc recipients are hidden recipients: the message doesn't name their keys.
+- **Sign** uses your secret key for the From address. If you have more than one, name the one to use as `pgp_key` in [accounts.toml](#accountstoml).
+- **The Subject stays readable**, as most mail programs do by default; the text and the attachments are encrypted.
+- **Drafts:** while Encrypt is on, the draft stays on this computer: it isn't saved in the server's Drafts folder, and a copy saved there before is removed. Turn Encrypt off, and it's saved there again.
+- **When it starts on:** off for a new message, unless the account's `pgp_sign` or `pgp_encrypt` says otherwise. A reply to an encrypted message starts with Encrypt on (and Sign, if the message was signed); so does the quick reply, which says so if a key is missing.
+- **Signing asks for your passphrase** when the message goes out, after the 7 seconds of Undo, unless gpg-agent still holds it. If you cancel, the message isn't sent and comes back to your drafts.
+- **Attach My Public Key** (the palette) attaches your public key, as `OpenPGP_0x….asc`, so a recipient can encrypt to you.
+
+It needs GnuPG installed. In the Flatpak, Sealwax can't reach your keyring, so the buttons can't be used; use the Arch package for PGP.
+
 **`mailto:` links.** `sealwax mailto:someone@example.com` opens a composer with the link's address, subject and text; links in your browser do the same once Sealwax is the default mail app. **Make Sealwax the Default Mail App…** (in the palette) says what it changes and how to undo it, and asks first; only an installed Sealwax can be the default. Attachments named in a `mailto:` link are always ignored. `sealwax --compose` opens a new message.
 
 ## Search
@@ -493,6 +505,9 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Compose | Quick Reply | — |  | `quick-reply` |
 | Compose | Open Reply in Composer | Ctrl+Shift+E | reader | `reply-in-composer` |
 | Compose | Attach File… | — |  | `attach-file` |
+| Compose | Sign Message | — |  | `sign-message` |
+| Compose | Encrypt Message | — |  | `encrypt-message` |
+| Compose | Attach My Public Key | — |  | `attach-public-key` |
 | Compose | Add Cc and Bcc | — |  | `show-cc-bcc` |
 | Compose | Discard Draft | — |  | `discard-draft` |
 | Compose | Close Composer | Ctrl+W | composer | `close-composer` |
@@ -683,6 +698,9 @@ address = "board@example.com"
 | | `auth` | `"password"` | `"password"` (a password or app password, kept in the keyring) or `"microsoft"` (Sign in with Microsoft) |
 | | `signature` | none | Plain text put under your messages after a `-- ` line; at most 10,000 characters |
 | | `signature_html` | none | An HTML signature's file in `~/.config/sealwax/signatures/`, such as `"work/signature.html"`; used in place of `signature` when it can be read ([HTML signatures](#writing-mail)) |
+| | `pgp_sign` | `false` | `true`: a new message starts with Sign on ([signed and encrypted mail](#writing-mail)) |
+| | `pgp_encrypt` | `false` | `true`: a new message starts with Encrypt on |
+| | `pgp_key` | your one key for the address | The full fingerprint (40 hexadecimal digits, spaces allowed) of the secret key that signs mail from the account's own address, when you have more than one; identities use the key with their address |
 | `[account.imap]` | `host` | — (required) | The IMAP server |
 | | `port` | 993 with `"tls"`, 143 with `"starttls"` | |
 | | `security` | `"tls"` | `"tls"` or `"starttls"`; there is no setting without encryption |

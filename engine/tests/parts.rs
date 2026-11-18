@@ -348,6 +348,7 @@ fn parts_and_originals_are_fetched_on_demand_and_answered_once() {
             opened_poll: Duration::from_secs(600),
             ..SyncConfig::default()
         },
+        gpg: None,
     })
     .unwrap();
     let endpoint = Endpoint {
@@ -374,6 +375,7 @@ fn parts_and_originals_are_fetched_on_demand_and_answered_once() {
                 signature: None,
                 signature_html: None,
                 identities: Vec::new(),
+                pgp: Default::default(),
             },
             password: Password::new(PASSWORD.into()),
             sign_in: None,

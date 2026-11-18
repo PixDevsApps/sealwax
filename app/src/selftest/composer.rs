@@ -28,6 +28,8 @@
 //! | `composer-style TAG` | Picks a paragraph style (`p`, `h1`, `h2`, `h3`, `pre`) |
 //! | `composer-link URL\|- apply\|remove\|cancel` | Answers the open link dialog |
 //! | `composer-discard-answer discard\|cancel` | Answers the open discard dialog |
+//! | `composer-pgp-keys` | Makes the PGP keys `app/src/selftest/pgp.rs` describes in the run's keyring |
+//! | `composer-pick-key N\|cancel` | Answers the key picker: the Nth key, then Use This Key |
 //! | `composer-clipboard html\|text\|image\|hostile TEXT` | Puts that on the clipboard (`hostile` builds S7's paste with the canary's URLs) |
 //! | `composer-canary` | Starts a local HTTP canary on 127.0.0.1 |
 //! | `composer-make-file PATH BYTES` | Writes a file of BYTES bytes under `$TMP` |
@@ -54,7 +56,7 @@
 //! | `assert-composer theme` | The body's background is the theme's |
 //! | `assert-composer eval SCRIPT VALUE` | SCRIPT, run in the helper's world, gives VALUE |
 //! | `assert-composer stored ID FIELD TEXT` | The stand-in's draft ID holds TEXT in FIELD |
-//! | `assert-composer db current\|last\|N FIELD TEXT` | The store's draft holds TEXT in FIELD: `to`, `cc`, `bcc`, `subject`, `from`, `html`, `in-reply-to`, `references`, `message-id`, `parts`, `inline`, `attached`, `open`, `sending`, `account` (its name) |
+//! | `assert-composer db current\|last\|N FIELD TEXT` | The store's draft holds TEXT in FIELD: `to`, `cc`, `bcc`, `subject`, `from`, `html`, `in-reply-to`, `references`, `message-id`, `parts`, `inline`, `attached`, `open`, `sending`, `account` (its name), `pgp` (`sign`, `encrypt`, `sign,encrypt` or `none`, then ` +address=FINGERPRINT` per picked key) |
 //! | `assert-composer db-gone current\|last\|N` | The store has no such draft |
 //! | `assert-composer outbox N`, `open-drafts N` | The store's outbox entries; drafts marked open |
 //! | `composer-type-log PATH EVERY COUNT` | Types a letter through the helper every EVERY ms, COUNT times, logging `index unix-ms` after a `pid` line (the kill -9 harness) |
@@ -73,6 +75,8 @@
 //! | `assert-composer attachments N`, `attachment N name\|size TEXT` | The footer's cards |
 //! | `assert-composer parts N` | Inline images in the draft |
 //! | `assert-composer warning TEXT\|none` | The size warning contains TEXT |
+//! | `assert-composer keys TEXT\|none` | The line about the recipients' keys contains TEXT (ADR-032) |
+//! | `assert-composer active NAME BOOL` | The toggle NAME (`composer-sign`, `composer-encrypt`) is on |
 //! | `assert-composer saved BOOL` | "Draft saved HH:MM" shows |
 //! | `assert-composer saves N` | At least N saves so far |
 //! | `assert-composer save-lag MS` | Every edit was followed by a save within MS ms |
@@ -83,7 +87,7 @@
 //! | `assert-composer cid-served N` | At least N `cid:` images served |
 //! | `assert-composer undo\|redo BOOL` | WebKit has something to undo or redo |
 //! | `assert-composer toast TEXT` | A toast containing TEXT shows |
-//! | `assert-composer dialog link\|discard BOOL` | That dialog is open |
+//! | `assert-composer dialog link\|discard\|pick-key BOOL` | That dialog is open |
 
 use super::script::boolean;
 use super::{Harness, StepResult, broadway, equal, number};
@@ -108,6 +112,8 @@ use std::time::{Duration, Instant};
 /// The commands this module adds to the script format, with their argument counts.
 pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("composer-open", 1, 3),
+    ("composer-pgp-keys", 0, 0),
+    ("composer-pick-key", 1, 1),
     ("composer-backend", 1, 1),
     ("composer-store-message", 2, 2),
     ("composer-type-log", 3, 3),
@@ -392,6 +398,29 @@ pub(super) async fn step(harness: &Harness, command: &str, args: &[String]) -> S
                 entry.set_text(arg(0));
             }
             respond(&dialog, arg(1))?;
+            settle(harness).await;
+            Ok(())
+        }
+        "composer-pgp-keys" => super::pgp::composer_keys(),
+        "composer-pick-key" => {
+            let dialog = dialog(&composer()?, "composer-pick-key-dialog")?;
+            if arg(0) == "cancel" {
+                respond(&dialog, "cancel")?;
+            } else {
+                let name = format!("composer-key-{}", arg(0));
+                let mut found = None;
+                if let Some(child) = dialog.extra_child() {
+                    super::collect(&child, &mut |widget| {
+                        if widget.widget_name() == name.as_str() {
+                            found = widget.clone().downcast::<gtk::CheckButton>().ok();
+                        }
+                    });
+                }
+                found
+                    .ok_or_else(|| format!("the picker has no {name}"))?
+                    .set_active(true);
+                respond(&dialog, "use")?;
+            }
             settle(harness).await;
             Ok(())
         }
@@ -685,6 +714,21 @@ fn focus_name(composer: &Composer) -> String {
         }
     }
     format!("{} {}", focus.type_().name(), focus.widget_name())
+}
+
+/// A draft's Sign and Encrypt for the checks: `sign`, `encrypt`, `sign,encrypt` or `none`,
+/// then each picked key as `+address=FINGERPRINT`.
+fn protection_text(protection: &sealwax_domain::compose::protect::Protection) -> String {
+    let mut text = match (protection.sign, protection.encrypt) {
+        (true, true) => "sign,encrypt".to_owned(),
+        (true, false) => "sign".to_owned(),
+        (false, true) => "encrypt".to_owned(),
+        (false, false) => "none".to_owned(),
+    };
+    for (address, fingerprint) in &protection.picked {
+        text.push_str(&format!(" +{address}={fingerprint}"));
+    }
+    text
 }
 
 fn dialog(composer: &Composer, name: &str) -> Result<adw::AlertDialog, String> {
@@ -1215,6 +1259,25 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 .unwrap_or(0);
             equal("inline images", parts, number(arg(1))?)
         }
+        "keys" => match (composer.keys_line(), arg(1)) {
+            (None, "none") => Ok(()),
+            (Some(line), wanted) if wanted != "none" && line.contains(wanted) => {
+                println!("  # {line}");
+                Ok(())
+            }
+            (line, wanted) => Err(format!("keys line: got {line:?}, wanted {wanted:?}")),
+        },
+        "active" => {
+            let widget = composer
+                .widget(arg(1))
+                .and_then(|widget| widget.downcast::<gtk::ToggleButton>().ok())
+                .ok_or_else(|| format!("no toggle named {}", arg(1)))?;
+            equal(
+                &format!("{} active", arg(1)),
+                widget.is_active(),
+                boolean(arg(2))?,
+            )
+        }
         "warning" => match (composer.warning(), arg(1)) {
             (None, "none") => Ok(()),
             (Some(warning), wanted) if wanted != "none" && warning.contains(wanted) => {
@@ -1366,6 +1429,7 @@ fn check_backend(what: &str, args: &[String]) -> StepResult {
                 "from" => draft.from.email.clone(),
                 "html" => draft.html.clone(),
                 "parts" => draft.parts.len().to_string(),
+                "pgp" => protection_text(&draft.protection),
                 other => return Err(format!("no field {other}")),
             };
             if value.contains(wanted) {
@@ -1597,6 +1661,7 @@ async fn check_store(harness: &Harness, what: &str, args: &[String]) -> StepResu
                     .join(","),
                 "open" => stored.open.to_string(),
                 "sending" => stored.send.is_some().to_string(),
+                "pgp" => protection_text(&draft.protection),
                 "account" => harness
                     .state
                     .mailbox()

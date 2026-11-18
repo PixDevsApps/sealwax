@@ -31,17 +31,19 @@ use super::{
     Interrupt, Jitter, Poller, Shared, Signal, Status, SyncConfig, backoff_delay, discard, race,
 };
 use crate::accounts::secret_label;
-use crate::api::{Event, SendError, SyncStatus, UncertainReason};
+use crate::api::{Event, ProtectionError, SendError, SyncStatus, UncertainReason};
 use crate::imap::Credentials;
 use crate::imap::write::{self, Append, Mark, OpFolder, WriteError, WriteFailure};
 use crate::secrets::{SecretKind, SecretStore};
 use crate::smtp::submit::{self, Envelope, SubmitError, SubmitFailure, Submitter};
 use sealwax_domain::account::{AccountSettings, AuthMethod, LoginFailure};
+use sealwax_domain::address::same;
 use sealwax_domain::autoconfig::presets;
 use sealwax_domain::compose::Draft;
 use sealwax_domain::compose::mime::{self, BuildError, Field};
 use sealwax_domain::model::{AccountId, DraftId, Flags, FolderRole};
 use sealwax_infrastructure::blobs::BlobStore;
+use sealwax_infrastructure::pgp::{Gpg, SealError};
 use sealwax_infrastructure::store::{
     DeletionTarget, DraftDeletion, DraftUpload, DueSend, DueSends, DueSentCopy, Failure, Prepared,
     SendFailed, SendFailure, SendStarted, SentCopyDone,
@@ -73,6 +75,30 @@ pub(super) enum Unbuilt {
     Draft(BuildError),
     /// A part's or the recorded message's bytes couldn't be read or written.
     Blobs,
+    /// It couldn't be signed or encrypted (ADR-032).
+    Protection(ProtectionError),
+}
+
+/// What signs and encrypts a draft: the user's GnuPG, and the account's `pgp_key`, which
+/// counts for mail from the account's own address only.
+pub(super) struct Sealer {
+    pub gpg: Option<Gpg>,
+    pub configured: Option<String>,
+}
+
+impl Sealer {
+    fn seal(&self, draft: &Draft, message: &[u8]) -> Result<Vec<u8>, ProtectionError> {
+        let gpg = self.gpg.as_ref().ok_or(ProtectionError::NoGnuPG)?;
+        gpg.seal(draft, message, self.configured.as_deref())
+            .map_err(|error| match error {
+                SealError::Problem(problem) => problem.into(),
+                SealError::GnuPG(error) => {
+                    tracing::warn!(%error, "GnuPG couldn't be run for a send");
+                    ProtectionError::Failed
+                }
+                SealError::Failed => ProtectionError::Failed,
+            })
+    }
 }
 
 /// What the round does after one send.
@@ -87,9 +113,10 @@ fn unix_seconds() -> i64 {
     unix_ms() / 1000
 }
 
-/// Reads the parts' bytes and builds the transmitted copy and the Sent copy, storing both in
-/// the blob store: blocking work, for `spawn_blocking`.
-fn build(blobs: &BlobStore, draft: &Draft, date: i64) -> Result<Built, Unbuilt> {
+/// Reads the parts' bytes and builds the transmitted copy and the Sent copy, signed and
+/// encrypted when the draft says so, storing both in the blob store: blocking work, for
+/// `spawn_blocking` (signing may wait for the user's passphrase).
+fn build(blobs: &BlobStore, draft: &Draft, date: i64, sealer: &Sealer) -> Result<Built, Unbuilt> {
     let parts: Vec<Vec<u8>> = draft
         .parts
         .iter()
@@ -97,7 +124,14 @@ fn build(blobs: &BlobStore, draft: &Draft, date: i64) -> Result<Built, Unbuilt> 
         .collect::<Result<_, _>>()
         .map_err(|_| Unbuilt::Blobs)?;
     let slices: Vec<&[u8]> = parts.iter().map(Vec::as_slice).collect();
-    let outgoing = mime::build(draft, date, &slices).map_err(Unbuilt::Draft)?;
+    let mut outgoing = mime::build(draft, date, &slices).map_err(Unbuilt::Draft)?;
+    if draft.protection.any() {
+        outgoing.transmitted = sealer
+            .seal(draft, &outgoing.transmitted)
+            .map_err(Unbuilt::Protection)?;
+        outgoing.sent_copy =
+            mime::sent_copy(draft, &outgoing.transmitted).map_err(Unbuilt::Draft)?;
+    }
     let message_blob = blobs
         .put(&outgoing.transmitted)
         .map_err(|_| Unbuilt::Blobs)?;
@@ -447,7 +481,16 @@ impl Submission {
             None => {
                 let draft = send.message.clone();
                 let date = unix_seconds();
-                tokio::task::spawn_blocking(move || build(&blobs, &draft, date))
+                let sealer = Sealer {
+                    gpg: self.shared.gpg.clone(),
+                    configured: self
+                        .settings
+                        .pgp
+                        .key
+                        .clone()
+                        .filter(|_| same(&draft.from.email, &self.settings.address)),
+                };
+                tokio::task::spawn_blocking(move || build(&blobs, &draft, date, &sealer))
             }
         };
         task.await.unwrap_or(Err(Unbuilt::Blobs))
@@ -556,6 +599,16 @@ impl Submission {
                     "a draft's parts couldn't be read or its message stored"
                 );
                 self.refused(send, SendFailure::Other, SendError::Store)
+                    .await;
+                return Ok(Next::Continue);
+            }
+            Err(Unbuilt::Protection(error)) => {
+                tracing::info!(
+                    account = self.account.0,
+                    ?error,
+                    "a draft couldn't be signed or encrypted"
+                );
+                self.refused(send, SendFailure::Protection, SendError::Protection(error))
                     .await;
                 return Ok(Next::Continue);
             }
@@ -1192,6 +1245,40 @@ impl Poller {
 mod tests {
     use super::*;
     use sealwax_domain::account::{AccountKey, Endpoint, OAuthProvider, Security};
+    use sealwax_domain::compose::protect::Protection;
+    use sealwax_domain::model::Address;
+
+    /// ADR-032: a draft marked Sign or Encrypt is never sent as it is when GnuPG can't be
+    /// reached; an unmarked one is built as before.
+    #[test]
+    fn a_protected_draft_without_gnupg_is_not_built() {
+        let dir = tempfile::tempdir().unwrap();
+        let blobs = BlobStore::open(dir.path()).unwrap();
+        let mut draft = Draft {
+            from: Address::new("Ada", "ada@example.test"),
+            to: vec![Address::new("Bob", "bob@example.test")],
+            subject: "Plans".into(),
+            html: "<div>Plans</div>".into(),
+            message_id: "plans@example.test".into(),
+            ..Draft::default()
+        };
+        let sealer = Sealer {
+            gpg: None,
+            configured: None,
+        };
+        assert!(build(&blobs, &draft, 1_795_000_000, &sealer).is_ok());
+        for (sign, encrypt) in [(true, false), (false, true)] {
+            draft.protection = Protection {
+                sign,
+                encrypt,
+                ..Protection::default()
+            };
+            assert!(matches!(
+                build(&blobs, &draft, 1_795_000_000, &sealer),
+                Err(Unbuilt::Protection(ProtectionError::NoGnuPG))
+            ));
+        }
+    }
 
     fn settings(smtp: &str, auth: AuthMethod) -> AccountSettings {
         let endpoint = |host: &str| Endpoint {
@@ -1214,6 +1301,7 @@ mod tests {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         }
     }
 

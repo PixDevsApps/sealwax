@@ -289,6 +289,7 @@ impl Reply {
                 kind: self.kind,
             }),
             parts,
+            protection: super::protect::Protection::default(),
         }
     }
 

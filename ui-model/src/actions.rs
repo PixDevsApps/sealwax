@@ -272,6 +272,9 @@ pub enum ActionId {
     QuickReply,
     ReplyInComposer,
     AttachFile,
+    SignMessage,
+    EncryptMessage,
+    AttachPublicKey,
     ShowCcBcc,
     DiscardDraft,
     CloseComposer,
@@ -326,7 +329,7 @@ pub enum ActionId {
 }
 
 impl ActionId {
-    pub const ALL: [Self; 119] = [
+    pub const ALL: [Self; 122] = [
         Self::NextMessage,
         Self::PreviousMessage,
         Self::NextInConversation,
@@ -395,6 +398,9 @@ impl ActionId {
         Self::QuickReply,
         Self::ReplyInComposer,
         Self::AttachFile,
+        Self::SignMessage,
+        Self::EncryptMessage,
+        Self::AttachPublicKey,
         Self::ShowCcBcc,
         Self::DiscardDraft,
         Self::CloseComposer,
@@ -756,6 +762,29 @@ impl ActionId {
             Self::AttachFile => {
                 command("attach-file", "Attach File…", Compose, Scope::Composer, &[])
             }
+            // PGP on send (#32, ADR-032): no default keys (the owner's answer, 2026-11-18);
+            // keys.toml can give them one.
+            Self::SignMessage => command(
+                "sign-message",
+                "Sign Message",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::EncryptMessage => command(
+                "encrypt-message",
+                "Encrypt Message",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
+            Self::AttachPublicKey => command(
+                "attach-public-key",
+                "Attach My Public Key",
+                Compose,
+                Scope::Composer,
+                &[],
+            ),
             Self::ShowCcBcc => command(
                 "show-cc-bcc",
                 "Add Cc and Bcc",

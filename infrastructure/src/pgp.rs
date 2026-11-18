@@ -1,4 +1,4 @@
-//! Running GnuPG for the reader (#32, ADR-030): the user's own `gpg`, keyring and gpg-agent, so
+//! Running GnuPG for the reader (#32, ADR-030) and for sending (ADR-032): the user's own `gpg`, keyring and gpg-agent, so
 //! private keys stay where they are (hardware keys included) and passphrases go through the
 //! agent's pinentry. Sealwax holds no key and no passphrase.
 //!
@@ -9,7 +9,9 @@
 //! once. Plaintext only ever goes through pipes; the one file written is a detached signature,
 //! which is public, 0600 in a private folder, removed after the check.
 
-use sealwax_domain::pgp::{self, MAX_BYTES, Status};
+use sealwax_domain::compose::Draft;
+use sealwax_domain::compose::protect::{self, Plan, Problem};
+use sealwax_domain::pgp::{self, Key, MAX_BYTES, Status};
 use std::fs;
 use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
@@ -132,6 +134,136 @@ impl Gpg {
         Ok(pgp::user_ids(&String::from_utf8_lossy(&answer.output)))
     }
 
+    /// The public keys with a user ID of one of `addresses` (exact address matches).
+    pub fn public_keys(&self, addresses: &[String]) -> io::Result<Vec<Key>> {
+        let patterns: Vec<String> = addresses
+            .iter()
+            .filter(|address| address.contains('@') && !address.contains(['<', '>', '\n']))
+            .map(|address| format!("<{address}>"))
+            .collect();
+        if patterns.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut command =
+            self.command(&["--with-colons", "--fixed-list-mode", "--list-keys", "--"]);
+        command.args(&patterns);
+        let answer = run(command, b"")?;
+        Ok(pgp::keys(&String::from_utf8_lossy(&answer.output)))
+    }
+
+    /// The user's secret keys.
+    pub fn secret_keys(&self) -> io::Result<Vec<Key>> {
+        let answer = run(
+            self.command(&["--with-colons", "--fixed-list-mode", "--list-secret-keys"]),
+            b"",
+        )?;
+        Ok(pgp::keys(&String::from_utf8_lossy(&answer.output)))
+    }
+
+    /// What signing and encrypting `draft` takes, from the keyring as it is now: the keys, or
+    /// what stands in the way. `configured` is the account's `pgp_key`.
+    pub fn plan(&self, draft: &Draft, configured: Option<&str>) -> Result<Plan, SealError> {
+        if !draft.protection.any() {
+            return Ok(Plan::default());
+        }
+        let addresses: Vec<String> = protect::recipients(draft)
+            .into_iter()
+            .map(|(address, _)| address)
+            .collect();
+        let public = if draft.protection.encrypt {
+            self.public_keys(&addresses).map_err(SealError::GnuPG)?
+        } else {
+            Vec::new()
+        };
+        let secret = self.secret_keys().map_err(SealError::GnuPG)?;
+        protect::plan(draft, &public, &secret, configured).map_err(SealError::Problem)
+    }
+
+    /// `message` (the MIME builder's transmitted copy of `draft`) signed and/or encrypted as
+    /// the draft says: a PGP/MIME message. Signing may ask for the passphrase through the
+    /// agent's pinentry, so it waits its turn with decryptions.
+    pub fn seal(
+        &self,
+        draft: &Draft,
+        message: &[u8],
+        configured: Option<&str>,
+    ) -> Result<Vec<u8>, SealError> {
+        let plan = self.plan(draft, configured)?;
+        let split = protect::split(message).ok_or(SealError::Failed)?;
+        let boundary = || {
+            let mut random = [0u8; 16];
+            getrandom::fill(&mut random).map_err(|_| SealError::Failed)?;
+            Ok::<_, SealError>(protect::boundary(random))
+        };
+        let _turn = ONE_AT_A_TIME
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if draft.protection.encrypt {
+            let mut arguments: Vec<String> = ["--trust-model", "always", "--armor", "--encrypt"]
+                .map(str::to_owned)
+                .to_vec();
+            if let Some(signer) = &plan.signer {
+                arguments.extend([
+                    "--sign".to_owned(),
+                    "--local-user".to_owned(),
+                    signer.clone(),
+                ]);
+            }
+            for key in &plan.recipients {
+                arguments.extend(["--recipient".to_owned(), key.clone()]);
+            }
+            for key in &plan.hidden {
+                arguments.extend(["--hidden-recipient".to_owned(), key.clone()]);
+            }
+            let arguments: Vec<&str> = arguments.iter().map(String::as_str).collect();
+            let answer = run(self.command(&arguments), &split.entity).map_err(SealError::GnuPG)?;
+            if !answer.status.encrypted
+                || answer.status.refused
+                || answer.output.is_empty()
+                || plan.signer.is_some() && answer.status.created.is_none()
+            {
+                return Err(SealError::Failed);
+            }
+            return protect::encrypted(&split, &answer.output, &boundary()?)
+                .ok_or(SealError::Failed);
+        }
+        let signer = plan.signer.as_deref().ok_or(SealError::Failed)?;
+        let answer = run(
+            self.command(&["--armor", "--detach-sign", "--local-user", signer]),
+            protect::signed_bytes(&split),
+        )
+        .map_err(SealError::GnuPG)?;
+        let micalg = answer
+            .status
+            .created
+            .and_then(pgp::micalg)
+            .filter(|_| !answer.status.refused && !answer.output.is_empty())
+            .ok_or(SealError::Failed)?;
+        protect::signed(&split, &answer.output, micalg, &boundary()?).ok_or(SealError::Failed)
+    }
+
+    /// The user's public key `fingerprint`, armoured, to attach (`export-minimal`: no
+    /// third-party signatures).
+    pub fn export(&self, fingerprint: &str) -> io::Result<Vec<u8>> {
+        if !protect::is_fingerprint(fingerprint) {
+            return Err(io::Error::other("not a fingerprint"));
+        }
+        let answer = run(
+            self.command(&[
+                "--armor",
+                "--export-options",
+                "export-minimal",
+                "--export",
+                fingerprint,
+            ]),
+            b"",
+        )?;
+        if answer.output.is_empty() {
+            return Err(io::Error::other("GnuPG exported nothing"));
+        }
+        Ok(answer.output)
+    }
+
     fn write_signature(&self, signature: &[u8]) -> io::Result<Removed> {
         fs::DirBuilder::new()
             .recursive(true)
@@ -150,6 +282,18 @@ impl Gpg {
         file.write_all(signature)?;
         Ok(removed)
     }
+}
+
+/// Why a draft couldn't be signed or encrypted.
+#[derive(Debug)]
+pub enum SealError {
+    /// A key is missing, to be picked, or the user's own can't be used.
+    Problem(Problem),
+    /// GnuPG couldn't be run.
+    GnuPG(io::Error),
+    /// GnuPG refused: the passphrase was cancelled or wrong, a key turned out unusable, or it
+    /// failed otherwise.
+    Failed,
 }
 
 /// A file removed when dropped.

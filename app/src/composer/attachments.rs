@@ -75,6 +75,20 @@ pub(crate) fn add_base64(blobs: BlobStore, name: String, mime_type: String, data
     })
 }
 
+/// Stores `bytes` (made by Sealwax, such as the user's public key) off the GTK thread.
+pub(crate) fn add_bytes(
+    blobs: BlobStore,
+    name: String,
+    mime_type: String,
+    bytes: Vec<u8>,
+) -> Local<Added> {
+    Box::pin(async move {
+        gio::spawn_blocking(move || store_bytes(&blobs, &name, Some(&mime_type), bytes))
+            .await
+            .unwrap_or_else(|_| Err("the worker failed".to_owned()))
+    })
+}
+
 /// The badge's text: the extension, or the type's subtype, in capitals.
 pub(crate) fn badge(name: &str, mime_type: &str) -> String {
     let from_name = attachment::extension(name)

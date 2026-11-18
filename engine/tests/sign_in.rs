@@ -75,6 +75,7 @@ impl Setup {
                 wait: Duration::from_secs(10),
             },
             sync: SyncConfig::default(),
+            gpg: None,
         })
         .unwrap()
     }
@@ -95,6 +96,7 @@ impl Setup {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         }
     }
 

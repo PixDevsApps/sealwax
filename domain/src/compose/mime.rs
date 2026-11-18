@@ -124,6 +124,12 @@ pub fn build(draft: &Draft, date: i64, parts: &[&[u8]]) -> Result<Outgoing, Buil
     })
 }
 
+/// The Sent copy of `transmitted`, a message made from `draft` (signed or encrypted after
+/// [`build`], ADR-032): its bytes plus one Bcc field.
+pub fn sent_copy(draft: &Draft, transmitted: &[u8]) -> Result<Vec<u8>, BuildError> {
+    Ok(with_bcc(transmitted, &mailboxes(&draft.bcc, Field::Bcc)?))
+}
+
 /// The Drafts folder's copy of `draft`, saved at `date`: Bcc kept, recipients optional.
 pub fn drafts_copy(draft: &Draft, date: i64, parts: &[&[u8]]) -> Result<Vec<u8>, BuildError> {
     write(draft, date, parts, Copy::Drafts)
@@ -161,8 +167,18 @@ pub fn envelope(draft: &Draft) -> Result<Envelope, BuildError> {
 /// The encoded size of `draft` as sent, for the composer's check against the server's SIZE
 /// limit while the user writes, without reading the parts: an estimate a little above what
 /// [`build`] makes (the parts' base64 and the HTML's quoted-printable are counted exactly, the
-/// plain part as large as the HTML, headers generously).
+/// plain part as large as the HTML, headers generously). Encrypted (ADR-032), the content is
+/// armoured: about four thirds of it, and the signature's few kilobytes.
 pub fn estimate(draft: &Draft) -> u64 {
+    let plain = plain_estimate(draft);
+    match (draft.protection.encrypt, draft.protection.sign) {
+        (true, _) => plain + plain / 3 + 4_096,
+        (false, true) => plain + 4_096,
+        (false, false) => plain,
+    }
+}
+
+fn plain_estimate(draft: &Draft) -> u64 {
     let html = encoded_text_len(&html_document(&draft.html)) as u64;
     let recipients = (draft.to.len() + draft.cc.len() + draft.bcc.len()) as u64;
     let headers = 1_024

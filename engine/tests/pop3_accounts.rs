@@ -41,6 +41,7 @@ fn start(dirs: &SealwaxDirs) -> (Engine, Arc<Store>) {
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: None,
     })
     .unwrap();
     (engine, store)
@@ -99,6 +100,7 @@ fn a_listed_pop3_account_gets_its_local_folders_and_leaves_nothing_when_removed(
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     };
     let commands = engine.commands();
     commands

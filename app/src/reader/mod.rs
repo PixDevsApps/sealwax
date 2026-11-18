@@ -834,23 +834,12 @@ impl Reader {
     }
 }
 
-/// Whether a link may open, and as what: absolute http(s) with a host, or mailto.
-/// The user's `gpg`, outside the Flatpak and outside unit tests. Detached signatures are
-/// written for the check under `$XDG_RUNTIME_DIR/sealwax-pgp` (ADR-030).
+/// The user's `gpg`, outside the Flatpak and outside unit tests (ADR-030).
 fn find_gpg() -> Option<Arc<Gpg>> {
-    if cfg!(test) || sealwax_infrastructure::sandbox::is_flatpak() {
-        return None;
-    }
-    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
-        .map(std::path::PathBuf::from)
-        .filter(|dir| dir.is_absolute())
-        .unwrap_or_else(std::env::temp_dir);
-    let application = gio::Application::default()
-        .and_then(|app| app.application_id())
-        .map_or_else(|| "sealwax".to_owned(), |id| id.to_string());
-    Gpg::find(&runtime.join(application).join("pgp")).map(Arc::new)
+    crate::pgp::shared()
 }
 
+/// Whether a link may open, and as what: absolute http(s) with a host, or mailto.
 pub(crate) fn openable(uri: &str) -> Option<String> {
     let parsed = glib::Uri::parse(uri.trim(), glib::UriFlags::ENCODED).ok()?;
     match parsed.scheme().to_ascii_lowercase().as_str() {

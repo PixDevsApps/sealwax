@@ -5,6 +5,7 @@ use super::codec;
 use super::compose_api::{SendFailure, SendState, StoredDraft};
 use rusqlite::types::{FromSql, FromSqlError, FromSqlResult, ValueRef};
 use rusqlite::{Connection, OptionalExtension, params};
+use sealwax_domain::compose::protect::Protection;
 use sealwax_domain::compose::{Draft, DraftPart, DraftSource, ReplyKind};
 use sealwax_domain::model::{AccountId, Address, BlobKey, DraftId, MessageId};
 use std::collections::BTreeSet;
@@ -31,6 +32,22 @@ impl FromSql for SendState {
     }
 }
 
+/// The `pgp` column's bits: 1 Sign, 2 Encrypt.
+pub(crate) const PGP_SIGN: i64 = 1;
+pub(crate) const PGP_ENCRYPT: i64 = 2;
+
+pub(crate) fn protection_code(protection: &Protection) -> i64 {
+    i64::from(protection.sign) * PGP_SIGN + i64::from(protection.encrypt) * PGP_ENCRYPT
+}
+
+fn protection_from(code: i64, picked: &str) -> Protection {
+    Protection {
+        sign: code & PGP_SIGN != 0,
+        encrypt: code & PGP_ENCRYPT != 0,
+        picked: Protection::decode_picked(picked),
+    }
+}
+
 pub(crate) fn failure_code(failure: SendFailure) -> i64 {
     match failure {
         SendFailure::RecipientsRefused => 1,
@@ -39,6 +56,7 @@ pub(crate) fn failure_code(failure: SendFailure) -> i64 {
         SendFailure::NeedsSignIn => 4,
         SendFailure::Other => 5,
         SendFailure::Interrupted => 6,
+        SendFailure::Protection => 7,
     }
 }
 
@@ -49,6 +67,7 @@ pub(crate) fn failure_from(code: i64) -> SendFailure {
         3 => SendFailure::Refused,
         4 => SendFailure::NeedsSignIn,
         6 => SendFailure::Interrupted,
+        7 => SendFailure::Protection,
         _ => SendFailure::Other,
     }
 }
@@ -82,7 +101,8 @@ pub(crate) fn read(conn: &Connection, id: DraftId) -> rusqlite::Result<Option<St
         .prepare_cached(&format!(
             "SELECT d.account_id, d.message_id, d.revision, d.created, d.saved, d.open, \
                d.from_name, d.from_addr, d.to_addrs, d.cc_addrs, d.bcc_addrs, d.subject, d.html, \
-               d.in_reply_to, d.refs, {SOURCE_SQL}, d.source_kind, d.failure, o.state \
+               d.in_reply_to, d.refs, {SOURCE_SQL}, d.source_kind, d.failure, o.state, d.pgp, \
+               d.pgp_keys \
              FROM drafts d LEFT JOIN outbox o ON o.draft = d.id WHERE d.id = ?1"
         ))?
         .query_row([id.0], |row| {
@@ -111,6 +131,7 @@ pub(crate) fn read(conn: &Connection, id: DraftId) -> rusqlite::Result<Option<St
                     references: codec::decode_words(&row.get::<_, String>(14)?),
                     source,
                     parts: Vec::new(),
+                    protection: protection_from(row.get(19)?, &row.get::<_, String>(20)?),
                 },
                 revision: row.get::<_, i64>(2)? as u64,
                 created: row.get(3)?,

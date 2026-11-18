@@ -256,6 +256,7 @@ fn running(server: &Arc<Mutex<Server>>) -> Running {
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: None,
     })
     .unwrap();
     let endpoint = Endpoint {
@@ -278,6 +279,7 @@ fn running(server: &Arc<Mutex<Server>>) -> Running {
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     };
     let commands = engine.commands();
     commands

@@ -319,6 +319,7 @@ async fn harness(
             microsoft_client_id: None,
             sign_in: SignInOptions::default(),
             sync,
+            gpg: None,
         },
         sender,
     ));
@@ -367,6 +368,7 @@ async fn harness(
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     };
     Harness {
         _dir: dir,

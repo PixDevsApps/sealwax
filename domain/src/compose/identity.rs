@@ -158,6 +158,7 @@ mod tests {
                     signature_html: None,
                 },
             ],
+            pgp: Default::default(),
         }
     }
 

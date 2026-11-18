@@ -31,6 +31,7 @@ use gtk4::{gdk, gio, glib};
 use libadwaita as adw;
 use libadwaita::prelude::*;
 use sealwax_ui_model::actions::{ActionId, Scope};
+use sealwax_domain::compose::protect::{Problem, Protection};
 use sealwax_domain::compose::{Draft, DraftPart, mime};
 use sealwax_ui_model::keymap::Keymap;
 use sealwax_domain::model::{AccountId, DraftId};
@@ -98,9 +99,12 @@ pub(crate) fn runs(id: ActionId) -> bool {
 
 /// Every command a composer runs. Compose and the command palette are the main window's, whose
 /// keys work in a card too.
-const COMMANDS: [ActionId; 19] = [
+const COMMANDS: [ActionId; 22] = [
     ActionId::Send,
     ActionId::AttachFile,
+    ActionId::SignMessage,
+    ActionId::EncryptMessage,
+    ActionId::AttachPublicKey,
     ActionId::ShowCcBcc,
     ActionId::DiscardDraft,
     ActionId::CloseComposer,
@@ -177,6 +181,11 @@ struct Widgets {
     loading: gtk::Label,
     problem: gtk::Label,
     tray: Rc<Tray>,
+    /// Sign and Encrypt (ADR-032).
+    sign: gtk::ToggleButton,
+    encrypt: gtk::ToggleButton,
+    /// What the keyring says about the recipients' keys while Encrypt is on.
+    keys: gtk::Label,
     warning: gtk::Label,
     saved: gtk::Label,
     toasts: adw::ToastOverlay,
@@ -234,6 +243,8 @@ struct Inner {
     released: Cell<bool>,
     /// A new draft: closed before anything was typed, it is discarded rather than kept.
     fresh: Cell<bool>,
+    /// The keys line's latest lookup; an older one's answer is dropped.
+    keys_lookup: Cell<u64>,
 }
 
 impl Composer {
@@ -320,6 +331,7 @@ impl Composer {
             adopting: RefCell::new(HashSet::new()),
             released: Cell::new(false),
             fresh: Cell::new(false),
+            keys_lookup: Cell::new(0),
         });
         if let Some(controller) = theme_controller {
             let weak = Rc::downgrade(&inner);
@@ -435,6 +447,13 @@ impl Composer {
             popover.popdown();
         }
         self.inner.choose_sender(index);
+    }
+
+    /// What the line about the recipients' keys says, when it shows.
+    #[cfg(feature = "test-hooks")]
+    pub(crate) fn keys_line(&self) -> Option<String> {
+        let keys = &self.inner.widgets.keys;
+        keys.is_visible().then(|| keys.label().to_string())
     }
 
     #[cfg(feature = "test-hooks")]
@@ -621,6 +640,35 @@ fn build(editor: &Editor, keymap: &Keymap) -> (gtk::Box, Widgets) {
         "composer-attach",
     );
     attach.set_action_name(Some(&ActionId::AttachFile.detailed_name()));
+    let toggle = |icons: &[&str], label: &str, name: &str| {
+        let button = named(
+            classed(
+                gtk::ToggleButton::builder()
+                    .child(&icon(icons))
+                    .tooltip_text(label)
+                    .valign(gtk::Align::Center)
+                    .build(),
+                &["sw-icon-button"],
+            ),
+            name,
+        );
+        button.update_property(&[gtk::accessible::Property::Label(label)]);
+        button
+    };
+    let sign = toggle(
+        &["document-edit-symbolic", "emblem-ok-symbolic"],
+        ActionId::SignMessage.title(),
+        "composer-sign",
+    );
+    let encrypt = toggle(
+        &[
+            "channel-secure-symbolic",
+            "security-high-symbolic",
+            "changes-prevent-symbolic",
+        ],
+        ActionId::EncryptMessage.title(),
+        "composer-encrypt",
+    );
     let discard = named(
         icon_button(&["user-trash-symbolic"], ActionId::DiscardDraft.title()),
         "composer-discard",
@@ -650,6 +698,8 @@ fn build(editor: &Editor, keymap: &Keymap) -> (gtk::Box, Widgets) {
     let header_end = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .build();
+    header_end.append(&sign);
+    header_end.append(&encrypt);
     header_end.append(&attach);
     header_end.append(&discard);
     let divider = separator();
@@ -859,6 +909,17 @@ fn build(editor: &Editor, keymap: &Keymap) -> (gtk::Box, Widgets) {
 
     // The footer.
     let tray = Tray::new();
+    let keys = named(
+        classed(
+            gtk::Label::builder()
+                .wrap(true)
+                .xalign(0.0)
+                .visible(false)
+                .build(),
+            &["sw-composer-keys", "sw-small", "sw-secondary"],
+        ),
+        "composer-keys",
+    );
     let warning = named(
         classed(
             gtk::Label::builder()
@@ -922,6 +983,7 @@ fn build(editor: &Editor, keymap: &Keymap) -> (gtk::Box, Widgets) {
             .build(),
         &["sw-composer-bottom"],
     );
+    bottom.append(&keys);
     bottom.append(&warning);
     bottom.append(&footer);
 
@@ -971,6 +1033,9 @@ fn build(editor: &Editor, keymap: &Keymap) -> (gtk::Box, Widgets) {
         loading,
         problem,
         tray,
+        sign,
+        encrypt,
+        keys,
         warning,
         saved,
         toasts,
@@ -1067,11 +1132,20 @@ impl Inner {
                 inner.editor_event(event);
             }
         });
+        for (button, sign) in [(&self.widgets.sign, true), (&self.widgets.encrypt, false)] {
+            let weak = Rc::downgrade(self);
+            button.connect_toggled(move |button| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.set_protection(sign, button.is_active());
+                }
+            });
+        }
         for field in [&self.widgets.to, &self.widgets.cc, &self.widgets.bcc] {
             let weak = Rc::downgrade(self);
             field.connect_changed(move || {
                 if let Some(inner) = weak.upgrade() {
                     inner.changed();
+                    inner.refresh_keys();
                 }
             });
             let backend = self.backend.clone();
@@ -1375,8 +1449,229 @@ impl Inner {
             }
         }
         self.widgets.tray.set_parts(&attached);
+        let protection = draft.protection.clone();
         self.base.replace(Some(draft));
+        self.show_protection(&protection);
         self.actions.set_applies(ActionId::Send, true);
+    }
+
+    // Signing and encrypting (ADR-032).
+
+    /// The toggles as `protection` has them, and whether GnuPG is there to use them; the
+    /// draft isn't changed.
+    fn show_protection(self: &Rc<Self>, protection: &Protection) {
+        let available = crate::pgp::shared().is_some();
+        for (button, on, id) in [
+            (&self.widgets.sign, protection.sign, ActionId::SignMessage),
+            (&self.widgets.encrypt, protection.encrypt, ActionId::EncryptMessage),
+        ] {
+            // Set before the handler can see it: `set_protection` finds no change.
+            button.set_active(on);
+            button.set_sensitive(available || on);
+            button.set_tooltip_text(Some(if available {
+                id.title()
+            } else {
+                crate::pgp::unavailable()
+            }));
+        }
+        self.actions.set_applies(ActionId::SignMessage, available);
+        self.actions.set_applies(ActionId::EncryptMessage, available);
+        self.actions.set_applies(ActionId::AttachPublicKey, available);
+        self.refresh_keys();
+    }
+
+    /// Sign (`sign`) or Encrypt turned on or off.
+    fn set_protection(self: &Rc<Self>, sign: bool, on: bool) {
+        let changed = match self.base.borrow_mut().as_mut() {
+            Some(base) => {
+                let flag = if sign {
+                    &mut base.protection.sign
+                } else {
+                    &mut base.protection.encrypt
+                };
+                std::mem::replace(flag, on) != on
+            }
+            None => false,
+        };
+        if changed {
+            self.changed();
+            self.refresh_keys();
+        }
+    }
+
+    fn protection(&self) -> Protection {
+        self.base
+            .borrow()
+            .as_ref()
+            .map(|base| base.protection.clone())
+            .unwrap_or_default()
+    }
+
+    /// The account's `pgp_key` when sending from its own address.
+    fn configured_key(&self) -> Option<String> {
+        self.senders
+            .borrow()
+            .get(self.sender.get())
+            .and_then(|sender| sender.pgp_key.clone())
+    }
+
+    /// Looks the recipients' keys up again while Encrypt is on, and says what is missing or
+    /// unverified under the fields.
+    fn refresh_keys(self: &Rc<Self>) {
+        let lookup = self.keys_lookup.get() + 1;
+        self.keys_lookup.set(lookup);
+        if !self.protection().encrypt || crate::pgp::shared().is_none() {
+            self.widgets.keys.set_visible(false);
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        glib::spawn_future_local(async move {
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            let Some(draft) = inner.collect_fields() else {
+                return;
+            };
+            let from = draft.from.email.clone();
+            let configured = inner.configured_key();
+            drop(inner);
+            let outcome = crate::pgp::plan(draft, configured).await;
+            let Some(inner) = weak.upgrade() else {
+                return;
+            };
+            if inner.keys_lookup.get() != lookup {
+                return;
+            }
+            match crate::pgp::keys_line(&outcome, &from) {
+                Some(line) => {
+                    inner.widgets.keys.set_label(&line);
+                    inner.widgets.keys.set_visible(true);
+                }
+                None => inner.widgets.keys.set_visible(false),
+            }
+        });
+    }
+
+    /// The draft's addresses and protection as the fields hold them now, without the body.
+    fn collect_fields(&self) -> Option<Draft> {
+        let base = self.base.borrow().clone()?;
+        let from = self
+            .senders
+            .borrow()
+            .get(self.sender.get())
+            .map(|sender| sender.address.clone())
+            .unwrap_or_else(|| base.from.clone());
+        Some(Draft {
+            from,
+            to: self.widgets.to.addresses(),
+            cc: self.widgets.cc.addresses(),
+            bcc: self.widgets.bcc.addresses(),
+            ..base
+        })
+    }
+
+    /// Asks the user which key to encrypt to for each address with several, in turn; the
+    /// picks go into the draft. `false` when the user cancelled.
+    async fn pick_keys(
+        self: &Rc<Self>,
+        choices: Vec<(String, Vec<sealwax_domain::compose::protect::Candidate>)>,
+    ) -> bool {
+        for (address, candidates) in choices {
+            let Some(fingerprint) = self.pick_key(&address, &candidates).await else {
+                return false;
+            };
+            if let Some(base) = self.base.borrow_mut().as_mut() {
+                base.protection.pick(&address, &fingerprint);
+            }
+            self.changed();
+        }
+        true
+    }
+
+    /// One address's key, from the user: `None` when they cancelled.
+    async fn pick_key(
+        &self,
+        address: &str,
+        candidates: &[sealwax_domain::compose::protect::Candidate],
+    ) -> Option<String> {
+        let list = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(6)
+            .build();
+        let mut group: Option<gtk::CheckButton> = None;
+        let mut buttons = Vec::new();
+        for (at, candidate) in candidates.iter().enumerate() {
+            let label = format!(
+                "{}\n{}",
+                candidate.user_id,
+                crate::pgp::grouped(&candidate.fingerprint)
+            );
+            let button = gtk::CheckButton::builder().label(&label).build();
+            button.set_widget_name(&format!("composer-key-{at}"));
+            if let Some(first) = &group {
+                button.set_group(Some(first));
+            } else {
+                button.set_active(true);
+                group = Some(button.clone());
+            }
+            list.append(&button);
+            buttons.push((button, candidate.fingerprint.clone()));
+        }
+        let dialog = adw::AlertDialog::builder()
+            .heading(format!("Which key for {address}?"))
+            .body(
+                "Your GnuPG keyring has more than one key for this address, and hasn't \
+                 verified any of them. Check the fingerprint with the recipient before you \
+                 choose.",
+            )
+            .extra_child(&list)
+            .default_response("use")
+            .close_response("cancel")
+            .build();
+        dialog.set_widget_name("composer-pick-key-dialog");
+        dialog.add_response("cancel", "Cancel");
+        dialog.add_response("use", "Use This Key");
+        dialog.set_response_appearance("use", adw::ResponseAppearance::Suggested);
+        let window = self.window();
+        let answer = dialog.choose_future(window.as_ref()).await;
+        (answer == "use")
+            .then(|| {
+                buttons
+                    .iter()
+                    .find(|(button, _)| button.is_active())
+                    .map(|(_, fingerprint)| fingerprint.clone())
+            })
+            .flatten()
+    }
+
+    /// Attaches the user's public key (Attach My Public Key).
+    async fn attach_public_key(self: Rc<Self>) {
+        let Some(blobs) = self.backend.blobs() else {
+            self.toast("Your key can't be attached until the mail store is open");
+            return;
+        };
+        let Some(from) = self.collect_fields().map(|draft| draft.from.email) else {
+            return;
+        };
+        let (fingerprint, key) =
+            match crate::pgp::own_public_key(from, self.configured_key()).await {
+                Ok(found) => found,
+                Err(why) => {
+                    self.toast(&why);
+                    return;
+                }
+            };
+        let name = sealwax_domain::compose::protect::public_key_name(&fingerprint);
+        let weak = Rc::downgrade(&self);
+        self.widgets.tray.add(
+            &name,
+            attachments::add_bytes(blobs, name.clone(), "application/pgp-keys".to_owned(), key),
+            move |name, _| {
+                if let Some(inner) = weak.upgrade() {
+                    inner.toast(&format!("Couldn't attach {name}"));
+                }
+            },
+        );
     }
 
     fn show_sender(&self) {
@@ -1427,6 +1722,7 @@ impl Inner {
             super::js::literal(&signature)
         ));
         self.changed();
+        self.refresh_keys();
         self.insert_html_signature(index);
     }
 
@@ -1649,6 +1945,21 @@ impl Inner {
             }
             ActionId::ShowCcBcc => {
                 self.show_cc_bcc(true);
+                return;
+            }
+            ActionId::SignMessage => {
+                let button = &self.widgets.sign;
+                button.set_active(!button.is_active());
+                return;
+            }
+            ActionId::EncryptMessage => {
+                let button = &self.widgets.encrypt;
+                button.set_active(!button.is_active());
+                return;
+            }
+            ActionId::AttachPublicKey => {
+                let inner = self.clone();
+                glib::spawn_future_local(async move { inner.attach_public_key().await });
                 return;
             }
             ActionId::DiscardDraft => {
@@ -2080,6 +2391,24 @@ impl Inner {
             ));
             return;
         }
+        let draft = if draft.protection.any() {
+            match crate::pgp::plan(draft.clone(), self.configured_key()).await {
+                Ok(_) => draft,
+                Err(Problem::Choose(choices)) => {
+                    if self.pick_keys(choices).await {
+                        // Again with the picks, which may leave another problem.
+                        Box::pin(self.clone().send()).await;
+                    }
+                    return;
+                }
+                Err(problem) => {
+                    self.toast(&crate::pgp::problem_text(&problem, &draft.from.email));
+                    return;
+                }
+            }
+        } else {
+            draft
+        };
         self.cancel_timer();
         match self.backend.send(id, draft).await {
             Ok(()) => {

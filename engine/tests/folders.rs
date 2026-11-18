@@ -83,6 +83,7 @@ impl Running {
             microsoft_client_id: None,
             sign_in: SignInOptions::default(),
             sync: config(),
+            gpg: None,
         })
         .unwrap();
         let events = engine.events();
@@ -145,6 +146,7 @@ impl Running {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         };
         self.send(Command::AddAccount {
             request: 1,
@@ -662,6 +664,7 @@ async fn a_pop3_accounts_local_folders_change_at_once() {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         }],
     });
     let account = run

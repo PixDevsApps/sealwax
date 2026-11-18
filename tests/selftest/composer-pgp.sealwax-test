@@ -1,0 +1,105 @@
+# Signing and encrypting in the composer (#32, ADR-032): Sign and Encrypt start off, the line
+# under the fields names recipients without a key or with an unverified one, Send refuses a
+# recipient without a key and names them, several unverified keys are picked in a dialog and
+# the pick is kept with the draft, Attach My Public Key attaches the sender's key, and the
+# store keeps Sign and Encrypt. The keys are made with the real gpg in the run's own empty
+# keyring ($GNUPGHOME from tools/headless.sh), never the user's: Ada's own, Bob's, the boss's
+# unverified user ID on Mallory's key, and two unverified keys of Carol's. Every name and
+# address is fictional.
+# Run: tools/headless.sh 43 target/debug/sealwax-selftest --self-test tests/selftest/composer-pgp.sealwax-test
+
+desktop tiling
+resize 1440 900
+mail-account Ada
+composer-pgp-keys
+composer-backend stand-in
+
+composer-open new
+composer-wait
+assert-composer active composer-sign false
+assert-composer active composer-encrypt false
+assert-composer keys none
+assert-composer enabled sign-message true
+assert-composer enabled encrypt-message true
+assert-composer enabled attach-public-key true
+assert-composer labelled
+
+# No key for a recipient: said under the fields, and Send refuses and names them.
+composer-focus to
+composer-type "nobody@example.test"
+composer-key Return
+assert-composer chips to nobody@example.test
+composer-action encrypt-message
+assert-composer active composer-encrypt true
+wait-until assert-composer keys "No key to encrypt to: nobody@example.test"
+composer-focus subject
+composer-type "Plans"
+composer-action send
+wait-until assert-composer toast "there's no key to encrypt to for nobody@example.test"
+assert-composer sent 0
+assert-composer count 1
+composer-close
+wait-until assert-composer count 0
+
+# Bob's key is valid; the boss's user ID isn't verified: the line says so, and it goes, signed
+# and encrypted.
+composer-open new
+composer-wait
+composer-focus to
+composer-type "bob@example.test"
+composer-key Return
+composer-type "boss@example.test"
+composer-key Return
+assert-composer chips to bob@example.test,boss@example.test
+composer-click composer-sign
+composer-click composer-encrypt
+assert-composer active composer-sign true
+wait-until assert-composer keys "Key not verified: boss@example.test"
+composer-focus subject
+composer-type "Plans"
+composer-action send
+wait-until assert-composer sent 1
+assert-composer last-sent pgp sign,encrypt
+
+# Carol has two unverified keys: Send asks which, and the pick goes with the draft.
+composer-open new
+composer-wait
+composer-focus to
+composer-type "carol@example.test"
+composer-key Return
+composer-action encrypt-message
+wait-until assert-composer keys "Several keys for carol@example.test"
+composer-focus subject
+composer-type "For Carol"
+composer-action send
+wait-until assert-composer dialog pick-key true
+composer-pick-key cancel
+assert-composer sent 1
+assert-composer count 1
+composer-action send
+wait-until assert-composer dialog pick-key true
+composer-pick-key 1
+wait-until assert-composer sent 2
+assert-composer last-sent pgp "encrypt +carol@example.test="
+
+# Attach My Public Key: Ada's key, as OpenPGP_0x….asc.
+composer-open new
+composer-wait
+composer-action attach-public-key
+wait-until assert-composer attachments 1
+assert-composer attachment 0 type=application/pgp-keys
+composer-close
+wait-until assert-composer count 0
+
+# The store keeps Sign and Encrypt with the draft.
+composer-backend store
+composer-open new
+composer-wait
+composer-action sign-message
+composer-focus subject
+composer-type "Signed draft"
+wait-until assert-composer db current pgp sign
+composer-action encrypt-message
+wait-until assert-composer db current pgp sign,encrypt
+composer-close
+wait-until assert-composer count 0

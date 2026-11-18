@@ -99,6 +99,7 @@ impl StandIn {
             address: Address::new(name, email),
             signature: None,
             signature_html: None,
+            pgp_key: None,
         });
     }
 
@@ -223,6 +224,7 @@ impl Backend for StandIn {
                 address: Address::new(account.name.clone(), account.address.clone()),
                 signature: None,
                 signature_html: None,
+                pgp_key: None,
             }];
             if let Some(key) = &account.key
                 && let Some(settings) = settings.iter().find(|settings| &settings.key == key)
@@ -233,6 +235,7 @@ impl Backend for StandIn {
                     address: Address::new(identity.name.clone(), identity.address.clone()),
                     signature: identity.signature.clone(),
                     signature_html: None,
+                    pgp_key: None,
                 }));
             }
             senders.extend(identities.into_iter().map(|sender| Sender {

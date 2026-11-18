@@ -67,6 +67,7 @@ fn without_a_keyring_secrets_stay_in_memory_and_the_app_hears_it_once() {
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: None,
     })
     .unwrap();
     let seen = events(&engine, WAIT, |event| {
@@ -98,6 +99,7 @@ fn without_a_keyring_secrets_stay_in_memory_and_the_app_hears_it_once() {
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     };
     engine
         .commands()

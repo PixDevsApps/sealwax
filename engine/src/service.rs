@@ -31,6 +31,7 @@ use sealwax_domain::autoconfig::{address_domain, presets};
 use sealwax_domain::model::{AccountId, FolderId};
 use sealwax_infrastructure::accounts::{self as files, AccountPaths};
 use sealwax_infrastructure::blobs::BlobStore;
+use sealwax_infrastructure::pgp::Gpg;
 use sealwax_infrastructure::store::Store;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -79,6 +80,9 @@ pub struct EngineConfig {
     pub sign_in: SignInOptions,
     /// The sync actors' schedule and patience.
     pub sync: SyncConfig,
+    /// The user's GnuPG, which signs and encrypts what is sent (ADR-032); `None` where it
+    /// isn't installed or can't be reached (the Flatpak), and a protected draft then fails.
+    pub gpg: Option<Gpg>,
 }
 
 /// Where sign-ins go and how long they wait; tests point them at local servers.
@@ -193,6 +197,7 @@ struct MicrosoftClient {
 
 struct Shared {
     application: String,
+    gpg: Option<Gpg>,
     store: Arc<Store>,
     blobs: BlobStore,
     paths: AccountPaths,
@@ -222,6 +227,7 @@ impl Shared {
     fn new(config: EngineConfig, events: async_channel::Sender<Event>) -> Self {
         Self {
             application: config.application,
+            gpg: config.gpg,
             store: config.store,
             blobs: config.blobs,
             paths: config.paths,

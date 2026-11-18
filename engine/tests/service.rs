@@ -43,6 +43,7 @@ fn start(dirs: &SealwaxDirs) -> Engine {
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: None,
     })
     .unwrap()
 }
@@ -208,6 +209,7 @@ fn an_account_is_added_reports_its_sync_and_is_removed() {
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     };
     let commands = engine.commands();
     commands

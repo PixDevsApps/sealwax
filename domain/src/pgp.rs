@@ -165,6 +165,12 @@ pub struct Status {
     pub signature: Option<SignatureStatus>,
     /// More than one signature was reported; only the first is read.
     pub signatures: usize,
+    /// A signature was made (SIG_CREATED), with its hash algorithm's number (RFC 4880 9.4).
+    pub created: Option<u8>,
+    /// Encryption finished (END_ENCRYPTION).
+    pub encrypted: bool,
+    /// GnuPG refused a recipient or signing key (INV_RECP, INV_SGNR) or reported a failure.
+    pub refused: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -235,6 +241,18 @@ pub fn status(output: &[u8]) -> Status {
         let outcome = match keyword {
             "DECRYPTION_OKAY" => {
                 decrypted = true;
+                None
+            }
+            "SIG_CREATED" => {
+                status.created = arguments.get(2).and_then(|hash| hash.parse().ok());
+                None
+            }
+            "END_ENCRYPTION" => {
+                status.encrypted = true;
+                None
+            }
+            "INV_RECP" | "INV_SGNR" | "FAILURE" | "NO_SGNR" => {
+                status.refused = true;
                 None
             }
             "DECRYPTION_FAILED" => {
@@ -625,6 +643,18 @@ pub fn verdict(signature: &SignatureStatus, user_ids: &[UserId], sender: Option<
     }
 }
 
+/// The `micalg` of a PGP/MIME signature made with hash algorithm `hash` (RFC 3156 5).
+pub fn micalg(hash: u8) -> Option<&'static str> {
+    Some(match hash {
+        2 => "pgp-sha1",
+        8 => "pgp-sha256",
+        9 => "pgp-sha384",
+        10 => "pgp-sha512",
+        11 => "pgp-sha224",
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -867,6 +897,23 @@ mod tests {
         );
         assert_eq!(okay.decryption, Some(Decryption::Okay));
         assert_eq!(okay.signature, None);
+    }
+
+    #[test]
+    fn signing_and_encrypting_answers_are_read() {
+        let made = status(
+            b"[GNUPG:] KEY_CONSIDERED AAAA 2\n[GNUPG:] BEGIN_SIGNING H10\n\
+              [GNUPG:] SIG_CREATED D 22 10 00 1795024322 AAAA\n",
+        );
+        assert_eq!(made.created, Some(10));
+        assert_eq!(made.created.and_then(micalg), Some("pgp-sha512"));
+        assert!(!made.refused);
+        let sealed = status(b"[GNUPG:] BEGIN_ENCRYPTION 2 9\n[GNUPG:] END_ENCRYPTION\n");
+        assert!(sealed.encrypted);
+        let refused =
+            status(b"[GNUPG:] INV_RECP 10 bob@example.com\n[GNUPG:] FAILURE encrypt 53\n");
+        assert!(refused.refused && !refused.encrypted);
+        assert_eq!(micalg(99), None);
     }
 
     #[test]

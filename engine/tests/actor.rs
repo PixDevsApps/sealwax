@@ -94,6 +94,7 @@ impl Running {
             microsoft_client_id: None,
             sign_in: SignInOptions::default(),
             sync,
+            gpg: None,
         })
         .unwrap();
         let events = engine.events();
@@ -160,6 +161,7 @@ impl Running {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         };
         self.send(Command::AddAccount {
             request,
@@ -473,6 +475,7 @@ async fn failed_connections_back_off_and_reconnect_tries_at_once() {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         },
         password: Password::new("fake-password".into()),
         sign_in: None,
@@ -974,6 +977,7 @@ async fn two_accounts_sync_at_once_and_the_engine_stops_quickly() {
                 signature: None,
                 signature_html: None,
                 identities: Vec::new(),
+                pgp: Default::default(),
             },
             password: Password::new("fake-password".into()),
             sign_in: None,

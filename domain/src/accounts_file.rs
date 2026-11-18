@@ -7,7 +7,7 @@
 
 use crate::account::{
     AccountColor, AccountKey, AccountSettings, AuthMethod, CertificatePin, Endpoint, Identity,
-    OAuthProvider, Pop3Policy, Protocol, Receive, Security, is_loopback, is_valid_key,
+    OAuthProvider, PgpSettings, Pop3Policy, Protocol, Receive, Security, is_loopback, is_valid_key,
 };
 use crate::address::{is_sendable, looks_like_address, same};
 use crate::settings_file::{FileError, article, did_you_mean, entries, parse_toml};
@@ -20,7 +20,7 @@ use toml_edit::{ArrayOfTables, DocumentMut, Item, Table, Value, value};
 
 pub const ACCOUNTS_FILE: &str = "accounts.toml";
 
-const ACCOUNT_SETTINGS: [&str; 13] = [
+const ACCOUNT_SETTINGS: [&str; 16] = [
     "key",
     "name",
     "label",
@@ -30,6 +30,9 @@ const ACCOUNT_SETTINGS: [&str; 13] = [
     "auth",
     "signature",
     "signature_html",
+    "pgp_sign",
+    "pgp_encrypt",
+    "pgp_key",
     "imap",
     "pop3",
     "smtp",
@@ -501,6 +504,7 @@ impl Reader<'_> {
         let mut smtp = None;
         let mut signature = None;
         let mut signature_html = None;
+        let mut pgp = PgpSettings::default();
         let mut identities = Vec::new();
         for (field, value) in entries(table) {
             let field_name = field.get_ref().as_ref();
@@ -608,6 +612,38 @@ impl Reader<'_> {
                 "smtp" => smtp = self.server(Protocol::Smtp, value).map(|(server, _)| server),
                 "signature" => signature = self.signature(value),
                 "signature_html" => signature_html = self.signature_html(value),
+                "pgp_sign" | "pgp_encrypt" => match value.get_ref() {
+                    DeValue::Boolean(on) if field_name == "pgp_sign" => pgp.sign = *on,
+                    DeValue::Boolean(on) => pgp.encrypt = *on,
+                    other => self.error(
+                        span,
+                        format!(
+                            "{field_name} is true (a new message starts with {} on) or false, \
+                             not {}",
+                            if field_name == "pgp_sign" {
+                                "Sign"
+                            } else {
+                                "Encrypt"
+                            },
+                            article(other.type_str())
+                        ),
+                    ),
+                },
+                "pgp_key" => {
+                    if let Some(text) = self.string("pgp_key", value) {
+                        let fingerprint: String =
+                            text.chars().filter(|c| !c.is_whitespace()).collect();
+                        if crate::compose::protect::is_fingerprint(&fingerprint) {
+                            pgp.key = Some(fingerprint.to_ascii_uppercase());
+                        } else {
+                            self.error(
+                                span,
+                                "pgp_key is your key's full fingerprint, 40 hexadecimal digits \
+                                 as gpg --list-secret-keys shows it",
+                            );
+                        }
+                    }
+                }
                 "identity" => identities = self.identities(value),
                 _ if is_secret_name(field_name) => {
                     self.error(field.span(), secret_message(field_name));
@@ -690,6 +726,7 @@ impl Reader<'_> {
                 signature,
                 signature_html,
                 identities,
+                pgp,
             },
             key_span,
             address_span,
@@ -1485,6 +1522,7 @@ mod tests {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         }
     }
 
@@ -1518,6 +1556,45 @@ mod tests {
             ..account("work", "ada@example.test")
         };
         assert_eq!(accounts, [expected]);
+    }
+
+    #[test]
+    fn pgp_settings_are_read_and_checked() {
+        let fingerprint = "0123 4567 89ab CDEF 0123  4567 89AB CDEF 0123 4567";
+        let text = ONE.replace(
+            "address = \"ada@example.test\"\n",
+            &format!(
+                "address = \"ada@example.test\"\npgp_sign = true\npgp_encrypt = false\n\
+                 pgp_key = \"{fingerprint}\"\n"
+            ),
+        );
+        let account = &parse(&text).unwrap()[0];
+        assert_eq!(
+            account.pgp,
+            PgpSettings {
+                sign: true,
+                encrypt: false,
+                key: Some("0123456789ABCDEF0123456789ABCDEF01234567".into()),
+            }
+        );
+        assert_eq!(parse(ONE).unwrap()[0].pgp, PgpSettings::default());
+        let wrong = ONE.replace(
+            "address = \"ada@example.test\"\n",
+            "address = \"ada@example.test\"\npgp_sign = \"yes\"\npgp_key = \"ABCD\"\n",
+        );
+        let errors = errors(&wrong);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("pgp_sign is true")),
+            "{errors:?}"
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("full fingerprint")),
+            "{errors:?}"
+        );
     }
 
     #[test]

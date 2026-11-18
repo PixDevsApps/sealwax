@@ -1087,7 +1087,7 @@ impl Outbox {
                 self.draft_failed(&upload, Failure::Permanent).await;
                 return;
             }
-            Err(Unbuilt::Blobs) => None,
+            Err(Unbuilt::Blobs | Unbuilt::Protection(_)) => None,
         };
         let Some((message, blob)) = message.and_then(|message| {
             let blob = message.blob?;

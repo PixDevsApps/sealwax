@@ -122,6 +122,7 @@ fn start(dirs: &SealwaxDirs, trust: Trust) -> Engine {
         microsoft_client_id: None,
         sign_in: SignInOptions::default(),
         sync: SyncConfig::default(),
+        gpg: None,
     })
     .unwrap()
 }
@@ -411,6 +412,7 @@ async fn a_new_password_is_checked_stored_and_the_account_syncs_again() {
         signature: None,
         signature_html: None,
         identities: Vec::new(),
+        pgp: Default::default(),
     };
     let account = added(&engine, 1, settings).await;
     assert_eq!(settled(&engine, account).await, SyncStatus::Synced);

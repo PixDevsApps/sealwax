@@ -7,10 +7,11 @@ use sealwax_domain::senders;
 use std::path::Path;
 use std::time::Duration;
 
-pub const VERSION: i64 = 14;
+pub const VERSION: i64 = 15;
 
-pub(super) const MIGRATIONS: &[&str] =
-    &[V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14];
+pub(super) const MIGRATIONS: &[&str] = &[
+    V1, V2, V3, V4, V5, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15,
+];
 
 /// S3's schema v1 with S1's additions (ADR-005 amendments): folder names and sync state, keywords,
 /// threading headers, recipient lists, the List-Id and the body structure.
@@ -494,6 +495,13 @@ CREATE INDEX messages_domain
     WHERE flags & 264 = 0;
 ";
 
+/// A draft's PGP (#32, ADR-032): `pgp` is 1 for Sign and 2 for Encrypt, `pgp_keys` the keys
+/// the user picked, one `address fingerprint` per line. An encrypted draft has no server copy.
+const V15: &str = "
+ALTER TABLE drafts ADD COLUMN pgp INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE drafts ADD COLUMN pgp_keys TEXT NOT NULL DEFAULT '';
+";
+
 /// The oldest SQLite rusqlite 0.43 builds against; `contentless_delete` came in 3.43.
 const MIN_SQLITE: i32 = 3_045_003;
 
@@ -545,9 +553,20 @@ pub fn migrate(conn: &mut Connection) -> Result<(), StoreError> {
     Ok(())
 }
 
-/// Takes a v14 store back to v13, for the tests that migrate an older store.
+/// Takes a v15 store back to v14, for the tests that migrate an older store.
+#[cfg(feature = "test-support")]
+pub(super) const UNDO_V15: &str = "
+ALTER TABLE drafts DROP COLUMN pgp_keys;
+ALTER TABLE drafts DROP COLUMN pgp;
+DELETE FROM schema_migrations WHERE version >= 15;
+PRAGMA user_version = 14;
+";
+
+/// Takes a v15 store back to v13, for the tests that migrate an older store.
 #[cfg(feature = "test-support")]
 pub(super) const UNDO_V14: &str = "
+ALTER TABLE drafts DROP COLUMN pgp_keys;
+ALTER TABLE drafts DROP COLUMN pgp;
 DROP INDEX messages_sender;
 DROP INDEX messages_domain;
 DROP TABLE pinned_senders;
@@ -555,9 +574,11 @@ DELETE FROM schema_migrations WHERE version >= 14;
 PRAGMA user_version = 13;
 ";
 
-/// Takes a v14 store back to v12, for the tests that migrate an older store.
+/// Takes a v15 store back to v12, for the tests that migrate an older store.
 #[cfg(feature = "test-support")]
 pub(super) const UNDO_V13: &str = "
+ALTER TABLE drafts DROP COLUMN pgp_keys;
+ALTER TABLE drafts DROP COLUMN pgp;
 DROP INDEX messages_sender;
 DROP INDEX messages_domain;
 DROP TABLE pinned_senders;

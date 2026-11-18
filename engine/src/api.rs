@@ -15,6 +15,7 @@ use sealwax_domain::account::{
     AccountColor, AccountKey, AccountSettings, CertificatePin, DetectSource, Detection, Endpoint,
     LoginError, LoginFailure, OAuthProvider, Protocol,
 };
+use sealwax_domain::compose::protect::{OwnKeyProblem, Problem};
 use sealwax_domain::config::Storage;
 use sealwax_domain::folders::NameProblem;
 use sealwax_domain::model::{AccountId, DraftId, FolderId, MessageId};
@@ -470,6 +471,49 @@ pub enum SendError {
     /// built again until the user sends it again.
     #[error("Sealwax stopped while it built the message")]
     Interrupted,
+    /// It couldn't be signed or encrypted (ADR-032).
+    #[error("the message couldn't be signed or encrypted")]
+    Protection(ProtectionError),
+}
+
+/// Why a message couldn't be signed or encrypted. Addresses are for the user's eyes only.
+#[derive(Clone, PartialEq, Eq)]
+pub enum ProtectionError {
+    /// GnuPG isn't installed, or can't be reached from here (the Flatpak).
+    NoGnuPG,
+    /// The user's own key.
+    OwnKey(OwnKeyProblem),
+    /// No usable key for these recipients.
+    Missing(Vec<String>),
+    /// These recipients have several keys and none was picked (the keyring changed since).
+    Choose(Vec<String>),
+    /// The passphrase was cancelled or wrong, or GnuPG failed.
+    Failed,
+}
+
+impl std::fmt::Debug for ProtectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ProtectionError::NoGnuPG => f.write_str("NoGnuPG"),
+            ProtectionError::OwnKey(problem) => write!(f, "OwnKey({problem:?})"),
+            ProtectionError::Missing(list) => write!(f, "Missing({})", list.len()),
+            ProtectionError::Choose(list) => write!(f, "Choose({})", list.len()),
+            ProtectionError::Failed => f.write_str("Failed"),
+        }
+    }
+}
+
+impl From<Problem> for ProtectionError {
+    fn from(problem: Problem) -> Self {
+        match problem {
+            Problem::NoGnuPG => ProtectionError::NoGnuPG,
+            Problem::OwnKey(problem) => ProtectionError::OwnKey(problem),
+            Problem::Missing(list) => ProtectionError::Missing(list),
+            Problem::Choose(list) => {
+                ProtectionError::Choose(list.into_iter().map(|(address, _)| address).collect())
+            }
+        }
+    }
 }
 
 /// Why a send's outcome is unknown (issue #2).
@@ -498,6 +542,7 @@ impl fmt::Debug for SendError {
             SendError::Store => f.write_str("Store"),
             SendError::Other => f.write_str("Other"),
             SendError::Interrupted => f.write_str("Interrupted"),
+            SendError::Protection(error) => write!(f, "Protection({error:?})"),
         }
     }
 }

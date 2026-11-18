@@ -982,20 +982,20 @@ fn v11_migrates_a_v10_store_and_a_newer_one_is_refused() {
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
     assert_eq!(version, SCHEMA_VERSION);
-    assert_eq!(SCHEMA_VERSION, 14);
+    assert_eq!(SCHEMA_VERSION, 15);
     // A store from a newer build is refused and left as it is.
-    conn.execute_batch("PRAGMA user_version = 15;").unwrap();
+    conn.execute_batch("PRAGMA user_version = 16;").unwrap();
     drop(conn);
     assert!(matches!(
         Store::open(&path, StoreOptions::default()),
         Err(StoreError::NewerSchema {
-            found: 15,
-            supported: 14
+            found: 16,
+            supported: 15
         })
     ));
     let conn = Connection::open(&path).unwrap();
     let version: i64 = conn
         .query_row("PRAGMA user_version", [], |row| row.get(0))
         .unwrap();
-    assert_eq!(version, 15);
+    assert_eq!(version, 16);
 }

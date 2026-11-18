@@ -18,10 +18,12 @@ use crate::mailbox;
 use gtk4::{gio, glib};
 use sealwax_domain::address::is_sendable;
 use sealwax_domain::attachment::eml_file_name;
-use sealwax_domain::account::{AccountSettings, Identity};
+use sealwax_domain::account::{AccountSettings, Identity, PgpSettings};
+use sealwax_domain::compose::protect::{self, Protection};
 use sealwax_domain::compose::reply::{self, Original};
 use sealwax_domain::compose::{self, Draft, DraftPart, ReplyKind, identity, ids, mime, stored};
 use sealwax_domain::model::{Account, AccountId, Address, DraftId, MessageId};
+use sealwax_domain::reading::{self, Encryption, SignatureKind};
 use sealwax_engine::api::{Command, Event};
 use sealwax_infrastructure::blobs::BlobStore;
 use sealwax_infrastructure::signatures;
@@ -93,15 +95,19 @@ fn offered(chips: Vec<Sender>, own: AccountId) -> Vec<Sender> {
         .collect()
 }
 
-fn chips(account: AccountId, senders: &[Identity]) -> Vec<Sender> {
+/// The chips of `account`'s `senders`; `pgp` its settings, whose key signs for its own
+/// address (the first sender) only.
+fn chips(account: AccountId, senders: &[Identity], pgp: &PgpSettings) -> Vec<Sender> {
     senders
         .iter()
-        .map(|identity| Sender {
+        .enumerate()
+        .map(|(at, identity)| Sender {
             account,
             label: identity.name.clone(),
             address: identity::from_address(identity),
             signature: identity.signature.clone(),
             signature_html: identity.signature_html.clone(),
+            pgp_key: pgp.key.clone().filter(|_| at == 0),
         })
         .collect()
 }
@@ -193,6 +199,26 @@ impl Context {
         senders(account, &self.settings)
     }
 
+    /// The account's PGP settings (`accounts.toml`); none for an account no file lists.
+    fn pgp(&self, account: &Account) -> PgpSettings {
+        account
+            .key
+            .as_ref()
+            .and_then(|key| self.settings.iter().find(|settings| &settings.key == key))
+            .map(|settings| settings.pgp.clone())
+            .unwrap_or_default()
+    }
+
+    /// What a new message from `account` starts with: its Sign and Encrypt defaults.
+    fn protection(&self, account: &Account) -> Protection {
+        let pgp = self.pgp(account);
+        Protection {
+            sign: pgp.sign,
+            encrypt: pgp.encrypt,
+            picked: Vec::new(),
+        }
+    }
+
     /// Who a draft of `account` can be sent as: every account that sends, in the sidebar's
     /// order, each its own address then its identities (issue #7). An account no settings file
     /// lists has no server, so it sends nothing, unless it is the draft's own; see [`offered`]
@@ -204,7 +230,7 @@ impl Context {
             .accounts()
             .iter()
             .filter(|known| known.key.is_some() || known.id == account.id)
-            .flat_map(|known| chips(known.id, &self.senders(known)))
+            .flat_map(|known| chips(known.id, &self.senders(known), &self.pgp(known)))
             .collect();
         Ok(offered(chips, account.id))
     }
@@ -439,7 +465,8 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
         ComposeRequest::New { account } => {
             let account = context.account(account)?;
             let sender = context.senders(&account).remove(0);
-            let draft = compose::new_draft(account.id, &sender, message_id(&sender.address));
+            let mut draft = compose::new_draft(account.id, &sender, message_id(&sender.address));
+            draft.protection = context.protection(&account);
             (account, draft, "New message".to_owned(), None)
         }
         ComposeRequest::Mailto(mailto) => {
@@ -447,6 +474,7 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
             let sender = context.senders(&account).remove(0);
             let mut draft = compose::new_draft(account.id, &sender, message_id(&sender.address));
             mailto.fill(&mut draft);
+            draft.protection = context.protection(&account);
             (account, draft, "New message".to_owned(), None)
         }
         ComposeRequest::Reply { message, kind } => {
@@ -467,7 +495,8 @@ async fn prepare(context: Context, request: ComposeRequest) -> Result<Prepared, 
         ComposeRequest::ForwardAsAttachment(messages) => {
             let first = *messages.first().ok_or_else(|| "No message to forward.".to_owned())?;
             let account = context.account_of(first).await?;
-            let draft = forward_as_attachment(&context, &account, &messages).await?;
+            let mut draft = forward_as_attachment(&context, &account, &messages).await?;
+            draft.protection = context.protection(&account);
             (account, draft, "Forward".to_owned(), None)
         }
         ComposeRequest::Draft(id) => {
@@ -550,11 +579,25 @@ async fn answer(
         let original = Original::parse(&raw);
         let planned = reply::plan(&original, kind, &senders);
         let parts = copy_parts(&worker, &raw, &planned.parts);
-        (planned, parts)
+        let inspected = reading::inspect(&raw);
+        let encrypted = matches!(
+            inspected.encrypted,
+            Some(Encryption::PgpMime | Encryption::InlinePgp)
+        );
+        let signed = matches!(
+            inspected.signed,
+            Some(SignatureKind::PgpMime | SignatureKind::InlinePgp)
+        );
+        (planned, parts, encrypted, signed)
     })
     .await
     .map_err(|_| "The message couldn't be read.".to_owned())?;
-    let (planned, mut parts) = planned;
+    let (planned, mut parts, encrypted, signed) = planned;
+    let defaults = context.protection(account);
+    let protection = match kind {
+        ReplyKind::Reply | ReplyKind::ReplyAll => protect::for_reply(&defaults, encrypted, signed),
+        ReplyKind::Forward => defaults,
+    };
     let missing: Vec<usize> = (0..parts.len()).filter(|&at| parts[at].is_none()).collect();
     if !missing.is_empty() {
         let indexes: Vec<u32> = missing.iter().map(|&at| planned.parts[at].part).collect();
@@ -578,7 +621,9 @@ async fn answer(
     }
     let id = message_id(&planned.sender.address);
     let parts = parts.into_iter().flatten().collect();
-    Ok(planned.draft(account.id, message, id, typed, parts))
+    let mut draft = planned.draft(account.id, message, id, typed, parts);
+    draft.protection = protection;
+    Ok(draft)
 }
 
 /// A new message from `account` with each of `messages` attached whole as a `message/rfc822`
@@ -1001,6 +1046,7 @@ mod tests {
             address: Address::new("", email),
             signature: None,
             signature_html: None,
+            pgp_key: None,
         }
     }
 

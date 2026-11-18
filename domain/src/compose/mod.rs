@@ -11,6 +11,7 @@ pub mod clean;
 pub mod identity;
 pub mod ids;
 pub mod mime;
+pub mod protect;
 pub mod quote;
 pub mod reply;
 pub mod stored;
@@ -85,6 +86,8 @@ pub struct Draft {
     pub source: Option<DraftSource>,
     /// Attachments and inline images, in the order they are shown and sent.
     pub parts: Vec<DraftPart>,
+    /// Signed or encrypted on send (ADR-032); an encrypted draft stays on this computer.
+    pub protection: protect::Protection,
 }
 
 impl fmt::Debug for Draft {
@@ -98,6 +101,7 @@ impl fmt::Debug for Draft {
             .field("html_len", &self.html.len())
             .field("source", &self.source)
             .field("parts", &self.parts.len())
+            .field("protection", &self.protection)
             .finish()
     }
 }

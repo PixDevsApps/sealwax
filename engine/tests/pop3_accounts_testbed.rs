@@ -180,6 +180,7 @@ impl Running {
             microsoft_client_id: None,
             sign_in: SignInOptions::default(),
             sync: SyncConfig::default(),
+            gpg: None,
         })
         .unwrap();
         let events = engine.events();
@@ -250,6 +251,7 @@ impl Running {
             signature: None,
             signature_html: None,
             identities: Vec::new(),
+            pgp: Default::default(),
         };
         self.send(Command::AddAccount {
             request,
