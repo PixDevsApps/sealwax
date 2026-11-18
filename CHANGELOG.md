@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.6.1 — 2026-11-18
+
+Send signed and encrypted mail with your own GnuPG, and two fixes to how PGP signatures are checked.
 
 - **Send signed and encrypted mail** ([issue #32](https://github.com/PixDevsApps/sealwax/issues/32), thanks @mlamoure, who also answered how it should work): **Sign** and **Encrypt** in the composer, with your own GnuPG keyring and gpg-agent, as PGP/MIME. Encrypt needs a key in your keyring for every recipient and never falls back to plain text; unverified keys are used and named under the fields, a verified key is preferred, and when someone has several unverified keys you pick one. Bcc recipients' keys aren't named on the message, and your own key is added so you can read your Sent copy. While Encrypt is on, the draft stays on your computer, not in the server's Drafts folder. A reply to an encrypted message starts encrypted; `pgp_sign`, `pgp_encrypt` and `pgp_key` in `accounts.toml` set an account's defaults and its signing key. **Attach My Public Key** attaches your key. The Subject stays readable. Not in the Flatpak, which can't reach your keyring.
 - **Two fixes to PGP signature checking** ([issue #32](https://github.com/PixDevsApps/sealwax/issues/32), thanks @mlamoure, who found and reported both): "Signed by NAME · checked" could appear for a user ID that nobody certified, when someone added it to a key you had certified for its own user ID; now the user ID with the sender's address must itself be valid in your keyring, otherwise the line says "key not verified". And text written around a clear-signed block was shown under the signature line as if it were signed; now only the text GnuPG checked is shown there, and a line says "Text outside the signed part isn't shown" (Show Original has the whole message). The same line appears when an inline encrypted message had text around it. GnuPG's status lines now come through a pipe of their own, apart from its log.

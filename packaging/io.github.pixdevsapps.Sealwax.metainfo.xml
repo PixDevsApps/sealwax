@@ -104,6 +104,13 @@
   </screenshots>
 
   <releases>
+    <release version="1.6.1" date="2026-11-18" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.1</url>
+      <description>
+        <p>Messages can be signed and encrypted with your own GnuPG keyring and gpg-agent, as PGP/MIME. Encrypting needs a key for every recipient and never falls back to plain text, and a draft marked Encrypt stays on your computer.</p>
+        <p>Two fixes to PGP signature checking: a signature is called checked only when your keyring vouches for the sender's own address on the key, and text written around a clear-signed message is no longer shown as signed.</p>
+      </description>
+    </release>
     <release version="1.6.0" date="2026-11-18" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.0</url>
       <description>
