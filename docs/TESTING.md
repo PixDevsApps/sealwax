@@ -78,6 +78,28 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.6.0 — 2026-11-18
+
+This machine (gpg 2.4.9). The changes since 1.5.3: PGP read with the user's GnuPG ([issue #32](https://github.com/PixDevsApps/sealwax/issues/32)) and attached messages in the reader ([issue #40](https://github.com/PixDevsApps/sealwax/issues/40)), `70b618e`, [ADR-030](DECISIONS.md#adr-030--160-pgp-read-through-the-users-gnupg-attached-and-decrypted-messages-shown-from-memory-2026-11-18); Open With (#39, below), merged in `1964fc6`; and the version commit `825fa7c` (Cargo.toml 1.6.0, both lock files with only Sealwax's own crates, CHANGELOG "1.6.0 — 2026-11-18", the metainfo's 1.6.0 release, README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Unit tests (new) `domain::pgp`, `message::is_message`, `reader::memory`, `reader::protection` | The signed part handed to GnuPG with CRLF line ends (also from LF-only mail); a `multipart/signed` below the root not checked; status lines read (good, bad, missing key, no secret key, failed); "checked" only for a good signature with full or ultimate validity and a user ID with the From address; attached levels, Back and the 16-level cap; decrypted content read for parts but never as the original | Pass |
+| `infrastructure/tests/pgp.rs` (new) and the reader's `prepare` test, the real `gpg` with throwaway keyrings | A signed message checked, the other signer, changed content, LF-only; signed and encrypted decrypted with its signature; encrypted to another key: no secret key; clear-signed text; the detached signature file removed; a PGP/MIME message with a PDF decrypted, its card reading the PDF from the decrypted content | Pass |
+| Self-tests `pgp` (37 steps) and `attached` (55 steps), new | `pgp`: decrypted with "Encrypted · decrypted with your key", "Signed by Ada Lovelace <ada@example.test> · checked", its PDF opened byte for byte; signed and checked; changed after signing warns, never "checked"; encrypted to someone else says so; inline decrypted (keys made in the run's own `GNUPGHOME`). `attached`: a PEC envelope's `postacert.eml` opened in the reader under its bar, its PDF opened and saved, Back and Escape back to the envelope, another selection leaving it; a forwarded message's remote image held back; a broken one refused on its card | Pass |
+| `SEALWAX_CI_DISPLAY=41 bash tools/ci.sh --ui` on `825fa7c` | Exit 0: 1,572 passed, 0 failed, 93 ignored; 100 self-test scripts, 9,491 of 9,491 steps (`pgp` 37, `attached` 55, `open-with` 55); hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; MSRV, rustdoc and `cargo deny` included | Pass |
+| `bash tools/ci.sh --testbed`, a live send | Not run | Not verified |
+| The push range (`ddfc823..825fa7c`) scanned | No working doc or personal data; the only home paths are the fictional examples `/home/you/…` and `/home/kari/…` | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note, as before); up to date | Pass |
+| `python3 tools/release.py build` on `v1.6.0` | `check()` 1,270 passed, 0 failed, 93 ignored; no compiler warning; `SHA256SUMS` checks for all four files; the package `cf284cdc…`; its binary says `sealwax 1.6.0`, holds no `--self-test` and no home path but the fictional example in an Open With error | Pass |
+| The clean-container install test (`sealwax-selftest` from `825fa7c`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container, the web process in WebKit's sandbox (`.local/install-test/20261118-083059`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.6.0` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,624,336 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `0de8f20b…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.6.0](https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.0) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the site for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`, `sealwax-flatpak` `e0ade94`) | The served `repo/summary` the same bytes as the site's 30 s after the push | Pass |
+| A real pinentry prompt, a hardware key, the user's own keyring; the Flatpak's PGP notices on screen | Not run | Not verified |
+| Installed here | Not installed | Not verified |
+
 ### Open With (issue #39) — 2026-11-18
 
 This machine. Branch `work/1.6.0-open-with` on `ddfc823`: [issue #39](https://github.com/PixDevsApps/sealwax/issues/39), [ADR-031](DECISIONS.md#adr-031--open-with-the-users-own-commands-from-configtoml-2026-11-18).
