@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Open With** ([issue #39](https://github.com/PixDevsApps/sealwax/issues/39), thanks @neuromante): hand the message you're reading to a program of your own, such as a document archive, a script that files the message, or an assistant that summarises it. List each program in `config.toml` as an `[[open_with]]` table with a `name` and a `command`, where `"{file}"` stands for the message's file; **Open With** and the name then appear in the reader's **More** menu and in the palette. The program gets a copy of the message exactly as the server has it, the same file Save as .eml saves, readable by you alone; Sealwax starts it directly, without a shell, and empties the folder the copies are in when it next starts. Nothing is shown until you add one. Not in the Flatpak, whose sandbox can't start programs on your system. The user guide has an example.
+
 ## 1.5.3 — 2026-11-17
 
 A security release: lettre 0.11.24, and a stricter check of the server's answer to a sent message.

@@ -541,10 +541,9 @@ pub(super) fn save_message(reader: &Reader) {
     }
 }
 
-/// Asks where, then saves the bytes the server has (`known` when Show Original already has
-/// them).
-async fn save(inner: Rc<Inner>, id: MessageId, known: Option<Rc<Vec<u8>>>) {
-    let subject = match inner.store.read(id) {
+/// The stored subject of `id`, or nothing.
+pub(super) async fn subject(inner: &Inner, id: MessageId) -> String {
+    match inner.store.read(id) {
         Some(reads) => reads
             .detail
             .recv()
@@ -554,7 +553,13 @@ async fn save(inner: Rc<Inner>, id: MessageId, known: Option<Rc<Vec<u8>>>) {
             .map(|detail| detail.headers.subject)
             .unwrap_or_default(),
         None => String::new(),
-    };
+    }
+}
+
+/// Asks where, then saves the bytes the server has (`known` when Show Original already has
+/// them).
+async fn save(inner: Rc<Inner>, id: MessageId, known: Option<Rc<Vec<u8>>>) {
+    let subject = subject(&inner, id).await;
     let Some(file) = files::choose_save(&inner, "Save Message", &eml_file_name(&subject)).await
     else {
         return;

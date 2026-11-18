@@ -23,6 +23,7 @@ mod files;
 mod format;
 mod links;
 mod live;
+mod open_with;
 mod page;
 mod plain;
 mod prepare;

@@ -186,6 +186,8 @@ Allowed images load only over HTTPS and without cookies. A forged From address c
 
 **Print, Show Original, Save as .eml.** **Print…** (Ctrl+P) opens the print dialog with the message and a header (subject, From, To, Cc, Date). **Show Original** (Ctrl+U) shows the message's raw source (its first 512 KiB) with **Save as .eml…**. **Save as .eml…** (Ctrl+S) saves the whole message as a file, suggesting its subject as the name.
 
+**Open With.** Hand the message to a program of your own, such as a document archive or a script that files it: list the program in `config.toml` ([Open With commands](#open-with-commands)), and **Open With** and its name appear in the reader's **More** menu and the palette. The program gets a copy of the message as the server has it, the same file Save as .eml saves. Not in the Flatpak.
+
 **Encrypted and signed mail.** Sealwax 1.0 doesn't decrypt or check PGP and S/MIME. An encrypted message shows "This message is encrypted. Sealwax can't read encrypted mail yet." in place of its body; a signed message shows its content with "Signed · not checked".
 
 ## Grouping mail by sender or domain
@@ -461,6 +463,15 @@ The full keymap, with each command's name in `keys.toml` (a test keeps this tabl
 | Messages | Print… | Ctrl+P | list and reader | `print` |
 | Messages | Show Original | Ctrl+U | list and reader | `show-original` |
 | Messages | Save as .eml… | Ctrl+S | list and reader | `save-message` |
+| Messages | Open With 1 | — |  | `open-with-1` |
+| Messages | Open With 2 | — |  | `open-with-2` |
+| Messages | Open With 3 | — |  | `open-with-3` |
+| Messages | Open With 4 | — |  | `open-with-4` |
+| Messages | Open With 5 | — |  | `open-with-5` |
+| Messages | Open With 6 | — |  | `open-with-6` |
+| Messages | Open With 7 | — |  | `open-with-7` |
+| Messages | Open With 8 | — |  | `open-with-8` |
+| Messages | Open With 9 | — |  | `open-with-9` |
 | Messages | Unsubscribe… | — |  | `unsubscribe` |
 | Messages | Pin Sender | — |  | `pin-sender` |
 | Messages | Pin Domain | — |  | `pin-domain` |
@@ -589,6 +600,7 @@ Sealwax has no settings window: its settings are three plain files in `~/.config
 | `[background]` | `enabled` | `true` | `true`: closing the window keeps Sealwax running; `false`: closing the window quits |
 | `[reader]` | `conversation_order` | `"oldest-first"` | `"oldest-first"`, or `"newest-first"` for the latest message on top |
 | | `reply` | `"sender"` | `"sender"`, or `"all"`: Reply answers everyone the message went to, as Reply All does |
+| `[[open_with]]` | `name`, `command` | none | A program the reader's More menu and the palette offer as "Open With" and the name ([below](#open-with-commands)) |
 
 For example:
 
@@ -599,6 +611,28 @@ corner_radius = 8
 [notifications]
 show = "count"
 ```
+
+#### Open With commands
+
+Each `[[open_with]]` table adds **Open With** and its name to the reader's **More** menu (after Save as .eml…) and to the palette. Choosing it hands the message the reader shows to your program ([issue #39](https://github.com/PixDevsApps/sealwax/issues/39)):
+
+```toml
+[[open_with]]
+name = "Archive"
+command = ["my-archiver", "--import", "{file}"]
+
+[[open_with]]
+name = "Summarise"
+command = ["/home/you/bin/summarise", "--input={file}", "--window"]
+```
+
+- **`name`** is shown after "Open With": at most 40 characters, a different one for each table (upper and lower case count as the same).
+- **`command`** is the program, then its arguments, each in its own quotes. Sealwax starts it directly, without a shell: nothing in it is split at spaces, and `~`, `$HOME`, `*`, `|`, `>` and `;` mean nothing special. Where `"{file}"` is written, in one or more arguments, it becomes the path of the message's file; it may be part of an argument, as in `--input={file}`, and a command without it is a mistake. A program given by its name is looked for in the `PATH` Sealwax was started with; give the full path of one that isn't there (not `~/bin/…`). To use a shell's features, make the program a script.
+- **The file** is the message as the server has it, the same bytes as Save as .eml…; a large message Sealwax keeps only as its text is downloaded first. It's named after the subject (`Invoice #2041.eml`), readable by you alone, in a folder of its own under `$XDG_RUNTIME_DIR/io.github.pixdevsapps.Sealwax/open-with/`. Sealwax doesn't wait for the program, because many programs pass the file to a window that is already open and exit at once, so the file stays until Sealwax next starts, which empties the folder; your session also empties it when you log out. Copy the file if you want to keep it.
+- **What you see:** the command works on the one message the reader shows; with several selected it's greyed out. When the program can't be started, a toast says why ("Open With Archive didn't start: Sealwax can't find the program “my-archiver”…"). The program's own output and errors are discarded, and Sealwax doesn't report whether it succeeded: test the command in a terminal first.
+- **Keys:** Open With has no key. `keys.toml` can give the first table one as `open-with-1`, the second `open-with-2`, and so on, up to 9 tables.
+- **Saving the file applies it**, as for every setting: the menu and the palette follow at once.
+- **Not in the Flatpak:** there Sealwax runs in a sandbox and can't start programs installed on your system, so it offers no Open With commands; the tables are read but not shown.
 
 ### keys.toml
 
@@ -730,6 +764,7 @@ Sealwax writes a plain-text log of what it does, never with message content, add
 | Small state (the window's layout and the saved searches in `layout.toml`, the background notice, unfinished account changes) | `~/.local/state/sealwax/` |
 | Cache (the reader's content filters, which Sealwax makes again) | `~/.cache/sealwax/` |
 | Attachments you opened (emptied at the next start and at logout) | `$XDG_RUNTIME_DIR/io.github.pixdevsapps.Sealwax/attachments/` |
+| Messages handed to Open With commands (emptied at the next start and at logout) | `$XDG_RUNTIME_DIR/io.github.pixdevsapps.Sealwax/open-with/` |
 | The unread count for other programs, while Sealwax runs | `$XDG_RUNTIME_DIR/sealwax/unread.json` |
 | Passwords and sign-in tokens | Your keyring, as items with `application` = `io.github.pixdevsapps.Sealwax` |
 | Start Sealwax at Login, when on | `~/.config/autostart/io.github.pixdevsapps.Sealwax.desktop` |

@@ -719,6 +719,14 @@ impl AppState {
         }
     }
 
+    /// Whether the window's command `id` is offered at all, such as an Open With command
+    /// without its `config.toml` entry.
+    pub(crate) fn set_window_available(&self, id: ActionId, available: bool) {
+        if let Some(actions) = self.win_actions.borrow().as_ref() {
+            actions.set_available(id, available);
+        }
+    }
+
     /// The saved searches (1.5.0), as `layout.toml` keeps them.
     pub(crate) fn saved_searches(&self) -> Vec<sealwax_ui_model::layout::SavedSearch> {
         self.layout
@@ -1076,6 +1084,7 @@ impl AppState {
                 reader.set_conversation_order(prefs.config().reader.conversation_order);
                 reader.set_default_reply(prefs.config().reader.reply);
             }
+            crate::open_with::apply(self);
             // A client ID added or removed makes Microsoft sign-in available or not.
             setup::refresh();
             self.send_microsoft_client();
@@ -2025,7 +2034,7 @@ impl AppState {
     }
 
     /// Commands' titles where they differ from the registry's, for the palette.
-    fn command_titles(&self) -> Vec<(ActionId, String)> {
+    pub(crate) fn command_titles(&self) -> Vec<(ActionId, String)> {
         let Some(list) = self.list() else {
             return Vec::new();
         };
@@ -2038,6 +2047,7 @@ impl AppState {
             .filter(|(id, title)| *title != id.title())
             .map(|(id, title)| (id, title.to_owned()))
             .chain(crate::rules::titles(self))
+            .chain(crate::open_with::titles(self))
             .chain(reply_all.then(|| (ActionId::Reply, ActionId::ReplyAll.title().to_owned())))
             .collect()
     }
@@ -2072,12 +2082,16 @@ impl AppState {
             );
         }
         let one = matches!(list.reported(), Selected::One(_));
+        let open_with = (1..=sealwax_domain::open_with::MAX_ENTRIES).filter_map(ActionId::open_with);
         for id in [
             ActionId::OpenMessage,
             ActionId::Print,
             ActionId::ShowOriginal,
             ActionId::SaveMessage,
-        ] {
+        ]
+        .into_iter()
+        .chain(open_with)
+        {
             actions.set_applies(id, one);
         }
         actions.set_applies(ActionId::Select, list.model().total() > 0);
@@ -2865,6 +2879,7 @@ impl AppState {
         compose_actions::connect_reader(&reader, window);
         crate::unsubscribe::connect_reader(self, &reader);
         self.reader.replace(Some(reader));
+        crate::open_with::apply(self);
         self.refresh_commands();
     }
 
