@@ -78,6 +78,28 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.6.1 — 2026-11-18
+
+This machine (gpg 2.4.9). The changes since 1.6.0: two fixes to PGP signature checking reported on [issue #32](https://github.com/PixDevsApps/sealwax/issues/32), `de9dd04` ([ADR-030 amendment](DECISIONS.md#adr-030-amendment--what-checked-stands-for-and-over-161-2026-11-18)); PGP on send, `458b63d` ([ADR-032](DECISIONS.md#adr-032--161-pgp-on-send-through-the-users-gnupg-encrypted-drafts-stay-local-2026-11-18)); and the version commit `9e7a9a2` (Cargo.toml 1.6.1, both lock files with only Sealwax's own crates, CHANGELOG "1.6.1 — 2026-11-18", the metainfo's 1.6.1 release, README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Unit tests (new) `domain::pgp`, `domain::compose::protect`, `accounts_file`, the reader's `prepare`, the engine's outbox | A user ID the keyring doesn't vouch for isn't "checked" though the key's TRUST line is full; key listings read; SIG_CREATED, END_ENCRYPTION and refusals read; recipients' keys (verified first, several unverified to pick, unusable ones never), the own key (configured, the only one, several refused), the plan (Bcc hidden, own key added, missing before picks); PGP/MIME signed and encrypted messages read back through `pgp::work`; `pgp_sign`, `pgp_encrypt`, `pgp_key` read and checked; text around a clear-signed block left out; a protected draft without GnuPG never built | Pass |
+| `infrastructure/tests/pgp.rs`, the real `gpg` with throwaway keyrings | A user ID added to a certified key and refreshed: "key not verified" (fails with the fix taken out); `--verify --output -` gives only the signed text; a sealed signed message "checked" by the reader's own path; a sealed encrypted one decrypted with its signature, three recipients of which only the Bcc's key ID hidden, its size within the composer's estimate; a recipient without a key refused; a key exported | Pass |
+| The store suite | `an_encrypted_draft_stays_on_this_computer` (Sign, Encrypt and picks kept; no upload while encrypted, its server copy deleted; Encrypt off uploads again); schema v15 migrations | Pass |
+| Self-tests `pgp` (51 steps) and `composer-pgp` (83 steps, new) | `pgp`: an added user ID "key not verified", words around a clear-signed text left out with "Text outside the signed part isn't shown", text before an inline encrypted block left out. `composer-pgp`: the toggles, the keys line ("No key to encrypt to", "Key not verified", "Several keys"), Send refused naming the recipient without a key, signed and encrypted to Bob and the boss, Carol's key picked in the dialog (Cancel first) and kept with the draft, Attach My Public Key, Sign and Encrypt kept by the store | Pass |
+| `SEALWAX_CI_DISPLAY=43 bash tools/ci.sh --ui` on `9e7a9a2` | Exit 0: 1,594 passed, 0 failed, 93 ignored; 101 self-test scripts, 9,588 of 9,588 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0`; MSRV, rustdoc and `cargo deny` included | Pass |
+| `bash tools/ci.sh --testbed`, a sealed message through a mail server | Not run | Not verified |
+| The push range (`afd14b7..9e7a9a2`) scanned | No working doc or personal data | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note, as before); up to date | Pass |
+| `python3 tools/release.py build` on `v1.6.1` | `check()` 1,290 passed, 0 failed, 93 ignored; no compiler warning; `SHA256SUMS` checks for all four files; the package `1260fc42…`; its binary says `sealwax 1.6.1` and holds no `--self-test` | Pass |
+| The clean-container install test (`sealwax-selftest` from `9e7a9a2`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261118-204536`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.6.1` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,748,144 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `651a93a6…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.6.1](https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.1) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the site for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`, `sealwax-flatpak` `d041c97`) | GitHub Pages served the 1.6.1 site about 20 s after the push | Pass |
+| A real pinentry prompt for signing, a hardware key, the user's own keyring; how Thunderbird and other clients show Sealwax's PGP/MIME; a reply to an encrypted message starting encrypted, end to end | Not run | Not verified |
+
 ### 1.6.0 — 2026-11-18
 
 This machine (gpg 2.4.9). The changes since 1.5.3: PGP read with the user's GnuPG ([issue #32](https://github.com/PixDevsApps/sealwax/issues/32)) and attached messages in the reader ([issue #40](https://github.com/PixDevsApps/sealwax/issues/40)), `70b618e`, [ADR-030](DECISIONS.md#adr-030--160-pgp-read-through-the-users-gnupg-attached-and-decrypted-messages-shown-from-memory-2026-11-18); Open With (#39, below), merged in `1964fc6`; and the version commit `825fa7c` (Cargo.toml 1.6.0, both lock files with only Sealwax's own crates, CHANGELOG "1.6.0 — 2026-11-18", the metainfo's 1.6.0 release, README's version).
