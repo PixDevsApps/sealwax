@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Files dragged onto the composer are attached again on Hyprland** ([issue #42](https://github.com/PixDevsApps/sealwax/issues/42), thanks @ocewers): a file dragged from Nautilus or another file manager was turned down by the composer, and over the message's text it went in as its `file://` address. Hyprland up to 0.57.2 offers such a drop only as a move, and the composer took only copies; it now takes both, and the file is always copied, never moved. Images dropped over the text still go into the message itself.
+
 ## 1.6.1 — 2026-11-18
 
 Send signed and encrypted mail with your own GnuPG, and two fixes to how PGP signatures are checked.

@@ -1221,6 +1221,24 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
                 .and_then(|field| field.selected_suggestion());
             equal("selected suggestion", selected, Some(number(arg(1))?))
         }
+        "drop-takes" => {
+            let takes = composer
+                .root()
+                .observe_controllers()
+                .iter::<glib::Object>()
+                .filter_map(Result::ok)
+                .find_map(|controller| controller.downcast::<gtk::DropTarget>().ok())
+                .map(|target| target.actions());
+            let wanted = arg(1)
+                .split(',')
+                .try_fold(gdk::DragAction::empty(), |all, name| match name {
+                    "copy" => Ok(all | gdk::DragAction::COPY),
+                    "move" => Ok(all | gdk::DragAction::MOVE),
+                    "link" => Ok(all | gdk::DragAction::LINK),
+                    _ => Err(format!("drop-takes: unknown action {name}")),
+                })?;
+            equal("the drop target's actions", takes, Some(wanted))
+        }
         "attachments" => equal(
             "attachments",
             composer.tray().cards().len(),

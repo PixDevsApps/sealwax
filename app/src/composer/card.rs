@@ -1182,7 +1182,12 @@ impl Inner {
             }
         });
 
-        let drop = gtk::DropTarget::new(gdk::FileList::static_type(), gdk::DragAction::COPY);
+        // MOVE as well as COPY: Hyprland up to 0.57.2 gives every drop from a file manager MOVE
+        // only, and a COPY-only target turned it down (#42). Either way the file is copied.
+        let drop = gtk::DropTarget::new(
+            gdk::FileList::static_type(),
+            gdk::DragAction::COPY | gdk::DragAction::MOVE,
+        );
         drop.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = Rc::downgrade(self);
         drop.connect_drop(move |_, value, x, y| {

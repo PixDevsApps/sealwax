@@ -42,6 +42,9 @@ assert-composer attachments 2
 assert-composer attachment 1 "name=hidden name.csv"
 
 # Dropped files: elsewhere on the window they are attached, over the body an image goes inline.
+# The card's drop target takes MOVE too: Hyprland up to 0.57.2 offers a file manager's drop as
+# MOVE only (#42). The steps below call the drop handler; a real drag isn't possible headless.
+assert-composer drop-takes copy,move
 composer-drop window $TMP/files/notater.txt
 wait-until assert-composer attachments 3
 composer-focus body
