@@ -104,6 +104,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.6.2" date="2026-11-19" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.2</url>
+      <description>
+        <p>Files dragged from a file manager onto the composer are attached again on Hyprland, which offers such a drop only as a move. Before, the composer turned the drop down, and over the message text the file went in as its address. The file is always copied, never moved.</p>
+      </description>
+    </release>
     <release version="1.6.1" date="2026-11-18" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.1</url>
       <description>
