@@ -78,6 +78,25 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.6.2 — 2026-11-19
+
+This machine (Hyprland 0.56.2, Nautilus 51.1, GTK 4.24.1, WebKitGTK 2.54.1). The changes since 1.6.1: the composer's drop target takes a file offered as a move ([issue #42](https://github.com/PixDevsApps/sealwax/issues/42)), `0c72602`; and the version commit `8b88ee4` (Cargo.toml 1.6.2, both lock files with only Sealwax's own crates, CHANGELOG, the metainfo's release, README's version). The cause was read in GTK 4.24.1's `gdkdrop-wayland.c` and Hyprland's `DataDevice.cpp` (0.56.0 and 0.57.2 send MOVE whenever the source offers it; fixed on Hyprland's `main` by hyprwm/Hyprland#16808, in no release yet).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Self-test `composer-attachments` (74 steps; new check `assert-composer drop-takes copy,move`, which reads the card's real `gtk::DropTarget`) | 74 of 74. With the drop target set back to COPY only: 73 of 74, `not ok 28 - assert-composer drop-takes copy,move` | Pass |
+| `SEALWAX_CI_DISPLAY=48 bash tools/ci.sh --ui` on `8b88ee4` | Exit 0: 1,594 passed, 0 failed, 93 ignored; 101 self-test scripts, 9,589 of 9,589 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| A real drag from Nautilus into the composer on Hyprland (the owner, `tools/live/try.sh` on `work/1.6.2`) | "It all works great" | Pass |
+| A drag on other compositors (GNOME, KDE, Sway) | Not run | Not verified |
+| The push range (`09a3c11..8b88ee4`) scanned | No working doc or personal data | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note, as before); up to date | Pass |
+| `python3 tools/release.py build` on `v1.6.2` | `check()` 1,290 passed, 0 failed, 93 ignored; no compiler warning; `SHA256SUMS` checks for all four files; the package `1de6f415…`; its binary says `sealwax 1.6.2` and holds no `--self-test` | Pass |
+| The clean-container install test (`sealwax-selftest` from `8b88ee4`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261119-212338`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.6.2` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,748,072 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `5d46b673…`, signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.6.2](https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.2) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the site for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`, `sealwax-flatpak` `c94085d`) | GitHub Pages served the 1.6.2 site about 40 s after the push | Pass |
+
 ### 1.6.1 — 2026-11-18
 
 This machine (gpg 2.4.9). The changes since 1.6.0: two fixes to PGP signature checking reported on [issue #32](https://github.com/PixDevsApps/sealwax/issues/32), `de9dd04` ([ADR-030 amendment](DECISIONS.md#adr-030-amendment--what-checked-stands-for-and-over-161-2026-11-18)); PGP on send, `458b63d` ([ADR-032](DECISIONS.md#adr-032--161-pgp-on-send-through-the-users-gnupg-encrypted-drafts-stay-local-2026-11-18)); and the version commit `9e7a9a2` (Cargo.toml 1.6.1, both lock files with only Sealwax's own crates, CHANGELOG "1.6.1 — 2026-11-18", the metainfo's 1.6.1 release, README's version).
