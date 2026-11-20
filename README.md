@@ -22,7 +22,7 @@ flatpak install --user https://github.com/PixDevsApps/sealwax/releases/latest/do
 
 It updates with `flatpak update` or your software centre. On Omarchy, the package above is the better fit.
 
-**Your unread count in Omarchy's bar** (optional): this line adds a Sealwax icon to the bar, with the number of unread messages beside it while Sealwax runs. It asks where in the bar to put it: left, center (beside the clock, the default) or right. A click opens Sealwax.
+**Your unread count in Omarchy's bar** (optional): this line adds a Sealwax icon to the bar, with the number of unread messages in your Inboxes and folders beside it while Sealwax runs. It asks where in the bar to put it: left, center (beside the clock, the default) or right. A click lists the folders with unread mail; a click on one opens Sealwax there.
 
 ```sh
 s=$(gum choose --header "Where in the bar?" --selected center left center right) && d=~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread && mkdir -p "$d" && for f in manifest.json BarWidget.qml; do curl -fsSL -o "$d/$f" https://raw.githubusercontent.com/PixDevsApps/sealwax/main/contrib/omarchy-plugin/$f; done && omarchy-shell shell rescanPlugins && { for i in {1..50}; do omarchy plugin list --json | grep -q '"io.github.pixdevsapps.sealwax-unread"' && break; sleep 0.1; done; omarchy plugin enable io.github.pixdevsapps.sealwax-unread --section "${s/center/centerEnd}"; }

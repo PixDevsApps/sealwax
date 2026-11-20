@@ -79,7 +79,7 @@ The [user guide](docs/USER_GUIDE.md) explains everything else, from reading and 
 
 ## Unread count in Omarchy's bar (optional)
 
-Sealwax can show how many unread messages are in your Inboxes in Omarchy's bar: its icon, with the number beside it. A click opens Sealwax. Installing Sealwax doesn't add it; it's a small Omarchy plugin you add yourself, once.
+Sealwax can show how many unread messages you have in Omarchy's bar: its icon, with the number beside it. It counts your Inboxes, the folders under them and your own folders, not Sent, Drafts, Archive, Junk or Trash. A click lists the folders with unread mail, by account, and a click on one opens Sealwax there; a right click opens Sealwax. Installing Sealwax doesn't add it; it's a small Omarchy plugin you add yourself, once.
 
 **To add it,** open a terminal, paste this line and press **Enter**:
 
@@ -89,12 +89,12 @@ s=$(gum choose --header "Where in the bar?" --selected center left center right)
 
 It asks where in the bar to put the icon: **left**, **center** (beside the clock) or **right**. Center is already selected, so pressing **Enter** puts it there; use the arrow keys for another place. Then it downloads the plugin's two files into `~/.config/omarchy/plugins/io.github.pixdevsapps.sealwax-unread/` and turns it on. You can move it later by dragging it along the bar.
 
-- The number shows only while Sealwax runs (with or without a window open). At 0 the icon shows alone.
+- The number shows only while Sealwax runs (with or without a window open). At 0 the icon shows alone, and while Sealwax isn't running a click opens it.
 - The plugin never reads your mail: it reads only a small file with the count, which Sealwax keeps while it runs.
 - **With the Flatpak,** the plugin needs `"flatpak": true` in its entry in Omarchy's `shell.json`, so it finds the count and opens the Flatpak. The [plugin's README](contrib/omarchy-plugin/README.md) shows the settings.
-- **To update it,** run the same line again. **To remove it:** `omarchy plugin remove io.github.pixdevsapps.sealwax-unread`.
+- **To update it,** run the same line again (the list of folders came in the widget's version 1.1.0; an older widget shows the number and opens Sealwax). **To remove it:** `omarchy plugin remove io.github.pixdevsapps.sealwax-unread`.
 
-Other bars and scripts can use `sealwax --unread`, which prints the number (and fails when Sealwax isn't running).
+Other bars and scripts can use `sealwax --unread`, which prints the number (and fails when Sealwax isn't running), and `sealwax --folder KEY`, which opens a folder by its key in the count's file ([plugin README](contrib/omarchy-plugin/README.md#the-file)).
 
 ## Updates
 

@@ -10,6 +10,11 @@
 //! running Sealwax it shows nothing. `--compose` opens a new message; with `mailto:` links, those
 //! messages are opened instead. Both are forwarded to a running Sealwax like the links.
 //!
+//! `--folder KEY` (1.6.3) shows a folder by its sidebar key, as `unread.json` names it
+//! (`folder-42`, or `all-inboxes`), so the bar widget's list opens the folder picked there; it is
+//! forwarded to a running Sealwax like the links, and a key Sealwax doesn't know shows the window
+//! as it was.
+//!
 //! `--unread` (1.5.0, issue #17) prints the unread number of the Sealwax running now, from the
 //! file it keeps (`sealwax_infrastructure::unread`), and exits 1 when none runs; it never starts
 //! or asks a running Sealwax, so a bar or a script can call it as often as it likes.
@@ -37,6 +42,8 @@ pub(crate) struct Cli {
     pub compose: bool,
     /// Print the running Sealwax's unread number and exit.
     pub unread: bool,
+    /// Show this folder, by its sidebar key.
+    pub folder: Option<String>,
 }
 
 pub(crate) fn command() -> Command {
@@ -65,13 +72,23 @@ pub(crate) fn command() -> Command {
                 .help("Start without a window, as at login; mail keeps syncing in the background"),
         )
         .arg(
+            Arg::new("folder")
+                .long("folder")
+                .value_name("KEY")
+                .value_parser(folder_key)
+                .conflicts_with_all(["uris", "compose", "background"])
+                .help(
+                    "Show a folder: its key from unread.json, such as folder-42, or all-inboxes",
+                ),
+        )
+        .arg(
             Arg::new("unread")
                 .long("unread")
                 .action(ArgAction::SetTrue)
-                .conflicts_with_all(["uris", "compose", "background"])
+                .conflicts_with_all(["uris", "compose", "background", "folder"])
                 .help(
-                    "Print the number of unread messages in the Inboxes of the Sealwax running \
-                     now, or exit 1 when it isn't running",
+                    "Print the number of unread messages in the Inboxes, their folders and your own \
+                     folders of the Sealwax running now, or exit 1 when it isn't running",
                 ),
         )
         .arg(
@@ -100,6 +117,18 @@ fn mailto_uri(value: &str) -> Result<String, String> {
     }
 }
 
+/// A sidebar key: `folder-` and a number, or `all-inboxes`.
+fn folder_key(value: &str) -> Result<String, String> {
+    let number = value.strip_prefix("folder-").is_some_and(|id| {
+        !id.is_empty() && id.len() <= 19 && id.bytes().all(|b| b.is_ascii_digit())
+    });
+    if number || value == "all-inboxes" {
+        Ok(value.to_owned())
+    } else {
+        Err("not a folder key (folder-42, or all-inboxes)".to_owned())
+    }
+}
+
 /// Parses `args`, including the program name. Help and version requests come back as errors
 /// whose `exit_code()` is 0, as clap reports them.
 pub(crate) fn parse<I, T>(args: I) -> Result<Cli, clap::Error>
@@ -119,6 +148,7 @@ where
         background: matches.get_flag("background"),
         compose: matches.get_flag("compose"),
         unread: matches.get_flag("unread"),
+        folder: matches.get_one::<String>("folder").cloned(),
     })
 }
 
@@ -179,6 +209,43 @@ mod tests {
             version.to_string().trim(),
             format!("sealwax {}", env!("CARGO_PKG_VERSION"))
         );
+    }
+
+    #[test]
+    fn a_folder_by_its_key() {
+        let cli = parse(["sealwax", "--folder", "folder-42"]).unwrap();
+        assert_eq!(cli.folder.as_deref(), Some("folder-42"));
+        assert_eq!(
+            parse(["sealwax", "--folder=all-inboxes"])
+                .unwrap()
+                .folder
+                .as_deref(),
+            Some("all-inboxes")
+        );
+        for key in [
+            "42",
+            "folder-",
+            "folder-4a",
+            "folder--1",
+            "folder-42; rm -rf ~",
+            "INBOX",
+            "folder-12345678901234567890",
+        ] {
+            let error = parse(["sealwax", "--folder", key]).unwrap_err();
+            assert_eq!(error.kind(), ErrorKind::ValueValidation, "{key}");
+        }
+        for args in [
+            &["sealwax", "--folder", "folder-1", "--compose"][..],
+            &["sealwax", "--folder", "folder-1", "--background"],
+            &["sealwax", "--folder", "folder-1", "--unread"],
+            &["sealwax", "--folder", "folder-1", "mailto:a@example.com"],
+        ] {
+            assert_eq!(
+                parse(args).unwrap_err().kind(),
+                ErrorKind::ArgumentConflict,
+                "{args:?}"
+            );
+        }
     }
 
     #[test]

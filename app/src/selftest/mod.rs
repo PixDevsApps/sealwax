@@ -411,6 +411,12 @@ impl Harness {
                 _ => Err("use quit, quit window or quit signal TERM|HUP|INT".to_owned()),
             },
             "spawn" => self.spawn(args, 0).await,
+            "spawn-folder" => {
+                // `sealwax --folder KEY` for a store folder as `ACCOUNT:NAME`, as the bar widget's
+                // list runs it.
+                let key = mail::folder_key_for(self, arg(0))?;
+                self.spawn(&["--folder".to_owned(), key], 0).await
+            }
             "spawn-expect" => {
                 let status = arg(0)
                     .parse::<i32>()
@@ -598,12 +604,18 @@ impl Harness {
                 equal("pane", self.window()?.pane(), wanted)
             }
             "assert-folder" => {
+                // A folder's key, or a store folder as `ACCOUNT:NAME`.
+                let wanted = if arg(0).contains(':') {
+                    mail::folder_key_for(self, arg(0))?
+                } else {
+                    arg(0).to_owned()
+                };
                 let window = self.window()?;
-                equal("folder", window.selected_folder().as_str(), arg(0))?;
+                equal("folder", window.selected_folder().as_str(), wanted.as_str())?;
                 equal(
                     "folder marked in the sidebar",
                     window.sidebar().marked_folder().as_deref(),
-                    Some(arg(0)),
+                    Some(wanted.as_str()),
                 )
             }
             "assert-shown" => {

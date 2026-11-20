@@ -954,6 +954,8 @@ impl AppState {
         }
         if parsed.background {
             self.start_hidden(app);
+        } else if let Some(key) = &parsed.folder {
+            self.show_folder(app, key);
         } else if parsed.compose && parsed.uris.is_empty() {
             self.compose_new(app);
         } else {
@@ -975,6 +977,22 @@ impl AppState {
         if self.window().is_none() {
             self.start_engine_without_window();
         }
+    }
+
+    /// `--folder` (1.6.3): the window on the folder `key`, as the bar widget's list asks. A new
+    /// window opens on it (the view it remembers); a shown one switches to it. A key the
+    /// sidebar doesn't have leaves the window as it was.
+    fn show_folder(self: &Rc<Self>, app: &SealwaxApplication, key: &str) {
+        if let Some(view) = self.mailbox.view_of_key(key) {
+            self.mailbox.set_view(Some(view));
+        }
+        let window = self.window_or_new(app);
+        if self.mailbox.sidebar_model().contains(key) {
+            window.select_folder(key);
+        } else {
+            tracing::info!("--folder names a folder Sealwax doesn't have");
+        }
+        self.present(&window);
     }
 
     /// `--compose` (ML-084): a new message, the window's Compose (from the account the list

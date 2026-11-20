@@ -1898,6 +1898,22 @@ The same day, the AUR answered the owner's registration with "New account regist
 
 **Consequences:** the file's format is a promise to the widgets that read it: a change gets a new `version`. A downgrade to 1.4.x keeps working, `layout.toml`'s `[[search]]` tables left alone. An HTML signature's colours and fonts are lost; the guide says what is kept. The quick reply keeps the plain signature.
 
+### ADR-029 amendment — the count takes in the Inboxes' folders and the user's own; the widget lists them (2026-11-21)
+
+**Status:** Accepted — the owner, 2026-11-21, with a screenshot of their sidebar (1 unread in the Inbox, 1 each in three folders under it, the bar showing 1): "It does not pick up the unread emails in the sub folders, only the ones in inbox … when the user clicks the icon in the bar, it shows which account/folder has unread mail, and with a click the user are taken to that account folder", then "Also be sure it picks up unread for every possible instance, eg. pinned".
+
+**Decision:**
+- **What counts:** each account's Inbox, every folder under it, and the user's own folders (the sidebar's "More" and the folders under them); not Sent, Drafts, Archive, Junk or Trash, nor the folders under them, nor a `\All` folder. A pinned sender's mail is in the Inbox and counts there. The sidebar's All Inboxes keeps the Inboxes' own number.
+- **The file** keeps `version` 1 and gains fields: each account has `folders`, its counted folders with unread mail in the sidebar's order (`key`, the sidebar key `folder-N`; `name`, as the sidebar shows it; `parent`, the names it is under, apart by `/`; `unread`), and the account's and the total `unread` are their sums. Folder names go in the file, as the account's label already did (the file is the user's, 0600 in a 0700 folder); an address never does.
+- **`sealwax --folder KEY`** (`folder-N` or `all-inboxes`, nothing else accepted) is forwarded to a running Sealwax like a `mailto:` link: the window shows that folder, a new window opening on it; a key Sealwax doesn't have shows the window as it was.
+- **The widget** (1.1.0): a left click opens a list (`PopupCard`) of the folders with unread mail and their numbers, under each account's name when the file has more than one account, and **Open Sealwax**; a folder's line runs the `command` with `--folder KEY`, after checking the key against `^(folder-[0-9]{1,19}|all-inboxes)$`, since the bar runs it through `bash -lc`. A right click, or any click while Sealwax isn't running, opens Sealwax. A file from Sealwax 1.5.0–1.6.2, without `folders`, shows one line per account that opens Sealwax.
+
+**Reason:** mail a server's rules file into a folder is as new as the Inbox's, and the bar is where the owner looks for it. The Archive is left out because mail there was put away, often unread on purpose (newsletters); Junk and Trash would count what the user doesn't want, Sent and Drafts aren't mail to read, and `\All` holds the other folders' mail again. Version 1 stays because the change only adds fields: a new version would blank every widget installed since 1.5.0 until its owner updates it, while the old widget shows the new number unchanged.
+
+**Alternatives:** only the Inbox and the folders under it (misses servers whose filter folders sit at the top, as Fastmail's do); every folder (counts the Archive and Junk); a setting for which folders count (more to explain for one choice that fits most); version 2 (see above); the account's address in the list for an account without a label (still never in the file).
+
+**Consequences:** the bar's number can be larger than All Inboxes'. A virtual folder that repeats other folders' mail without `\All` (a server's `\Flagged` folder, whose attribute Sealwax doesn't keep) counts that mail again; so would Gmail's labels, and Gmail isn't supported (ADR-008). An account without a label is "Account N" in the list.
+
 ## ADR-030 — 1.6.0: PGP read through the user's GnuPG; attached and decrypted messages shown from memory (2026-11-18)
 
 **Status:** Accepted — the owner, 2026-11-18, in the chat: 1.6.0 is "Read side now" (decrypting and checking signatures; signing and encrypting on send follow in 1.6.1), decrypted mail is "Never stored", drafts of an encrypted message stay "Local only" (for the send side), and attached messages open in the reader as promised on issue #40. PGP was on PLAN's Later list; the owner moved it to 1.6.0 on 2026-11-16, and the gpg-agent direction was promised on issue #32 on 2026-11-09.

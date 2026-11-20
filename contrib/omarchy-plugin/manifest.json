@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.pixdevsapps.sealwax-unread",
   "name": "Sealwax",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": "PixDevs",
   "license": "MIT",
-  "description": "Sealwax in the bar: its icon with the number of unread messages in your Inboxes, and a click that opens it. Reads the count Sealwax shares while it runs; never reads your mail.",
+  "description": "Sealwax in the bar: its icon with the number of unread messages in your Inboxes and folders, and a click that lists where they are and opens Sealwax on a folder. Reads the count Sealwax shares while it runs; never reads your mail.",
   "homepage": "https://pixdevs.com/omarchy/sealwax/",
   "repository": "https://github.com/PixDevsApps/sealwax",
   "keywords": [
@@ -22,7 +22,7 @@
   },
   "barWidget": {
     "displayName": "Sealwax",
-    "description": "Unread mail in your Inboxes; click to open Sealwax",
+    "description": "Unread mail in your Inboxes and folders; click to see where, and open a folder in Sealwax",
     "category": "Info",
     "allowMultiple": false,
     "defaultSection": "center"

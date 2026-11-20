@@ -58,6 +58,7 @@ pub(super) const COMMANDS: &[(&str, usize, usize)] = &[
     ("quit", 0, 2),
     // Other processes and D-Bus.
     ("spawn", 0, usize::MAX),
+    ("spawn-folder", 1, 1),
     ("spawn-expect", 1, usize::MAX),
     ("spawn-bg", 1, usize::MAX),
     ("signal", 2, 2),

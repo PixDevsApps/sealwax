@@ -4,13 +4,19 @@
 //! script can show the count without reading the mail store and without starting Sealwax:
 //!
 //! ```json
-//! {"version":1,"pid":4242,"unread":12,"accounts":[{"name":"Work","unread":9},{"name":"Home","unread":3}]}
+//! {"version":1,"pid":4242,"unread":12,"accounts":[{"name":"Work","unread":9,"folders":[
+//!   {"key":"folder-3","name":"Inbox","parent":"","unread":7},
+//!   {"key":"folder-9","name":"Bank","parent":"Inbox","unread":2}]},
+//!  {"name":"Home","unread":3,"folders":[{"key":"folder-21","name":"Inbox","parent":"","unread":3}]}]}
 //! ```
 //!
-//! `unread` is All Inboxes' number, the accounts' Inboxes as the sidebar counts them; an account
-//! is named by its label, never by its address. `sealwax --unread` prints the number
-//! ([`read_running`]). The folder is the user's own and gone at logout; a file left by a crash
-//! names a process that is gone, which [`read_running`] checks outside a Flatpak.
+//! `unread` counts each account's Inbox, the folders under it and the user's own folders, not
+//! Sent, Drafts, Archive, Junk or Trash (1.6.3, ADR-029 amendment). An account is named by its
+//! label, never by its address; `folders` lists its counted folders that have unread mail, in
+//! the sidebar's order, each by its sidebar key (what `sealwax --folder` takes), its name and its
+//! parents' names. Fields were only added, so the `version` stays 1. `sealwax --unread` prints
+//! the number ([`read_running`]). The folder is the user's own and gone at logout; a file left by
+//! a crash names a process that is gone, which [`read_running`] checks outside a Flatpak.
 
 use crate::accounts::replace;
 use serde_json::{Value, json};
@@ -26,10 +32,32 @@ pub const VERSION: u64 = 1;
 /// The numbers the file holds.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct UnreadCount {
-    /// Unread messages in every account's Inbox.
+    /// Unread messages in every account's counted folders.
     pub total: u32,
-    /// Each account's, by its label, in the sidebar's order.
-    pub accounts: Vec<(String, u32)>,
+    /// Each account's, in the sidebar's order.
+    pub accounts: Vec<AccountUnread>,
+}
+
+/// One account's unread mail.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct AccountUnread {
+    /// Its label, or "Account N"; never its address.
+    pub name: String,
+    pub unread: u32,
+    /// Its counted folders with unread mail, in the sidebar's order.
+    pub folders: Vec<FolderUnread>,
+}
+
+/// A folder with unread mail.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct FolderUnread {
+    /// Its sidebar key (`folder-42`), which `sealwax --folder` opens.
+    pub key: String,
+    /// The name the sidebar shows.
+    pub name: String,
+    /// The names of the folders it is under, outermost first, apart by `/`; empty at the top.
+    pub parent: String,
+    pub unread: u32,
 }
 
 impl UnreadCount {
@@ -38,7 +66,21 @@ impl UnreadCount {
         let accounts: Vec<Value> = self
             .accounts
             .iter()
-            .map(|(name, unread)| json!({ "name": name, "unread": unread }))
+            .map(|account| {
+                let folders: Vec<Value> = account
+                    .folders
+                    .iter()
+                    .map(|folder| {
+                        json!({
+                            "key": folder.key,
+                            "name": folder.name,
+                            "parent": folder.parent,
+                            "unread": folder.unread,
+                        })
+                    })
+                    .collect();
+                json!({ "name": account.name, "unread": account.unread, "folders": folders })
+            })
             .collect();
         let mut text = json!({
             "version": VERSION,
@@ -101,13 +143,42 @@ mod tests {
         assert_eq!(read_running(&path, true), None, "no file: not running");
         let count = UnreadCount {
             total: 12,
-            accounts: vec![("Jobb \"Ø\"".to_owned(), 9), ("Home".to_owned(), 3)],
+            accounts: vec![
+                AccountUnread {
+                    name: "Jobb \"Ø\"".to_owned(),
+                    unread: 9,
+                    folders: vec![
+                        FolderUnread {
+                            key: "folder-3".to_owned(),
+                            name: "Inbox".to_owned(),
+                            parent: String::new(),
+                            unread: 7,
+                        },
+                        FolderUnread {
+                            key: "folder-9".to_owned(),
+                            name: "Bank".to_owned(),
+                            parent: "Inbox".to_owned(),
+                            unread: 2,
+                        },
+                    ],
+                },
+                AccountUnread {
+                    name: "Home".to_owned(),
+                    unread: 3,
+                    folders: Vec::new(),
+                },
+            ],
         };
         write(&path, &count, std::process::id()).unwrap();
         let text = fs::read_to_string(&path).unwrap();
         let value: Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(value["version"], 1, "fields were only added");
         assert_eq!(value["accounts"][0]["name"], "Jobb \"Ø\"");
+        assert_eq!(value["accounts"][0]["folders"][1]["key"], "folder-9");
+        assert_eq!(value["accounts"][0]["folders"][1]["parent"], "Inbox");
+        assert_eq!(value["accounts"][0]["folders"][1]["unread"], 2);
         assert_eq!(value["accounts"][1]["unread"], 3);
+        assert_eq!(value["accounts"][1]["folders"], json!([]));
         assert_eq!(read_running(&path, true), Some(12));
         let mode = fs::metadata(&path).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600);

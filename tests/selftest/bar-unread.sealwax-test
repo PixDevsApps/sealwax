@@ -1,0 +1,75 @@
+# The unread count for the bar (1.6.3, ADR-029 amendment of 2026-11-21): unread.json counts the
+# Inbox, the folders under it and the user's own folders, folder by folder with each one's key,
+# and leaves out Archive, Junk, Trash and the folders under them; All Inboxes in the sidebar keeps
+# the Inbox's own number. `sealwax --folder KEY`, as the bar widget's list runs it, shows that
+# folder in the running Sealwax's window; a key it doesn't have leaves the window as it was.
+# Every name is fictional.
+# Run: tools/headless.sh 83 target/debug/sealwax-selftest --self-test tests/selftest/bar-unread.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+triage-account Work work
+folder-add Work INBOX/Bank
+folder-add Work INBOX/Foto
+folder-add Work INBOX/Foto/2026
+folder-add Work Kunder
+folder-add Work Kunder/Acme
+folder-add Work Archive/2024
+folder-add Work Trash/Gamle
+mail-add Work:inbox 5m "Møte i morgen" "from=Ingrid Solberg"
+mail-add Work:inbox 6m "Referat" read "from=Ingrid Solberg"
+mail-add Work:INBOX/Bank 10m "Kontoutskrift" "from=Fjordbanken"
+mail-add Work:INBOX/Foto/2026 20m "Bilder fra turen" "from=Marius Dahl"
+mail-add Work:Kunder/Acme 30m "Tilbud på nettside" "from=Acme"
+mail-add Work:Kunder/Acme 31m "Tilbud, rettet" "from=Acme"
+mail-add Work:archive 40m "Arkivert ulest" "from=Nyhetsbrev"
+mail-add Work:Archive/2024 41m "Gammelt ulest" "from=Nyhetsbrev"
+mail-add Work:junk 50m "Vinn en premie" "from=Ukjent"
+mail-add Work:trash 60m "Slettet ulest" "from=Ingrid Solberg"
+mail-add Work:Trash/Gamle 61m "Enda eldre" "from=Ingrid Solberg"
+folder inbox Work
+assert-folder Work:inbox
+
+# The file: 1 in the Inbox, 1 in Bank, 1 in Foto/2026 (Foto itself has none and isn't listed),
+# 2 in Kunder/Acme; nothing from Archive, Junk, Trash or under them. 5 in all.
+wait-until assert-file-contains $TMP/runtime/sealwax/unread.json "\"unread\":5,\"version\":1}"
+assert-file-contains $TMP/runtime/sealwax/unread.json "\"name\":\"Inbox\",\"parent\":\"\",\"unread\":1}"
+assert-file-contains $TMP/runtime/sealwax/unread.json "\"name\":\"Bank\",\"parent\":\"Inbox\",\"unread\":1}"
+assert-file-contains $TMP/runtime/sealwax/unread.json "\"name\":\"2026\",\"parent\":\"Inbox/Foto\",\"unread\":1}"
+assert-file-contains $TMP/runtime/sealwax/unread.json "\"name\":\"Acme\",\"parent\":\"Kunder\",\"unread\":2}"
+assert-file-contains $TMP/runtime/sealwax/unread.json "],\"name\":\"Work\",\"unread\":5}"
+assert-file-lacks $TMP/runtime/sealwax/unread.json "\"name\":\"Foto\""
+assert-file-lacks $TMP/runtime/sealwax/unread.json "\"name\":\"Archive\""
+assert-file-lacks $TMP/runtime/sealwax/unread.json "\"name\":\"2024\""
+assert-file-lacks $TMP/runtime/sealwax/unread.json "\"name\":\"Junk\""
+assert-file-lacks $TMP/runtime/sealwax/unread.json "\"name\":\"Trash\""
+assert-file-lacks $TMP/runtime/sealwax/unread.json "\"name\":\"Gamle\""
+assert-file-lacks $TMP/runtime/sealwax/unread.json "Ingrid"
+assert-folder-count all-inboxes 1
+
+# A folder read goes from the file; the total follows.
+folder INBOX/Bank Work
+mail-flag 0 +read
+folder inbox Work
+wait-until assert-file-contains $TMP/runtime/sealwax/unread.json "\"unread\":4,\"version\":1}"
+assert-file-lacks $TMP/runtime/sealwax/unread.json "\"name\":\"Bank\""
+
+# The bar widget's list: `sealwax --folder KEY` from a second process shows the folder.
+spawn-folder Work:Kunder/Acme
+wait-until assert-folder Work:Kunder/Acme
+spawn-folder Work:INBOX/Foto/2026
+wait-until assert-folder Work:INBOX/Foto/2026
+spawn --folder all-inboxes
+wait-until assert-folder all-inboxes
+spawn-folder Work:inbox
+wait-until assert-folder Work:inbox
+
+# A key Sealwax doesn't have leaves the window on the folder it showed; one that isn't a key at
+# all is turned down before it reaches the running Sealwax.
+spawn --folder folder-999999
+sleep 200
+assert-folder Work:inbox
+assert-window true
+spawn-expect 2 --folder "INBOX; true"
+assert-folder Work:inbox
