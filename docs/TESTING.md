@@ -78,6 +78,27 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.6.3 — 2026-11-21
+
+This machine (Qt 6.12.0, quickshell 0.3.2, omarchy 4.5.0). The changes since 1.6.2: the unread count takes in the folders under the Inboxes and the user's own folders, folder by folder, `sealwax --folder`, and the bar widget's list (1.1.0), `8838e51` ([ADR-029 amendment](DECISIONS.md#adr-029-amendment--the-count-takes-in-the-inboxes-folders-and-the-users-own-the-widget-lists-them-2026-11-21)); and the version commit `9da2b9e` (Cargo.toml 1.6.3, both lock files with only Sealwax's own crates, CHANGELOG, the metainfo's release, README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Unit tests `unread::tests` (app: the count over a tree with every role, subfolders of Archive and Trash, a `\All` folder and a second account without a label; infrastructure: the file's fields read back) and `cli::tests::a_folder_by_its_key` (keys accepted and refused, conflicts) | Pass | Pass |
+| Self-test `bar-unread` (new; `tools/headless.sh 83`): the real `unread.json` per folder, Archive, Junk, Trash and under them left out, no sender in the file, a folder read leaves it; `sealwax --folder` from a second process (`spawn-folder`) shows the folder; an unknown key leaves the window; a non-key refused with exit 2 | 57 of 57. With the count set back to the Inbox's own number: steps 25 and 27–30 fail | Pass |
+| The widget offscreen under `qmltestrunner` with stand-ins for omarchy-shell's `qs.Ui`, `qs.Commons` and `Quickshell` types (a local harness, not in the repository) | 8 of 8: the file read into rows, a row's command `uwsm-app -- sealwax --folder folder-9`, a key that isn't Sealwax's dropped, right click, the 1.5.0–1.6.2 file, the Flatpak, a custom `command`, Sealwax not running | Pass |
+| The widget in a running omarchy-shell (the real `PopupCard`'s place, look and dismissal) | Not run | Not verified |
+| `sealwax --folder` while Sealwax isn't running | Not run | Not verified |
+| `SEALWAX_CI_DISPLAY=52 bash tools/ci.sh --ui` on `9da2b9e` | Exit 0: 1,596 passed, 0 failed, 93 ignored; 102 self-test scripts, 9,646 of 9,646 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` | Pass |
+| The push range (`dce69e8..9da2b9e`) scanned | No working doc or personal data | Pass |
+| `appstreamcli validate --no-net` on the metainfo; `tools/flatpak-cargo-sources.py --check` | Valid (one pedantic note, as before); up to date | Pass |
+| `python3 tools/release.py build` on `v1.6.3` | `check()` 1,290 passed, 0 failed, 93 ignored; no compiler warning; `SHA256SUMS` checks for all four files; the package `76dd2703…`; its binary says `sealwax 1.6.3`, lists `--folder` and holds no `--self-test` | Pass |
+| The clean-container install test (`sealwax-selftest` from `9da2b9e`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261121-020441`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.6.3` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,764,336 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `d24d5c1c…` (parent `5d46b673…`, 1.6.2), signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.6.3](https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.3) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/` gives the same bytes as the build for the package and as the site for the `.flatpakref` | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`, `sealwax-flatpak` `5509221`) | GitHub Pages served the 1.6.3 site within 30 s of the push | Pass |
+
 ### 1.6.2 — 2026-11-19
 
 This machine (Hyprland 0.56.2, Nautilus 51.1, GTK 4.24.1, WebKitGTK 2.54.1). The changes since 1.6.1: the composer's drop target takes a file offered as a move ([issue #42](https://github.com/PixDevsApps/sealwax/issues/42)), `0c72602`; and the version commit `8b88ee4` (Cargo.toml 1.6.2, both lock files with only Sealwax's own crates, CHANGELOG, the metainfo's release, README's version). The cause was read in GTK 4.24.1's `gdkdrop-wayland.c` and Hyprland's `DataDevice.cpp` (0.56.0 and 0.57.2 send MOVE whenever the source offers it; fixed on Hyprland's `main` by hyprwm/Hyprland#16808, in no release yet).
