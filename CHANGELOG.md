@@ -2,7 +2,9 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
-## Not released yet
+## 1.6.3 — 2026-11-21
+
+The bar counts the unread mail in your folders, and a click shows where it is.
 
 - **The bar counts the unread mail in your folders, and shows where it is:** the number in Omarchy's bar now takes in the folders under your Inboxes and your own folders, not only the Inboxes, so mail your server files into a folder is counted too; Sent, Drafts, Archive, Junk and Trash are left out. A click on the icon lists each folder with unread mail and how many, by account, and a click on a folder opens Sealwax on it; a right click opens Sealwax. To get the list, run the widget's install line again ([INSTALL.md](INSTALL.md#unread-count-in-omarchys-bar-optional)); the widget you have shows the new number without it. `sealwax --unread` counts the same way, and `sealwax --folder` opens a folder for scripts.
 

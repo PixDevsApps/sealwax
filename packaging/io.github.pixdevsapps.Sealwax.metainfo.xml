@@ -104,6 +104,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.6.3" date="2026-11-21" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.3</url>
+      <description>
+        <p>The unread count Sealwax shares with bars and scripts now takes in the folders under your Inboxes and your own folders, leaving out Sent, Drafts, Archive, Junk and Trash. In Omarchy's bar, a click on Sealwax's icon lists the folders with unread mail, and a click on one opens Sealwax there.</p>
+      </description>
+    </release>
     <release version="1.6.2" date="2026-11-19" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.2</url>
       <description>
