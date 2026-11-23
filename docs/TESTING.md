@@ -78,6 +78,25 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.6.4 — 2026-11-23
+
+This machine. The change since 1.6.3: `[compose] default_account` in `config.toml` names the account a new message from All Inboxes starts from ([issue #43](https://github.com/PixDevsApps/sealwax/issues/43), ADR-014 amendment of 2026-11-23).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Unit tests `config::tests::the_account_a_new_message_starts_from` (the key read, a key with a space refused with its line and column, the setting at the top level pointed to `[compose]`, a misspelling corrected) and `compose_actions::tests::a_default_account_decides_in_all_inboxes_only` (the default in All Inboxes with a selection of either account or none, no default as before, one account's folder keeps its own) | Pass | Pass |
+| Self-test `composer-default-account` (new; `tools/headless.sh 84`; new check `assert-composer default-account KEY\|none`): no setting, the selected message's account; `home` with a Work message selected and with a Home one; From changed by hand moves the draft; `work` with a Home message selected; a folder of one account keeps its own; an unknown key changes nothing; each setting applied at once from the file | 66 of 66. With the default ignored in `new_message_account`: 62 of 66, failing steps 28, 29, 50 and 51 | Pass |
+| A real run with the owner's accounts | Not run | Not verified |
+| `SEALWAX_CI_DISPLAY=86 bash tools/ci.sh --ui` on `adcc32a` | Exit 0: 1,598 passed, 0 failed, 93 ignored; 103 self-test scripts, 9,712 of 9,712 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` (`.local/ci-1.6.4-release.log`) | Pass |
+| The push range (`f15d075..adcc32a`) scanned | No working doc or personal data | Pass |
+| `tools/flatpak-cargo-sources.py --check` | Up to date | Pass |
+| `python3 tools/release.py build` on `v1.6.4` | `check()` 1,291 passed, 0 failed, 93 ignored; no compiler warning; package `ce1694b1…`, `sealwax 1.6.4` (`.local/release-build-1.6.4.log`) | Pass |
+| The clean-container install test (`sealwax-selftest` from `adcc32a`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261123-230948`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.6.4` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,767,984 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `05eeed51…` (parent `d24d5c1c…`, 1.6.3), signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.6.4](https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.4) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` has the build's checksum (`ce1694b1…`) | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`, `sealwax-flatpak` `ed2e3aa`) | GitHub Pages served the 1.6.4 site within about 45 s of the push | Pass |
+
 ### 1.6.3 — 2026-11-21
 
 This machine (Qt 6.12.0, quickshell 0.3.2, omarchy 4.5.0). The changes since 1.6.2: the unread count takes in the folders under the Inboxes and the user's own folders, folder by folder, `sealwax --folder`, and the bar widget's list (1.1.0), `8838e51` ([ADR-029 amendment](DECISIONS.md#adr-029-amendment--the-count-takes-in-the-inboxes-folders-and-the-users-own-the-widget-lists-them-2026-11-21)); and the version commit `9da2b9e` (Cargo.toml 1.6.3, both lock files with only Sealwax's own crates, CHANGELOG, the metainfo's release, README's version).
