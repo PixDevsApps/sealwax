@@ -104,6 +104,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.6.4" date="2026-11-23" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.4</url>
+      <description>
+        <p>A new message started in All Inboxes can now always come from the account you choose: set default_account under [compose] in config.toml to an account's key, and the message uses that account and its signature whichever message is selected. You can still change From in the message.</p>
+      </description>
+    </release>
     <release version="1.6.3" date="2026-11-21" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.3</url>
       <description>
