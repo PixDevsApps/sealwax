@@ -307,7 +307,7 @@ The rules' commands have no keys; `keys.toml` can give them one (`edit-rules`, `
 
 **The composer.** **New message** (or `c`, Ctrl+N) opens a composer at the bottom right of the main window, over the mail, as in Gmail. It has:
 
-- the **From** chip: every account's address and its other identities. A new message starts from the account the list shows (in All Inboxes, the selected message's, else the first account's); picking another account's address sends it through that account, which then keeps the draft and its Sent copy;
+- the **From** chip: every account's address and its other identities. A new message starts from the account the list shows (in All Inboxes, the account `[compose]` `default_account` names in `config.toml`, else the selected message's, else the first account's); picking another account's address sends it through that account, which then keeps the draft and its Sent copy;
 - **To**, with **Cc · Bcc** to add those fields; recipients become chips, and suggestions come from the addresses in your mail, people you have written to first;
 - **Subject**;
 - a formatting toolbar: paragraph style (Paragraph, Heading 1–3, Preformatted), bold, italic, underline, strikethrough, bulleted and numbered lists, link, quote, indent, outdent, clear formatting and undo;
@@ -621,6 +621,7 @@ Sealwax has no settings window: its settings are three plain files in `~/.config
 | `[background]` | `enabled` | `true` | `true`: closing the window keeps Sealwax running; `false`: closing the window quits |
 | `[reader]` | `conversation_order` | `"oldest-first"` | `"oldest-first"`, or `"newest-first"` for the latest message on top |
 | | `reply` | `"sender"` | `"sender"`, or `"all"`: Reply answers everyone the message went to, as Reply All does |
+| `[compose]` | `default_account` | none | An account's `key` from `accounts.toml`, like `"work"`: a new message from All Inboxes is written from that account, whatever message is selected; without it, from the selected message's account |
 | `[[open_with]]` | `name`, `command` | none | A program the reader's More menu and the palette offer as "Open With" and the name ([below](#open-with-commands)) |
 
 For example:

@@ -9,6 +9,7 @@ use std::ops::Range;
 use toml::Spanned;
 use toml::de::{DeTable, DeValue};
 
+use crate::account::AccountKey;
 use crate::open_with::{self, OpenWith};
 use crate::settings_file::{article, did_you_mean, entries, parse_toml};
 
@@ -131,6 +132,15 @@ pub enum DefaultReply {
     All,
 }
 
+/// `[compose]`: where a new message starts (issue #43).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ComposeSettings {
+    /// The account a new message from All Inboxes is written from, whatever message is
+    /// selected; `None` keeps the selected message's account. An account the settings no
+    /// longer list is ignored.
+    pub default_account: Option<AccountKey>,
+}
+
 /// The settings in `config.toml`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Config {
@@ -140,6 +150,7 @@ pub struct Config {
     pub notifications: Notifications,
     pub background: Background,
     pub reader: ReaderSettings,
+    pub compose: ComposeSettings,
     /// `[[open_with]]`: commands handed a message's original, in the file's order (issue #39,
     /// ADR-031); empty unless the user writes some.
     pub open_with: Vec<OpenWith>,
@@ -155,14 +166,16 @@ const STORAGE_SETTINGS: [&str; 2] = ["cache_size", "prefetch_days"];
 const NOTIFICATION_SETTINGS: [&str; 2] = ["enabled", "show"];
 const BACKGROUND_SETTINGS: [&str; 1] = ["enabled"];
 const READER_SETTINGS: [&str; 2] = ["conversation_order", "reply"];
+const COMPOSE_SETTINGS: [&str; 1] = ["default_account"];
 const OPEN_WITH_SETTINGS: [&str; 2] = ["name", "command"];
-const SECTIONS: [&str; 7] = [
+const SECTIONS: [&str; 8] = [
     "appearance",
     "oauth",
     "storage",
     "notifications",
     "background",
     "reader",
+    "compose",
     "open_with",
 ];
 const PROVIDERS: [&str; 1] = ["microsoft"];
@@ -181,6 +194,8 @@ fn section_of(name: &str) -> Option<&'static str> {
         Some("[notifications]")
     } else if READER_SETTINGS.contains(&name) {
         Some("[reader]")
+    } else if COMPOSE_SETTINGS.contains(&name) {
+        Some("[compose]")
     } else if OPEN_WITH_SETTINGS.contains(&name) {
         Some("an [[open_with]] table")
     } else {
@@ -522,6 +537,36 @@ impl Reader<'_> {
 }
 
 impl Reader<'_> {
+    fn compose(&mut self, table: &DeTable<'_>, compose: &mut ComposeSettings) {
+        for (key, value) in entries(table) {
+            let name = key.get_ref().as_ref();
+            match name {
+                "default_account" => match value
+                    .get_ref()
+                    .as_str()
+                    .and_then(|text| AccountKey::parse(text).ok())
+                {
+                    Some(account) => compose.default_account = Some(account),
+                    None => self.error(
+                        value.span(),
+                        format!(
+                            "default_account is an account's key, as `key = ...` in its \
+                             [[account]] in accounts.toml, not {}",
+                            shown(value.get_ref())
+                        ),
+                    ),
+                },
+                _ => self.error(
+                    key.span(),
+                    format!(
+                        "unknown setting {name} in [compose]{}",
+                        did_you_mean(name, COMPOSE_SETTINGS)
+                    ),
+                ),
+            }
+        }
+    }
+
     /// `[[open_with]]`: every table, each name once, at most [`open_with::MAX_ENTRIES`].
     fn open_with(&mut self, value: &Spanned<DeValue<'_>>, entries_out: &mut Vec<OpenWith>) {
         let tables = value.get_ref().as_array().filter(|array| {
@@ -740,6 +785,11 @@ impl Config {
                         reader.reader(table, &mut config.reader);
                     }
                 }
+                "compose" => {
+                    if let Some(table) = reader.table(value, name) {
+                        reader.compose(table, &mut config.compose);
+                    }
+                }
                 "open_with" => reader.open_with(value, &mut config.open_with),
                 _ => match section_of(name) {
                     Some(section) => reader.error(
@@ -827,6 +877,12 @@ pub fn default_config_file() -> String {
          # Whom Reply (r, Ctrl+R) answers: \"sender\", or \"all\" to answer everyone the\n\
          # message went to, as Reply All does; Reply to Sender then answers the sender alone.\n\
          # reply = \"sender\"\n\
+         \n\
+         [compose]\n\
+         # The account a new message from All Inboxes is written from, whatever message is\n\
+         # selected: the key of one of your accounts, as accounts.toml's key line has it. You\n\
+         # can still change From in the message. Without it, the selected message's account.\n\
+         # default_account = \"work\"\n\
          \n\
          # Commands the reader's More menu and the palette offer as \"Open With\" and their name\n\
          # (not in the Flatpak). Each is given the path of a file holding the message as the\n\
@@ -1092,6 +1148,34 @@ mod tests {
             [
                 "line 2, column 1: unknown setting conversation_ordr in [reader]; did you mean \
                  conversation_order?"
+            ]
+        );
+    }
+
+    #[test]
+    fn the_account_a_new_message_starts_from() {
+        assert_eq!(Config::default().compose.default_account, None);
+        let config = Config::parse("[compose]\ndefault_account = \"work\"\n").unwrap();
+        assert_eq!(
+            config.compose.default_account,
+            Some(AccountKey::parse("work").unwrap())
+        );
+        assert_eq!(
+            errors("[compose]\ndefault_account = \"Work Mail\"\n"),
+            [
+                "line 2, column 19: default_account is an account's key, as `key = ...` in its \
+                 [[account]] in accounts.toml, not \"Work Mail\""
+            ]
+        );
+        assert_eq!(
+            errors("default_account = \"work\"\n"),
+            ["line 1, column 1: default_account belongs in [compose]; put it under that line"]
+        );
+        assert_eq!(
+            errors("[compose]\ndefault_acount = \"work\"\n"),
+            [
+                "line 2, column 1: unknown setting default_acount in [compose]; did you mean \
+                 default_account?"
             ]
         );
     }

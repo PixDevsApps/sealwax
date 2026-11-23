@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Choose the account a new message from All Inboxes starts from** ([issue #43](https://github.com/PixDevsApps/sealwax/issues/43), thanks @ocewers): set `default_account` under `[compose]` in `config.toml` to an account's `key` from `accounts.toml`, and New Message in All Inboxes is written from that account and its signature, whichever message is selected, or none. You can still change From in the message. Replies, forwards and new messages from one account's folder keep the account they have; without the setting, All Inboxes still uses the selected message's account.
+
 ## 1.6.3 — 2026-11-21
 
 The bar counts the unread mail in your folders, and a click shows where it is.

@@ -1027,6 +1027,14 @@ async fn check(harness: &Harness, args: &[String]) -> StepResult {
             boolean(arg(1))?,
         );
     }
+    if what == "default-account" {
+        let shown = harness
+            .state
+            .preferences()
+            .and_then(|prefs| prefs.config().compose.default_account)
+            .map_or_else(|| "none".to_owned(), |key| key.as_str().to_owned());
+        return equal("the default account", shown.as_str(), arg(1));
+    }
     if matches!(
         what,
         "sent" | "discarded" | "closed" | "saves" | "save-lag" | "last-sent" | "stored"

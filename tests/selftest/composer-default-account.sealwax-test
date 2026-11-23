@@ -1,0 +1,85 @@
+# The account a new message starts from in All Inboxes (issue #43). By default it is the
+# selected message's account, else the first; config.toml's [compose] default_account = "home"
+# makes it Home's whatever is selected or not, applied at once. A folder of one account keeps
+# its own account, and a key no account has changes nothing. From stays changeable. Every name
+# and address is fictional.
+# Run: tools/headless.sh 84 target/debug/sealwax-selftest --self-test tests/selftest/composer-default-account.sealwax-test
+
+desktop tiling
+resize 1440 900
+triage-mark-read-on-open false
+triage-account Work work
+triage-account Home home
+mail-add Home:inbox 1m "Middag fredag" read from=Leah
+mail-add Work:inbox 2m "Kvartalsrapport" read from=Ingrid
+composer-backend store
+folder all-inboxes
+focus list
+
+# No setting: the selected message's account, the first without a selection.
+list-select 0
+assert-list-selected 0
+action win.compose
+composer-wait
+assert-composer from home@example.test
+composer-close
+list-select 1
+assert-list-selected 1
+action win.compose
+composer-wait
+assert-composer from work@example.test
+composer-close
+
+# default_account = "home": Home's with a Work message selected, and with a Home one.
+write-file $TMP/config/sealwax/config.toml "[compose]\ndefault_account = \"home\"\n"
+wait-until assert-composer default-account home
+assert-list-selected 1
+action win.compose
+composer-wait
+assert-composer from home@example.test
+wait-until assert-composer db current account Home
+assert-composer senders work@example.test,home@example.test
+composer-close
+list-select 0
+assert-list-selected 0
+action win.compose
+composer-wait
+assert-composer from home@example.test
+composer-close
+
+# From stays the user's: Work picked by hand moves the draft there.
+action win.compose
+composer-wait
+composer-from 0
+assert-composer from work@example.test
+wait-until assert-composer db current account Work
+composer-close
+
+# default_account = "work": Work's, with a Home message selected.
+write-file $TMP/config/sealwax/config.toml "[compose]\ndefault_account = \"work\"\n"
+wait-until assert-composer default-account work
+list-select 0
+assert-list-selected 0
+action win.compose
+composer-wait
+assert-composer from work@example.test
+wait-until assert-composer db current account Work
+composer-close
+
+# A folder of one account keeps its own account.
+folder Home:inbox
+action win.compose
+composer-wait
+assert-composer from home@example.test
+composer-close
+folder all-inboxes
+
+# A key no account has: as without the setting.
+write-file $TMP/config/sealwax/config.toml "[compose]\ndefault_account = \"gone\"\n"
+wait-until assert-composer default-account gone
+list-select 0
+assert-list-selected 0
+action win.compose
+composer-wait
+assert-composer from home@example.test
+composer-close

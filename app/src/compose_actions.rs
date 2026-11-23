@@ -4,8 +4,9 @@
 //! window through `composer::open`. The quick reply's Send goes through `send_quick`, the seam
 //! phase B wires to the outbox.
 //!
-//! - **Compose** writes from the account the list shows; in All Inboxes from the selected
-//!   message's account, else the first account (`ComposeRequest::New { account: None }`).
+//! - **Compose** writes from the account the list shows; in All Inboxes from `[compose]
+//!   default_account` ([`new_message_account`], issue #43), else the selected message's
+//!   account, else the first account (`ComposeRequest::New { account: None }`).
 //! - **Reply, Reply All, Reply to Sender and Forward** act on one message: in the list the
 //!   selected one; once the reader shows its conversation, the message the user is on there
 //!   ([`Reader::current_message`]). They don't apply to several messages, nor to a draft. Reply
@@ -159,7 +160,12 @@ fn request_for(state: &AppState, id: ActionId) -> Option<ComposeRequest> {
                 .selected_targets()
                 .ok()
                 .and_then(|targets| targets.first().map(|target| target.folder));
-            let account = compose_account(list.scope(), selected, &state.mailbox().folders());
+            let account = new_message_account(
+                list.scope(),
+                selected,
+                &state.mailbox().folders(),
+                default_account(state),
+            );
             return Some(ComposeRequest::New { account });
         }
         ActionId::EditDraft => {
@@ -228,6 +234,31 @@ pub(crate) fn compose_account(
         Some(ViewScope::Folder(folder)) => account_of(folder),
         _ => selected.and_then(account_of),
     }
+}
+
+/// The account a new message is written from: the shown account's; in All Inboxes `default`
+/// (`[compose] default_account`) when there is one, else as [`compose_account`] has it.
+fn new_message_account(
+    scope: Option<ViewScope>,
+    selected: Option<FolderId>,
+    folders: &[Folder],
+    default: Option<AccountId>,
+) -> Option<AccountId> {
+    match (scope, default) {
+        (Some(ViewScope::UnifiedInbox), Some(default)) => Some(default),
+        _ => compose_account(scope, selected, folders),
+    }
+}
+
+/// The account `[compose] default_account` names, if the settings are loaded and still list it.
+fn default_account(state: &AppState) -> Option<AccountId> {
+    let key = state.preferences()?.config().compose.default_account?;
+    state
+        .mailbox()
+        .accounts()
+        .into_iter()
+        .find(|account| account.key.as_ref() == Some(&key))
+        .map(|account| account.id)
 }
 
 thread_local! {
@@ -554,5 +585,30 @@ mod tests {
         assert_eq!(compose_account(None, None, &folders), None);
         let gone = Some(ViewScope::Folder(FolderId(9)));
         assert_eq!(compose_account(gone, None, &folders), None);
+    }
+
+    #[test]
+    fn a_default_account_decides_in_all_inboxes_only() {
+        let folders = [
+            folder(1, 1, FolderRole::Inbox),
+            folder(3, 2, FolderRole::Inbox),
+        ];
+        let default = Some(AccountId(1));
+        let all = Some(ViewScope::UnifiedInbox);
+        for selected in [None, Some(FolderId(1)), Some(FolderId(3))] {
+            assert_eq!(
+                new_message_account(all, selected, &folders, default),
+                Some(AccountId(1))
+            );
+        }
+        assert_eq!(
+            new_message_account(all, Some(FolderId(3)), &folders, None),
+            Some(AccountId(2))
+        );
+        let one = Some(ViewScope::Folder(FolderId(3)));
+        assert_eq!(
+            new_message_account(one, None, &folders, default),
+            Some(AccountId(2))
+        );
     }
 }

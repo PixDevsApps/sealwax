@@ -1234,6 +1234,14 @@ Built in M6.
 
 **Decision:** The composer's senders (`composer::backend::Sender`, now with its `account`) are every account that sends, in the sidebar's order, each its own address then its identities; an account no settings file lists (no server) is offered only for its own drafts. The draft starts from the same account as before (the list's account; in All Inboxes the selected message's, else the first). Picking another account's sender sets the draft's account: the store's save already moves a draft between accounts (the old account's copies to delete, the upload state reset), the Message-ID moves to the new domain as for any sender on another domain, and the old account hears `DraftsChanged` so its copy goes at once. Replies may switch too. Not built: a configurable default account for new messages (the issue's optional point).
 
+### ADR-014 amendment — a default account for new mail from All Inboxes (2026-11-23)
+
+**Status:** Accepted — the user's word, 2026-11-23 ("Both", to building it and a reply), on [issue #43](https://github.com/PixDevsApps/sealwax/issues/43): the optional default that ADR-014's amendment of 2026-10-12 left unbuilt.
+
+**Decision:** `config.toml`'s `[compose] default_account = "<key>"` names an account by its `accounts.toml` key (the stable name, ADR-026; the store's `AccountId` doesn't survive a deleted cache). A new message opened while the list shows All Inboxes starts from that account, selected message or none (`compose_actions::new_message_account`); the composer takes the account's signature and senders as for any account, and From stays changeable. Everything else is unchanged: one account's folder uses its own account, replies and forwards the message's, and a key no account has is ignored. `compose_account` is left as it was, because the move and go-to destinations (`go_to::destination`) follow the selected message, not this default. Mailto links still start from the first account.
+
+**Why a file setting, not a flag in `[[account]]`:** `AccountSettings` is built in about forty places, and "at most one default" is a rule the file would have to police; one key in `config.toml` can't conflict with itself. A control in the account's edit dialog is possible later (it already writes `label` and `color`).
+
 ## ADR-015 — Op queue: optimistic overlay, Undo, at-most-once send (2026-10-04)
 
 **Status:** Proposed.
