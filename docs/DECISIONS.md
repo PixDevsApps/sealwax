@@ -662,6 +662,12 @@ The plain part is html2text's text of the HTML, rendered from a tree at most 1,0
 
 **Decision:** Sealwax's own EHLO after TLS, sent for SIZE, may be refused. IONOS (`smtp.ionos.de`, 465 and 587) answers it with `503 Bad sequence of commands`, which failed every send as a connection error, retried without end. A permanent (5xx) reply to it now leaves the extensions to lettre's reading of the first answer (8BITMIME and SMTPUTF8; SIZE unknown), and AUTH goes on over the same connection: IONOS evaluates AUTH normally after the 503 (checked 2026-11-16 with a made-up login: 535 after one EHLO and after two). A transient (4xx) reply still fails the connection, to be retried. Without SIZE, the composer's size check has no limit, so a message too large for such a server is refused by the server's 552 at send (`SubmitError::TooLarge`).
 
+### ADR-007 amendment — Message-IDs as UUIDs (2026-11-24)
+
+**Decision:** a new Message-ID is a version 4 UUID in lower case (`8-4-4-4-12` hex digits, 122 random bits) on the sender's domain, in place of the 26-character base32 token. Content-IDs are unchanged.
+
+**Reason:** Rackspace's submission relay (`secure.emailsrvr.com`) refused every message from Sealwax with `550 5.7.1 Your message has been rejected because you have been detected sending high likelyhood spam`, after accepting the envelope. The same 792-byte message, sent with curl, was refused as it was and accepted with only its Message-ID changed to a UUID; changing the From display name, the `Date:` zone or the blank line after the header changed nothing. Other clients on the same account, which write UUIDs, were accepted. Drafts made before this keep their Message-ID, so one refused before is refused again; writing it anew gets a UUID.
+
 ## ADR-008 — OAuth2 and secrets (2026-10-04)
 
 **Status:** OAuth2 sign-in for Google and Microsoft in 1.0 is accepted — user decision, 2026-10-04. The mechanism is proposed; S5 is the go/no-go.

@@ -64,7 +64,7 @@ pub(crate) fn random() -> [u8; 16] {
 /// A fresh Message-ID on `sender`'s domain.
 pub(crate) fn message_id(sender: &str) -> String {
     ids::message_id(sender, random())
-        .unwrap_or_else(|| format!("{}@sealwax.invalid", ids::token(random())))
+        .unwrap_or_else(|| format!("{}@sealwax.invalid", ids::uuid(random())))
 }
 
 /// The account's senders: its own address first, then its identities (`accounts.toml`); a
