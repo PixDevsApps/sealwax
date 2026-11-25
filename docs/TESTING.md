@@ -78,6 +78,25 @@ Each milestone's exit criteria are the acceptance list. Results go here as dated
 
 ## Results
 
+### 1.6.5 — 2026-11-25
+
+This machine. The changes since 1.6.4: new Message-IDs are version 4 UUIDs on the sender's domain, not the 26-character base32 token, because Rackspace's submission relay refused Sealwax's mail as likely spam ([PR #44](https://github.com/PixDevsApps/sealwax/pull/44) by @jaredmoody, `20948a5`, merged as `a950690`; ADR-007 amendment of 2026-11-24); doc comments and the CHANGELOG (`ca54490`); and the version commit `9eaaa29` (Cargo.toml 1.6.5, both lock files with only Sealwax's own crates, CHANGELOG, the metainfo's release, README's version).
+
+| Check | Result | Verdict |
+| --- | --- | --- |
+| Unit test `compose::ids::tests::message_ids_are_version_4_uuids` (all-zero and all-one bytes, and a known 16 bytes, give the expected version 4 UUID; the version and variant bits checked by hand) | Pass | Pass |
+| Sending through Rackspace (`secure.emailsrvr.com:465`) | The contributor's run: refused with `550 5.7.1` before, sent with the change. Not run here | Not verified here |
+| `SEALWAX_CI_DISPLAY=86 bash tools/ci.sh --ui` on `20948a5` (the PR alone) | Exit 0: 1,599 passed, 0 failed, 93 ignored; 103 self-test scripts, 9,712 of 9,712 steps; hostile suite `production_failures=[] cases=60 dns=production=0 control=11 glib_criticals=0` (`.local/ci-pr44-20948a5.log`) | Pass |
+| `SEALWAX_CI_DISPLAY=86 bash tools/ci.sh --ui --testbed` on `9eaaa29` | Exit 0: 1,599 passed, 0 failed, 93 ignored; 103 self-test scripts, 9,712 of 9,712 steps; hostile suite as above; 16 testbed suites, 83 passed, 0 failed (`send_testbed` 6, `outbox_testbed` 6) (`.local/ci-1.6.5-release.log`) | Pass |
+| The push range (`fa97d57..9eaaa29`) scanned | No working doc or personal data | Pass |
+| `tools/flatpak-cargo-sources.py --check`; `appstreamcli validate` of the metainfo | Up to date; valid | Pass |
+| `python3 tools/release.py build` on `v1.6.5` | `check()` 1,292 passed, 0 failed, 93 ignored; no compiler warning; package `faddc3b0…`, `sealwax 1.6.5` (`.local/release-build-1.6.5.log`) | Pass |
+| The clean-container install test (`sealwax-selftest` from `9eaaa29`) | `install-smoke` 16 of 16 steps in a fresh `archlinux:base` container (`.local/install-test/20261125-135934`) | Pass |
+| `python3 tools/flatpak.py build` on `v1.6.5` (flatpak-builder 1.4.12) | Exit 0; metainfo and desktop file valid; `/app/bin/sealwax` 24,768,968 bytes | Pass |
+| `tools/flatpak.py site`: the signed repository | Commit `4b6e6dd8…` (parent `05eeed51…`, 1.6.4), signed by the repository key (`C3A84406A8A78141`) | Pass |
+| The release [v1.6.5](https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.5) (`tools/release.py github`) | GitHub's latest; six files, the `.flatpakref` among them; `releases/latest/download/sealwax-x86_64.pkg.tar.zst` has the build's checksum (`faddc3b0…`), and the latest `.flatpakref` matches the site's | Pass |
+| The Flatpak repository (`tools/flatpak.py publish`, `sealwax-flatpak` `491cf96`) | GitHub Pages served the 1.6.5 `summary` byte for byte within about a minute of the push | Pass |
+
 ### 1.6.4 — 2026-11-23
 
 This machine. The change since 1.6.3: `[compose] default_account` in `config.toml` names the account a new message from All Inboxes starts from ([issue #43](https://github.com/PixDevsApps/sealwax/issues/43), ADR-014 amendment of 2026-11-23).
