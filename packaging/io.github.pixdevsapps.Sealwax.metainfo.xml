@@ -104,6 +104,12 @@
   </screenshots>
 
   <releases>
+    <release version="1.6.5" date="2026-11-25" type="stable">
+      <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.5</url>
+      <description>
+        <p>Mail sent through Rackspace is no longer refused as spam: Sealwax now writes each message's Message-ID in the form most mail programs use. A draft or a message waiting in the Outbox from before keeps the one it has.</p>
+      </description>
+    </release>
     <release version="1.6.4" date="2026-11-23" type="stable">
       <url type="details">https://github.com/PixDevsApps/sealwax/releases/tag/v1.6.4</url>
       <description>
