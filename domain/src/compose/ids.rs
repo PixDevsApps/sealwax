@@ -1,6 +1,8 @@
-//! Message-IDs and Content-IDs (ADR-007): 26 base32 characters from 128 random bits, `@` the
+//! Message-IDs (version 4 UUIDs) and Content-IDs (ADR-007) from random bits, `@` the
 //! sender's domain in ASCII. Never the machine's host name. The caller passes the random bytes,
 //! so this crate does no I/O.
+
+use std::fmt::Write as _;
 
 const BASE32: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
 
@@ -20,6 +22,19 @@ pub fn token(random: [u8; 16]) -> String {
     }
     if pending > 0 {
         output.push(char::from(BASE32[((bits << (5 - pending)) & 31) as usize]));
+    }
+    output
+}
+
+pub fn uuid(mut random: [u8; 16]) -> String {
+    random[6] = (random[6] & 0x0f) | 0x40;
+    random[8] = (random[8] & 0x3f) | 0x80;
+    let mut output = String::with_capacity(36);
+    for (index, byte) in random.iter().enumerate() {
+        if matches!(index, 4 | 6 | 8 | 10) {
+            output.push('-');
+        }
+        let _ = write!(output, "{byte:02x}");
     }
     output
 }
@@ -55,7 +70,7 @@ pub fn ascii_domain(address: &str) -> Option<String> {
 /// A new Message-ID (without angle brackets) for mail from `sender`; `None` when the sender has
 /// no valid domain.
 pub fn message_id(sender: &str, random: [u8; 16]) -> Option<String> {
-    Some(format!("{}@{}", token(random), ascii_domain(sender)?))
+    Some(format!("{}@{}", uuid(random), ascii_domain(sender)?))
 }
 
 /// A new Content-ID for an inline image in mail from `sender`, in the same form.
@@ -96,6 +111,16 @@ mod tests {
     }
 
     #[test]
+    fn message_ids_are_version_4_uuids() {
+        assert_eq!(uuid([0; 16]), "00000000-0000-4000-8000-000000000000");
+        assert_eq!(uuid([0xff; 16]), "ffffffff-ffff-4fff-bfff-ffffffffffff");
+        assert_eq!(
+            message_id("kari@example.com", *b"0123456789abcdef").unwrap(),
+            "30313233-3435-4637-b839-616263646566@example.com"
+        );
+    }
+
+    #[test]
     fn ids_use_the_sender_domain_in_ascii() {
         let id = message_id("kari@Example.COM", [7; 16]).unwrap();
         assert!(id.ends_with("@example.com"), "{id}");
@@ -111,6 +136,6 @@ mod tests {
         ] {
             assert_eq!(ascii_domain(bad), None, "{bad}");
         }
-        assert_eq!(content_id("a@example.org", [1; 16]).unwrap().len(), 26 + 12);
+        assert_eq!(content_id("a@example.org", [1; 16]).unwrap().len(), 36 + 12);
     }
 }
