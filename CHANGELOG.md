@@ -2,6 +2,10 @@
 
 Each release, newest first, in plain words. [INSTALL.md](INSTALL.md) says how to install, update and uninstall Sealwax.
 
+## Not released yet
+
+- **Mail sent through Rackspace is no longer refused as spam** ([PR #44](https://github.com/PixDevsApps/sealwax/pull/44), thanks @jaredmoody, who found the cause and wrote the fix): Rackspace's mail server turned down every message Sealwax sent with "detected sending high likelyhood spam", because of the form of the Message-ID, the unique name each message carries. Sealwax now writes it in the form most mail programs use. A draft or a message waiting in the Outbox from before keeps the one it has; write it again as a new message if Rackspace refused it.
+
 ## 1.6.4 — 2026-11-23
 
 You can choose the account a new message from All Inboxes starts from.

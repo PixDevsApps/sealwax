@@ -1,6 +1,7 @@
-//! Message-IDs (version 4 UUIDs) and Content-IDs (ADR-007) from random bits, `@` the
-//! sender's domain in ASCII. Never the machine's host name. The caller passes the random bytes,
-//! so this crate does no I/O.
+//! Message-IDs and Content-IDs (ADR-007): a random part `@` the sender's domain in ASCII, never
+//! the machine's host name. Message-IDs are version 4 UUIDs (ADR-007 amendment of 2026-11-24);
+//! the composer's and signatures' Content-IDs are [`token`]s. The caller passes the random
+//! bytes, so this crate does no I/O.
 
 use std::fmt::Write as _;
 
@@ -26,6 +27,8 @@ pub fn token(random: [u8; 16]) -> String {
     output
 }
 
+/// 122 of the 128 bits as a version 4 UUID in lower case (`8-4-4-4-12` hex digits), the
+/// Message-ID form most mail programs write; some relays' spam filters refuse a token's.
 pub fn uuid(mut random: [u8; 16]) -> String {
     random[6] = (random[6] & 0x0f) | 0x40;
     random[8] = (random[8] & 0x3f) | 0x80;
@@ -73,7 +76,8 @@ pub fn message_id(sender: &str, random: [u8; 16]) -> Option<String> {
     Some(format!("{}@{}", uuid(random), ascii_domain(sender)?))
 }
 
-/// A new Content-ID for an inline image in mail from `sender`, in the same form.
+/// A new Content-ID for an inline image in mail from `sender`, in the same form as a
+/// Message-ID.
 pub fn content_id(sender: &str, random: [u8; 16]) -> Option<String> {
     message_id(sender, random)
 }
